@@ -17,7 +17,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 8g
+          memory: 4g
     command:
       - "postgres"
       - "-c"
