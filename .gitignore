@@ -1,0 +1,9 @@
+.env
+.venv/
+data/pdfs/
+data/embed_batches/
+data/coverage/*.csv
+__pycache__/
+*.pyc
+pgdata/
+*.log
