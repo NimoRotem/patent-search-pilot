@@ -80,6 +80,7 @@ class AgentConfig:
     llm_call_budget: int = 40
     elements_per_round: int = 4
     evidence_per_element: int = 6
+    ground: bool = True          # per-evidence coordinate grounding (costly); off for the ablation
 
 
 class CoverageAgent:
@@ -122,19 +123,22 @@ class CoverageAgent:
             ledger.channel_families.setdefault(ch, set()).update(self.r.family_key(p) for p in pids[:100])
         if cpc:
             ledger.cpc_branches.update(cpc)
-        # map the strongest reranked families to this element as grounded evidence
+        # map the strongest reranked families to this element as evidence
         if element:
-            for fk, pid, score, prov in res.family_ranked[:6]:
-                g = self._ground(pid, query, subject, mode)
-                if g:
-                    ledger.add_evidence(element, {"family": fk, "pub": g["pub"], "coord": g["coord"],
-                                                  "kind": g["kind"], "score": float(score),
-                                                  "basis": g["basis"], "channels": list(prov.keys())})
+            qv = embed.embed_query(query[:2000], 768) if getattr(self, "_ground", True) else None
+            for fk, pid, score, prov in res.family_ranked[:5]:
+                if qv is not None:                       # full coordinate grounding (report path)
+                    g = self._ground_vec(pid, qv, subject)
+                    ev = {"family": fk, "pub": g["pub"], "coord": g["coord"], "kind": g["kind"],
+                          "basis": g["basis"], "score": float(score), "channels": list(prov.keys())}
+                else:                                    # light evidence (ablation): family + score
+                    ev = {"family": fk, "pub": None, "coord": None, "kind": None,
+                          "basis": "n/a", "score": float(score), "channels": list(prov.keys())}
+                ledger.add_evidence(element, ev)
         return res, n_new
 
-    def _ground(self, pid, query, subject, mode):
-        """Best chunk of a publication vs the query -> grounded citation (pub#, coord, basis)."""
-        qv = embed.embed_query(query[:2000], 768)
+    def _ground_vec(self, pid, qv, subject):
+        """Best chunk of a publication vs a PRE-COMPUTED query vector -> grounded citation."""
         vs = "[" + ",".join(f"{x:.6f}" for x in qv) + "]"
         with self.r.conn.cursor() as c:
             c.execute("SELECT p.publication_number, p.publication_date, p.filing_date, "
@@ -144,7 +148,7 @@ class CoverageAgent:
                       "ORDER BY ch.embedding <=> %s LIMIT 1", (pid, vs))
             row = c.fetchone()
         if not row:
-            return None
+            return {"pub": None, "coord": None, "kind": None, "basis": "n/a"}
         basis = "n/a"
         if subject:
             b = classify_basis(dict(publication_date=row["publication_date"],
@@ -156,6 +160,7 @@ class CoverageAgent:
     # ---- main loop -----------------------------------------------------------------------
     def run(self, query_text, subject=None, mode="novelty", cfg: AgentConfig = None):
         cfg = cfg or AgentConfig(mode=mode)
+        self._ground = cfg.ground
         m = Mode(mode)
         elements = self.decompose(query_text, subject)
         ledger = CoverageLedger(elements)
@@ -163,8 +168,8 @@ class CoverageAgent:
 
         # seed round: broad search on the whole invention
         self._run_search(query_text, subject, m, ledger, element=None)
-        # attribute seed hits to elements too
-        for el in elements:
+        # attribute seed hits to elements too (cap the per-element seed searches for runtime)
+        for el in elements[:6]:
             self._run_search(el, subject, m, ledger, element=el)
         ledger.note_round(len(ledger.families_seen))
 
@@ -192,12 +197,12 @@ class CoverageAgent:
         return self.report(query_text, subject, m, ledger, rounds=rnd)
 
     # ---- report --------------------------------------------------------------------------
-    def _final_rank(self, query_text, ledger, top=60):
+    def _final_rank(self, query_text, ledger, top=25):
         """Single cross-encoder rerank of the top RRF families (spec §6 step 4)."""
         ordered = sorted(ledger.family_score.items(), key=lambda t: t[1], reverse=True)
         head = ordered[:top]
         fam = [(fk, ledger.family_pid.get(fk), sc, {}) for fk, sc in head]
-        reranked = self.r.rerank_families(query_text, fam, top=min(60, len(fam)))
+        reranked = self.r.rerank_families(query_text, fam, top=min(25, len(fam)))
         ranked = [fk for fk, _, _, _ in reranked] + [fk for fk, _ in ordered[top:]]
         return ranked
 
@@ -207,7 +212,8 @@ class CoverageAgent:
         cb = CombinationBuilder(ledger.elements)
         element_report = {}
         for el, hits in ledger.evidence.items():
-            usable = [h for h in hits if (not subject) or usable_for(Basis(h["basis"]), mode)] or hits
+            usable = [h for h in hits if (not subject) or h["basis"] not in Basis._value2member_map_
+                      or usable_for(Basis(h["basis"]), mode)] or hits
             element_report[el] = usable[:6]
             for h in usable[:3]:
                 cb.add(ElementMapping(element=el, publication_number=h["pub"],

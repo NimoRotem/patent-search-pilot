@@ -16,6 +16,8 @@ def _load():
         if _model is not None or _failed:
             return _model
         try:
+            import torch
+            torch.set_num_threads(4)              # use all cores for CPU inference
             from FlagEmbedding import FlagReranker
             _model = FlagReranker("BAAI/bge-reranker-v2-m3", use_fp16=False)
             print("[rerank] loaded bge-reranker-v2-m3 (CPU)")
@@ -35,8 +37,10 @@ def rerank(query: str, passages: list[str], top_k=None):
     if m is None:
         out = [(i, 0.0) for i in range(len(passages))]
     else:
-        pairs = [[query, p] for p in passages]
-        scores = m.compute_score(pairs, normalize=True)
+        # cap query+passage length -> bge-reranker inference cost scales with sequence length;
+        # 256 tokens is plenty for claim/abstract relevance on CPU.
+        pairs = [[query[:600], (p or "")[:600]] for p in passages]
+        scores = m.compute_score(pairs, normalize=True, batch_size=16, max_length=256)
         if not isinstance(scores, list):
             scores = [scores]
         out = sorted(enumerate(scores), key=lambda t: t[1], reverse=True)

@@ -103,7 +103,7 @@ def evaluate(entries=None, run_agentic=True):
         if run_agentic:
             try:
                 rep = A.run(e["query_text"], subject=subj, mode=mode,
-                            cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3))
+                            cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=2, ground=False))
                 fams = rep["ranked_families"]
                 cf = {ch: set(v) for ch, v in rep["channel_families"].items()}
                 chan_by_cfg["agentic"] = (set(fams), cf)

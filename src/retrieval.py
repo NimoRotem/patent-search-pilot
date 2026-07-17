@@ -18,7 +18,7 @@ from config import SEED_CPC
 RRF_K = 60
 CHUNK_FETCH = 4000     # chunks pulled before aggregating to publications
 PUB_CAP = 1000         # per-channel publication cap (the spec's ~1000 width)
-RERANK_TOP = 60        # cross-encoder rerank depth (spec says ~300; 60 keeps CPU time sane on
+RERANK_TOP = 25        # cross-encoder rerank depth (spec says ~300; 25 keeps CPU time sane on
                        # the shared box — RRF already orders well; tune up with a GPU/idle box)
 
 
@@ -53,17 +53,22 @@ class Retriever:
         self.conn.autocommit = True
         with self.conn.cursor() as c:
             c.execute("SET hnsw.ef_search = 200")
+            # iterative scan (pgvector 0.8): keep scanning past ef_search until enough rows pass
+            # the date/status WHERE filter -> fixes the "few results under a restrictive filter"
+            # problem that otherwise starves the dense channel.
+            c.execute("SET hnsw.iterative_scan = relaxed_order")
+            c.execute("SET hnsw.max_scan_tuples = 12000")
+        # pre-load pid -> family map once (one query) — per-pub lookups during dedup were the
+        # dominant hidden cost (~1000 queries/search).
         self._fam = {}
+        with self.conn.cursor() as c:
+            c.execute("SELECT id, COALESCE(NULLIF(simple_family_id,''), publication_number) k FROM publications")
+            for r in c.fetchall():
+                self._fam[r["id"]] = r["k"]
 
     # ---- helpers -------------------------------------------------------------------------
     def family_key(self, pid):
-        if pid not in self._fam:
-            with self.conn.cursor() as c:
-                c.execute("SELECT COALESCE(NULLIF(simple_family_id,''), publication_number) k "
-                          "FROM publications WHERE id=%s", (pid,))
-                row = c.fetchone()
-                self._fam[pid] = row["k"] if row else str(pid)
-        return self._fam[pid]
+        return self._fam.get(pid, str(pid))
 
     def _pubs_from_chunks(self, sql, params, cap=PUB_CAP):
         """Run a chunk-level ranking query, aggregate to best-per-publication, cap."""
@@ -94,14 +99,19 @@ class Retriever:
         if not q or not q.strip():
             return []
         dc, dp = _date_clause(subject, mode)
-        # OR the query's lexemes (AND would match nothing for a long query-by-example), but cap
-        # to the ~40 most specific (longest) lexemes so the tsquery stays bounded and fast.
+        # OR the query's lexemes (AND would match nothing for a long query-by-example), capped to
+        # the ~22 most specific (longest) lexemes, and restricted to non-paragraph chunks
+        # (abstract/claims/whole carry the key terms; excluding descriptions keeps the match set
+        # and the ts_rank_cd GROUP BY bounded -> fast).
+        # Rank publications by the COUNT of matching non-paragraph chunks (how many of the
+        # doc's claims/abstract hit the query lexemes) instead of ts_rank_cd over every match —
+        # count(*) is far cheaper than density ranking, and RRF fuses by rank anyway.
         sql = (f"WITH tq AS (SELECT to_tsquery('english', NULLIF(array_to_string(ARRAY("
                f"  SELECT w FROM unnest(tsvector_to_array(to_tsvector('english', %s))) w "
-               f"  ORDER BY length(w) DESC LIMIT 40), ' | '), '')) q) "
-               f"SELECT c.publication_id, max(ts_rank_cd(c.tsv, tq.q)) AS score "
+               f"  ORDER BY length(w) DESC LIMIT 18), ' | '), '')) q) "
+               f"SELECT c.publication_id, count(*) AS score "
                f"FROM chunks c JOIN publications p ON p.id=c.publication_id, tq "
-               f"WHERE tq.q IS NOT NULL AND c.tsv @@ tq.q {dc} "
+               f"WHERE tq.q IS NOT NULL AND c.kind <> 'paragraph' AND c.tsv @@ tq.q {dc} "
                f"GROUP BY c.publication_id ORDER BY score DESC LIMIT %s")
         return self._pubs_from_chunks(sql, [q, *dp, PUB_CAP])
 
@@ -155,7 +165,7 @@ class Retriever:
             c.execute(sql, list(seeds) + list(dp) + [PUB_CAP])
             return [(r["publication_id"], float(r["score"])) for r in c.fetchall()]
 
-    def channel_qbe(self, seed_pids, subject=None, mode=None, per=2):
+    def channel_qbe(self, seed_pids, subject=None, mode=None, per=1):
         """Query-by-example: dense search from the best chunks of the strongest hits."""
         if not seed_pids:
             return []
@@ -233,7 +243,9 @@ class Retriever:
             "vector": ["dense"],
             "hybrid": ["exact", "bm25", "dense", "cpc"],
             "hybrid_rerank": ["exact", "bm25", "dense", "cpc"],
-            "agentic": ["exact", "bm25", "dense", "cpc", "citation", "qbe", "biblio", "crosslingual"],
+            # agentic drops the heavy per-call bm25/exact from its hot loop (both are already
+            # measured in keyword/hybrid); it leans on dense + expansion channels each iteration.
+            "agentic": ["dense", "cpc", "citation", "qbe", "biblio", "crosslingual"],
         }.get(config, config if isinstance(config, list) else ["bm25", "dense"])
 
         if "dense" in preset:

@@ -9,13 +9,15 @@ services:
       POSTGRES_PASSWORD: patents_pilot_local
     ports:
       - "127.0.0.1:5433:5432"
+    # /dev/shm for parallel index builds (default 64MB is too small for parallel HNSW).
+    shm_size: "2gb"
     volumes:
       - ./pgdata:/var/lib/postgresql/data
     # Memory-limited: this runs on a shared 15GB box. Keep Postgres bounded.
     deploy:
       resources:
         limits:
-          memory: 5g
+          memory: 8g
     command:
       - "postgres"
       - "-c"

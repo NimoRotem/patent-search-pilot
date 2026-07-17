@@ -1,0 +1,248 @@
+{
+  "generated": "2026-07-17",
+  "results": [
+    {
+      "id": "grabo_gripper_novelty",
+      "category": "grabo_own",
+      "mode": "novelty",
+      "n_gold": 44,
+      "n_reachable": 37,
+      "configs": {
+        "keyword": {
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {}
+        },
+        "vector": {
+          "family_recall@100": 0.0455,
+          "reachable_recall@100": 0.0541,
+          "family_recall@500": 0.2045,
+          "reachable_recall@500": 0.2432,
+          "family_recall@1000": 0.2045,
+          "reachable_recall@1000": 0.2432,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "22498676",
+              "23289430",
+              "25644276",
+              "34810482",
+              "41380067",
+              "42115107",
+              "45554511",
+              "7865086",
+              "7961965"
+            ]
+          }
+        },
+        "hybrid": {
+          "family_recall@100": 0.0227,
+          "reachable_recall@100": 0.027,
+          "family_recall@500": 0.1364,
+          "reachable_recall@500": 0.1622,
+          "family_recall@1000": 0.2045,
+          "reachable_recall@1000": 0.2432,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "22498676",
+              "23289430",
+              "25644276",
+              "34810482",
+              "41380067",
+              "42115107",
+              "45554511",
+              "7865086",
+              "7961965"
+            ],
+            "cpc": [
+              "22498676",
+              "24430975",
+              "24840037",
+              "29740151",
+              "34810482",
+              "42115107",
+              "45554511",
+              "7961965"
+            ]
+          }
+        },
+        "hybrid_rerank": {
+          "family_recall@100": 0.0227,
+          "reachable_recall@100": 0.027,
+          "family_recall@500": 0.1364,
+          "reachable_recall@500": 0.1622,
+          "family_recall@1000": 0.2045,
+          "reachable_recall@1000": 0.2432,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
+          "channel_gold_contribution": {
+            "dense": [
+              "22498676",
+              "23289430",
+              "25644276",
+              "34810482",
+              "41380067",
+              "42115107",
+              "45554511",
+              "7865086",
+              "7961965"
+            ],
+            "cpc": [
+              "22498676",
+              "24430975",
+              "24840037",
+              "29740151",
+              "34810482",
+              "42115107",
+              "45554511",
+              "7961965"
+            ]
+          }
+        },
+        "agentic": {
+          "family_recall@100": 0.0682,
+          "reachable_recall@100": 0.0811,
+          "family_recall@500": 0.1364,
+          "reachable_recall@500": 0.1622,
+          "family_recall@1000": 0.25,
+          "reachable_recall@1000": 0.2973,
+          "earliest_relevant_family": "24262135",
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.95,
+          "channel_gold_contribution": {
+            "dense": [
+              "41380067",
+              "42115107",
+              "6332344",
+              "7865086"
+            ],
+            "cpc": [
+              "22498676"
+            ],
+            "citation": [
+              "23289430",
+              "32054112",
+              "39244538",
+              "42115107",
+              "45508079",
+              "7865086"
+            ],
+            "qbe": [
+              "22883737",
+              "23289430",
+              "25644276",
+              "34810482",
+              "41380067",
+              "42115107",
+              "45554511",
+              "6332344",
+              "7889498"
+            ]
+          },
+          "claim_element_coverage": {
+            "Rigid base element with first and second opposite sides": {
+              "best_score": 0.043,
+              "n_evidence": 22
+            },
+            "Loop-shaped vacuum seal element": {
+              "best_score": 0.043,
+              "n_evidence": 17
+            },
+            "Seal element attached to second side, protruding away from first side": {
+              "best_score": 0.047,
+              "n_evidence": 5
+            },
+            "Seal element with contact surface and encircling surface defining a chamber": {
+              "best_score": 0.049,
+              "n_evidence": 5
+            },
+            "Seal element elastically deformable at contact surface": {
+              "best_score": 0.035,
+              "n_evidence": 5
+            },
+            "Air extraction means mounted to first side": {
+              "best_score": 0.047,
+              "n_evidence": 5
+            },
+            "Air extraction means in fluid communication with chamber through base element": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Air extraction means continuously extracts air from chamber": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Seal element attachment surface mounted to peripheral support area": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Seal element protrusion distance no greater than its thickness": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Air extraction means operable in a variable manner": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Variable operation by fluctuating operating power or reducing power to maintain grip": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            }
+          },
+          "marginal_yield_per_round": [
+            702,
+            358,
+            138
+          ],
+          "rounds": 2,
+          "llm_calls": 5,
+          "combination_view": {
+            "primary": null,
+            "covers": [
+              "Air extraction means mounted to first side",
+              "Loop-shaped vacuum seal element",
+              "Rigid base element with first and second opposite sides",
+              "Seal element attached to second side, protruding away from first side",
+              "Seal element elastically deformable at contact surface",
+              "Seal element with contact surface and encircling surface defining a chamber"
+            ],
+            "secondaries": [],
+            "uncovered_elements": [
+              "Air extraction means continuously extracts air from chamber",
+              "Air extraction means in fluid communication with chamber through base element",
+              "Air extraction means operable in a variable manner",
+              "Seal element attachment surface mounted to peripheral support area",
+              "Seal element protrusion distance no greater than its thickness",
+              "Variable operation by fluctuating operating power or reducing power to maintain grip"
+            ]
+          }
+        }
+      },
+      "citation_only_gold": [
+        "23289430",
+        "32054112",
+        "39244538",
+        "45508079"
+      ],
+      "agent_only_gold": [
+        "22883737",
+        "32054112",
+        "39244538",
+        "6332344"
+      ]
+    }
+  ]
+}
