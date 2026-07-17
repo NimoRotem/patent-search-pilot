@@ -7,3 +7,12 @@ __pycache__/
 *.pyc
 pgdata/
 *.log
+
+# Milestone 2 webapp caches (regenerable)
+data/enriched/
+data/figures/
+data/rationale/
+data/reports/*.view.json
+data/reports/*.meta.json
+data/patent-results.*.log
+data/webapp.log

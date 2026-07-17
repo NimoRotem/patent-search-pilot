@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Prior-Art Search — pilot{% endblock %}
+{% block body %}
+<div class="hero">
+  <div class="wrap">
+    <h1>Semantic + agentic prior-art search</h1>
+    <p>Element-by-element claim charts, drawings, PDF facsimiles and highlighted claims/paragraphs over
+       a 107,795-publication vacuum-gripping corpus. Modeled on IPtorch — built better.</p>
+  </div>
+</div>
+<div class="wrap">
+  <form class="panel searchcard" method="post" action="/run">
+    <h3>Search by invention text</h3>
+    <div class="field">
+      <label>Invention description / claim text</label>
+      <textarea name="query" placeholder="e.g. A handheld battery-powered vacuum lifter with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that warns the operator when grip vacuum is lost…"></textarea>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Search mode</label>
+        <select name="mode">
+          <option value="novelty">Novelty (incl. secret prior art)</option>
+          <option value="inventive_step">Inventive step (public art only)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Subject patent # (optional — enables prior-art dating)</label>
+        <input type="text" name="subject" placeholder="e.g. US-11999030-B2">
+      </div>
+      <div class="field" style="display:flex;align-items:flex-end">
+        <button class="btn" type="submit">🔎 Run search</button>
+      </div>
+    </div>
+  </form>
+
+  <div class="divider">or pick a frozen gold-set search</div>
+
+  <div class="goldgrid">
+    {% for g in gold %}
+    <form method="post" action="/run">
+      <input type="hidden" name="gold_id" value="{{ g.id }}">
+      <button class="goldcard" type="submit" style="width:100%;text-align:left;cursor:pointer">
+        <div class="id">{{ g.id }}
+          {% if g.cached %}<span class="badge b-cached">cached</span>{% endif %}
+        </div>
+        <div><span class="badge b-cat">{{ g.category }}</span>
+             <span class="badge b-mode">{{ g.mode.replace('_',' ') }}</span></div>
+        <div class="meta">{% if g.subject %}subject {{ g.subject }}{% else %}natural-language query{% endif %}</div>
+        <div class="notes">{{ g.notes }}</div>
+      </button>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

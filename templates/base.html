@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Prior-Art Search{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🔎</text></svg>">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/">PriorArt<span>·pilot</span> <small>vacuum-gripping semantic + agentic search</small></a>
+    <span class="grow"></span>
+    <a href="/">New search</a>
+  </div>
+</header>
+{% block body %}{% endblock %}
+<footer>Pilot · Postgres 17 + pgvector · 107,795 pubs / 1.82M vectors · Vertex embeddings + Gemini agent · bge-reranker</footer>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

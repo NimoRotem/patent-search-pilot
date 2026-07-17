@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Generating — {{ title }}{% endblock %}
+{% block body %}
+<div class="wrap">
+  <div class="panel gen">
+    <h2>Running the coverage-ledger agent…</h2>
+    <div class="spin"></div>
+    <p class="muted" id="msg">Decomposing the invention into elements, searching {{ mode.replace('_',' ') }} prior art across 8 channels, fusing and reranking.</p>
+    <p class="small muted">{{ query }}</p>
+    <p class="small muted">This runs live (≈2–4 min) and is cached — future loads are instant.</p>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const slug = {{ slug|tojson }};
+async function poll(){
+  try{
+    const r = await fetch('/status/'+slug); const j = await r.json();
+    if(j.msg) document.getElementById('msg').textContent = j.msg;
+    if(j.ready){ location.href = '/report/'+slug; return; }
+    if(j.status==='error'){ document.getElementById('msg').textContent = 'Error: '+j.msg; return; }
+  }catch(e){}
+  setTimeout(poll, 2500);
+}
+poll();
+</script>
+{% endblock %}
