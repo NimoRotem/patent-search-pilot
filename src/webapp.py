@@ -20,6 +20,29 @@ from config import DATA
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 
+
+class _PrefixMiddleware:
+    """Serve the app under an optional URL prefix supplied by a reverse proxy via the
+    `X-Forwarded-Prefix` header (e.g. `/patents-data` when fronted at rotem.ai/patents-data).
+    Sets SCRIPT_NAME so Flask's `url_for` / `request.script_root` become prefix-aware, and strips
+    the prefix from PATH_INFO if the proxy passes it through. With no header the app serves at the
+    root exactly as before (127.0.0.1:8631), so nothing changes for direct/local access."""
+
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        prefix = environ.get("HTTP_X_FORWARDED_PREFIX", "").rstrip("/")
+        if prefix:
+            environ["SCRIPT_NAME"] = prefix
+            path = environ.get("PATH_INFO", "")
+            if path.startswith(prefix):
+                environ["PATH_INFO"] = path[len(prefix):] or "/"
+        return self.wsgi_app(environ, start_response)
+
+
+app.wsgi_app = _PrefixMiddleware(app.wsgi_app)
+
 REPORTS = DATA / "reports"
 RATIONALE = DATA / "rationale"
 EXPORTS = DATA / "reports" / "exports"
@@ -579,7 +602,11 @@ def healthz():
 
 
 if __name__ == "__main__":
-    import sys
+    import sys, os
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8631
-    print(f"Results page on http://127.0.0.1:{port}")
-    app.run(host="127.0.0.1", port=port, threaded=True, debug=False)
+    # Bind localhost by default (pilot spec). Set WEBAPP_HOST=0.0.0.0 to also serve the internal
+    # VPC so a reverse proxy (rotem.ai/patents-data on the builder VM) can reach it — port 8631 is
+    # closed to the public internet by the GCP firewall, so this stays VPC-only.
+    host = os.environ.get("WEBAPP_HOST", "127.0.0.1")
+    print(f"Results page on http://{host}:{port}")
+    app.run(host=host, port=port, threaded=True, debug=False)

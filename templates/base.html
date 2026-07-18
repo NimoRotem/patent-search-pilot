@@ -6,13 +6,14 @@
 <title>{% block title %}Prior-Art Search{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🔎</text></svg>">
+<script>window.APP_BASE = {{ request.script_root|tojson }};</script>
 </head>
 <body>
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="/">PriorArt<span>·pilot</span> <small>vacuum-gripping semantic + agentic search</small></a>
+    <a class="brand" href="{{ request.script_root }}/">PriorArt<span>·pilot</span> <small>vacuum-gripping semantic + agentic search</small></a>
     <span class="grow"></span>
-    <a href="/">New search</a>
+    <a href="{{ request.script_root }}/">New search</a>
   </div>
 </header>
 {% block body %}{% endblock %}

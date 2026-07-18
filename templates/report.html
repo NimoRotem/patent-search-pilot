@@ -20,8 +20,8 @@
     <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
       {% for ch in v.channels_used %}<span class="chip ch">{{ ch }}</span>{% endfor %}
       <span class="grow"></span>
-      <a class="btn ghost sm" href="/print/{{ v.slug }}" target="_blank">🖨 Print / PDF view</a>
-      <a class="btn ghost sm" href="/report/{{ v.slug }}?rerun=1" onclick="return confirm('Re-run the agent live? (~2-4 min)')">↻ Re-run</a>
+      <a class="btn ghost sm" href="{{ request.script_root }}/print/{{ v.slug }}" target="_blank">🖨 Print / PDF view</a>
+      <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}?rerun=1" onclick="return confirm('Re-run the agent live? (~2-4 min)')">↻ Re-run</a>
     </div>
   </div>
 
@@ -121,7 +121,7 @@
           <div class="reftitle">{{ c.flag }} {{ c.title or '(untitled)' }}</div>
           <div class="refmeta">
             <a class="pn" href="https://patents.google.com/patent/{{ c.pub.replace('-','') }}/en" target="_blank" onclick="event.stopPropagation()">{{ c.pub }}</a>
-            <a href="/pdf/{{ c.pub }}" target="_blank" onclick="event.stopPropagation()" class="pdflink" data-pub="{{ c.pub }}">📄 PDF</a>
+            <a href="{{ request.script_root }}/pdf/{{ c.pub }}" target="_blank" onclick="event.stopPropagation()" class="pdflink" data-pub="{{ c.pub }}">📄 PDF</a>
             {% if c.priority_date %}<span>prio {{ c.priority_date }}</span>{% endif %}
             {% if c.publication_date %}<span>pub {{ c.publication_date }}</span>{% endif %}
             <span>fam {{ c.family_id }}</span>
@@ -196,7 +196,7 @@
     <button class="btn sm" onclick="doExport('docx')">⬇ Export DOCX</button>
   </div>
 </div>
-<form id="exportform" method="post" action="/export" target="_blank" style="display:none">
+<form id="exportform" method="post" action="{{ request.script_root }}/export" target="_blank" style="display:none">
   <input type="hidden" name="slug" value="{{ v.slug }}">
   <input type="hidden" name="pubs" id="exportpubs">
   <input type="hidden" name="format" id="exportfmt">

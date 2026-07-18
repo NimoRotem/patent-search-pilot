@@ -1,4 +1,5 @@
 // Results page interactions: lazy card enrichment, tabs, lightbox, filters/sort, highlighting.
+const B = (typeof window!=='undefined' && window.APP_BASE) || '';  // proxy path prefix (M9: rotem.ai/patents-data)
 
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
@@ -33,7 +34,7 @@ async function toggleCard(head){
     body.dataset.loaded='1';
     body.innerHTML = '<div class="why load">Loading drawings, PDF & sections…</div>';
     try{
-      const r = await fetch('/api/ref/'+encodeURIComponent(card.dataset.pub)+'?slug='+encodeURIComponent(window.SLUG));
+      const r = await fetch(B+'/api/ref/'+encodeURIComponent(card.dataset.pub)+'?slug='+encodeURIComponent(window.SLUG));
       const j = await r.json();
       body.innerHTML = renderBody(j);
       wireTabs(body);
@@ -58,7 +59,7 @@ function renderBody(j){
   if(d.images && d.images.length){
     h += '<div class="g">';
     d.images.forEach((im,i)=>{
-      const url='/figures/'+encodeURIComponent(d.pub)+'/'+im.file;
+      const url=B+'/figures/'+encodeURIComponent(d.pub)+'/'+im.file;
       h += '<figure><img loading="lazy" src="'+url+'" data-pub="'+esc(d.pub)+'" data-i="'+i+'" onclick="openLb(this)">'
         + '<figcaption>fig '+(i+1)+'</figcaption></figure>';
     });
@@ -68,7 +69,7 @@ function renderBody(j){
       + 'View on <a href="'+esc(d.google_patents||'#')+'" target="_blank">Google Patents</a> · '
       + '<a href="'+esc(d.espacenet||'#')+'" target="_blank">Espacenet</a></div>';
   }
-  if(d.pdf_local){ h += '<div style="margin-top:8px"><a class="btn ghost sm" href="/pdf/'+encodeURIComponent(d.pub)+'" target="_blank">📄 Open PDF facsimile</a></div>'; }
+  if(d.pdf_local){ h += '<div style="margin-top:8px"><a class="btn ghost sm" href="'+B+'/pdf/'+encodeURIComponent(d.pub)+'" target="_blank">📄 Open PDF facsimile</a></div>'; }
   h += '</div>';
 
   // tabs
@@ -210,12 +211,12 @@ async function setFlag(pub, flag, el){
   const val = already ? '' : flag;
   if(!already) el.classList.add('on');
   document.getElementById('ref-'+pub).dataset.flag = val;
-  try{ await fetch('/api/flags/'+encodeURIComponent(window.SLUG),{method:'POST',headers:{'Content-Type':'application/json'},
+  try{ await fetch(B+'/api/flags/'+encodeURIComponent(window.SLUG),{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({pub, flag:val})}); }catch(e){}
   applyControls();
 }
 async function saveNote(pub, note){
-  try{ await fetch('/api/flags/'+encodeURIComponent(window.SLUG),{method:'POST',headers:{'Content-Type':'application/json'},
+  try{ await fetch(B+'/api/flags/'+encodeURIComponent(window.SLUG),{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({pub, note})}); }catch(e){}
 }
 
@@ -237,7 +238,7 @@ function doExport(fmt){
 function openCompare(){
   const sel = selectedPubs();
   if(sel.length<2 || sel.length>3){ alert('Select 2 or 3 references to compare.'); return; }
-  window.open('/compare?slug='+encodeURIComponent(window.SLUG)+'&pubs='+encodeURIComponent(sel.join(',')),'_blank');
+  window.open(B+'/compare?slug='+encodeURIComponent(window.SLUG)+'&pubs='+encodeURIComponent(sel.join(',')),'_blank');
 }
 
 // ---- citation graph (lazy, appended to card body) ------------------------------------------
@@ -245,8 +246,8 @@ async function loadGraph(pub, mount){
   mount.innerHTML = '<h5>Citations & similar</h5><span class="muted small">loading…</span>';
   try{
     const [g, ml] = await Promise.all([
-      fetch('/api/graph/'+encodeURIComponent(pub)).then(r=>r.json()),
-      fetch('/api/morelike/'+encodeURIComponent(pub)).then(r=>r.json())
+      fetch(B+'/api/graph/'+encodeURIComponent(pub)).then(r=>r.json()),
+      fetch(B+'/api/morelike/'+encodeURIComponent(pub)).then(r=>r.json())
     ]);
     const col = (title, items, kind)=>{
       let h = '<div class="cgcol"><h5>'+title+' ('+items.length+')</h5><div class="cglist">';

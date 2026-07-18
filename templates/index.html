@@ -9,7 +9,7 @@
   </div>
 </div>
 <div class="wrap">
-  <form class="panel searchcard" method="post" action="/run" id="searchform">
+  <form class="panel searchcard" method="post" action="{{ request.script_root }}/run" id="searchform">
     <h3>Search by invention description</h3>
     <div class="field">
       <textarea name="query" id="qbox" rows="4"
@@ -44,7 +44,7 @@
 
   <div class="goldgrid">
     {% for g in gold %}
-    <form method="post" action="/run">
+    <form method="post" action="{{ request.script_root }}/run">
       <input type="hidden" name="gold_id" value="{{ g.id }}">
       <button class="goldcard" type="submit" style="width:100%;text-align:left;cursor:pointer">
         <div class="id">{{ g.id }}
