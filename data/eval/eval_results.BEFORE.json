@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-18",
+  "generated": "2026-07-17",
   "results": [
     {
       "id": "grabo_gripper_novelty",
@@ -21,21 +21,19 @@
           "channel_gold_contribution": {}
         },
         "vector": {
-          "family_recall@100": 0.0682,
-          "reachable_recall@100": 0.0811,
-          "family_recall@500": 0.25,
-          "reachable_recall@500": 0.2973,
-          "family_recall@1000": 0.25,
-          "reachable_recall@1000": 0.2973,
+          "family_recall@100": 0.0455,
+          "reachable_recall@100": 0.0541,
+          "family_recall@500": 0.2045,
+          "reachable_recall@500": 0.2432,
+          "family_recall@1000": 0.2045,
+          "reachable_recall@1000": 0.2432,
           "earliest_relevant_family": "24262135",
           "earliest_recovered": false,
-          "nongold_rate@20": 0.95,
+          "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
               "22498676",
-              "23205091",
               "23289430",
-              "25084279",
               "25644276",
               "34810482",
               "41380067",
@@ -47,21 +45,19 @@
           }
         },
         "hybrid": {
-          "family_recall@100": 0.0682,
-          "reachable_recall@100": 0.0811,
-          "family_recall@500": 0.2273,
-          "reachable_recall@500": 0.2703,
-          "family_recall@1000": 0.25,
-          "reachable_recall@1000": 0.2973,
+          "family_recall@100": 0.0227,
+          "reachable_recall@100": 0.027,
+          "family_recall@500": 0.1364,
+          "reachable_recall@500": 0.1622,
+          "family_recall@1000": 0.2045,
+          "reachable_recall@1000": 0.2432,
           "earliest_relevant_family": "24262135",
           "earliest_recovered": false,
-          "nongold_rate@20": 0.95,
+          "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
               "22498676",
-              "23205091",
               "23289430",
-              "25084279",
               "25644276",
               "34810482",
               "41380067",
@@ -83,21 +79,19 @@
           }
         },
         "hybrid_rerank": {
-          "family_recall@100": 0.0682,
-          "reachable_recall@100": 0.0811,
-          "family_recall@500": 0.2273,
-          "reachable_recall@500": 0.2703,
-          "family_recall@1000": 0.25,
-          "reachable_recall@1000": 0.2973,
+          "family_recall@100": 0.0227,
+          "reachable_recall@100": 0.027,
+          "family_recall@500": 0.1364,
+          "reachable_recall@500": 0.1622,
+          "family_recall@1000": 0.2045,
+          "reachable_recall@1000": 0.2432,
           "earliest_relevant_family": "24262135",
           "earliest_recovered": false,
           "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
               "22498676",
-              "23205091",
               "23289430",
-              "25084279",
               "25644276",
               "34810482",
               "41380067",
@@ -119,101 +113,135 @@
           }
         },
         "agentic": {
-          "family_recall@100": 0.0455,
-          "reachable_recall@100": 0.0541,
-          "family_recall@500": 0.2045,
-          "reachable_recall@500": 0.2432,
-          "family_recall@1000": 0.2955,
-          "reachable_recall@1000": 0.3514,
+          "family_recall@100": 0.0682,
+          "reachable_recall@100": 0.0811,
+          "family_recall@500": 0.1591,
+          "reachable_recall@500": 0.1892,
+          "family_recall@1000": 0.2727,
+          "reachable_recall@1000": 0.3243,
           "earliest_relevant_family": "24262135",
           "earliest_recovered": false,
           "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
-              "22498676",
-              "23205091",
-              "23289430",
               "24430975",
-              "25644276",
+              "41380067",
               "42115107",
               "6332344",
-              "6495403",
               "7865086"
             ],
             "cpc": [
-              "22498676",
-              "7961965"
+              "22498676"
             ],
             "citation": [
-              "22498676",
-              "22883737",
-              "23205091",
               "23289430",
-              "25421211",
-              "25644276",
-              "34810482",
               "39244538",
               "42115107",
-              "7865086"
+              "7865086",
+              "7961965"
             ],
             "qbe": [
+              "22883737",
               "23289430",
-              "25084279",
               "25644276",
               "34810482",
               "41380067",
               "42115107",
+              "45554511",
               "6332344",
-              "7889498",
-              "7961965"
-            ],
-            "crosslingual": [
-              "22498676",
-              "34201690"
+              "7889498"
             ]
           },
+          "claim_element_coverage": {
+            "Rigid base element with first and second opposite sides": {
+              "best_score": 0.036,
+              "n_evidence": 18
+            },
+            "Loop-shaped vacuum seal element": {
+              "best_score": 0.043,
+              "n_evidence": 16
+            },
+            "Seal element attached to second side, protruding away from first side": {
+              "best_score": 0.049,
+              "n_evidence": 5
+            },
+            "Seal element with contact surface and encircling surface defining a chamber": {
+              "best_score": 0.049,
+              "n_evidence": 5
+            },
+            "Seal element elastically deformable at contact surface": {
+              "best_score": 0.035,
+              "n_evidence": 5
+            },
+            "Air extraction means mounted to first side": {
+              "best_score": 0.048,
+              "n_evidence": 5
+            },
+            "Air extraction means in fluid communication with chamber through base element": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Air extraction means configured to continuously extract air from chamber": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Seal element attachment surface mounted to peripheral support area of base element": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Seal element protrusion distance no greater than its thickness": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Bracing structure arranged within or outside the seal element": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Variable operation of air extraction means by fluctuating or reducing power": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            }
+          },
           "marginal_yield_per_round": [
-            1042,
-            397,
-            116
+            716,
+            296,
+            96
           ],
           "rounds": 2,
           "llm_calls": 5,
           "combination_view": {
             "primary": null,
             "covers": [
-              "Chamber defined by seal element and base element",
+              "Air extraction means mounted to first side",
               "Loop-shaped vacuum seal element",
-              "Seal element attached to second side of base element",
-              "Seal element protrudes from base element",
-              "Seal element with contact surface and encircling surface",
-              "Vacuum gripper with rigid base element"
+              "Rigid base element with first and second opposite sides",
+              "Seal element attached to second side, protruding away from first side",
+              "Seal element elastically deformable at contact surface",
+              "Seal element with contact surface and encircling surface defining a chamber"
             ],
             "secondaries": [],
             "uncovered_elements": [
-              "Air extraction means continuously extracts air from chamber",
+              "Air extraction means configured to continuously extract air from chamber",
               "Air extraction means in fluid communication with chamber through base element",
-              "Air extraction means mounted to first side of base element",
-              "Air extraction means operable in a variable manner",
-              "Seal element attachment surface mounted to peripheral support area",
-              "Seal element elastically deformable at contact surface"
+              "Bracing structure arranged within or outside the seal element",
+              "Seal element attachment surface mounted to peripheral support area of base element",
+              "Seal element protrusion distance no greater than its thickness",
+              "Variable operation of air extraction means by fluctuating or reducing power"
             ]
           }
         }
       },
       "citation_only_gold": [
-        "22883737",
-        "25421211",
-        "34810482",
-        "39244538"
+        "23289430",
+        "39244538",
+        "7961965"
       ],
       "agent_only_gold": [
+        "22883737",
         "24430975",
-        "25421211",
-        "34201690",
-        "6332344",
-        "6495403",
-        "6918853"
+        "39244538",
+        "41380067",
+        "6332344"
       ]
     },
     {
@@ -236,23 +264,21 @@
           "channel_gold_contribution": {}
         },
         "vector": {
-          "family_recall@100": 0.0682,
-          "reachable_recall@100": 0.0811,
-          "family_recall@500": 0.25,
-          "reachable_recall@500": 0.2973,
-          "family_recall@1000": 0.2955,
-          "reachable_recall@1000": 0.3514,
+          "family_recall@100": 0.0455,
+          "reachable_recall@100": 0.0541,
+          "family_recall@500": 0.2045,
+          "reachable_recall@500": 0.2432,
+          "family_recall@1000": 0.25,
+          "reachable_recall@1000": 0.2973,
           "earliest_relevant_family": "24262135",
           "earliest_recovered": false,
-          "nongold_rate@20": 0.95,
+          "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
               "22498676",
-              "23205091",
               "23289430",
               "25084279",
               "25644276",
-              "29740151",
               "34810482",
               "39244538",
               "41380067",
@@ -264,23 +290,21 @@
           }
         },
         "hybrid": {
-          "family_recall@100": 0.0682,
-          "reachable_recall@100": 0.0811,
-          "family_recall@500": 0.2273,
-          "reachable_recall@500": 0.2703,
-          "family_recall@1000": 0.2955,
-          "reachable_recall@1000": 0.3514,
+          "family_recall@100": 0.0227,
+          "reachable_recall@100": 0.027,
+          "family_recall@500": 0.1818,
+          "reachable_recall@500": 0.2162,
+          "family_recall@1000": 0.2273,
+          "reachable_recall@1000": 0.2703,
           "earliest_relevant_family": "24262135",
           "earliest_recovered": false,
           "nongold_rate@20": 0.95,
           "channel_gold_contribution": {
             "dense": [
               "22498676",
-              "23205091",
               "23289430",
               "25084279",
               "25644276",
-              "29740151",
               "34810482",
               "39244538",
               "41380067",
@@ -304,23 +328,21 @@
           }
         },
         "hybrid_rerank": {
-          "family_recall@100": 0.0682,
-          "reachable_recall@100": 0.0811,
-          "family_recall@500": 0.2273,
-          "reachable_recall@500": 0.2703,
-          "family_recall@1000": 0.2955,
-          "reachable_recall@1000": 0.3514,
+          "family_recall@100": 0.0227,
+          "reachable_recall@100": 0.027,
+          "family_recall@500": 0.1818,
+          "reachable_recall@500": 0.2162,
+          "family_recall@1000": 0.2045,
+          "reachable_recall@1000": 0.2432,
           "earliest_relevant_family": "24262135",
           "earliest_recovered": false,
-          "nongold_rate@20": 1.0,
+          "nongold_rate@20": 0.95,
           "channel_gold_contribution": {
             "dense": [
               "22498676",
-              "23205091",
               "23289430",
               "25084279",
               "25644276",
-              "29740151",
               "34810482",
               "39244538",
               "41380067",
@@ -344,26 +366,27 @@
           }
         },
         "agentic": {
-          "family_recall@100": 0.1364,
-          "reachable_recall@100": 0.1622,
-          "family_recall@500": 0.25,
-          "reachable_recall@500": 0.2973,
-          "family_recall@1000": 0.3409,
-          "reachable_recall@1000": 0.4054,
+          "family_recall@100": 0.0682,
+          "reachable_recall@100": 0.0811,
+          "family_recall@500": 0.2273,
+          "reachable_recall@500": 0.2703,
+          "family_recall@1000": 0.3636,
+          "reachable_recall@1000": 0.4324,
           "earliest_relevant_family": "24262135",
-          "earliest_recovered": true,
-          "nongold_rate@20": 1.0,
+          "earliest_recovered": false,
+          "nongold_rate@20": 0.95,
           "channel_gold_contribution": {
             "dense": [
               "22498676",
-              "23205091",
               "23289430",
-              "24840037",
+              "24430975",
+              "24664421",
               "25644276",
-              "32054112",
               "41380067",
               "42115107",
+              "45554511",
               "6332344",
+              "6495403",
               "7865086",
               "7961965"
             ],
@@ -374,74 +397,119 @@
             ],
             "citation": [
               "22498676",
-              "23205091",
               "23289430",
-              "24262135",
-              "24664421",
-              "32054112",
               "34810482",
               "39244538",
               "42115107",
-              "45508079",
-              "6332344",
+              "45554511",
               "7865086"
             ],
             "qbe": [
+              "22498676",
               "23289430",
-              "24430975",
-              "25084279",
+              "25644276",
+              "29740151",
               "34810482",
               "41380067",
               "42115107",
               "45554511",
-              "6332344"
+              "7865086",
+              "7889498",
+              "7961965"
             ],
             "crosslingual": [
-              "22498676"
+              "34201690"
             ]
           },
+          "claim_element_coverage": {
+            "Vacuum gripper with rigid base element": {
+              "best_score": 0.058,
+              "n_evidence": 24
+            },
+            "Loop-shaped vacuum seal element": {
+              "best_score": 0.049,
+              "n_evidence": 18
+            },
+            "Seal element attached to second side of base, protruding away from first side": {
+              "best_score": 0.038,
+              "n_evidence": 5
+            },
+            "Seal element with contact surface and encircling surface defining a chamber": {
+              "best_score": 0.043,
+              "n_evidence": 5
+            },
+            "Seal element elastically deformable at contact surface for conforming to object": {
+              "best_score": 0.042,
+              "n_evidence": 5
+            },
+            "Air extraction means on first side, in fluid communication with chamber through base": {
+              "best_score": 0.036,
+              "n_evidence": 5
+            },
+            "Air extraction means continuously extracts air from chamber": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Air extraction means urges contact surface towards and grips object surface": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Seal element attachment surface mounted to peripheral support area of base": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Seal element protrudes no greater than its thickness from peripheral support area": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Air extraction means operable in a variable manner": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Variable operation by fluctuating operating power or reducing power to maintain grip": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            }
+          },
           "marginal_yield_per_round": [
-            1141,
-            424,
-            187
+            864,
+            351,
+            87
           ],
           "rounds": 2,
           "llm_calls": 10,
           "combination_view": {
             "primary": null,
             "covers": [
-              "Air extraction means mounted to first side",
+              "Air extraction means on first side, in fluid communication with chamber through base",
               "Loop-shaped vacuum seal element",
-              "Rigid base element with first and second opposite sides",
-              "Seal element attached to second side, protruding away from first side",
-              "Seal element elastically deformable at contact surface",
-              "Seal element with contact surface and encircling surface defining a chamber"
+              "Seal element attached to second side of base, protruding away from first side",
+              "Seal element elastically deformable at contact surface for conforming to object",
+              "Seal element with contact surface and encircling surface defining a chamber",
+              "Vacuum gripper with rigid base element"
             ],
             "secondaries": [],
             "uncovered_elements": [
               "Air extraction means continuously extracts air from chamber",
-              "Air extraction means in fluid communication with chamber through base element",
-              "Bracing structure within or outside the seal element",
-              "Seal element protrudes a distance no greater than its thickness",
-              "Variable operation of air extraction means by fluctuating power",
-              "Variable operation of air extraction means by reducing power to maintain grip"
+              "Air extraction means operable in a variable manner",
+              "Air extraction means urges contact surface towards and grips object surface",
+              "Seal element attachment surface mounted to peripheral support area of base",
+              "Seal element protrudes no greater than its thickness from peripheral support area",
+              "Variable operation by fluctuating operating power or reducing power to maintain grip"
             ]
           }
         }
       },
       "citation_only_gold": [
-        "24262135",
-        "24664421",
         "34810482",
-        "39244538",
-        "45508079"
+        "39244538"
       ],
       "agent_only_gold": [
-        "24262135",
-        "24664421",
+        "23205091",
         "24840037",
-        "32054112",
-        "45508079",
+        "34201690",
+        "39244538",
+        "41380067",
         "6332344",
         "6495403"
       ]
@@ -470,60 +538,52 @@
           }
         },
         "vector": {
-          "family_recall@100": 0.0408,
-          "reachable_recall@100": 0.0444,
-          "family_recall@500": 0.2449,
-          "reachable_recall@500": 0.2667,
-          "family_recall@1000": 0.3061,
-          "reachable_recall@1000": 0.3333,
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
+          "family_recall@500": 0.1429,
+          "reachable_recall@500": 0.1556,
+          "family_recall@1000": 0.2245,
+          "reachable_recall@1000": 0.2444,
           "earliest_relevant_family": "3104865",
           "earliest_recovered": false,
           "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
-              "23158645",
-              "23205091",
-              "23289430",
-              "24262135",
               "24430975",
               "24664421",
-              "24840037",
               "25084279",
+              "25421211",
               "25644276",
-              "27070290",
               "34810482",
               "41380067",
               "42115107",
+              "54067591",
               "7865086",
               "7961965"
             ]
           }
         },
         "hybrid": {
-          "family_recall@100": 0.0408,
-          "reachable_recall@100": 0.0444,
-          "family_recall@500": 0.1633,
-          "reachable_recall@500": 0.1778,
-          "family_recall@1000": 0.3265,
-          "reachable_recall@1000": 0.3556,
+          "family_recall@100": 0.0204,
+          "reachable_recall@100": 0.0222,
+          "family_recall@500": 0.0612,
+          "reachable_recall@500": 0.0667,
+          "family_recall@1000": 0.1429,
+          "reachable_recall@1000": 0.1556,
           "earliest_relevant_family": "3104865",
           "earliest_recovered": false,
           "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
-              "23158645",
-              "23205091",
-              "23289430",
-              "24262135",
               "24430975",
               "24664421",
-              "24840037",
               "25084279",
+              "25421211",
               "25644276",
-              "27070290",
               "34810482",
               "41380067",
               "42115107",
+              "54067591",
               "7865086",
               "7961965"
             ],
@@ -545,30 +605,26 @@
           }
         },
         "hybrid_rerank": {
-          "family_recall@100": 0.0408,
-          "reachable_recall@100": 0.0444,
-          "family_recall@500": 0.1633,
-          "reachable_recall@500": 0.1778,
-          "family_recall@1000": 0.3265,
-          "reachable_recall@1000": 0.3556,
+          "family_recall@100": 0.0204,
+          "reachable_recall@100": 0.0222,
+          "family_recall@500": 0.0612,
+          "reachable_recall@500": 0.0667,
+          "family_recall@1000": 0.1429,
+          "reachable_recall@1000": 0.1556,
           "earliest_relevant_family": "3104865",
           "earliest_recovered": false,
           "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
-              "23158645",
-              "23205091",
-              "23289430",
-              "24262135",
               "24430975",
               "24664421",
-              "24840037",
               "25084279",
+              "25421211",
               "25644276",
-              "27070290",
               "34810482",
               "41380067",
               "42115107",
+              "54067591",
               "7865086",
               "7961965"
             ],
@@ -592,54 +648,43 @@
         "agentic": {
           "family_recall@100": 0.0408,
           "reachable_recall@100": 0.0444,
-          "family_recall@500": 0.2041,
-          "reachable_recall@500": 0.2222,
-          "family_recall@1000": 0.3061,
-          "reachable_recall@1000": 0.3333,
+          "family_recall@500": 0.1837,
+          "reachable_recall@500": 0.2,
+          "family_recall@1000": 0.2245,
+          "reachable_recall@1000": 0.2444,
           "earliest_relevant_family": "3104865",
           "earliest_recovered": false,
           "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
               "23158645",
-              "23205091",
               "23289430",
-              "24664421",
               "24840037",
               "3193909",
               "31947993",
               "41380067",
-              "7865086",
-              "7961965"
+              "6332344"
             ],
             "cpc": [
-              "22498676"
-            ],
-            "citation": [
-              "22883737",
-              "23289430",
-              "24664421",
-              "24840037",
-              "25421211",
-              "27070290",
-              "31947993",
-              "32054112",
-              "42115107",
-              "45508079",
-              "7865086",
+              "22498676",
+              "34810482",
               "7961965"
             ],
+            "citation": [
+              "25479119",
+              "25644276",
+              "27070290",
+              "32054112",
+              "45508079",
+              "7865086"
+            ],
             "qbe": [
+              "22577009",
               "23158645",
               "23289430",
-              "24840037",
-              "25644276",
               "3193909",
               "31947993",
-              "32054112",
               "34201690",
-              "6332344",
-              "6918853",
               "7865086"
             ],
             "crosslingual": [
@@ -647,21 +692,71 @@
               "7961965"
             ]
           },
+          "claim_element_coverage": {
+            "extended frame portable vacuum grip device": {
+              "best_score": 0.055,
+              "n_evidence": 27
+            },
+            "rigid unitary support frame": {
+              "best_score": 0.047,
+              "n_evidence": 20
+            },
+            "elongated base with vacuum grip side and support side": {
+              "best_score": 0.035,
+              "n_evidence": 5
+            },
+            "peripheral support wall defining open chamber": {
+              "best_score": 0.049,
+              "n_evidence": 5
+            },
+            "multiple independent vacuum grip regions": {
+              "best_score": 0.049,
+              "n_evidence": 5
+            },
+            "plurality of ports through base": {
+              "best_score": 0.039,
+              "n_evidence": 5
+            },
+            "ports operatively connected to pumps": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "closed-loop gaskets as vacuum seal members": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "gaskets mate with base and support wall": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "gaskets define independent vacuum grip regions": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "support frame for each gasket": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "structural reinforcements for reducing stresses": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            }
+          },
           "marginal_yield_per_round": [
-            1159,
-            432,
-            184
+            757,
+            316,
+            120
           ],
           "rounds": 2,
           "llm_calls": 15,
           "combination_view": {
             "primary": null,
             "covers": [
-              "elongated base with peripheral support wall",
+              "elongated base with vacuum grip side and support side",
               "extended frame portable vacuum grip device",
               "multiple independent vacuum grip regions",
-              "open chamber for vacuum grip connections",
-              "plurality of ports through the base",
+              "peripheral support wall defining open chamber",
+              "plurality of ports through base",
               "rigid unitary support frame"
             ],
             "secondaries": [],
@@ -669,7 +764,7 @@
               "closed-loop gaskets as vacuum seal members",
               "gaskets define independent vacuum grip regions",
               "gaskets mate with base and support wall",
-              "ports operatively connected to corresponding pumps",
+              "ports operatively connected to pumps",
               "structural reinforcements for reducing stresses",
               "support frame for each gasket"
             ]
@@ -677,23 +772,24 @@
         }
       },
       "citation_only_gold": [
-        "22883737",
-        "25421211",
+        "25479119",
+        "25644276",
         "27070290",
         "32054112",
-        "42115107",
-        "45508079"
+        "45508079",
+        "7865086"
       ],
       "agent_only_gold": [
-        "25421211",
+        "22577009",
+        "23158645",
+        "23289430",
+        "24840037",
+        "29740151",
         "3193909",
         "31947993",
-        "32054112",
-        "34201690",
         "45508079",
-        "45554511",
         "6332344",
-        "6918853"
+        "7865086"
       ]
     },
     {
@@ -716,8 +812,8 @@
           "channel_gold_contribution": {}
         },
         "vector": {
-          "family_recall@100": 0.0,
-          "reachable_recall@100": 0.0,
+          "family_recall@100": 0.1429,
+          "reachable_recall@100": 0.1429,
           "family_recall@500": 0.2857,
           "reachable_recall@500": 0.2857,
           "family_recall@1000": 0.2857,
@@ -735,8 +831,8 @@
         "hybrid": {
           "family_recall@100": 0.0,
           "reachable_recall@100": 0.0,
-          "family_recall@500": 0.2857,
-          "reachable_recall@500": 0.2857,
+          "family_recall@500": 0.1429,
+          "reachable_recall@500": 0.1429,
           "family_recall@1000": 0.2857,
           "reachable_recall@1000": 0.2857,
           "earliest_relevant_family": "6480115",
@@ -752,8 +848,8 @@
         "hybrid_rerank": {
           "family_recall@100": 0.0,
           "reachable_recall@100": 0.0,
-          "family_recall@500": 0.2857,
-          "reachable_recall@500": 0.2857,
+          "family_recall@500": 0.1429,
+          "reachable_recall@500": 0.1429,
           "family_recall@1000": 0.2857,
           "reachable_recall@1000": 0.2857,
           "earliest_relevant_family": "6480115",
@@ -769,10 +865,10 @@
         "agentic": {
           "family_recall@100": 0.0,
           "reachable_recall@100": 0.0,
-          "family_recall@500": 0.1429,
-          "reachable_recall@500": 0.1429,
-          "family_recall@1000": 0.1429,
-          "reachable_recall@1000": 0.1429,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
           "earliest_relevant_family": "6480115",
           "earliest_recovered": false,
           "nongold_rate@20": 1.0,
@@ -784,10 +880,60 @@
               "7889498"
             ]
           },
+          "claim_element_coverage": {
+            "Portable or handheld vacuum gripper": {
+              "best_score": 0.054,
+              "n_evidence": 25
+            },
+            "Rigid base element with first and second sides": {
+              "best_score": 0.044,
+              "n_evidence": 24
+            },
+            "Second side of base element having central area and surrounding periphery": {
+              "best_score": 0.047,
+              "n_evidence": 5
+            },
+            "Loop-shaped vacuum sealing element": {
+              "best_score": 0.035,
+              "n_evidence": 5
+            },
+            "Sealing element attached to periphery of base element's second side": {
+              "best_score": 0.037,
+              "n_evidence": 5
+            },
+            "Sealing element having protruding section extending away from base element's first side": {
+              "best_score": 0.048,
+              "n_evidence": 5
+            },
+            "Protruding section includes contact surface for object interface": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Contact surface elastically deformable to conform to object surface": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Sealing element with inner and outer circumferential surfaces between contact and attachment surfaces": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Chamber defined by protruding section and central area of base element": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Air extraction means on first side of base element": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Air extraction means in fluid communication with chamber through base element to continuously evacuate air": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            }
+          },
           "marginal_yield_per_round": [
-            1138,
-            460,
-            165
+            750,
+            417,
+            105
           ],
           "rounds": 2,
           "llm_calls": 20,
@@ -798,17 +944,17 @@
               "Portable or handheld vacuum gripper",
               "Rigid base element with first and second sides",
               "Sealing element attached to periphery of base element's second side",
-              "Sealing element with protruding section extending away from base element",
+              "Sealing element having protruding section extending away from base element's first side",
               "Second side of base element having central area and surrounding periphery"
             ],
             "secondaries": [],
             "uncovered_elements": [
-              "Air evacuation means in fluid communication with chamber to continuously remove air",
-              "Air evacuation means on first side of base element",
+              "Air extraction means in fluid communication with chamber through base element to continuously evacuate air",
+              "Air extraction means on first side of base element",
               "Chamber defined by protruding section and central area of base element",
               "Contact surface elastically deformable to conform to object surface",
-              "Protruding section having a contact surface for object interface",
-              "Sealing element with inner and outer circumferential surfaces"
+              "Protruding section includes contact surface for object interface",
+              "Sealing element with inner and outer circumferential surfaces between contact and attachment surfaces"
             ]
           }
         }
@@ -816,9 +962,7 @@
       "citation_only_gold": [
         "6495403"
       ],
-      "agent_only_gold": [
-        "7889498"
-      ]
+      "agent_only_gold": []
     },
     {
       "id": "schmalz_sauggreifsystem",
@@ -842,8 +986,8 @@
         "vector": {
           "family_recall@100": 0.25,
           "reachable_recall@100": 0.25,
-          "family_recall@500": 0.5,
-          "reachable_recall@500": 0.5,
+          "family_recall@500": 0.25,
+          "reachable_recall@500": 0.25,
           "family_recall@1000": 0.5,
           "reachable_recall@1000": 0.5,
           "earliest_relevant_family": "32297463",
@@ -857,8 +1001,8 @@
           }
         },
         "hybrid": {
-          "family_recall@100": 0.25,
-          "reachable_recall@100": 0.25,
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
           "family_recall@500": 0.25,
           "reachable_recall@500": 0.25,
           "family_recall@1000": 0.5,
@@ -877,8 +1021,8 @@
           }
         },
         "hybrid_rerank": {
-          "family_recall@100": 0.25,
-          "reachable_recall@100": 0.25,
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
           "family_recall@500": 0.25,
           "reachable_recall@500": 0.25,
           "family_recall@1000": 0.5,
@@ -897,8 +1041,8 @@
           }
         },
         "agentic": {
-          "family_recall@100": 0.5,
-          "reachable_recall@100": 0.5,
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
           "family_recall@500": 0.5,
           "reachable_recall@500": 0.5,
           "family_recall@1000": 0.5,
@@ -912,19 +1056,55 @@
               "50556166"
             ],
             "citation": [
-              "32297463"
-            ],
-            "qbe": [
-              "32297463"
+              "32297463",
+              "50556166"
             ],
             "crosslingual": [
               "50556166"
             ]
           },
+          "claim_element_coverage": {
+            "Suction gripping system": {
+              "best_score": 0.056,
+              "n_evidence": 23
+            },
+            "At least two suction elements": {
+              "best_score": 0.046,
+              "n_evidence": 22
+            },
+            "Suction elements arranged on a base carrier": {
+              "best_score": 0.044,
+              "n_evidence": 5
+            },
+            "Suction elements at end of suction lines": {
+              "best_score": 0.036,
+              "n_evidence": 5
+            },
+            "Suction elements connected to suction device via suction lines": {
+              "best_score": 0.036,
+              "n_evidence": 5
+            },
+            "Suction device applies negative pressure to suction elements": {
+              "best_score": 0.042,
+              "n_evidence": 5
+            },
+            "Flow resistance element": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Flow resistance element arranged in at least one suction line": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Method for operating a suction gripping system": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            }
+          },
           "marginal_yield_per_round": [
-            949,
-            357,
-            198
+            726,
+            298,
+            58
           ],
           "rounds": 2,
           "llm_calls": 25,
@@ -932,15 +1112,16 @@
             "primary": null,
             "covers": [
               "At least two suction elements",
-              "Suction device applies negative pressure to suction element",
+              "Suction device applies negative pressure to suction elements",
               "Suction elements arranged on a base carrier",
-              "Suction elements at end of suction line",
-              "Suction gripping system",
-              "Suction lines connected to suction device"
+              "Suction elements at end of suction lines",
+              "Suction elements connected to suction device via suction lines",
+              "Suction gripping system"
             ],
             "secondaries": [],
             "uncovered_elements": [
-              "Flow resistance element in at least one suction line",
+              "Flow resistance element",
+              "Flow resistance element arranged in at least one suction line",
               "Method for operating a suction gripping system"
             ]
           }
@@ -994,15 +1175,15 @@
           }
         },
         "hybrid": {
-          "family_recall@100": 0.4286,
-          "reachable_recall@100": 0.4286,
+          "family_recall@100": 0.2857,
+          "reachable_recall@100": 0.2857,
           "family_recall@500": 0.4286,
           "reachable_recall@500": 0.4286,
-          "family_recall@1000": 0.5714,
-          "reachable_recall@1000": 0.5714,
+          "family_recall@1000": 0.4286,
+          "reachable_recall@1000": 0.4286,
           "earliest_relevant_family": "7790219",
-          "earliest_recovered": true,
-          "nongold_rate@20": 0.95,
+          "earliest_recovered": false,
+          "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
               "31984472",
@@ -1018,14 +1199,14 @@
           }
         },
         "hybrid_rerank": {
-          "family_recall@100": 0.4286,
-          "reachable_recall@100": 0.4286,
+          "family_recall@100": 0.2857,
+          "reachable_recall@100": 0.2857,
           "family_recall@500": 0.4286,
           "reachable_recall@500": 0.4286,
-          "family_recall@1000": 0.5714,
-          "reachable_recall@1000": 0.5714,
+          "family_recall@1000": 0.4286,
+          "reachable_recall@1000": 0.4286,
           "earliest_relevant_family": "7790219",
-          "earliest_recovered": true,
+          "earliest_recovered": false,
           "nongold_rate@20": 0.95,
           "channel_gold_contribution": {
             "dense": [
@@ -1042,12 +1223,12 @@
           }
         },
         "agentic": {
-          "family_recall@100": 0.4286,
-          "reachable_recall@100": 0.4286,
-          "family_recall@500": 0.5714,
-          "reachable_recall@500": 0.5714,
-          "family_recall@1000": 0.7143,
-          "reachable_recall@1000": 0.7143,
+          "family_recall@100": 0.2857,
+          "reachable_recall@100": 0.2857,
+          "family_recall@500": 0.4286,
+          "reachable_recall@500": 0.4286,
+          "family_recall@1000": 0.5714,
+          "reachable_recall@1000": 0.5714,
           "earliest_relevant_family": "7790219",
           "earliest_recovered": true,
           "nongold_rate@20": 1.0,
@@ -1058,13 +1239,11 @@
               "43736808"
             ],
             "citation": [
-              "31984472",
-              "36011303",
-              "43736808",
               "7790219"
             ],
             "qbe": [
-              "31984472"
+              "31984472",
+              "36011303"
             ],
             "crosslingual": [
               "26040986",
@@ -1073,10 +1252,52 @@
               "7790219"
             ]
           },
+          "claim_element_coverage": {
+            "Console for vacuum clamping device": {
+              "best_score": 0.049,
+              "n_evidence": 23
+            },
+            "Driven driver for moving a clamping means": {
+              "best_score": 0.045,
+              "n_evidence": 25
+            },
+            "Driver arranged on a side wall of the console": {
+              "best_score": 0.033,
+              "n_evidence": 5
+            },
+            "Driver displaceably guided along the console's longitudinal direction": {
+              "best_score": 0.041,
+              "n_evidence": 5
+            },
+            "Driver with at least one extendable driver pin": {
+              "best_score": 0.043,
+              "n_evidence": 5
+            },
+            "Driver pin for mechanical coupling of clamping means": {
+              "best_score": 0.042,
+              "n_evidence": 5
+            },
+            "Driver with fluid supply": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Fluid supply for pressurizing coupled clamping means": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Clamping means for vacuum clamping device": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Vacuum clamping device": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            }
+          },
           "marginal_yield_per_round": [
-            1244,
-            269,
-            320
+            770,
+            474,
+            145
           ],
           "rounds": 2,
           "llm_calls": 30,
@@ -1086,7 +1307,7 @@
               "Console for vacuum clamping device",
               "Driven driver for moving a clamping means",
               "Driver arranged on a side wall of the console",
-              "Driver displaceably guided along console longitudinal direction",
+              "Driver displaceably guided along the console's longitudinal direction",
               "Driver pin for mechanical coupling of clamping means",
               "Driver with at least one extendable driver pin"
             ],
@@ -1094,7 +1315,7 @@
             "uncovered_elements": [
               "Clamping means for vacuum clamping device",
               "Driver with fluid supply",
-              "Fluid supply for pressurized fluid to coupled clamping means",
+              "Fluid supply for pressurizing coupled clamping means",
               "Vacuum clamping device"
             ]
           }
@@ -1104,7 +1325,8 @@
         "7790219"
       ],
       "agent_only_gold": [
-        "26040986"
+        "26040986",
+        "7790219"
       ]
     },
     {
@@ -1144,12 +1366,12 @@
           }
         },
         "hybrid": {
-          "family_recall@100": 0.1667,
-          "reachable_recall@100": 0.1667,
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
           "family_recall@500": 0.1667,
           "reachable_recall@500": 0.1667,
-          "family_recall@1000": 0.3333,
-          "reachable_recall@1000": 0.3333,
+          "family_recall@1000": 0.1667,
+          "reachable_recall@1000": 0.1667,
           "earliest_relevant_family": "6026446",
           "earliest_recovered": false,
           "nongold_rate@20": 1.0,
@@ -1161,12 +1383,12 @@
           }
         },
         "hybrid_rerank": {
-          "family_recall@100": 0.1667,
-          "reachable_recall@100": 0.1667,
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
           "family_recall@500": 0.1667,
           "reachable_recall@500": 0.1667,
-          "family_recall@1000": 0.3333,
-          "reachable_recall@1000": 0.3333,
+          "family_recall@1000": 0.1667,
+          "reachable_recall@1000": 0.1667,
           "earliest_relevant_family": "6026446",
           "earliest_recovered": false,
           "nongold_rate@20": 1.0,
@@ -1180,45 +1402,84 @@
         "agentic": {
           "family_recall@100": 0.0,
           "reachable_recall@100": 0.0,
-          "family_recall@500": 0.3333,
-          "reachable_recall@500": 0.3333,
-          "family_recall@1000": 0.3333,
-          "reachable_recall@1000": 0.3333,
+          "family_recall@500": 0.0,
+          "reachable_recall@500": 0.0,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
           "earliest_relevant_family": "6026446",
           "earliest_recovered": false,
           "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
-              "6480115"
-            ],
-            "qbe": [
               "26224347",
               "6480115"
             ]
           },
+          "claim_element_coverage": {
+            "Vacuum lifting device for stone elements": {
+              "best_score": 0.058,
+              "n_evidence": 9
+            },
+            "Housing": {
+              "best_score": 0.044,
+              "n_evidence": 14
+            },
+            "Fastening device for crane hook": {
+              "best_score": 0.046,
+              "n_evidence": 5
+            },
+            "Vacuum suction device": {
+              "best_score": 0.055,
+              "n_evidence": 5
+            },
+            "Handle part": {
+              "best_score": 0.046,
+              "n_evidence": 5
+            },
+            "Vacuum generation device": {
+              "best_score": 0.052,
+              "n_evidence": 5
+            },
+            "Running gear for movable support": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Running gear is inherently stable": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Running gear includes at least one wheel": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Running gear fixed to housing": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            }
+          },
           "marginal_yield_per_round": [
-            895,
-            158,
-            52
+            607,
+            135,
+            17
           ],
           "rounds": 2,
           "llm_calls": 35,
           "combination_view": {
             "primary": null,
             "covers": [
-              "device for generating vacuum",
-              "fastening device for crane hook",
-              "handle part on lifting device",
-              "housing for vacuum lifting device",
-              "vacuum lifting device",
-              "vacuum suction device for stone elements"
+              "Fastening device for crane hook",
+              "Handle part",
+              "Housing",
+              "Vacuum generation device",
+              "Vacuum lifting device for stone elements",
+              "Vacuum suction device"
             ],
             "secondaries": [],
             "uncovered_elements": [
-              "inherently stable running gear",
-              "running gear fixed to housing",
-              "running gear for movable support",
-              "running gear with at least one wheel"
+              "Running gear fixed to housing",
+              "Running gear for movable support",
+              "Running gear includes at least one wheel",
+              "Running gear is inherently stable"
             ]
           }
         }
@@ -1250,14 +1511,15 @@
           "reachable_recall@100": 0.1667,
           "family_recall@500": 0.1111,
           "reachable_recall@500": 0.1667,
-          "family_recall@1000": 0.1111,
-          "reachable_recall@1000": 0.1667,
+          "family_recall@1000": 0.2222,
+          "reachable_recall@1000": 0.3333,
           "earliest_relevant_family": "7217340",
-          "earliest_recovered": false,
+          "earliest_recovered": true,
           "nongold_rate@20": 0.95,
           "channel_gold_contribution": {
             "dense": [
-              "6259387"
+              "6259387",
+              "7217340"
             ]
           }
         },
@@ -1273,7 +1535,8 @@
           "nongold_rate@20": 0.95,
           "channel_gold_contribution": {
             "dense": [
-              "6259387"
+              "6259387",
+              "7217340"
             ],
             "cpc": [
               "6259387",
@@ -1293,7 +1556,8 @@
           "nongold_rate@20": 0.95,
           "channel_gold_contribution": {
             "dense": [
-              "6259387"
+              "6259387",
+              "7217340"
             ],
             "cpc": [
               "6259387",
@@ -1315,17 +1579,52 @@
             "dense": [
               "6259387"
             ],
-            "citation": [
-              "6259387"
-            ],
             "qbe": [
-              "6391811"
+              "6259387"
             ]
           },
+          "claim_element_coverage": {
+            "Lifting appliance for kerb stones or paving flags": {
+              "best_score": 0.055,
+              "n_evidence": 18
+            },
+            "Mast fastened to a basic body": {
+              "best_score": 0.048,
+              "n_evidence": 16
+            },
+            "Jib located on free end of mast": {
+              "best_score": 0.039,
+              "n_evidence": 5
+            },
+            "Lifting device arranged on jib": {
+              "best_score": 0.043,
+              "n_evidence": 5
+            },
+            "Two-part mast design": {
+              "best_score": 0.05,
+              "n_evidence": 5
+            },
+            "Bottom mast part on basic body": {
+              "best_score": 0.045,
+              "n_evidence": 5
+            },
+            "Top mast part pivotable relative to bottom mast part": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Jib fastened to free end of top mast part": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Actuator for pivoting top mast part": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            }
+          },
           "marginal_yield_per_round": [
-            1004,
-            330,
-            124
+            780,
+            183,
+            49
           ],
           "rounds": 2,
           "llm_calls": 40,
@@ -1343,17 +1642,13 @@
             "uncovered_elements": [
               "Actuator for pivoting top mast part",
               "Jib fastened to free end of top mast part",
-              "Pivoting about an axis",
-              "Top mast part",
-              "Top mast part pivots relative to bottom mast part"
+              "Top mast part pivotable relative to bottom mast part"
             ]
           }
         }
       },
       "citation_only_gold": [],
-      "agent_only_gold": [
-        "6391811"
-      ]
+      "agent_only_gold": []
     },
     {
       "id": "nl_handheld_vacuum_seal_sensor",
@@ -1388,7 +1683,7 @@
           "reachable_recall@1000": 0.4,
           "earliest_relevant_family": "34201690",
           "earliest_recovered": false,
-          "nongold_rate@20": 0.9,
+          "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
               "66624664",
@@ -1397,15 +1692,15 @@
           }
         },
         "hybrid": {
-          "family_recall@100": 0.4,
-          "reachable_recall@100": 0.4,
+          "family_recall@100": 0.2,
+          "reachable_recall@100": 0.2,
           "family_recall@500": 0.4,
           "reachable_recall@500": 0.4,
           "family_recall@1000": 0.4,
           "reachable_recall@1000": 0.4,
           "earliest_relevant_family": "34201690",
           "earliest_recovered": false,
-          "nongold_rate@20": 0.9,
+          "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
               "66624664",
@@ -1418,15 +1713,15 @@
           }
         },
         "hybrid_rerank": {
-          "family_recall@100": 0.4,
-          "reachable_recall@100": 0.4,
+          "family_recall@100": 0.2,
+          "reachable_recall@100": 0.2,
           "family_recall@500": 0.4,
           "reachable_recall@500": 0.4,
           "family_recall@1000": 0.4,
           "reachable_recall@1000": 0.4,
           "earliest_relevant_family": "34201690",
           "earliest_recovered": false,
-          "nongold_rate@20": 0.9,
+          "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
               "66624664",
@@ -1439,21 +1734,17 @@
           }
         },
         "agentic": {
-          "family_recall@100": 0.4,
-          "reachable_recall@100": 0.4,
+          "family_recall@100": 0.0,
+          "reachable_recall@100": 0.0,
           "family_recall@500": 0.4,
           "reachable_recall@500": 0.4,
           "family_recall@1000": 0.4,
           "reachable_recall@1000": 0.4,
           "earliest_relevant_family": "34201690",
           "earliest_recovered": false,
-          "nongold_rate@20": 0.95,
+          "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
-              "66624664",
-              "83194486"
-            ],
-            "citation": [
               "66624664",
               "83194486"
             ],
@@ -1461,26 +1752,64 @@
               "66624664"
             ]
           },
+          "claim_element_coverage": {
+            "handheld vacuum lifter": {
+              "best_score": 0.038,
+              "n_evidence": 5
+            },
+            "battery-powered vacuum lifter": {
+              "best_score": 0.039,
+              "n_evidence": 5
+            },
+            "flexible sealing lip for vacuum lifter": {
+              "best_score": 0.041,
+              "n_evidence": 5
+            },
+            "electric vacuum pump for lifter": {
+              "best_score": 0.04,
+              "n_evidence": 5
+            },
+            "pressure sensor for vacuum lifter": {
+              "best_score": 0.047,
+              "n_evidence": 5
+            },
+            "warning system for vacuum loss": {
+              "best_score": 0.058,
+              "n_evidence": 5
+            },
+            "operator warning for grip vacuum loss": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "vacuum lifter with integrated pressure sensor": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "portable vacuum gripping device": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            }
+          },
           "marginal_yield_per_round": [
-            704
+            538
           ],
           "rounds": 0,
           "llm_calls": 41,
           "combination_view": {
             "primary": null,
             "covers": [
-              "Battery-powered vacuum lifter",
-              "Electric vacuum pump for lifter",
-              "Flexible sealing lip for vacuum lifter",
-              "Handheld vacuum lifter",
-              "Pressure sensor for vacuum lifter",
-              "Warning system for lost vacuum grip"
+              "battery-powered vacuum lifter",
+              "electric vacuum pump for lifter",
+              "flexible sealing lip for vacuum lifter",
+              "handheld vacuum lifter",
+              "pressure sensor for vacuum lifter",
+              "warning system for vacuum loss"
             ],
             "secondaries": [],
             "uncovered_elements": [
-              "Operator warning for vacuum loss",
-              "Portable vacuum lifting device",
-              "Vacuum lifter with integrated pressure sensing"
+              "operator warning for grip vacuum loss",
+              "portable vacuum gripping device",
+              "vacuum lifter with integrated pressure sensor"
             ]
           }
         }
@@ -1521,7 +1850,7 @@
           "reachable_recall@1000": 0.3333,
           "earliest_relevant_family": "6480115",
           "earliest_recovered": false,
-          "nongold_rate@20": 0.9,
+          "nongold_rate@20": 0.95,
           "channel_gold_contribution": {
             "dense": [
               "66624664",
@@ -1538,7 +1867,7 @@
           "reachable_recall@1000": 0.3333,
           "earliest_relevant_family": "6480115",
           "earliest_recovered": false,
-          "nongold_rate@20": 0.9,
+          "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
               "66624664",
@@ -1559,7 +1888,7 @@
           "reachable_recall@1000": 0.3333,
           "earliest_relevant_family": "6480115",
           "earliest_recovered": false,
-          "nongold_rate@20": 0.9,
+          "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
             "dense": [
               "66624664",
@@ -1572,12 +1901,12 @@
           }
         },
         "agentic": {
-          "family_recall@100": 0.3333,
-          "reachable_recall@100": 0.3333,
-          "family_recall@500": 0.3333,
-          "reachable_recall@500": 0.3333,
-          "family_recall@1000": 0.3333,
-          "reachable_recall@1000": 0.3333,
+          "family_recall@100": 0.1667,
+          "reachable_recall@100": 0.1667,
+          "family_recall@500": 0.1667,
+          "reachable_recall@500": 0.1667,
+          "family_recall@1000": 0.1667,
+          "reachable_recall@1000": 0.1667,
           "earliest_relevant_family": "6480115",
           "earliest_recovered": false,
           "nongold_rate@20": 0.95,
@@ -1586,16 +1915,54 @@
               "66624664",
               "83194486"
             ],
-            "citation": [
-              "66624664",
-              "83194486"
-            ],
             "qbe": [
               "66624664"
             ]
           },
+          "claim_element_coverage": {
+            "vacuum suction gripper": {
+              "best_score": 0.049,
+              "n_evidence": 5
+            },
+            "lifts rough surfaces": {
+              "best_score": 0.038,
+              "n_evidence": 5
+            },
+            "lifts porous surfaces": {
+              "best_score": 0.035,
+              "n_evidence": 5
+            },
+            "lifts textured tile": {
+              "best_score": 0.035,
+              "n_evidence": 5
+            },
+            "maintains airflow": {
+              "best_score": 0.044,
+              "n_evidence": 5
+            },
+            "continuously running pump": {
+              "best_score": 0.046,
+              "n_evidence": 5
+            },
+            "concrete lifting": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "stone lifting": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "suction lifting device": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "airflow maintenance in vacuum gripper": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            }
+          },
           "marginal_yield_per_round": [
-            1034
+            696
           ],
           "rounds": 0,
           "llm_calls": 42,
@@ -1688,8 +2055,34 @@
           "earliest_recovered": false,
           "nongold_rate@20": 1.0,
           "channel_gold_contribution": {},
+          "claim_element_coverage": {
+            "robotic end-of-arm gripper": {
+              "best_score": 0.036,
+              "n_evidence": 5
+            },
+            "vacuum gripper": {
+              "best_score": 0.05,
+              "n_evidence": 5
+            },
+            "handling sheets or panels": {
+              "best_score": 0.038,
+              "n_evidence": 5
+            },
+            "array of suction cups": {
+              "best_score": 0.034,
+              "n_evidence": 5
+            },
+            "independent vacuum zones": {
+              "best_score": 0.049,
+              "n_evidence": 5
+            },
+            "suction lifting device": {
+              "best_score": 0.041,
+              "n_evidence": 5
+            }
+          },
           "marginal_yield_per_round": [
-            1230
+            845
           ],
           "rounds": 0,
           "llm_calls": 43,
@@ -1697,17 +2090,14 @@
             "primary": null,
             "covers": [
               "array of suction cups",
-              "handling panels",
-              "handling sheets",
+              "handling sheets or panels",
               "independent vacuum zones",
               "robotic end-of-arm gripper",
+              "suction lifting device",
               "vacuum gripper"
             ],
             "secondaries": [],
-            "uncovered_elements": [
-              "robotics for material handling",
-              "suction lifting device"
-            ]
+            "uncovered_elements": []
           }
         }
       },
