@@ -144,9 +144,38 @@ cd src && ../.venv/bin/python ops.py --backfill-core   # 13,400 claimless DE/EP/
 This is the highest-leverage recall fix (see `REACHABILITY.md`): 68% of in-corpus gold families have
 no embedded claims today; OPS fills them. It's the only external blocker.
 
+## Performance & operations (measured on the 8 GB box, 6 GB HNSW)
+
+| Path | latency | note |
+|---|--:|---|
+| gold report page load (warm, cached view) | **p50 10 ms · p95 15 ms** | the normal case |
+| gold report page load (cold, rebuild view) | ~1.2 s | first load after a re-run; then cached |
+| per-card enrichment `/api/ref` (cached) | ~40–160 ms | drawings + sections + rationale |
+| vector search (core dense) | **p50 288 ms · p95 400 ms** | |
+| hybrid search | ~4 s | **BM25-bound; eval-only** — the live UI never runs it |
+| fresh free-text search (full agentic report) | ~60–90 s | backgrounded + polled; cached after |
+| supervisor restart → `/healthz` 200 | < 7 s | OS page-cache keeps the index warm (first load ~50 ms) |
+
+**Memory:** Postgres capped at 6 g (page-caches the 6 GB HNSW); the webapp base is ~165 MB and the
+CPU reranker (~2 GB) is **lazy-loaded** only when a report is generated. ~10 GB stays available; a
+16-request concurrent read/export burst added ~55 MB.
+
+**Safe concurrency:** report **reads / API / export are cheap and highly concurrent** (read-only,
+served from cache). Report **generation is serialized to one at a time** (`_GEN_LOCK`) — the reranker
+and genai client aren't thread-safe, and this also bounds memory to one reranker in RAM. Concurrent
+free-text searches queue rather than collide or OOM. BM25's cost is off the hot path (the live UI
+uses cached loads + the agentic config, neither of which runs BM25).
+
 ## QA checklist (release-candidate regression — `./regression.sh`)
 
-`./regression.sh` runs 30 end-to-end checks; all green = shippable. Covers:
+Two layers of automated checks:
+- **`./run_tests.sh`** — 33 hermetic pytest unit/integration tests (~7 s, no paid APIs): retrieval
+  fusion (locks in the weighted-RRF + dense-floor fix — it fails if you break the dense weight),
+  family dedup, date/basis engine, agent ranking + stop-condition, valid PDF/DOCX export, every API
+  endpoint + edge case, and the OPS parser.
+- **`./regression.sh`** — 30 live end-to-end HTTP checks against the running app.
+
+`./regression.sh` all green = shippable. Covers:
 
 - [x] `/healthz` 200
 - [x] all 11 gold reports load with a claim chart + ≥10 reference cards

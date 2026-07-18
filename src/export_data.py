@@ -56,10 +56,11 @@ def assemble(slug, selected_pubs, top_n=25):
         raise ValueError(f"no cached report for {slug}")
     view = webview.build_view(report, top_n=max(top_n, len(selected_pubs) + 5))
     by_pub = {c["pub"]: c for c in view["cards"]}
-    # keep selection order = ranked order among selected
-    selected = [p for p in [c["pub"] for c in view["cards"]] if p in set(selected_pubs)]
-    if not selected:                       # fall back: user selected pubs not in top cards
-        selected = list(selected_pubs)
+    # honour the FULL selection: ranked-order first, then any selected pubs not in the top cards
+    want = list(dict.fromkeys(selected_pubs))                  # de-dupe, preserve order
+    ranked = [c["pub"] for c in view["cards"]]
+    selected = [p for p in ranked if p in set(want)]
+    selected += [p for p in want if p not in set(selected)]    # append the rest (still exported)
 
     query = report.get("query", "")
     qvec = embed.embed_query(query[:8000], 768) if query else None
