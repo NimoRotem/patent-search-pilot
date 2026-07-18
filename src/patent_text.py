@@ -3,8 +3,11 @@ from __future__ import annotations
 import re
 
 CLAIM_START = re.compile(r"(?m)^\s{0,8}(\d{1,3})\s*\.\s")
-# references to other claims: "claim 1", "claims 1 to 5", "claims 1-3", "claim 1 or 2", "any of claims 1 and 2"
-CLAIM_REF = re.compile(r"\bclaims?\s+((?:\d+\s*(?:to|through|and|or|[-–,])?\s*)+)", re.I)
+# references to other claims (EN + DE): "claim 1", "claims 1 to 5", "any of claims 1 and 2";
+# German: "nach Anspruch 1", "nach einem der Ansprüche 1 bis 5", "gemäß Anspruch 3"
+CLAIM_REF = re.compile(
+    r"\b(?:claims?|anspr(?:uch|ü?che|ueche))\s+((?:\d+\s*(?:to|through|and|or|bis|und|oder|[-–,])?\s*)+)",
+    re.I)
 PREAMBLE = re.compile(r"^\s*(what\s+is\s+claimed\s+is\s*:?|we\s+claim\s*:?|i\s+claim\s*:?|claims?\s*:?)",
                       re.I)
 
@@ -51,12 +54,19 @@ def _expand_refs(fragment: str):
     return {n for n in nums if 0 < n <= 200}
 
 
+# EN "any of the preceding claims" / DE "nach einem der voranstehenden/vorhergehenden Ansprüche"
+PRECEDING = re.compile(r"(preceding\s+claims?|voran(?:stehenden|gehenden)\s+anspr|"
+                       r"vor(?:hergehenden|stehenden)\s+anspr)", re.I)
+
+
 def dependencies(text: str):
-    """-> (is_independent, sorted list of parent claim numbers)."""
+    """-> (is_independent, sorted list of parent claim numbers). `preceding` marks a dependent
+    claim that references the preceding claims without a number (resolved against claim 1)."""
     refs = set()
     for m in CLAIM_REF.finditer(text):
         refs |= _expand_refs(m.group(1))
-    return (len(refs) == 0), sorted(refs)
+    preceding = bool(PRECEDING.search(text))
+    return (len(refs) == 0 and not preceding), sorted(refs), preceding
 
 
 def resolve_claims(claims):
@@ -64,10 +74,15 @@ def resolve_claims(claims):
     claims: list of {claim_no, text}. Returns same list with fields added."""
     by_no = {c["claim_no"]: c for c in claims}
     for c in claims:
-        indep, parents = dependencies(c["text"])
+        indep, parents, preceding = dependencies(c["text"])
         # a claim can't depend on itself or a later claim
         parents = [p for p in parents if p in by_no and p < c["claim_no"]]
-        c["is_independent"] = indep or not parents
+        # "preceding claims" with no number -> resolve against the nearest earlier claim
+        if preceding and not parents and c["claim_no"] > 1:
+            earlier = [n for n in by_no if n < c["claim_no"]]
+            if earlier:
+                parents = [max(earlier)]
+        c["is_independent"] = indep and not parents
         c["parents"] = parents
 
     memo = {}

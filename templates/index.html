@@ -3,23 +3,29 @@
 {% block body %}
 <div class="hero">
   <div class="wrap">
-    <h1>Semantic + agentic prior-art search</h1>
-    <p>Element-by-element claim charts, drawings, PDF facsimiles and highlighted claims/paragraphs over
-       a 107,795-publication vacuum-gripping corpus. Modeled on IPtorch — built better.</p>
+    <h1>Describe an invention. Get the prior art.</h1>
+    <p>Semantic + agentic search over a 107,795-publication vacuum-gripping corpus — element-by-element
+       claim charts, drawings, PDF facsimiles, cross-lingual (EN/DE), and a litigation-grade PDF/DOCX export.</p>
   </div>
 </div>
 <div class="wrap">
-  <form class="panel searchcard" method="post" action="/run">
-    <h3>Search by invention text</h3>
+  <form class="panel searchcard" method="post" action="/run" id="searchform">
+    <h3>Search by invention description</h3>
     <div class="field">
-      <label>Invention description / claim text</label>
-      <textarea name="query" placeholder="e.g. A handheld battery-powered vacuum lifter with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that warns the operator when grip vacuum is lost…"></textarea>
+      <textarea name="query" id="qbox" rows="4"
+        placeholder="Describe the invention in plain language — the more specific the features, the better. e.g. “A cordless handheld vacuum lifter for glass and stone panels, with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that alarms the operator when grip vacuum is lost.”"></textarea>
+    </div>
+    <div style="margin:2px 0 12px">
+      <span class="lab small" style="color:var(--muted)">Try an example:</span>
+      {% for ex in examples %}
+      <button type="button" class="exchip" onclick="fillEx({{ loop.index0 }})">{{ ex.label }}</button>
+      {% endfor %}
     </div>
     <div class="row">
       <div class="field">
         <label>Search mode</label>
         <select name="mode">
-          <option value="novelty">Novelty (incl. secret prior art)</option>
+          <option value="novelty">Novelty (includes secret / earlier-filed art)</option>
           <option value="inventive_step">Inventive step (public art only)</option>
         </select>
       </div>
@@ -28,12 +34,13 @@
         <input type="text" name="subject" placeholder="e.g. US-11999030-B2">
       </div>
       <div class="field" style="display:flex;align-items:flex-end">
-        <button class="btn" type="submit">🔎 Run search</button>
+        <button class="btn" type="submit" id="gobtn">🔎 Search prior art</button>
       </div>
     </div>
+    <p class="small muted" style="margin:2px 0 0">First run for a new query takes ~2–4 min (the agent decomposes the invention and searches 8 channels); it's cached after.</p>
   </form>
 
-  <div class="divider">or pick a frozen gold-set search</div>
+  <div class="divider">or open a frozen gold-set example (instant)</div>
 
   <div class="goldgrid">
     {% for g in gold %}
@@ -52,4 +59,16 @@
     {% endfor %}
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+const EXAMPLES = {{ examples|tojson }};
+function fillEx(i){ const q=document.getElementById('qbox'); q.value=EXAMPLES[i].text; q.focus();
+  q.scrollIntoView({behavior:'smooth',block:'center'}); }
+document.getElementById('searchform').addEventListener('submit',e=>{
+  const q=document.getElementById('qbox').value.trim();
+  if(!q){ e.preventDefault(); alert('Describe an invention first (or pick a gold example below).'); return; }
+  document.getElementById('gobtn').textContent='⏳ Starting…'; document.getElementById('gobtn').disabled=true;
+});
+</script>
 {% endblock %}

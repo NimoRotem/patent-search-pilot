@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Not found{% endblock %}
+{% block body %}
+<div class="wrap">
+  <div class="panel gen">
+    <h2>Report not found</h2>
+    <p class="muted">No cached report for “{{ slug }}”, and there's no query to generate one.</p>
+    <p style="margin-top:16px"><a class="btn" href="/">← Start a new search</a></p>
+  </div>
+</div>
+{% endblock %}

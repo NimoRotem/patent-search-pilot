@@ -10,6 +10,7 @@ given, so only citable prior art is returned. Widths kept wide even though the c
 — the pilot measures recall, not speed.
 """
 from __future__ import annotations
+import re
 from dataclasses import dataclass, field
 import db, embed, rerank as rr
 from search_modes import Mode, Subject, citable_where
@@ -227,6 +228,30 @@ class Retriever:
                 agg[pid] = max(agg.get(pid, 0), sc)
         return sorted(agg.items(), key=lambda t: t[1], reverse=True)
 
+    def query_translations(self, query):
+        """Translate the query to the OTHER language (DE<->EN) and embed — cached per query.
+        Makes cross-lingual first-class in every config (spec M5 §1): a German-side match on the
+        enriched DE/EP/WO claims can then land via the crosslingual channel even for an English
+        query, and vice-versa."""
+        if not hasattr(self, "_xl_cache"):
+            self._xl_cache = {}
+        key = query[:400]
+        if key in self._xl_cache:
+            return self._xl_cache[key]
+        import llm
+        # detect source language crudely; translate to the other
+        is_de = bool(re.search(r"\b(und|der|die|das|eine|einer|mit|zum|Vakuum|Greifer|Unterdruck)\b", query))
+        tgt = "English" if is_de else "German"
+        out = llm.chat_json(
+            f'Translate this patent search text to concise {tgt}. Keep technical terms. '
+            'Return JSON {"t":"..."}', query[:1500]) or {}
+        vecs = []
+        t = (out.get("t") or "").strip()
+        if t:
+            vecs.append(embed.embed_query(t[:8000], 768))
+        self._xl_cache[key] = vecs
+        return vecs
+
     # ---- fusion --------------------------------------------------------------------------
     @staticmethod
     def rrf(channel_results: dict, weighted=True):
@@ -273,10 +298,17 @@ class Retriever:
             "vector": ["dense"],
             "hybrid": ["exact", "bm25", "dense", "cpc"],
             "hybrid_rerank": ["exact", "bm25", "dense", "cpc"],
-            # agentic drops the heavy per-call bm25/exact from its hot loop (both are already
-            # measured in keyword/hybrid); it leans on dense + expansion channels each iteration.
             "agentic": ["dense", "cpc", "citation", "qbe", "biblio", "crosslingual"],
         }.get(config, config if isinstance(config, list) else ["bm25", "dense"])
+        # Cross-lingual query translation is available (query_translations) and used by the agent,
+        # but M5 diagnosis showed it does NOT help the DE gap and even hurts (the corpus is
+        # English-dominant, so translating a German query to English promotes English distractors).
+        # The DE fix that worked is embedding the enriched DE/EP/WO claims (see M5 report). Enable
+        # per-request via alt_query_vecs / xlingual=True when a caller wants it.
+        if getattr(self, "_force_xlingual", False) and "crosslingual" not in preset:
+            preset = preset + ["crosslingual"]
+        if "crosslingual" in preset and not alt_query_vecs and config != "agentic":
+            alt_query_vecs = self.query_translations(query)
 
         if "dense" in preset:
             ch["dense"] = self.channel_dense(qvec, subject, mode)

@@ -109,13 +109,29 @@ def _subject_obj(subject):
 
 
 # ---- routes --------------------------------------------------------------------------------
+EXAMPLE_QUERIES = [
+    {"label": "Handheld vacuum lifter",
+     "text": ("A cordless handheld vacuum lifter for glass and stone panels, with a flexible "
+              "sealing lip, an electric vacuum pump that keeps running to hold grip on rough or "
+              "porous surfaces, and a pressure sensor that alarms the operator when grip vacuum is lost.")},
+    {"label": "Robotic EOAT gripper",
+     "text": ("A robotic end-of-arm vacuum gripper for handling sheets and panels, with an array of "
+              "independently-controlled suction zones, a compliant foam seal, and a venturi vacuum "
+              "generator, able to release a workpiece by a controlled air pulse.")},
+    {"label": "Suction cup with check valve",
+     "text": ("A suction cup for lifting non-porous objects, comprising an elastomer cup body, a "
+              "self-sealing check valve that closes when the cup contacts the surface, and a manual "
+              "pump lever to evacuate the chamber.")},
+]
+
+
 @app.route("/")
 def index():
     gold = [{"id": e["id"], "category": e["category"], "mode": e["mode"],
              "subject": e.get("anchor_publication"), "notes": e.get("notes", ""),
              "cached": report_path(e["id"]).exists()}
             for e in _GOLD.values()]
-    return render_template("index.html", gold=gold)
+    return render_template("index.html", gold=gold, examples=EXAMPLE_QUERIES)
 
 
 @app.route("/run", methods=["POST"])
@@ -155,6 +171,8 @@ def report(slug):
             query, subject, mode = m["query"], m.get("subject"), m.get("mode", "novelty")
         title = "Ad-hoc search"
     status, rep = ensure_report(slug, query=query, subject=subject, mode=mode, regen=regen)
+    if status == "missing":
+        return render_template("notfound.html", slug=slug), 404
     if status != "ready":
         return render_template("generating.html", slug=slug, title=title,
                                query=(query or "")[:400], mode=mode)
