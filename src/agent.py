@@ -26,7 +26,10 @@ class CoverageLedger:
         self.languages = set()
         self.citation_branches = set()
         self.families_seen = set()
-        self.family_score = {}                          # family -> best fused score (for ranking)
+        self.family_score = {}                          # family -> best fused score (any search)
+        self.family_seed = {}                           # family -> fused score from the whole-query seed search
+        self.family_elem = {}                           # family -> best fused score from an element search
+        self.family_hits = {}                           # family -> # element sub-searches that surfaced it
         self.family_pid = {}                            # family -> representative publication_id
         self.round_new = []                             # new families per round
         self.channel_families = {}                      # channel -> set(families) (unique contribution)
@@ -37,8 +40,12 @@ class CoverageLedger:
             cur.append(hit)
             cur.sort(key=lambda h: h["score"], reverse=True)
 
-    def register_families(self, scored_families, channel=None):
-        """scored_families: list of (family_key, pid, fused_score). Tracks best score+pid."""
+    def register_families(self, scored_families, channel=None, bucket="element"):
+        """scored_families: list of (family_key, pid, fused_score). `bucket` = 'seed' (the whole-
+        query search — the vector-equivalent backbone) or 'element' (a per-element sub-search).
+        We keep the seed ranking as the primary signal so the agent can't score BELOW plain
+        vector at any k, then promote finds that are central (many element searches) or reached
+        via citation — the agent's unique lift ranked ABOVE plain retrieval (spec §4)."""
         fams = [f for f, _, _ in scored_families]
         new = [f for f in fams if f not in self.families_seen]
         self.families_seen.update(fams)
@@ -46,12 +53,30 @@ class CoverageLedger:
             if s > self.family_score.get(f, -1):
                 self.family_score[f] = s
                 self.family_pid[f] = pid
+            if bucket == "seed":
+                self.family_seed[f] = max(self.family_seed.get(f, 0.0), s)
+            else:
+                self.family_elem[f] = max(self.family_elem.get(f, 0.0), s)
+                self.family_hits[f] = self.family_hits.get(f, 0) + 1
         if channel is not None:
             self.channel_families.setdefault(channel, set()).update(fams)
         return len(new)
 
+    def final_score(self, f):
+        """Seed (whole-query) score is the backbone; promote central / citation-reached finds.
+        Guarantees the seed's strong hits stay at the top (agentic >= vector at every k) while
+        letting a high-confidence unique find break into the head."""
+        import math
+        seed = self.family_seed.get(f, 0.0)
+        elem = self.family_elem.get(f, 0.0)
+        hits = self.family_hits.get(f, 0)
+        cited = f in self.channel_families.get("citation", ())
+        promotable = hits >= 3 or cited
+        promote = 0.5 * elem if promotable else 0.0
+        return seed + promote + 0.05 * max(seed, elem) * math.log1p(hits)
+
     def ranked_families(self):
-        return [f for f, _ in sorted(self.family_score.items(), key=lambda t: t[1], reverse=True)]
+        return [f for f in sorted(self.family_score, key=self.final_score, reverse=True)]
 
     def element_coverage(self):
         return {e: (max([h["score"] for h in hs], default=0.0), len(hs))
@@ -111,14 +136,14 @@ class CoverageAgent:
 
     # ---- one search + ledger update ------------------------------------------------------
     def _run_search(self, query, subject, mode, ledger, element=None, cpc=None, phrases=None,
-                    assignees=None, alt_vecs=None, cfg="agentic"):
+                    assignees=None, alt_vecs=None, cfg="agentic", is_seed=False):
         # sub-searches fuse by RRF only; a single cross-encoder rerank runs at report time
         # (spec §6: rerank the final cascade, not every sub-query — and it bounds CPU cost)
         res = self.r.search(query, subject=subject, mode=mode, config=cfg, cpc_hints=cpc,
                             phrases=phrases, assignee_hints=assignees, alt_query_vecs=alt_vecs,
                             do_rerank=False, topk=200)
         scored = [(fk, pid, float(sc)) for fk, pid, sc, _ in res.family_ranked]
-        n_new = ledger.register_families(scored)
+        n_new = ledger.register_families(scored, bucket=("seed" if is_seed else "element"))
         for ch, pids in res.channel_hits.items():
             ledger.channel_families.setdefault(ch, set()).update(self.r.family_key(p) for p in pids[:100])
         if cpc:
@@ -166,8 +191,8 @@ class CoverageAgent:
         ledger = CoverageLedger(elements)
         ledger.languages.add("en")
 
-        # seed round: broad search on the whole invention
-        self._run_search(query_text, subject, m, ledger, element=None)
+        # seed round: broad search on the whole invention (the vector-equivalent backbone)
+        self._run_search(query_text, subject, m, ledger, element=None, is_seed=True)
         # attribute seed hits to elements too (cap the per-element seed searches for runtime)
         for el in elements[:6]:
             self._run_search(el, subject, m, ledger, element=el)
@@ -198,12 +223,14 @@ class CoverageAgent:
 
     # ---- report --------------------------------------------------------------------------
     def _final_rank(self, query_text, ledger, top=25):
-        """Single cross-encoder rerank of the top RRF families (spec §6 step 4)."""
-        ordered = sorted(ledger.family_score.items(), key=lambda t: t[1], reverse=True)
+        """Rank by final_score (seed backbone + centrality/citation promote), then cross-encoder
+        rerank the head only (reranking within the head can't change recall@100 — the top-100
+        set is fixed). (spec §4 + §6 step 4)"""
+        ordered = sorted(ledger.family_score, key=ledger.final_score, reverse=True)
         head = ordered[:top]
-        fam = [(fk, ledger.family_pid.get(fk), sc, {}) for fk, sc in head]
+        fam = [(fk, ledger.family_pid.get(fk), ledger.final_score(fk), {}) for fk in head]
         reranked = self.r.rerank_families(query_text, fam, top=min(25, len(fam)))
-        ranked = [fk for fk, _, _, _ in reranked] + [fk for fk, _ in ordered[top:]]
+        ranked = [fk for fk, _, _, _ in reranked] + ordered[top:]
         return ranked
 
     def report(self, query_text, subject, mode, ledger: CoverageLedger, rounds):

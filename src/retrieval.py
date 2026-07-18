@@ -15,11 +15,30 @@ import db, embed, rerank as rr
 from search_modes import Mode, Subject, citable_where
 from config import SEED_CPC
 
-RRF_K = 60
+RRF_K = 40             # smaller K sharpens the rank-1 advantage of a strong channel
 CHUNK_FETCH = 4000     # chunks pulled before aggregating to publications
 PUB_CAP = 1000         # per-channel publication cap (the spec's ~1000 width)
 RERANK_TOP = 25        # cross-encoder rerank depth (spec says ~300; 25 keeps CPU time sane on
                        # the shared box — RRF already orders well; tune up with a GPU/idle box)
+
+# Per-channel RRF weights (spec §2). Unweighted RRF let broad, noisy channels (CPC ranks 1000
+# docs by classification-match count; BM25 by lexeme count) out-vote a strong #1 dense hit when
+# a mediocre doc appeared in several of them. Dense semantic relevance is the dominant signal;
+# classification/keyword breadth is a weak prior. Channels that are themselves dense-derived
+# (crosslingual, qbe) or meaningful graph signals (citation) keep moderate weight so
+# multi-strong-channel agreement can still rank ABOVE pure dense (the agent's unique-find lift).
+CHANNEL_WEIGHTS = {
+    "dense": 1.00,
+    "crosslingual": 0.70,   # dense over a translated query
+    "exact": 0.60,          # ordered phrase match — precise
+    "citation": 0.55,       # family/citation-graph neighbour of a strong hit
+    "qbe": 0.50,            # query-by-example (dense from a strong hit)
+    "biblio": 0.30,         # assignee/inventor prior
+    "bm25": 0.25,           # broad lexical
+    "cpc": 0.15,            # very broad classification prior
+}
+DENSE_FLOOR = 30           # the top-N dense hits are guaranteed a floor so weak channels can
+                           # never demote a strong semantic hit out of the head
 
 
 def _vec(e):
@@ -210,14 +229,25 @@ class Retriever:
 
     # ---- fusion --------------------------------------------------------------------------
     @staticmethod
-    def rrf(channel_results: dict):
-        """channel_results: {name: [(pid, score)] best-first}. -> fused [(pid, score, prov)]."""
-        fused = {}
-        prov = {}
+    def rrf(channel_results: dict, weighted=True):
+        """Weighted reciprocal-rank fusion. channel_results: {name: [(pid, score)] best-first}.
+        Each channel contributes w_channel / (K + rank + 1). A dense-hit floor guarantees the
+        top-N dense results a minimum score so broad/noisy channels can't demote them below the
+        head (spec §2). -> fused [(pid, score, prov)] best-first."""
+        fused, prov = {}, {}
         for name, res in channel_results.items():
+            w = CHANNEL_WEIGHTS.get(name, 0.5) if weighted else 1.0
             for rank, (pid, _s) in enumerate(res):
-                fused[pid] = fused.get(pid, 0.0) + 1.0 / (RRF_K + rank + 1)
+                fused[pid] = fused.get(pid, 0.0) + w / (RRF_K + rank + 1)
                 prov.setdefault(pid, {})[name] = rank + 1
+        # dense floor: the top-DENSE_FLOOR dense hits can't score below the DENSE_FLOOR-th
+        # pure-dense contribution — protects strong semantic hits from weak-channel dilution.
+        dense = channel_results.get("dense")
+        if weighted and dense:
+            floor = CHANNEL_WEIGHTS["dense"] / (RRF_K + DENSE_FLOOR)
+            for rank, (pid, _s) in enumerate(dense[:DENSE_FLOOR]):
+                if fused.get(pid, 0.0) < floor:
+                    fused[pid] = floor
         order = sorted(fused.items(), key=lambda t: t[1], reverse=True)
         return [(pid, sc, prov[pid]) for pid, sc in order]
 
