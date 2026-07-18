@@ -124,6 +124,53 @@ Per-stage (from `src/`, `../.venv/bin/python`): `coverage_profile.py` · `goldse
   quota, so DE enrichment covers a field-representative candidate pool, not all 14k DE/EP/WO core).
 - **Reranker on CPU** — rerank depth is capped at 25 (a GPU would allow the spec's ~300).
 
+## EPO OPS — zero-step unlock for EP/WO/DE full text
+
+`src/ops.py` fully implements the EPO OPS v3.2 client (OAuth2 client-credentials, description +
+claims + drawings + INPADOC legal → the schema, with provenance). It runs in **mock/dry-run mode
+until credentials exist**, so the parser is provable now:
+
+```bash
+cd src && ../.venv/bin/python ops.py --dry-run        # parse a sample OPS response (no creds)
+cd src && ../.venv/bin/python test_ops.py             # parser + schema-mapping unit test
+```
+
+**The moment `OPS_CONSUMER_KEY` + `OPS_CONSUMER_SECRET` are in `.env`, one command backfills the hole:**
+
+```bash
+cd src && ../.venv/bin/python ops.py --backfill-core   # 13,400 claimless DE/EP/WO core pubs → live OPS
+```
+
+This is the highest-leverage recall fix (see `REACHABILITY.md`): 68% of in-corpus gold families have
+no embedded claims today; OPS fills them. It's the only external blocker.
+
+## QA checklist (release-candidate regression — `./regression.sh`)
+
+`./regression.sh` runs 30 end-to-end checks; all green = shippable. Covers:
+
+- [x] `/healthz` 200
+- [x] all 11 gold reports load with a claim chart + ≥10 reference cards
+- [x] US reference enrichment: real drawings + working PDF facsimile + sections
+- [x] citation graph · more-like-this · side-by-side compare · print view
+- [x] triage flags persist across reload
+- [x] export **PDF + DOCX** for a gold report **and** a free-text report
+- [x] no 500s: empty query→302, bad slug→404, junk ref/graph→200 graceful, empty export→400, missing pdf→404
+- [x] EPO OPS parser dry-run/unit test passes (no creds)
+- [x] supervisor autostart + auto-restart + survives reboot
+
+## Eval table (frozen 11-query gold set, mean family recall)
+
+| Config | recall@100 | recall@500 | recall@1000 |
+|---|--:|--:|--:|
+| keyword (BM25) | 0.015 | 0.106 | 0.136 |
+| vector (dense) | 0.170 | 0.260 | 0.283 |
+| hybrid (weighted RRF) | 0.170 | 0.275 | 0.311 |
+| hybrid + reranker | 0.170 | 0.275 | 0.311 |
+| **agentic** | **0.185** | 0.266 | **0.319** |
+
+Agentic is the best config at recall@100 and @1000. `reachable@100 ≈ 0.19` (of in-corpus gold);
+the ceiling is text depth, not corpus size — see `REACHABILITY.md`.
+
 ## Data & artifacts
 
 `data/coverage/` (BigQuery coverage) · `data/goldset/` (frozen gold) · `data/eval/` (ablations +

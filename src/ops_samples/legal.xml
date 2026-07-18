@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ops:world-patent-data xmlns:ops="http://ops.epo.org" xmlns="http://www.epo.org/exchange">
+  <ops:legal>
+    <ops:legal-event>
+      <ops:code>PG25</ops:code>
+      <ops:legal-event-code-description>Lapsed in a contracting state</ops:legal-event-code-description>
+      <ops:legal-event-value>Lapsed in a contracting state announced via postgrant information from national office to epo</ops:legal-event-value>
+      <ops:legal-event-date>2016-07-27</ops:legal-event-date>
+    </ops:legal-event>
+    <ops:legal-event>
+      <ops:code>17P</ops:code>
+      <ops:legal-event-code-description>Request for examination filed</ops:legal-event-code-description>
+      <ops:legal-event-value>Request for examination filed</ops:legal-event-value>
+      <ops:legal-event-date>2012-08-31</ops:legal-event-date>
+    </ops:legal-event>
+    <ops:legal-event>
+      <ops:code>AK</ops:code>
+      <ops:legal-event-code-description>Designated contracting states</ops:legal-event-code-description>
+      <ops:legal-event-value>Kind code of ref document: A1 Designated state(s): AL AT BE BG CH CY CZ DE DK</ops:legal-event-value>
+      <ops:legal-event-date>2012-09-05</ops:legal-event-date>
+    </ops:legal-event>
+  </ops:legal>
+</ops:world-patent-data>

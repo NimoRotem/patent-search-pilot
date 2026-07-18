@@ -7,8 +7,11 @@ legal status for FINAL candidates. Canonical source would be EPO OPS (INADOC fam
 the real source and a non-authoritative 'scrape' status: the facsimile PDF remains the legal
 evidence; scraped OCR text can be wrong.
 
-TODO(EPO OPS): drop-in `ops_fetch()` when consumer key/secret are provisioned — then enrich the
-FULL EP/WO/DE core set at ingest, not just final candidates.
+EPO OPS: `ops_fetch()` is now IMPLEMENTED in `ops.py` (zero-step unlock). The moment
+OPS_CONSUMER_KEY/OPS_CONSUMER_SECRET land in `.env`, `ops.backfill(pubnums)` fills the full
+EP/WO/DE description+claims+drawings+legal hole. Until then `ops.py` runs in mock/dry-run mode
+(`python ops.py --dry-run`, `python test_ops.py`) so the parser + schema mapping are provable
+without credentials. One-command backfill: see README.
 """
 from __future__ import annotations
 import os, re, json, sys, time

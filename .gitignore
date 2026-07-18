@@ -22,3 +22,4 @@ data/reports/exports/*__*.pdf
 data/reports/exports/*__*.docx
 data/de_enrich_pubs.json
 data/reports/adhoc-*
+data/missing_gold_families.json
