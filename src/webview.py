@@ -7,7 +7,7 @@ The agent report provides elements, element evidence, the claim chart and the co
 from __future__ import annotations
 import json, re
 from datetime import date, datetime
-import db, embed
+import db, embed, status as status_mod
 from search_modes import Subject, Mode, classify_basis, Basis
 from config import DATA
 
@@ -270,6 +270,50 @@ def substance_order(cur, families, reps, keep):
                             "titleonly_ids": titleonly}
 
 
+def _attach_family_members(cur, cards):
+    """Group the OTHER filings of the same patent family (other countries / kinds) under each card,
+    so a result can be expanded to see where else the invention was filed. One batched query keyed
+    on the reps' simple_family_id; the representative shown as the card is excluded from its list."""
+    for c in cards:
+        c["family_members"] = []
+        c["n_family"] = 0
+    reps_by_sfid = {}
+    for c in cards:
+        if c.get("sfid"):
+            reps_by_sfid.setdefault(c["sfid"], c["pub"])
+    if not reps_by_sfid:
+        return
+    cur.execute(
+        "SELECT publication_number, country, kind_code, publication_date, filing_date, "
+        "earliest_priority_date, simple_family_id FROM publications "
+        "WHERE simple_family_id = ANY(%s) "
+        "ORDER BY (country='US') DESC, publication_date DESC NULLS LAST",
+        (list(reps_by_sfid.keys()),))
+    members = {}
+    for r in cur.fetchall():
+        members.setdefault(r["simple_family_id"], []).append(r)
+    for c in cards:
+        sfid = c.get("sfid")
+        if not sfid:
+            continue
+        seen, out = set(), []
+        for r in members.get(sfid, []):
+            pn = r["publication_number"]
+            if pn == c["pub"] or pn in seen:
+                continue
+            seen.add(pn)
+            st = status_mod.classify_status(r["kind_code"], r["country"], r["earliest_priority_date"],
+                                            r["filing_date"], r["publication_date"])
+            out.append({"pub": pn, "country": r["country"], "flag": FLAG.get(r["country"], "🏳️"),
+                        "kind": r["kind_code"],
+                        "date": str(r["publication_date"]) if r["publication_date"] else None,
+                        "status": st})
+            if len(out) >= 24:
+                break
+        c["family_members"] = out
+        c["n_family"] = len(out)
+
+
 # ---- full view -----------------------------------------------------------------------------
 def build_view(report, top_n=25):
     """Assemble the whole page view model. Enrichment (drawings/pdf/sections/rationale) is
@@ -330,16 +374,21 @@ def build_view(report, top_n=25):
                                  "filing_date": _d(b["filing_date"])}, subject_obj)
             basis = bb.value
         covered = sorted(fam_elements.get(fam, {}).keys())
+        st = status_mod.classify_status(b["kind"], b["country"], b["priority_date"],
+                                        b["filing_date"], b["publication_date"])
         cards.append({
             "rank": rank, "family": fam, **b,
             "match_score": round(m["score"], 3), "match_coord": _coord_str(m["coord"]),
             "match_kind": m["kind"], "basis": basis,
             "relevancy": _relevancy(m["score"]),         # 0-100 best-passage semantic match
+            "status": st,
+            "sfid": rep.get("simple_family_id") or None,
             "channels": sorted(fam_channels.get(fam, [])),
             "covers_elements": covered, "n_covers": len(covered),
             "has_local_claims": rep["n_claims"] > 0,
         })
 
+    _attach_family_members(cur, cards)
     chart = build_claim_chart(report)
     cur.close(); conn.close()
     return {

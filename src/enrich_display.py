@@ -13,7 +13,7 @@ we mark facsimile_not_digitized and still surface claims/abstract/events + Espac
 Never returns a broken image URL (only locally-downloaded files are advertised).
 """
 from __future__ import annotations
-import os, re, json, time, hashlib
+import os, re, json, time, hashlib, subprocess
 from pathlib import Path
 import requests
 import db
@@ -51,6 +51,21 @@ def google_patents_url(pub):
     return f"https://patents.google.com/patent/{pub.replace('-','')}/en"
 
 
+_GPDF_RE = re.compile(r"https://patentimages\.storage\.googleapis\.com/[^\s\"'<>]+\.pdf")
+
+def _scrape_google_pdf(pub):
+    """Fallback PDF source: scrape the Google Patents page for its patentimages PDF link."""
+    try:
+        r = requests.get(google_patents_url(pub), headers=UA, timeout=30)
+        if r.status_code == 200:
+            m = _GPDF_RE.search(r.text)
+            if m:
+                return m.group(0)
+    except requests.RequestException:
+        pass
+    return None
+
+
 def _download(url, dest: Path, retries=2):
     if dest.exists() and dest.stat().st_size > 0:
         return True
@@ -74,6 +89,71 @@ def _download(url, dest: Path, retries=2):
 def _fig_ext(url):
     m = re.search(r"\.(png|jpg|jpeg|gif|tif|tiff)(\?|$)", url, re.I)
     return "." + (m.group(1).lower() if m else "png")
+
+
+def _pdftotext_len(pdf_path, page):
+    try:
+        r = subprocess.run(["pdftotext", "-f", str(page), "-l", str(page), str(pdf_path), "-"],
+                           capture_output=True, timeout=25)
+        return len((r.stdout or b"").decode("utf-8", "ignore").strip())
+    except Exception:
+        return 0
+
+
+def extract_pdf_drawings(pdf_path, pub, cap=16, min_side=340):
+    """Extract drawing images from a local PDF — for references that have a PDF but NO digitized
+    figures (common for old EP/DE/WO). Pulls embedded rasters with pdfimages, drops tiny logos /
+    barcodes / rule-lines and (for PDFs that carry a text layer) text-dense pages, keeping the
+    figure sheets. Returns display-shaped image dicts (already saved under the figure dir)."""
+    from PIL import Image
+    try:
+        figdir = FIGDIR / _pubkey(pub)
+    except ValueError:
+        return []
+    figdir.mkdir(parents=True, exist_ok=True)
+    tmp = figdir / "_pdfx"
+    if tmp.exists():
+        for x in tmp.glob("*"):
+            x.unlink(missing_ok=True)
+    tmp.mkdir(exist_ok=True)
+    try:
+        subprocess.run(["pdfimages", "-png", "-p", str(pdf_path), str(tmp / "p")],
+                       timeout=180, capture_output=True)
+    except Exception:
+        return []
+    cands = []                                     # (page, file, area)
+    for f in sorted(tmp.glob("p-*.png")):
+        m = re.match(r"p-(\d+)-\d+", f.stem)
+        page = int(m.group(1)) if m else None
+        try:
+            with Image.open(f) as im:
+                w, h = im.size
+        except Exception:
+            continue
+        ar = w / max(1, h)
+        if min(w, h) < min_side or ar < 0.2 or ar > 5:     # tiny / banner / rule-line
+            continue
+        cands.append((page, f, w * h))
+    # if the PDF has a real text layer, drop the text-dense pages (keep figure sheets)
+    ptext = {p: _pdftotext_len(pdf_path, p) for p in {c[0] for c in cands if c[0]}}
+    if any(v > 200 for v in ptext.values()):
+        cands = [c for c in cands if c[0] is None or ptext.get(c[0], 0) < 500]
+    cands.sort(key=lambda t: (t[0] if t[0] is not None else 9999))
+    imgs = []
+    for i, (_, f, _) in enumerate(cands[:cap]):
+        dest = figdir / f"pdf{i:03d}.png"
+        try:
+            f.replace(dest)
+            imgs.append({"file": dest.name, "src_url": None, "from_pdf": True})
+        except Exception:
+            pass
+    for x in tmp.glob("*"):
+        x.unlink(missing_ok=True)
+    try:
+        tmp.rmdir()
+    except OSError:
+        pass
+    return imgs
 
 
 def cache_path(pub):
@@ -104,12 +184,21 @@ def _normalize(pub, raw):
         dest = figdir / f"{i:03d}{_fig_ext(url)}"
         if _download(url, dest):
             local_imgs.append({"file": dest.name, "src_url": url})
-    pdf_url = raw.get("pdf")
+    # PDF: SerpApi payload first, then scrape the Google Patents page for a patentimages PDF link.
+    pdf_url = raw.get("pdf") or _scrape_google_pdf(pub)
+    pdf_source = "serpapi" if raw.get("pdf") else ("google" if pdf_url else None)
     local_pdf = None
     if pdf_url:
         dest = PDFDIR / f"{pub}.pdf"
         if _download(pdf_url, dest):
             local_pdf = dest.name
+    # Drawings missing but a PDF exists -> extract the figure sheets from the PDF.
+    figs_from_pdf = False
+    if not local_imgs and local_pdf:
+        extracted = extract_pdf_drawings(PDFDIR / f"{pub}.pdf", pub)
+        if extracted:
+            local_imgs = extracted
+            figs_from_pdf = True
     # classifications -> CPC chips
     cls = []
     for c in (raw.get("classifications") or []):
@@ -162,10 +251,38 @@ def _normalize(pub, raw):
         "n_images": len(local_imgs),
         "pdf_local": local_pdf,
         "pdf_url": pdf_url,
+        "pdf_source": pdf_source,
+        "figs_from_pdf": figs_from_pdf,
         "facsimile_digitized": bool(local_imgs or local_pdf),
         "espacenet": espacenet_url(pub),
         "google_patents": google_patents_url(pub),
     }
+
+
+def _merge_lens(pub, disp):
+    """Fold Lens.org fields into the display when a LENS_TOKEN is configured (else a no-op): the
+    authoritative INPADOC legal status, family jurisdictions, and any missing abstract/claims."""
+    try:
+        import lens
+    except Exception:
+        return
+    if not lens.available():
+        return
+    try:
+        L = lens.fetch(pub)
+    except Exception:
+        return
+    if not L:
+        return
+    if L.get("legal_status"):
+        disp["lens_status"] = L["legal_status"]
+        disp["lens_term_date"] = L.get("anticipated_term_date")
+    if L.get("family_members"):
+        disp["lens_family"] = L["family_members"]
+    if not disp.get("abstract") and L.get("abstract"):
+        disp["abstract"] = L["abstract"]
+    if not disp.get("claims") and L.get("claims"):
+        disp["claims"] = L["claims"]
 
 
 def enrich_for_display(pub, force=False):
@@ -189,6 +306,7 @@ def enrich_for_display(pub, force=False):
         cache_path(pub).write_text(json.dumps({"_display": disp}, indent=1))
         return disp
     disp = _normalize(pub, raw)
+    _merge_lens(pub, disp)                     # authoritative legal status + family (if LENS_TOKEN set)
     # persist raw + normalized display together
     cache_path(pub).write_text(json.dumps({"raw": raw, "_display": disp}, default=str))
     # keep DB facsimile_path in sync (local pdf preferred)

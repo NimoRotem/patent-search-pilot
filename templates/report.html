@@ -133,10 +133,11 @@
           </div>
           {% if c.assignees or c.inventors %}
           <div class="refsub">
-            {% if c.assignees %}<b>{{ c.assignees|join('; ') }}</b>{% endif %}
-            {% if c.inventors %} · inv. {{ c.inventors[:3]|join(', ') }}{% endif %}
+            {% if c.assignees %}<span class="fld"><span class="fldl">Assignee</span> <b>{{ c.assignees|join('; ') }}</b></span>{% endif %}
+            {% if c.inventors %}<span class="fld"><span class="fldl">Inventor{% if c.inventors|length > 1 %}s{% endif %}</span> {{ c.inventors[:4]|join(', ') }}{% if c.inventors|length > 4 %} +{{ c.inventors|length - 4 }}{% endif %}</span>{% endif %}
           </div>{% endif %}
           <div class="badges">
+            <span class="stag t-{{ c.status.tone }}"{% if c.status.note %} title="{{ c.status.note }}"{% endif %}>{{ c.status.label }}</span>
             {% if c.basis=='public_prior_art' %}<span class="badge b-public">◆ public prior art</span>
             {% elif c.basis=='secret_prior_art' %}<span class="badge b-secret">🔒 secret prior art</span>
             {% elif c.basis=='priority_interval' %}<span class="badge b-interval">priority interval</span>
@@ -147,6 +148,19 @@
           {% if c.covers_elements %}
           <div class="covers"><span class="muted small">covers {{ c.n_covers }}</span>
             {% for el in c.covers_elements %}<span class="chip el">{{ el[:32] }}</span>{% endfor %}
+          </div>{% endif %}
+          {% if c.n_family %}
+          <div class="famrow">
+            <button class="fambtn" onclick="toggleFamily(this)">🌐 {{ c.n_family }} more in this family
+              <span class="famflags">{% for m in c.family_members[:10] %}{{ m.flag }}{% endfor %}</span> ▾</button>
+            <div class="famlist" hidden>
+              {% for m in c.family_members %}
+              <div class="famitem">
+                {{ m.flag }} <a class="pn" href="https://patents.google.com/patent/{{ m.pub.replace('-','') }}/en" target="_blank">{{ m.pub }}</a>
+                <span class="muted small">{{ m.kind or '' }}{% if m.date %} · {{ m.date }}{% endif %}</span>
+                <span class="stag sm t-{{ m.status.tone }}">{{ m.status.label }}</span>
+              </div>{% endfor %}
+            </div>
           </div>{% endif %}
         </div>
         <div class="relbox r{{ (c.relevancy // 20) }}" title="Relevancy — best-passage semantic match ({{ '%.3f'|format(c.match_score) }} cosine{% if c.match_coord %} · {{ c.match_kind }} {{ c.match_coord }}{% endif %})">

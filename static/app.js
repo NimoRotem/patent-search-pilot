@@ -98,9 +98,11 @@ function renderParas(paras, mc){
 function renderFigs(d, figs){
   let h='';
   if(d.images && d.images.length){
+    if(d.figs_from_pdf) h += '<div class="muted small" style="margin-bottom:6px">🗎 Extracted from the PDF facsimile (no separately-digitized figures for this document).</div>';
+    const lbl = d.figs_from_pdf ? 'p.' : 'fig ';
     h += '<div class="g">';
     d.images.forEach((im,i)=>{ const url = B+'/figures/'+encodeURIComponent(d.pub)+'/'+im.file;
-      h += '<figure><img loading="lazy" src="'+url+'" data-pub="'+esc(d.pub)+'" data-i="'+i+'" onclick="openLb(this)"><figcaption>fig '+(i+1)+'</figcaption></figure>'; });
+      h += '<figure><img loading="lazy" src="'+url+'" data-pub="'+esc(d.pub)+'" data-i="'+i+'" onclick="openLb(this)"><figcaption>'+lbl+(i+1)+'</figcaption></figure>'; });
     h += '</div>';
   } else {
     h += '<div class="nodig">🗎 Facsimile not digitized for this document (common for pre-2000 EP/DE/WO). '
@@ -124,6 +126,13 @@ function toggleExpand(btn){
   const panel = btn.parentNode.querySelector('.ppanel');
   const open = panel.classList.toggle('expanded');
   btn.textContent = open ? 'Show less ▲' : 'Show all ▾';
+}
+
+function toggleFamily(btn){
+  const list = btn.parentNode.querySelector('.famlist');
+  const open = list.hasAttribute('hidden');
+  if(open) list.removeAttribute('hidden'); else list.setAttribute('hidden','');
+  btn.classList.toggle('open', open);
 }
 
 function jumpRef(pub){

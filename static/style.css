@@ -127,8 +127,32 @@ table.chart th a{font-family:ui-monospace,Menlo,monospace;font-size:11.5px}
 .reftitle{font-size:16px;font-weight:700;color:var(--navy);margin:0 0 4px;line-height:1.3}
 .refmeta{font-size:12.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .refmeta .pn{font-family:ui-monospace,Menlo,monospace;color:var(--blue);font-weight:600}
-.refsub{margin-top:6px;font-size:12.5px;color:#41506a}
+.refsub{margin-top:6px;font-size:12.5px;color:#41506a;display:flex;flex-wrap:wrap;gap:4px 16px}
+.refsub .fld{display:inline-flex;gap:5px;align-items:baseline;min-width:0}
+.refsub .fldl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+.refsub b{color:var(--navy2)}
 .badges{margin-top:7px;display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+/* status tag */
+.stag{display:inline-flex;align-items:center;font-size:11px;font-weight:700;border-radius:6px;padding:2px 8px;border:1px solid}
+.stag.sm{font-size:10px;padding:1px 6px}
+.stag.t-good{background:#e7f7ee;border-color:#b6e6cc;color:#0a7d4d}
+.stag.t-accent{background:#eaf1ff;border-color:#c9dcff;color:#1e50b5}
+.stag.t-muted{background:#f0f3f8;border-color:#dde4ee;color:#6b7a90}
+.stag.t-bad{background:#fdecea;border-color:#f5c6c0;color:#b3261e}
+.stag.t-secret{background:#f5edff;border-color:#e0ccf7;color:#7b2fbf}
+.stag.t-warn{background:#fff6e8;border-color:#f0dcbb;color:#9a6100}
+/* family expander */
+.famrow{margin-top:7px}
+.fambtn{border:1px solid var(--line);background:#f7faff;border-radius:8px;padding:4px 10px;cursor:pointer;
+  font:inherit;font-size:12px;font-weight:600;color:var(--navy2);display:inline-flex;align-items:center;gap:6px}
+.fambtn:hover{background:#eef4ff;border-color:#c9dcff}
+.fambtn.open{background:#eef4ff}
+.famflags{letter-spacing:1px}
+.famlist{margin-top:6px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:#fbfcfe;
+  max-height:220px;overflow:auto}
+.famitem{padding:4px 0;border-bottom:1px dashed var(--line);font-size:12.5px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.famitem:last-child{border-bottom:0}
+.famitem .pn{font-family:ui-monospace,Menlo,monospace;color:var(--blue);font-weight:600}
 .covers{margin-top:6px;display:flex;flex-wrap:wrap;gap:5px;align-items:center}
 /* relevancy score badge (iptorch-style, colour-tiered) */
 .relbox{flex:0 0 auto;min-width:66px;text-align:center;border-radius:10px;padding:8px 6px;
