@@ -17,3 +17,6 @@ data/reports/*.meta.json
 data/patent-results.*.log
 data/webapp.log
 data/M3_INDEX_DONE
+data/reports/*.flags.json
+data/reports/exports/*__*.pdf
+data/reports/exports/*__*.docx

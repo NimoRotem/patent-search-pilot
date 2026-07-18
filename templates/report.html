@@ -89,6 +89,7 @@
     </select>
     <span class="lab">Filter</span>
     <label class="toggle"><input type="checkbox" id="fprior" onchange="applyControls()"> prior-art only</label>
+    <label class="toggle"><input type="checkbox" id="frelevant" onchange="applyControls()"> flagged relevant only</label>
     <select id="fjuris" onchange="applyControls()"><option value="">any jurisdiction</option>
       <option>US</option><option>EP</option><option>WO</option><option>DE</option></select>
     <select id="felement" onchange="applyControls()"><option value="">any element</option>
@@ -104,9 +105,17 @@
          data-rank="{{ c.rank }}" data-score="{{ c.match_score }}"
          data-date="{{ c.publication_date or '' }}" data-juris="{{ c.country or '' }}"
          data-basis="{{ c.basis }}" data-covers="{{ c.covers_elements|join('||') }}"
-         data-covidx="{{ v.elements|map('string')|list and (c.covers_elements|length) }}"
-         data-channels="{{ c.channels|join(',') }}" data-ncovers="{{ c.n_covers }}">
+         data-channels="{{ c.channels|join(',') }}" data-ncovers="{{ c.n_covers }}"
+         data-flag="{{ c.triage }}">
       <div class="refhead" onclick="toggleCard(this)">
+        <div class="selcol" onclick="event.stopPropagation()">
+          <input type="checkbox" class="selbox" value="{{ c.pub }}" onchange="updateBar()" title="Select for export/compare">
+          <div class="flagpills" data-pub="{{ c.pub }}">
+            <span class="fp fp-relevant{% if c.triage=='relevant' %} on{% endif %}" onclick="setFlag('{{ c.pub }}','relevant',this)" title="Relevant">✓</span>
+            <span class="fp fp-maybe{% if c.triage=='maybe' %} on{% endif %}" onclick="setFlag('{{ c.pub }}','maybe',this)" title="Maybe">?</span>
+            <span class="fp fp-not{% if c.triage=='not' %} on{% endif %}" onclick="setFlag('{{ c.pub }}','not',this)" title="Not relevant">✕</span>
+          </div>
+        </div>
         <div class="rank">#{{ c.rank }}</div>
         <div class="refmain">
           <div class="reftitle">{{ c.flag }} {{ c.title or '(untitled)' }}</div>
@@ -133,6 +142,10 @@
           <div style="margin-top:5px">covers:
             {% for el in c.covers_elements %}<span class="chip el" onclick="event.stopPropagation()">{{ el[:34] }}</span>{% endfor %}
           </div>{% endif %}
+          <div class="noterow" onclick="event.stopPropagation()">
+            <input type="text" class="noteinput" placeholder="+ add attorney note…" value="{{ c.note }}"
+                   onchange="saveNote('{{ c.pub }}', this.value)">
+          </div>
         </div>
         <div class="refright">
           <div class="score">{{ '%.3f'|format(c.match_score) }}<span>match</span></div>
@@ -170,6 +183,24 @@
     </div>
   </div>
 </div>
+
+<!-- export / compare action bar -->
+<div class="exportbar" id="exportbar">
+  <div class="wrap" style="display:flex;align-items:center;gap:14px">
+    <b id="selcount">0 selected</b>
+    <span class="muted small">select references →</span>
+    <span class="grow" style="flex:1"></span>
+    <button class="btn ghost sm" onclick="clearSel()">Clear</button>
+    <button class="btn ghost sm" onclick="openCompare()">⇔ Compare</button>
+    <button class="btn sm" onclick="doExport('pdf')">⬇ Export PDF</button>
+    <button class="btn sm" onclick="doExport('docx')">⬇ Export DOCX</button>
+  </div>
+</div>
+<form id="exportform" method="post" action="/export" target="_blank" style="display:none">
+  <input type="hidden" name="slug" value="{{ v.slug }}">
+  <input type="hidden" name="pubs" id="exportpubs">
+  <input type="hidden" name="format" id="exportfmt">
+</form>
 
 <!-- lightbox -->
 <div class="lb" id="lb">

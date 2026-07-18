@@ -37,6 +37,8 @@ async function toggleCard(head){
       const j = await r.json();
       body.innerHTML = renderBody(j);
       wireTabs(body);
+      const mount = body.querySelector('.cgraph');
+      if(mount) loadGraph(card.dataset.pub, mount);
     }catch(e){ body.innerHTML = '<div class="nodig">Could not load this reference. '+esc(String(e))+'</div>'; }
   }
 }
@@ -125,6 +127,7 @@ function renderBody(j){
   h += '</div></div>';
 
   h += '</div>'; // tabpanes
+  h += '<div class="cgraph" data-pub="'+esc(d.pub)+'"></div>'; // citation graph mount (lazy)
   return h;
 }
 
@@ -173,6 +176,7 @@ function applyControls(){
   const cards=[...cont.querySelectorAll('.refcard')];
   const sortby=document.getElementById('sortby').value;
   const fprior=document.getElementById('fprior').checked;
+  const frel=document.getElementById('frelevant') && document.getElementById('frelevant').checked;
   const fj=document.getElementById('fjuris').value;
   const felIdx=document.getElementById('felement').value;
   const fch=document.getElementById('fchannel').value;
@@ -182,6 +186,7 @@ function applyControls(){
   cards.forEach(c=>{
     let ok=true;
     if(fprior && !(c.dataset.basis==='public_prior_art'||c.dataset.basis==='secret_prior_art')) ok=false;
+    if(frel && c.dataset.flag!=='relevant') ok=false;
     if(fj && c.dataset.juris!==fj) ok=false;
     if(elName){ const cov=(c.dataset.covers||'').split('||'); if(!cov.includes(elName)) ok=false; }
     if(fch && !(c.dataset.channels||'').split(',').includes(fch)) ok=false;
@@ -195,6 +200,78 @@ function applyControls(){
   cards.sort((a,b)=>{const ka=key(a),kb=key(b);return ka<kb?-1:ka>kb?1:0;});
   cards.forEach(c=>cont.appendChild(c));
   document.getElementById('shown').textContent = shown+' / '+cards.length+' shown';
+}
+
+// ---- triage: flags + notes -----------------------------------------------------------------
+async function setFlag(pub, flag, el){
+  const group = el.parentNode;
+  const already = el.classList.contains('on');
+  group.querySelectorAll('.fp').forEach(x=>x.classList.remove('on'));
+  const val = already ? '' : flag;
+  if(!already) el.classList.add('on');
+  document.getElementById('ref-'+pub).dataset.flag = val;
+  try{ await fetch('/api/flags/'+encodeURIComponent(window.SLUG),{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pub, flag:val})}); }catch(e){}
+  applyControls();
+}
+async function saveNote(pub, note){
+  try{ await fetch('/api/flags/'+encodeURIComponent(window.SLUG),{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pub, note})}); }catch(e){}
+}
+
+// ---- selection + export bar ----------------------------------------------------------------
+function selectedPubs(){ return [...document.querySelectorAll('.selbox:checked')].map(b=>b.value); }
+function updateBar(){
+  const sel = selectedPubs(); const bar = document.getElementById('exportbar');
+  document.getElementById('selcount').textContent = sel.length+' selected';
+  bar.classList.toggle('show', sel.length>0);
+}
+function clearSel(){ document.querySelectorAll('.selbox:checked').forEach(b=>b.checked=false); updateBar(); }
+function doExport(fmt){
+  const sel = selectedPubs();
+  if(!sel.length){ alert('Select at least one reference.'); return; }
+  document.getElementById('exportpubs').value = sel.join(',');
+  document.getElementById('exportfmt').value = fmt;
+  document.getElementById('exportform').submit();
+}
+function openCompare(){
+  const sel = selectedPubs();
+  if(sel.length<2 || sel.length>3){ alert('Select 2 or 3 references to compare.'); return; }
+  window.open('/compare?slug='+encodeURIComponent(window.SLUG)+'&pubs='+encodeURIComponent(sel.join(',')),'_blank');
+}
+
+// ---- citation graph (lazy, appended to card body) ------------------------------------------
+async function loadGraph(pub, mount){
+  mount.innerHTML = '<h5>Citations & similar</h5><span class="muted small">loading…</span>';
+  try{
+    const [g, ml] = await Promise.all([
+      fetch('/api/graph/'+encodeURIComponent(pub)).then(r=>r.json()),
+      fetch('/api/morelike/'+encodeURIComponent(pub)).then(r=>r.json())
+    ]);
+    const col = (title, items, kind)=>{
+      let h = '<div class="cgcol"><h5>'+title+' ('+items.length+')</h5><div class="cglist">';
+      if(!items.length) h += '<span class="muted small">none</span>';
+      items.forEach(it=>{
+        const gp = 'https://patents.google.com/patent/'+(it.pub||'').replace(/-/g,'')+'/en';
+        h += '<div class="cgitem"><a href="'+gp+'" target="_blank">'+esc(it.pub)+'</a>'
+          + (it.examiner?'<span class="exam">X</span>':'')
+          + (it.in_corpus?'<span class="incorp" title="in corpus" onclick="jumpRef(\''+esc(it.pub)+'\')" style="cursor:pointer">in-corpus</span>':'')
+          + '</div>';
+      });
+      return h+'</div></div>';
+    };
+    let h = '<h5>Citation graph & more-like-this</h5><div class="cgcols">';
+    h += col('◄ Backward (cites)', g.backward||[], 'b');
+    h += col('► Forward (cited by)', g.forward||[], 'f');
+    h += col('≈ Similar', g.similar||[], 's');
+    h += '</div>';
+    const mlitems = (ml.results||[]).filter(r=>r.pub.replace(/-/g,'')!==pub.replace(/-/g,'')).slice(0,8);
+    h += '<div class="morelike"><h5>More like this (query-by-example, in-corpus)</h5><div class="cglist">';
+    mlitems.forEach(r=>{ h += '<div class="cgitem"><a href="#" onclick="jumpRef(\''+esc(r.pub)+'\');return false">'+esc(r.pub)+'</a>'
+      + '<span class="muted small">'+esc((r.title||'').slice(0,44))+'</span><span class="muted small">'+r.score+'</span></div>'; });
+    h += '</div></div>';
+    mount.innerHTML = h;
+  }catch(e){ mount.innerHTML = '<h5>Citations & similar</h5><span class="muted small">unavailable</span>'; }
 }
 
 document.addEventListener('DOMContentLoaded',()=>{ if(document.getElementById('cards')) applyControls(); });

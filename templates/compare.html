@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Compare references{% endblock %}
+{% block body %}
+<div class="wrap">
+  <div class="sec"><h3>⇔ Side-by-side reference comparison
+     <span class="hint">{{ mode.replace('_',' ') }} · for combination / inventive-step argument</span></h3></div>
+  <p class="q small" style="color:#33425e">Query: “{{ query[:220] }}{% if query|length>220 %}…{% endif %}”</p>
+
+  <div class="cmpgrid" style="grid-template-columns:repeat({{ cols|length }},1fr)">
+    {% for col in cols %}
+    <div class="cmpcol">
+      <div class="cmphead">
+        <a class="pn" href="{{ col.google_patents }}" target="_blank">{{ col.biblio.pub }}</a>
+        <div class="cmptitle">{{ col.biblio.flag }} {{ col.biblio.title or '(untitled)' }}</div>
+        <div class="small muted">{{ col.biblio.assignees|join('; ') }}</div>
+        <div class="small muted">pub {{ col.biblio.publication_date or '—' }} · prio {{ col.biblio.priority_date or '—' }} · fam {{ col.biblio.family_id }}</div>
+      </div>
+      <div class="cmpsec">
+        <h5>Key drawing</h5>
+        {% if col.img %}<img class="cmpimg" src="{{ col.img }}" onclick="lb(this.src)">
+          <div class="small muted">{{ col.n_images }} figure(s)</div>
+        {% else %}<div class="nodig small">facsimile not digitized</div>{% endif %}
+      </div>
+      <div class="cmpsec">
+        <h5>Best-matching passage</h5>
+        {% if col.matched and col.matched.text %}
+          <div class="small muted">{{ col.matched.kind }} · {{ col.matched.coord }}</div>
+          <div class="cmpquote">{{ col.matched.text }}</div>
+        {% else %}<span class="muted small">—</span>{% endif %}
+      </div>
+      <div class="cmpsec">
+        <h5>Invention elements it reads on ({{ col.covers|length }})</h5>
+        {% if col.covers %}{% for el in col.covers %}<div class="cmpel">✓ {{ el }}</div>{% endfor %}
+        {% else %}<span class="muted small">none mapped</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="sec"><h3>Element coverage matrix</h3></div>
+  <div class="chartwrap"><table class="chart"><thead><tr><th class="elh">Invention element</th>
+    {% for col in cols %}<th>{{ col.biblio.pub }}</th>{% endfor %}</tr></thead><tbody>
+    {% for el in elements %}<tr><td class="elh">{{ el }}</td>
+      {% for col in cols %}
+        {% if el in col.covers %}<td class="cell" style="background:rgba(10,125,77,.28)">✓</td>
+        {% else %}<td class="cell empty">·</td>{% endif %}
+      {% endfor %}</tr>{% endfor %}
+  </tbody></table></div>
+</div>
+
+<div class="lb" id="lb"><span class="x" onclick="document.getElementById('lb').classList.remove('open')">✕</span><img id="lbimg" src=""></div>
+{% endblock %}
+{% block scripts %}
+<style>
+.cmpgrid{display:grid;gap:14px;margin-bottom:20px}
+.cmpcol{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+.cmphead{padding:12px 14px;background:linear-gradient(120deg,var(--navy),var(--navy2));color:#fff}
+.cmphead .pn{color:#cfe0ff;font-family:ui-monospace,Menlo,monospace;font-weight:600}
+.cmptitle{font-weight:700;margin-top:3px}
+.cmphead .muted{color:#b9c6dd !important}
+.cmpsec{padding:11px 14px;border-top:1px solid var(--line)}
+.cmpsec h5{margin:0 0 6px;color:var(--navy);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.cmpimg{width:100%;max-height:220px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:8px;cursor:zoom-in}
+.cmpquote{font-size:12.5px;background:#fffbe6;border:1px solid #e9d68a;border-radius:7px;padding:8px;max-height:220px;overflow:auto;line-height:1.5}
+.cmpel{font-size:12.5px;color:#0a6b45;padding:2px 0}
+</style>
+<script>
+function lb(src){document.getElementById('lbimg').src=src;document.getElementById('lb').classList.add('open');}
+</script>
+{% endblock %}

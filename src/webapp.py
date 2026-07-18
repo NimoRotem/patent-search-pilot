@@ -13,6 +13,7 @@ from pathlib import Path
 from flask import (Flask, render_template, request, jsonify, redirect, url_for,
                    send_from_directory, abort)
 import db, embed, goldset, webview, enrich_display, llm
+import export_data, export_pdf, export_docx
 from retrieval import Retriever
 from agent import CoverageAgent, AgentConfig
 from config import DATA
@@ -21,8 +22,11 @@ app = Flask(__name__, template_folder="../templates", static_folder="../static")
 
 REPORTS = DATA / "reports"
 RATIONALE = DATA / "rationale"
+EXPORTS = DATA / "reports" / "exports"
+FLAGS = DATA / "reports"
 REPORTS.mkdir(parents=True, exist_ok=True)
 RATIONALE.mkdir(parents=True, exist_ok=True)
+EXPORTS.mkdir(parents=True, exist_ok=True)
 
 _GOLD = {e["id"]: e for e in goldset.load()["entries"]}
 _JOBS = {}          # slug -> {"status": "running|done|error", "msg": ...}
@@ -158,6 +162,11 @@ def report(slug):
     view["slug"] = slug
     view["title"] = title
     view["is_gold"] = slug in _GOLD
+    flags = load_flags(slug)
+    for c in view["cards"]:
+        f = flags.get(c["pub"], {})
+        c["triage"] = f.get("flag", "")      # relevant|maybe|not — distinct from c.flag (country emoji)
+        c["note"] = f.get("note", "")
     return render_template("report.html", v=view)
 
 
@@ -295,6 +304,175 @@ def print_view(slug):
     view["slug"] = slug
     view["title"] = slug
     return render_template("print.html", v=view)
+
+
+# ---- triage flags + notes (persist per report) ---------------------------------------------
+def _flags_path(slug):
+    return FLAGS / f"{slug}.flags.json"
+
+
+def load_flags(slug):
+    p = _flags_path(slug)
+    if p.exists():
+        try:
+            return json.loads(p.read_text())
+        except Exception:
+            return {}
+    return {}
+
+
+@app.route("/api/flags/<slug>", methods=["GET", "POST"])
+def api_flags(slug):
+    if request.method == "POST":
+        data = request.get_json(force=True) or {}
+        pub = data.get("pub")
+        if not pub:
+            return jsonify({"ok": False}), 400
+        flags = load_flags(slug)
+        entry = flags.get(pub, {})
+        if "flag" in data:
+            entry["flag"] = data["flag"]          # relevant | maybe | not | ""
+        if "note" in data:
+            entry["note"] = data["note"]
+        flags[pub] = entry
+        _flags_path(slug).write_text(json.dumps(flags, indent=1))
+        return jsonify({"ok": True, "flags": flags})
+    return jsonify(load_flags(slug))
+
+
+# ---- export selected references -> PDF / DOCX (the headline) --------------------------------
+@app.route("/export", methods=["POST"])
+def export():
+    slug = request.form.get("slug", "").strip()
+    fmt = request.form.get("format", "pdf").strip().lower()
+    pubs = [p for p in request.form.get("pubs", "").split(",") if p.strip()]
+    if not slug or not pubs or fmt not in ("pdf", "docx"):
+        return jsonify({"error": "need slug, pubs, format(pdf|docx)"}), 400
+    key = hashlib.sha1((slug + "|" + fmt + "|" + ",".join(sorted(pubs))).encode()).hexdigest()[:12]
+    out = EXPORTS / f"{slug}__{key}.{fmt}"
+    if not out.exists():
+        model = export_data.assemble(slug, pubs)
+        if fmt == "pdf":
+            export_pdf.render(model, out)
+        else:
+            export_docx.render(model, out)
+    dl = f"prior-art-{slug}.{fmt}"
+    mime = "application/pdf" if fmt == "pdf" else \
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return send_from_directory(EXPORTS, out.name, as_attachment=True,
+                               download_name=dl, mimetype=mime)
+
+
+# ---- citation graph + more-like-this -------------------------------------------------------
+@app.route("/api/graph/<pub>")
+def api_graph(pub):
+    """cited_by (forward) + patent_citations (backward) + similar_documents from the SerpApi cache."""
+    disp = enrich_display.load_cached(pub)
+    raw = (disp or {}).get("raw") if disp else None
+    if not raw:
+        enrich_display.enrich_for_display(pub)
+        disp = enrich_display.load_cached(pub)
+        raw = (disp or {}).get("raw") if disp else None
+    raw = raw or {}
+    def _pubs(node, key):
+        out = []
+        v = node.get(key)
+        items = v.get("original", []) if isinstance(v, dict) else (v or [])
+        for c in items[:40]:
+            if isinstance(c, dict) and c.get("publication_number"):
+                out.append({"pub": c["publication_number"], "title": c.get("title"),
+                            "date": c.get("priority_date") or c.get("publication_date"),
+                            "examiner": bool(c.get("examiner_cited"))})
+        return out
+    incorpus = set()
+    cand = [c["pub"] for grp in ("backward", "forward", "similar") for c in []]  # filled below
+    backward = _pubs(raw, "patent_citations")
+    forward = _pubs(raw, "cited_by")
+    similar = []
+    for s in (raw.get("similar_documents") or [])[:20]:
+        if isinstance(s, dict) and s.get("publication_number"):
+            similar.append({"pub": s["publication_number"], "title": s.get("title"),
+                            "date": s.get("publication_date")})
+    # which of these are in our corpus (so the UI can open them as references)
+    allpubs = list({x["pub"] for x in backward + forward + similar})
+    if allpubs:
+        norm = {p.replace("-", ""): p for p in allpubs}
+        with db.cursor() as cur:
+            cur.execute("SELECT publication_number FROM publications WHERE "
+                        "replace(publication_number,'-','') = ANY(%s)", (list(norm.keys()),))
+            for r in cur.fetchall():
+                incorpus.add(r["publication_number"].replace("-", ""))
+    def mark(lst):
+        for x in lst:
+            x["in_corpus"] = x["pub"].replace("-", "") in incorpus
+        return lst
+    return jsonify({"pub": pub, "backward": mark(backward), "forward": mark(forward),
+                    "similar": mark(similar)})
+
+
+@app.route("/api/morelike/<pub>")
+def api_morelike(pub):
+    """Query-by-example: nearest families to this reference's own embedding (in-corpus)."""
+    with db.cursor() as cur:
+        cur.execute("SELECT id FROM publications WHERE publication_number=%s LIMIT 1", (pub,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"pub": pub, "results": []})
+        pid = row["id"]
+        cur.execute("SELECT embedding FROM chunks WHERE publication_id=%s AND embedding IS NOT NULL "
+                    "AND kind IN ('whole','abstract','claim_own') ORDER BY "
+                    "CASE kind WHEN 'whole' THEN 0 WHEN 'abstract' THEN 1 ELSE 2 END LIMIT 1", (pid,))
+        er = cur.fetchone()
+        if not er:
+            return jsonify({"pub": pub, "results": []})
+        cur.execute(
+            "SELECT p.publication_number, p.title, p.country, "
+            "min(c.embedding <=> %s) AS d FROM chunks c JOIN publications p ON p.id=c.publication_id "
+            "WHERE c.embedding IS NOT NULL AND p.id <> %s "
+            "GROUP BY p.publication_number, p.title, p.country ORDER BY d LIMIT 12",
+            (er["embedding"], pid))
+        res = [{"pub": r["publication_number"], "title": r["title"], "country": r["country"],
+                "score": round(1 - float(r["d"]), 3)} for r in cur.fetchall()]
+    return jsonify({"pub": pub, "results": res})
+
+
+# ---- side-by-side compare ------------------------------------------------------------------
+@app.route("/compare")
+def compare():
+    slug = request.args.get("slug", "")
+    pubs = [p for p in request.args.get("pubs", "").split(",") if p.strip()][:3]
+    rep = _load_report(slug)
+    if not rep or not pubs:
+        abort(400)
+    q = rep.get("query", "")
+    qv = embed.embed_query(q[:8000], 768) if q else None
+    cols = []
+    with db.cursor() as cur:
+        for pub in pubs:
+            cur.execute("SELECT id FROM publications WHERE publication_number=%s LIMIT 1", (pub,))
+            row = cur.fetchone()
+            pid = row["id"] if row else None
+            b = webview.biblio(cur, pid) if pid else {"pub": pub}
+            disp = enrich_display.enrich_for_display(pub)
+            matched = webview.match_in_pub(cur, pid, qv) if (pid and qv is not None) else None
+            # which elements this family covers (from report evidence)
+            fam = b.get("family_id")
+            covers = []
+            for el, hits in rep.get("element_evidence", {}).items():
+                if any(h.get("family") == fam for h in hits):
+                    covers.append(el)
+            img = None
+            imgs = (disp or {}).get("images") or []
+            if imgs:
+                img = f"/figures/{pub}/{imgs[0]['file']}"
+            cols.append({"pub": pub, "biblio": b, "img": img,
+                         "matched": {"kind": (matched or {}).get("kind"),
+                                     "coord": webview._coord_str((matched or {}).get("coord")),
+                                     "text": (matched or {}).get("text", "")[:1000]} if matched else None,
+                         "covers": covers, "n_images": len(imgs),
+                         "google_patents": (disp or {}).get("google_patents")})
+    return render_template("compare.html", slug=slug, query=q, mode=rep.get("mode"),
+                           elements=rep.get("elements", []), cols=cols)
 
 
 @app.route("/healthz")
