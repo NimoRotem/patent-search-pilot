@@ -581,14 +581,25 @@ def api_morelike(pub):
         er = cur.fetchone()
         if not er:
             return jsonify({"pub": pub, "results": []})
+        # Index-backed nearest-neighbour: ORDER BY <=> LIMIT uses the HNSW index (a GROUP BY min()
+        # can't and full-scanned all 1.82M vectors → 90s+). Pull the nearest chunks, then dedup to
+        # families in Python. (fixes the "more like this" hang.)
+        qv = er["embedding"]
         cur.execute(
-            "SELECT p.publication_number, p.title, p.country, "
-            "min(c.embedding <=> %s) AS d FROM chunks c JOIN publications p ON p.id=c.publication_id "
+            "SELECT p.publication_number, p.title, p.country, (c.embedding <=> %s) AS d "
+            "FROM chunks c JOIN publications p ON p.id=c.publication_id "
             "WHERE c.embedding IS NOT NULL AND p.id <> %s "
-            "GROUP BY p.publication_number, p.title, p.country ORDER BY d LIMIT 12",
-            (er["embedding"], pid))
-        res = [{"pub": r["publication_number"], "title": r["title"], "country": r["country"],
-                "score": round(1 - float(r["d"]), 3)} for r in cur.fetchall()]
+            "ORDER BY c.embedding <=> %s LIMIT 200",
+            (qv, pid, qv))
+        best = {}
+        for r in cur.fetchall():
+            k = r["publication_number"]
+            d = float(r["d"])
+            if k not in best or d < best[k]["d"]:
+                best[k] = {"pub": k, "title": r["title"], "country": r["country"], "d": d}
+        res = [{"pub": v["pub"], "title": v["title"], "country": v["country"],
+                "score": round(1 - v["d"], 3)}
+               for v in sorted(best.values(), key=lambda x: x["d"])[:12]]
     return jsonify({"pub": pub, "results": res})
 
 
