@@ -179,8 +179,16 @@ def build_claim_chart(report, max_cols=8):
             c = cell.get(el, {}).get(pub)
             if c:
                 intensity = (c["score"] - smin) / (smax - smin) if smax > smin else 0.5
-                cells.append({"pub": pub, "score": round(c["score"], 3), "coord": _coord_str(c["coord"]),
-                              "basis": c["basis"], "intensity": round(intensity, 3), "covered": True})
+                coord_str = _coord_str(c["coord"])
+                # M9 §3: a cell backed only by a whole-doc match (no specific claim/para/figure)
+                # cannot show WHERE the element is disclosed — mark it "weak" so the chart doesn't
+                # imply verified coverage. (Coord-backed cells still carry a residual false-positive
+                # rate that neither the fused score nor the element↔chunk cosine separates cleanly —
+                # see data/reports/RELEVANCE_AUDIT.md; the reliable fix is per-cell LLM verification.)
+                strength = "cited" if coord_str else "weak"
+                cells.append({"pub": pub, "score": round(c["score"], 3), "coord": coord_str,
+                              "basis": c["basis"], "intensity": round(intensity, 3),
+                              "covered": True, "strength": strength})
             else:
                 cells.append({"pub": pub, "covered": False})
         rows.append({"element": el, "cells": cells,
@@ -201,6 +209,53 @@ def _coord_str(coord):
         if coord.get(k) is not None:
             return f"{lbl} {coord[k]}"
     return ""
+
+
+# ---- substance filter (M9 relevance audit) -------------------------------------------------
+# Title-only publications (their ONLY embedded chunk is the 'whole'/title, e.g. a 1904 "Vacuum
+# lifting device" with no abstract/claims text) match a query on the bare title and used to flood
+# the top-10 with substance-less hits. Design patents (kind 'S…' / -D… numbers) carry no technical
+# disclosure and are never technical prior art. This filter runs at the DISPLAY layer ONLY — it
+# re-orders / trims what the page SHOWS. Retrieval, RRF fusion, and the gold-eval recall metric all
+# read report["ranked_families"], which is left untouched, so recall cannot regress. (An earlier
+# attempt demoted inside the retrieval channels and regressed agentic recall@100 0.185 -> 0.138;
+# moving it here fixes precision@10 with zero recall cost.)
+_DESIGN_NUM_RE = re.compile(r"-D[0-9]")
+
+
+def _is_design(pub_number, kind_code):
+    return bool((kind_code or "").upper().startswith("S") or _DESIGN_NUM_RE.search(pub_number or ""))
+
+
+def _titleonly_ids(cur, ids):
+    """Of the given publication ids, which have ONLY a 'whole' (title) embedded chunk."""
+    if not ids:
+        return set()
+    cur.execute("SELECT publication_id FROM ("
+                "  SELECT publication_id, string_agg(DISTINCT kind, ',') kinds FROM chunks "
+                "  WHERE embedding IS NOT NULL AND publication_id = ANY(%s) GROUP BY publication_id) t "
+                "WHERE kinds = 'whole'", (list(ids),))
+    return {r["publication_id"] for r in cur.fetchall()}
+
+
+def substance_order(cur, families, reps, keep):
+    """Drop design-patent families and demote title-only families below substantive ones, then
+    trim to `keep`. Stable within each group (preserves the retrieval ranking). Returns
+    (ordered_families, stats)."""
+    ids = [reps[f]["id"] for f in families if f in reps]
+    titleonly = _titleonly_ids(cur, ids)
+    kept, demoted, dropped = [], [], 0
+    for f in families:
+        r = reps.get(f)
+        if not r:
+            continue
+        if _is_design(r["publication_number"], r["kind_code"]):
+            dropped += 1
+            continue
+        (demoted if r["id"] in titleonly else kept).append(f)
+    ordered = kept + demoted          # substantive first (in-rank), title-only after
+    return ordered[:keep], {"design_dropped": dropped, "titleonly_demoted": len(demoted),
+                            "titleonly_ids": titleonly}
 
 
 # ---- full view -----------------------------------------------------------------------------
@@ -226,8 +281,12 @@ def build_view(report, top_n=25):
 
     qvec = embed.embed_query(query[:8000], 768) if query else None
 
-    ranked = report.get("ranked_families", [])[:top_n]
-    reps = resolve_family_reps(cur, ranked)
+    # Pull a wider window than we show, then apply the display-layer substance filter (drop design,
+    # demote title-only) and trim to top_n — so a demoted title-only hit is replaced by the next
+    # substantive family rather than leaving a hole. report["ranked_families"] itself is untouched.
+    window = report.get("ranked_families", [])[:max(top_n * 3, 60)]
+    reps = resolve_family_reps(cur, window)
+    ranked, subs_stats = substance_order(cur, window, reps, top_n)
 
     # which elements each family covers (from evidence)
     fam_elements = {}
@@ -281,6 +340,7 @@ def build_view(report, top_n=25):
         "element_coverage": report.get("element_coverage", {}),
         "claim_chart": chart,
         "cards": cards,
+        "substance_filter": {k: v for k, v in subs_stats.items() if k != "titleonly_ids"},
         "coverage_ledger": {
             "cpc_branches": report.get("cpc_branches", []),
             "round_new_families": report.get("round_new_families", []),

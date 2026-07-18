@@ -121,10 +121,10 @@
         "agentic": {
           "family_recall@100": 0.0909,
           "reachable_recall@100": 0.1081,
-          "family_recall@500": 0.2727,
-          "reachable_recall@500": 0.3243,
-          "family_recall@1000": 0.2955,
-          "reachable_recall@1000": 0.3514,
+          "family_recall@500": 0.2273,
+          "reachable_recall@500": 0.2703,
+          "family_recall@1000": 0.3409,
+          "reachable_recall@1000": 0.4054,
           "earliest_relevant_family": "24262135",
           "earliest_recovered": false,
           "nongold_rate@20": 1.0,
@@ -132,7 +132,7 @@
             "dense": [
               "22498676",
               "23205091",
-              "23289430",
+              "24840037",
               "25644276",
               "41380067",
               "42115107",
@@ -144,24 +144,25 @@
               "22498676"
             ],
             "citation": [
-              "22498676",
               "23205091",
               "23289430",
-              "25644276",
+              "24262135",
+              "24664421",
+              "25421211",
               "32054112",
               "34810482",
               "39244538",
+              "42115107",
               "45508079",
               "45554511",
-              "6332344",
               "7865086"
             ],
             "qbe": [
               "23289430",
-              "25084279",
               "41380067",
               "42115107",
               "6332344",
+              "7889498",
               "7961965"
             ],
             "crosslingual": [
@@ -170,36 +171,28 @@
           },
           "claim_element_coverage": {
             "Rigid base element with first and second opposite sides": {
-              "best_score": 0.039,
-              "n_evidence": 28
+              "best_score": 0.047,
+              "n_evidence": 26
             },
-            "Loop-shaped vacuum seal element attached to second side": {
-              "best_score": 0.048,
-              "n_evidence": 21
+            "Loop-shaped vacuum seal element": {
+              "best_score": 0.051,
+              "n_evidence": 25
             },
-            "Seal element protrudes from second side away from first side": {
-              "best_score": 0.041,
+            "Seal element attached to second side, protruding away from first side": {
+              "best_score": 0.042,
               "n_evidence": 5
             },
-            "Seal element has a contact surface and an encircling surface": {
-              "best_score": 0.04,
-              "n_evidence": 5
-            },
-            "Contact surface at least partially contacts object surface": {
+            "Seal element with contact surface and encircling surface defining a chamber": {
               "best_score": 0.037,
               "n_evidence": 5
             },
-            "Encircling surface oriented transversely to contact surface, defining a chamber": {
+            "Contact surface elastically deformable to conform to object surface": {
               "best_score": 0.038,
               "n_evidence": 5
             },
-            "Seal element elastically deformable at contact surface to conform to object surface": {
-              "best_score": 0.0,
-              "n_evidence": 0
-            },
             "Air extraction means mounted to first side": {
-              "best_score": 0.0,
-              "n_evidence": 0
+              "best_score": 0.038,
+              "n_evidence": 5
             },
             "Air extraction means in fluid communication with chamber through base element": {
               "best_score": 0.0,
@@ -209,45 +202,57 @@
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "Air extraction means operable in a variable manner": {
+            "Base element second side with central area and peripheral support area": {
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "Variable operation by fluctuating operating power or reducing power to maintain grip": {
+            "Seal element attachment surface mounted to peripheral support area": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Bracing structure within or outside the seal element": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Air extraction means operable in a variable manner": {
               "best_score": 0.0,
               "n_evidence": 0
             }
           },
           "marginal_yield_per_round": [
-            1113,
-            395,
-            138
+            1193,
+            465,
+            206
           ],
           "rounds": 2,
           "llm_calls": 5,
           "combination_view": {
             "primary": null,
             "covers": [
-              "Contact surface at least partially contacts object surface",
-              "Encircling surface oriented transversely to contact surface, defining a chamber",
-              "Loop-shaped vacuum seal element attached to second side",
+              "Air extraction means mounted to first side",
+              "Contact surface elastically deformable to conform to object surface",
+              "Loop-shaped vacuum seal element",
               "Rigid base element with first and second opposite sides",
-              "Seal element has a contact surface and an encircling surface",
-              "Seal element protrudes from second side away from first side"
+              "Seal element attached to second side, protruding away from first side",
+              "Seal element with contact surface and encircling surface defining a chamber"
             ],
             "secondaries": [],
             "uncovered_elements": [
               "Air extraction means continuously extracts air from chamber",
               "Air extraction means in fluid communication with chamber through base element",
-              "Air extraction means mounted to first side",
               "Air extraction means operable in a variable manner",
-              "Seal element elastically deformable at contact surface to conform to object surface",
-              "Variable operation by fluctuating operating power or reducing power to maintain grip"
+              "Base element second side with central area and peripheral support area",
+              "Bracing structure within or outside the seal element",
+              "Seal element attachment surface mounted to peripheral support area"
             ]
           }
         }
       },
       "citation_only_gold": [
+        "23289430",
+        "24262135",
+        "24664421",
+        "25421211",
         "32054112",
         "34810482",
         "39244538",
@@ -255,8 +260,10 @@
         "45554511"
       ],
       "agent_only_gold": [
-        "24262135",
+        "24664421",
+        "24840037",
         "32054112",
+        "39244538",
         "45508079",
         "6332344"
       ]
@@ -389,12 +396,12 @@
           }
         },
         "agentic": {
-          "family_recall@100": 0.1136,
-          "reachable_recall@100": 0.1351,
-          "family_recall@500": 0.2727,
-          "reachable_recall@500": 0.3243,
-          "family_recall@1000": 0.3864,
-          "reachable_recall@1000": 0.4595,
+          "family_recall@100": 0.1364,
+          "reachable_recall@100": 0.1622,
+          "family_recall@500": 0.2273,
+          "reachable_recall@500": 0.2703,
+          "family_recall@1000": 0.25,
+          "reachable_recall@1000": 0.2973,
           "earliest_relevant_family": "24262135",
           "earliest_recovered": false,
           "nongold_rate@20": 0.95,
@@ -403,13 +410,12 @@
               "22498676",
               "23205091",
               "23289430",
-              "24430975",
               "24840037",
               "25644276",
-              "41380067",
+              "32054112",
+              "34810482",
               "42115107",
               "6332344",
-              "7782789",
               "7865086"
             ],
             "cpc": [
@@ -419,130 +425,120 @@
             ],
             "citation": [
               "22498676",
-              "22883737",
               "23205091",
               "23289430",
-              "25421211",
+              "24664421",
               "29740151",
               "32054112",
               "34810482",
               "39244538",
               "42115107",
-              "45554511",
               "6332344",
               "7865086"
             ],
             "qbe": [
               "23289430",
+              "24430975",
+              "25084279",
+              "25644276",
               "41380067",
-              "42115107",
               "6332344",
-              "7782789",
-              "7889498",
-              "7961965"
+              "7889498"
             ],
             "crosslingual": [
-              "22498676",
-              "34201690"
+              "22498676"
             ]
           },
           "claim_element_coverage": {
-            "Vacuum gripper with rigid base element": {
-              "best_score": 0.044,
-              "n_evidence": 20
+            "Rigid base element with first and second opposite sides": {
+              "best_score": 0.04,
+              "n_evidence": 23
             },
             "Loop-shaped vacuum seal element": {
-              "best_score": 0.043,
-              "n_evidence": 26
+              "best_score": 0.05,
+              "n_evidence": 25
             },
-            "Seal element attached to second side of base element": {
+            "Seal element attached to second side, protruding away from first side": {
+              "best_score": 0.043,
+              "n_evidence": 5
+            },
+            "Seal element with contact surface and encircling surface defining a chamber": {
               "best_score": 0.037,
               "n_evidence": 5
             },
-            "Seal element protrudes from base element": {
-              "best_score": 0.042,
-              "n_evidence": 5
-            },
-            "Seal element with contact surface and encircling surface": {
-              "best_score": 0.04,
-              "n_evidence": 5
-            },
-            "Chamber defined by seal element and base element": {
-              "best_score": 0.036,
-              "n_evidence": 5
-            },
             "Seal element elastically deformable at contact surface": {
+              "best_score": 0.039,
+              "n_evidence": 5
+            },
+            "Air extraction means mounted to first side": {
+              "best_score": 0.037,
+              "n_evidence": 5
+            },
+            "Air extraction means in fluid communication with chamber through base element": {
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "Air extraction means mounted to first side of base element": {
+            "Air extraction means configured to continuously extract air from chamber": {
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "Air extraction means in fluid communication with chamber": {
+            "Seal element attachment surface mounted to peripheral support area of base element": {
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "Air extraction means continuously extracts air from chamber": {
-              "best_score": 0.0,
-              "n_evidence": 0
-            },
-            "Seal element protrudes no greater than its thickness": {
+            "Seal element protrusion distance no greater than seal element thickness": {
               "best_score": 0.0,
               "n_evidence": 0
             },
             "Air extraction means operable in a variable manner": {
               "best_score": 0.0,
               "n_evidence": 0
+            },
+            "Variable operation by fluctuating operating power or reducing power to maintain grip": {
+              "best_score": 0.0,
+              "n_evidence": 0
             }
           },
           "marginal_yield_per_round": [
-            1007,
-            408,
-            143
+            1123,
+            413,
+            235
           ],
           "rounds": 2,
           "llm_calls": 10,
           "combination_view": {
             "primary": null,
             "covers": [
-              "Chamber defined by seal element and base element",
+              "Air extraction means mounted to first side",
               "Loop-shaped vacuum seal element",
-              "Seal element attached to second side of base element",
-              "Seal element protrudes from base element",
-              "Seal element with contact surface and encircling surface",
-              "Vacuum gripper with rigid base element"
+              "Rigid base element with first and second opposite sides",
+              "Seal element attached to second side, protruding away from first side",
+              "Seal element elastically deformable at contact surface",
+              "Seal element with contact surface and encircling surface defining a chamber"
             ],
             "secondaries": [],
             "uncovered_elements": [
-              "Air extraction means continuously extracts air from chamber",
-              "Air extraction means in fluid communication with chamber",
-              "Air extraction means mounted to first side of base element",
+              "Air extraction means configured to continuously extract air from chamber",
+              "Air extraction means in fluid communication with chamber through base element",
               "Air extraction means operable in a variable manner",
-              "Seal element elastically deformable at contact surface",
-              "Seal element protrudes no greater than its thickness"
+              "Seal element attachment surface mounted to peripheral support area of base element",
+              "Seal element protrusion distance no greater than seal element thickness",
+              "Variable operation by fluctuating operating power or reducing power to maintain grip"
             ]
           }
         }
       },
       "citation_only_gold": [
-        "22883737",
-        "25421211",
+        "24664421",
         "29740151",
-        "32054112",
-        "34810482",
-        "39244538",
-        "45554511"
+        "39244538"
       ],
       "agent_only_gold": [
-        "22883737",
-        "24430975",
+        "24262135",
+        "24664421",
         "24840037",
-        "25421211",
         "32054112",
-        "34201690",
-        "6332344",
-        "7782789"
+        "6332344"
       ]
     },
     {
@@ -686,12 +682,12 @@
           }
         },
         "agentic": {
-          "family_recall@100": 0.0612,
-          "reachable_recall@100": 0.0667,
-          "family_recall@500": 0.1837,
-          "reachable_recall@500": 0.2,
-          "family_recall@1000": 0.3469,
-          "reachable_recall@1000": 0.3778,
+          "family_recall@100": 0.0408,
+          "reachable_recall@100": 0.0444,
+          "family_recall@500": 0.2449,
+          "reachable_recall@500": 0.2667,
+          "family_recall@1000": 0.2857,
+          "reachable_recall@1000": 0.3111,
           "earliest_relevant_family": "3104865",
           "earliest_recovered": false,
           "nongold_rate@20": 1.0,
@@ -704,39 +700,37 @@
               "31947993",
               "41380067",
               "6332344",
-              "7865086"
+              "7865086",
+              "7961965"
             ],
             "cpc": [
               "22498676",
               "32054112"
             ],
             "citation": [
-              "22498676",
               "22883737",
               "23289430",
               "24664421",
+              "24840037",
               "25421211",
+              "25479119",
               "27070290",
-              "29740151",
               "31947993",
               "32054112",
               "41380067",
               "45508079",
-              "7865086",
-              "7961965"
+              "7865086"
             ],
             "qbe": [
               "23158645",
               "23289430",
               "24840037",
               "25084279",
-              "25421211",
-              "25644276",
               "3193909",
               "31947993",
               "32054112",
+              "41380067",
               "42115107",
-              "6918853",
               "7865086"
             ],
             "crosslingual": [
@@ -746,30 +740,30 @@
           },
           "claim_element_coverage": {
             "extended frame portable vacuum grip device": {
-              "best_score": 0.054,
-              "n_evidence": 27
+              "best_score": 0.05,
+              "n_evidence": 22
             },
             "rigid unitary support frame": {
-              "best_score": 0.045,
-              "n_evidence": 20
+              "best_score": 0.048,
+              "n_evidence": 30
             },
-            "elongated base with peripheral support wall": {
+            "elongated base with vacuum grip side and support side": {
               "best_score": 0.037,
               "n_evidence": 5
             },
-            "open chamber for vacuum grip connections": {
-              "best_score": 0.047,
+            "peripheral support wall defining open chamber": {
+              "best_score": 0.036,
               "n_evidence": 5
             },
             "multiple independent vacuum grip regions": {
               "best_score": 0.035,
               "n_evidence": 5
             },
-            "plurality of ports through the base": {
-              "best_score": 0.038,
+            "plurality of ports through base": {
+              "best_score": 0.037,
               "n_evidence": 5
             },
-            "ports operatively connected to corresponding pumps": {
+            "ports operatively connected to pumps": {
               "best_score": 0.0,
               "n_evidence": 0
             },
@@ -781,43 +775,43 @@
               "best_score": 0.0,
               "n_evidence": 0
             },
+            "gaskets define independent vacuum grip regions": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
             "support frame for each gasket": {
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "structural reinforcements for stress reduction": {
-              "best_score": 0.0,
-              "n_evidence": 0
-            },
-            "gasket protruding further than support wall": {
+            "structural reinforcements for reducing stresses": {
               "best_score": 0.0,
               "n_evidence": 0
             }
           },
           "marginal_yield_per_round": [
-            1150,
-            413,
-            121
+            1212,
+            419,
+            233
           ],
           "rounds": 2,
           "llm_calls": 15,
           "combination_view": {
             "primary": null,
             "covers": [
-              "elongated base with peripheral support wall",
+              "elongated base with vacuum grip side and support side",
               "extended frame portable vacuum grip device",
               "multiple independent vacuum grip regions",
-              "open chamber for vacuum grip connections",
-              "plurality of ports through the base",
+              "peripheral support wall defining open chamber",
+              "plurality of ports through base",
               "rigid unitary support frame"
             ],
             "secondaries": [],
             "uncovered_elements": [
               "closed-loop gaskets as vacuum seal members",
-              "gasket protruding further than support wall",
+              "gaskets define independent vacuum grip regions",
               "gaskets mate with base and support wall",
-              "ports operatively connected to corresponding pumps",
-              "structural reinforcements for stress reduction",
+              "ports operatively connected to pumps",
+              "structural reinforcements for reducing stresses",
               "support frame for each gasket"
             ]
           }
@@ -827,22 +821,17 @@
         "22883737",
         "24664421",
         "25421211",
+        "25479119",
         "27070290",
-        "29740151",
-        "45508079",
-        "7961965"
+        "45508079"
       ],
       "agent_only_gold": [
         "25421211",
-        "29740151",
         "3193909",
         "31947993",
         "32054112",
-        "34201690",
         "45508079",
-        "45554511",
-        "6332344",
-        "6918853"
+        "6332344"
       ]
     },
     {
@@ -933,103 +922,97 @@
           "reachable_recall@100": 0.0,
           "family_recall@500": 0.0,
           "reachable_recall@500": 0.0,
-          "family_recall@1000": 0.1429,
-          "reachable_recall@1000": 0.1429,
+          "family_recall@1000": 0.0,
+          "reachable_recall@1000": 0.0,
           "earliest_relevant_family": "6480115",
           "earliest_recovered": false,
           "nongold_rate@20": 1.0,
           "channel_gold_contribution": {
-            "citation": [
-              "6495403"
-            ],
             "qbe": [
               "6495403",
-              "7782789",
               "7889498"
             ]
           },
           "claim_element_coverage": {
-            "Portable or handheld vacuum gripper": {
+            "portable or handheld vacuum gripper": {
               "best_score": 0.051,
-              "n_evidence": 23
+              "n_evidence": 22
             },
-            "Rigid base element with first and second sides": {
-              "best_score": 0.043,
-              "n_evidence": 27
+            "rigid base element with first and second sides": {
+              "best_score": 0.049,
+              "n_evidence": 34
             },
-            "Second side of base element having central area and surrounding periphery": {
-              "best_score": 0.035,
-              "n_evidence": 5
-            },
-            "Loop-shaped vacuum sealing element": {
-              "best_score": 0.036,
-              "n_evidence": 5
-            },
-            "Sealing element attached to periphery of base element's second side": {
+            "second side having a central area and a surrounding periphery": {
               "best_score": 0.038,
               "n_evidence": 5
             },
-            "Sealing element having a protruding section extending away from base element": {
-              "best_score": 0.042,
+            "loop-shaped vacuum sealing element": {
+              "best_score": 0.036,
               "n_evidence": 5
             },
-            "Protruding section includes a contact surface for object interaction": {
+            "sealing element attached to periphery of base element's second side": {
+              "best_score": 0.039,
+              "n_evidence": 5
+            },
+            "sealing element with protruding section extending away from base element": {
+              "best_score": 0.04,
+              "n_evidence": 5
+            },
+            "sealing element with contact surface on protruding section for object contact": {
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "Contact surface of sealing element is elastically deformable": {
+            "contact surface elastically deformable to conform to object surface": {
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "Sealing element has inner and outer circumferential surfaces": {
+            "sealing element with inner and outer circumferential surfaces": {
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "Chamber defined by protruding section and central area of base element": {
+            "chamber defined by protruding section and central area of base element": {
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "Air extraction means on first side of base element": {
+            "air extraction means on first side of base element": {
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "Air extraction means in fluid communication with chamber to continuously remove air": {
+            "air extraction means in fluid communication with chamber through base element": {
               "best_score": 0.0,
               "n_evidence": 0
             }
           },
           "marginal_yield_per_round": [
-            1136,
-            401,
-            199
+            1151,
+            415,
+            253
           ],
           "rounds": 2,
           "llm_calls": 20,
           "combination_view": {
             "primary": null,
             "covers": [
-              "Loop-shaped vacuum sealing element",
-              "Portable or handheld vacuum gripper",
-              "Rigid base element with first and second sides",
-              "Sealing element attached to periphery of base element's second side",
-              "Sealing element having a protruding section extending away from base element",
-              "Second side of base element having central area and surrounding periphery"
+              "loop-shaped vacuum sealing element",
+              "portable or handheld vacuum gripper",
+              "rigid base element with first and second sides",
+              "sealing element attached to periphery of base element's second side",
+              "sealing element with protruding section extending away from base element",
+              "second side having a central area and a surrounding periphery"
             ],
             "secondaries": [],
             "uncovered_elements": [
-              "Air extraction means in fluid communication with chamber to continuously remove air",
-              "Air extraction means on first side of base element",
-              "Chamber defined by protruding section and central area of base element",
-              "Contact surface of sealing element is elastically deformable",
-              "Protruding section includes a contact surface for object interaction",
-              "Sealing element has inner and outer circumferential surfaces"
+              "air extraction means in fluid communication with chamber through base element",
+              "air extraction means on first side of base element",
+              "chamber defined by protruding section and central area of base element",
+              "contact surface elastically deformable to conform to object surface",
+              "sealing element with contact surface on protruding section for object contact",
+              "sealing element with inner and outer circumferential surfaces"
             ]
           }
         }
       },
-      "citation_only_gold": [
-        "6495403"
-      ],
+      "citation_only_gold": [],
       "agent_only_gold": [
         "7889498"
       ]
@@ -1132,11 +1115,11 @@
           "claim_element_coverage": {
             "Suction gripping system": {
               "best_score": 0.05,
-              "n_evidence": 21
+              "n_evidence": 18
             },
             "At least two suction elements": {
               "best_score": 0.044,
-              "n_evidence": 30
+              "n_evidence": 20
             },
             "Suction elements arranged on a base carrier": {
               "best_score": 0.048,
@@ -1150,11 +1133,15 @@
               "best_score": 0.041,
               "n_evidence": 5
             },
-            "Suction device applies negative pressure to suction elements": {
-              "best_score": 0.04,
+            "Suction device applies negative pressure to suction element": {
+              "best_score": 0.041,
               "n_evidence": 5
             },
-            "Flow resistance element in at least one suction line": {
+            "Flow resistance element": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Flow resistance element in one of the suction lines": {
               "best_score": 0.0,
               "n_evidence": 0
             },
@@ -1164,9 +1151,9 @@
             }
           },
           "marginal_yield_per_round": [
-            958,
-            399,
-            156
+            959,
+            405,
+            133
           ],
           "rounds": 2,
           "llm_calls": 25,
@@ -1174,7 +1161,7 @@
             "primary": null,
             "covers": [
               "At least two suction elements",
-              "Suction device applies negative pressure to suction elements",
+              "Suction device applies negative pressure to suction element",
               "Suction elements arranged on a base carrier",
               "Suction elements at end of suction lines",
               "Suction gripping system",
@@ -1182,7 +1169,8 @@
             ],
             "secondaries": [],
             "uncovered_elements": [
-              "Flow resistance element in at least one suction line",
+              "Flow resistance element",
+              "Flow resistance element in one of the suction lines",
               "Method for operating a suction gripping system"
             ]
           }
@@ -1291,7 +1279,7 @@
           "reachable_recall@1000": 0.7143,
           "earliest_relevant_family": "7790219",
           "earliest_recovered": true,
-          "nongold_rate@20": 1.0,
+          "nongold_rate@20": 0.95,
           "channel_gold_contribution": {
             "dense": [
               "31984472",
@@ -1299,6 +1287,7 @@
               "43736808"
             ],
             "citation": [
+              "31984472",
               "36011303",
               "43736808",
               "7790219"
@@ -1314,38 +1303,42 @@
           },
           "claim_element_coverage": {
             "Console for vacuum clamping device": {
-              "best_score": 0.044,
-              "n_evidence": 20
+              "best_score": 0.045,
+              "n_evidence": 22
             },
-            "Driven carrier for moving a clamping tool": {
-              "best_score": 0.053,
-              "n_evidence": 26
+            "Driven driver for moving a clamping means": {
+              "best_score": 0.042,
+              "n_evidence": 25
             },
-            "Carrier arranged on a side wall of the console": {
-              "best_score": 0.041,
+            "Driver arranged on a side wall of the console": {
+              "best_score": 0.035,
               "n_evidence": 5
             },
-            "Carrier displaceably guided along the console's longitudinal direction": {
-              "best_score": 0.037,
-              "n_evidence": 5
-            },
-            "Carrier with at least one extendable driver pin": {
+            "Driver displaceably guided along console longitudinal direction": {
               "best_score": 0.04,
               "n_evidence": 5
             },
-            "Driver pin for mechanical coupling of a clamping tool": {
-              "best_score": 0.045,
+            "Driver with at least one extendable driver pin": {
+              "best_score": 0.044,
               "n_evidence": 5
             },
-            "Carrier with fluid supply": {
+            "Driver pin for mechanical coupling of clamping means": {
+              "best_score": 0.037,
+              "n_evidence": 5
+            },
+            "Driver with fluid supply": {
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "Fluid supply for pressurizing a coupled clamping tool": {
+            "Fluid supply for pressurized fluid": {
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "Clamping tool for a vacuum clamping device": {
+            "Fluid supply for clamping means coupled to driver": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Clamping means for vacuum clamping device": {
               "best_score": 0.0,
               "n_evidence": 0
             },
@@ -1355,27 +1348,28 @@
             }
           },
           "marginal_yield_per_round": [
-            1188,
-            532,
-            202
+            1234,
+            501,
+            266
           ],
           "rounds": 2,
           "llm_calls": 30,
           "combination_view": {
             "primary": null,
             "covers": [
-              "Carrier arranged on a side wall of the console",
-              "Carrier displaceably guided along the console's longitudinal direction",
-              "Carrier with at least one extendable driver pin",
               "Console for vacuum clamping device",
-              "Driven carrier for moving a clamping tool",
-              "Driver pin for mechanical coupling of a clamping tool"
+              "Driven driver for moving a clamping means",
+              "Driver arranged on a side wall of the console",
+              "Driver displaceably guided along console longitudinal direction",
+              "Driver pin for mechanical coupling of clamping means",
+              "Driver with at least one extendable driver pin"
             ],
             "secondaries": [],
             "uncovered_elements": [
-              "Carrier with fluid supply",
-              "Clamping tool for a vacuum clamping device",
-              "Fluid supply for pressurizing a coupled clamping tool",
+              "Clamping means for vacuum clamping device",
+              "Driver with fluid supply",
+              "Fluid supply for clamping means coupled to driver",
+              "Fluid supply for pressurized fluid",
               "Vacuum clamping device"
             ]
           }
@@ -1489,7 +1483,7 @@
           },
           "claim_element_coverage": {
             "Vacuum lifting device for stone elements": {
-              "best_score": 0.055,
+              "best_score": 0.056,
               "n_evidence": 13
             },
             "Housing": {
@@ -1530,9 +1524,9 @@
             }
           },
           "marginal_yield_per_round": [
-            1060,
-            292,
-            73
+            1059,
+            326,
+            65
           ],
           "rounds": 2,
           "llm_calls": 35,
@@ -1664,11 +1658,11 @@
           "claim_element_coverage": {
             "Lifting appliance with mast and jib": {
               "best_score": 0.048,
-              "n_evidence": 24
+              "n_evidence": 22
             },
             "Mast fastened to a basic body": {
-              "best_score": 0.047,
-              "n_evidence": 22
+              "best_score": 0.045,
+              "n_evidence": 25
             },
             "Lifting device arranged on jib": {
               "best_score": 0.042,
@@ -1705,8 +1699,8 @@
           },
           "marginal_yield_per_round": [
             940,
-            341,
-            141
+            331,
+            130
           ],
           "rounds": 2,
           "llm_calls": 40,
@@ -1870,13 +1864,13 @@
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "integrated vacuum pump and sensor in handheld device": {
+            "portable suction lifting device": {
               "best_score": 0.0,
               "n_evidence": 0
             }
           },
           "marginal_yield_per_round": [
-            732
+            731
           ],
           "rounds": 0,
           "llm_calls": 41,
@@ -1892,8 +1886,8 @@
             ],
             "secondaries": [],
             "uncovered_elements": [
-              "integrated vacuum pump and sensor in handheld device",
-              "operator warning for grip vacuum loss"
+              "operator warning for grip vacuum loss",
+              "portable suction lifting device"
             ]
           }
         }
@@ -1993,7 +1987,7 @@
           "reachable_recall@1000": 0.3333,
           "earliest_relevant_family": "6480115",
           "earliest_recovered": false,
-          "nongold_rate@20": 0.9,
+          "nongold_rate@20": 0.95,
           "channel_gold_contribution": {
             "dense": [
               "66624664",
@@ -2004,67 +1998,73 @@
               "83194486"
             ],
             "qbe": [
-              "66624664"
+              "66624664",
+              "83194486"
             ]
           },
           "claim_element_coverage": {
-            "vacuum suction gripper": {
-              "best_score": 0.038,
+            "Vacuum suction gripper": {
+              "best_score": 0.037,
               "n_evidence": 5
             },
-            "lifts rough surfaces": {
-              "best_score": 0.038,
+            "Lifting device": {
+              "best_score": 0.043,
               "n_evidence": 5
             },
-            "lifts porous surfaces": {
-              "best_score": 0.036,
-              "n_evidence": 5
-            },
-            "lifts textured tile": {
+            "Rough surfaces": {
               "best_score": 0.046,
               "n_evidence": 5
             },
-            "maintains airflow": {
-              "best_score": 0.039,
+            "Porous surfaces": {
+              "best_score": 0.037,
               "n_evidence": 5
             },
-            "continuously running pump": {
+            "Concrete lifting": {
+              "best_score": 0.045,
+              "n_evidence": 5
+            },
+            "Stone lifting": {
               "best_score": 0.04,
               "n_evidence": 5
             },
-            "concrete lifting": {
+            "Textured tile lifting": {
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "stone lifting": {
+            "Maintaining airflow": {
               "best_score": 0.0,
               "n_evidence": 0
             },
-            "suction lifting device": {
+            "Continuously running pump": {
+              "best_score": 0.0,
+              "n_evidence": 0
+            },
+            "Suction lifting for irregular surfaces": {
               "best_score": 0.0,
               "n_evidence": 0
             }
           },
           "marginal_yield_per_round": [
-            1038
+            1100
           ],
           "rounds": 0,
           "llm_calls": 42,
           "combination_view": {
             "primary": null,
             "covers": [
-              "continuously running pump",
-              "lifts porous surfaces",
-              "lifts rough surfaces",
-              "lifts textured tile",
-              "maintains airflow",
-              "vacuum suction gripper"
+              "Concrete lifting",
+              "Lifting device",
+              "Porous surfaces",
+              "Rough surfaces",
+              "Stone lifting",
+              "Vacuum suction gripper"
             ],
             "secondaries": [],
             "uncovered_elements": [
-              "concrete lifting",
-              "stone lifting",
-              "suction lifting device"
+              "Continuously running pump",
+              "Maintaining airflow",
+              "Suction lifting for irregular surfaces",
+              "Textured tile lifting"
             ]
           }
         }
@@ -2147,8 +2147,12 @@
               "best_score": 0.037,
               "n_evidence": 5
             },
-            "handling sheets or panels": {
-              "best_score": 0.046,
+            "handling sheets": {
+              "best_score": 0.047,
+              "n_evidence": 5
+            },
+            "handling panels": {
+              "best_score": 0.036,
               "n_evidence": 5
             },
             "array of suction cups": {
@@ -2160,12 +2164,12 @@
               "n_evidence": 5
             },
             "suction lifting device": {
-              "best_score": 0.043,
-              "n_evidence": 5
+              "best_score": 0.0,
+              "n_evidence": 0
             }
           },
           "marginal_yield_per_round": [
-            1224
+            1232
           ],
           "rounds": 0,
           "llm_calls": 43,
@@ -2173,14 +2177,16 @@
             "primary": null,
             "covers": [
               "array of suction cups",
-              "handling sheets or panels",
+              "handling panels",
+              "handling sheets",
               "independent vacuum zones",
               "robotic end-of-arm gripper",
-              "suction lifting device",
               "vacuum gripper"
             ],
             "secondaries": [],
-            "uncovered_elements": []
+            "uncovered_elements": [
+              "suction lifting device"
+            ]
           }
         }
       },

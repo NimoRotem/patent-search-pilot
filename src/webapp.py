@@ -226,15 +226,73 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt):
             return json.loads(cache.read_text())
         except Exception:
             pass
-    sysmsg = ("You are a patent prior-art analyst. In 1-2 sentences, say why this reference is "
-              "relevant to the invention and which of the listed elements it most reads on. "
-              'Return JSON {"why": "...", "reads_on": ["element phrase", ...]}. Be concrete and terse.')
-    usr = (f"Invention query: {query[:800]}\n\nInvention elements: {json.dumps(elements)}\n\n"
-           f"Reference: {biblio_txt[:900]}\n\nBest-matching passage from the reference:\n{(matched_txt or '')[:900]}")
-    out = llm.chat_json(sysmsg, usr, max_tokens=400) or {}
-    res = {"why": out.get("why", ""), "reads_on": out.get("reads_on", [])}
+    # Deterministic guard: with no reference text (title-less junk / un-enriched thin doc) an LLM
+    # can only hallucinate. Return an explicit "not verifiable" instead of inventing disclosure.
+    title_abs = re.sub(r"^\S+\s*", "", (biblio_txt or "").strip()).strip(" .")
+    if len(title_abs) < 8 and not (matched_txt or "").strip():
+        res = {"why": "Reference text was not available to verify relevance; treat as unconfirmed.",
+               "reads_on": []}
+        cache.write_text(json.dumps(res))
+        return res
+    # M9 rationale-accuracy tightening: ground STRICTLY in the provided text and make anti-overclaim
+    # DETERMINISTIC — the model must quote the supporting words per element, and code drops any
+    # element whose evidence quote is not actually present in the shown reference text. (Audit:
+    # overclaim+hallucinate was 22%; re-measured after this change.)
+    sysmsg = (
+        "You are a careful patent prior-art analyst. Use ONLY the reference text provided below "
+        "(its title, abstract, and best-matching passage). Do NOT use outside knowledge and do NOT "
+        "assume features not shown in that text. Return JSON with two keys: "
+        '"why" = 1-2 sentences on why the reference is relevant, citing the SPECIFIC overlapping '
+        "wording that actually appears in the reference text (quote or closely paraphrase it), "
+        "HEDGED ('appears to', 'the abstract mentions') on partial matches. Every specific feature "
+        'you name in "why" must be one you can also ground in reads_on — never name a structural '
+        'feature the text does not show. "reads_on" = a list of objects {"element":"<one invention '
+        'element, verbatim from the list>","evidence":"<a short quote copied from the reference text '
+        'that discloses that element>"}. Include an element ONLY if you can quote reference text that '
+        "explicitly discloses it; if the text is just a title or does not clearly show an element, "
+        "OMIT it — an empty reads_on is the correct answer when nothing is clearly disclosed. Prefer "
+        "omitting over guessing.")
+    usr = (f"Invention query: {query[:800]}\n\nInvention elements (candidates — include only the "
+           f"ones the reference text actually discloses, with a quote): {json.dumps(elements)}\n\n"
+           f"Reference (the ONLY evidence you may use): {biblio_txt[:900]}\n\n"
+           f"Best-matching passage from the reference:\n{(matched_txt or '(none)')[:900]}")
+    out = llm.chat_json(sysmsg, usr, max_tokens=500) or {}
+    reads_on = _ground_reads_on(out.get("reads_on") or [], f"{biblio_txt} {matched_txt or ''}")
+    res = {"why": out.get("why", ""), "reads_on": reads_on}
     cache.write_text(json.dumps(res))
     return res
+
+
+_WORD_RE = re.compile(r"[a-z0-9]+")
+
+def _ground_reads_on(raw, ref_text, min_overlap=0.6):
+    """Keep an element only if the model's evidence quote is actually grounded in the reference
+    text we showed it (>=60% of the quote's content words present). Deterministic anti-overclaim:
+    a fabricated or absent-from-text element is dropped even if the model listed it. Tolerates the
+    old string-only shape (kept as-is, since there is no evidence to verify)."""
+    hay = set(_WORD_RE.findall((ref_text or "").lower()))
+    kept = []
+    for item in raw:
+        if isinstance(item, str):
+            if item.strip():
+                kept.append(item.strip())
+            continue
+        if not isinstance(item, dict):
+            continue
+        el = (item.get("element") or "").strip()
+        ev = (item.get("evidence") or "").strip()
+        if not el:
+            continue
+        words = [w for w in _WORD_RE.findall(ev.lower()) if len(w) > 3]
+        if words and sum(w in hay for w in words) >= max(1, min_overlap * len(words)):
+            kept.append(el)          # evidence is grounded in the shown text -> keep
+        # no evidence, or evidence not found in the text -> drop as ungrounded (anti-overclaim)
+    # de-dup preserving order
+    seen = set(); out = []
+    for e in kept:
+        if e.lower() not in seen:
+            seen.add(e.lower()); out.append(e)
+    return out
 
 
 @app.route("/api/ref/<pub>")
