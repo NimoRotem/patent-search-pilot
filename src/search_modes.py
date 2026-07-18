@@ -49,12 +49,13 @@ def citable_where(mode: Mode, s: Subject, pub_alias: str = "p"):
     """
     a = pub_alias
     if mode == Mode.NOVELTY:
-        # Art.54(2) public art (published strictly before EFD) OR
-        # Art.54(3) secret art (own priority/filing before EFD but published on/after EFD).
+        # Art.54(2) public art (published STRICTLY BEFORE EFD) OR Art.54(3) secret art (own
+        # priority/filing STRICTLY BEFORE EFD AND published STRICTLY AFTER EFD). Same-day-as-EFD
+        # publication is NOT prior art (matches classify_basis; conservative, never over-flags).
         frag = (
             f"( {a}.publication_date < %s "
             f"  OR ( COALESCE({a}.earliest_priority_date, {a}.filing_date) < %s "
-            f"       AND {a}.publication_date >= %s ) )"
+            f"       AND {a}.publication_date > %s ) )"
         )
         params = [s.efd, s.efd, s.efd]
         if s.strict_secret_jurisdiction and s.jurisdiction:
@@ -62,7 +63,7 @@ def citable_where(mode: Mode, s: Subject, pub_alias: str = "p"):
             frag = (
                 f"( {a}.publication_date < %s "
                 f"  OR ( COALESCE({a}.earliest_priority_date, {a}.filing_date) < %s "
-                f"       AND {a}.publication_date >= %s AND {a}.country = %s ) )"
+                f"       AND {a}.publication_date > %s AND {a}.country = %s ) )"
             )
             params = [s.efd, s.efd, s.efd, s.jurisdiction]
         return frag, params
@@ -95,18 +96,31 @@ def citable_where(mode: Mode, s: Subject, pub_alias: str = "p"):
 
 def classify_basis(candidate: dict, s: Subject) -> Basis:
     """Given a candidate publication row (dict with publication_date, earliest_priority_date,
-    filing_date), tag WHY it is prior art vs the subject. Drives report caveats."""
+    filing_date), tag WHY it is prior art vs the subject `s`. Drives report caveats.
+
+    DATE RULE (decided M8, conservative + defensible — never OVER-flags prior art):
+      * Public prior art (Art.54(2)): published STRICTLY BEFORE the subject's effective filing
+        date (EFD). A same-day publication is NOT "before", so NOT prior art.
+      * Secret prior art (Art.54(3), novelty-only): the reference's own effective filing date is
+        STRICTLY BEFORE the subject EFD, AND it was published STRICTLY AFTER the subject EFD (an
+        earlier-filed, later-published conflicting application). Same-day publication is excluded.
+      * A reference published EXACTLY on the subject EFD is NOT prior art (may still be
+        priority-interval art if the subject claims priority and the reference sits strictly
+        inside (priority, filing)).
+    Own-family members are handled by the caller (retrieval excludes the subject's own family);
+    by date logic a same-priority family member returns NOT_PRIOR_ART here anyway.
+    """
     pub = candidate.get("publication_date")
     prio = candidate.get("earliest_priority_date") or candidate.get("filing_date")
-    if pub is None:
+    if pub is None or s.efd is None:
         return Basis.NOT_PRIOR_ART
-    if pub < s.efd:
+    if pub < s.efd:                                            # strictly before EFD
         return Basis.PUBLIC_PRIOR_ART
-    if prio is not None and prio < s.efd and pub >= s.efd:
+    if prio is not None and prio < s.efd and pub > s.efd:      # Art.54(3): filed before, pub AFTER
         return Basis.SECRET_PRIOR_ART
-    # priority-interval: subject has a priority date earlier than its own filing; a doc
-    # published in that window matters only if the subject's priority claim is challenged.
-    if s.filing_date and s.efd < s.filing_date and s.efd <= pub < s.filing_date:
+    # priority-interval: subject claims priority (efd < filing); a doc published STRICTLY inside
+    # (priority, filing) matters only if the subject's priority claim is later found invalid.
+    if s.filing_date and s.efd < s.filing_date and s.efd < pub < s.filing_date:
         return Basis.PRIORITY_INTERVAL
     return Basis.NOT_PRIOR_ART
 

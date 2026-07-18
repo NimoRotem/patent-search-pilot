@@ -117,8 +117,9 @@ class CoverageAgent:
         sys = ("You are a patent prior-art search analyst. Break an invention into the DISTINCT "
                "technical elements a prior-art search must separately cover. Return JSON "
                '{"elements":[short phrases]} with 5-12 concise element phrases.')
-        out = llm.chat_json(sys, f"Field: {FIELD}\n\nInvention text:\n{text[:4000]}")
-        els = [e.strip() for e in out.get("elements", []) if isinstance(e, str) and e.strip()]
+        out = llm.chat_json(sys, f"Field: {FIELD}\n\nInvention text:\n{text[:4000]}") or {}
+        raw = out.get("elements") or []                      # key may be present-but-null
+        els = [e.strip() for e in raw if isinstance(e, str) and e.strip()]
         return els[:12] or ["vacuum gripper apparatus"]
 
     def plan(self, element, ledger):
@@ -130,8 +131,8 @@ class CoverageAgent:
                '"de" (a German translation of the element for cross-lingual recall).')
         usr = (f"Field: {FIELD}\nElement: {element}\nAlready-tried synonyms: {tried}\n"
                f"Seed CPC context: { {k: SEED_CPC_TITLES[k] for k in SEED_CPC} }")
-        out = llm.chat_json(sys, usr)
-        ledger.synonyms.setdefault(element, set()).update(out.get("synonyms", []) or [])
+        out = llm.chat_json(sys, usr) or {}                  # never trust the LLM to return a dict
+        ledger.synonyms.setdefault(element, set()).update(out.get("synonyms") or [])
         return out
 
     # ---- one search + ledger update ------------------------------------------------------

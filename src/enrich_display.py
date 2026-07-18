@@ -23,6 +23,19 @@ import enrich  # reuse fetch_details / gp_id / _safe_date
 ENRICHED = DATA / "enriched"
 FIGDIR = DATA / "figures"
 PDFDIR = DATA / "pdfs"
+
+_PUB_RE = re.compile(r"^[A-Za-z]{2}-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$")
+
+
+def _pubkey(pub):
+    """A publication number is the ONLY thing allowed to name a cache file / figure dir.
+    Reject anything that isn't a clean pub number so a caller can never traverse the filesystem
+    (defense-in-depth, independent of the web layer)."""
+    if not pub or len(str(pub)) > 40 or not _PUB_RE.match(str(pub)):
+        raise ValueError(f"unsafe publication key: {pub!r}")
+    return str(pub)
+
+
 for d in (ENRICHED, FIGDIR, PDFDIR):
     d.mkdir(parents=True, exist_ok=True)
 
@@ -64,11 +77,14 @@ def _fig_ext(url):
 
 
 def cache_path(pub):
-    return ENRICHED / f"{pub}.json"
+    return ENRICHED / f"{_pubkey(pub)}.json"
 
 
 def load_cached(pub):
-    p = cache_path(pub)
+    try:
+        p = cache_path(pub)
+    except ValueError:
+        return None                           # unsafe key -> no cache, no traversal
     if p.exists():
         try:
             return json.loads(p.read_text())
@@ -79,6 +95,7 @@ def load_cached(pub):
 
 def _normalize(pub, raw):
     """Turn the raw SerpApi payload into a compact display dict + record local asset paths."""
+    pub = _pubkey(pub)                       # never build a figure dir from an unvalidated key
     imgs = raw.get("images") or []
     figdir = FIGDIR / pub
     figdir.mkdir(parents=True, exist_ok=True)
@@ -154,6 +171,12 @@ def _normalize(pub, raw):
 def enrich_for_display(pub, force=False):
     """Return the compact display dict for a publication, using the on-disk cache when present.
     Downloads drawings + PDF locally on first call. Never blocks on a broken image."""
+    try:
+        _pubkey(pub)                          # reject unsafe keys before any filesystem use
+    except ValueError:
+        return {"pub": str(pub)[:60], "facsimile_digitized": False, "images": [], "n_images": 0,
+                "pdf_local": None, "pdf_url": None, "no_details": True,
+                "espacenet": None, "google_patents": None}
     cached = None if force else load_cached(pub)
     if cached and "_display" in cached:
         return cached["_display"]

@@ -82,13 +82,15 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False):
             return "ready", json.loads(p.read_text())
         except Exception:
             pass
+    # Atomically claim the slug: check-and-set under the lock so two concurrent requests for the
+    # same new query can't both start a generation (the second sees "running" and just polls).
     with _JOB_LOCK:
         job = _JOBS.get(slug)
-    if job and job["status"] == "running":
-        return "running", None
-    if query is None:
-        return "missing", None
-    # subject resolution for gold subjects (pub number)
+        if job and job["status"] == "running":
+            return "running", None
+        if query is None:
+            return "missing", None
+        _JOBS[slug] = {"status": "running", "msg": "Queued…", "t0": time.time()}
     subj_obj = _subject_obj(subject)
     if regen:
         p.unlink(missing_ok=True)
@@ -297,16 +299,30 @@ def _query_vec(slug, q):
     return _QCACHE[slug]
 
 
+# A publication number is like "US-11207792-B2"; a figure filename like "003.png". Validate both
+# BEFORE any path use — defense-in-depth against traversal on top of Flask's safe_join.
+_PUB_RE = re.compile(r"^[A-Za-z]{2}-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$")
+_FNAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+def _safe_pub(pub):
+    return bool(pub) and len(pub) <= 40 and bool(_PUB_RE.match(pub))
+
+
 @app.route("/figures/<pub>/<path:fname>")
 def figures(pub, fname):
+    if not _safe_pub(pub) or not _FNAME_RE.match(fname):   # reject traversal / odd names early
+        abort(404)
     d = enrich_display.FIGDIR / pub
     if not (d / fname).exists():
         abort(404)
-    return send_from_directory(d, fname)
+    return send_from_directory(d, fname)                    # Flask safe_join is the second guard
 
 
 @app.route("/pdf/<pub>")
 def pdf(pub):
+    if not _safe_pub(pub):
+        abort(404)
     f = enrich_display.PDFDIR / f"{pub}.pdf"
     if f.exists():
         return send_from_directory(enrich_display.PDFDIR, f"{pub}.pdf",

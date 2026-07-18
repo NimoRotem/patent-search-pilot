@@ -32,16 +32,26 @@ def available():
 
 
 def rerank(query: str, passages: list[str], top_k=None):
-    """Return list of (index, score) sorted desc. Fallback: identity order, score 0."""
+    """Return list of (index, score) sorted desc. Best-effort: reranking only re-orders the head,
+    so ANY failure (no model, empty input, tokenizer 'Already borrowed' under contention) falls
+    back to identity order rather than crashing the caller (a report generation)."""
+    if not passages:                              # nothing to rerank
+        return []
     m = _load()
+    identity = [(i, 0.0) for i in range(len(passages))]
     if m is None:
-        out = [(i, 0.0) for i in range(len(passages))]
+        out = identity
     else:
-        # cap query+passage length -> bge-reranker inference cost scales with sequence length;
-        # 256 tokens is plenty for claim/abstract relevance on CPU.
-        pairs = [[query[:600], (p or "")[:600]] for p in passages]
-        scores = m.compute_score(pairs, normalize=True, batch_size=16, max_length=256)
-        if not isinstance(scores, list):
-            scores = [scores]
-        out = sorted(enumerate(scores), key=lambda t: t[1], reverse=True)
+        try:
+            # cap length -> bge-reranker cost scales with sequence length; 256 tokens is plenty.
+            pairs = [[(query or "")[:600], (p or "")[:600]] for p in passages]
+            scores = m.compute_score(pairs, normalize=True, batch_size=16, max_length=256)
+            if not isinstance(scores, list):
+                scores = [scores]
+            if len(scores) != len(passages):      # defensive: never trust the shape
+                return identity[:top_k] if top_k else identity
+            out = sorted(enumerate(scores), key=lambda t: t[1], reverse=True)
+        except Exception as e:                    # noqa — reranking is non-fatal
+            print(f"[rerank] failed ({type(e).__name__}: {str(e)[:60]}); identity order")
+            out = identity
     return out[:top_k] if top_k else out

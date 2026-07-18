@@ -291,6 +291,8 @@ class Retriever:
                cpc_hints=None, assignee_hints=None, phrases=None, alt_query_vecs=None,
                do_rerank=None, topk=1000):
         mode = Mode(mode) if isinstance(mode, str) else mode
+        if not query or not query.strip():          # degenerate: an empty query has no signal
+            return Result(ranked_pubs=[], family_ranked=[], channel_hits={}, query=query or "")
         qvec = embed.embed_query(query[:8000], 768)
         ch = {}
         preset = {

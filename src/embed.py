@@ -54,7 +54,11 @@ def embed_texts(texts, dim, task_type="RETRIEVAL_DOCUMENT"):
 
 
 def embed_query(text, dim=EMBED_DIM):
-    """Query-side embedding uses the RETRIEVAL_QUERY task type (asymmetric retrieval)."""
+    """Query-side embedding uses the RETRIEVAL_QUERY task type (asymmetric retrieval).
+    An empty/whitespace query would make the embedding API error; substitute a neutral token so
+    the call never crashes (callers should short-circuit empty queries anyway)."""
+    if not text or not str(text).strip():
+        text = "patent"
     return embed_texts([text], dim, task_type="RETRIEVAL_QUERY")[0]
 
 
