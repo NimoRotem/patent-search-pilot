@@ -78,17 +78,48 @@ def report_path(slug):
 
 
 # ---- background report generation ----------------------------------------------------------
+def _set_job(slug, **kw):
+    with _JOB_LOCK:
+        j = _JOBS.get(slug, {})
+        j.update(kw)
+        _JOBS[slug] = j
+
+
+def _write_report(slug, rep):
+    report_path(slug).write_text(json.dumps(rep, default=str, indent=1))
+    (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)   # force the view to rebuild from this
+
+
 def _generate(slug, query, subject, mode):
     with _JOB_LOCK:
         _JOBS[slug] = {"status": "running", "msg": "Queued…", "t0": time.time()}
     try:
         with _GEN_LOCK:                          # serialize: shared reranker/genai aren't thread-safe
-            with _JOB_LOCK:
-                _JOBS[slug]["msg"] = "Running coverage-ledger agent…"
+            _set_job(slug, msg="Decomposing the invention into technical elements…")
             A = CoverageAgent(retriever())
+
+            def on_event(stage, data):
+                # Stream progress + a first render. 'partial' writes an un-reranked snapshot (cards
+                # only) the moment the seed search returns, so the user sees results in seconds.
+                if stage == "elements":
+                    _set_job(slug, msg=f"Decomposed into {data['n']} elements — searching all 8 channels…")
+                elif stage == "partial":
+                    rep = data["report"]; rep["partial"] = True
+                    _write_report(slug, rep)
+                    _set_job(slug, status="partial",
+                             msg="Showing the first matches — refining (more channels, rounds, claim chart)…")
+                elif stage == "seeded":
+                    _set_job(slug, msg=f"{data['families']} candidate families — expanding via citations, families, cross-lingual…")
+                elif stage == "round":
+                    _set_job(slug, msg=f"Refinement round {data['round']}: {data['families']} families — reranking…")
+                elif stage == "reranking":
+                    _set_job(slug, msg=f"Reranking {data['families']} families + grounding the claim chart…")
+
             rep = A.run(query, subject=subject, mode=mode,
-                        cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True))
-        report_path(slug).write_text(json.dumps(rep, default=str, indent=1))
+                        cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True),
+                        on_event=on_event)
+        rep["partial"] = False
+        _write_report(slug, rep)
         with _JOB_LOCK:
             _JOBS[slug] = {"status": "done", "msg": "done"}
     except Exception as e:
@@ -220,15 +251,20 @@ def report(slug):
 
 
 def _build_view_cached(slug, rep, regen=False):
-    """Cache the built view (query embed + DB resolution) to <slug>.view.json for instant reloads."""
+    """Cache the built view (query embed + DB resolution) to <slug>.view.json for instant reloads.
+    A partial/streaming snapshot is NEVER cached (it would shadow the final report) and is flagged
+    so the report page keeps polling and upgrades itself when the full run finishes."""
+    partial = bool(rep.get("partial"))
     vp = REPORTS / f"{slug}.view.json"
-    if vp.exists() and not regen:
+    if vp.exists() and not regen and not partial:
         try:
             return json.loads(vp.read_text())
         except Exception:
             pass
     view = webview.build_view(rep, top_n=25)
-    vp.write_text(json.dumps(view, default=str))
+    view["partial"] = partial
+    if not partial:
+        vp.write_text(json.dumps(view, default=str))
     return view
 
 
@@ -236,8 +272,12 @@ def _build_view_cached(slug, rep, regen=False):
 def status(slug):
     with _JOB_LOCK:
         job = _JOBS.get(slug, {})
-    ready = report_path(slug).exists() and (not job or job.get("status") == "done")
-    return jsonify({"ready": ready, "status": job.get("status", "unknown"),
+    st = job.get("status", "unknown")
+    exists = report_path(slug).exists()
+    # 'partial' is renderable (first cards streamed); 'done' is the final report. A cached report on
+    # disk with no live job is treated as done.
+    ready = exists and (st in ("done", "partial") or not job)
+    return jsonify({"ready": ready, "status": st, "done": st == "done" or (exists and not job),
                     "msg": job.get("msg", "")})
 
 

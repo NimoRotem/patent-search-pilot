@@ -184,20 +184,36 @@ class CoverageAgent:
         return {"pub": row["publication_number"], "coord": row["coord"], "kind": row["kind"], "basis": basis}
 
     # ---- main loop -----------------------------------------------------------------------
-    def run(self, query_text, subject=None, mode="novelty", cfg: AgentConfig = None):
+    def run(self, query_text, subject=None, mode="novelty", cfg: AgentConfig = None, on_event=None):
+        """`on_event(stage, data)` (optional) streams progress to the UI: 'elements' (decomposed),
+        'partial' (a fast, un-reranked snapshot after the seed search — the first cards the user
+        sees, in ~a few seconds), and 'round' (per refinement round). It must never raise."""
         cfg = cfg or AgentConfig(mode=mode)
         self._ground = cfg.ground
         m = Mode(mode)
+
+        def emit(stage, data):
+            if on_event:
+                try:
+                    on_event(stage, data)
+                except Exception:
+                    pass
+
         elements = self.decompose(query_text, subject)
         ledger = CoverageLedger(elements)
         ledger.languages.add("en")
+        emit("elements", {"n": len(elements), "elements": elements})
 
-        # seed round: broad search on the whole invention (the vector-equivalent backbone)
+        # seed round: broad search on the whole invention (the vector-equivalent backbone). This one
+        # search already yields strong results (the eval shows seed/vector ~= agentic at k=100), so
+        # stream it as the first partial render before the slower element+round refinement runs.
         self._run_search(query_text, subject, m, ledger, element=None, is_seed=True)
+        emit("partial", {"report": self.report(query_text, subject, m, ledger, rounds=0, rerank=False)})
         # attribute seed hits to elements too (cap the per-element seed searches for runtime)
         for el in elements[:6]:
             self._run_search(el, subject, m, ledger, element=el)
         ledger.note_round(len(ledger.families_seen))
+        emit("seeded", {"families": len(ledger.families_seen)})
 
         rnd = 0
         while not ledger.should_stop(cfg.llm_call_budget - llm.usage()["calls"],
@@ -219,23 +235,28 @@ class CoverageAgent:
                                      cpc=plan.get("cpc"), phrases=plan.get("phrases"),
                                      assignees=plan.get("assignees"), alt_vecs=alt_vecs)
             ledger.note_round(len(ledger.families_seen) - before)
+            emit("round", {"round": rnd, "families": len(ledger.families_seen)})
 
+        emit("reranking", {"families": len(ledger.families_seen)})
         return self.report(query_text, subject, m, ledger, rounds=rnd)
 
     # ---- report --------------------------------------------------------------------------
-    def _final_rank(self, query_text, ledger, top=25):
+    def _final_rank(self, query_text, ledger, top=25, rerank=True):
         """Rank by final_score (seed backbone + centrality/citation promote), then cross-encoder
         rerank the head only (reranking within the head can't change recall@100 — the top-100
-        set is fixed). (spec §4 + §6 step 4)"""
+        set is fixed). (spec §4 + §6 step 4). `rerank=False` skips the (slow, CPU) cross-encoder —
+        used for the fast progressive/partial snapshot that streams to the UI before the full run."""
         ordered = sorted(ledger.family_score, key=ledger.final_score, reverse=True)
+        if not rerank:
+            return ordered
         head = ordered[:top]
         fam = [(fk, ledger.family_pid.get(fk), ledger.final_score(fk), {}) for fk in head]
         reranked = self.r.rerank_families(query_text, fam, top=min(25, len(fam)))
         ranked = [fk for fk, _, _, _ in reranked] + ordered[top:]
         return ranked
 
-    def report(self, query_text, subject, mode, ledger: CoverageLedger, rounds):
-        ranked_families = self._final_rank(query_text, ledger)
+    def report(self, query_text, subject, mode, ledger: CoverageLedger, rounds, rerank=True):
+        ranked_families = self._final_rank(query_text, ledger, rerank=rerank)
         # combinational (inventive-step) view: which reference supplies which element
         cb = CombinationBuilder(ledger.elements)
         element_report = {}

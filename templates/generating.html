@@ -16,30 +16,27 @@
 {% block scripts %}
 <script>
 const slug = {{ slug|tojson }};
+const BASE = (window.APP_BASE || '');
 const t0 = Date.now();
-const STAGES = [
-  "Decomposing the invention into technical elements…",
-  "Searching dense + lexical + CPC channels for each element…",
-  "Expanding via citations, families and cross-lingual (EN/DE)…",
-  "Fusing channels (weighted RRF) and reranking candidates…",
-  "Grounding evidence + building the element × reference claim chart…",
-];
+// bar advances with elapsed time as a gentle heartbeat; the STAGE text is the REAL server message.
 function tick(){
   const s = Math.floor((Date.now()-t0)/1000);
   document.getElementById('elapsed').textContent = s+'s elapsed';
-  // rough staged progress over ~3 min
-  const frac = Math.min(0.95, s/180);
+  const frac = Math.min(0.9, s/45);   // first cards usually stream within ~this window
   document.getElementById('bar').style.width = (frac*100).toFixed(0)+'%';
-  document.getElementById('stage').textContent = STAGES[Math.min(STAGES.length-1, Math.floor(frac*STAGES.length))];
 }
 setInterval(tick, 500); tick();
 async function poll(){
   try{
-    const r = await fetch('/status/'+slug); const j = await r.json();
-    if(j.ready){ document.getElementById('bar').style.width='100%'; location.href='/report/'+slug; return; }
+    const r = await fetch(BASE+'/status/'+slug); const j = await r.json();
+    if(j.msg){ document.getElementById('stage').textContent = j.msg; }
+    if(j.ready){   // 'partial' (first cards) or 'done' — go straight to the report, which keeps refining
+      document.getElementById('bar').style.width='100%';
+      location.href = BASE+'/report/'+slug; return;
+    }
     if(j.status==='error'){ document.getElementById('stage').textContent='Error: '+j.msg; return; }
   }catch(e){}
-  setTimeout(poll, 2500);
+  setTimeout(poll, 1500);
 }
 poll();
 </script>

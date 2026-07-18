@@ -3,6 +3,13 @@
 {% block body %}
 <div class="wrap">
 
+  {% if v.partial %}
+  <div class="panel" id="refiningBanner" style="border-left:4px solid #f0a500;background:#fff8e6;display:flex;align-items:center;gap:12px">
+    <div class="spin" style="width:20px;height:20px;flex:0 0 auto"></div>
+    <div><b>Showing the first matches.</b> <span class="small muted" id="refiningMsg">The agent is refining — expanding channels, running rounds and building the claim chart. This page updates automatically.</span></div>
+  </div>
+  {% endif %}
+
   <!-- A. SUMMARY BAR -->
   <div class="panel summary">
     <h2>{{ v.title }}</h2>
@@ -216,5 +223,22 @@
 window.SLUG = {{ v.slug|tojson }};
 window.QUERY = {{ v.query|tojson }};
 window.ELEMENTS = {{ v.elements|tojson }};
+{% if v.partial %}
+// This is a streamed partial (first cards). Poll the job; when the full run finishes, reload once
+// to swap in the reranked order, grounded evidence and the populated claim chart.
+(function(){
+  const B = (window.APP_BASE || '');
+  async function poll(){
+    try{
+      const j = await (await fetch(B+'/status/'+window.SLUG)).json();
+      const m = document.getElementById('refiningMsg');
+      if(m && j.msg && j.msg!=='done') m.textContent = j.msg;
+      if(j.done){ location.reload(); return; }
+    }catch(e){}
+    setTimeout(poll, 2000);
+  }
+  setTimeout(poll, 2000);
+})();
+{% endif %}
 </script>
 {% endblock %}

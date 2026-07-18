@@ -53,13 +53,30 @@ def embed_texts(texts, dim, task_type="RETRIEVAL_DOCUMENT"):
     return [d.embedding for d in c.embeddings.create(model=EMBED_MODEL, input=list(texts), dimensions=dim).data]
 
 
+_QCACHE = {}                       # (text, dim) -> vector; query embeds are deterministic and repeat
+_QCACHE_LOCK = threading.Lock()    # a lot within one report (the seed query is embedded for the
+_QCACHE_MAX = 8192                 # search AND for grounding; elements re-embed across rounds), so
+                                   # memoize to cut redundant Vertex round-trips (the bottleneck).
+
+
 def embed_query(text, dim=EMBED_DIM):
     """Query-side embedding uses the RETRIEVAL_QUERY task type (asymmetric retrieval).
     An empty/whitespace query would make the embedding API error; substitute a neutral token so
-    the call never crashes (callers should short-circuit empty queries anyway)."""
+    the call never crashes (callers should short-circuit empty queries anyway). Memoized in-process
+    so the same query text isn't re-embedded (search + grounding + cross-round repeats)."""
     if not text or not str(text).strip():
         text = "patent"
-    return embed_texts([text], dim, task_type="RETRIEVAL_QUERY")[0]
+    key = (text, dim)
+    with _QCACHE_LOCK:
+        hit = _QCACHE.get(key)
+    if hit is not None:
+        return hit
+    v = embed_texts([text], dim, task_type="RETRIEVAL_QUERY")[0]
+    with _QCACHE_LOCK:
+        if len(_QCACHE) >= _QCACHE_MAX:
+            _QCACHE.clear()
+        _QCACHE[key] = v
+    return v
 
 
 def _vec(e):
