@@ -197,6 +197,18 @@ def build_claim_chart(report, max_cols=8):
     return {"columns": columns, "rows": rows, "combination_view": cv}
 
 
+def _relevancy(cosine):
+    """Map the best-matching passage's cosine similarity to a 0-100 relevancy score for display
+    (like a search-engine relevancy). Calibrated so strong semantic matches land in the 80-95 band
+    and weak ones in the 40s — the raw cosine is kept on the card too (match_score)."""
+    try:
+        c = float(cosine or 0)
+    except (TypeError, ValueError):
+        c = 0.0
+    pct = (c - 0.35) / (0.90 - 0.35) * 100.0        # 0.90 cos -> ~100, 0.35 -> 0
+    return int(max(1, min(99, round(pct))))
+
+
 def _coord_str(coord):
     if not coord:
         return ""
@@ -322,6 +334,7 @@ def build_view(report, top_n=25):
             "rank": rank, "family": fam, **b,
             "match_score": round(m["score"], 3), "match_coord": _coord_str(m["coord"]),
             "match_kind": m["kind"], "basis": basis,
+            "relevancy": _relevancy(m["score"]),         # 0-100 best-passage semantic match
             "channels": sorted(fam_channels.get(fam, [])),
             "covers_elements": covered, "n_covers": len(covered),
             "has_local_claims": rep["n_claims"] > 0,

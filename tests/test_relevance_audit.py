@@ -119,3 +119,19 @@ def test_ref_text_falls_back_to_chunk_body_for_old_patent():
 def test_ref_text_handles_missing_pub_gracefully():
     t = audit.ref_text("US-DOES-NOT-EXIST-9999-A")
     assert t["snippet"] == ""                           # no crash, empty snippet
+
+
+# ---- UI: relevancy score + inline-card data ------------------------------------------------
+def test_relevancy_is_monotonic_and_bounded():
+    assert webview._relevancy(0.90) > webview._relevancy(0.75) > webview._relevancy(0.55)
+    for c in (-1, 0.0, 0.5, 1.0, 2):                     # never crashes / out of range
+        assert 1 <= webview._relevancy(c) <= 99
+
+
+def test_cards_carry_relevancy_and_abstract(gold_slug):
+    rep = json.loads((webapp.REPORTS / f"{gold_slug}.json").read_text())
+    v = webview.build_view(rep, top_n=10)
+    assert v["cards"]
+    for c in v["cards"]:
+        assert 1 <= c["relevancy"] <= 99                # a display score on every card
+        assert "abstract" in c                          # inline-abstract field present (may be None)

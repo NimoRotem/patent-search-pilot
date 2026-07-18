@@ -109,13 +109,13 @@
   <div class="cards" id="cards">
     {% for c in v.cards %}
     <div class="refcard" id="ref-{{ c.pub }}" data-pub="{{ c.pub }}"
-         data-rank="{{ c.rank }}" data-score="{{ c.match_score }}"
+         data-rank="{{ c.rank }}" data-score="{{ c.match_score }}" data-rel="{{ c.relevancy }}"
          data-date="{{ c.publication_date or '' }}" data-juris="{{ c.country or '' }}"
          data-basis="{{ c.basis }}" data-covers="{{ c.covers_elements|join('||') }}"
          data-channels="{{ c.channels|join(',') }}" data-ncovers="{{ c.n_covers }}"
          data-flag="{{ c.triage }}">
-      <div class="refhead" onclick="toggleCard(this)">
-        <div class="selcol" onclick="event.stopPropagation()">
+      <div class="refhead">
+        <div class="selcol">
           <input type="checkbox" class="selbox" value="{{ c.pub }}" onchange="updateBar()" title="Select for export/compare">
           <div class="flagpills" data-pub="{{ c.pub }}">
             <span class="fp fp-relevant{% if c.triage=='relevant' %} on{% endif %}" onclick="setFlag('{{ c.pub }}','relevant',this)" title="Relevant">✓</span>
@@ -123,44 +123,65 @@
             <span class="fp fp-not{% if c.triage=='not' %} on{% endif %}" onclick="setFlag('{{ c.pub }}','not',this)" title="Not relevant">✕</span>
           </div>
         </div>
-        <div class="rank">#{{ c.rank }}</div>
         <div class="refmain">
-          <div class="reftitle">{{ c.flag }} {{ c.title or '(untitled)' }}</div>
+          <div class="reftitle"><span class="rank">#{{ c.rank }}</span> {{ c.flag }} {{ c.title or '(untitled)' }}</div>
           <div class="refmeta">
-            <a class="pn" href="https://patents.google.com/patent/{{ c.pub.replace('-','') }}/en" target="_blank" onclick="event.stopPropagation()">{{ c.pub }}</a>
-            <a href="{{ request.script_root }}/pdf/{{ c.pub }}" target="_blank" onclick="event.stopPropagation()" class="pdflink" data-pub="{{ c.pub }}">📄 PDF</a>
+            <a class="pn" href="https://patents.google.com/patent/{{ c.pub.replace('-','') }}/en" target="_blank">{{ c.pub }}</a>
             {% if c.priority_date %}<span>prio {{ c.priority_date }}</span>{% endif %}
             {% if c.publication_date %}<span>pub {{ c.publication_date }}</span>{% endif %}
             <span>fam {{ c.family_id }}</span>
           </div>
+          {% if c.assignees or c.inventors %}
           <div class="refsub">
             {% if c.assignees %}<b>{{ c.assignees|join('; ') }}</b>{% endif %}
             {% if c.inventors %} · inv. {{ c.inventors[:3]|join(', ') }}{% endif %}
-          </div>
-          <div style="margin-top:6px">
+          </div>{% endif %}
+          <div class="badges">
             {% if c.basis=='public_prior_art' %}<span class="badge b-public">◆ public prior art</span>
             {% elif c.basis=='secret_prior_art' %}<span class="badge b-secret">🔒 secret prior art</span>
             {% elif c.basis=='priority_interval' %}<span class="badge b-interval">priority interval</span>
             {% else %}<span class="badge b-na">not-dated</span>{% endif %}
             {% for ch in c.channels %}<span class="chip ch">{{ ch }}</span>{% endfor %}
-            {% for cp in c.cpc %}<span class="chip cpc">{{ cp.code }}</span>{% endfor %}
+            {% for cp in c.cpc[:6] %}<span class="chip cpc">{{ cp.code }}</span>{% endfor %}
           </div>
           {% if c.covers_elements %}
-          <div style="margin-top:5px">covers:
-            {% for el in c.covers_elements %}<span class="chip el" onclick="event.stopPropagation()">{{ el[:34] }}</span>{% endfor %}
+          <div class="covers"><span class="muted small">covers {{ c.n_covers }}</span>
+            {% for el in c.covers_elements %}<span class="chip el">{{ el[:32] }}</span>{% endfor %}
           </div>{% endif %}
-          <div class="noterow" onclick="event.stopPropagation()">
-            <input type="text" class="noteinput" placeholder="+ add attorney note…" value="{{ c.note }}"
-                   onchange="saveNote('{{ c.pub }}', this.value)">
-          </div>
         </div>
-        <div class="refright">
-          <div class="score">{{ '%.3f'|format(c.match_score) }}<span>match</span></div>
-          {% if c.match_coord %}<div class="small muted">{{ c.match_kind }} · {{ c.match_coord }}</div>{% endif %}
-          <div class="caret">▶</div>
+        <div class="relbox r{{ (c.relevancy // 20) }}" title="Relevancy — best-passage semantic match ({{ '%.3f'|format(c.match_score) }} cosine{% if c.match_coord %} · {{ c.match_kind }} {{ c.match_coord }}{% endif %})">
+          <div class="relnum">{{ c.relevancy }}</div>
+          <div class="rellab">relevancy</div>
         </div>
       </div>
-      <div class="refbody" data-loaded="0"></div>
+
+      <!-- inline tabbed reference data (all data on the card; other tabs load on first open) -->
+      <div class="ptabs">
+        <div class="ptabstrip">
+          <button class="ptab active" data-t="abstract" onclick="ptab(this)">Abstract</button>
+          <button class="ptab" data-t="why" onclick="ptab(this)">Why relevant</button>
+          <button class="ptab" data-t="claims" onclick="ptab(this)">Claims</button>
+          <button class="ptab" data-t="paras" onclick="ptab(this)">Description</button>
+          <button class="ptab" data-t="figs" onclick="ptab(this)">Figures</button>
+          <button class="ptab" data-t="cites" onclick="ptab(this)">Citations</button>
+          <span class="grow"></span>
+          <a class="ptab pdf" href="{{ request.script_root }}/pdf/{{ c.pub }}" target="_blank" data-pub="{{ c.pub }}">📄 PDF</a>
+        </div>
+        <div class="ppanel collapsed" data-loaded="0">
+          <div class="ppane active" data-t="abstract">{% if c.abstract %}{{ c.abstract }}{% else %}<span class="muted">No abstract stored for this document — open the PDF / Google Patents.</span>{% endif %}</div>
+          <div class="ppane" data-t="why"></div>
+          <div class="ppane" data-t="claims"></div>
+          <div class="ppane" data-t="paras"></div>
+          <div class="ppane" data-t="figs"></div>
+          <div class="ppane" data-t="cites"></div>
+        </div>
+        <button class="showall" onclick="toggleExpand(this)">Show all ▾</button>
+      </div>
+
+      <div class="noterow">
+        <input type="text" class="noteinput" placeholder="+ add attorney note…" value="{{ c.note }}"
+               onchange="saveNote('{{ c.pub }}', this.value)">
+      </div>
     </div>
     {% endfor %}
   </div>

@@ -1,5 +1,6 @@
-// Results page interactions: lazy card enrichment, tabs, lightbox, filters/sort, highlighting.
-const B = (typeof window!=='undefined' && window.APP_BASE) || '';  // proxy path prefix (M9: rotem.ai/patents-data)
+// Results page interactions: inline tabbed cards (all data on the card), lazy per-card
+// enrichment, lightbox, filters/sort, query highlighting.
+const B = (typeof window!=='undefined' && window.APP_BASE) || '';  // proxy path prefix (rotem.ai/patents-data)
 
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
@@ -25,137 +26,118 @@ function hl(text){
   return out;
 }
 
-// ---- card expand + lazy enrichment ---------------------------------------------------------
-async function toggleCard(head){
-  const card = head.closest('.refcard');
-  card.classList.toggle('open');
-  const body = card.querySelector('.refbody');
-  if(card.classList.contains('open') && body.dataset.loaded==='0'){
-    body.dataset.loaded='1';
-    body.innerHTML = '<div class="why load">Loading drawings, PDF & sections…</div>';
-    try{
-      const r = await fetch(B+'/api/ref/'+encodeURIComponent(card.dataset.pub)+'?slug='+encodeURIComponent(window.SLUG));
-      const j = await r.json();
-      body.innerHTML = renderBody(j);
-      wireTabs(body);
-      const mount = body.querySelector('.cgraph');
-      if(mount) loadGraph(card.dataset.pub, mount);
-    }catch(e){ body.innerHTML = '<div class="nodig">Could not load this reference. '+esc(String(e))+'</div>'; }
-  }
+// ---- inline tabbed cards: switch tabs, lazy-load the reference's data once per card ----------
+function pane(card, t){ return card.querySelector('.ppane[data-t="'+t+'"]'); }
+
+async function ptab(btn){
+  const card = btn.closest('.refcard');
+  const t = btn.dataset.t;
+  card.querySelectorAll('.ptab').forEach(b=>b.classList.toggle('active', b===btn));
+  card.querySelectorAll('.ppane').forEach(p=>p.classList.toggle('active', p.dataset.t===t));
+  if(t !== 'abstract') await ensureLoaded(card, t);
+  if(t === 'cites'){ const g = card.querySelector('.cgraph'); if(g && g.dataset.loaded!=='1'){ g.dataset.loaded='1'; loadGraph(card.dataset.pub, g); } }
 }
 
-function renderBody(j){
-  const d = j.display||{}, s = j.sections||{}, m = j.matched||{};
-  let h = '';
-  // AI rationale
-  if(j.rationale && j.rationale.why){
-    h += '<div class="why"><b>Why relevant:</b> '+esc(j.rationale.why);
-    if(j.rationale.reads_on && j.rationale.reads_on.length)
-      h += '<div style="margin-top:5px" class="small muted">reads on: '+j.rationale.reads_on.map(esc).join(' · ')+'</div>';
-    h += '</div>';
-  }
-  // drawings
-  h += '<div class="draws">';
+async function ensureLoaded(card, focusTab){
+  const panel = card.querySelector('.ppanel');
+  if(panel.dataset.loaded === '1' || panel.dataset.loaded === 'loading') return;
+  panel.dataset.loaded = 'loading';
+  const ft = pane(card, focusTab || 'why');
+  if(ft && !ft.innerHTML.trim()) ft.innerHTML = '<span class="muted">Loading claims, description, figures & AI opinion…</span>';
+  try{
+    const j = await (await fetch(B+'/api/ref/'+encodeURIComponent(card.dataset.pub)+'?slug='+encodeURIComponent(window.SLUG))).json();
+    fillPanes(card, j);
+    panel.dataset.loaded = '1';
+    card.querySelectorAll('.ppane').forEach(p=>p.classList.toggle('active', p.dataset.t===focusTab));
+  }catch(e){ panel.dataset.loaded='0'; if(ft) ft.innerHTML = '<span class="nodig">Could not load this reference. '+esc(String(e))+'</span>'; }
+}
+
+function setCount(card, t, n){ const b = card.querySelector('.ptab[data-t="'+t+'"]'); if(b && n) b.dataset.n = n; }
+
+function fillPanes(card, j){
+  const d = j.display||{}, s = j.sections||{}, m = j.matched||{}, mc = (m && m.coord_raw)||{};
+  pane(card,'why').innerHTML = renderWhy(j.rationale);
+  const claims = s.claims||[];       setCount(card,'claims', claims.length);
+  pane(card,'claims').innerHTML = renderClaims(claims, mc);
+  const paras = s.paragraphs||[];    setCount(card,'paras', paras.length);
+  pane(card,'paras').innerHTML = renderParas(paras, mc);
+  const figs = s.figures||[];        setCount(card,'figs', (d.images||[]).length || figs.length);
+  pane(card,'figs').innerHTML = renderFigs(d, figs);
+  const cites = s.citations||[];     setCount(card,'cites', cites.length);
+  pane(card,'cites').innerHTML = renderCites(cites) + '<div class="cgraph" data-pub="'+esc(d.pub)+'"></div>';
+  if(d.abstract){ const ap = pane(card,'abstract'); if(ap) ap.innerHTML = hl(d.abstract); }
+}
+
+function renderWhy(r){
+  if(!r || !r.why) return '<span class="muted">No AI opinion generated for this reference yet.</span>';
+  let h = '<div class="why">'+esc(r.why)+'</div>';
+  if(r.reads_on && r.reads_on.length)
+    h += '<div class="readson"><span class="muted small">reads on</span> '+r.reads_on.map(x=>'<span class="chip el">'+esc(x)+'</span>').join(' ')+'</div>';
+  return h;
+}
+function renderClaims(claims, mc){
+  if(!claims.length) return '<span class="muted">Claims not ingested for this document — see the PDF / Google Patents.</span>';
+  return claims.map(c=>{
+    const matched = (mc.claim_no!=null && String(mc.claim_no)===String(c.claim_no));
+    return '<div class="claim'+(c.independent?' indep':'')+(matched?' matched':'')+'">'
+      + '<span class="cn">'+(c.claim_no!=null?c.claim_no+'.':'')+'</span>'
+      + (c.independent?'<span class="ind">INDEP</span>':'')
+      + (matched?' <span class="ind mm">◀ best match</span>':'')
+      + '<div class="ctext">'+hl(c.resolved_text||c.text)+'</div></div>';
+  }).join('');
+}
+function renderParas(paras, mc){
+  if(!paras.length) return '<span class="muted">Description paragraphs not ingested (non-US / expanded-tier doc). Use the PDF.</span>';
+  return paras.map(p=>{
+    const matched = (mc.para_no!=null && String(mc.para_no)===String(p.para_no));
+    return '<div class="para'+(matched?' matched':'')+'"><span class="coord">'+esc(p.para_no||'')+(p.page_no?(' · p'+p.page_no):'')+'</span>'
+      + (p.heading?'<span class="hd">'+esc(p.heading)+'</span> ':'')
+      + (matched?'<span class="ind mm">◀ best match</span> ':'') + hl(p.text)+'</div>';
+  }).join('');
+}
+function renderFigs(d, figs){
+  let h='';
   if(d.images && d.images.length){
     h += '<div class="g">';
-    d.images.forEach((im,i)=>{
-      const url=B+'/figures/'+encodeURIComponent(d.pub)+'/'+im.file;
-      h += '<figure><img loading="lazy" src="'+url+'" data-pub="'+esc(d.pub)+'" data-i="'+i+'" onclick="openLb(this)">'
-        + '<figcaption>fig '+(i+1)+'</figcaption></figure>';
-    });
+    d.images.forEach((im,i)=>{ const url = B+'/figures/'+encodeURIComponent(d.pub)+'/'+im.file;
+      h += '<figure><img loading="lazy" src="'+url+'" data-pub="'+esc(d.pub)+'" data-i="'+i+'" onclick="openLb(this)"><figcaption>fig '+(i+1)+'</figcaption></figure>'; });
     h += '</div>';
   } else {
     h += '<div class="nodig">🗎 Facsimile not digitized for this document (common for pre-2000 EP/DE/WO). '
       + 'View on <a href="'+esc(d.google_patents||'#')+'" target="_blank">Google Patents</a> · '
       + '<a href="'+esc(d.espacenet||'#')+'" target="_blank">Espacenet</a></div>';
   }
-  if(d.pdf_local){ h += '<div style="margin-top:8px"><a class="btn ghost sm" href="'+B+'/pdf/'+encodeURIComponent(d.pub)+'" target="_blank">📄 Open PDF facsimile</a></div>'; }
-  h += '</div>';
-
-  // tabs
-  const claims = (s.claims&&s.claims.length)?s.claims:[];
-  const paras = (s.paragraphs&&s.paragraphs.length)?s.paragraphs:[];
-  const figs = (s.figures&&s.figures.length)?s.figures:[];
-  const cites = (s.citations&&s.citations.length)?s.citations:[];
-  const mc = (m.coord_raw)||{};
-  h += '<div class="tabs">';
-  const tabs = [['abstract','Abstract'],['claims','Claims ('+claims.length+')'],
-    ['paras','Description ('+paras.length+')'],['figs','Figures ('+figs.length+')'],
-    ['cites','Citations ('+cites.length+')']];
-  tabs.forEach((t,i)=>h+='<div class="tab'+(i==0?' active':'')+'" data-t="'+t[0]+'">'+t[1]+'</div>');
-  h += '</div><div class="tabpanes">';
-
-  // abstract
-  h += '<div class="tabpane active" data-t="abstract"><div class="abstract">'+(hl(d.abstract)|| '<span class="muted">No abstract.</span>')+'</div></div>';
-  // claims
-  h += '<div class="tabpane" data-t="claims">';
-  if(claims.length){
-    claims.forEach(c=>{
-      const matched = (mc.claim_no!=null && String(mc.claim_no)===String(c.claim_no));
-      h += '<div class="claim'+(c.independent?' indep':'')+(matched?' matched':'')+'">'
-        + '<span class="cn">'+ (c.claim_no!=null?c.claim_no+'.':'') +'</span>'
-        + (c.independent?'<span class="ind">INDEP</span>':'')
-        + (matched?' <span class="ind" style="color:#8a5300">◀ matched</span>':'')
-        + '<div style="margin-top:3px">'+hl(c.text)+'</div></div>';
-    });
-  } else h+='<span class="muted">Claims not ingested for this document — see the PDF / Google Patents.</span>';
-  h += '</div>';
-  // paragraphs
-  h += '<div class="tabpane" data-t="paras">';
-  if(paras.length){
-    paras.forEach(p=>{
-      const matched = (mc.para_no!=null && String(mc.para_no)===String(p.para_no));
-      h += '<div class="para'+(matched?' matched':'')+'">'
-        + '<span class="coord">'+esc(p.para_no||'')+(p.page_no?(' · p'+p.page_no):'')+'</span>'
-        + (p.heading?'<span class="hd">'+esc(p.heading)+'</span> ':'')
-        + (matched?'<span class="ind" style="color:#8a5300">◀ matched</span> ':'')
-        + hl(p.text)+'</div>';
-    });
-  } else h+='<span class="muted">Description paragraphs not ingested (expanded-tier / non-US doc). Use the PDF.</span>';
-  h += '</div>';
-  // figures
-  h += '<div class="tabpane" data-t="figs">';
-  if(figs.length){ figs.forEach(f=>{h+='<div class="figcap"><span class="fno">FIG '+esc(f.figure_no||'')+'</span> '+hl(f.caption)
-      +(f.reference_numbers&&f.reference_numbers.length?' <span class="muted small">refs '+f.reference_numbers.join(', ')+'</span>':'')+'</div>';});}
-  else h+='<span class="muted">No figure captions.</span>';
-  h += '</div>';
-  // citations
-  h += '<div class="tabpane" data-t="cites"><div class="cites">';
-  if(cites.length){ cites.forEach(c=>{h+='<div class="ci">'+(c.category?'<span class="cat">'+esc(c.category)+'</span>':'')
-      +'<a href="https://patents.google.com/patent/'+esc((c.pub||'').replace(/-/g,''))+'/en" target="_blank">'+esc(c.pub)+'</a>'
-      +'<span class="muted small">'+esc(c.origin||'')+'</span></div>';});}
-  else h+='<span class="muted">No citation edges stored.</span>';
-  h += '</div></div>';
-
-  h += '</div>'; // tabpanes
-  h += '<div class="cgraph" data-pub="'+esc(d.pub)+'"></div>'; // citation graph mount (lazy)
-  return h;
+  if(figs && figs.length){
+    h += '<div class="figcaps">'+figs.map(f=>'<div class="figcap"><span class="fno">FIG '+esc(f.figure_no||'')+'</span> '+hl(f.caption)
+      + (f.reference_numbers&&f.reference_numbers.length?' <span class="muted small">refs '+f.reference_numbers.join(', ')+'</span>':'')+'</div>').join('')+'</div>';
+  }
+  return h || '<span class="muted">No figures.</span>';
+}
+function renderCites(cites){
+  if(!cites.length) return '<span class="muted">No citation edges stored.</span>';
+  return '<div class="cites">'+cites.map(c=>'<div class="ci">'+(c.category?'<span class="cat">'+esc(c.category)+'</span>':'')
+    + '<a href="https://patents.google.com/patent/'+esc((c.pub||'').replace(/-/g,''))+'/en" target="_blank">'+esc(c.pub)+'</a>'
+    + '<span class="muted small">'+esc(c.origin||'')+'</span></div>').join('')+'</div>';
 }
 
-function wireTabs(scope){
-  scope.querySelectorAll('.tab').forEach(t=>{
-    t.onclick=()=>{
-      const pane=t.dataset.t, panes=scope.querySelector('.tabpanes');
-      scope.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===t));
-      panes.querySelectorAll('.tabpane').forEach(p=>p.classList.toggle('active',p.dataset.t===pane));
-    };
-  });
+function toggleExpand(btn){
+  const panel = btn.parentNode.querySelector('.ppanel');
+  const open = panel.classList.toggle('expanded');
+  btn.textContent = open ? 'Show less ▲' : 'Show all ▾';
 }
 
 function jumpRef(pub){
-  const el=document.getElementById('ref-'+pub);
+  const el = document.getElementById('ref-'+pub);
   if(!el){ alert(pub+' is not in the top ranked list.'); return; }
   el.scrollIntoView({behavior:'smooth',block:'center'});
-  if(!el.classList.contains('open')) toggleCard(el.querySelector('.refhead'));
-  el.style.transition='box-shadow .3s'; el.style.boxShadow='0 0 0 3px #2a6cf0';
-  setTimeout(()=>el.style.boxShadow='',1400);
+  el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1400);
 }
 
 // ---- lightbox ------------------------------------------------------------------------------
 let LB={imgs:[],i:0};
 function openLb(img){
-  const card=img.closest('.refbody');
-  LB.imgs=[...card.querySelectorAll('.draws img')]; LB.i=LB.imgs.indexOf(img);
+  const p = img.closest('.ppane') || img.closest('.refcard');
+  LB.imgs=[...p.querySelectorAll('.g img')]; LB.i=LB.imgs.indexOf(img);
   showLb();
   document.getElementById('lb').classList.add('open');
 }
@@ -194,9 +176,8 @@ function applyControls(){
     c.classList.toggle('hide',!ok); if(ok)shown++;
   });
   const key={
-    rank:c=>+c.dataset.rank, score:c=>-c.dataset.score,
-    date:c=>-(Date.parse(c.dataset.date)||0), datea:c=>(Date.parse(c.dataset.date)||9e15),
-    juris:c=>c.dataset.juris, covers:c=>-c.dataset.ncovers
+    rank:c=>+c.dataset.rank, score:c=>-c.dataset.rel, date:c=>-(Date.parse(c.dataset.date)||0),
+    datea:c=>(Date.parse(c.dataset.date)||9e15), juris:c=>c.dataset.juris, covers:c=>-c.dataset.ncovers
   }[sortby]||(c=>+c.dataset.rank);
   cards.sort((a,b)=>{const ka=key(a),kb=key(b);return ka<kb?-1:ka>kb?1:0;});
   cards.forEach(c=>cont.appendChild(c));
@@ -241,9 +222,9 @@ function openCompare(){
   window.open(B+'/compare?slug='+encodeURIComponent(window.SLUG)+'&pubs='+encodeURIComponent(sel.join(',')),'_blank');
 }
 
-// ---- citation graph (lazy, appended to card body) ------------------------------------------
+// ---- citation graph (lazy, into the Citations pane) ----------------------------------------
 async function loadGraph(pub, mount){
-  mount.innerHTML = '<h5>Citations & similar</h5><span class="muted small">loading…</span>';
+  mount.innerHTML = '<h5>Citation graph & more-like-this</h5><span class="muted small">loading…</span>';
   try{
     const [g, ml] = await Promise.all([
       fetch(B+'/api/graph/'+encodeURIComponent(pub)).then(r=>r.json()),
@@ -272,7 +253,12 @@ async function loadGraph(pub, mount){
       + '<span class="muted small">'+esc((r.title||'').slice(0,44))+'</span><span class="muted small">'+r.score+'</span></div>'; });
     h += '</div></div>';
     mount.innerHTML = h;
-  }catch(e){ mount.innerHTML = '<h5>Citations & similar</h5><span class="muted small">unavailable</span>'; }
+  }catch(e){ mount.innerHTML = '<h5>Citation graph & more-like-this</h5><span class="muted small">unavailable</span>'; }
 }
 
-document.addEventListener('DOMContentLoaded',()=>{ if(document.getElementById('cards')) applyControls(); });
+document.addEventListener('DOMContentLoaded',()=>{
+  if(!document.getElementById('cards')) return;
+  // highlight the server-rendered abstract panes (plain text -> query-term highlight)
+  document.querySelectorAll('.ppane[data-t="abstract"]').forEach(p=>{ if(!p.querySelector('*')) p.innerHTML = hl(p.textContent); });
+  applyControls();
+});
