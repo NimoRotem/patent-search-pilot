@@ -88,21 +88,17 @@
     <span class="lab">Sort</span>
     <select id="sortby" onchange="applyControls()">
       <option value="rank">Relevance (default)</option>
-      <option value="score">Match score</option>
+      <option value="score">Relevancy score</option>
       <option value="date">Publication date (newest)</option>
       <option value="datea">Publication date (oldest)</option>
       <option value="juris">Jurisdiction</option>
-      <option value="covers">Elements covered</option>
     </select>
     <span class="lab">Filter</span>
-    <label class="toggle"><input type="checkbox" id="fprior" onchange="applyControls()"> prior-art only</label>
-    <label class="toggle"><input type="checkbox" id="frelevant" onchange="applyControls()"> flagged relevant only</label>
+    {% if v.subject %}<label class="toggle"><input type="checkbox" id="fprior" onchange="applyControls()"> prior-art only</label>{% endif %}
     <select id="fjuris" onchange="applyControls()"><option value="">any jurisdiction</option>
       <option>US</option><option>EP</option><option>WO</option><option>DE</option></select>
     <select id="felement" onchange="applyControls()"><option value="">any element</option>
       {% for el in v.elements %}<option value="{{ loop.index0 }}">{{ el[:38] }}</option>{% endfor %}</select>
-    <select id="fchannel" onchange="applyControls()"><option value="">any channel</option>
-      {% for ch in v.channels_used %}<option>{{ ch }}</option>{% endfor %}</select>
     <span id="shown" class="lab"></span>
   </div>
 
@@ -113,15 +109,10 @@
          data-date="{{ c.publication_date or '' }}" data-juris="{{ c.country or '' }}"
          data-basis="{{ c.basis }}" data-covers="{{ c.covers_elements|join('||') }}"
          data-channels="{{ c.channels|join(',') }}" data-ncovers="{{ c.n_covers }}"
-         data-flag="{{ c.triage }}">
+         data-nimg="{{ c.n_images }}">
       <div class="refhead">
         <div class="selcol">
           <input type="checkbox" class="selbox" value="{{ c.pub }}" onchange="updateBar()" title="Select for export/compare">
-          <div class="flagpills" data-pub="{{ c.pub }}">
-            <span class="fp fp-relevant{% if c.triage=='relevant' %} on{% endif %}" onclick="setFlag('{{ c.pub }}','relevant',this)" title="Relevant">✓</span>
-            <span class="fp fp-maybe{% if c.triage=='maybe' %} on{% endif %}" onclick="setFlag('{{ c.pub }}','maybe',this)" title="Maybe">?</span>
-            <span class="fp fp-not{% if c.triage=='not' %} on{% endif %}" onclick="setFlag('{{ c.pub }}','not',this)" title="Not relevant">✕</span>
-          </div>
         </div>
         <div class="refmain">
           <div class="reftitle"><span class="rank">#{{ c.rank }}</span> {{ c.flag }} {{ c.title or '(untitled)' }}</div>
@@ -129,7 +120,7 @@
             <a class="pn" href="https://patents.google.com/patent/{{ c.pub.replace('-','') }}/en" target="_blank">{{ c.pub }}</a>
             {% if c.priority_date %}<span>prio {{ c.priority_date }}</span>{% endif %}
             {% if c.publication_date %}<span>pub {{ c.publication_date }}</span>{% endif %}
-            <span>fam {{ c.family_id }}</span>
+            <a class="pdflink" href="{{ request.script_root }}/pdf/{{ c.pub }}" target="_blank">📄 PDF</a>
           </div>
           {% if c.assignees or c.inventors %}
           <div class="refsub">
@@ -140,15 +131,9 @@
             <span class="stag t-{{ c.status.tone }}"{% if c.status.note %} title="{{ c.status.note }}"{% endif %}>{{ c.status.label }}</span>
             {% if c.basis=='public_prior_art' %}<span class="badge b-public">◆ public prior art</span>
             {% elif c.basis=='secret_prior_art' %}<span class="badge b-secret">🔒 secret prior art</span>
-            {% elif c.basis=='priority_interval' %}<span class="badge b-interval">priority interval</span>
-            {% else %}<span class="badge b-na">not-dated</span>{% endif %}
-            {% for ch in c.channels %}<span class="chip ch">{{ ch }}</span>{% endfor %}
-            {% for cp in c.cpc[:6] %}<span class="chip cpc">{{ cp.code }}</span>{% endfor %}
+            {% elif c.basis=='priority_interval' %}<span class="badge b-interval">priority interval</span>{% endif %}
+            {% for cp in c.cpc[:5] %}<span class="chip cpc">{{ cp.code }}</span>{% endfor %}
           </div>
-          {% if c.covers_elements %}
-          <div class="covers"><span class="muted small">covers {{ c.n_covers }}</span>
-            {% for el in c.covers_elements %}<span class="chip el">{{ el[:32] }}</span>{% endfor %}
-          </div>{% endif %}
           {% if c.n_family %}
           <div class="famrow">
             <button class="fambtn" onclick="toggleFamily(this)">🌐 {{ c.n_family }} more in this family
@@ -169,32 +154,50 @@
         </div>
       </div>
 
-      <!-- inline tabbed reference data (all data on the card; other tabs load on first open) -->
+      <!-- reference data rendered inline from the DB (no click / no round-trip needed) -->
       <div class="ptabs">
         <div class="ptabstrip">
           <button class="ptab active" data-t="abstract" onclick="ptab(this)">Abstract</button>
-          <button class="ptab" data-t="why" onclick="ptab(this)">Why relevant</button>
-          <button class="ptab" data-t="claims" onclick="ptab(this)">Claims</button>
+          <button class="ptab" data-t="figs" onclick="ptab(this)">Figures{% if c.n_images %} <b>{{ c.n_images }}</b>{% endif %}</button>
+          <button class="ptab" data-t="claims" onclick="ptab(this)">Claims{% if c.claims %} <b>{{ c.claims|length }}</b>{% endif %}</button>
           <button class="ptab" data-t="paras" onclick="ptab(this)">Description</button>
-          <button class="ptab" data-t="figs" onclick="ptab(this)">Figures</button>
+          <button class="ptab" data-t="why" onclick="ptab(this)">Why relevant</button>
           <button class="ptab" data-t="cites" onclick="ptab(this)">Citations</button>
-          <span class="grow"></span>
-          <a class="ptab pdf" href="{{ request.script_root }}/pdf/{{ c.pub }}" target="_blank" data-pub="{{ c.pub }}">📄 PDF</a>
         </div>
-        <div class="ppanel collapsed" data-loaded="0">
-          <div class="ppane active" data-t="abstract">{% if c.abstract %}{{ c.abstract }}{% else %}<span class="muted">No abstract stored for this document — open the PDF / Google Patents.</span>{% endif %}</div>
-          <div class="ppane" data-t="why"></div>
-          <div class="ppane" data-t="claims"></div>
-          <div class="ppane" data-t="paras"></div>
-          <div class="ppane" data-t="figs"></div>
-          <div class="ppane" data-t="cites"></div>
+        <div class="ppanel collapsed">
+          <div class="ppane active" data-t="abstract">{% if c.abstract %}<div class="abstract">{{ c.abstract }}</div>{% else %}<span class="muted">No abstract for this document — see the Description tab / PDF.</span>{% endif %}</div>
+
+          <div class="ppane" data-t="figs">
+            {% if c.images %}
+              {% if c.images[0].from_pdf %}<div class="muted small" style="margin-bottom:6px">🗎 Extracted from the PDF facsimile.</div>{% endif %}
+              <div class="g">
+                {% for im in c.images %}<figure><img loading="lazy" src="{{ request.script_root }}/figures/{{ c.pub }}/{{ im.file }}" data-pub="{{ c.pub }}" onclick="openLb(this)"><figcaption>{% if c.images[0].from_pdf %}p.{% else %}fig {% endif %}{{ loop.index }}</figcaption></figure>{% endfor %}
+              </div>
+            {% else %}<div class="figph muted small">Loading drawings…</div>{% endif %}
+            {% if c.figure_caps %}<div class="figcaps">{% for f in c.figure_caps %}<div class="figcap"><span class="fno">FIG {{ f.figure_no or '' }}</span> {{ f.caption }}</div>{% endfor %}</div>{% endif %}
+          </div>
+
+          <div class="ppane" data-t="claims">
+            {% if c.claims %}
+              {% for cl in c.claims %}
+              <div class="claim{% if cl.independent %} indep{% endif %}{% if c.matched_coord_raw and c.matched_coord_raw.claim_no == cl.claim_no %} matched{% endif %}">
+                <span class="cn">{{ cl.claim_no }}.</span>{% if cl.independent %}<span class="ind">INDEP</span>{% endif %}{% if c.matched_coord_raw and c.matched_coord_raw.claim_no == cl.claim_no %}<span class="ind mm">◀ best match</span>{% endif %}
+                <div class="ctext">{{ cl.resolved_text or cl.text }}</div>
+              </div>{% endfor %}
+            {% else %}<span class="muted">Claims not in the local corpus for this document — open the PDF or Google Patents.</span>{% endif %}
+          </div>
+
+          <div class="ppane" data-t="paras">
+            {% if c.description %}
+              {% for p in c.description %}
+              <div class="para{% if c.matched_coord_raw and c.matched_coord_raw.para_no == p.para_no %} matched{% endif %}"><span class="coord">{{ p.para_no or '' }}</span>{% if p.heading %}<span class="hd">{{ p.heading }}</span> {% endif %}{{ p.text }}</div>{% endfor %}
+            {% else %}<span class="muted">Description not in the local corpus — open the PDF.</span>{% endif %}
+          </div>
+
+          <div class="ppane" data-t="why"><span class="muted">Loading AI relevancy opinion…</span></div>
+          <div class="ppane" data-t="cites"><span class="muted">Loading citations…</span></div>
         </div>
         <button class="showall" onclick="toggleExpand(this)">Show all ▾</button>
-      </div>
-
-      <div class="noterow">
-        <input type="text" class="noteinput" placeholder="+ add attorney note…" value="{{ c.note }}"
-               onchange="saveNote('{{ c.pub }}', this.value)">
       </div>
     </div>
     {% endfor %}

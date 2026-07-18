@@ -35,6 +35,7 @@ def test_substance_order_drops_design_and_demotes_titleonly(monkeypatch):
     }
     families = ["F1", "F2", "F3", "F4"]
     monkeypatch.setattr(webview, "_titleonly_ids", lambda cur, ids: {3})
+    monkeypatch.setattr(webview, "_thin_ids", lambda cur, ids: set())
     ordered, stats = webview.substance_order(None, families, reps, keep=10)
     assert "F2" not in ordered                     # design dropped entirely
     assert ordered == ["F1", "F4", "F3"]           # substantive in rank order, title-only demoted last
@@ -42,10 +43,23 @@ def test_substance_order_drops_design_and_demotes_titleonly(monkeypatch):
     assert stats["titleonly_demoted"] == 1
 
 
+def test_substance_order_demotes_thin_docs(monkeypatch):
+    reps = {
+        "F1": {"id": 1, "publication_number": "US-111-A", "kind_code": "A"},   # substantive
+        "F2": {"id": 2, "publication_number": "US-222-A", "kind_code": "A"},   # thin (no text) -> demote
+        "F3": {"id": 3, "publication_number": "US-333-A", "kind_code": "A"},   # substantive
+    }
+    monkeypatch.setattr(webview, "_titleonly_ids", lambda cur, ids: set())
+    monkeypatch.setattr(webview, "_thin_ids", lambda cur, ids: {2})
+    ordered, _ = webview.substance_order(None, ["F1", "F2", "F3"], reps, keep=10)
+    assert ordered == ["F1", "F3", "F2"]           # the text-less ref sinks below the substantive ones
+
+
 def test_substance_order_trims_to_keep(monkeypatch):
     reps = {f"F{i}": {"id": i, "publication_number": f"US-{i}-A", "kind_code": "A"} for i in range(20)}
     families = [f"F{i}" for i in range(20)]
     monkeypatch.setattr(webview, "_titleonly_ids", lambda cur, ids: set())
+    monkeypatch.setattr(webview, "_thin_ids", lambda cur, ids: set())
     ordered, _ = webview.substance_order(None, families, reps, keep=5)
     assert ordered == ["F0", "F1", "F2", "F3", "F4"]   # top-5, order preserved
 
@@ -135,3 +149,16 @@ def test_cards_carry_relevancy_and_abstract(gold_slug):
     for c in v["cards"]:
         assert 1 <= c["relevancy"] <= 99                # a display score on every card
         assert "abstract" in c                          # inline-abstract field present (may be None)
+
+
+def test_cards_carry_server_rendered_content(gold_slug):
+    """The fix for 'no details / Claims not ingested': claims + description + figure captions are
+    attached to each card from the DB so the page shows real data without a per-tab round-trip."""
+    rep = json.loads((webapp.REPORTS / f"{gold_slug}.json").read_text())
+    v = webview.build_view(rep, top_n=12)
+    for c in v["cards"]:
+        assert "claims" in c and "description" in c and "figure_caps" in c and "images" in c
+    # the top of a gold report must have real, readable content (not a wall of thin old patents)
+    top = v["cards"][:8]
+    assert sum(1 for c in top if c["claims"]) >= 6      # most top cards have ingested claims
+    assert any(c["images"] for c in top)                # at least some have drawings on disk

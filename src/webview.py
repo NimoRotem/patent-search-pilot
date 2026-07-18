@@ -250,12 +250,25 @@ def _titleonly_ids(cur, ids):
     return {r["publication_id"] for r in cur.fetchall()}
 
 
+def _thin_ids(cur, ids):
+    """Publications with NO ingested claims AND NO abstract — a card built from one shows almost
+    nothing (the old OCR'd patents the user complained about). Demoted below refs that have real
+    text so the top of the list always has content to read."""
+    if not ids:
+        return set()
+    cur.execute("SELECT p.id FROM publications p WHERE p.id = ANY(%s) "
+                "AND (p.abstract IS NULL OR p.abstract='') "
+                "AND NOT EXISTS (SELECT 1 FROM claims c WHERE c.publication_id=p.id)", (list(ids),))
+    return {r["id"] for r in cur.fetchall()}
+
+
 def substance_order(cur, families, reps, keep):
     """Drop design-patent families and demote title-only families below substantive ones, then
     trim to `keep`. Stable within each group (preserves the retrieval ranking). Returns
     (ordered_families, stats)."""
     ids = [reps[f]["id"] for f in families if f in reps]
     titleonly = _titleonly_ids(cur, ids)
+    thin = _thin_ids(cur, ids) | titleonly       # no-text refs also sink below substantive ones
     kept, demoted, dropped = [], [], 0
     for f in families:
         r = reps.get(f)
@@ -264,10 +277,10 @@ def substance_order(cur, families, reps, keep):
         if _is_design(r["publication_number"], r["kind_code"]):
             dropped += 1
             continue
-        (demoted if r["id"] in titleonly else kept).append(f)
-    ordered = kept + demoted          # substantive first (in-rank), title-only after
+        (demoted if r["id"] in thin else kept).append(f)
+    ordered = kept + demoted          # refs with real text first (in-rank), thin/title-only after
     return ordered[:keep], {"design_dropped": dropped, "titleonly_demoted": len(demoted),
-                            "titleonly_ids": titleonly}
+                            "thin_demoted": len(demoted), "titleonly_ids": titleonly}
 
 
 def _attach_family_members(cur, cards):
@@ -314,10 +327,44 @@ def _attach_family_members(cur, cards):
         c["n_family"] = len(out)
 
 
+def _cached_images(pub):
+    """Figure image files already downloaded for this pub (served at /figures/<pub>/<file>)."""
+    try:
+        from enrich_display import FIGDIR, _pubkey
+        d = FIGDIR / _pubkey(pub)
+    except Exception:
+        return []
+    if not d.exists():
+        return []
+    files = sorted([f.name for f in d.iterdir()
+                    if f.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif", ".tif", ".tiff")])
+    from_pdf = any(f.startswith("pdf") for f in files)
+    return [{"file": f, "from_pdf": from_pdf} for f in files]
+
+
+def _card_content(cur, pid, pub, matched):
+    """Everything needed to render the card's tabs WITHOUT a round-trip: claims / description /
+    figure captions straight from Postgres (already ingested for most refs) + any figure images
+    already downloaded. This is what makes the data show immediately instead of 'not ingested'."""
+    s = sections(cur, pid)
+    mc = matched.get("coord") if isinstance(matched.get("coord"), dict) else None
+    imgs = _cached_images(pub)
+    return {
+        "claims": s["claims"],
+        "description": s["paragraphs"][:60],          # cap for page weight; PDF has the full text
+        "figure_caps": s["figures"],
+        "images": imgs,
+        "n_images": len(imgs),
+        "matched_coord_raw": mc,
+        "has_content": bool(s["claims"] or s["paragraphs"] or imgs),
+    }
+
+
 # ---- full view -----------------------------------------------------------------------------
 def build_view(report, top_n=25):
-    """Assemble the whole page view model. Enrichment (drawings/pdf/sections/rationale) is
-    filled lazily by the webapp per card; here we do the DB-backed ranking + matched coord."""
+    """Assemble the whole page view model. Reference text (claims/description/figure captions) and
+    any already-downloaded drawings are attached PER CARD from Postgres here, so the results render
+    with real content immediately; only missing drawings are fetched lazily by the page."""
     query = report.get("query", "")
     subj = None
     s = report.get("subject")
@@ -376,6 +423,7 @@ def build_view(report, top_n=25):
         covered = sorted(fam_elements.get(fam, {}).keys())
         st = status_mod.classify_status(b["kind"], b["country"], b["priority_date"],
                                         b["filing_date"], b["publication_date"])
+        content = _card_content(cur, rep["id"], b["pub"], m)
         cards.append({
             "rank": rank, "family": fam, **b,
             "match_score": round(m["score"], 3), "match_coord": _coord_str(m["coord"]),
@@ -386,6 +434,7 @@ def build_view(report, top_n=25):
             "channels": sorted(fam_channels.get(fam, [])),
             "covers_elements": covered, "n_covers": len(covered),
             "has_local_claims": rep["n_claims"] > 0,
+            **content,                                    # claims/description/figures/images (from DB+cache)
         })
 
     _attach_family_members(cur, cards)

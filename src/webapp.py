@@ -242,11 +242,6 @@ def report(slug):
     view["slug"] = slug
     view["title"] = title
     view["is_gold"] = slug in _GOLD
-    flags = load_flags(slug)
-    for c in view["cards"]:
-        f = flags.get(c["pub"], {})
-        c["triage"] = f.get("flag", "")      # relevant|maybe|not — distinct from c.flag (country emoji)
-        c["note"] = f.get("note", "")
     return render_template("report.html", v=view)
 
 
