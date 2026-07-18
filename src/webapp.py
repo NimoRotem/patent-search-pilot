@@ -31,6 +31,9 @@ EXPORTS.mkdir(parents=True, exist_ok=True)
 _GOLD = {e["id"]: e for e in goldset.load()["entries"]}
 _JOBS = {}          # slug -> {"status": "running|done|error", "msg": ...}
 _JOB_LOCK = threading.Lock()
+# The agent shares non-thread-safe singletons (the CPU reranker + the genai client), so report
+# generations must run one-at-a-time; concurrent runs collided with "Already borrowed".
+_GEN_LOCK = threading.Lock()
 _R = None           # lazy singleton Retriever (loads family map once)
 _R_LOCK = threading.Lock()
 
@@ -54,11 +57,14 @@ def report_path(slug):
 # ---- background report generation ----------------------------------------------------------
 def _generate(slug, query, subject, mode):
     with _JOB_LOCK:
-        _JOBS[slug] = {"status": "running", "msg": "Running coverage-ledger agent…", "t0": time.time()}
+        _JOBS[slug] = {"status": "running", "msg": "Queued…", "t0": time.time()}
     try:
-        A = CoverageAgent(retriever())
-        rep = A.run(query, subject=subject, mode=mode,
-                    cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True))
+        with _GEN_LOCK:                          # serialize: shared reranker/genai aren't thread-safe
+            with _JOB_LOCK:
+                _JOBS[slug]["msg"] = "Running coverage-ledger agent…"
+            A = CoverageAgent(retriever())
+            rep = A.run(query, subject=subject, mode=mode,
+                        cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True))
         report_path(slug).write_text(json.dumps(rep, default=str, indent=1))
         with _JOB_LOCK:
             _JOBS[slug] = {"status": "done", "msg": "done"}

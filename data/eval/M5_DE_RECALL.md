@@ -63,3 +63,16 @@ Thoroughly diagnosed, not a retrieval bug:
 So no amount of retrieval tuning puts a curated, un-digitized, semantically-distant competitor into
 the top-100. The honest levers are corpus/gold definition (citation-derived gold + fuller DE text via
 EPO OPS), not the ranker. Enrichment is proven to help wherever DE text is actually available.
+
+## Macro impact on the full 11-query set (no regression on the shipped config)
+
+| Config | @100 M3→M5 | @500 M3→M5 | @1000 M3→M5 |
+|---|--:|--:|--:|
+| vector | 0.170 → 0.170 | 0.283 → 0.260 | 0.308 → 0.283 |
+| hybrid | 0.170 → 0.170 | 0.236 → **0.275** | 0.310 → 0.311 |
+| **agentic** | **0.181 → 0.185** (best) | 0.277 → 0.266 | **0.316 → 0.319** (best) |
+
+The DE enrichment lifted **hybrid @500 (+0.039)** and nudged **agentic @100 (+0.004, still the best
+config)**; the minor vector @500/@1000 dip is the collateral of adding ~20k German claim chunks that
+occasionally rank mid-tail on English queries. Net: the config we ship (agentic) improved and stayed
+best at @100 and @1000.
