@@ -1,87 +1,126 @@
-# Corpus reachability — where the recall ceiling actually is, and what expansion would cost
+# Corpus reachability — where the recall ceiling actually is
 
 Decision-support for whether to fund a bigger ingest. Measured on the frozen 11-query gold set
-(79 distinct gold families). **TL;DR: the ceiling is text depth, not corpus size — the free EPO OPS
-backfill is the highest-leverage fix; a paid corpus expansion has limited, quantified headroom.**
+(79 distinct gold families).
 
-## Finding 1 — corpus coverage is already high (86%), not the bottleneck
+> **REVISED 2026-07-19 after the EPO OPS backfill ran.** The previous version of this document
+> predicted that filling text depth was "the #1 lever" and would move `reachable@100` from ~0.18
+> toward 0.4–0.5. **That prediction was tested and it was wrong.** The backfill was executed, it
+> worked at the data layer, and recall did not move at all. The analysis below is rewritten around
+> the measurement instead of the hypothesis. Full numbers: `data/eval/eval_report.md`.
+
+**TL;DR: text depth was not the ceiling. The ceiling is query↔document semantic distance in the
+dense channel — most gold families never enter the candidate pool at all, at any text depth.**
+
+## Finding 1 — corpus coverage is high (86%) and unchanged
 
 | | families | share |
 |---|--:|--:|
 | distinct gold families | 79 | 100% |
-| **in the 107k corpus (reachable)** | **68** | **86%** |
+| in the 107,795-pub corpus (reachable) | 68 | 86% |
 | missing from corpus | 11 | 14% |
 
-Per-query coverage is 84–100% for every query. So the eval's low `reachable@100 ≈ 0.18` is **not**
-"82% of gold is missing" — 86% of gold is present. It is a **retrieval-ranking + text-depth ceiling**:
-of the 68 in-corpus gold families, only ~18% currently rank inside the top-100.
+The OPS backfill added **no publications** (107,795 before and after) — it only adds text to
+documents already present. The 14% width gap is untouched and remains unreachable at any k.
 
-## Finding 2 — the real ceiling is text depth (the EP/WO/DE full-text hole)
+## Finding 2 — text depth was filled, and it changed nothing (the disproved hypothesis)
 
-Of the 68 in-corpus gold families, **46 (68%) have no embedded claims** — only a title + abstract —
-because BigQuery lacks EP/WO/DE full text (and some thin US docs):
+Text depth genuinely improved. Corpus chunks 1,838,952 → 2,311,784; ~52k claims and ~360k
+description paragraphs added. Gold families carrying claims went from 22 (at the time of the original
+analysis) to 43. Of the 79 gold families, **12 were given genuinely new text on 07-19**, and 11 of
+those 12 now carry fully-embedded claims.
 
-| jurisdiction | in-corpus gold families | thin (no claims) |
+The new text is verifiably live in the index: self-retrieval of OPS-added claim chunks under the
+app's exact settings returns the source publication top-1, **8/8**, cosine 0.917–0.948. Gold families
+have **zero** unembedded chunks — they were fully vectorised before the eval ran, while ~450k
+non-gold chunks still await embedding. The gold set was, if anything, privileged.
+
+Result:
+
+| Config | recall@100 before | after |
 |---|--:|--:|
-| US | 40 | 15 |
-| DE | 29 | 20 |
-| EP | 8 | 6 |
-| WO | 7 | 5 |
+| keyword | 0.0152 | 0.0152 |
+| vector / hybrid / hybrid_rerank | 0.1697 | **0.1697** |
+| agentic | 0.1856 | 0.1874 (LLM noise) |
 
-A thin-text family has almost nothing for dense retrieval to match, so it ranks far below top-100
-(exactly the DE diagnosis in `M5_DE_RECALL.md`, where enriching DE claims doubled grabo_de recall@500).
+Candidate-level, the retrieved gold sets are **literally identical** — deepening 12 gold families
+moved **0** of them into or out of the pool for vector and hybrid. Deeper cut-offs slightly
+regressed (keyword `r@1000` 0.1356 → 0.1078).
 
-**→ The #1 lever to lift `reachable@100` toward 0.5 is filling text depth, i.e. the EPO OPS backfill
-(`ops.py --backfill-core`, 13,400 claimless DE/EP/WO core pubs). It is essentially free (OPS
-4 GB/week), needs no new BigQuery ingest, and directly deepens 31 of the 46 thin gold families.**
-This is a genuine retrieval improvement, not teaching-to-the-test — it adds the *real* text of docs
-already in the corpus.
+**Conclusion: "thin text" was a correlate of low recall, not its cause.** Thin families ranked badly
+because they are semantically distant from the queries (old, non-English, differently-worded art) —
+the same property that made them thin in BigQuery in the first place.
 
-## Finding 3 — the 11 missing gold families (what a corpus expansion buys)
+## Finding 3 — the actual binding constraint
 
-Resolved via BigQuery — they sit **outside the US/EP/WO/DE seed jurisdictions**:
+Measured per query, the dense channel returns ~1,120 distinct publications from a 4,000-chunk budget,
+so `PUB_CAP = 1000` binds before the chunk budget does. Within that pool, gold families are almost
+absent:
 
-| jurisdiction | missing gold | era | note |
-|---|--:|---|---|
-| FR | 4 | 1953–1965 | old French vacuum-lifting / handling art |
-| CN | 1 | 2017 | one suction-cup family |
-| (unresolved) | 6 | — | very old / non-CPC-classified docs |
+| query | gold families anywhere in the dense candidate pool |
+|---|--:|
+| grabo_gripper_novelty | 11 of 44 |
+| grabo_gripper_inventive | 13 of 44 |
+| grabo_extended_frame | 14 of 49 |
+| grabo_de_utility_xling | 2 of 7 |
+| schmalz_sauggreifsystem | 1 of 4 |
+| schmalz_vacuum_clamp | 5 of 7 |
+| probst_stone_lifter_xling | 2 of 6 |
+| probst_kerb_lifter | 1 of 9 |
+| nl_handheld_vacuum_seal_sensor | 2 of 5 |
+| nl_porous_surface_gripper | 2 of 6 |
+| **nl_robot_eoat_vacuum** | **0 of 3** |
 
-So corpus expansion could recover **at most 14%** of gold, and the recoverable part is dominated by
-**old French patents**.
+A gold family that never enters the candidate pool cannot be rescued by giving its documents more
+text, by reranking, or by raising k. `nl_robot_eoat_vacuum` scoring 0.0 in every configuration
+before *and* after the backfill is fully explained by this row.
 
-## Costed expansion options
+## Finding 4 — deepening non-uniformly *hurts* the lexical channel
 
-Current corpus = 25,786 seed-CPC pubs (US/EP/WO/DE). Worldwide seed-CPC adds **54,522** more pubs:
-CN 28,938 · KR 9,067 · JP 4,569 · GB 1,359 · FR 1,313. BigQuery full-text extraction ≈ **$10–20 per
-scan** (the seed slice is ~1.5 TB billed; §2 dry-run = 16 GB for the count query).
+`chunks.tsv` is a generated column, so BM25 sees backfilled text immediately, with no embedding step.
+The backfill added large amounts of text to *existing, overwhelmingly non-gold* publications, giving
+them far more surface to match query terms. Keyword `r@1000` fell 0.1356 → 0.1078 and hybrid `r@500`
+fell 0.2747 → 0.2467. Any future backfill should be treated as a **ranking-affecting change**, not a
+free data improvement, and re-evaluated on the gold set before being called an upgrade.
 
-| Goal | Action | +pubs | BigQuery $ | Recovers |
-|---|---|--:|--:|---|
-| **reachable@100 → ~0.5** | **EPO OPS backfill (text depth), no ingest** | 0 | **$0** | most in-corpus thin gold |
-| absolute recall +~5% | + FR + GB field expansion (classic prior-art jurisdictions) | ~2,700 (+ families/citations ~10k) | ~$15–25 | ~4 of 11 missing (the FR art) |
-| reachable@100 → ~0.8 | OPS backfill **and** FR/GB expansion **and** re-tuned reranking on the deeper text | ~10k | ~$25 | text depth + FR art |
-| (not recommended) full worldwide | + CN/KR/JP seed-CPC | +42k | ~$40–60 | 1 missing gold (CN) — poor ROI |
+## Finding 5 — the 11 missing gold families (unchanged)
 
-## Honest expansion vs teaching-to-the-test
+Resolved via BigQuery; they sit outside the US/EP/WO/DE seed jurisdictions: FR 4 (1953–1965, old
+French vacuum-lifting art), CN 1 (2017), 6 unresolved (very old / non-CPC-classified). Corpus
+expansion can recover at most 14% of gold and the recoverable part is dominated by old French art.
 
-- **Honest field-coverage expansion** = ingest more *vacuum-gripping + neighbouring-CPC* art in
-  under-covered jurisdictions (FR/GB for the old classic art). This is a real capability gain that
-  helps *future, unseen* searches, and it's what the seed-CPC/family/citation crawl already does —
-  just widened to FR/GB.
-- **Teaching-to-the-test** = ingesting the exact 11 missing gold publications by number. **Do NOT do
-  this** — it inflates the eval without improving real search. The gold set exists to *measure*
-  coverage, not to be back-filled into the corpus.
+## Revised recommendation
 
-## Recommendation
+1. **Do not fund more text depth as a recall lever.** It is measured at ~zero for recall@100. Finish
+   the running backfill for its *display* value — deeper documents demonstrably give the LLM judge
+   and a human reader real passages to check (lenient p@10 rose 0.54 → 0.594, and whole-doc-only
+   claim-chart cells fell 8 → 6) — but do not book it as retrieval improvement.
+2. **Attack the semantic gap first — this is where the ceiling now is.** The concrete failure is
+   gold families absent from the dense pool entirely. Candidates, cheapest first:
+   - **Multi-vector / query expansion**: embed the subject's individual claim elements as separate
+     queries and union the pools, rather than one whole-query vector. The agentic config already does
+     a weak version of this and is the only config that beat the baseline at all.
+   - **Cross-lingual retrieval**: the two permanently-0.0 queries are both cross-lingual or
+     neighbouring-CPC. Embedding DE/FR text and English queries into one space is being asked to do
+     a lot of work; translating queries into DE and searching both is cheap to test.
+   - **Raise `PUB_CAP`** — it currently binds at 1000 while the chunk budget would supply ~1,120.
+     Nearly free; likely small but positive.
+3. **Re-test `hybrid_rerank`'s value.** The cross-encoder has now changed recall by exactly 0 across
+   two full evaluations. It costs CPU and latency on every query for zero measured recall benefit;
+   its only defensible role is top-25 presentation order.
+4. **A small FR + GB expansion (~$15–25 BigQuery)** remains the only lever that can touch the 14%
+   width gap. Still bounded, still honest, still optional — but note it is now the *second* lever,
+   not the first, and it cannot help until the semantic-gap problem is fixed, or the new documents
+   will simply fail to enter the candidate pool too.
+5. **Skip the full worldwide ingest (CN/KR/JP, +42k pubs, ~$40–60).** Unchanged: it recovers one
+   missing gold family.
 
-1. **Run the EPO OPS backfill first (free, biggest lever).** It deepens the text of docs already in
-   the corpus and should move `reachable@100` from ~0.18 toward ~0.4–0.5 with zero ingest cost. This
-   is gated only on OPS credentials — `ops.py` is implemented and ready (`--dry-run` proven).
-2. **Then, optionally, a small FR + GB field expansion (~$15–25 BigQuery)** to pick up the old
-   classic prior art that the missing gold is concentrated in. Modest, honest, bounded.
-3. **Skip the full worldwide ingest (CN/KR/JP, +42k pubs, ~$40–60).** It recovers one missing gold
-   family — poor ROI for the pilot; revisit only if a real dispute needs Asian art.
+## Honest expansion vs teaching-to-the-test (unchanged)
 
-Net: the pilot's recall ceiling is mostly a *text-depth* problem with a *free* fix (OPS), not a
-corpus-size problem needing a big paid ingest.
+- **Honest field-coverage expansion** = ingest more vacuum-gripping + neighbouring-CPC art in
+  under-covered jurisdictions (FR/GB). Helps future, unseen searches.
+- **Teaching-to-the-test** = ingesting the 11 missing gold publications by number. **Do NOT do this.**
+  The gold set exists to *measure* coverage, not to be back-filled into the corpus.
+
+Net: the pilot's recall ceiling is a **retrieval-semantics** problem, not a text-depth problem and
+not primarily a corpus-size problem. The free text-depth fix has now been spent, and measured at zero.
