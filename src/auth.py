@@ -387,7 +387,7 @@ def _safe_next(raw):
 
 _LOGIN_HTML = """<!doctype html><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>Sign in — prior-art search</title>
+<title>Sign in — rotemAI patent search</title>
 <style>
  body{font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1115;color:#e6e8ee;
       display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
@@ -401,7 +401,7 @@ _LOGIN_HTML = """<!doctype html><meta charset=utf-8>
  .err{color:#f87171;font-size:13px;margin-top:10px}
 </style>
 <form method=post>
-  <h1>Prior-art search</h1>
+  <h1>rotemAI patent search</h1>
   <p id=hint>This instance is private. Enter the access password.</p>
   <label for=password>Access password</label>
   <input id=password type=password name=password autofocus autocomplete=current-password
@@ -415,7 +415,7 @@ _LOGIN_HTML = """<!doctype html><meta charset=utf-8>
 # Shown instead of raw JSON when a BROWSER (not a fetch/XHR caller) trips a rate limit.
 _TOOMANY_HTML = """<!doctype html><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>Slow down — prior-art search</title>
+<title>Slow down — rotemAI patent search</title>
 <style>
  body{font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1115;color:#e6e8ee;
       display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}

@@ -11,6 +11,8 @@ from reportlab.pdfgen import canvas as _canvas
 from PIL import Image as PILImage
 import html as _html
 
+import disclosure
+
 NAVY = colors.HexColor("#0b2545")
 BLUE = colors.HexColor("#0050A0")
 ACCENT = colors.HexColor("#2a6cf0")
@@ -38,6 +40,13 @@ def _styles():
     S["cell"] = ParagraphStyle("c", parent=ss["Normal"], fontSize=7.5, leading=9, alignment=TA_CENTER)
     S["cellL"] = ParagraphStyle("cl", parent=ss["Normal"], fontSize=8, leading=10)
     S["chip"] = ParagraphStyle("ch", parent=ss["Normal"], fontSize=7.5, textColor=NAVY)
+    S["warn"] = ParagraphStyle("w", parent=ss["Normal"], fontSize=8.5, leading=11.5,
+                               textColor=colors.HexColor("#8a3b00"),
+                               backColor=colors.HexColor("#fff6e8"), borderPadding=6,
+                               borderColor=colors.HexColor("#e8c9a0"), borderWidth=0.5,
+                               spaceBefore=4, spaceAfter=6)
+    S["scope"] = ParagraphStyle("sc", parent=ss["Normal"], fontSize=9, leading=12,
+                                textColor=colors.HexColor("#1c2a44"), spaceAfter=4)
     return S
 
 
@@ -68,7 +77,9 @@ def _header_footer(cv: _canvas.Canvas, doc):
     cv.saveState()
     cv.setFont("Helvetica", 7.5)
     cv.setFillColor(MUTED)
-    cv.drawString(0.75 * inch, 0.5 * inch, "Prior-Art Search Report · vacuum-gripping pilot · CONFIDENTIAL — attorney work product")
+    cv.drawString(0.75 * inch, 0.5 * inch,
+                  disclosure.DOC_TITLE + " · machine-generated drafting aid, verify every cell "
+                  "· CONFIDENTIAL — attorney work product")
     cv.drawRightString(7.75 * inch, 0.5 * inch, f"Page {doc.page}")
     cv.setStrokeColor(LINE); cv.setLineWidth(0.5)
     cv.line(0.75 * inch, 0.62 * inch, 7.75 * inch, 0.62 * inch)
@@ -80,12 +91,13 @@ def render(model, out_path):
     doc = SimpleDocTemplate(str(out_path), pagesize=letter,
                             leftMargin=0.75 * inch, rightMargin=0.75 * inch,
                             topMargin=0.8 * inch, bottomMargin=0.8 * inch,
-                            title=f"Prior-Art Report — {model['title']}")
+                            title=f"{disclosure.DOC_TITLE} — {model['title']}")
     story = []
 
     # ---- cover ----
     story.append(Spacer(1, 0.6 * inch))
-    story.append(Paragraph("Prior-Art Search Report", S["title"]))
+    story.append(Paragraph(disclosure.DOC_TITLE, S["title"]))
+    story.append(Paragraph(f"<b>{_esc(disclosure.DOC_SUBTITLE)}</b>", S["sub"]))
     story.append(HRFlowable(width="100%", thickness=2, color=BLUE, spaceAfter=10))
     mode = model["mode"].replace("_", " ").title()
     subj = f'{model.get("subject") or "—"}'
@@ -113,6 +125,16 @@ def render(model, out_path):
                            ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
     story.append(t)
 
+    # ---- scope + measured reliability ----
+    # Printed in full on the cover page. The web UI could link this; a filed PDF cannot.
+    story.append(Paragraph("Scope and measured reliability — read before relying on this document",
+                           S["h2"]))
+    for heading, body in disclosure.scope_paragraphs():
+        story.append(Paragraph(f"<b>{_esc(heading)}.</b> {_esc(body)}", S["scope"]))
+    story.append(Paragraph("<b>Indexed CPC classes:</b> " + _esc("; ".join(disclosure.cpc_lines())),
+                           S["small"]))
+    story.append(Paragraph(_esc(disclosure.not_indexed()), S["small"]))
+
     # ---- executive summary ----
     story.append(Paragraph("Executive summary", S["h2"]))
     if model["strongest"]:
@@ -128,8 +150,17 @@ def render(model, out_path):
     story.append(Paragraph(f"<b>Apparently novel (not found in corpus):</b> <font color='#b25e00'>{_esc(unc)}</font>", S["body"]))
 
     # ---- claim chart ----
-    story.append(Paragraph("Element × Reference claim chart", S["h2"]))
+    story.append(Paragraph(disclosure.CHART_TITLE + " <font size=8 color='#8a3b00'>["
+                           + _esc(disclosure.CHART_TAG) + "]</font>", S["h2"]))
+    story.append(Paragraph(_esc(disclosure.chart_warning()), S["warn"]))
     story.append(_claim_chart_table(model, S))
+    legend = " &nbsp;·&nbsp; ".join(f"<b>{n} {_esc(w)}</b> — {_esc(lbl)}"
+                                    for w, n, lbl in disclosure.legend_lines(model["claim_chart"]))
+    if legend:
+        story.append(Paragraph("<b>Legend:</b> " + legend, S["small"]))
+    _summ = disclosure.verification_summary(model["claim_chart"])
+    if _summ:
+        story.append(Paragraph("<b>" + _esc(_summ) + "</b>", S["small"]))
 
     # ---- combination / inventive-step ----
     cv = model["combination_view"]
@@ -188,13 +219,17 @@ def _claim_chart_table(model, S):
         cells = [Paragraph(_esc(row["element"]), S["cellL"])]
         for ci, cell in enumerate(row["cells"], start=1):
             if cell.get("covered"):
-                txt = f"<b>{cell['score']}</b>"
+                #  Appearance is driven by the VERIFICATION VERDICT, never by the retrieval score.
+                #  The old code shaded green by `intensity` (the normalised fused score), so the
+                #  most confidently-retrieved cell was the greenest -- even when the verifier had
+                #  judged it unrelated. See disclosure.CELL_STATES.
+                _mark, _label, fill, _cov = disclosure.cell_state(cell)
+                word = disclosure.cell_word(cell)
+                txt = f"<b>{_esc(word)}</b><br/><font size=6 color='#5b6b82'>{_esc(cell.get('score'))}</font>"
                 if cell.get("coord"):
-                    txt += f"<br/><font size=6>{_esc(cell['coord'])}</font>"
+                    txt += f"<br/><font size=6 color='#5b6b82'>{_esc(cell['coord'])}</font>"
                 cells.append(Paragraph(txt, S["cell"]))
-                inten = cell.get("intensity", 0.5)
-                bg = colors.Color(10/255, 125/255, 77/255, alpha=0.12 + 0.5 * inten)
-                styles.append(("BACKGROUND", (ci, ri), (ci, ri), bg))
+                styles.append(("BACKGROUND", (ci, ri), (ci, ri), colors.HexColor("#" + fill)))
             else:
                 cells.append(Paragraph("·", S["cell"]))
         rows.append(cells)

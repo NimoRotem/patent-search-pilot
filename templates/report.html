@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ v.title }} — prior-art results{% endblock %}
+{% block title %}{{ v.title }} — rotemAI patent search{% endblock %}
 {% block body %}
 {#  ============================================================================================
     WEIGHT BUDGET. This template renders ONLY what a collapsed card shows. Claims, description,
@@ -35,16 +35,18 @@
          that field <b>these results cannot be read as a search of your field</b>, and a thin or
          weak result list here says nothing about what prior art exists. Treat what follows as
          adjacent art only.</p>
-      {% if v.federation_offered and not v.federation %}
-      {#  An explicit, costed choice — never automatic. #}
-      <form method="post" action="{{ request.script_root }}/run">
-        <input type="hidden" name="query" value="{{ v.query }}">
-        <input type="hidden" name="mode" value="{{ v.mode }}">
-        {% if v.subject %}<input type="hidden" name="subject" value="{{ v.subject }}">{% endif %}
-        <input type="hidden" name="wide" value="1">
-        <button class="btn sm" type="submit">Search wider — external patent APIs</button>
-        <span class="small muted" style="margin-left:10px">~2 min · spends paid API credit</span>
-      </form>
+      {#  The "Search wider — external patent APIs" button that used to sit here is GONE, and so
+          is the pre-search interstitial that offered the same choice. Federation now runs on
+          every search, so re-offering it would be asking a question that has already been
+          answered. What remains is the part that was actually worth saying: that this query sits
+          outside the indexed field, stated once, above the results, where it is read against the
+          result list itself. #}
+      {% if v.federation %}
+      <p class="small muted">External patent APIs were searched for this query — see the federated
+        results below.</p>
+      {% elif v.federation_error %}
+      <p class="small muted">The external patent APIs could not be reached for this search, so
+        only the local corpus is represented below.</p>
       {% endif %}
     </div>
   </div>
@@ -71,7 +73,11 @@
             <span class="fr-t">{{ h.title or '(untitled)' }}</span>
             <span class="fr-m">
               <a href="{{ h.url or ('https://patents.google.com/patent/' + h.pub|replace('-','') + '/en') }}"
-                 target="_blank" rel="noopener">{{ h.pub }} ↗</a>
+                 target="_blank" rel="noopener">{{ h.pub }} on Google Patents ↗</a>
+              {#  Google Patents is missing drawings for German publications ~69% of the time, and
+                  its coverage of some EP/WO families is thinner than the register's. Espacenet is
+                  the office source, so it gets an equal link rather than being hidden. #}
+              {% if h.espacenet %}<a href="{{ h.espacenet }}" target="_blank" rel="noopener">Espacenet ↗</a>{% endif %}
               {% if h.date %}<span>{{ h.date }}</span>{% endif %}
               {% if h.assignee %}<span>{{ h.assignee }}</span>{% endif %}
               {% for s in h.sources %}<span class="chip src">{{ s }}</span>{% endfor %}
@@ -134,10 +140,15 @@
         the passage teaches the element — and that check is itself imperfect.
         {% if corpus.chart_fp_pre_pct is not none %}In an audit of this feature
         <b>{{ corpus.chart_fp_pre_pct }}% of {{ corpus.chart_fp_pre_n }} cells asserting coverage
-        were wrong</b> before that verification pass existed; with it,
-        {{ corpus.chart_fp_post_bad }} of {{ corpus.chart_fp_post_n }} surviving cells were
-        rejected — a sample far too small to claim a rate from, and the verifier shares a model
-        family with the auditor, so assume residual error.{% endif %}
+        were wrong</b> before that verification pass existed.{% endif %}
+        {% if corpus.chart_indep_checked %}With it, the verifier reported
+        {{ corpus.chart_fp_post_bad }} of {{ corpus.chart_fp_post_n }} surviving cells rejected —
+        but that is the verifier grading its own work. An independent review then re-read those
+        {{ corpus.chart_indep_checked }} confirmed cells against the verbatim cited passages and
+        judged <b>{{ corpus.chart_indep_overclaim }} of {{ corpus.chart_indep_checked }}
+        ({{ corpus.chart_indep_pct }}%) to be overclaims</b>. The samples are small and the
+        verifier shares a model family with the auditing judge, so treat that as a lower bound on
+        the error rate, not an upper one.{% endif %}
         Open each cell's reference and read the cited passage before using it.</p>
       {% set vs = v.claim_chart.verification %}
       {% if vs and vs.covered %}
@@ -302,14 +313,23 @@
             <span class="tstate"><span class="spin sm" aria-hidden="true"></span>loading<br>drawing</span>
           {% endif %}
         </button>
+        {#  WHERE the drawing came from, not decoration. Google Patents has no drawings for roughly
+            69% of German publications, so a figure shown here may have been recovered from EPO OPS
+            instead — and which office a facsimile came from changes what you can conclude when it
+            disagrees with the text, or when no drawing exists at all. #}
+        {% if c.drawings_provenance %}
+        <p class="figprov small muted">Drawings: {{ c.drawings_provenance }}</p>
+        {% endif %}
 
         <div class="rbody">
           <div class="rmain">
             <button type="button" class="rtitle" id="t-{{ c.pub }}" onclick="openDetail('{{ c.pub }}')">
               <span class="rank">#{{ c.rank }}</span>{{ c.flag }} {{ c.title or '(untitled)' }}</button>
             <div class="rmeta">
-              <a class="pn" href="https://patents.google.com/patent/{{ c.pub.replace('-','') }}/en"
-                 target="_blank" rel="noopener">{{ c.pub }} ↗</a>
+              <a class="pn" href="{{ c.google_patents or ('https://patents.google.com/patent/' + c.pub.replace('-','') + '/en') }}"
+                 target="_blank" rel="noopener" aria-label="{{ c.pub }} on Google Patents">{{ c.pub }} ↗</a>
+              {% if c.espacenet %}<a class="pn" href="{{ c.espacenet }}" target="_blank"
+                 rel="noopener" aria-label="{{ c.pub }} on Espacenet">Espacenet ↗</a>{% endif %}
               {% if c.priority_date %}<span>priority {{ c.priority_date }}</span>{% endif %}
               {% if c.publication_date %}<span>published {{ c.publication_date }}</span>{% endif %}
               {# Rendered inert and PROMOTED to a real link by app.js only once /api/pdfs confirms

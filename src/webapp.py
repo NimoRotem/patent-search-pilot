@@ -18,6 +18,7 @@ import auth, rerank_pool
 import claim_chart, translate, drawings          # ported per-card enrichment
 import grounding                                  # length-stable quote grounding (shared w/ claim_chart)
 import corpus_facts                               # live corpus scope/currency for the disclosures
+import disclosure                                 # shared disclosure wording (web + print + PDF + DOCX)
 import federation, domain_detect                 # two-tier search + out-of-domain guard
 from search_modes import require_available, ModeNotAvailable, available_modes
 from retrieval import Retriever
@@ -110,7 +111,7 @@ def _inject_corpus_facts():
     by forgetting an argument. Explicit corpus= arguments still win; facts() is cached.
     """
     try:
-        return {"corpus": corpus_facts.facts()}
+        return {"corpus": corpus_facts.facts(), "disc": disclosure}
     except Exception:
         # The disclosure must never be the reason a page fails to render.
         return {"corpus": {}}
@@ -406,9 +407,19 @@ def _federate_block(query, mode):
     d["hits"] = [{"pub": h.pub_number, "title": h.title, "abstract": (h.abstract or "")[:600],
                   "assignee": h.assignee, "date": h.date, "country": h.country,
                   "cpc": h.cpc[:6], "url": h.url, "family_id": h.family_id,
+                  # Office-source link next to the Google one; family-scoped when the federated
+                  # hit carried a family id. Never fatal -- a hit without one still renders.
+                  "espacenet": _espacenet_safe(h.pub_number, h.family_id),
                   "sources": h.sources, "rank": h.rank}
                  for h in (fed.hits or [])[:40]]
     return d
+
+
+def _espacenet_safe(pub, family_id=None):
+    try:
+        return enrich_display.espacenet_url(pub, family_id)
+    except Exception:
+        return None
 
 
 def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, wide=False):
@@ -473,30 +484,82 @@ def _subject_obj(subject):
                    jurisdiction=r["country"])
 
 
-# ---- routes --------------------------------------------------------------------------------
-EXAMPLE_QUERIES = [
-    {"label": "Handheld vacuum lifter",
-     "text": ("A cordless handheld vacuum lifter for glass and stone panels, with a flexible "
-              "sealing lip, an electric vacuum pump that keeps running to hold grip on rough or "
-              "porous surfaces, and a pressure sensor that alarms the operator when grip vacuum is lost.")},
-    {"label": "Robotic EOAT gripper",
-     "text": ("A robotic end-of-arm vacuum gripper for handling sheets and panels, with an array of "
-              "independently-controlled suction zones, a compliant foam seal, and a venturi vacuum "
-              "generator, able to release a workpiece by a controlled air pulse.")},
-    {"label": "Suction cup with check valve",
-     "text": ("A suction cup for lifting non-porous objects, comprising an elastomer cup body, a "
-              "self-sealing check valve that closes when the cup contacts the surface, and a manual "
-              "pump lever to evacuate the chamber.")},
-]
+# ---- routes ----------------------------------------------------------------------------------
+#  EXAMPLE_QUERIES removed with the "Try an example:" chip row it fed. The chips filled the
+#  textarea with one of three canned inventions; the frozen gold-set reports in /history cover
+#  the same "show me what this does" need without occupying the search page.
+def _gold_cards():
+    return [{"id": e["id"], "category": e["category"], "mode": e["mode"],
+             "subject": e.get("anchor_publication"), "notes": e.get("notes", ""),
+             "query": e.get("query_text", ""),
+             "cached": report_path(e["id"]).exists()}
+            for e in _GOLD.values()]
 
 
 @app.route("/")
 def index():
-    gold = [{"id": e["id"], "category": e["category"], "mode": e["mode"],
-             "subject": e.get("anchor_publication"), "notes": e.get("notes", ""),
-             "cached": report_path(e["id"]).exists()}
-            for e in _GOLD.values()]
-    return render_template("index.html", gold=gold, examples=EXAMPLE_QUERIES,
+    """The search page is now ONLY the search.
+
+    It previously opened with ~50 lines of prose above the input: a headline paragraph, the full
+    scope-and-reliability panel, and the indexed-CPC list. That content is not wrong -- it is the
+    disclosure that stops a thin result set being read as a clear field -- but it belongs where it
+    is read, not between a user and the search box. It moved intact to /about, and the search page
+    keeps one factual line linking there. The equivalent disclosure on the RESULTS page and in
+    every exported document is untouched: that is the point of decision, and it stays.
+    """
+    return render_template("index.html", corpus=corpus_facts.facts())
+
+
+@app.route("/about")
+def about():
+    """Everything that used to sit above the search box, in full."""
+    return render_template("about.html", corpus=corpus_facts.facts())
+
+
+def _history_entries(limit=200):
+    """Past searches, most recent first, straight off the cached reports on disk.
+
+    Every ad-hoc run already writes <slug>.json plus a <slug>.meta.json holding the query text and
+    mode, so the history needs no new bookkeeping and no database -- and because each entry is a
+    cached report, opening one is instant and spends nothing. Reports whose meta file is missing
+    (or which are gold entries) are skipped here; the gold set is listed separately and labelled.
+    """
+    out = []
+    gold_ids = set(_GOLD.keys())
+    try:
+        paths = sorted(REPORTS.glob("*.meta.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    except Exception:
+        return out
+    for mp in paths[:limit]:
+        slug = mp.name[:-len(".meta.json")]
+        if slug in gold_ids:
+            continue
+        if not report_path(slug).exists():
+            continue                      # a run that never finished: nothing to open instantly
+        try:
+            m = json.loads(mp.read_text())
+        except Exception:
+            continue
+        try:
+            ts = report_path(slug).stat().st_mtime
+        except Exception:
+            ts = mp.stat().st_mtime
+        out.append({"slug": slug, "query": (m.get("query") or "")[:400],
+                    "mode": m.get("mode", "novelty"), "subject": m.get("subject"),
+                    "ood": bool(m.get("ood")),
+                    "when": time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)), "ts": ts})
+    return out
+
+
+@app.route("/history")
+def history():
+    """Search history + the frozen gold-set examples, clearly separated.
+
+    The gold entries used to sit on the search page under "or open a frozen gold-set example
+    (instant)". They are demo fixtures, not the user's work, so they are labelled as examples here
+    rather than mixed into the history list.
+    """
+    return render_template("history.html", entries=_history_entries(), gold=_gold_cards(),
                            corpus=corpus_facts.facts())
 
 
@@ -529,25 +592,36 @@ def run():
         return _error_response({"error": "unknown_mode", "detail": str(e)}, 400,
                                f"Unknown search mode: {e}")
     subject = request.form.get("subject", "").strip() or None
-    wide = request.form.get("wide") == "1"
+    #  FEDERATION IS NOW UNCONDITIONAL.
+    #
+    #  The "Also search wider — external patent APIs" checkbox is gone and every search federates.
+    #  The "|wide" marker STAYS in the slug, and deliberately so: it is what keeps these reports in
+    #  a different cache namespace from the narrow reports generated before this change. Dropping
+    #  it would have made a new wide run overwrite the cached narrow report for the same query --
+    #  silently replacing a result the user may have cited. Every pre-existing narrow report keeps
+    #  its own slug, stays readable at its own URL, and is listed in /history.
+    wide = True
     if not query:
         return redirect(url_for("index"))
-    # OUT-OF-DOMAIN GATE — runs BEFORE we commit to the pipeline.
-    # This detector used to run inside _generate(), i.e. AFTER a full local search had already
-    # been funded, so an attorney searching outside vacuum handling paid ~40 LLM calls and 2-4
-    # minutes to be told the corpus could not answer them. The detector is cheap (embedding +
-    # CPC signals; llm=False on the tested queries), so it belongs here. `ood_ack=1` is the
-    # user's explicit "I understand, search anyway", and `wide` already means they chose the
-    # external APIs, so neither needs the interstitial.
-    if not wide and request.form.get("ood_ack") != "1":
-        try:
-            v = domain_detect.detect(query, retriever=retriever())
-        except Exception:
-            v = None                      # detector failure must never block a search
-        if v is not None and v.should_federate:
-            return render_template("out_of_domain.html", verdict=v.to_dict(), query=query,
-                                   mode=mode, subject=subject or "",
-                                   corpus=corpus_facts.facts()), 200
+    #  OUT-OF-DOMAIN: STILL DETECTED, NO LONGER A GATE.
+    #
+    #  The detector still runs HERE rather than inside _generate(): it is cheap (embedding + CPC
+    #  signals, llm=False on the tested queries) and running it before the pipeline is what keeps
+    #  the verdict available to record on the report.
+    #
+    #  The interstitial existed to offer the wider search as a paid choice before spending on a
+    #  local-only run that could not answer the query. Federation is now automatic, so that choice
+    #  no longer exists and re-asking it would be a pointless second click. The INFORMATION is
+    #  still valuable, though -- "your query is outside the indexed field" is exactly what stops a
+    #  thin local result set being misread -- so the verdict is recorded on the report and shown
+    #  as a banner at the top of the results, where it is read against the actual results.
+    ood = None
+    try:
+        v = domain_detect.detect(query, retriever=retriever())
+    except Exception:
+        v = None                          # detector failure must never block a search
+    if v is not None and v.should_federate:
+        ood = v.to_dict()
     # `wide` MUST be part of the slug: a wide result and a narrow one are different reports and
     # would otherwise overwrite each other's cache.
     slug = slugify(query + "|" + mode + ("|wide" if wide else ""))
@@ -557,7 +631,7 @@ def run():
                                f"The server is at capacity — {why}. Please retry shortly.")
     # remember adhoc meta for the report page title
     (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
-        {"query": query, "mode": mode, "subject": subject, "wide": wide}))
+        {"query": query, "mode": mode, "subject": subject, "wide": wide, "ood": ood}))
     return redirect(url_for("report", slug=slug))
 
 
@@ -567,6 +641,7 @@ def report(slug):
     query = subject = None
     mode = "novelty"
     wide = False        # the progress view lists the federation stage only for a wide run
+    ood = None          # out-of-domain verdict recorded at search time, shown as a results banner
     if slug in _GOLD:
         e = _GOLD[slug]
         query, subject, mode = e["query_text"], e.get("anchor_publication"), e["mode"]
@@ -577,6 +652,7 @@ def report(slug):
             m = json.loads(meta.read_text())
             query, subject, mode = m["query"], m.get("subject"), m.get("mode", "novelty")
             wide = bool(m.get("wide"))
+            ood = m.get("ood")
         title = "Ad-hoc search"
     status, rep = ensure_report(slug, query=query, subject=subject, mode=mode, regen=regen)
     if status == "missing":
@@ -590,7 +666,7 @@ def report(slug):
     view["slug"] = slug
     view["title"] = title
     view["is_gold"] = slug in _GOLD
-    return render_template("report.html", v=view, corpus=corpus_facts.facts())
+    return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
 
 
 def _build_view_cached(slug, rep, regen=False):
@@ -983,7 +1059,9 @@ def print_view(slug):
     rep = _load_report(slug)
     if not rep:
         abort(404)
-    view = webview.build_view(rep, top_n=25)
+    #  _build_view_cached, not build_view: the per-cell disclosure verdicts are applied there.
+    #  Calling build_view directly is why the print view rendered cells that nothing had checked.
+    view = _build_view_cached(slug, rep)
     view["slug"] = slug
     view["title"] = slug
     return render_template("print.html", v=view)

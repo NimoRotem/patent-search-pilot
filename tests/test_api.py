@@ -12,13 +12,49 @@ def test_healthz(app_client):
     assert r.get_json()["ok"] is True
 
 
-def test_home_has_both_entry_points(app_client):
+def test_home_is_just_the_search(app_client):
+    """The search page is the search field.
+
+    The example chips and the gold-set grid moved to /history and the scope wall moved to /about,
+    so this now asserts the ABSENCE of that furniture as well as the presence of the input --
+    otherwise the page could silently regrow a brochure above the box and still pass.
+    """
     r = app_client.get("/")
     assert r.status_code == 200
     html = r.get_data(as_text=True)
-    assert "invention" in html.lower()          # free-text box
-    assert "exchip" in html                       # example prompt chips
-    assert GOLD in html                            # gold examples grid
+    assert "invention" in html.lower()             # free-text box
+    assert "rotemAI patent search" in html         # masthead / title
+    assert "exchip" not in html                    # example chips are gone
+    assert GOLD not in html                        # gold grid moved to /history
+    assert "Search scope and measured reliability" not in html   # wall moved to /about
+    assert 'name="wide"' not in html               # federation is unconditional, no checkbox
+    assert "/about" in html                        # one compact line links to the relocated content
+
+
+def test_about_holds_the_relocated_disclosure(app_client):
+    r = app_client.get("/about")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert "Search scope and measured reliability" in html
+    assert "Absence of results is not evidence of absence" in html
+    assert "What is and is not indexed" in html
+
+
+def test_history_lists_examples_and_past_searches(app_client):
+    r = app_client.get("/history")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert GOLD in html                            # gold set is here now
+    assert "Worked examples" in html               # ...and labelled as examples, not history
+    assert "Your searches" in html
+
+
+def test_results_page_keeps_the_scope_disclosure(app_client):
+    """Clearing the SEARCH page must not clear the RESULTS page. This is the safeguard that stops
+    a thin result set being read as a clear field, and it stays at the point of decision."""
+    html = app_client.get(f"/report/{GOLD}").get_data(as_text=True)
+    assert "Search scope and measured reliability" in html
+    assert "Absence of results is not evidence of absence" in html
 
 
 def test_gold_report_renders(app_client):

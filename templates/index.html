@@ -1,32 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Prior-art search{% endblock %}
+{% block title %}rotemAI patent search{% endblock %}
 {% block body %}
-<div class="hero">
-  <div class="wrap">
-    {# Previous headline was "Describe an invention. Get the prior art." — a completeness claim the
-       measured 19% recall@100 does not support. Describe the mechanism, not an outcome. #}
-    <h1>Search a vacuum-handling patent corpus</h1>
-    <p>Agentic semantic retrieval over {% if corpus.publications %}{{ '{:,}'.format(corpus.publications) }}{% else %}~108,000{% endif %}
-       publications in {{ corpus.cpc_count }} CPC classes — element-by-element claim charts,
-       drawings, PDF facsimiles, EN/DE cross-lingual, prior-art dating under EPC Art. 54/56, and
-       PDF/DOCX export. Queries outside the indexed field can be sent to external patent APIs.</p>
-  </div>
-</div>
+{#  THE SEARCH PAGE IS THE SEARCH FIELD.
 
-<div class="wrap">
-  {% with variant='search' %}{% include "_scope.html" %}{% endwith %}
+    This page used to open with roughly fifty lines of prose above the input: a headline
+    paragraph, the full "Search scope and measured reliability" panel, and the collapsible
+    indexed-CPC list. None of it was wrong — it is the disclosure that stops a thin result set
+    being read as a clear field — but a search tool that makes you scroll past an essay to reach
+    the box has mistaken itself for a brochure. All of that content moved INTACT to /about, and
+    what remains here is one factual line, rendered from corpus_facts.facts() so it cannot drift.
+
+    The same disclosure on the RESULTS page and in every exported PDF/DOCX is deliberately
+    untouched. That is the point where somebody decides what a result means, and it stays there.  #}
+<div class="wrap searchpage">
   <form class="panel searchcard" method="post" action="{{ request.script_root }}/run" id="searchform">
     <div class="field">
       <label for="qbox">What is the invention?</label>
-      <textarea name="query" id="qbox" rows="4" required
+      <textarea name="query" id="qbox" rows="4" required autofocus
         placeholder="Describe it in plain language — the more specific the features, the better. e.g. “A cordless handheld vacuum lifter for glass and stone panels, with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that alarms the operator when grip vacuum is lost.”"></textarea>
-    </div>
-
-    <div style="margin:-4px 0 16px">
-      <span class="lab" style="display:inline;margin-right:6px">Try an example:</span>
-      {% for ex in examples %}
-      <button type="button" class="exchip" onclick="fillEx({{ loop.index0 }})">{{ ex.label }}</button>
-      {% endfor %}
     </div>
 
     <div class="row">
@@ -46,48 +37,22 @@
       </div>
     </div>
 
-    <label class="wide-opt" for="wide">
-      <input type="checkbox" name="wide" id="wide" value="1">
-      <span>
-        <b>Also search wider — external patent APIs</b>
-        <span class="wo-note">Adds SerpApi / BigQuery / PQAI / OpenAlex on top of the local corpus.
-          Slower (~2 min extra) and spends paid API credit, so it is never automatic. Use it when
-          the invention falls outside vacuum handling and gripping.</span>
-      </span>
-    </label>
-
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <button class="btn" type="submit" id="gobtn">Search prior art</button>
-      <span class="small muted">A new query takes ~2–4 min; it is cached afterwards.</span>
+      <span class="small muted">Searches the local corpus and external patent APIs. ~2–4 min;
+        cached afterwards.</span>
     </div>
+
+    {#  The one line that replaces the wall. Every number is live from the DB via
+        corpus_facts.facts() — never hardcoded — so it cannot state a corpus size or a date
+        ceiling the tool no longer has. #}
+    <p class="scope-line small muted">{{ disc.one_line() }} ·
+      <a href="{{ request.script_root }}/about">about this tool and its limits</a></p>
   </form>
-
-  <div class="divider">or open a frozen gold-set example (instant)</div>
-
-  <div class="goldgrid">
-    {% for g in gold %}
-    <form method="post" action="{{ request.script_root }}/run">
-      <input type="hidden" name="gold_id" value="{{ g.id }}">
-      <button class="goldcard" type="submit">
-        <span class="id">{{ g.id }}
-          {% if g.cached %}<span class="badge b-cached">cached</span>{% endif %}</span>
-        <span><span class="badge">{{ g.category }}</span
-          ><span class="badge">{{ g.mode.replace('_',' ') }}</span></span>
-        <span class="small muted">{% if g.subject %}subject {{ g.subject }}{% else %}natural-language query{% endif %}</span>
-        <span class="notes">{{ g.notes }}</span>
-      </button>
-    </form>
-    {% endfor %}
-  </div>
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
-const EXAMPLES = {{ examples|tojson }};
-function fillEx(i){
-  const q = document.getElementById('qbox');
-  q.value = EXAMPLES[i].text; q.focus();
-}
 document.getElementById('searchform').addEventListener('submit', e => {
   const q = document.getElementById('qbox');
   if(!q.value.trim()){ e.preventDefault(); q.focus(); return; }

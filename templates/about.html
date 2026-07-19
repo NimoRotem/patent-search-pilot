@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}About — rotemAI patent search{% endblock %}
+{% block body %}
+{#  Everything that used to sit between the masthead and the search box, relocated intact:
+    the description of what the tool does, the full "Search scope and measured reliability"
+    panel, and the "What is and is not indexed" CPC list. Nothing was dropped in the move —
+    _scope.html is the same include the RESULTS page uses, so this page and the results
+    disclosure can never drift apart.  #}
+<div class="hero">
+  <div class="wrap">
+    <h1>About rotemAI patent search</h1>
+    <p>Agentic semantic retrieval over {% if corpus.publications %}{{ '{:,}'.format(corpus.publications) }}{% else %}~108,000{% endif %}
+       publications in {{ corpus.cpc_count }} CPC classes — element-by-element claim charts,
+       drawings, PDF facsimiles, EN/DE cross-lingual, prior-art dating under EPC Art. 54/56, and
+       PDF/DOCX export. Every search also queries external patent APIs, so a query outside the
+       indexed field still reaches beyond this corpus.</p>
+  </div>
+</div>
+
+<div class="wrap">
+  {% with variant='search' %}{% include "_scope.html" %}{% endwith %}
+
+  <section class="panel" aria-labelledby="how-h" style="margin-top:16px">
+    <h2 id="how-h">How a search runs</h2>
+    <ol class="small">
+      <li>The invention text is decomposed into technical elements by the coverage agent.</li>
+      <li>Each element is retrieved against the local corpus through an 8-channel cascade
+        (dense + BM25 + CPC + citation/family + query-by-example + cross-lingual), fused by
+        weighted reciprocal rank and reranked by a cross-encoder.</li>
+      <li>Every search also queries the external patent APIs (SerpApi / BigQuery / PQAI /
+        OpenAlex) in parallel. If that federated call fails or times out, the local results are
+        still returned — federation can never take a search down with it.</li>
+      <li>Each cell of the element × reference map is then re-checked by a separate model pass
+        asked to refute it. Only cells that survive are shown as disclosure.</li>
+      <li>Results are cached, so re-opening a past search from
+        <a href="{{ request.script_root }}/history">Search history</a> is instant and costs
+        nothing.</li>
+    </ol>
+  </section>
+
+  <p style="margin:18px 0 40px">
+    <a class="btn" href="{{ request.script_root }}/">Start a search</a>
+  </p>
+</div>
+{% endblock %}

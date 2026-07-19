@@ -14,11 +14,30 @@ from config import DATA
 REPORTS = DATA / "reports"
 RATIONALE = DATA / "rationale"
 
-CORPUS_NOTE = ("Semantic + agentic search over a 107,795-publication vacuum-gripping corpus "
-               "(US/EP/WO/DE, all dates; 1,819,616 embedded passages). Retrieval: 8-channel "
-               "adaptive cascade (dense + BM25 + CPC + citation/family + query-by-example + "
-               "cross-lingual) with weighted reciprocal-rank fusion and a cross-encoder reranker. "
-               "Prior-art dating by a jurisdiction-neutral novelty/inventive-step engine.")
+_METHOD_NOTE = ("Retrieval: 8-channel adaptive cascade (dense + BM25 + CPC + citation/family + "
+                "query-by-example + cross-lingual) with weighted reciprocal-rank fusion and a "
+                "cross-encoder reranker. Prior-art dating by a jurisdiction-neutral "
+                "novelty/inventive-step engine.")
+
+
+def corpus_note():
+    """Method + corpus sentence for the export cover.
+
+    The publication count used to be the string literal "107,795" baked in here. A weekly
+    incremental ingest moves that number, so a filed report could state a corpus size the tool no
+    longer had -- read it live, and degrade to no number rather than to a wrong one.
+    """
+    import corpus_facts
+    f = corpus_facts.facts()
+    n = f"{f['publications']:,}-publication" if f.get("publications") else ""
+    juris = "/".join(f.get("jurisdictions") or [])
+    chunks = f" ({f['chunks']:,} embedded passages)" if f.get("chunks") else ""
+    return (f"Semantic + agentic search over a {n} vacuum-gripping corpus "
+            f"[{juris}; current to {f.get('max_date_str') or 'unknown'}]{chunks}. {_METHOD_NOTE}")
+
+
+# Back-compat for anything importing the constant directly.
+CORPUS_NOTE = ("Semantic + agentic search over a bounded vacuum-gripping corpus. " + _METHOD_NOTE)
 
 
 def _load_report(slug):
@@ -50,11 +69,67 @@ def _best_drawing(pub):
     return None, None
 
 
+def _attach_verification(slug, view, report):
+    """Make sure the exported claim chart carries the SAME per-cell disclosure verdicts the web
+    page shows.
+
+    This was the defect behind the whole export-accuracy problem: assemble() calls
+    webview.build_view() fresh, and build_view does not verify anything -- verification is applied
+    afterwards, by webapp._build_view_cached(), and only to the cached view the browser reads. So
+    every exported PDF/DOCX was built from a chart whose cells had no `verify` key at all, and the
+    exporters happily shaded them green by retrieval score.
+
+    Prefer the verdicts already cached next to the report (free, and identical to what the user saw
+    on screen); only fall back to running the verifier if no cached view exists. Matching is by
+    (element, pub) rather than by position because the export may request a different top_n and
+    therefore a different column set.
+    """
+    chart = view.get("claim_chart") or {}
+    cached = REPORTS / f"{slug}.view.json"
+    verdicts = {}
+    if cached.exists():
+        try:
+            cv = (json.loads(cached.read_text()).get("claim_chart") or {})
+            for row in cv.get("rows", []):
+                for c in row.get("cells", []):
+                    if c.get("covered") and c.get("verify"):
+                        verdicts[(row.get("element"), c.get("pub"))] = (c["verify"], c.get("verify_why"))
+        except Exception:
+            verdicts = {}
+    hit = miss = 0
+    for row in chart.get("rows", []):
+        for c in row.get("cells", []):
+            if not c.get("covered"):
+                continue
+            v = verdicts.get((row.get("element"), c.get("pub")))
+            if v:
+                c["verify"], c["verify_why"] = v[0], v[1]
+                hit += 1
+            else:
+                miss += 1
+    if miss:
+        # No cached verdict for at least one rendered cell. Run the verifier rather than exporting
+        # unverified cells that would print as "unchecked" -- but never fail the export over it.
+        try:
+            import claim_chart
+            claim_chart.verify_matrix(chart, report)
+        except Exception:
+            pass
+    if not chart.get("verification"):
+        try:
+            import claim_chart
+            chart["verification"] = claim_chart._verify_stats(chart)
+        except Exception:
+            pass
+    return view
+
+
 def assemble(slug, selected_pubs, top_n=25):
     report = _load_report(slug)
     if not report:
         raise ValueError(f"no cached report for {slug}")
     view = webview.build_view(report, top_n=max(top_n, len(selected_pubs) + 5))
+    _attach_verification(slug, view, report)
     by_pub = {c["pub"]: c for c in view["cards"]}
     # honour the FULL selection: ranked-order first, then any selected pubs not in the top cards
     want = list(dict.fromkeys(selected_pubs))                  # de-dupe, preserve order
@@ -133,7 +208,7 @@ def assemble(slug, selected_pubs, top_n=25):
         "query": query, "mode": report.get("mode", "novelty"),
         "subject": report.get("subject"), "subject_flag": view.get("subject_flag", ""),
         "generated": date.today().isoformat(),
-        "corpus_note": CORPUS_NOTE,
+        "corpus_note": corpus_note(),
         "elements": elements,
         "n_elements": len(elements),
         "n_covered": len(covered), "covered_elements": sorted(covered),

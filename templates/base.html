@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>{% block title %}Prior-art search{% endblock %}</title>
+<title>{% block title %}rotemAI patent search{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🔎</text></svg>">
 <script>window.APP_BASE = {{ request.script_root|tojson }};</script>
@@ -13,10 +13,11 @@
 <a class="skip" href="#main">Skip to main content</a>
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="{{ request.script_root }}/">Prior<span>Art</span>
-      <small>semantic corpus + federated patent search</small></a>
+    <a class="brand" href="{{ request.script_root }}/">rotem<span>AI</span> patent search</a>
     <span class="grow"></span>
     <a href="{{ request.script_root }}/">New search</a>
+    <a href="{{ request.script_root }}/history">Search history</a>
+    <a href="{{ request.script_root }}/about">About</a>
   </div>
 </header>
 <main id="main">{% block body %}{% endblock %}</main>

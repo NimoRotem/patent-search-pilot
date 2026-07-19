@@ -41,15 +41,31 @@ RATIONALE_N = 40
 RATIONALE_BASIS = ("independent LLM examiner audit of 40 generated 'why relevant' rationales, "
                    "graded against the exact reference text the generator was shown")
 
-# The claim chart needs TWO numbers, not one. Quoting only the post-verification figure would be
-# dishonest: it is 0 of 5, and 5 cells is far too small a sample to claim a rate from -- especially
-# since the verifier and the auditing judge are both gemini-2.5-flash and therefore share blind
-# spots. Quoting only the pre-verification figure would be stale. So the UI states both with their
-# sample sizes and tells the reader to assume residual error either way.
+# The claim chart needs THREE numbers, not one, and the third one is the honest one.
+#
+#   PRE   -- 7 of 12 coordinate-backed cells were false positives before any verification existed.
+#   POST  -- the verification pass rejected 0 of the 5 cells it still rendered as coverage.
+#   INDEP -- an INDEPENDENT reviewer then re-read all 18 covered cells of grabo_gripper_novelty and
+#            judged those same 5 surviving "discloses" verdicts against the verbatim cited
+#            passages. 2 of the 5 are clear overclaims.
+#
+# POST alone is the verifier grading its own homework, and "0 of 5 rejected" read as reassurance
+# the evidence does not support. It is kept only as the pass's self-reported tally and must never
+# be quoted on its own. INDEP is what a reader should weigh. Both share the caveat that the
+# verifier and the auditing judge are gemini-2.5-flash and therefore share blind spots -- which
+# makes the independent finding a LOWER bound on the error rate, not an upper one.
 CHART_FP_PRE = 0.583                  # 7 of 12 coordinate-backed cells were false positives
 CHART_FP_PRE_N = 12
-CHART_FP_POST_BAD = 0                 # rejected, among cells still rendered as coverage
+CHART_FP_POST_BAD = 0                 # self-reported: rejected by the verification pass itself
 CHART_FP_POST_N = 5
+CHART_INDEP_CHECKED = 5               # surviving "discloses" cells re-read by a human-directed review
+CHART_INDEP_OVERCLAIM = 2             # of those, judged to overclaim against the verbatim passage
+CHART_INDEP_BASIS = (
+    "independent review of all 18 covered cells of the grabo_gripper_novelty report; the 5 cells "
+    "the verification pass had confirmed as 'discloses' were re-read against the verbatim cited "
+    "passages. 2 were judged clear overclaims -- e.g. EP-0176125-A1, an adhesive wall-fixing "
+    "patent, matched to 'driver pin for mechanical coupling' on the words 'pin' and 'clamped' "
+    "alone -- and one further cell's verdict was defensible but cited the wrong coordinate")
 CHART_BASIS = ("independent LLM examiner audit of coordinate-backed claim-chart cells: the "
                "fraction whose cited passage does not actually disclose the element")
 
@@ -58,7 +74,7 @@ def _load_measured():
     """Let a re-audit override the constants without a code change, so the UI can never quote a
     figure older than the last measurement. Missing file = keep the constants above."""
     global RATIONALE_ERROR_RATE, RATIONALE_N, CHART_FP_PRE, CHART_FP_PRE_N
-    global CHART_FP_POST_BAD, CHART_FP_POST_N
+    global CHART_FP_POST_BAD, CHART_FP_POST_N, CHART_INDEP_CHECKED, CHART_INDEP_OVERCLAIM
     try:
         import json
         from config import DATA
@@ -71,6 +87,8 @@ def _load_measured():
             CHART_FP_PRE_N = d.get("chart_fp_pre_n", CHART_FP_PRE_N)
             CHART_FP_POST_BAD = d.get("chart_fp_post_bad", CHART_FP_POST_BAD)
             CHART_FP_POST_N = d.get("chart_fp_post_n", CHART_FP_POST_N)
+            CHART_INDEP_CHECKED = d.get("chart_indep_checked", CHART_INDEP_CHECKED)
+            CHART_INDEP_OVERCLAIM = d.get("chart_indep_overclaim", CHART_INDEP_OVERCLAIM)
             return d
     except Exception:
         pass
@@ -137,6 +155,11 @@ def facts(force: bool = False) -> dict:
         "chart_fp_pre_n": CHART_FP_PRE_N,
         "chart_fp_post_bad": CHART_FP_POST_BAD,
         "chart_fp_post_n": CHART_FP_POST_N,
+        "chart_indep_checked": CHART_INDEP_CHECKED,
+        "chart_indep_overclaim": CHART_INDEP_OVERCLAIM,
+        "chart_indep_pct": (int(round(100.0 * CHART_INDEP_OVERCLAIM / CHART_INDEP_CHECKED))
+                            if CHART_INDEP_CHECKED else None),
+        "chart_indep_basis": CHART_INDEP_BASIS,
         "chart_basis": CHART_BASIS,
         "measured": _MEASURED,
     }

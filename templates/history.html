@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Search history — rotemAI patent search{% endblock %}
+{% block body %}
+{#  Two lists, deliberately separated and labelled.
+
+    "Your searches" are the user's own cached runs, newest first, read straight off
+    data/reports/*.meta.json. "Worked examples" are the frozen gold-set fixtures that used to sit
+    on the search page under "or open a frozen gold-set example (instant)". Merging them would be
+    the one genuinely misleading thing this page could do — a demo fixture must never look like
+    something the user searched for — so they keep separate headings.
+
+    Every entry here is already cached on disk: opening one renders immediately and spends nothing
+    on paid APIs.  #}
+<div class="wrap">
+  <h1 style="margin-top:22px">Search history</h1>
+
+  <section aria-labelledby="hist-h">
+    <h2 id="hist-h">Your searches</h2>
+    {% if entries %}
+    <p class="small muted">{{ entries|length }} cached search{{ 'es' if entries|length != 1 else '' }},
+      most recent first. These open instantly from cache.</p>
+    <ul class="histlist">
+      {% for e in entries %}
+      <li class="histrow">
+        <a class="histq" href="{{ request.script_root }}/report/{{ e.slug }}">{{ e.query or e.slug }}</a>
+        <span class="small muted">
+          <span class="badge">{{ e.mode.replace('_',' ') }}</span>
+          {% if e.subject %}<span class="badge">subject {{ e.subject }}</span>{% endif %}
+          {% if e.ood %}<span class="badge b-warn" title="The detector judged this query to be outside the indexed field">outside indexed field</span>{% endif %}
+          <span>{{ e.when }}</span>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="small muted">No searches yet. Results are cached as you run them and will appear
+      here, newest first.</p>
+    {% endif %}
+  </section>
+
+  <section aria-labelledby="gold-h" style="margin-top:26px">
+    <h2 id="gold-h">Worked examples <span class="badge">not your searches</span></h2>
+    <p class="small muted">Frozen gold-set reports shipped with the tool, kept for demonstration
+      and regression testing. They are examples, not searches you ran.</p>
+    <div class="goldgrid">
+      {% for g in gold %}
+      <form method="post" action="{{ request.script_root }}/run">
+        <input type="hidden" name="gold_id" value="{{ g.id }}">
+        <button class="goldcard" type="submit">
+          <span class="id">{{ g.id }}
+            {% if g.cached %}<span class="badge b-cached">cached · instant</span>{% endif %}</span>
+          <span><span class="badge">example</span
+            ><span class="badge">{{ g.category }}</span
+            ><span class="badge">{{ g.mode.replace('_',' ') }}</span></span>
+          <span class="small muted">{% if g.subject %}subject {{ g.subject }}{% else %}natural-language query{% endif %}</span>
+          <span class="notes">{{ g.notes }}</span>
+        </button>
+      </form>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

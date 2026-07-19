@@ -526,26 +526,69 @@ function lbTrapTab(e){
 // (Programmatic .click() still works, which makes that failure easy to miss in a scripted check.)
 // Walk up from #lb instead and inert only the SIBLINGS at each level, leaving the ancestor chain
 // live. Nothing outside the modal is reachable; everything inside it stays interactive.
-let _lbInerted = [];
-function lbSetBackgroundInert(on){
-  if (!on){
-    _lbInerted.forEach(el => { el.inert = false; el.removeAttribute('aria-hidden'); });
-    _lbInerted = [];
-    return;
-  }
-  lbSetBackgroundInert(false);      // never stack two applications
-  const lb = document.getElementById('lb');
-  if (!lb) return;
-  for (let node = lb; node && node !== document.documentElement; node = node.parentElement){
+//
+// The same walk is needed by BOTH modals, so it is one function taking the modal element.
+// #lb (the figure lightbox) and #soOverlay (the full-document slideover) sit at different depths,
+// which is exactly why "inert every body child" is wrong for both: it would inert an ANCESTOR of
+// the modal and therefore the modal itself, leaving Close/Prev/Next unfocusable. Walking up and
+// inerting only the SIBLINGS at each level leaves the ancestor chain live.
+//
+// VERIFY THIS BY TABBING, NOT BY .click(). A programmatic click still works on an inert element,
+// so a scripted "the button responds" check passes even when the trap is completely broken.
+function _inertSiblingsUp(modal, store){
+  for (let node = modal; node && node !== document.documentElement; node = node.parentElement){
     const parent = node.parentElement;
     if (!parent) break;
     [...parent.children].forEach(sib => {
       if (sib === node || sib.inert) return;
       sib.inert = true;
       sib.setAttribute('aria-hidden', 'true');
-      _lbInerted.push(sib);
+      store.push(sib);
     });
   }
+}
+function _releaseInert(store){
+  store.forEach(el => { el.inert = false; el.removeAttribute('aria-hidden'); });
+  store.length = 0;
+}
+
+let _lbInerted = [];
+function lbSetBackgroundInert(on){
+  if (!on){ _releaseInert(_lbInerted); return; }
+  lbSetBackgroundInert(false);      // never stack two applications
+  const lb = document.getElementById('lb');
+  if (!lb) return;
+  _inertSiblingsUp(lb, _lbInerted);
+}
+
+//
+// THE SLIDEOVER IS THE ONE THAT ACTUALLY MATTERS HERE.
+//
+// A previous pass inerted the background for #lb only. But #lb is the small figure lightbox; the
+// real full-document viewer on this page is #soOverlay, and it declares role="dialog"
+// aria-modal="true" while #main carried no `inert` at all. aria-modal is a promise to assistive
+// tech, not a focus policy: 14 Tabs with the slideover open walked straight out of it and landed
+// on a chart button in the background. Same treatment, same walker.
+let _soInerted = [];
+function soSetBackgroundInert(on){
+  if (!on){ _releaseInert(_soInerted); return; }
+  soSetBackgroundInert(false);
+  const so = document.getElementById('soOverlay');
+  if (!so) return;
+  _inertSiblingsUp(so, _soInerted);
+}
+
+// Cycle Tab inside the slideover so focus cannot escape at the ends either.
+function soTrapTab(e){
+  if (e.key !== 'Tab') return;
+  const so = document.getElementById('soOverlay');
+  if (!so || !so.classList.contains('open')) return;
+  const f = [...so.querySelectorAll('a[href],button:not([disabled]),input,select,textarea,[tabindex]:not([tabindex="-1"])')]
+    .filter(el => el.offsetParent !== null || el === document.activeElement);
+  if (!f.length) return;
+  const first = f[0], last = f[f.length - 1], active = document.activeElement;
+  if (e.shiftKey && (active === first || !so.contains(active))){ e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && (active === last || !so.contains(active))){ e.preventDefault(); first.focus(); }
 }
 
 function closeLb(){
@@ -669,6 +712,7 @@ async function openDetail(pn, push = true){
   document.getElementById('soBreadcrumb').textContent = detailStack.join('  ›  ');
   setHash(pn);
   overlay().classList.add('open');
+  soSetBackgroundInert(true);
   document.body.style.overflow = 'hidden';
   document.getElementById('soClose').focus();
   const body = document.getElementById('soBody');
@@ -682,6 +726,7 @@ async function openDetail(pn, push = true){
 }
 function closeDetail(){
   overlay().classList.remove('open');
+  soSetBackgroundInert(false);
   detailStack.length = 0;
   document.body.style.overflow = '';
   clearHash();
@@ -840,6 +885,7 @@ async function openSimilar(pn){
   document.getElementById('soBack').hidden = detailStack.length <= 1;
   document.getElementById('soBreadcrumb').textContent = detailStack.join('  ›  ');
   overlay().classList.add('open');
+  soSetBackgroundInert(true);
   document.body.style.overflow = 'hidden';
   const body = document.getElementById('soBody');
   body.innerHTML = '<div class="so-loading"><span class="spin" aria-hidden="true"></span>' +
@@ -1030,6 +1076,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Escape' && overlay().classList.contains('open') && !document.getElementById('lb').classList.contains('open'))
       closeDetail();
   });
+  // Capture phase: the trap has to see Tab before anything inside the panel consumes it.
+  document.addEventListener('keydown', soTrapTab, true);
   document.getElementById('soLink').addEventListener('click', () => {
     const pn = (detailStack[detailStack.length - 1] || '').replace(/ · similar$/, '');
     if (!pn) return;

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json, re
 from datetime import date, datetime
 import db, embed, status as status_mod
+import enrich_display                       # office links + cached drawing provenance (local only)
 from search_modes import Subject, Mode, classify_basis, Basis
 from config import DATA
 
@@ -342,14 +343,40 @@ def _cached_images(pub):
     return [{"file": f, "from_pdf": from_pdf} for f in files]
 
 
-def _card_content(cur, pid, pub, matched):
+def _card_content(cur, pid, pub, matched, family_id=None):
     """Everything needed to render the card's tabs WITHOUT a round-trip: claims / description /
     figure captions straight from Postgres (already ingested for most refs) + any figure images
     already downloaded. This is what makes the data show immediately instead of 'not ingested'."""
     s = sections(cur, pid)
     mc = matched.get("coord") if isinstance(matched.get("coord"), dict) else None
     imgs = _cached_images(pub)
+    #  Office links + drawing provenance, from the ALREADY-CACHED display record only.
+    #  load_cached() never hits the network, so adding these costs nothing per card; a reference
+    #  that has not been enriched yet simply has no Espacenet link until it is, rather than making
+    #  the results page wait on an API call.
+    google_patents = provenance = None
+    #  BUILD the Espacenet link rather than trusting the cached one. Display records cached before
+    #  the URL scheme was corrected still hold the old bare full-text form
+    #  (/patent/search?q=<number>), which can land on a result list or on the wrong document --
+    #  exactly the bug espacenet_url() was written to fix. Constructing it here is pure string
+    #  work, costs no request, and is family-scoped when the family is known.
+    try:
+        espacenet = enrich_display.espacenet_url(pub, family_id)
+    except Exception:
+        espacenet = None
+    try:
+        cached = enrich_display.load_cached(pub) or {}
+        disp = cached.get("_display") or {}
+        google_patents = disp.get("google_patents")
+        provenance = disp.get("drawings_provenance")
+        if not espacenet:
+            espacenet = disp.get("espacenet")
+    except Exception:
+        pass
     return {
+        "espacenet": espacenet,
+        "google_patents": google_patents,
+        "drawings_provenance": provenance,
         "claims": s["claims"],
         "description": s["paragraphs"][:60],          # cap for page weight; PDF has the full text
         "figure_caps": s["figures"],
@@ -423,7 +450,7 @@ def build_view(report, top_n=25):
         covered = sorted(fam_elements.get(fam, {}).keys())
         st = status_mod.classify_status(b["kind"], b["country"], b["priority_date"],
                                         b["filing_date"], b["publication_date"])
-        content = _card_content(cur, rep["id"], b["pub"], m)
+        content = _card_content(cur, rep["id"], b["pub"], m, b.get("family_id"))
         cards.append({
             "rank": rank, "family": fam, **b,
             "match_score": round(m["score"], 3), "match_coord": _coord_str(m["coord"]),

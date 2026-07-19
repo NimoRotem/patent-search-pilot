@@ -48,10 +48,16 @@
         findings.
         {% if corpus.rationale_error_pct is not none %}Rationales overclaimed in
         {{ corpus.rationale_error_pct }}% of {{ corpus.rationale_n }} audited cases.{% endif %}
-        {% if corpus.chart_fp_pre_pct is not none %}Claim-chart cells asserting coverage were wrong
-        in {{ corpus.chart_fp_pre_pct }}% of {{ corpus.chart_fp_pre_n }} cells before a verification
-        pass was added; after it, {{ corpus.chart_fp_post_bad }} of {{ corpus.chart_fp_post_n }}
-        remaining cells were rejected — too small a sample to claim a rate.{% endif %}
+        {% if corpus.chart_fp_pre_pct is not none %}Retrieval-map cells asserting coverage were
+        wrong in {{ corpus.chart_fp_pre_pct }}% of {{ corpus.chart_fp_pre_n }} cells before a
+        verification pass was added.{% endif %}
+        {% if corpus.chart_indep_checked %}After it, an independent review re-read the
+        {{ corpus.chart_indep_checked }} surviving confirmed cells against the verbatim cited
+        passages and judged <b>{{ corpus.chart_indep_overclaim }} of them
+        ({{ corpus.chart_indep_pct }}%) to be overclaims</b>. The verification pass's own tally was
+        {{ corpus.chart_fp_post_bad }} of {{ corpus.chart_fp_post_n }} rejected, but that is the
+        verifier grading its own work. The samples are small and the verifier shares a model family
+        with the auditing judge, so treat the independent figure as a lower bound.{% endif %}
         Assume residual error and check each citation against the reference text.</span>
     </div>
   </div>
@@ -81,7 +87,8 @@
         {{ corpus.max_date_str or 'the corpus ceiling' }}.</p>
       <p class="scope-src">Recall basis: {{ corpus.recall_basis }}.
         {% if corpus.rationale_basis %}Rationale basis: {{ corpus.rationale_basis }}.{% endif %}
-        {% if corpus.chart_basis %}Claim-chart basis: {{ corpus.chart_basis }}.{% endif %}</p>
+        {% if corpus.chart_basis %}Retrieval-map basis: {{ corpus.chart_basis }}.{% endif %}
+        {% if corpus.chart_indep_basis %}Independent re-read: {{ corpus.chart_indep_basis }}.{% endif %}</p>
     </div>
   </details>
 </section>

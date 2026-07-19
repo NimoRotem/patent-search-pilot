@@ -8,6 +8,8 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from PIL import Image as PILImage
 
+import disclosure
+
 NAVY = RGBColor(0x0b, 0x25, 0x45)
 BLUE = RGBColor(0x00, 0x50, 0xA0)
 GOOD = RGBColor(0x0a, 0x7d, 0x4d)
@@ -28,10 +30,14 @@ def _shade(cell, hex_no_hash):
     tcPr.append(shd)
 
 
-def _green_shade(intensity):
-    # blend white -> green(#0a7d4d) by intensity
-    r = int(255 + (10 - 255) * intensity); g = int(255 + (125 - 255) * intensity); b = int(255 + (77 - 255) * intensity)
-    return f"{r:02x}{g:02x}{b:02x}"
+#  _green_shade() DELETED ON PURPOSE.
+#
+#  It blended white -> green in proportion to `intensity`, which is the normalised RETRIEVAL score.
+#  So in a document headed "Prior-Art Search Report", the strongest visual assertion of coverage
+#  was made by whichever cell the retriever was most confident about -- including, in the
+#  grabo_gripper_novelty report, US-9266686-B2 cl 6, a cell the verifier judged UNRELATED (it
+#  describes a vent hole and air filter, not a rigid base element with sides). Cell appearance now
+#  comes from disclosure.CELL_STATES, i.e. from the verification verdict. See disclosure.py.
 
 
 def _run(p, text, bold=False, color=None, size=None, italic=False):
@@ -51,9 +57,11 @@ def render(model, out_path):
     styles["Normal"].font.size = Pt(10)
 
     # ---- cover ----
-    h = doc.add_heading("Prior-Art Search Report", level=0)
+    h = doc.add_heading(disclosure.DOC_TITLE, level=0)
     for run in h.runs:
         run.font.color.rgb = NAVY
+    sp = doc.add_paragraph()
+    _run(sp, disclosure.DOC_SUBTITLE, bold=True, color=WARN, size=10)
     p = doc.add_paragraph()
     _run(p, "Search mode: ", bold=True); _run(p, model["mode"].replace("_", " ").title())
     _run(p, "     Subject: ", bold=True); _run(p, str(model.get("subject") or "—"))
@@ -68,6 +76,11 @@ def render(model, out_path):
     _run(p, f"{model['n_covered']}/{model['n_elements']} elements disclosed", bold=True)
     _run(p, f"   ·   {len(model['references'])} references cited   ·   ")
     _run(p, f"{len(model['uncovered_elements'])} apparently novel", bold=True, color=WARN)
+
+    # ---- scope + measured reliability ----
+    # On the cover, ahead of any result. An exported document has to stand alone: the reader may
+    # never have seen the web page, cannot hover a tooltip, and may be reading it months later.
+    _scope_section(doc)
 
     # ---- executive summary ----
     doc.add_heading("Executive summary", level=1)
@@ -84,8 +97,12 @@ def render(model, out_path):
     _run(p, "Apparently novel (not found in corpus): ", bold=True)
     _run(p, ", ".join(model["uncovered_elements"]) or "none identified", color=WARN)
 
-    # ---- claim chart ----
-    doc.add_heading("Element × Reference claim chart", level=1)
+    # ---- retrieval map (formerly mis-titled "claim chart") ----
+    doc.add_heading(disclosure.CHART_TITLE, level=1)
+    tp = doc.add_paragraph()
+    _run(tp, disclosure.CHART_TAG.upper(), bold=True, color=WARN, size=9)
+    wp = doc.add_paragraph()
+    _run(wp, disclosure.chart_warning(), size=8.5)
     _claim_chart(doc, model)
 
     # ---- combination ----
@@ -125,6 +142,20 @@ def render(model, out_path):
     return str(out_path)
 
 
+def _scope_section(doc):
+    """The full scope + measured-reliability disclosure, printed, not linked."""
+    doc.add_heading("Scope and measured reliability — read before relying on this document", level=1)
+    for heading, body in disclosure.scope_paragraphs():
+        p = doc.add_paragraph()
+        _run(p, f"{heading}. ", bold=True, size=9.5)
+        _run(p, body, size=9.5)
+    p = doc.add_paragraph()
+    _run(p, "Indexed CPC classes: ", bold=True, size=9)
+    _run(p, "; ".join(disclosure.cpc_lines()), size=9)
+    p = doc.add_paragraph()
+    _run(p, disclosure.not_indexed(), size=9, color=MUTED)
+
+
 def _claim_chart(doc, model):
     chart = model["claim_chart"]; cols = chart["columns"]
     tbl = doc.add_table(rows=1, cols=1 + len(cols)); tbl.style = "Table Grid"
@@ -140,12 +171,29 @@ def _claim_chart(doc, model):
         for j, cell in enumerate(row["cells"]):
             para = cells[j + 1].paragraphs[0]; para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             if cell.get("covered"):
-                run = para.add_run(str(cell["score"])); run.bold = True; run.font.size = Pt(8)
+                _mark, _label, fill, is_cov = disclosure.cell_state(cell)
+                word = disclosure.cell_word(cell)
+                # The MARK carries the meaning and leads the cell; the retrieval score follows it
+                # in muted small type. Previously the score was the bold headline of the cell,
+                # which is exactly backwards -- a high retrieval score is not evidence of
+                # disclosure, and printing it in bold green said that it was.
+                mr = para.add_run(word); mr.bold = True; mr.font.size = Pt(8)
+                sr = para.add_run(f"\n{cell.get('score')}")
+                sr.font.size = Pt(7); sr.font.color.rgb = MUTED
                 if cell.get("coord"):
-                    para.add_run(f"\n{cell['coord']}").font.size = Pt(6.5)
-                _shade(cells[j + 1], _green_shade(cell.get("intensity", 0.5)))
+                    cr = para.add_run(f"\n{cell['coord']}")
+                    cr.font.size = Pt(6.5); cr.font.color.rgb = MUTED
+                _shade(cells[j + 1], fill)
             else:
                 para.add_run("·").font.color.rgb = MUTED
+    # Legend + this-report verification rate, directly under the grid where the marks are read.
+    lp = doc.add_paragraph()
+    _run(lp, "Legend: ", bold=True, size=8.5)
+    _run(lp, "  ·  ".join(f"{n} {w} — {lbl}" for w, n, lbl in disclosure.legend_lines(chart))
+             or "no cells to verify", size=8.5)
+    summ = disclosure.verification_summary(chart)
+    if summ:
+        sp = doc.add_paragraph(); _run(sp, summ, size=8.5, bold=True)
 
 
 def _reference(doc, r, n):
