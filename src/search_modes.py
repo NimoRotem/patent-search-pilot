@@ -17,9 +17,111 @@ from enum import Enum
 class Mode(str, Enum):
     NOVELTY = "novelty"
     INVENTIVE_STEP = "inventive_step"
-    INVALIDITY = "invalidity"      # stub
-    FTO = "fto"                    # stub
-    LANDSCAPE = "landscape"        # stub
+    INVALIDITY = "invalidity"      # NOT AVAILABLE — see MODE_STATUS
+    FTO = "fto"                    # NOT AVAILABLE — see MODE_STATUS
+    LANDSCAPE = "landscape"        # NOT AVAILABLE — see MODE_STATUS
+
+
+# --- mode availability ----------------------------------------------------------------------
+# DECISION (M9): INVALIDITY and FTO REFUSE TO RUN rather than returning a plausible-looking
+# wrong answer.
+#
+# Previously INVALIDITY silently delegated to the NOVELTY date window. That is dangerous in a
+# way the user cannot detect: the window it produced was legally *defensible* for the novelty
+# ground alone, but the answer was presented as an invalidity opinion, implying grounds
+# (added matter, sufficiency, entitlement to priority, formal grounds) that this system never
+# evaluates. A user reading "invalidity: no results" would reasonably conclude the patent is
+# not invalidatable, when in fact only one of several grounds was ever tested.
+#
+# FTO is worse: it is not a prior-art question at all. FTO asks which claims are IN FORCE and
+# ENFORCEABLE in chosen jurisdictions today, which needs normalized legal status — term,
+# lapse, annuity payments, SPC extensions, oppositions. The corpus holds 1,618 legal_events
+# rows against 107,795 publications (1.5% coverage), so it cannot be answered even
+# approximately. A prior-art date window here is not an approximation, it is a category error.
+#
+# We refuse EXPLICITLY and STRUCTURALLY (a typed exception + a machine-readable registry)
+# rather than by raising a bare NotImplementedError, because the caller needs to turn this into
+# a user-visible message. ModeNotAvailable subclasses NotImplementedError so any existing
+# `except NotImplementedError` handler keeps working.
+
+
+class ModeNotAvailable(NotImplementedError):
+    """A mode that is defined but deliberately refuses to run, because it cannot be computed
+    correctly with the data available. Carries a user-facing explanation."""
+
+    def __init__(self, mode, message: str, missing: list[str] | None = None):
+        self.mode = mode
+        self.message = message
+        self.missing = missing or []
+        super().__init__(message)
+
+
+@dataclass(frozen=True)
+class ModeCapability:
+    available: bool
+    label: str
+    summary: str                        # what the mode does / would do
+    reason: str = ""                    # why it is unavailable (empty when available)
+    missing: tuple = ()                 # data/features required before it can be enabled
+
+
+MODE_STATUS = {
+    Mode.NOVELTY: ModeCapability(
+        available=True, label="Novelty",
+        summary="Art.54(2) public prior art plus Art.54(3) secret / earlier-filed art."),
+    Mode.INVENTIVE_STEP: ModeCapability(
+        available=True, label="Inventive step",
+        summary="Art.56 — public prior art only; secret art is excluded by law."),
+    Mode.INVALIDITY: ModeCapability(
+        available=False, label="Invalidity",
+        summary="A full invalidity opinion against a granted claim set.",
+        reason=("Invalidity is not implemented. It requires the granted claim set as the "
+                "anchor and evaluates jurisdiction-specific grounds beyond novelty and "
+                "inventive step. Running it on the novelty date window alone would return a "
+                "confident-looking answer that silently ignores most grounds. "
+                "Use Novelty or Inventive step, which are computed correctly."),
+        missing=("granted claim-set anchoring", "added-matter / sufficiency grounds",
+                 "priority-entitlement analysis", "per-ground date rules")),
+    Mode.FTO: ModeCapability(
+        available=False, label="Freedom to operate",
+        summary="Which in-force claims in chosen jurisdictions a product might infringe.",
+        reason=("Freedom-to-operate is not implemented. It is not a prior-art search: it needs "
+                "the legal status of every candidate — in force, lapsed, term, SPC extension, "
+                "per jurisdiction. This corpus has legal-status data for about 1.5% of its "
+                "publications, so an FTO answer would be unsound rather than merely "
+                "incomplete. No date window can substitute for it."),
+        missing=("normalized legal_events coverage", "patent term + lapse/annuity data",
+                 "SPC / term-extension data", "per-jurisdiction claim scope")),
+    Mode.LANDSCAPE: ModeCapability(
+        available=False, label="Landscape",
+        summary="Classification / assignee / time-trend view of a technology area.",
+        reason=("Landscape is not implemented. It is an aggregation view, not a citability "
+                "test, and shares none of this engine's date logic."),
+        missing=("aggregation + trend pipeline",)),
+}
+
+
+def available_modes() -> list:
+    """Machine-readable capability list — drives the UI's mode picker and the API's allowlist.
+    -> [{"mode","label","summary","available","reason","missing"}]"""
+    return [{"mode": m.value, "label": c.label, "summary": c.summary,
+             "available": c.available, "reason": c.reason, "missing": list(c.missing)}
+            for m, c in MODE_STATUS.items()]
+
+
+def require_available(mode) -> "Mode":
+    """Validate a mode and refuse the unavailable ones. Call this at the API boundary BEFORE
+    starting any work, so the refusal is immediate and user-visible.
+    Raises ValueError for an unknown mode, ModeNotAvailable for a defined-but-refused one."""
+    try:
+        m = Mode(mode) if not isinstance(mode, Mode) else mode
+    except ValueError:
+        raise ValueError(f"unknown mode {mode!r}; valid modes: "
+                         f"{', '.join(x.value for x in Mode)}")
+    cap = MODE_STATUS[m]
+    if not cap.available:
+        raise ModeNotAvailable(m, cap.reason, list(cap.missing))
+    return m
 
 
 class Basis(str, Enum):
@@ -72,24 +174,15 @@ def citable_where(mode: Mode, s: Subject, pub_alias: str = "p"):
         # Only public prior art (Art.54(2)); secret prior art is EXCLUDED from inventive step.
         return f"{a}.publication_date < %s", [s.efd]
 
-    if mode == Mode.INVALIDITY:
-        # TODO: invalidity anchors to a GRANTED claim set + jurisdiction-specific grounds
-        # (added matter, sufficiency, etc.) and its own date rules per ground. For the pilot
-        # we conservatively reuse the novelty window; flagged so callers know it's provisional.
-        return citable_where(Mode.NOVELTY, s, pub_alias)
-
-    if mode == Mode.FTO:
-        # TODO: FTO needs IN-FORCE, enforceable claims in the SELECTED jurisdictions as of a
-        # date (requires normalized legal_status + term/lapse/SPC data we don't ingest in the
-        # pilot). Do NOT use a prior-art window here. Stubbed.
-        raise NotImplementedError(
-            "FTO mode requires normalized legal-status (in-force claims per jurisdiction). "
-            "Ingest legal_events + term data before enabling. (spec §5 stub)"
-        )
-
-    if mode == Mode.LANDSCAPE:
-        # TODO: landscape is classification/assignee/time-trend driven, not a citability test.
-        raise NotImplementedError("Landscape mode is a stub (spec §5).")
+    # INVALIDITY / FTO / LANDSCAPE: refuse. Previously INVALIDITY silently returned the
+    # NOVELTY window here, which produced an answer the user could not tell was partial.
+    # See MODE_STATUS above for the full reasoning.
+    try:                                    # coerce so a bare string key still resolves
+        cap = MODE_STATUS.get(Mode(mode))
+    except ValueError:
+        cap = None
+    if cap is not None and not cap.available:
+        raise ModeNotAvailable(mode, cap.reason, list(cap.missing))
 
     raise ValueError(mode)
 

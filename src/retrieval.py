@@ -30,6 +30,11 @@ RERANK_TOP = 25        # cross-encoder rerank depth (spec says ~300; 25 keeps CP
 # multi-strong-channel agreement can still rank ABOVE pure dense (the agent's unique-find lift).
 CHANNEL_WEIGHTS = {
     "dense": 1.00,
+    # results streamed back from the sibling federated app (federation.py). Ranked below local
+    # dense (which is tuned on an in-domain corpus) but above every lexical/classification
+    # channel, because federated hits arrive already multi-source-fused, reranked and
+    # LLM-scored upstream — their rank order carries real information.
+    "federated": 0.90,
     "crosslingual": 0.70,   # dense over a translated query
     "exact": 0.60,          # ordered phrase match — precise
     "citation": 0.55,       # family/citation-graph neighbour of a strong hit
@@ -65,6 +70,25 @@ class Result:
     family_ranked: list         # [(family_key, publication_id, fused_score, provenance)]
     channel_hits: dict          # channel -> [publication_id,...] in rank order
     query: str
+    # --- optional, populated by the federation bridge / domain detector -------------------
+    # publication_id -> federation.FederatedHit for hits that have NO local row. A local id is
+    # a bigint; an external one is the string "fed:<PUBNUM>". Renderers must look here when a
+    # publication_id is not an int.
+    external: dict = field(default_factory=dict)
+    federation: dict = None     # federation.FederatedResult.to_dict(), when federation ran
+    domain: dict = None         # domain_detect.DomainVerdict.to_dict(), when it was computed
+    # True when the query looks out-of-domain and the UI should OFFER the wider federated
+    # search. Federation is never run implicitly — see federation.search_two_tier.
+    federation_offered: bool = False
+
+    def channel_hits_ranked(self) -> dict:
+        """channel_hits as {name: [(pid, score)]} so a Result can be re-fused. Only the rank
+        ORDER matters to RRF, so a synthetic descending score is sufficient."""
+        return {k: [(p, float(len(v) - i)) for i, p in enumerate(v)]
+                for k, v in (self.channel_hits or {}).items()}
+
+    def is_external(self, pid) -> bool:
+        return isinstance(pid, str) and pid.startswith("fed:")
 
 
 class Retriever:
@@ -254,11 +278,17 @@ class Retriever:
 
     # ---- fusion --------------------------------------------------------------------------
     @staticmethod
-    def rrf(channel_results: dict, weighted=True):
+    def rrf(channel_results: dict, weighted=True, dense_floor=True):
         """Weighted reciprocal-rank fusion. channel_results: {name: [(pid, score)] best-first}.
         Each channel contributes w_channel / (K + rank + 1). A dense-hit floor guarantees the
         top-N dense results a minimum score so broad/noisy channels can't demote them below the
-        head (spec §2). -> fused [(pid, score, prov)] best-first."""
+        head (spec §2). -> fused [(pid, score, prov)] best-first.
+
+        `dense_floor=False` disables that floor. Required when the query is OUT OF DOMAIN and
+        federated results are standing in for the local index: the floor's premise is that a
+        strong local dense hit is semantically meaningful, which is exactly what stops holding
+        when the corpus does not cover the field. Left on, it would pin 30 irrelevant local
+        documents into the head of an out-of-domain answer."""
         fused, prov = {}, {}
         for name, res in channel_results.items():
             w = CHANNEL_WEIGHTS.get(name, 0.5) if weighted else 1.0
@@ -268,13 +298,43 @@ class Retriever:
         # dense floor: the top-DENSE_FLOOR dense hits can't score below the DENSE_FLOOR-th
         # pure-dense contribution — protects strong semantic hits from weak-channel dilution.
         dense = channel_results.get("dense")
-        if weighted and dense:
+        if weighted and dense_floor and dense:
             floor = CHANNEL_WEIGHTS["dense"] / (RRF_K + DENSE_FLOOR)
             for rank, (pid, _s) in enumerate(dense[:DENSE_FLOOR]):
                 if fused.get(pid, 0.0) < floor:
                     fused[pid] = floor
         order = sorted(fused.items(), key=lambda t: t[1], reverse=True)
         return [(pid, sc, prov[pid]) for pid, sc in order]
+
+    # ---- external (federated) publications ------------------------------------------------
+    def register_external(self, pid, family_key):
+        """Register a virtual publication id (e.g. 'fed:EP1234567A1') so family_key() and
+        dedup_family() treat a federated hit exactly like a local one."""
+        self._fam[pid] = family_key
+
+    def resolve_pub_numbers(self, keys):
+        """Map normalised publication-number join keys to local rows.
+
+        keys: ['US11999030B2', ...] (alphanumeric-only, upper-case — federation.join_key).
+        -> {key: (publication_id, family_key)} for those present in the corpus.
+
+        Matching is done in SQL against a normalised publication_number rather than by holding
+        a 107k-entry dict in memory: this box is memory constrained and the lookup only runs on
+        the federation path, so one sequential scan is the cheaper trade.
+        """
+        keys = [k for k in dict.fromkeys(keys) if k]
+        if not keys:
+            return {}
+        sql = ("SELECT id, upper(regexp_replace(publication_number, '[^A-Za-z0-9]', '', 'g')) AS k, "
+               "COALESCE(NULLIF(simple_family_id,''), publication_number) AS fam "
+               "FROM publications "
+               "WHERE upper(regexp_replace(publication_number, '[^A-Za-z0-9]', '', 'g')) = ANY(%s)")
+        out = {}
+        with self.conn.cursor() as c:
+            c.execute(sql, (keys,))
+            for r in c.fetchall():
+                out[r["k"]] = (r["id"], r["fam"])
+        return out
 
     def dedup_family(self, ranked):
         seen, out = set(), []
@@ -342,7 +402,17 @@ class Retriever:
                       family_ranked=fam[:topk], channel_hits={k: [p for p, _ in v] for k, v in ch.items()},
                       query=query)
 
-    def best_text(self, pid, query=None):
+    def best_text(self, pid, query=None, external=None):
+        """Best representative text for a publication. `external` maps virtual federated ids to
+        FederatedHit objects — a federated hit has no local chunks, so its text comes from the
+        record the federated app returned. Without this guard a 'fed:...' id would be handed to
+        a bigint column comparison and blow up the reranker."""
+        if isinstance(pid, str) and pid.startswith("fed:"):
+            h = (external or {}).get(pid)
+            if h is None:
+                return ""
+            return ((getattr(h, "title", "") or "") + "\n" +
+                    (getattr(h, "abstract", "") or "")).strip()
         with self.conn.cursor() as c:
             c.execute("SELECT text FROM chunks WHERE publication_id=%s "
                       "AND kind IN ('abstract','claim_own','whole') ORDER BY "
@@ -351,9 +421,9 @@ class Retriever:
             r = c.fetchone()
             return r["text"] if r else ""
 
-    def rerank_families(self, query, fam, top=RERANK_TOP):
+    def rerank_families(self, query, fam, top=RERANK_TOP, external=None):
         head, tail = fam[:top], fam[top:]
-        passages = [self.best_text(pid) for _, pid, _, _ in head]
+        passages = [self.best_text(pid, external=external) for _, pid, _, _ in head]
         order = rr.rerank(query, passages)
         reordered = [head[i] for i, _ in order]
         # blend reranker score into tuple position; keep tail after
