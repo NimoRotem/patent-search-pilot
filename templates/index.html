@@ -3,14 +3,18 @@
 {% block body %}
 <div class="hero">
   <div class="wrap">
-    <h1>Describe an invention. Get the prior art.</h1>
-    <p>Agentic semantic search over a 107,795-publication vacuum-handling corpus — element-by-element
-       claim charts, drawings, PDF facsimiles, EN/DE cross-lingual, real EPC date law, and a
-       PDF/DOCX export. Queries outside the corpus can be sent to external patent APIs.</p>
+    {# Previous headline was "Describe an invention. Get the prior art." — a completeness claim the
+       measured 19% recall@100 does not support. Describe the mechanism, not an outcome. #}
+    <h1>Search a vacuum-handling patent corpus</h1>
+    <p>Agentic semantic retrieval over {% if corpus.publications %}{{ '{:,}'.format(corpus.publications) }}{% else %}~108,000{% endif %}
+       publications in {{ corpus.cpc_count }} CPC classes — element-by-element claim charts,
+       drawings, PDF facsimiles, EN/DE cross-lingual, prior-art dating under EPC Art. 54/56, and
+       PDF/DOCX export. Queries outside the indexed field can be sent to external patent APIs.</p>
   </div>
 </div>
 
 <div class="wrap">
+  {% with variant='search' %}{% include "_scope.html" %}{% endwith %}
   <form class="panel searchcard" method="post" action="{{ request.script_root }}/run" id="searchform">
     <div class="field">
       <label for="qbox">What is the invention?</label>

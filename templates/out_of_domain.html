@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Query outside the indexed field{% endblock %}
+{% block body %}
+{# Shown BEFORE a search is funded, not after. The detector used to run inside the generation
+   thread, so an out-of-domain query paid for a full local search and only then learned the corpus
+   could not answer it. This page is the stop. It never silently blocks: both continuations are one
+   click away, but the user makes that choice informed. #}
+<div class="wrap ood-wrap">
+  <section class="panel ood" aria-labelledby="ood-h">
+    <span class="ood-tag">Out of indexed field</span>
+    <h1 id="ood-h">This query falls outside the indexed corpus</h1>
+
+    <p class="ood-lede">The local corpus covers {{ corpus.field_summary }} only
+      ({{ corpus.cpc_count }} CPC classes, {{ corpus.jurisdictions|join('/') }}). This query does
+      not appear to sit in that field, so <b>a local search cannot answer it</b> — it will return
+      the nearest vacuum-handling documents, which is not the same as returning prior art for what
+      you asked.</p>
+
+    <div class="ood-verdict">
+      <div><span class="ood-k">Detector verdict</span>
+        <span class="ood-v">{{ 'out of domain' if not verdict.in_domain else 'low confidence' }}</span></div>
+      <div><span class="ood-k">Confidence</span><span class="ood-v">{{ verdict.confidence }}</span></div>
+      <div><span class="ood-k">Corpus similarity</span><span class="ood-v">{{ verdict.score }}</span></div>
+      {% if verdict.reason %}<div class="ood-why"><span class="ood-k">Reason</span>
+        <span class="ood-v">{{ verdict.reason }}</span></div>{% endif %}
+    </div>
+
+    <p class="ood-note"><b>Do not read a thin local result set as an absence of prior art.</b>
+      For a query outside the indexed classes, a short or weak result list carries no information
+      about what exists in the field you actually asked about.</p>
+
+    <div class="ood-q"><span class="ood-k">Your query</span><p>{{ query }}</p></div>
+
+    <div class="ood-actions">
+      <form method="post" action="{{ request.script_root }}/run" class="ood-form">
+        <input type="hidden" name="query" value="{{ query }}">
+        <input type="hidden" name="mode" value="{{ mode }}">
+        <input type="hidden" name="subject" value="{{ subject }}">
+        <input type="hidden" name="wide" value="1">
+        <button class="btn" type="submit">Search external patent APIs instead</button>
+        <span class="small muted">Recommended. Queries SerpApi / BigQuery / PQAI / OpenAlex, which
+          are not limited to this corpus. Slower (~2 min extra) and spends paid API credit.</span>
+      </form>
+
+      <form method="post" action="{{ request.script_root }}/run" class="ood-form">
+        <input type="hidden" name="query" value="{{ query }}">
+        <input type="hidden" name="mode" value="{{ mode }}">
+        <input type="hidden" name="subject" value="{{ subject }}">
+        <input type="hidden" name="ood_ack" value="1">
+        <button class="btn btn-ghost" type="submit">Search the local corpus anyway</button>
+        <span class="small muted">Returns the closest documents in {{ corpus.field_summary }}.
+          Treat the results as adjacent art, not as a search of your field.</span>
+      </form>
+
+      <a class="btn btn-ghost" href="{{ request.script_root }}/">Edit the query</a>
+    </div>
+  </section>
+
+  {% with variant='search' %}{% include "_scope.html" %}{% endwith %}
+</div>
+{% endblock %}

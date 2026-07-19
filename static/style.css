@@ -265,6 +265,10 @@ td.cell.empty{color:var(--line2)}
 .rank{color:var(--faint);font-weight:600;margin-right:7px;font-variant-numeric:tabular-nums}
 .rmeta{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:5px;font-size:12px;color:var(--faint)}
 .rmeta .pn{font-family:ui-monospace,Menlo,monospace;color:var(--accent)}
+/* PDF link starts inert and is promoted to an <a> only when /api/pdfs says one exists.
+   The unavailable state stays visible on purpose -- "no PDF cached" is information. */
+.rmeta .pdflink[aria-disabled="true"]{color:var(--faint);opacity:.5;cursor:default;
+  text-decoration:line-through solid currentColor 1px}
 .rsub{margin-top:6px;font-size:12.5px;color:var(--muted);display:flex;gap:18px;flex-wrap:wrap}
 .fldl{color:var(--faint);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-right:4px}
 .rchips{margin-top:8px;display:flex;align-items:center;flex-wrap:wrap;gap:0}
@@ -463,4 +467,125 @@ details.sec2 .secbody .scrollbox{max-height:460px}
   .mrow{grid-template-columns:1fr;gap:5px}
   :root{--galh:260px}
   .biblio{grid-template-columns:1fr}
+}
+
+/* ============================================================================================
+   SCOPE / RELIABILITY DISCLOSURE + claim-chart reframing.
+   Visual goal: authoritative and calm, not alarmist. This is a professional tool telling a
+   professional user what it does and does not cover, so it uses the page's own surface styling
+   with a single amber accent rail rather than red warning chrome. It must read as part of the
+   product, because a banner that looks like a dismissible alert gets dismissed.
+   ============================================================================================ */
+.scope{
+  border:1px solid #2b3440; border-left:3px solid #c78c2e; border-radius:10px;
+  background:#161b22; padding:16px 18px; margin:18px 0 22px;
+}
+.scope h2{ font-size:15px; margin:0 0 8px; letter-spacing:.01em; }
+.scope-lede{ margin:0 0 14px; color:#c9d1d9; font-size:13.5px; line-height:1.55; max-width:78ch; }
+.scope-grid{
+  display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(215px,1fr));
+  margin-bottom:14px;
+}
+.scope-item{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+.scope-k{ font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:#8b949e; }
+.scope-v{ font-size:17px; font-weight:650; color:#e6edf3; line-height:1.2; }
+.scope-d{ font-size:12px; color:#9aa5b1; line-height:1.5; }
+.scope-warn{
+  margin:0; padding:11px 13px; border-radius:7px; background:#1c1712;
+  border:1px solid #4a3a1d; color:#e3d5b8; font-size:13px; line-height:1.55; max-width:88ch;
+}
+.scope-warn b{ color:#f0dfc0; }
+.scope-more{ margin-top:12px; }
+.scope-more summary{
+  cursor:pointer; font-size:12.5px; color:#9aa5b1; padding:3px 0; list-style:revert;
+}
+.scope-more summary:hover{ color:#c9d1d9; }
+.scope-more-in{ padding:10px 0 2px; font-size:12.5px; color:#9aa5b1; line-height:1.6; max-width:86ch; }
+.scope-more-in p{ margin:0 0 9px; }
+.scope-more-in b{ color:#c9d1d9; }
+.cpclist{ margin:0 0 10px; padding-left:18px; }
+.cpclist li{ margin:2px 0; }
+.cpclist code{ color:#79c0ff; }
+.scope-src{ font-size:11.5px; color:#6e7681; border-top:1px solid #21262d; padding-top:8px; }
+/* On the results page the same block sits above a dense list, so tighten it slightly. */
+.scope-results{ margin-top:0; }
+
+/* ---- out-of-domain interstitial ---------------------------------------------------------- */
+.ood-wrap{ padding-top:22px; }
+.ood{ border-left:3px solid #c78c2e; }
+.ood-tag{
+  display:inline-block; font-size:10.5px; text-transform:uppercase; letter-spacing:.1em;
+  color:#e0b458; border:1px solid #4a3a1d; background:#1c1712; padding:3px 9px; border-radius:20px;
+}
+.ood h1{ font-size:21px; margin:12px 0 10px; }
+.ood-lede{ font-size:14px; line-height:1.6; color:#c9d1d9; max-width:80ch; margin:0 0 16px; }
+.ood-verdict{
+  display:flex; flex-wrap:wrap; gap:20px; padding:12px 14px; border-radius:8px;
+  background:#0f1419; border:1px solid #21262d; margin-bottom:14px;
+}
+.ood-verdict > div{ display:flex; flex-direction:column; gap:2px; }
+.ood-k{ font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:#8b949e; }
+.ood-v{ font-size:14px; color:#e6edf3; font-weight:600; }
+.ood-why{ flex:1 1 100%; }
+.ood-why .ood-v{ font-weight:400; font-size:13px; color:#c9d1d9; }
+.ood-note{
+  margin:0 0 14px; padding:11px 13px; border-radius:7px; background:#1c1712;
+  border:1px solid #4a3a1d; color:#e3d5b8; font-size:13px; line-height:1.55; max-width:88ch;
+}
+.ood-q{ margin-bottom:18px; }
+.ood-q p{
+  margin:4px 0 0; padding:10px 12px; background:#0f1419; border:1px solid #21262d;
+  border-radius:7px; font-size:13px; color:#c9d1d9; line-height:1.55;
+}
+.ood-actions{ display:flex; flex-direction:column; gap:14px; }
+.ood-form{ display:flex; flex-direction:column; gap:5px; align-items:flex-start; }
+.btn-ghost{ background:transparent; border:1px solid #30363d; color:#c9d1d9; }
+.btn-ghost:hover{ background:#1c2128; border-color:#484f58; }
+
+/* ---- claim chart reframing --------------------------------------------------------------- */
+.draft-tag{
+  display:inline-block; margin-left:9px; vertical-align:middle;
+  font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.08em;
+  color:#e0b458; border:1px solid #4a3a1d; background:#1c1712; padding:2px 8px; border-radius:20px;
+}
+.chart-note{
+  margin:0 0 12px; padding:11px 13px; border-radius:7px;
+  background:#1c1712; border:1px solid #4a3a1d;
+}
+.chart-note p{ margin:0; font-size:12.5px; line-height:1.6; color:#e3d5b8; max-width:92ch; }
+.chart-note b{ color:#f0dfc0; }
+.chart-legend{
+  list-style:none; display:flex; flex-wrap:wrap; gap:6px 18px; margin:10px 0 0; padding:0;
+  font-size:11.5px; color:#c9d1d9;
+}
+.chart-legend li{ display:flex; align-items:center; gap:6px; }
+.lg{ width:11px; height:11px; border-radius:3px; display:inline-block; flex:none; }
+.lg-ok{ background:rgba(63,185,80,.55); border:1px solid #3fb950; }
+.lg-weak{ background:rgba(210,153,34,.35); border:1px solid #9e7420; }
+.lg-bad{ background:rgba(248,81,73,.25); border:1px solid #8b3a36; }
+.lg-none{ background:#1a1f26; border:1px solid #30363d; }
+.lg-unk{ background:#1a1f26; border:1px dashed #6e7681; }
+.chart-rate{ margin:9px 0 0 !important; padding-top:8px; border-top:1px solid #4a3a1d; }
+
+/* Cell colour = verification state. Only a CONFIRMED cell reads as coverage; everything else is
+   visibly provisional. Previously green intensity tracked the retrieval score, which made a
+   confidently-retrieved false positive the most reassuring cell in the grid. */
+td.cell-discloses{ background:rgba(63,185,80,.30); }
+td.cell-weak{ background:rgba(210,153,34,.16); }
+td.cell-unrelated{ background:rgba(248,81,73,.12); }
+td.cell-no-coord{ background:#141a21; }
+td.cell-unchecked{ background:#141a21; }
+td.cell-unrelated .cs, td.cell-no-coord .cs{ opacity:.5; }
+.cmark{ font-weight:700; font-size:12px; margin-right:3px; }
+td.cell-discloses .cmark{ color:#56d364; }
+td.cell-weak .cmark{ color:#d29922; }
+td.cell-unrelated .cmark{ color:#f85149; }
+td.cell-no-coord .cmark, td.cell-unchecked .cmark{ color:#6e7681; }
+
+.unc-note{ margin-top:5px; font-size:11.5px; color:#8b949e; line-height:1.5; }
+.callout-strong{ border-left:3px solid #c78c2e; }
+
+@media (max-width:640px){
+  .scope-grid{ grid-template-columns:1fr; }
+  .ood-verdict{ gap:12px; }
 }

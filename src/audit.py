@@ -116,15 +116,27 @@ def judge_rationale(slug, pub):
     reads = rat.get("reads_on") or []
     if not why:
         return None
-    t = ref_text(pub)
-    usr = (f"REFERENCE {pub} ACTUAL TEXT:\n{t['snippet']}\n\n"
+    # HARNESS BUG (fixed): the generator is shown title + abstract + BEST-MATCHING PASSAGE, but this
+    # judge used to rebuild its own reference text as title + abstract + CLAIM 1, falling back to
+    # body chunks only when both were missing. The OPS backfill populated claims and so made that
+    # fallback rare, leaving generator and judge reading DIFFERENT TEXT -- the judge would mark a
+    # faithful rationale "overclaims" simply because the sentence it was grading cited a passage the
+    # judge could not see. Grade against the generator's ACTUAL input when we recorded it.
+    # NOTE: this desync inflated the number but was never the whole story; correcting it alone still
+    # leaves a real regression, so it is fixed here rather than used to explain the problem away.
+    src = (rat.get("_source_text") or "").strip()
+    if src:
+        shown, basis = src, "generator-input"
+    else:
+        shown, basis = ref_text(pub)["snippet"], "reconstructed"
+    usr = (f"REFERENCE {pub} ACTUAL TEXT:\n{shown}\n\n"
            f"AI RATIONALE:\nwhy: {why}\nreads on: {json.dumps(reads)}")
     out = llm.chat_json(RAT_SYS, usr, max_tokens=200) or {}
     v = (out.get("verdict") or "vague").lower()
     if v not in ("accurate", "overclaims", "hallucinates", "vague"):
         v = "vague"
     return {"verdict": v, "reason": out.get("reason", "")[:140], "pub": pub, "why": why[:200],
-            "reads_on": reads, "text": t["snippet"][:400]}
+            "reads_on": reads, "text": shown[:400], "text_basis": basis}
 
 
 def coord_text(pub, coord, kind=None):

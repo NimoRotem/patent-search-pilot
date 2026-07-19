@@ -16,6 +16,8 @@ import db, embed, goldset, webview, enrich_display, llm
 import export_data, export_pdf, export_docx
 import auth, rerank_pool
 import claim_chart, translate, drawings          # ported per-card enrichment
+import grounding                                  # length-stable quote grounding (shared w/ claim_chart)
+import corpus_facts                               # live corpus scope/currency for the disclosures
 import federation, domain_detect                 # two-tier search + out-of-domain guard
 from search_modes import require_available, ModeNotAvailable, available_modes
 from retrieval import Retriever
@@ -161,6 +163,38 @@ def retriever():
     return _R
 
 
+def _wants_json(req=None):
+    """True when the caller is an API client rather than a browser doing a form navigation.
+
+    Several error paths returned a bare jsonify(), so a normal form POST that hit "server busy"
+    or a bad mode rendered raw JSON in the address bar instead of a page. Content negotiation:
+    an explicit Accept: application/json, an XHR/fetch marker, or an /api/ path means JSON;
+    a browser navigation (which sends Accept: text/html) gets HTML.
+    """
+    r = req or request
+    if r.path.startswith("/api/"):
+        return True
+    if r.headers.get("X-Requested-With", "").lower() == "xmlhttprequest":
+        return True
+    # Default to JSON and return HTML only when the client EXPLICITLY ranks it higher. A browser
+    # navigation sends "text/html,...;q=0.9,*/*;q=0.8", so html outranks json and it gets a page.
+    # API clients, curl and the test client send "*/*", which ranks both equally and therefore
+    # keeps the JSON contract. Defaulting the other way would have silently turned every
+    # programmatic error response into an HTML page.
+    acc = r.accept_mimetypes
+    if acc and acc.provided and acc["text/html"] > acc["application/json"]:
+        return False
+    return True
+
+
+def _error_response(payload, status, title=None):
+    """One error path for both audiences: JSON for API clients, the notfound page for browsers."""
+    if _wants_json():
+        return jsonify(payload), status
+    msg = title or payload.get("detail") or payload.get("error") or "Request failed"
+    return render_template("notfound.html", slug=msg), status
+
+
 def slugify(text):
     return "adhoc-" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
 
@@ -219,6 +253,9 @@ def _generate(slug, query, subject, mode, wide=False):
         A = CoverageAgent(retriever())
         # Cheap, no-spend relevance guard: is this query even in the indexed field? Never fatal —
         # a detector failure must not cost the user their search.
+        # Also computed up-front in /run (the OOD interstitial) — recomputed here because a job
+        # can be started from other entrypoints (gold set, warm_reports, direct ensure_report).
+        # It is cheap and non-fatal; a detector failure must not cost the user their search.
         verdict = None
         try:
             verdict = domain_detect.detect(query, retriever=retriever())
@@ -374,7 +411,8 @@ def index():
              "subject": e.get("anchor_publication"), "notes": e.get("notes", ""),
              "cached": report_path(e["id"]).exists()}
             for e in _GOLD.values()]
-    return render_template("index.html", gold=gold, examples=EXAMPLE_QUERIES)
+    return render_template("index.html", gold=gold, examples=EXAMPLE_QUERIES,
+                           corpus=corpus_facts.facts())
 
 
 @app.route("/run", methods=["POST"])
@@ -385,7 +423,8 @@ def run():
         st, why = ensure_report(gold_id, query=e["query_text"],
                                 subject=e.get("anchor_publication"), mode=e["mode"])
         if st == "busy":
-            return jsonify({"error": "server busy", "detail": why}), 429
+            return _error_response({"error": "server busy", "detail": why}, 429,
+                                   f"The server is at capacity — {why}. Please retry shortly.")
         return redirect(url_for("report", slug=gold_id))
     query = request.form.get("query", "").strip()
     # Validate at the API boundary, not the dropdown: the form had no allowlist, so a crafted
@@ -397,21 +436,40 @@ def run():
     except ModeNotAvailable as e:
         # e.mode is a str-Enum: str() on it yields "Mode.INVALIDITY" on py3.9, which is an
         # implementation detail leaking into the API. Emit the wire value.
-        return jsonify({"error": "mode_not_available",
-                        "mode": getattr(e.mode, "value", str(e.mode)),
-                        "detail": e.message, "missing": e.missing}), 400
+        return _error_response({"error": "mode_not_available",
+                                "mode": getattr(e.mode, "value", str(e.mode)),
+                                "detail": e.message, "missing": e.missing}, 400,
+                               f"That search mode is not available: {e.message}")
     except ValueError as e:
-        return jsonify({"error": "unknown_mode", "detail": str(e)}), 400
+        return _error_response({"error": "unknown_mode", "detail": str(e)}, 400,
+                               f"Unknown search mode: {e}")
     subject = request.form.get("subject", "").strip() or None
     wide = request.form.get("wide") == "1"
     if not query:
         return redirect(url_for("index"))
+    # OUT-OF-DOMAIN GATE — runs BEFORE we commit to the pipeline.
+    # This detector used to run inside _generate(), i.e. AFTER a full local search had already
+    # been funded, so an attorney searching outside vacuum handling paid ~40 LLM calls and 2-4
+    # minutes to be told the corpus could not answer them. The detector is cheap (embedding +
+    # CPC signals; llm=False on the tested queries), so it belongs here. `ood_ack=1` is the
+    # user's explicit "I understand, search anyway", and `wide` already means they chose the
+    # external APIs, so neither needs the interstitial.
+    if not wide and request.form.get("ood_ack") != "1":
+        try:
+            v = domain_detect.detect(query, retriever=retriever())
+        except Exception:
+            v = None                      # detector failure must never block a search
+        if v is not None and v.should_federate:
+            return render_template("out_of_domain.html", verdict=v.to_dict(), query=query,
+                                   mode=mode, subject=subject or "",
+                                   corpus=corpus_facts.facts()), 200
     # `wide` MUST be part of the slug: a wide result and a narrow one are different reports and
     # would otherwise overwrite each other's cache.
     slug = slugify(query + "|" + mode + ("|wide" if wide else ""))
     st, why = ensure_report(slug, query=query, subject=subject, mode=mode, wide=wide)
     if st == "busy":
-        return jsonify({"error": "server busy", "detail": why}), 429
+        return _error_response({"error": "server busy", "detail": why}, 429,
+                               f"The server is at capacity — {why}. Please retry shortly.")
     # remember adhoc meta for the report page title
     (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
         {"query": query, "mode": mode, "subject": subject, "wide": wide}))
@@ -447,7 +505,7 @@ def report(slug):
     view["slug"] = slug
     view["title"] = title
     view["is_gold"] = slug in _GOLD
-    return render_template("report.html", v=view)
+    return render_template("report.html", v=view, corpus=corpus_facts.facts())
 
 
 def _build_view_cached(slug, rep, regen=False):
@@ -464,6 +522,16 @@ def _build_view_cached(slug, rep, regen=False):
     view = webview.build_view(rep, top_n=25)
     view["partial"] = partial
     if not partial:
+        # Verify the element x reference matrix BEFORE it is cached and rendered. Until now a
+        # filled cell there meant only "the retriever returned this publication for this element";
+        # nothing checked that the cited passage discloses anything, and an audit measured 7 of 12
+        # coordinate-backed cells as false positives. One batched LLM pass per report, cached in
+        # the view, so it costs nothing on reload. Never fatal: on failure cells stay "unchecked"
+        # and the template renders them as retrieval-only rather than as coverage.
+        try:
+            claim_chart.verify_matrix(view.get("claim_chart") or {}, rep)
+        except Exception:
+            traceback.print_exc()
         vp.write_text(json.dumps(view, default=str))
     return view
 
@@ -569,20 +637,37 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt):
            f"Reference (the ONLY evidence you may use): {biblio_txt[:900]}\n\n"
            f"Best-matching passage from the reference:\n{(matched_txt or '(none)')[:900]}")
     out = llm.chat_json(sysmsg, usr, max_tokens=500) or {}
-    reads_on = _ground_reads_on(out.get("reads_on") or [], f"{biblio_txt} {matched_txt or ''}")
-    res = {"why": out.get("why", ""), "reads_on": reads_on}
+    source = f"{biblio_txt} {matched_txt or ''}".strip()
+    diag = []
+    reads_on = _ground_reads_on(out.get("reads_on") or [], source, diag=diag)
+    why, why_state = _verify_why(out.get("why", ""), source)
+    res = {"why": why, "reads_on": reads_on, "why_grounding": why_state,
+           # The EXACT text the generator was shown. The audit judge previously rebuilt its own
+           # reference text (title+abstract+claim 1) and so graded the rationale against text the
+           # generator never saw -- that desync alone inflated the measured rate. Persisting the
+           # real input lets audit.judge_rationale grade like-for-like.
+           "_source_text": source[:4000],
+           "grounding_diag": diag}
     cache.write_text(json.dumps(res))
     return res
 
 
 _WORD_RE = re.compile(r"[a-z0-9]+")
 
-def _ground_reads_on(raw, ref_text, min_overlap=0.6):
-    """Keep an element only if the model's evidence quote is actually grounded in the reference
-    text we showed it (>=60% of the quote's content words present). Deterministic anti-overclaim:
-    a fabricated or absent-from-text element is dropped even if the model listed it. Tolerates the
-    old string-only shape (kept as-is, since there is no evidence to verify)."""
-    hay = set(_WORD_RE.findall((ref_text or "").lower()))
+def _ground_reads_on(raw, ref_text, min_overlap=None, diag=None):
+    """Keep an element only if the model's evidence quote is genuinely grounded in the reference
+    text we showed it. Deterministic anti-overclaim: a fabricated or absent-from-text element is
+    dropped even if the model listed it. Tolerates the old string-only shape.
+
+    The test is now `grounding.grounded` (local sliding-window span + word-order bigrams) rather
+    than a global bag-of-words overlap. The old rule scored the quote against a haystack SET that
+    grew with the passage, so it got monotonically easier as reference text got longer -- an OPS
+    full-text backfill lengthened passages and the measured overclaim rate went 10% -> 26.3%
+    WITHOUT the rule ever failing loudly. See src/grounding.py for the measurement.
+
+    `min_overlap` is accepted only for backwards compatibility with callers/tests that passed the
+    old threshold positionally; it maps onto the span component.
+    """
     kept = []
     for item in raw:
         if isinstance(item, str):
@@ -595,16 +680,64 @@ def _ground_reads_on(raw, ref_text, min_overlap=0.6):
         ev = (item.get("evidence") or "").strip()
         if not el:
             continue
-        words = [w for w in _WORD_RE.findall(ev.lower()) if len(w) > 3]
-        if words and sum(w in hay for w in words) >= max(1, min_overlap * len(words)):
-            kept.append(el)          # evidence is grounded in the shown text -> keep
-        # no evidence, or evidence not found in the text -> drop as ungrounded (anti-overclaim)
+        span_min = grounding.MIN_SPAN if min_overlap is None else float(min_overlap)
+        ok = grounding.grounded(ev, ref_text, min_span=span_min)
+        if diag is not None:
+            # Persist the decision AND its scores. Previously only the surviving element names
+            # were stored, so the filter's own effect could never be measured after the fact --
+            # which is precisely how it regressed from 10% to 26.3% unnoticed. With this, a future
+            # audit can recompute the drop rate without re-running the generator.
+            d = grounding.explain(ev, ref_text)
+            d.update({"element": el, "evidence": ev[:200], "kept": ok})
+            diag.append(d)
+        if ok:
+            kept.append(el)          # evidence is quoted from the shown text -> keep
+        # no evidence, or evidence not actually quoted from the text -> drop (anti-overclaim)
     # de-dup preserving order
     seen = set(); out = []
     for e in kept:
         if e.lower() not in seen:
             seen.add(e.lower()); out.append(e)
     return out
+
+
+_WHY_VERIFY_SYS = (
+    "You verify one AI-written sentence about a patent reference against that reference's ACTUAL "
+    "text. You are looking for assertions that the reference DISCLOSES something it does not "
+    "actually disclose. Ignore statements about the invention/query itself and ignore hedged "
+    "statements that are true of the text. Return JSON "
+    '{"supported": true|false, "unsupported": ["<the specific unsupported assertion>"], '
+    '"corrected": "<1-2 sentences making ONLY assertions the reference text supports, hedged '
+    'where partial; empty string if the text supports nothing specific>"}. '
+    "Judge ONLY against the supplied text; you have no outside knowledge of this patent.")
+
+
+def _verify_why(why, source):
+    """Second, independent pass over the PROSE.
+
+    The deterministic filter only ever governed `reads_on`; `why` -- the sentence a reader
+    actually reads -- was never checked against anything. Since the audit judge weighs the prose
+    heavily, an unfiltered `why` was a large share of the measured overclaim rate. This runs a
+    cheap verifier that must REFUTE rather than confirm, and on refutation we substitute the
+    verifier's strictly-grounded rewrite. Failures are non-fatal: any error keeps the original
+    text rather than blanking the card.
+    """
+    why = (why or "").strip()
+    if not why or not (source or "").strip():
+        return why, "no-source"
+    try:
+        out = llm.chat_json(_WHY_VERIFY_SYS,
+                            f"REFERENCE ACTUAL TEXT:\n{source[:4000]}\n\nASSERTION:\n{why}",
+                            max_tokens=400) or {}
+    except Exception:
+        return why, "verifier-error"
+    if out.get("supported") is True:
+        return why, "verified"
+    corrected = (out.get("corrected") or "").strip()
+    if corrected:
+        return corrected, "corrected"
+    return ("The reference is topically related, but its available text does not clearly "
+            "disclose specific elements of the query; treat as unconfirmed."), "stripped"
 
 
 @app.route("/api/ref/<pub>")
@@ -718,6 +851,30 @@ def api_figs():
             continue
         out[pub] = webview._cached_images(pub)
     return jsonify(out)
+
+
+def _pdf_available(pub: str) -> bool:
+    """Would /pdf/<pub> actually serve something? Same two sources the route itself uses."""
+    if not _safe_pub(pub):
+        return False
+    if (enrich_display.PDFDIR / f"{pub}.pdf").exists():
+        return True
+    disp = enrich_display.load_cached(pub)
+    return bool((disp or {}).get("_display", {}).get("pdf_url")) if disp else False
+
+
+@app.route("/api/pdfs")
+def api_pdfs():
+    """Batch PDF-availability manifest for the results list — disk only, no network, no LLM.
+
+    The report used to emit a "PDF" link for EVERY card unconditionally while /pdf/<pub> aborts
+    404 whenever neither a cached file nor a cached pdf_url exists: 23 of 34 links on the gold
+    report were dead, and which ones tracked on-disk presence exactly. Offering a lawyer a link
+    that 404s four times out of five is worse than not offering it, so the page now asks first
+    and only promotes the ones that resolve. Mirrors /api/figs deliberately.
+    """
+    pubs = [p for p in (request.args.get("pubs") or "").split(",") if p][:80]
+    return jsonify({pub: _pdf_available(pub) for pub in pubs if _safe_pub(pub)})
 
 
 @app.route("/pdf/<pub>")

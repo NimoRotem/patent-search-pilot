@@ -1,0 +1,87 @@
+{# Scope + measured-reliability disclosure.
+
+   Included on BOTH the search page and the results page, because those are the two points where
+   a decision gets made: what to search, and what to conclude. An About box would not be seen at
+   either. Everything here is rendered from corpus_facts.facts() so it cannot drift from the DB.
+
+   Tone is deliberately flat and quantified. The failure this blocks is specific: an attorney runs
+   a search, gets few results, and reads that as "the field is clear". Every claim below is either
+   a live DB reading or a cited measurement. #}
+<section class="scope {{ 'scope-results' if variant == 'results' else 'scope-search' }}"
+         aria-labelledby="scope-h">
+  <h2 id="scope-h">Search scope and measured reliability</h2>
+
+  <p class="scope-lede">This is a <b>bounded technical-field search tool</b>, not a clearance
+    search. It searches one indexed field, to a fixed date, with measured recall well below
+    completeness. Read these limits before relying on a result.</p>
+
+  <div class="scope-grid">
+    <div class="scope-item">
+      <span class="scope-k">Corpus</span>
+      <span class="scope-v">{% if corpus.publications %}{{ '{:,}'.format(corpus.publications) }}{% else %}—{% endif %} publications</span>
+      <span class="scope-d">Limited to {{ corpus.cpc_count }} CPC classes covering
+        {{ corpus.field_summary }}. {{ corpus.jurisdictions|join(', ') }} only — no JP, CN, KR, GB,
+        FR or other national collections, and no non-patent literature.</span>
+    </div>
+
+    <div class="scope-item">
+      <span class="scope-k">Current to</span>
+      <span class="scope-v">{% if corpus.max_date_str %}{{ corpus.max_date_str }}{% else %}unavailable{% endif %}</span>
+      <span class="scope-d">{% if corpus.max_date_str %}Nothing published after this date is
+        searched. For a novelty or validity question this is a live gap, and it widens every day
+        until the next ingest.{% else %}The corpus date ceiling could not be read from the
+        database. Treat currency as unknown.{% endif %}</span>
+    </div>
+
+    <div class="scope-item">
+      <span class="scope-k">Measured recall</span>
+      <span class="scope-v">{{ corpus.recall_pct }}% @100</span>
+      <span class="scope-d">On a {{ corpus.recall_queries }}-query internal benchmark,
+        {{ corpus.recall_pct }}% of known-relevant families appeared in the top 100 results —
+        roughly four in five known-relevant families were <b>not</b> surfaced.</span>
+    </div>
+
+    <div class="scope-item">
+      <span class="scope-k">AI output accuracy</span>
+      <span class="scope-v">verify every cell</span>
+      <span class="scope-d">Rationales and claim charts are machine-generated drafting aids, not
+        findings.
+        {% if corpus.rationale_error_pct is not none %}Rationales overclaimed in
+        {{ corpus.rationale_error_pct }}% of {{ corpus.rationale_n }} audited cases.{% endif %}
+        {% if corpus.chart_fp_pre_pct is not none %}Claim-chart cells asserting coverage were wrong
+        in {{ corpus.chart_fp_pre_pct }}% of {{ corpus.chart_fp_pre_n }} cells before a verification
+        pass was added; after it, {{ corpus.chart_fp_post_bad }} of {{ corpus.chart_fp_post_n }}
+        remaining cells were rejected — too small a sample to claim a rate.{% endif %}
+        Assume residual error and check each citation against the reference text.</span>
+    </div>
+  </div>
+
+  <p class="scope-warn"><b>Absence of results is not evidence of absence of prior art.</b>
+    A short result list means this corpus did not surface art — it does not mean none exists.
+    Given the recall figure, the date ceiling, and the class and jurisdiction limits above, a
+    negative result here cannot support a clearance, freedom-to-operate, or patentability
+    opinion. Those require a professional search across full collections.</p>
+
+  <details class="scope-more">
+    <summary>What is and is not indexed</summary>
+    <div class="scope-more-in">
+      <p><b>Indexed CPC classes ({{ corpus.cpc_count }}):</b></p>
+      <ul class="cpclist">
+        {% for c in corpus.cpc %}<li><code>{{ c.code }}</code> — {{ c.title }}</li>{% endfor %}
+      </ul>
+      <p><b>Genuine strengths, so you can weigh them fairly:</b> within these classes the corpus is
+        deep — full claim text as structured rows, paragraph- and figure-level coordinates,
+        EN/DE cross-lingual retrieval, real legal-event and family data, and prior-art dating
+        implemented against EPC Art. 54(2), 54(3) and 56 rather than approximated. A reference
+        this tool <i>does</i> return is well-evidenced and correctly dated. The limitation is
+        coverage and ranking recall, not the quality of what it holds.</p>
+      <p><b>Not indexed:</b> anything outside the classes listed above; jurisdictions other than
+        {{ corpus.jurisdictions|join(', ') }}; non-patent literature, standards, product manuals
+        and datasheets; and anything published after
+        {{ corpus.max_date_str or 'the corpus ceiling' }}.</p>
+      <p class="scope-src">Recall basis: {{ corpus.recall_basis }}.
+        {% if corpus.rationale_basis %}Rationale basis: {{ corpus.rationale_basis }}.{% endif %}
+        {% if corpus.chart_basis %}Claim-chart basis: {{ corpus.chart_basis }}.{% endif %}</p>
+    </div>
+  </details>
+</section>

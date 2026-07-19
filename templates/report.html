@@ -21,14 +21,20 @@
   <div id="refiningStages" hidden></div>
   {% endif %}
 
-  {% if v.domain and not v.domain.in_domain %}
-  <div class="callout">
+  {#  Fires on should_federate (out of domain OR low confidence), not just on a hard out-of-domain
+      verdict — a low-confidence match is exactly the case where a thin result list is most likely
+      to be misread as a clear field. Rendered above the results on purpose: the warning has to
+      reach the reader BEFORE the reference list does. #}
+  {% if v.domain and v.domain.should_federate %}
+  <div class="callout callout-strong">
     <span class="ci" aria-hidden="true">⚠</span>
     <div style="min-width:0">
-      <h3>This query looks outside the indexed field</h3>
+      <h3>{% if v.domain.in_domain %}This query is only a weak match for the indexed field{% else %}This query falls outside the indexed field{% endif %}</h3>
       <p>{{ v.domain.reason }}</p>
-      <p>The local corpus covers vacuum handling and gripping, so the references below may be
-         thin. A wider search also queries external patent APIs.</p>
+      <p>The local corpus covers vacuum gripping, lifting and handling only. For a query outside
+         that field <b>these results cannot be read as a search of your field</b>, and a thin or
+         weak result list here says nothing about what prior art exists. Treat what follows as
+         adjacent art only.</p>
       {% if v.federation_offered and not v.federation %}
       {#  An explicit, costed choice — never automatic. #}
       <form method="post" action="{{ request.script_root }}/run">
@@ -43,6 +49,8 @@
     </div>
   </div>
   {% endif %}
+
+  {% with variant='results' %}{% include "_scope.html" %}{% endwith %}
 
   {% if v.federation %}
   {#  Federated hits stay in their own block on purpose: ranked_families holds LOCAL family keys
@@ -106,11 +114,49 @@
   </div>
 
   <!-- ── claim chart ─────────────────────────────────────────────────────── -->
+  {#  RELABELLED, not merely annotated. This grid used to be titled "Element x reference claim
+      chart" and coloured every cell green by retrieval score. Nothing in it had ever checked that
+      a cited passage discloses its element, yet it rendered in the visual language of an
+      attorney's claim chart, where a filled cell reads as verified coverage. An audit found 7 of
+      12 coordinate-backed cells were false positives. It is now titled as what it is — a
+      retrieval map to triage by hand — and only cells an independent verification pass confirmed
+      are shown as disclosure. #}
   <details class="block" open>
     <summary>
-      <span class="sec"><h2>Element × reference claim chart</h2>
-        <span class="hint">rows = invention elements · columns = strongest references · cell shade = evidence score</span></span>
+      <span class="sec"><h2>Element × reference retrieval map <span class="draft-tag">drafting aid — verify every cell</span></h2>
+        <span class="hint">rows = invention elements · columns = references · each cell = one retrieved passage, individually verified below</span></span>
     </summary>
+
+    <div class="chart-note">
+      <p><b>This is not a verified claim chart and must not be filed or relied on as one.</b>
+        Cells come from semantic retrieval, then each cited passage is checked by a separate model
+        pass that is asked to refute it. A cell is shown as disclosure only if that check confirms
+        the passage teaches the element — and that check is itself imperfect.
+        {% if corpus.chart_fp_pre_pct is not none %}In an audit of this feature
+        <b>{{ corpus.chart_fp_pre_pct }}% of {{ corpus.chart_fp_pre_n }} cells asserting coverage
+        were wrong</b> before that verification pass existed; with it,
+        {{ corpus.chart_fp_post_bad }} of {{ corpus.chart_fp_post_n }} surviving cells were
+        rejected — a sample far too small to claim a rate from, and the verifier shares a model
+        family with the auditor, so assume residual error.{% endif %}
+        Open each cell's reference and read the cited passage before using it.</p>
+      {% set vs = v.claim_chart.verification %}
+      {% if vs and vs.covered %}
+      <ul class="chart-legend">
+        <li><span class="lg lg-ok"></span><b>{{ vs.discloses }}</b> verified — passage checked and it does teach the element</li>
+        <li><span class="lg lg-weak"></span><b>{{ vs.weak }}</b> weak — same topic, does not clearly show the element</li>
+        <li><span class="lg lg-bad"></span><b>{{ vs.unrelated }}</b> unrelated — passage is about something else</li>
+        <li><span class="lg lg-none"></span><b>{{ vs['no-coord'] }}</b> whole-document match — no specific passage exists to verify</li>
+        {% if vs.unchecked %}<li><span class="lg lg-unk"></span><b>{{ vs.unchecked }}</b> unchecked — verifier unavailable</li>{% endif %}
+      </ul>
+      {% if vs.confirmed_rate is not none %}
+      <p class="chart-rate">Of {{ vs.checked }} verifiable cells in <i>this</i> report,
+        <b>{{ (vs.confirmed_rate * 100)|round|int }}%</b> survived verification.
+        {% if vs.confirmed_rate < 0.8 %}The rest did not — treat the grid as a list of passages
+        to read, not as a coverage finding.{% endif %}</p>
+      {% endif %}
+      {% endif %}
+    </div>
+
     <div class="chartwrap">
       <table class="chart">
         <caption class="vh">Which references disclose which elements of the invention</caption>
@@ -129,11 +175,22 @@
             <th class="elh" scope="row">{{ row.element }}
               <span class="elcov">best {{ '%.3f'|format(row.coverage.get('best_score',0)) }} · {{ row.coverage.get('n_evidence',0) }} refs</span></th>
             {% for cell in row.cells %}
+              {#  Colour now encodes VERIFICATION STATE, not retrieval score. Green previously
+                  scaled with the fused score, so a confidently-retrieved but wrong cell was the
+                  greenest thing on the page. Only a confirmed cell may look like coverage. #}
               {% if cell.covered %}
-              <td class="cell" style="background:{{ 'rgba(63,185,80,%.2f)'|format(0.08 + 0.42*cell.intensity) }}">
+              {% set vst = cell.verify or 'unchecked' %}
+              <td class="cell cell-{{ vst }}">
                 <button type="button" onclick="jumpRef('{{ cell.pub }}')"
-                        aria-label="{{ cell.pub }} — score {{ '%.3f'|format(cell.score) }} for “{{ row.element }}”"
-                        title="{{ cell.pub }} · {{ cell.basis }}">
+                        aria-label="{{ cell.pub }} for “{{ row.element }}” — {{
+                          {'discloses':'verified: passage teaches this element',
+                           'weak':'weak: same topic, does not clearly show the element',
+                           'unrelated':'unrelated: passage is about something else',
+                           'no-coord':'whole-document match, no passage to verify',
+                           'unchecked':'not verified'}[vst] }} — retrieval score {{ '%.3f'|format(cell.score) }}"
+                        title="{{ cell.pub }} · {{ cell.verify_why or cell.basis }}">
+                  <span class="cmark">{{ {'discloses':'✓','weak':'~','unrelated':'✕',
+                                          'no-coord':'○','unchecked':'?'}[vst] }}</span>
                   <span class="cs">{{ '%.3f'|format(cell.score) }}</span>
                   {% if cell.coord %}<span class="cc">{{ cell.coord }}</span>{% endif %}
                   {% if cell.basis=='secret_prior_art' %}<span class="cc">🔒 secret</span>
@@ -158,8 +215,12 @@
       <div style="margin-top:5px">plus secondary <code>{{ s.ref }}</code> supplying {{ s.supplies|join(' · ') }}</div>
       {% endfor %}
       {% if cv.uncovered_elements %}
-      <div class="unc" style="margin-top:8px">Not found anywhere in the corpus
-        ({{ cv.uncovered_elements|length }}): {{ cv.uncovered_elements|join(' · ') }}</div>
+      {#  Was "Not found anywhere in the corpus" — a completeness claim this tool cannot make at
+          19% recall@100. It states what actually happened: this run did not surface art. #}
+      <div class="unc" style="margin-top:8px">Not surfaced by this search
+        ({{ cv.uncovered_elements|length }}): {{ cv.uncovered_elements|join(' · ') }}
+        <div class="unc-note">This means the retrieval did not return art for these elements. It
+          is not a finding that none exists — see the recall and scope limits above.</div></div>
       {% endif %}
     </div>
     {% endif %}
@@ -251,7 +312,11 @@
                  target="_blank" rel="noopener">{{ c.pub }} ↗</a>
               {% if c.priority_date %}<span>priority {{ c.priority_date }}</span>{% endif %}
               {% if c.publication_date %}<span>published {{ c.publication_date }}</span>{% endif %}
-              <a href="{{ request.script_root }}/pdf/{{ c.pub }}" target="_blank" rel="noopener">PDF</a>
+              {# Rendered inert and PROMOTED to a real link by app.js only once /api/pdfs confirms
+                 one exists. Starting as a link and demoting later would flash a dead link, and
+                 23 of 34 of these used to 404. #}
+              <span class="pdflink" data-pub="{{ c.pub }}" aria-disabled="true"
+                    title="Checking for a cached PDF…">PDF</span>
             </div>
             {% if c.assignees or c.inventors %}
             <div class="rsub">
@@ -361,9 +426,9 @@
 
 <div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Figure viewer">
   <button type="button" class="x" id="lbclose" onclick="closeLb()" aria-label="Close the figure viewer">✕</button>
-  <button type="button" class="nav l" onclick="lbNav(-1)" aria-label="Previous figure">‹</button>
+  <button type="button" class="nav l" id="lbprev" onclick="lbNav(-1)" aria-label="Previous figure">‹</button>
   <div id="lbstage"></div>
-  <button type="button" class="nav r" onclick="lbNav(1)" aria-label="Next figure">›</button>
+  <button type="button" class="nav r" id="lbnext" onclick="lbNav(1)" aria-label="Next figure">›</button>
   <div class="cap" id="lbcap"></div>
 </div>
 {% endblock %}
