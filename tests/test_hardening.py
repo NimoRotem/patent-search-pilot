@@ -77,7 +77,7 @@ def test_rerank_families_empty_is_safe():
 def test_generation_lock_prevents_double_run(monkeypatch):
     import webapp
     starts = []
-    def fake_gen(slug, query, subject, mode):
+    def fake_gen(slug, query, subject, mode, wide=False):
         starts.append(slug); time.sleep(0.25)
         with webapp._JOB_LOCK:
             webapp._JOBS[slug] = {"status": "done", "msg": "done"}

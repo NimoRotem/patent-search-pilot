@@ -136,6 +136,12 @@ _LIMITERS = {
     # index-backed ANN over 1.82M vectors
     "api_morelike": Limiter("more-like-this", _num("RL_MORE_RATE", 1.0), _num("RL_MORE_BURST", 20),
                             _num("RL_MORE_GRATE", 2.0), _num("RL_MORE_GBURST", 40)),
+    # per-reference claim chart: one Vertex generate call per request
+    "api_chart": Limiter("claim charts", _num("RL_CHART_RATE", 1.0), _num("RL_CHART_BURST", 20),
+                         _num("RL_CHART_GRATE", 2.0), _num("RL_CHART_GBURST", 40)),
+    # chunked Vertex translation of a full reference
+    "api_translate": Limiter("translation", _num("RL_TRANS_RATE", 1.0), _num("RL_TRANS_BURST", 20),
+                             _num("RL_TRANS_GRATE", 2.0), _num("RL_TRANS_GBURST", 40)),
     # PDF/DOCX rendering
     "export":   Limiter("exports", _num("RL_EXPORT_RATE", 0.5), _num("RL_EXPORT_BURST", 10),
                         _num("RL_EXPORT_GRATE", 1.0), _num("RL_EXPORT_GBURST", 20)),

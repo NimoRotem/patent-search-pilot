@@ -10,6 +10,48 @@
   </div>
   {% endif %}
 
+  {% if v.domain and not v.domain.in_domain %}
+  <div class="panel" style="border-left:4px solid #d08700;background:#fffbeb">
+    <b>⚠ This query looks outside the indexed field.</b>
+    <p class="small" style="margin:6px 0 0">{{ v.domain.reason }}</p>
+    {% if v.federation_offered %}
+    <p class="small" style="margin:6px 0 0">The local corpus covers vacuum handling and gripping.
+      Re-run with <b>“Also search external patent APIs”</b> ticked for a wider search.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if v.federation %}
+  <div class="panel">
+    <div class="sec"><h3>🌐 Wider search — external patent APIs</h3>
+      <span class="hint">
+        {% if v.federation.ok %}
+          {{ v.federation.n_hits }} families from the federated sources in
+          {{ v.federation.elapsed }}s{% if v.federation.cached %} (cached){% endif %} ·
+          shown separately from the local index so provenance stays visible
+        {% else %}
+          federation unavailable — local results below are unaffected
+        {% endif %}
+      </span></div>
+    {% if v.federation.ok %}
+    <ol class="small" style="margin:10px 0 0;padding-left:20px">
+      {% for h in v.federation.hits %}
+      <li style="margin-bottom:8px">
+        <a href="{{ h.url or ('https://patents.google.com/patent/' + h.pub|replace('-','') + '/en') }}"
+           target="_blank"><b>{{ h.pub }}</b></a>
+        {% if h.date %}<span class="muted"> · {{ h.date }}</span>{% endif %}
+        {% if h.assignee %}<span class="muted"> · {{ h.assignee }}</span>{% endif %}
+        {% for s in h.sources %}<span class="chip ch">{{ s }}</span>{% endfor %}
+        <div>{{ h.title }}</div>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="small muted" style="margin:8px 0 0">{{ v.federation.error }}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <!-- A. SUMMARY -->
   <div class="panel summary">
     <h2>{{ v.title }}</h2>

@@ -15,6 +15,9 @@ from flask import (Flask, Response, render_template, request, jsonify, redirect,
 import db, embed, goldset, webview, enrich_display, llm
 import export_data, export_pdf, export_docx
 import auth, rerank_pool
+import claim_chart, translate, drawings          # ported per-card enrichment
+import federation, domain_detect                 # two-tier search + out-of-domain guard
+from search_modes import require_available, ModeNotAvailable, available_modes
 from retrieval import Retriever
 from agent import CoverageAgent, AgentConfig
 from config import DATA, ROOT
@@ -169,23 +172,30 @@ def _write_report(slug, rep):
     (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)   # force the view to rebuild from this
 
 
-def _run_job(slug, query, subject, mode, gated):
+def _run_job(slug, query, subject, mode, gated, wide=False):
     """Thread entrypoint: run the generation, then always release the reserved budget slot.
     Kept separate from _generate so _generate's signature stays purely about doing the work."""
     try:
-        _generate(slug, query, subject, mode)
+        _generate(slug, query, subject, mode, wide=wide)
     finally:
         if gated and auth.run_gate:
             auth.run_gate.end()
 
 
-def _generate(slug, query, subject, mode):
+def _generate(slug, query, subject, mode, wide=False):
     """Run one report. Runs fully concurrently with other generations — the only serialized step is
     the cross-encoder, which lives in its own child process (rerank_pool)."""
     _set_job(slug, status="running", msg="Queued…", t0=time.time())
     try:
         _set_job(slug, msg="Decomposing the invention into technical elements…")
         A = CoverageAgent(retriever())
+        # Cheap, no-spend relevance guard: is this query even in the indexed field? Never fatal —
+        # a detector failure must not cost the user their search.
+        verdict = None
+        try:
+            verdict = domain_detect.detect(query, retriever=retriever())
+        except Exception:
+            traceback.print_exc()
 
         def on_event(stage, data):
             # Stream progress + a first render. 'partial' writes an un-reranked snapshot (cards
@@ -208,6 +218,14 @@ def _generate(slug, query, subject, mode):
                     cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True),
                     on_event=on_event)
         rep["partial"] = False
+        rep["domain"] = verdict.to_dict() if verdict is not None else None
+        # Federation costs real money per call, so it is opt-in per request and NEVER implicit.
+        if wide:
+            _set_job(slug, kind="federating",
+                     msg="Searching external patent APIs (wider search)…")
+            rep["federation"] = _federate_block(query, mode)
+        else:
+            rep["federation_offered"] = bool(verdict is not None and verdict.should_federate)
         _write_report(slug, rep)
         _set_job(slug, kind="done", status="done", msg="done")
     except Exception as e:
@@ -215,7 +233,30 @@ def _generate(slug, query, subject, mode):
         _set_job(slug, kind="error", status="error", msg=str(e)[:300])
 
 
-def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False):
+def _federate_block(query, mode):
+    """Run ONE federated search and return a display-ready block.
+
+    Federated-only hits are deliberately kept in their own block rather than merged into
+    `ranked_families`. That list holds LOCAL family keys which webview.build_view resolves
+    against Postgres, so a synthetic `fedfam:` key would render as a blank card. Cross-system
+    RRF fusion does exist (federation.fuse / search_two_tier) and is the right tool when the
+    caller wants one ranked list; the report page wants provenance kept visible instead.
+    """
+    try:
+        fed = federation.search(query, mode=mode)
+    except Exception as e:
+        traceback.print_exc()
+        return {"ok": False, "error": str(e)[:300], "hits": []}
+    d = fed.to_dict()
+    d["hits"] = [{"pub": h.pub_number, "title": h.title, "abstract": (h.abstract or "")[:600],
+                  "assignee": h.assignee, "date": h.date, "country": h.country,
+                  "cpc": h.cpc[:6], "url": h.url, "family_id": h.family_id,
+                  "sources": h.sources, "rank": h.rank}
+                 for h in (fed.hits or [])[:40]]
+    return d
+
+
+def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, wide=False):
     """Return ('ready'|'running'|'missing'|'busy', report_or_None). Kicks off background
     generation if needed. 'busy' means the concurrency or daily spend cap is exhausted."""
     p = report_path(slug)
@@ -247,7 +288,7 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False):
         if regen:
             p.unlink(missing_ok=True)
             (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)
-        threading.Thread(target=_run_job, args=(slug, query, subj_obj, mode, gated),
+        threading.Thread(target=_run_job, args=(slug, query, subj_obj, mode, gated, wide),
                          daemon=True).start()
     except Exception:
         # Never leak the reserved slot or leave a phantom "running" claim if we fail to launch.
@@ -314,17 +355,33 @@ def run():
             return jsonify({"error": "server busy", "detail": why}), 429
         return redirect(url_for("report", slug=gold_id))
     query = request.form.get("query", "").strip()
+    # Validate at the API boundary, not the dropdown: the form had no allowlist, so a crafted
+    # POST could reach the pipeline with mode=invalidity (returning novelty dates mislabelled as
+    # an invalidity opinion) or mode=fto (unhandled 500).
     mode = request.form.get("mode", "novelty").strip()
+    try:
+        mode = require_available(mode).value
+    except ModeNotAvailable as e:
+        # e.mode is a str-Enum: str() on it yields "Mode.INVALIDITY" on py3.9, which is an
+        # implementation detail leaking into the API. Emit the wire value.
+        return jsonify({"error": "mode_not_available",
+                        "mode": getattr(e.mode, "value", str(e.mode)),
+                        "detail": e.message, "missing": e.missing}), 400
+    except ValueError as e:
+        return jsonify({"error": "unknown_mode", "detail": str(e)}), 400
     subject = request.form.get("subject", "").strip() or None
+    wide = request.form.get("wide") == "1"
     if not query:
         return redirect(url_for("index"))
-    slug = slugify(query + "|" + mode)
-    st, why = ensure_report(slug, query=query, subject=subject, mode=mode)
+    # `wide` MUST be part of the slug: a wide result and a narrow one are different reports and
+    # would otherwise overwrite each other's cache.
+    slug = slugify(query + "|" + mode + ("|wide" if wide else ""))
+    st, why = ensure_report(slug, query=query, subject=subject, mode=mode, wide=wide)
     if st == "busy":
         return jsonify({"error": "server busy", "detail": why}), 429
     # remember adhoc meta for the report page title
     (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
-        {"query": query, "mode": mode, "subject": subject}))
+        {"query": query, "mode": mode, "subject": subject, "wide": wide}))
     return redirect(url_for("report", slug=slug))
 
 
@@ -541,6 +598,9 @@ def api_ref(pub):
             biblio_txt = f"{pub} {disp.get('title') or ''}. {disp.get('abstract') or ''}"
             rationale = _rationale(slug, pub, q, rep.get("elements", []), biblio_txt,
                                    (matched or {}).get("text"))
+    # Pure-heuristic language flag: costs nothing, so it is safe on every card. The actual
+    # translation stays behind its own lazy endpoint.
+    disp["lang_flags"] = {"abstract": translate.looks_nonenglish(disp.get("abstract") or "")}
     return jsonify({
         "pub": pub, "display": disp, "sections": secs,
         "matched": {"coord": webview._coord_str((matched or {}).get("coord")),
@@ -800,6 +860,52 @@ def compare():
                          "google_patents": (disp or {}).get("google_patents")})
     return render_template("compare.html", slug=slug, query=q, mode=rep.get("mode"),
                            elements=rep.get("elements", []), cols=cols)
+
+
+@app.route("/api/chart/<pub>")
+def api_chart(pub):
+    """Element-by-element claim chart for one reference. Synchronous Vertex call, so this is a
+    lazy per-card endpoint (like /api/ref), never part of the main search path."""
+    if not _safe_pub(pub):
+        abort(404)
+    slug = request.args.get("slug", "")
+    rep = _load_report(slug) or {}
+    elements = rep.get("elements", [])
+    if not elements:
+        return jsonify({"error": "no elements for this report", "slug": slug}), 400
+    cp = RATIONALE / f"chart__{slug}__{pub}.json"
+    if cp.exists():
+        try:
+            return jsonify(json.loads(cp.read_text()))
+        except Exception:
+            pass
+    out = claim_chart.build_chart(elements, pub)
+    try:
+        cp.write_text(json.dumps(out, default=str))
+    except Exception:
+        pass
+    return jsonify(out)
+
+
+@app.route("/api/translate/<pub>")
+def api_translate(pub):
+    """On-demand English translation of a non-English reference. Chunked + SHA1-cached in
+    translate.py; English text short-circuits without an LLM call."""
+    if not _safe_pub(pub):
+        abort(404)
+    return jsonify(translate.translate_publication(pub))
+
+
+@app.route("/api/modes")
+def api_modes():
+    """Capabilities, so the UI can build its mode picker from truth instead of a hard-coded list.
+    INVALIDITY and FTO report as unavailable with the reason, rather than silently degrading."""
+    return jsonify({"modes": available_modes()})
+
+
+@app.route("/api/federation/health")
+def api_federation_health():
+    return jsonify(federation.health())
 
 
 @app.route("/healthz")

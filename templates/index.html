@@ -37,6 +37,15 @@
         <button class="btn" type="submit" id="gobtn">🔎 Search prior art</button>
       </div>
     </div>
+    <div class="row">
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400">
+          <input type="checkbox" name="wide" value="1">
+          <span>Also search external patent APIs (slower, costs a live API call — use when the
+                query falls outside the indexed vacuum-handling field)</span>
+        </label>
+      </div>
+    </div>
     <p class="small muted" style="margin:2px 0 0">First run for a new query takes ~2–4 min (the agent decomposes the invention and searches 8 channels); it's cached after.</p>
   </form>
 

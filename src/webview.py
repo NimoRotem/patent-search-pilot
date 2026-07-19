@@ -452,6 +452,9 @@ def build_view(report, top_n=25):
         "claim_chart": chart,
         "cards": cards,
         "substance_filter": {k: v for k, v in subs_stats.items() if k != "titleonly_ids"},
+        "domain": report.get("domain"),
+        "federation": report.get("federation"),
+        "federation_offered": bool(report.get("federation_offered")),
         "coverage_ledger": {
             "cpc_branches": report.get("cpc_branches", []),
             "round_new_families": report.get("round_new_families", []),
