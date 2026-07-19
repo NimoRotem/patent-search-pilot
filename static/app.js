@@ -69,7 +69,13 @@ async function expandAll(btn){
 
 async function ensureImages(card){
   const pane = card.querySelector('.psec[data-t="figs"]');
-  if(!pane || card.dataset.imgLoaded==='1' || +card.dataset.nimg>0) return;
+  // Bail only when the gallery is ACTUALLY on the page. The old guard tested `data-nimg>0`, but
+  // n_images comes from the report JSON while the server-rendered <div class="g"> depends on
+  // `c.images` (the on-disk figure manifest). For any card where the count is known but the
+  // manifest was not resolved at render time, the two disagree: the template emits the ".figph"
+  // spinner, and this function then returned early because the count was non-zero — so the fetch
+  // that would have filled the gallery never ran and "loading drawings…" spun forever.
+  if(!pane || card.dataset.imgLoaded==='1' || pane.querySelector('.g')) return;
   card.dataset.imgLoaded='1';
   const ph = pane.querySelector('.figph');
   try{
@@ -80,7 +86,10 @@ async function ensureImages(card){
       let h='';
       if(d.figs_from_pdf) h+='<div class="muted small" style="margin-bottom:6px">🗎 Extracted from the PDF facsimile.</div>';
       h+='<div class="g">'+d.images.map((im,i)=>{const u=B+'/figures/'+encodeURIComponent(d.pub)+'/'+im.file;
-        return '<figure><img loading="lazy" src="'+u+'" data-pub="'+esc(d.pub)+'" onclick="openLb(this)"><figcaption>'+(d.figs_from_pdf?'p.':'fig ')+(i+1)+'</figcaption></figure>';}).join('')+'</div>';
+        // Drawings are content, not decoration: name the figure and the document it belongs to so
+        // a screen reader announces something more useful than "image".
+        const alt=(d.figs_from_pdf?'Page ':'Figure ')+(i+1)+' of '+d.pub;
+        return '<figure><img loading="lazy" src="'+u+'" alt="'+esc(alt)+'" data-pub="'+esc(d.pub)+'" onclick="openLb(this)"><figcaption>'+(d.figs_from_pdf?'p.':'fig ')+(i+1)+'</figcaption></figure>';}).join('')+'</div>';
       if(ph) ph.outerHTML=h; else pane.querySelector('h4').insertAdjacentHTML('afterend',h);
     } else if(ph){
       ph.outerHTML='<div class="nodig">🗎 No drawings digitized for this document. '
@@ -123,7 +132,7 @@ async function ensureThumb(card){
       const u = B+'/figures/'+encodeURIComponent(d.pub)+'/'+d.images[0].file;
       thumb.classList.remove('pending');
       thumb.querySelector('.zoomhint').insertAdjacentHTML('beforebegin',
-        '<img loading="lazy" src="'+u+'" alt="drawing"><span class="figbadge">'+d.images.length+' fig'+(d.images.length!==1?'s':'')+'</span>');
+        '<img loading="lazy" src="'+u+'" alt="Lead drawing of '+esc(d.pub)+'"><span class="figbadge">'+d.images.length+' fig'+(d.images.length!==1?'s':'')+'</span>');
       ph.remove();
     }else{
       thumb.classList.add('empty'); thumb.classList.remove('pending');
@@ -196,7 +205,9 @@ function openLb(img){
 }
 function showLb(){
   const im=LB.imgs[LB.i]; if(!im) return;
-  document.getElementById('lbimg').src=im.src;
+  const lbimg=document.getElementById('lbimg');
+  lbimg.src=im.src;
+  lbimg.alt=im.alt||('Figure '+(LB.i+1)+(im.dataset.pub?' of '+im.dataset.pub:''));
   document.getElementById('lbcap').textContent='Figure '+(LB.i+1)+' / '+LB.imgs.length+(im.dataset.pub?' · '+im.dataset.pub:'');
 }
 function lbNav(d){ if(!LB.imgs.length)return; LB.i=(LB.i+d+LB.imgs.length)%LB.imgs.length; showLb(); }
@@ -289,7 +300,10 @@ const overlay = () => document.getElementById('soOverlay');
 function galSet(i){
   if(!GAL.imgs.length) return;
   GAL.i = (i + GAL.imgs.length) % GAL.imgs.length;
-  const main = document.getElementById('gMain'); if(main) main.src = GAL.imgs[GAL.i];
+  const main = document.getElementById('gMain');
+  const thumb = document.querySelectorAll('.gthumbs img')[GAL.i];
+  // keep the accessible name in step with the image the user is actually looking at
+  if(main){ main.src = GAL.imgs[GAL.i]; if(thumb && thumb.alt) main.alt = thumb.alt; }
   const c = document.getElementById('gCount'); if(c) c.textContent = (GAL.i+1)+' / '+GAL.imgs.length;
   document.querySelectorAll('.gthumbs img').forEach((t,idx)=>t.classList.toggle('sel', idx===GAL.i));
 }
@@ -346,11 +360,11 @@ function renderDetail(pn, j){
     h += '<h2>Drawings <span class="muted" style="font-weight:400">('+imgs.length+(d.figs_from_pdf?' · from PDF':'')+')</span></h2>';
     h += '<div class="gallery"><div class="gmain">'
        + (imgs.length>1?'<button class="gnav l" onclick="galPrev()">‹</button>':'')
-       + '<img id="gMain" src="'+imgs[0]+'" data-pub="'+esc(pn)+'" onclick="openLb(this)" alt="figure">'
+       + '<img id="gMain" src="'+imgs[0]+'" data-pub="'+esc(pn)+'" onclick="openLb(this)" alt="'+esc((d.figs_from_pdf?'Page':'Figure')+' 1 of '+pn)+'">'
        + (imgs.length>1?'<button class="gnav r" onclick="galNext()">›</button>':'')
        + '<span class="gcount" id="gCount">1 / '+imgs.length+'</span></div>';
     if(imgs.length>1)
-      h += '<div class="gthumbs">'+imgs.map((u,idx)=>'<img src="'+u+'" class="'+(idx===0?'sel':'')+'" onclick="galSet('+idx+')" loading="lazy">').join('')+'</div>';
+      h += '<div class="gthumbs">'+imgs.map((u,idx)=>'<img src="'+u+'" alt="'+esc((d.figs_from_pdf?'Page ':'Figure ')+(idx+1)+' of '+pn)+'" class="'+(idx===0?'sel':'')+'" onclick="galSet('+idx+')" loading="lazy">').join('')+'</div>';
     h += '</div>';
   }
 
@@ -413,6 +427,7 @@ async function openSimilar(pn){
     else h += list.map(r=>'<div class="simrow" onclick="openDetail(\''+esc(r.pub)+'\')"><div class="simscore">'+Math.round((r.score||0)*100)+'</div>'
       + '<div style="min-width:0"><b class="pn" style="font-family:ui-monospace,Menlo,monospace">'+esc(r.pub)+'</b>'
       + (r.country?' <span class="chip">'+esc(r.country)+'</span>':'')
+      + (r.near_identical?' <span class="chip" title="Embedding-identical text — usually the same application published again (e.g. the A1 pre-grant publication of this B2)">same text</span>':'')
       + '<div class="muted small" style="margin-top:2px">'+esc(r.title||'(untitled)')+'</div></div></div>').join('');
     body.innerHTML = h; body.scrollTop = 0;
   }catch(e){ body.innerHTML='<div class="so-loading">Error finding similar patents.</div>'; }

@@ -132,8 +132,11 @@
   <div class="sec"><h3>📄 Ranked prior art</h3>
      <span class="hint">{{ v.cards|length }} top families · click a card, its sketch, or <b>Full view</b> to browse the full document</span></div>
 
-  <div class="controls">
-    <span class="lab">Sort</span>
+  <!-- Every control here was previously identified only by the visual "Sort"/"Filter" captions and
+       its own first <option>, so a screen reader announced four unlabelled comboboxes. The captions
+       are now real <label>s / a group name, and each select carries an explicit accessible name. -->
+  <div class="controls" role="group" aria-label="Sort and filter results">
+    <label class="lab" for="sortby">Sort</label>
     <select id="sortby" onchange="applyControls()">
       <option value="rank">Relevance (default)</option>
       <option value="score">Relevancy score</option>
@@ -142,17 +145,18 @@
       <option value="datea">Publication date (oldest)</option>
       <option value="juris">Jurisdiction</option>
     </select>
-    <span class="lab">Filter</span>
+    <span class="lab" id="filterlab" aria-hidden="true">Filter</span>
     {% if v.subject %}<label class="toggle"><input type="checkbox" id="fprior" onchange="applyControls()"> prior-art only</label>{% endif %}
     <label class="toggle"><input type="checkbox" id="fdraw" onchange="applyControls()"> has drawings</label>
-    <select id="fjuris" onchange="applyControls()"><option value="">any jurisdiction</option>
+    <select id="fjuris" aria-label="Filter by jurisdiction" onchange="applyControls()"><option value="">any jurisdiction</option>
       <option>US</option><option>EP</option><option>WO</option><option>DE</option><option>GB</option><option>CN</option></select>
-    <select id="felement" onchange="applyControls()"><option value="">any element</option>
+    <select id="felement" aria-label="Filter by claim element covered" onchange="applyControls()"><option value="">any element</option>
       {% for el in v.elements %}<option value="{{ loop.index0 }}">{{ el[:44] }}</option>{% endfor %}</select>
-    <select id="fflag" onchange="applyControls()"><option value="">all triage</option>
+    <select id="fflag" aria-label="Filter by triage flag" onchange="applyControls()"><option value="">all triage</option>
       <option value="relevant">✓ relevant</option><option value="maybe">? maybe</option>
       <option value="not">✕ not</option><option value="unflagged">unflagged</option></select>
-    <span id="shown" class="lab"></span>
+    <!-- announce the new result count when a filter changes, otherwise the list silently reflows -->
+    <span id="shown" class="lab" role="status" aria-live="polite" aria-atomic="true"></span>
   </div>
 
   <div class="cards" id="cards">
@@ -177,7 +181,7 @@
         <!-- SKETCH -->
         <div class="rthumb{% if not c.images %} pending{% endif %}" data-pub="{{ c.pub }}" onclick="openDetail('{{ c.pub }}')" title="Open full document">
           {% if c.images %}
-            <img loading="lazy" src="{{ request.script_root }}/figures/{{ c.pub }}/{{ c.images[0].file }}" alt="drawing">
+            <img loading="lazy" src="{{ request.script_root }}/figures/{{ c.pub }}/{{ c.images[0].file }}" alt="Lead drawing of {{ c.pub }}">
             <span class="figbadge">{{ c.n_images }} fig{{ 's' if c.n_images != 1 else '' }}</span>
           {% else %}
             <div class="ph" data-lazythumb="1"><div class="spin sm"></div></div>
@@ -246,7 +250,7 @@
           {% if c.images %}
             {% if c.images[0].from_pdf %}<div class="muted small" style="margin-bottom:6px">🗎 Extracted from the PDF facsimile.</div>{% endif %}
             <div class="g">
-              {% for im in c.images %}<figure><img loading="lazy" src="{{ request.script_root }}/figures/{{ c.pub }}/{{ im.file }}" data-pub="{{ c.pub }}" onclick="openLb(this)"><figcaption>{% if c.images[0].from_pdf %}p.{% else %}fig {% endif %}{{ loop.index }}</figcaption></figure>{% endfor %}
+              {% for im in c.images %}<figure><img loading="lazy" src="{{ request.script_root }}/figures/{{ c.pub }}/{{ im.file }}" alt="{% if c.images[0].from_pdf %}Page{% else %}Figure{% endif %} {{ loop.index }} of {{ c.pub }}" data-pub="{{ c.pub }}" onclick="openLb(this)"><figcaption>{% if c.images[0].from_pdf %}p.{% else %}fig {% endif %}{{ loop.index }}</figcaption></figure>{% endfor %}
             </div>
           {% else %}<div class="figph muted small"><div class="spin sm" style="display:inline-block"></div> loading drawings…</div>{% endif %}
           {% if c.figure_caps %}<div class="figcaps">{% for f in c.figure_caps %}<div class="figcap"><span class="fno">FIG {{ f.figure_no or '' }}</span> {{ f.caption }}</div>{% endfor %}</div>{% endif %}
@@ -348,7 +352,7 @@
 <div class="lb" id="lb">
   <span class="x" onclick="closeLb()">✕</span>
   <span class="nav l" onclick="lbNav(-1)">‹</span>
-  <img id="lbimg" src="">
+  <img id="lbimg" src="" alt="">
   <span class="nav r" onclick="lbNav(1)">›</span>
   <div class="cap" id="lbcap"></div>
 </div>

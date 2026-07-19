@@ -131,9 +131,15 @@ table.chart th a{font-family:ui-monospace,Menlo,monospace;font-size:11.5px}
 .combo .unc{color:var(--warn)}
 
 /* ── sticky results toolbar (sort / filter) ───────────────────────────────── */
+/* Opaque, not translucent. This bar is sticky over a scrolling list of dense result cards, and at
+   86% alpha their text showed straight through it — `backdrop-filter:blur()` was doing the real
+   work of making it legible, so wherever that is unsupported or disabled (older Firefox, reduced
+   transparency / GPU-blocklisted setups) the bar became unreadable. A solid background needs no
+   compositor support. Kept at z-index 35: above the cards (which set none) but still below the
+   site header at 40, which stays pinned at top:0 while this bar sticks beneath it at 56px. */
 .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 14px;margin:2px 0 16px;
-  background:rgba(255,255,255,.86);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:11px;
-  box-shadow:var(--shadow);position:sticky;top:56px;z-index:30}
+  background:#fff;border:1px solid var(--line);border-radius:11px;
+  box-shadow:var(--shadow);position:sticky;top:56px;z-index:35}
 .controls select,.controls input{padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;font-size:13px}
 .controls .lab{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 .toggle{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink);cursor:pointer}

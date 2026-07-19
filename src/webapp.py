@@ -44,6 +44,29 @@ def _secret_key():
 
 app.secret_key = _secret_key()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+# The session cookie carries the whole auth decision, so it must never travel in cleartext. Public
+# access is HTTPS-only (nginx terminates TLS on rotem.ai and proxies here over the VPC), so `Secure`
+# costs nothing there. Note Flask sets this flag from app.config alone — it does NOT sniff the
+# request scheme — so the http:// hop between nginx and gunicorn does not suppress the flag and
+# login keeps working through the proxy. Direct plain-HTTP access to 127.0.0.1:8631 is the one case
+# a Secure cookie would not stick, so leave an escape hatch for local/dev use.
+app.config["SESSION_COOKIE_SECURE"] = (os.environ.get("SESSION_COOKIE_SECURE", "1").strip().lower()
+                                       not in ("0", "false", "no"))
+
+# ---- slug hygiene ---------------------------------------------------------------------------
+# Slugs are interpolated straight into filenames (reports/<slug>.json, exports/<slug>__<key>.pdf,
+# rationale/<slug>__<pub>.json). Flask's default path converter refuses "/" so `/report/<slug>` was
+# always safe, but several routes read the slug from a FORM FIELD or QUERY STRING instead, where no
+# converter runs: POST /export, /api/ref?slug=, /compare?slug=, /api/chart?slug=. Two of those
+# (/export, /api/chart via _rationale) end up WRITING to the derived path. Nothing is exploitable
+# today — assemble() happens to raise on an unknown slug before any write — but that is luck, not a
+# control, and the raised exception surfaced as an unhandled HTML 500 rather than a 400.
+_SLUG_RE = re.compile(r"[A-Za-z0-9._-]{1,64}\Z")
+
+
+def valid_slug(slug):
+    """True for slugs that can only ever name a file INSIDE our data directories."""
+    return bool(slug) and _SLUG_RE.match(slug) is not None and slug not in (".", "..")
 
 # Route the cross-encoder through a dedicated child process. This is what makes _GEN_LOCK
 # unnecessary — see rerank_pool.py for the full rationale and the RSS measurements.
@@ -573,6 +596,10 @@ def _ground_reads_on(raw, ref_text, min_overlap=0.6):
 @app.route("/api/ref/<pub>")
 def api_ref(pub):
     slug = request.args.get("slug", "")
+    # Optional, but when present it reaches _rationale() which WRITES rationale/<slug>__<pub>.json.
+    # Query strings bypass the route converter, so vet it here.
+    if slug and not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
     disp = enrich_display.enrich_for_display(pub)
     # DB sections + matched coordinate (for highlighting)
     with db.cursor() as cur:
@@ -699,6 +726,10 @@ def load_flags(slug):
 
 @app.route("/api/flags/<slug>", methods=["GET", "POST"])
 def api_flags(slug):
+    # The path converter already refuses "/", but this route WRITES flags/<slug>.flags.json, so
+    # hold it to the same character set as every other filesystem-bound slug.
+    if not valid_slug(slug):
+        return jsonify({"ok": False, "error": "invalid slug"}), 400
     if request.method == "POST":
         data = request.get_json(force=True) or {}
         pub = data.get("pub")
@@ -724,10 +755,20 @@ def export():
     pubs = [p for p in request.form.get("pubs", "").split(",") if p.strip()]
     if not slug or not pubs or fmt not in ("pdf", "docx"):
         return jsonify({"error": "need slug, pubs, format(pdf|docx)"}), 400
+    # `slug` arrives in a form field, so no route converter has vetted it, and it is about to become
+    # part of a path we WRITE to. Validate before touching the filesystem.
+    if not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
     key = hashlib.sha1((slug + "|" + fmt + "|" + ",".join(sorted(pubs))).encode()).hexdigest()[:12]
     out = EXPORTS / f"{slug}__{key}.{fmt}"
     if not out.exists():
-        model = export_data.assemble(slug, pubs)
+        # An unknown slug used to raise inside assemble() and surface as an unhandled HTML 500.
+        if not report_path(slug).exists() and slug not in _GOLD:
+            return jsonify({"error": "unknown report", "slug": slug}), 404
+        try:
+            model = export_data.assemble(slug, pubs)
+        except Exception as e:
+            return jsonify({"error": "could not assemble export", "detail": str(e)[:200]}), 400
         if fmt == "pdf":
             export_pdf.render(model, out)
         else:
@@ -817,8 +858,13 @@ def api_morelike(pub):
             d = float(r["d"])
             if k not in best or d < best[k]["d"]:
                 best[k] = {"pub": k, "title": r["title"], "country": r["country"], "d": d}
+        # `<=>` is pgvector cosine DISTANCE, so 1-d is a genuine cosine similarity in [0,1] — the
+        # numbers here are already normalised, not saturated. A score of 1.000 is real and means
+        # what it says: an embedding-identical document. In practice that is a family member with
+        # the same text (typically the A1 pre-grant publication of the very B2 being queried), so
+        # flag those rather than presenting a bare, alarming-looking 1.0 as an ordinary ranking.
         res = [{"pub": v["pub"], "title": v["title"], "country": v["country"],
-                "score": round(1 - v["d"], 3)}
+                "score": round(1 - v["d"], 3), "near_identical": v["d"] < 0.02}
                for v in sorted(best.values(), key=lambda x: x["d"])[:12]]
     return jsonify({"pub": pub, "results": res})
 
@@ -828,6 +874,8 @@ def api_morelike(pub):
 def compare():
     slug = request.args.get("slug", "")
     pubs = [p for p in request.args.get("pubs", "").split(",") if p.strip()][:3]
+    if not valid_slug(slug):
+        abort(400)
     rep = _load_report(slug)
     if not rep or not pubs:
         abort(400)
@@ -869,6 +917,8 @@ def api_chart(pub):
     if not _safe_pub(pub):
         abort(404)
     slug = request.args.get("slug", "")
+    if not valid_slug(slug):        # reaches `RATIONALE / f"chart__{slug}__{pub}.json"` below
+        return jsonify({"error": "invalid slug"}), 400
     rep = _load_report(slug) or {}
     elements = rep.get("elements", [])
     if not elements:

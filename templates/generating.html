@@ -4,10 +4,16 @@
 <div class="wrap">
   <div class="panel gen">
     <h2>Searching the prior art…</h2>
-    <div class="spin"></div>
-    <div class="genstage" id="stage">Decomposing the invention into technical elements…</div>
-    <div class="genbar"><div class="genbarfill" id="bar"></div></div>
-    <div class="small muted" id="elapsed">0s elapsed</div>
+    <div class="spin" aria-hidden="true"></div>
+    <!-- This is the only indication that a multi-minute search is progressing. Without a live
+         region a screen-reader user heard nothing at all between submitting and the redirect, so
+         announce each server stage message. `polite` (not `assertive`) so it queues behind whatever
+         the user is doing rather than interrupting. -->
+    <div class="genstage" id="stage" role="status" aria-live="polite" aria-atomic="true">Decomposing the invention into technical elements…</div>
+    <!-- the bar is a time-based heartbeat, not real progress; don't announce it -->
+    <div class="genbar" aria-hidden="true"><div class="genbarfill" id="bar"></div></div>
+    <!-- ticks every 500 ms: visible, but must never be a live region or it would talk nonstop -->
+    <div class="small muted" id="elapsed" aria-hidden="true">0s elapsed</div>
     <p class="small muted" style="margin-top:14px">“{{ query }}”</p>
     <p class="small muted">Mode: {{ mode.replace('_',' ') }} · the agent runs 8 retrieval channels across ~2 rounds, fuses and reranks. Cached after the first run.</p>
   </div>

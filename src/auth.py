@@ -19,6 +19,13 @@ from urllib.parse import urlparse
 from flask import (Blueprint, request, session, redirect, url_for, render_template_string,
                    jsonify, current_app)
 
+# Every secret below is read from the environment AT IMPORT TIME, so `load_dotenv()` must already
+# have run. That is `config`'s job. Until now this module never imported it and worked only by
+# accident: webapp.py imports `db` (which pulls in `config`) a couple of lines before it imports
+# `auth`. Reordering those two imports would have silently emptied APP_PASSWORD and disabled the
+# whole gate. Import it explicitly so the dependency is real rather than incidental.
+import config  # noqa: F401  (imported for its load_dotenv side effect)
+
 bp = Blueprint("auth", __name__)
 
 
@@ -145,6 +152,13 @@ _LIMITERS = {
     # PDF/DOCX rendering
     "export":   Limiter("exports", _num("RL_EXPORT_RATE", 0.5), _num("RL_EXPORT_BURST", 10),
                         _num("RL_EXPORT_GRATE", 1.0), _num("RL_EXPORT_GBURST", 20)),
+    # Password guessing. The handler's time.sleep(0.5) only serialises a SINGLE connection, so N
+    # parallel requests still get N guesses per 0.5 s — measured: 10 concurrent wrong passwords all
+    # answered in 2.0 s, unthrottled. This bucket is the actual defence: ~10 attempts per 15 min per
+    # IP (burst 10, refill 1/90 s), with a global ceiling so a botnet spread across many source IPs
+    # can't sidestep the per-IP bucket either. Mirrors the login bucket App A already had.
+    "auth.login": Limiter("login attempts", _num("RL_LOGIN_RATE", 1 / 90.0), _num("RL_LOGIN_BURST", 10),
+                          _num("RL_LOGIN_GRATE", 1 / 30.0), _num("RL_LOGIN_GBURST", 30)),
 }
 
 
@@ -307,6 +321,7 @@ _LOGIN_HTML = """<!doctype html><meta charset=utf-8>
       display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
  form{background:#171a21;border:1px solid #262b36;border-radius:12px;padding:28px;width:min(360px,90vw)}
  h1{font-size:17px;margin:0 0 4px} p{color:#8b93a7;font-size:13px;margin:0 0 18px}
+ label{display:block;font-size:12px;color:#8b93a7;margin:0 0 6px;font-weight:600}
  input{width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid #2d3341;
        background:#0f1115;color:#e6e8ee;font-size:15px}
  button{width:100%;margin-top:12px;padding:10px;border:0;border-radius:8px;background:#3b82f6;
@@ -315,11 +330,34 @@ _LOGIN_HTML = """<!doctype html><meta charset=utf-8>
 </style>
 <form method=post>
   <h1>Prior-art search</h1>
-  <p>This instance is private. Enter the access password.</p>
-  <input type=password name=password autofocus autocomplete=current-password placeholder="Password">
+  <p id=hint>This instance is private. Enter the access password.</p>
+  <label for=password>Access password</label>
+  <input id=password type=password name=password autofocus autocomplete=current-password
+         placeholder="Password" aria-describedby="hint"
+         {% if error %}aria-invalid=true aria-errormessage=loginerr{% endif %}>
   <button type=submit>Sign in</button>
-  {% if error %}<div class=err>{{ error }}</div>{% endif %}
+  {% if error %}<div class=err id=loginerr role=alert>{{ error }}</div>{% endif %}
 </form>"""
+
+
+# Shown instead of raw JSON when a BROWSER (not a fetch/XHR caller) trips a rate limit.
+_TOOMANY_HTML = """<!doctype html><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>Slow down — prior-art search</title>
+<style>
+ body{font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1115;color:#e6e8ee;
+      display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
+ main{background:#171a21;border:1px solid #262b36;border-radius:12px;padding:28px;width:min(430px,90vw)}
+ h1{font-size:18px;margin:0 0 8px} p{color:#8b93a7;font-size:14px;margin:0 0 12px}
+ b{color:#e6e8ee} a{color:#60a5fa}
+</style>
+<main role=alert>
+  <h1>Too many requests</h1>
+  <p>You hit the {{ why }}. Nothing was lost — this is just a speed bump so one browser tab
+     can&rsquo;t exhaust the server&rsquo;s budget.</p>
+  <p>Try again in about <b>{{ retry_after }} second{{ '' if retry_after == 1 else 's' }}</b>.</p>
+  <p><a href="javascript:history.back()">&larr; Go back</a></p>
+</main>"""
 
 
 @bp.route("/login", methods=["GET", "POST"])
@@ -373,13 +411,25 @@ def init_app(app, state_path=None):
                 return redirect(url_for("auth.login", next=nxt))
         # ---- 2. rate limits on expensive routes only ----
         lim = limiter_for(ep)
+        # Only POST /login spends a login token; GETs just render the form, and charging them
+        # would lock a legitimate user out of the page by reloading it.
+        if ep == "auth.login" and request.method != "POST":
+            lim = None
         if lim is not None and not (TRUST_LOOPBACK and is_loopback()):
             ok, retry, why = lim.check(client_ip())
             if not ok:
-                resp = jsonify({"error": "rate limited", "detail": why,
-                                "retry_after": int(retry) + 1})
-                resp.status_code = 429
-                resp.headers["Retry-After"] = str(int(retry) + 1)
+                retry_after = int(retry) + 1
+                # POST /run and POST /login are full form navigations, not fetch() calls, so a
+                # browser lands ON this response. Returning bare JSON put raw text on screen.
+                if not _wants_json():
+                    body = render_template_string(_TOOMANY_HTML, retry_after=retry_after, why=why)
+                    resp = current_app.make_response(body)
+                    resp.status_code = 429
+                else:
+                    resp = jsonify({"error": "rate limited", "detail": why,
+                                    "retry_after": retry_after})
+                    resp.status_code = 429
+                resp.headers["Retry-After"] = str(retry_after)
                 return resp
         return None
 
