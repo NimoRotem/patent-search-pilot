@@ -8,17 +8,43 @@ endpoint; the agent report is cached to data/reports/<slug>.json and never block
 Per-card drawings/PDF/sections/rationale are enriched lazily via /api/ref.
 """
 from __future__ import annotations
-import json, re, threading, hashlib, time, traceback
+import json, os, re, queue, secrets, threading, hashlib, time, traceback
 from pathlib import Path
-from flask import (Flask, render_template, request, jsonify, redirect, url_for,
-                   send_from_directory, abort)
+from flask import (Flask, Response, render_template, request, jsonify, redirect, url_for,
+                   send_from_directory, abort, stream_with_context)
 import db, embed, goldset, webview, enrich_display, llm
 import export_data, export_pdf, export_docx
+import auth, rerank_pool
 from retrieval import Retriever
 from agent import CoverageAgent, AgentConfig
-from config import DATA
+from config import DATA, ROOT
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
+
+# Signed-session key. Persisted next to .env (gitignored) so sessions survive restarts; generated
+# on first boot if absent. NEVER hard-coded and never committed.
+def _secret_key():
+    k = os.environ.get("SECRET_KEY", "").strip()
+    if k:
+        return k
+    p = ROOT / ".secret_key"
+    if p.exists():
+        return p.read_text().strip()
+    k = secrets.token_urlsafe(48)
+    p.write_text(k)
+    try:
+        p.chmod(0o600)
+    except Exception:
+        pass
+    return k
+
+
+app.secret_key = _secret_key()
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+
+# Route the cross-encoder through a dedicated child process. This is what makes _GEN_LOCK
+# unnecessary — see rerank_pool.py for the full rationale and the RSS measurements.
+rerank_pool.install()
 
 
 class _PrefixMiddleware:
@@ -52,13 +78,53 @@ RATIONALE.mkdir(parents=True, exist_ok=True)
 EXPORTS.mkdir(parents=True, exist_ok=True)
 
 _GOLD = {e["id"]: e for e in goldset.load()["entries"]}
-_JOBS = {}          # slug -> {"status": "running|done|error", "msg": ...}
+_JOBS = {}          # slug -> {"status": "running|partial|done|error", "msg": ...}
 _JOB_LOCK = threading.Lock()
-# The agent shares non-thread-safe singletons (the CPU reranker + the genai client), so report
-# generations must run one-at-a-time; concurrent runs collided with "Already borrowed".
-_GEN_LOCK = threading.Lock()
+# NOTE: the old module-level _GEN_LOCK is GONE. It serialized every report generation (~3 min) to
+# protect the ~3 s cross-encoder step, capping the app at one concurrent search. The reranker now
+# runs in a dedicated child process (rerank_pool) and the genai clients are already thread-local
+# (llm.py / embed.py), so nothing in the request path is shared-mutable any more. Concurrency is
+# bounded by an explicit resource budget instead — auth.run_gate (MAX_CONCURRENT_RUNS).
 _R = None           # lazy singleton Retriever (loads family map once)
 _R_LOCK = threading.Lock()
+
+# ---- SSE fan-out ---------------------------------------------------------------------------
+# Each /events/<slug> listener registers a Queue here; _set_job publishes every progress update to
+# all listeners for that slug. Bounded queues + drop-oldest so a stalled browser can never make a
+# generation thread block.
+_SUBS = {}          # slug -> set[queue.Queue]
+_SUBS_LOCK = threading.Lock()
+_SSE_PING = 15.0    # seconds between keep-alive comments
+
+
+def _subscribe(slug):
+    q = queue.Queue(maxsize=64)
+    with _SUBS_LOCK:
+        _SUBS.setdefault(slug, set()).add(q)
+    return q
+
+
+def _unsubscribe(slug, q):
+    with _SUBS_LOCK:
+        subs = _SUBS.get(slug)
+        if subs:
+            subs.discard(q)
+            if not subs:
+                _SUBS.pop(slug, None)
+
+
+def _publish(slug, event):
+    with _SUBS_LOCK:
+        subs = list(_SUBS.get(slug, ()))
+    for q in subs:
+        try:
+            q.put_nowait(event)
+        except queue.Full:
+            try:                      # drop the oldest, keep the newest — progress is a heartbeat
+                q.get_nowait()
+                q.put_nowait(event)
+            except Exception:
+                pass
 
 
 def retriever():
@@ -83,6 +149,19 @@ def _set_job(slug, **kw):
         j = _JOBS.get(slug, {})
         j.update(kw)
         _JOBS[slug] = j
+        snapshot = dict(j)
+    _publish(slug, _job_event(slug, snapshot))
+
+
+def _job_event(slug, job):
+    """The single wire shape shared by /status (poll) and /events (SSE), so the fallback path and
+    the streaming path can never disagree."""
+    st = job.get("status", "unknown")
+    exists = report_path(slug).exists()
+    return {"kind": job.get("kind", "progress"), "slug": slug, "status": st,
+            "msg": job.get("msg", ""),
+            "ready": exists and (st in ("done", "partial") or not job),
+            "done": st == "done" or (exists and not job)}
 
 
 def _write_report(slug, rep):
@@ -90,46 +169,55 @@ def _write_report(slug, rep):
     (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)   # force the view to rebuild from this
 
 
-def _generate(slug, query, subject, mode):
-    with _JOB_LOCK:
-        _JOBS[slug] = {"status": "running", "msg": "Queued…", "t0": time.time()}
+def _run_job(slug, query, subject, mode, gated):
+    """Thread entrypoint: run the generation, then always release the reserved budget slot.
+    Kept separate from _generate so _generate's signature stays purely about doing the work."""
     try:
-        with _GEN_LOCK:                          # serialize: shared reranker/genai aren't thread-safe
-            _set_job(slug, msg="Decomposing the invention into technical elements…")
-            A = CoverageAgent(retriever())
+        _generate(slug, query, subject, mode)
+    finally:
+        if gated and auth.run_gate:
+            auth.run_gate.end()
 
-            def on_event(stage, data):
-                # Stream progress + a first render. 'partial' writes an un-reranked snapshot (cards
-                # only) the moment the seed search returns, so the user sees results in seconds.
-                if stage == "elements":
-                    _set_job(slug, msg=f"Decomposed into {data['n']} elements — searching all 8 channels…")
-                elif stage == "partial":
-                    rep = data["report"]; rep["partial"] = True
-                    _write_report(slug, rep)
-                    _set_job(slug, status="partial",
-                             msg="Showing the first matches — refining (more channels, rounds, claim chart)…")
-                elif stage == "seeded":
-                    _set_job(slug, msg=f"{data['families']} candidate families — expanding via citations, families, cross-lingual…")
-                elif stage == "round":
-                    _set_job(slug, msg=f"Refinement round {data['round']}: {data['families']} families — reranking…")
-                elif stage == "reranking":
-                    _set_job(slug, msg=f"Reranking {data['families']} families + grounding the claim chart…")
 
-            rep = A.run(query, subject=subject, mode=mode,
-                        cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True),
-                        on_event=on_event)
+def _generate(slug, query, subject, mode):
+    """Run one report. Runs fully concurrently with other generations — the only serialized step is
+    the cross-encoder, which lives in its own child process (rerank_pool)."""
+    _set_job(slug, status="running", msg="Queued…", t0=time.time())
+    try:
+        _set_job(slug, msg="Decomposing the invention into technical elements…")
+        A = CoverageAgent(retriever())
+
+        def on_event(stage, data):
+            # Stream progress + a first render. 'partial' writes an un-reranked snapshot (cards
+            # only) the moment the seed search returns, so the user sees results in seconds.
+            if stage == "elements":
+                _set_job(slug, kind=stage, msg=f"Decomposed into {data['n']} elements — searching all 8 channels…")
+            elif stage == "partial":
+                rep = data["report"]; rep["partial"] = True
+                _write_report(slug, rep)
+                _set_job(slug, kind=stage, status="partial",
+                         msg="Showing the first matches — refining (more channels, rounds, claim chart)…")
+            elif stage == "seeded":
+                _set_job(slug, kind=stage, msg=f"{data['families']} candidate families — expanding via citations, families, cross-lingual…")
+            elif stage == "round":
+                _set_job(slug, kind=stage, msg=f"Refinement round {data['round']}: {data['families']} families — reranking…")
+            elif stage == "reranking":
+                _set_job(slug, kind=stage, msg=f"Reranking {data['families']} families + grounding the claim chart…")
+
+        rep = A.run(query, subject=subject, mode=mode,
+                    cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True),
+                    on_event=on_event)
         rep["partial"] = False
         _write_report(slug, rep)
-        with _JOB_LOCK:
-            _JOBS[slug] = {"status": "done", "msg": "done"}
+        _set_job(slug, kind="done", status="done", msg="done")
     except Exception as e:
         traceback.print_exc()
-        with _JOB_LOCK:
-            _JOBS[slug] = {"status": "error", "msg": str(e)[:300]}
+        _set_job(slug, kind="error", status="error", msg=str(e)[:300])
 
 
 def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False):
-    """Return ('ready'|'running', report_or_None). Kicks off background generation if needed."""
+    """Return ('ready'|'running'|'missing'|'busy', report_or_None). Kicks off background
+    generation if needed. 'busy' means the concurrency or daily spend cap is exhausted."""
     p = report_path(slug)
     if p.exists() and not regen:
         try:
@@ -140,16 +228,35 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False):
     # same new query can't both start a generation (the second sees "running" and just polls).
     with _JOB_LOCK:
         job = _JOBS.get(slug)
-        if job and job["status"] == "running":
+        if job and job["status"] in ("running", "partial"):
             return "running", None
         if query is None:
             return "missing", None
         _JOBS[slug] = {"status": "running", "msg": "Queued…", "t0": time.time()}
-    subj_obj = _subject_obj(subject)
-    if regen:
-        p.unlink(missing_ok=True)
-        (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)
-    threading.Thread(target=_generate, args=(slug, query, subj_obj, mode), daemon=True).start()
+    # Reserve a generation slot AFTER claiming the slug (so the claim can be released cleanly).
+    gated = False
+    if auth.run_gate:
+        ok, why = auth.run_gate.try_begin()
+        if not ok:
+            with _JOB_LOCK:
+                _JOBS.pop(slug, None)              # release the claim; nothing was started
+            return "busy", why
+        gated = True
+    try:
+        subj_obj = _subject_obj(subject)
+        if regen:
+            p.unlink(missing_ok=True)
+            (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)
+        threading.Thread(target=_run_job, args=(slug, query, subj_obj, mode, gated),
+                         daemon=True).start()
+    except Exception:
+        # Never leak the reserved slot or leave a phantom "running" claim if we fail to launch.
+        traceback.print_exc()
+        with _JOB_LOCK:
+            _JOBS.pop(slug, None)
+        if gated and auth.run_gate:
+            auth.run_gate.end()
+        raise
     return "running", None
 
 
@@ -201,8 +308,10 @@ def run():
     gold_id = request.form.get("gold_id", "").strip()
     if gold_id and gold_id in _GOLD:
         e = _GOLD[gold_id]
-        ensure_report(gold_id, query=e["query_text"], subject=e.get("anchor_publication"),
-                      mode=e["mode"])
+        st, why = ensure_report(gold_id, query=e["query_text"],
+                                subject=e.get("anchor_publication"), mode=e["mode"])
+        if st == "busy":
+            return jsonify({"error": "server busy", "detail": why}), 429
         return redirect(url_for("report", slug=gold_id))
     query = request.form.get("query", "").strip()
     mode = request.form.get("mode", "novelty").strip()
@@ -210,7 +319,9 @@ def run():
     if not query:
         return redirect(url_for("index"))
     slug = slugify(query + "|" + mode)
-    ensure_report(slug, query=query, subject=subject, mode=mode)
+    st, why = ensure_report(slug, query=query, subject=subject, mode=mode)
+    if st == "busy":
+        return jsonify({"error": "server busy", "detail": why}), 429
     # remember adhoc meta for the report page title
     (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
         {"query": query, "mode": mode, "subject": subject}))
@@ -235,6 +346,8 @@ def report(slug):
     status, rep = ensure_report(slug, query=query, subject=subject, mode=mode, regen=regen)
     if status == "missing":
         return render_template("notfound.html", slug=slug), 404
+    if status == "busy":
+        return render_template("notfound.html", slug=f"{slug} — {rep}"), 429
     if status != "ready":
         return render_template("generating.html", slug=slug, title=title,
                                query=(query or "")[:400], mode=mode)
@@ -265,15 +378,62 @@ def _build_view_cached(slug, rep, regen=False):
 
 @app.route("/status/<slug>")
 def status(slug):
+    """Polling fallback. Kept as the compatibility path for clients without EventSource (and for
+    regression.sh); /events/<slug> is the primary, push-based channel."""
     with _JOB_LOCK:
-        job = _JOBS.get(slug, {})
-    st = job.get("status", "unknown")
-    exists = report_path(slug).exists()
+        job = dict(_JOBS.get(slug, {}))
+    ev = _job_event(slug, job)
     # 'partial' is renderable (first cards streamed); 'done' is the final report. A cached report on
     # disk with no live job is treated as done.
-    ready = exists and (st in ("done", "partial") or not job)
-    return jsonify({"ready": ready, "status": st, "done": st == "done" or (exists and not job),
-                    "msg": job.get("msg", "")})
+    return jsonify({"ready": ev["ready"], "status": ev["status"], "done": ev["done"],
+                    "msg": ev["msg"]})
+
+
+@app.route("/events/<slug>")
+def events(slug):
+    """Server-Sent Events stream of generation progress — replaces 1.5 s polling.
+
+    nginx is already streaming-ready for this location (proxy_buffering off, proxy_read_timeout
+    1800s); we additionally send X-Accel-Buffering: no so no other proxy re-buffers us, and a
+    comment heartbeat every 15 s so idle connections are not reaped.
+    """
+    q = _subscribe(slug)
+
+    def gen():
+        try:
+            # 1. Immediately emit current state, so a client that connects late (or after the run
+            #    already finished) is never left waiting for an event that will never come.
+            with _JOB_LOCK:
+                job = dict(_JOBS.get(slug, {}))
+            first = _job_event(slug, job)
+            yield f"data: {json.dumps(first)}\n\n"
+            if first["done"] or first["status"] == "error":
+                return
+            # 2. Then stream updates until terminal, with keep-alive pings.
+            last = time.time()
+            while True:
+                try:
+                    ev = q.get(timeout=1.0)
+                except queue.Empty:
+                    if time.time() - last >= _SSE_PING:
+                        last = time.time()
+                        yield ": ping\n\n"
+                    continue
+                last = time.time()
+                yield f"data: {json.dumps(ev)}\n\n"
+                if ev["status"] in ("done", "error") or ev["done"]:
+                    return
+        except GeneratorExit:       # client disconnected
+            raise
+        except Exception as e:      # never let a stream error escape as a 500 mid-body
+            yield f"data: {json.dumps({'kind': 'error', 'status': 'error', 'msg': str(e)[:200], 'ready': False, 'done': False})}\n\n"
+        finally:
+            _unsubscribe(slug, q)
+
+    return Response(stream_with_context(gen()), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache, no-transform",
+                             "X-Accel-Buffering": "no",
+                             "Connection": "keep-alive"})
 
 
 # ---- lazy per-card enrichment (drawings + PDF + sections + rationale) -----------------------
@@ -644,15 +804,24 @@ def compare():
 
 @app.route("/healthz")
 def healthz():
-    return jsonify({"ok": True, "gold": len(_GOLD)})
+    """Unauthenticated on purpose so external monitoring keeps working."""
+    h = {"ok": True, "gold": len(_GOLD)}
+    if auth.run_gate:
+        h["runs"] = auth.run_gate.stats()
+    return jsonify(h)
+
+
+# ---- auth + rate limiting (registered LAST, after every route exists) ------------------------
+auth.init_app(app, state_path=DATA / "run_budget.json")
 
 
 if __name__ == "__main__":
-    import sys, os
+    # DEVELOPMENT ONLY. Production is gunicorn (see gunicorn_conf.py + the supervisor unit):
+    #     gunicorn -c gunicorn_conf.py webapp:app
+    # The Werkzeug server that used to run here is single-process, has no request timeouts and is
+    # explicitly not for production use.
+    import sys
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8631
-    # Bind localhost by default (pilot spec). Set WEBAPP_HOST=0.0.0.0 to also serve the internal
-    # VPC so a reverse proxy (rotem.ai/patents-data on the builder VM) can reach it — port 8631 is
-    # closed to the public internet by the GCP firewall, so this stays VPC-only.
     host = os.environ.get("WEBAPP_HOST", "127.0.0.1")
-    print(f"Results page on http://{host}:{port}")
+    print(f"[dev server — production uses gunicorn] http://{host}:{port}")
     app.run(host=host, port=port, threaded=True, debug=False)

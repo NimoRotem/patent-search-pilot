@@ -28,3 +28,7 @@ data/missing_gold_families.json
 # incremental ingest runtime artifacts (regenerable)
 data/incremental.lock
 data/incremental_state.json
+
+# serving hardening: Flask session signing key + LLM spend meter (never commit)
+.secret_key
+data/run_budget.json

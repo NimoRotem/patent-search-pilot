@@ -26,18 +26,60 @@ function tick(){
   document.getElementById('bar').style.width = (frac*100).toFixed(0)+'%';
 }
 setInterval(tick, 500); tick();
-async function poll(){
-  try{
-    const r = await fetch(BASE+'/status/'+slug); const j = await r.json();
-    if(j.msg){ document.getElementById('stage').textContent = j.msg; }
-    if(j.ready){   // 'partial' (first cards) or 'done' — go straight to the report, which keeps refining
-      document.getElementById('bar').style.width='100%';
-      location.href = BASE+'/report/'+slug; return;
-    }
-    if(j.status==='error'){ document.getElementById('stage').textContent='Error: '+j.msg; return; }
-  }catch(e){}
-  setTimeout(poll, 1500);
+let finished = false;
+
+// Shared handler for both transports so SSE and polling can never diverge in behaviour.
+function apply(j){
+  if(finished) return true;
+  if(j.msg){ document.getElementById('stage').textContent = j.msg; }
+  if(j.ready){   // 'partial' (first cards) or 'done' — go straight to the report, which keeps refining
+    finished = true;
+    document.getElementById('bar').style.width='100%';
+    location.href = BASE+'/report/'+slug;
+    return true;
+  }
+  if(j.status==='error'){
+    finished = true;
+    document.getElementById('stage').textContent='Error: '+j.msg;
+    return true;
+  }
+  return false;
 }
-poll();
+
+// ---- fallback: the original 1.5s poll ----
+function poll(){
+  if(finished) return;
+  fetch(BASE+'/status/'+slug)
+    .then(r => r.json())
+    .then(j => { if(!apply(j)) setTimeout(poll, 1500); })
+    .catch(() => setTimeout(poll, 1500));
+}
+
+// ---- primary: server-sent events (push, no polling) ----
+function stream(){
+  if(!window.EventSource){ poll(); return; }
+  let opened = false;
+  let es;
+  try{ es = new EventSource(BASE+'/events/'+slug); }
+  catch(e){ poll(); return; }
+
+  // If SSE never connects (proxy strips streaming, 401, blocked), degrade to polling once.
+  const guard = setTimeout(() => { if(!opened && !finished){ try{es.close();}catch(e){} poll(); } }, 5000);
+
+  es.onopen = () => { opened = true; clearTimeout(guard); };
+  es.onmessage = (ev) => {
+    let j; try{ j = JSON.parse(ev.data); }catch(e){ return; }
+    if(apply(j)){ try{ es.close(); }catch(e){} }
+  };
+  es.onerror = () => {
+    // EventSource auto-reconnects; only fall back if we never got a working connection,
+    // or if the stream died before completion.
+    clearTimeout(guard);
+    if(finished){ try{ es.close(); }catch(e){} return; }
+    try{ es.close(); }catch(e){}
+    poll();
+  };
+}
+stream();
 </script>
 {% endblock %}
