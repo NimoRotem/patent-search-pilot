@@ -13,13 +13,17 @@ REACHABILITY (verified 2026-07-19, not assumed)
       The GCP firewall does allow it (default-allow-internal covers tcp:0-65535 from
       10.128.0.0/9) and uvicorn does bind 0.0.0.0:8630 — but builder runs ufw with a default
       DROP policy and only 22/80/443 opened, so the connection times out at the host firewall.
-  https://rotem.ai/patents  the public nginx route. VERIFIED reachable from instance-3
-      (GET /api/health -> 200). This is therefore the DEFAULT base URL.
+  https://rotem.ai/patents-engine  the public nginx route to App A. VERIFIED reachable
+      from instance-3 (GET /api/health -> 200). This is the DEFAULT base URL.
+      NOTE 2026-07-19: /patents is now THIS app (the unified front door). App A moved to
+      /patents-engine. Pointing FEDERATION_BASE_URL back at /patents would make the pilot
+      call itself; _is_self() refuses that.
 
 If someone later opens 8630 on builder's ufw for 10.128.0.0/9, set FEDERATION_BASE_URL to the
 internal address to skip the public TLS round trip. Nothing else needs to change. We do NOT
 open that port here: the federated app is unauthenticated, and exposing it VPC-wide is a
 decision for whoever owns builder's firewall, not a side effect of this bridge.
+App A is NO LONGER unauthenticated: it requires X-Patents-Key (FEDERATION_KEY).
 
 COST / LATENCY DISCIPLINE
 -------------------------
@@ -44,7 +48,9 @@ from pathlib import Path
 from config import DATA
 
 # --- configuration --------------------------------------------------------------------------
-BASE_URL = os.environ.get("FEDERATION_BASE_URL", "https://rotem.ai/patents").rstrip("/")
+BASE_URL = os.environ.get("FEDERATION_BASE_URL", "https://rotem.ai/patents-engine").rstrip("/")
+SELF_URL = os.environ.get("FEDERATION_SELF_URL", "https://rotem.ai/patents").rstrip("/")
+FED_KEY = os.environ.get("FEDERATION_KEY", "")
 INTERNAL_URL = os.environ.get("FEDERATION_INTERNAL_URL", "http://10.128.0.13:8630").rstrip("/")
 ENABLED = os.environ.get("FEDERATION_ENABLED", "1") != "0"
 TIMEOUT = float(os.environ.get("FEDERATION_TIMEOUT", "240"))     # whole-stream budget, seconds
@@ -186,13 +192,29 @@ def _lock_for(disclosure: str, mode: str) -> threading.Lock:
 
 
 # --- transport ------------------------------------------------------------------------------
+def _headers() -> dict:
+    """App A gates /api/search, /api/patent etc. behind a shared secret (X-Patents-Key).
+    Without this every federated search 401s while health() still says ok."""
+    return {"X-Patents-Key": FED_KEY} if FED_KEY else {}
+
+
+def _is_self(url: str) -> bool:
+    """True if the given base URL is this very app. /patents is now the pilot front door, so a stale
+    FEDERATION_BASE_URL pointing there would make the pilot federate to ITSELF -- an
+    infinite, paid recursion. Compare (scheme, host, path) exactly: /patents-engine is a
+    different path from /patents and must NOT be caught by a startswith()."""
+    from urllib.parse import urlparse
+    a, b = urlparse(url.rstrip("/")), urlparse(SELF_URL)
+    return (a.netloc, a.path.rstrip("/")) == (b.netloc, b.path.rstrip("/"))
+
+
 def _bases() -> list:
     """Preferred base URLs, best first. The internal address is only tried when explicitly
     configured, since it is firewalled off by default (see module docstring)."""
     out = [BASE_URL]
     if os.environ.get("FEDERATION_TRY_INTERNAL") == "1" and INTERNAL_URL not in out:
         out.insert(0, INTERNAL_URL)
-    return out
+    return [u for u in out if not _is_self(u)]
 
 
 def health(timeout: float = HEALTH_TIMEOUT) -> dict:
@@ -203,7 +225,7 @@ def health(timeout: float = HEALTH_TIMEOUT) -> dict:
     last = ""
     for base in _bases():
         try:
-            r = requests.get(f"{base}/api/health", timeout=timeout)
+            r = requests.get(f"{base}/api/health", headers=_headers(), timeout=timeout)
             if r.status_code == 200:
                 d = r.json()
                 return {"ok": True, "base_url": base, "model": d.get("model", ""),
@@ -228,7 +250,8 @@ def _stream_search(disclosure: str, mode: str, on_event=None) -> dict:
         try:
             with requests.post(f"{base}/api/search", json=body, stream=True,
                                timeout=(CONNECT_TIMEOUT, TIMEOUT),
-                               headers={"Accept": "text/event-stream"}) as r:
+                               headers={**_headers(),
+                                        "Accept": "text/event-stream"}) as r:
                 if r.status_code != 200:
                     last_err = f"HTTP {r.status_code}"
                     continue
@@ -340,7 +363,7 @@ def patent_detail(pn: str, timeout: float = 30.0) -> dict:
     import requests
     for base in _bases():
         try:
-            r = requests.get(f"{base}/api/patent/{join_key(pn)}", timeout=timeout)
+            r = requests.get(f"{base}/api/patent/{join_key(pn)}", headers=_headers(), timeout=timeout)
             if r.status_code == 200:
                 return r.json()
         except Exception:
