@@ -186,6 +186,11 @@ def _job_event(slug, job):
     exists = report_path(slug).exists()
     return {"kind": job.get("kind", "progress"), "slug": slug, "status": st,
             "msg": job.get("msg", ""),
+            # Structured counterpart to `msg`. The progress UI needs the NUMBERS (elements found,
+            # families seen, which round) to render a narrative rather than re-parsing prose out of
+            # the message string, and to keep showing the last known state during the long silent
+            # stretch between 'partial' and 'reranking'.
+            "detail": job.get("detail") or {},
             "ready": exists and (st in ("done", "partial") or not job),
             "done": st == "done" or (exists and not job)}
 
@@ -224,18 +229,23 @@ def _generate(slug, query, subject, mode, wide=False):
             # Stream progress + a first render. 'partial' writes an un-reranked snapshot (cards
             # only) the moment the seed search returns, so the user sees results in seconds.
             if stage == "elements":
-                _set_job(slug, kind=stage, msg=f"Decomposed into {data['n']} elements — searching all 8 channels…")
+                _set_job(slug, kind=stage, detail={"elements": data["n"]},
+                         msg=f"Decomposed into {data['n']} elements — searching all 8 channels…")
             elif stage == "partial":
                 rep = data["report"]; rep["partial"] = True
                 _write_report(slug, rep)
                 _set_job(slug, kind=stage, status="partial",
+                         detail={"families": len(rep.get("ranked_families") or [])},
                          msg="Showing the first matches — refining (more channels, rounds, claim chart)…")
             elif stage == "seeded":
-                _set_job(slug, kind=stage, msg=f"{data['families']} candidate families — expanding via citations, families, cross-lingual…")
+                _set_job(slug, kind=stage, detail={"families": data["families"]},
+                         msg=f"{data['families']} candidate families — expanding via citations, families, cross-lingual…")
             elif stage == "round":
-                _set_job(slug, kind=stage, msg=f"Refinement round {data['round']}: {data['families']} families — reranking…")
+                _set_job(slug, kind=stage, detail={"round": data["round"], "families": data["families"]},
+                         msg=f"Refinement round {data['round']}: {data['families']} families — reranking…")
             elif stage == "reranking":
-                _set_job(slug, kind=stage, msg=f"Reranking {data['families']} families + grounding the claim chart…")
+                _set_job(slug, kind=stage, detail={"families": data["families"]},
+                         msg=f"Reranking {data['families']} families + grounding the claim chart…")
 
         rep = A.run(query, subject=subject, mode=mode,
                     cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True),
@@ -413,6 +423,7 @@ def report(slug):
     regen = request.args.get("rerun") == "1"
     query = subject = None
     mode = "novelty"
+    wide = False        # the progress view lists the federation stage only for a wide run
     if slug in _GOLD:
         e = _GOLD[slug]
         query, subject, mode = e["query_text"], e.get("anchor_publication"), e["mode"]
@@ -422,6 +433,7 @@ def report(slug):
         if meta.exists():
             m = json.loads(meta.read_text())
             query, subject, mode = m["query"], m.get("subject"), m.get("mode", "novelty")
+            wide = bool(m.get("wide"))
         title = "Ad-hoc search"
     status, rep = ensure_report(slug, query=query, subject=subject, mode=mode, regen=regen)
     if status == "missing":
@@ -430,7 +442,7 @@ def report(slug):
         return render_template("notfound.html", slug=f"{slug} — {rep}"), 429
     if status != "ready":
         return render_template("generating.html", slug=slug, title=title,
-                               query=(query or "")[:400], mode=mode)
+                               query=(query or "")[:400], mode=mode, wide=wide)
     view = _build_view_cached(slug, rep, regen)
     view["slug"] = slug
     view["title"] = title
@@ -465,8 +477,10 @@ def status(slug):
     ev = _job_event(slug, job)
     # 'partial' is renderable (first cards streamed); 'done' is the final report. A cached report on
     # disk with no live job is treated as done.
+    # `detail` too: the poll fallback drives the same progress narrative as the SSE path, and it
+    # would otherwise silently lose the counters that SSE clients get.
     return jsonify({"ready": ev["ready"], "status": ev["status"], "done": ev["done"],
-                    "msg": ev["msg"]})
+                    "msg": ev["msg"], "kind": ev["kind"], "detail": ev["detail"]})
 
 
 @app.route("/events/<slug>")
@@ -618,7 +632,12 @@ def api_ref(pub):
         secs["claims"] = [{"claim_no": i + 1, "independent": None, "text": c, "resolved_text": None}
                           for i, c in enumerate(disp["claims"])]
     rationale = None
-    if slug:
+    # `light=1` returns everything EXCEPT the grounded opinion. The results list needs sections
+    # (claims / description) to fill a card's expandable panes, and _rationale() runs a Vertex call
+    # for any pub that has no cached opinion yet — so without this, merely opening the Claims tab
+    # (or lazily hydrating a card) would spend LLM budget the user never asked for. The opinion is
+    # still fetched eagerly by the "Why relevant" pane and the full detail view.
+    if slug and request.args.get("light") != "1":
         q = _query_for_slug(slug)
         rep = _load_report(slug)
         if q and rep:
@@ -680,6 +699,25 @@ def figures(pub, fname):
     if not (d / fname).exists():
         abort(404)
     return send_from_directory(d, fname)                    # Flask safe_join is the second guard
+
+
+@app.route("/api/figs")
+def api_figs():
+    """Batch figure manifest for the results list — disk only, no network, no LLM.
+
+    The card list needs one thumbnail per reference. The only endpoint that could answer that was
+    /api/ref, which ALSO runs display enrichment (outbound HTTP) and the grounded rationale (a
+    Vertex call), so the old page fanned 25 of those out just to decide whether to show a sketch.
+    This reads the already-downloaded figure directory and nothing else, in one request, which is
+    what makes 'never a stuck spinner' cheap enough to guarantee.
+    """
+    pubs = [p for p in (request.args.get("pubs") or "").split(",") if p][:80]
+    out = {}
+    for pub in pubs:
+        if not _safe_pub(pub):
+            continue
+        out[pub] = webview._cached_images(pub)
+    return jsonify(out)
 
 
 @app.route("/pdf/<pub>")

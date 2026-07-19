@@ -1,66 +1,96 @@
 {% extends "base.html" %}
 {% block title %}{{ v.title }} — prior-art results{% endblock %}
 {% block body %}
+{#  ============================================================================================
+    WEIGHT BUDGET. This template renders ONLY what a collapsed card shows. Claims, description,
+    figure manifests, opinions, citations and per-reference claim charts are fetched on demand
+    (see static/app.js) instead of being inlined 25 times. Inlining them is what made this page
+    1.6 MB and made its accessibility tree take minutes to build.
+    ============================================================================================ #}
 <div class="wrap">
 
   {% if v.partial %}
-  <div id="refiningBanner">
-    <div class="spin sm"></div>
-    <div><b>Showing the first matches.</b> <span class="small muted" id="refiningMsg">The agent is refining — expanding channels, running rounds and building the claim chart. This page updates automatically.</span></div>
+  <div class="refining" id="refiningBanner">
+    <span class="spin" aria-hidden="true"></span>
+    <div style="min-width:0;flex:1">
+      <b>Showing the first matches.</b>
+      <div class="rf-msg" id="refiningStage">The agent is still refining these results.</div>
+      <div class="vh" role="status" aria-live="polite" data-progress-live></div>
+    </div>
   </div>
+  <div id="refiningStages" hidden></div>
   {% endif %}
 
   {% if v.domain and not v.domain.in_domain %}
-  <div class="panel" style="border-left:4px solid #d08700;background:#fffbeb">
-    <b>⚠ This query looks outside the indexed field.</b>
-    <p class="small" style="margin:6px 0 0">{{ v.domain.reason }}</p>
-    {% if v.federation_offered %}
-    <p class="small" style="margin:6px 0 0">The local corpus covers vacuum handling and gripping.
-      Re-run with <b>“Also search external patent APIs”</b> ticked for a wider search.</p>
-    {% endif %}
+  <div class="callout">
+    <span class="ci" aria-hidden="true">⚠</span>
+    <div style="min-width:0">
+      <h3>This query looks outside the indexed field</h3>
+      <p>{{ v.domain.reason }}</p>
+      <p>The local corpus covers vacuum handling and gripping, so the references below may be
+         thin. A wider search also queries external patent APIs.</p>
+      {% if v.federation_offered and not v.federation %}
+      {#  An explicit, costed choice — never automatic. #}
+      <form method="post" action="{{ request.script_root }}/run">
+        <input type="hidden" name="query" value="{{ v.query }}">
+        <input type="hidden" name="mode" value="{{ v.mode }}">
+        {% if v.subject %}<input type="hidden" name="subject" value="{{ v.subject }}">{% endif %}
+        <input type="hidden" name="wide" value="1">
+        <button class="btn sm" type="submit">Search wider — external patent APIs</button>
+        <span class="small muted" style="margin-left:10px">~2 min · spends paid API credit</span>
+      </form>
+      {% endif %}
+    </div>
   </div>
   {% endif %}
 
   {% if v.federation %}
-  <div class="panel">
-    <div class="sec"><h3>🌐 Wider search — external patent APIs</h3>
-      <span class="hint">
-        {% if v.federation.ok %}
-          {{ v.federation.n_hits }} families from the federated sources in
-          {{ v.federation.elapsed }}s{% if v.federation.cached %} (cached){% endif %} ·
-          shown separately from the local index so provenance stays visible
-        {% else %}
-          federation unavailable — local results below are unaffected
-        {% endif %}
-      </span></div>
-    {% if v.federation.ok %}
-    <ol class="small" style="margin:10px 0 0;padding-left:20px">
-      {% for h in v.federation.hits %}
-      <li style="margin-bottom:8px">
-        <a href="{{ h.url or ('https://patents.google.com/patent/' + h.pub|replace('-','') + '/en') }}"
-           target="_blank"><b>{{ h.pub }}</b></a>
-        {% if h.date %}<span class="muted"> · {{ h.date }}</span>{% endif %}
-        {% if h.assignee %}<span class="muted"> · {{ h.assignee }}</span>{% endif %}
-        {% for s in h.sources %}<span class="chip ch">{{ s }}</span>{% endfor %}
-        <div>{{ h.title }}</div>
-      </li>
-      {% endfor %}
-    </ol>
-    {% else %}
-    <p class="small muted" style="margin:8px 0 0">{{ v.federation.error }}</p>
-    {% endif %}
+  {#  Federated hits stay in their own block on purpose: ranked_families holds LOCAL family keys
+      that build_view resolves against Postgres, so a federated key would render as a blank card.
+      Same visual language as the local list, different provenance colour. #}
+  <div class="callout fed">
+    <span class="ci" aria-hidden="true">🌐</span>
+    <div style="min-width:0;width:100%">
+      <h3>Wider search — external patent APIs</h3>
+      {% if v.federation.ok %}
+      <p>{{ v.federation.n_hits }} families from federated sources in {{ v.federation.elapsed }}s{% if v.federation.cached %}, cached{% endif %}.
+         Listed separately from the local corpus so provenance stays visible.</p>
+      <div class="fedlist">
+        {% for h in v.federation.hits %}
+        <div class="fedrow">
+          <span class="fr-rank">{{ loop.index }}</span>
+          <span style="min-width:0">
+            <span class="fr-t">{{ h.title or '(untitled)' }}</span>
+            <span class="fr-m">
+              <a href="{{ h.url or ('https://patents.google.com/patent/' + h.pub|replace('-','') + '/en') }}"
+                 target="_blank" rel="noopener">{{ h.pub }} ↗</a>
+              {% if h.date %}<span>{{ h.date }}</span>{% endif %}
+              {% if h.assignee %}<span>{{ h.assignee }}</span>{% endif %}
+              {% for s in h.sources %}<span class="chip src">{{ s }}</span>{% endfor %}
+            </span>
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p>Federation was unavailable for this run — the local results below are unaffected.
+         {{ v.federation.error }}</p>
+      {% endif %}
+    </div>
   </div>
   {% endif %}
 
-  <!-- A. SUMMARY -->
+  <!-- ── summary ─────────────────────────────────────────────────────────── -->
   <div class="panel summary">
-    <h2>{{ v.title }}</h2>
+    <h1>{{ v.title }}</h1>
     <p class="q">“{{ v.query[:280] }}{% if v.query|length > 280 %}…{% endif %}”</p>
     <div class="stats">
       <div class="stat"><b>{{ v.mode.replace('_',' ')|title }}</b><span>mode</span></div>
-      {% if v.subject %}<div class="stat"><b>{{ v.subject_flag }} <a href="https://patents.google.com/patent/{{ v.subject.replace('-','') }}/en" target="_blank">{{ v.subject }}</a></b><span>subject patent</span></div>{% endif %}
+      {% if v.subject %}<div class="stat"><b>{{ v.subject_flag }}
+        <a href="https://patents.google.com/patent/{{ v.subject.replace('-','') }}/en" target="_blank" rel="noopener">{{ v.subject }}</a></b>
+        <span>subject patent</span></div>{% endif %}
       <div class="stat"><b>{{ '{:,}'.format(v.n_families or 0) }}</b><span>families surfaced</span></div>
-      <div class="stat"><b>{{ v.cards|length }}</b><span>ranked refs</span></div>
+      <div class="stat"><b>{{ v.cards|length }}</b><span>ranked references</span></div>
       <div class="stat"><b>{{ v.elements|length }}</b><span>invention elements</span></div>
       <div class="stat"><b>{{ v.rounds }}</b><span>agent rounds</span></div>
       <div class="stat"><b>{{ v.channels_used|length }}</b><span>channels</span></div>
@@ -69,40 +99,46 @@
     <div class="actions">
       {% for ch in v.channels_used %}<span class="chip ch">{{ ch }}</span>{% endfor %}
       <span class="grow"></span>
-      <a class="btn ghost sm" href="{{ request.script_root }}/print/{{ v.slug }}" target="_blank">🖨 Print / PDF view</a>
-      <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}?rerun=1" onclick="return confirm('Re-run the agent live? (~2-4 min)')">↻ Re-run</a>
+      <a class="btn ghost sm" href="{{ request.script_root }}/print/{{ v.slug }}" target="_blank" rel="noopener">Print / PDF view</a>
+      <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}?rerun=1"
+         onclick="return confirm('Re-run the agent live? This takes ~2–4 minutes.')">Re-run</a>
     </div>
   </div>
 
-  <!-- B. CLAIM CHART (collapsible) -->
+  <!-- ── claim chart ─────────────────────────────────────────────────────── -->
   <details class="block" open>
     <summary>
-      <div class="sec"><h3>🔲 Element × Reference claim chart</h3>
-        <span class="hint">rows = invention elements · columns = strongest references · cell colour = evidence score · click a cell → jump to the reference</span></div>
+      <span class="sec"><h2>Element × reference claim chart</h2>
+        <span class="hint">rows = invention elements · columns = strongest references · cell shade = evidence score</span></span>
     </summary>
     <div class="chartwrap">
       <table class="chart">
+        <caption class="vh">Which references disclose which elements of the invention</caption>
         <thead>
           <tr>
-            <th class="elh">Invention element</th>
+            <th class="elh" scope="col">Invention element</th>
             {% for c in v.claim_chart.columns %}
-            <th><a href="#" onclick="jumpRef('{{ c.pub }}');return false">{{ c.pub }}</a>
-                <span class="colcount">{{ c.n_elements }} elements</span></th>
+            <th scope="col"><button type="button" class="pnlink" onclick="jumpRef('{{ c.pub }}')">{{ c.pub }}</button>
+              <span class="colcount">{{ c.n_elements }} elements</span></th>
             {% endfor %}
           </tr>
         </thead>
         <tbody>
           {% for row in v.claim_chart.rows %}
           <tr>
-            <td class="elh">{{ row.element }}
-              <span class="elcov">best {{ '%.3f'|format(row.coverage.get('best_score',0)) }} · {{ row.coverage.get('n_evidence',0) }} refs</span></td>
+            <th class="elh" scope="row">{{ row.element }}
+              <span class="elcov">best {{ '%.3f'|format(row.coverage.get('best_score',0)) }} · {{ row.coverage.get('n_evidence',0) }} refs</span></th>
             {% for cell in row.cells %}
               {% if cell.covered %}
-              <td class="cell" style="background:{{ 'rgba(10,125,77,%.2f)'|format(0.10 + 0.6*cell.intensity) }}"
-                  onclick="jumpRef('{{ cell.pub }}')" title="{{ cell.pub }} · {{ cell.basis }}">
-                <span class="cs">{{ '%.3f'|format(cell.score) }}</span>
-                {% if cell.coord %}<span class="cc">{{ cell.coord }}</span>{% endif %}
-                <span class="cb">{% if cell.basis=='secret_prior_art' %}🔒{% elif cell.basis=='public_prior_art' %}◆{% endif %}</span>
+              <td class="cell" style="background:{{ 'rgba(63,185,80,%.2f)'|format(0.08 + 0.42*cell.intensity) }}">
+                <button type="button" onclick="jumpRef('{{ cell.pub }}')"
+                        aria-label="{{ cell.pub }} — score {{ '%.3f'|format(cell.score) }} for “{{ row.element }}”"
+                        title="{{ cell.pub }} · {{ cell.basis }}">
+                  <span class="cs">{{ '%.3f'|format(cell.score) }}</span>
+                  {% if cell.coord %}<span class="cc">{{ cell.coord }}</span>{% endif %}
+                  {% if cell.basis=='secret_prior_art' %}<span class="cc">🔒 secret</span>
+                  {% elif cell.basis=='public_prior_art' %}<span class="cc">◆ public</span>{% endif %}
+                </button>
               </td>
               {% else %}<td class="cell empty">·</td>{% endif %}
             {% endfor %}
@@ -115,245 +151,219 @@
     {% set cv = v.claim_chart.combination_view %}
     {% if cv.primary %}
     <div class="combo">
-      <h4>⚙️ Inventive-step combination view</h4>
-      <div class="prim">Primary reference: <code>{{ cv.primary }}</code>
-        {% if cv.covers %}covers <b>{{ cv.covers|length }}</b> element(s): {{ cv.covers|join(' · ') }}{% endif %}</div>
+      <h4>Inventive-step combination view</h4>
+      <div>Primary reference <code>{{ cv.primary }}</code>{% if cv.covers %} covers
+        <b>{{ cv.covers|length }}</b> element(s): {{ cv.covers|join(' · ') }}{% endif %}</div>
       {% for s in cv.secondaries %}
-      <div style="margin-top:5px">+ secondary <code>{{ s.ref }}</code> supplies: {{ s.supplies|join(' · ') }}</div>
+      <div style="margin-top:5px">plus secondary <code>{{ s.ref }}</code> supplying {{ s.supplies|join(' · ') }}</div>
       {% endfor %}
       {% if cv.uncovered_elements %}
-      <div class="unc" style="margin-top:7px">⚠ Not found in corpus ({{ cv.uncovered_elements|length }}): {{ cv.uncovered_elements|join(' · ') }}</div>
+      <div class="unc" style="margin-top:8px">Not found anywhere in the corpus
+        ({{ cv.uncovered_elements|length }}): {{ cv.uncovered_elements|join(' · ') }}</div>
       {% endif %}
     </div>
     {% endif %}
   </details>
 
-  <!-- C. RANKED PRIOR-ART LIST -->
-  <div class="sec"><h3>📄 Ranked prior art</h3>
-     <span class="hint">{{ v.cards|length }} top families · click a card, its sketch, or <b>Full view</b> to browse the full document</span></div>
+  <!-- ── ranked list ─────────────────────────────────────────────────────── -->
+  <div class="sec"><h2>Ranked prior art</h2>
+    <span class="hint">{{ v.cards|length }} families · open any card for the full document</span></div>
 
-  <!-- Every control here was previously identified only by the visual "Sort"/"Filter" captions and
-       its own first <option>, so a screen reader announced four unlabelled comboboxes. The captions
-       are now real <label>s / a group name, and each select carries an explicit accessible name. -->
-  <div class="controls" role="group" aria-label="Sort and filter results">
-    <label class="lab" for="sortby">Sort</label>
-    <select id="sortby" onchange="applyControls()">
-      <option value="rank">Relevance (default)</option>
-      <option value="score">Relevancy score</option>
-      <option value="covers">Elements covered</option>
-      <option value="date">Publication date (newest)</option>
-      <option value="datea">Publication date (oldest)</option>
-      <option value="juris">Jurisdiction</option>
-    </select>
-    <span class="lab" id="filterlab" aria-hidden="true">Filter</span>
-    {% if v.subject %}<label class="toggle"><input type="checkbox" id="fprior" onchange="applyControls()"> prior-art only</label>{% endif %}
-    <label class="toggle"><input type="checkbox" id="fdraw" onchange="applyControls()"> has drawings</label>
-    <select id="fjuris" aria-label="Filter by jurisdiction" onchange="applyControls()"><option value="">any jurisdiction</option>
-      <option>US</option><option>EP</option><option>WO</option><option>DE</option><option>GB</option><option>CN</option></select>
-    <select id="felement" aria-label="Filter by claim element covered" onchange="applyControls()"><option value="">any element</option>
-      {% for el in v.elements %}<option value="{{ loop.index0 }}">{{ el[:44] }}</option>{% endfor %}</select>
-    <select id="fflag" aria-label="Filter by triage flag" onchange="applyControls()"><option value="">all triage</option>
-      <option value="relevant">✓ relevant</option><option value="maybe">? maybe</option>
-      <option value="not">✕ not</option><option value="unflagged">unflagged</option></select>
-    <!-- announce the new result count when a filter changes, otherwise the list silently reflows -->
-    <span id="shown" class="lab" role="status" aria-live="polite" aria-atomic="true"></span>
+  <div class="controls" role="group" aria-label="Sort and filter the results">
+    <span class="cgroup">
+      <label class="lab" for="sortby">Sort by</label>
+      <select id="sortby" onchange="applyControls()">
+        <option value="rank">Relevance (default)</option>
+        <option value="score">Relevancy score</option>
+        <option value="covers">Elements covered</option>
+        <option value="date">Publication date, newest</option>
+        <option value="datea">Publication date, oldest</option>
+        <option value="juris">Jurisdiction</option>
+      </select>
+    </span>
+    <span class="cgroup">
+      <label class="lab" for="fjuris">Jurisdiction</label>
+      <select id="fjuris" onchange="applyControls()"><option value="">Any</option>
+        <option>US</option><option>EP</option><option>WO</option><option>DE</option>
+        <option>GB</option><option>CN</option></select>
+    </span>
+    <span class="cgroup">
+      <label class="lab" for="felement">Covers element</label>
+      <select id="felement" onchange="applyControls()"><option value="">Any</option>
+        {% for el in v.elements %}<option value="{{ loop.index0 }}">{{ el[:44] }}</option>{% endfor %}</select>
+    </span>
+    <span class="cgroup">
+      <label class="lab" for="fflag">Triage</label>
+      <select id="fflag" onchange="applyControls()"><option value="">All</option>
+        <option value="relevant">Relevant</option><option value="maybe">Maybe</option>
+        <option value="not">Not relevant</option><option value="unflagged">Unflagged</option></select>
+    </span>
+    {% if v.subject %}<label class="toggle"><input type="checkbox" id="fprior" onchange="applyControls()"> Prior art only</label>{% endif %}
+    <label class="toggle"><input type="checkbox" id="fdraw" onchange="applyControls()"> Has drawings</label>
+    <span id="shown" role="status" aria-live="polite" aria-atomic="true"></span>
   </div>
 
   <div class="cards" id="cards">
     {% for c in v.cards %}
-    <div class="refcard" id="ref-{{ c.pub }}" data-pub="{{ c.pub }}"
-         data-rank="{{ c.rank }}" data-score="{{ c.match_score }}" data-rel="{{ c.relevancy }}"
+    <article class="refcard" data-pub="{{ c.pub }}"
+         data-rank="{{ c.rank }}" data-rel="{{ c.relevancy }}"
          data-date="{{ c.publication_date or '' }}" data-juris="{{ c.country or '' }}"
          data-basis="{{ c.basis }}" data-covers="{{ c.covers_elements|join('||') }}"
-         data-channels="{{ c.channels|join(',') }}" data-ncovers="{{ c.n_covers }}"
-         data-nimg="{{ c.n_images }}" data-title="{{ c.title|e }}">
+         data-ncovers="{{ c.n_covers }}" data-nimg="{{ c.n_images }}"
+         aria-labelledby="t-{{ c.pub }}">
       <div class="refhead">
-
         <div class="selcol">
-          <input type="checkbox" class="selbox" value="{{ c.pub }}" onchange="updateBar()" title="Select for export / compare">
-          <div class="flagpills">
-            <button class="fp fp-relevant" data-flag="relevant" title="Mark relevant">✓</button>
-            <button class="fp fp-maybe" data-flag="maybe" title="Mark maybe">?</button>
-            <button class="fp fp-not" data-flag="not" title="Mark not relevant">✕</button>
+          <input type="checkbox" class="selbox" value="{{ c.pub }}" onchange="updateBar()"
+                 aria-label="Select {{ c.pub }} for export or comparison">
+          <div class="flagpills" role="group" aria-label="Triage {{ c.pub }}">
+            <button type="button" class="fp fp-relevant" data-flag="relevant" aria-pressed="false"
+                    aria-label="Mark {{ c.pub }} relevant" title="Mark relevant">✓</button>
+            <button type="button" class="fp fp-maybe" data-flag="maybe" aria-pressed="false"
+                    aria-label="Mark {{ c.pub }} maybe" title="Mark maybe">?</button>
+            <button type="button" class="fp fp-not" data-flag="not" aria-pressed="false"
+                    aria-label="Mark {{ c.pub }} not relevant" title="Mark not relevant">✕</button>
           </div>
         </div>
 
-        <!-- SKETCH -->
-        <div class="rthumb{% if not c.images %} pending{% endif %}" data-pub="{{ c.pub }}" onclick="openDetail('{{ c.pub }}')" title="Open full document">
+        {#  Direct-first: when build_view already resolved the manifest the figure is a plain <img>
+            and no JavaScript runs. Otherwise the thumb starts in state="loading" and app.js
+            settles it — to a figure, an explicit "no drawing", or an error. Never a live spinner. #}
+        <button type="button" class="rthumb" data-pub="{{ c.pub }}"
+                data-state="{% if c.images %}ok{% else %}loading{% endif %}"
+                onclick="openDetail('{{ c.pub }}')" aria-label="Open the full document for {{ c.pub }}">
           {% if c.images %}
-            <img loading="lazy" src="{{ request.script_root }}/figures/{{ c.pub }}/{{ c.images[0].file }}" alt="Lead drawing of {{ c.pub }}">
+            <img loading="lazy" decoding="async"
+                 src="{{ request.script_root }}/figures/{{ c.pub }}/{{ c.images[0].file }}"
+                 alt="{% if c.images[0].from_pdf %}Page{% else %}Figure{% endif %} 1 of {{ c.pub }}">
             <span class="figbadge">{{ c.n_images }} fig{{ 's' if c.n_images != 1 else '' }}</span>
+            <span class="zoomhint" aria-hidden="true">🔍</span>
           {% else %}
-            <div class="ph" data-lazythumb="1"><div class="spin sm"></div></div>
+            <span class="tstate"><span class="spin sm" aria-hidden="true"></span>loading<br>drawing</span>
           {% endif %}
-          <span class="zoomhint">🔍</span>
-        </div>
+        </button>
 
         <div class="rbody">
-          <div class="rtop">
-            <div class="rmain">
-              <div class="rtitle" onclick="openDetail('{{ c.pub }}')"><span class="rank">#{{ c.rank }}</span>{{ c.flag }} {{ c.title or '(untitled)' }}</div>
-              <div class="rmeta">
-                <a class="pn" href="https://patents.google.com/patent/{{ c.pub.replace('-','') }}/en" target="_blank" onclick="event.stopPropagation()">{{ c.pub }} ↗</a>
-                {% if c.priority_date %}<span>prio {{ c.priority_date }}</span>{% endif %}
-                {% if c.publication_date %}<span>pub {{ c.publication_date }}</span>{% endif %}
-                <a class="pdflink" href="{{ request.script_root }}/pdf/{{ c.pub }}" target="_blank" onclick="event.stopPropagation()">📄 PDF</a>
-              </div>
-              {% if c.assignees or c.inventors %}
-              <div class="rsub">
-                {% if c.assignees %}<span class="fld"><span class="fldl">Assignee</span> <b>{{ c.assignees|join('; ') }}</b></span>{% endif %}
-                {% if c.inventors %}<span class="fld"><span class="fldl">Inventor{% if c.inventors|length > 1 %}s{% endif %}</span> {{ c.inventors[:4]|join(', ') }}{% if c.inventors|length > 4 %} +{{ c.inventors|length - 4 }}{% endif %}</span>{% endif %}
-              </div>{% endif %}
-              <div class="rchips">
-                <span class="stag t-{{ c.status.tone }}"{% if c.status.note %} title="{{ c.status.note }}"{% endif %}>{{ c.status.label }}</span>
-                {% if c.basis=='public_prior_art' %}<span class="bbadge b-public">◆ public prior art</span>
-                {% elif c.basis=='secret_prior_art' %}<span class="bbadge b-secret">🔒 secret prior art</span>
-                {% elif c.basis=='priority_interval' %}<span class="bbadge b-interval">priority interval</span>{% endif %}
-                {% if c.channels %}<span class="chip lbl">found via</span>{% for ch in c.channels[:4] %}<span class="chip ch">{{ ch }}</span>{% endfor %}{% endif %}
-                {% for cp in c.cpc[:5] %}<span class="chip cpc">{{ cp.code }}</span>{% endfor %}
-              </div>
-              {% if c.abstract %}<div class="rsnip">{{ c.abstract }}</div>{% endif %}
-              {% if c.covers_elements %}
-              <div class="rcovers"><span class="lbl2">reads on</span>
-                {% for el in c.covers_elements[:6] %}<span class="chip el" data-el="{{ el|e }}" onclick="event.stopPropagation();filterByElement(this.dataset.el)" title="filter to this element">{{ el[:40] }}</span>{% endfor %}
-                {% if c.covers_elements|length > 6 %}<span class="chip">+{{ c.covers_elements|length - 6 }}</span>{% endif %}
-              </div>{% endif %}
+          <div class="rmain">
+            <button type="button" class="rtitle" id="t-{{ c.pub }}" onclick="openDetail('{{ c.pub }}')">
+              <span class="rank">#{{ c.rank }}</span>{{ c.flag }} {{ c.title or '(untitled)' }}</button>
+            <div class="rmeta">
+              <a class="pn" href="https://patents.google.com/patent/{{ c.pub.replace('-','') }}/en"
+                 target="_blank" rel="noopener">{{ c.pub }} ↗</a>
+              {% if c.priority_date %}<span>priority {{ c.priority_date }}</span>{% endif %}
+              {% if c.publication_date %}<span>published {{ c.publication_date }}</span>{% endif %}
+              <a href="{{ request.script_root }}/pdf/{{ c.pub }}" target="_blank" rel="noopener">PDF</a>
             </div>
-            <div class="relbox r{{ (c.relevancy // 20) }}" title="Relevancy — best-passage semantic match ({{ '%.3f'|format(c.match_score) }} cosine{% if c.match_coord %} · {{ c.match_kind }} {{ c.match_coord }}{% endif %})">
-              <div class="relnum">{{ c.relevancy }}</div>
-              <div class="rellab">relevancy</div>
+            {% if c.assignees or c.inventors %}
+            <div class="rsub">
+              {% if c.assignees %}<span><span class="fldl">Assignee</span><b>{{ c.assignees|join('; ') }}</b></span>{% endif %}
+              {% if c.inventors %}<span><span class="fldl">Inventor{% if c.inventors|length > 1 %}s{% endif %}</span>{{ c.inventors[:3]|join(', ') }}{% if c.inventors|length > 3 %} +{{ c.inventors|length - 3 }}{% endif %}</span>{% endif %}
+            </div>{% endif %}
+            <div class="rchips">
+              <span class="stag t-{{ c.status.tone }}"{% if c.status.note %} title="{{ c.status.note }}"{% endif %}>{{ c.status.label }}</span>
+              {% if c.basis=='public_prior_art' %}<span class="bbadge b-public">◆ public prior art</span>
+              {% elif c.basis=='secret_prior_art' %}<span class="bbadge b-secret">🔒 secret prior art</span>
+              {% elif c.basis=='priority_interval' %}<span class="bbadge b-interval">priority interval</span>{% endif %}
+              {% for ch in c.channels[:3] %}<span class="chip ch">{{ ch }}</span>{% endfor %}
+              {% for cp in c.cpc[:3] %}<span class="chip cpc">{{ cp.code }}</span>{% endfor %}
             </div>
+            {% if c.abstract %}<p class="rsnip">{{ c.abstract[:230] }}{% if c.abstract|length > 230 %}…{% endif %}</p>{% endif %}
+            {% if c.covers_elements %}
+            <div class="rcovers"><span class="lbl2">reads on</span>
+              {% for el in c.covers_elements[:5] %}<button type="button" class="chip el" data-el="{{ el|e }}"
+                onclick="filterByElement(this.dataset.el)"
+                aria-label="Filter the list to references covering “{{ el[:60] }}”">{{ el[:40] }}</button>{% endfor %}
+              {% if c.covers_elements|length > 5 %}<span class="chip">+{{ c.covers_elements|length - 5 }}</span>{% endif %}
+            </div>{% endif %}
+          </div>
+          <div class="relbox r{{ (c.relevancy // 20) }}"
+               title="Best-passage semantic match: {{ '%.3f'|format(c.match_score) }} cosine{% if c.match_coord %} at {{ c.match_kind }} {{ c.match_coord }}{% endif %}">
+            <div class="relnum">{{ c.relevancy }}</div>
+            <div class="rellab">relevancy</div>
           </div>
         </div>
       </div>
 
-      <!-- inline expandable tabs (closed by default) -->
-      <div class="rtabs" data-pub="{{ c.pub }}">
-        <button class="rtab" data-t="abstract" onclick="rtab(this)">Abstract</button>
-        <button class="rtab" data-t="figs" onclick="rtab(this)">Figures{% if c.n_images %}<span class="n">{{ c.n_images }}</span>{% endif %}</button>
-        <button class="rtab" data-t="claims" onclick="rtab(this)">Claims{% if c.claims %}<span class="n">{{ c.claims|length }}</span>{% endif %}</button>
-        <button class="rtab" data-t="paras" onclick="rtab(this)">Description</button>
-        <button class="rtab" data-t="why" onclick="rtab(this)">Why relevant</button>
-        <button class="rtab" data-t="cites" onclick="rtab(this)">Citations</button>
-        {% if c.n_family %}<button class="rtab" data-t="family" onclick="rtab(this)">Family<span class="n">{{ c.n_family }}</span></button>{% endif %}
+      {#  Four actions, not nine of equal weight: one cheap peek each for the three things people
+          actually check inline, then the full document. Everything else lives in the drawer. #}
+      <div class="rtabs">
+        <button type="button" class="rtab" data-t="why" aria-expanded="false"
+                onclick="rtab(this)" aria-label="Why {{ c.pub }} is relevant">Why relevant</button>
+        <button type="button" class="rtab" data-t="figs" aria-expanded="false"
+                onclick="rtab(this)" aria-label="Drawings of {{ c.pub }}">Drawings{% if c.n_images %}<span class="n">{{ c.n_images }}</span>{% endif %}</button>
+        <button type="button" class="rtab" data-t="text" aria-expanded="false"
+                onclick="rtab(this)" aria-label="Abstract, claims and description of {{ c.pub }}">Full text{% if c.claims %}<span class="n">{{ c.claims|length }} claims</span>{% endif %}</button>
         <span class="rtab spacer"></span>
-        <button class="rtab act" onclick="expandAll(this)" title="Show everything inline">⤢ Expand all</button>
-        <button class="rtab act" onclick="openDetail('{{ c.pub }}')" title="Open the full-document browser">Full view ▸</button>
-        <button class="rtab act" onclick="openSimilar('{{ c.pub }}')" title="Find similar patents in the corpus">⁘ Similar</button>
+        <button type="button" class="rtab primary" onclick="openDetail('{{ c.pub }}')"
+                aria-label="Open the full document browser for {{ c.pub }}">Full view →</button>
+        <button type="button" class="rtab" onclick="openSimilar('{{ c.pub }}')"
+                aria-label="Find patents similar to {{ c.pub }}">Similar</button>
       </div>
-
-      <div class="rpane" data-pub="{{ c.pub }}">
-        <div class="psec" data-t="abstract"><h4>Abstract</h4>
-          {% if c.abstract %}<div class="abstract">{{ c.abstract }}</div>{% else %}<div class="pempty">No abstract for this document — see Description / PDF.</div>{% endif %}</div>
-
-        <div class="psec" data-t="figs" hidden><h4>Drawings{% if c.n_images %} ({{ c.n_images }}){% endif %}</h4>
-          {% if c.images %}
-            {% if c.images[0].from_pdf %}<div class="muted small" style="margin-bottom:6px">🗎 Extracted from the PDF facsimile.</div>{% endif %}
-            <div class="g">
-              {% for im in c.images %}<figure><img loading="lazy" src="{{ request.script_root }}/figures/{{ c.pub }}/{{ im.file }}" alt="{% if c.images[0].from_pdf %}Page{% else %}Figure{% endif %} {{ loop.index }} of {{ c.pub }}" data-pub="{{ c.pub }}" onclick="openLb(this)"><figcaption>{% if c.images[0].from_pdf %}p.{% else %}fig {% endif %}{{ loop.index }}</figcaption></figure>{% endfor %}
-            </div>
-          {% else %}<div class="figph muted small"><div class="spin sm" style="display:inline-block"></div> loading drawings…</div>{% endif %}
-          {% if c.figure_caps %}<div class="figcaps">{% for f in c.figure_caps %}<div class="figcap"><span class="fno">FIG {{ f.figure_no or '' }}</span> {{ f.caption }}</div>{% endfor %}</div>{% endif %}
-        </div>
-
-        <div class="psec" data-t="claims" hidden><h4>Claims{% if c.claims %} ({{ c.claims|length }}){% endif %}</h4>
-          {% if c.claims %}<div class="scrollbox">
-            {% for cl in c.claims %}
-            <div class="claim{% if cl.independent %} indep{% endif %}{% if c.matched_coord_raw and c.matched_coord_raw.claim_no == cl.claim_no %} matched{% endif %}">
-              <span class="cn">{{ cl.claim_no }}.</span>{% if cl.independent %}<span class="ind">INDEP</span>{% endif %}{% if c.matched_coord_raw and c.matched_coord_raw.claim_no == cl.claim_no %}<span class="ind mm">◀ best match</span>{% endif %}
-              <div class="ctext">{{ cl.resolved_text or cl.text }}</div>
-            </div>{% endfor %}
-          </div>{% else %}<div class="pempty">Claims not in the local corpus — open the PDF or Google Patents.</div>{% endif %}</div>
-
-        <div class="psec" data-t="paras" hidden><h4>Description</h4>
-          {% if c.description %}<div class="scrollbox">
-            {% for p in c.description %}
-            <div class="para{% if c.matched_coord_raw and c.matched_coord_raw.para_no == p.para_no %} matched{% endif %}"><span class="coord">{{ p.para_no or '' }}</span>{% if p.heading %}<span class="hd">{{ p.heading }}</span> {% endif %}{{ p.text }}</div>{% endfor %}
-          </div>{% else %}<div class="pempty">Description not in the local corpus — open the PDF.</div>{% endif %}</div>
-
-        <div class="psec" data-t="why" hidden><h4>Why relevant <span class="muted small" style="text-transform:none;letter-spacing:0;font-weight:400">— grounded AI opinion</span></h4>
-          <div class="whyslot"><span class="ploading"><span class="spin sm"></span> loading AI relevancy opinion…</span></div></div>
-
-        <div class="psec" data-t="cites" hidden><h4>Citations &amp; similar</h4>
-          <div class="citeslot"><span class="ploading"><span class="spin sm"></span> loading citations…</span></div></div>
-
-        {% if c.n_family %}
-        <div class="psec" data-t="family" hidden><h4>Same-invention family ({{ c.n_family }} other publications)</h4>
-          <div class="famlist">
-            {% for m in c.family_members %}
-            <div class="famitem">{{ m.flag }} <span class="pn" onclick="openDetail('{{ m.pub }}')">{{ m.pub }}</span>
-              <span class="muted small">{{ m.kind or '' }}{% if m.date %} · {{ m.date }}{% endif %}</span>
-              <span class="stag sm t-{{ m.status.tone }}">{{ m.status.label }}</span></div>{% endfor %}
-          </div></div>
-        {% endif %}
-      </div>
-    </div>
+      <div class="rpane" hidden></div>
+    </article>
     {% endfor %}
   </div>
 
-  <!-- D. COVERAGE LEDGER -->
-  <div class="sec"><h3>📊 Coverage ledger</h3></div>
+  <!-- ── coverage ledger ─────────────────────────────────────────────────── -->
+  <div class="sec"><h2>Coverage ledger</h2>
+    <span class="hint">why the search stopped when it did</span></div>
   <div class="ledger">
     <div class="box">
       <h4>Marginal new-family yield per round</h4>
       <div class="yield">
         {% set mx = (v.coverage_ledger.round_new_families or [1])|max %}
         {% for n in v.coverage_ledger.round_new_families %}
-        <div style="display:flex;flex-direction:column;align-items:center">
+        <div class="ycol">
           <div class="bar" style="height:{{ (6 + 78*n/mx)|int }}px">{{ n }}</div>
           <div class="rnd">r{{ loop.index }}</div>
         </div>{% endfor %}
       </div>
-      <p class="small muted" style="margin-top:8px">Search stops when new-family yield stays low across independent channels — not after a fixed loop count.</p>
+      <p class="small muted" style="margin-top:10px">The search stops when new-family yield stays
+        low across independent channels — not after a fixed loop count.</p>
     </div>
     <div class="box">
       <h4>CPC branches searched ({{ v.coverage_ledger.cpc_branches|length }})</h4>
       <div>{% for cpc in v.coverage_ledger.cpc_branches %}<span class="pill">{{ cpc }}</span>{% endfor %}</div>
       {% if v.coverage_ledger.combination_view.uncovered_elements %}
-      <h4 style="margin-top:14px">Uncovered elements</h4>
+      <h4 style="margin-top:16px">Uncovered elements</h4>
       <div class="uncov small">{{ v.coverage_ledger.combination_view.uncovered_elements|join(' · ') }}</div>
       {% endif %}
     </div>
   </div>
 </div>
 
-<!-- export / compare action bar -->
 <div class="exportbar" id="exportbar">
-  <div class="wrap" style="display:flex;align-items:center;gap:14px">
+  <div class="wrap" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
     <b id="selcount">0 selected</b>
-    <span class="muted small">select references →</span>
-    <span class="grow" style="flex:1"></span>
+    <span class="grow"></span>
     <button class="btn ghost sm" onclick="clearSel()">Clear</button>
-    <button class="btn ghost sm" onclick="openCompare()">⇔ Compare</button>
-    <button class="btn sm" onclick="doExport('pdf')">⬇ Export PDF</button>
-    <button class="btn sm" onclick="doExport('docx')">⬇ Export DOCX</button>
+    <button class="btn ghost sm" onclick="openCompare()">Compare</button>
+    <button class="btn sm" onclick="doExport('pdf')">Export PDF</button>
+    <button class="btn sm" onclick="doExport('docx')">Export DOCX</button>
   </div>
 </div>
-<form id="exportform" method="post" action="{{ request.script_root }}/export" target="_blank" style="display:none">
+<form id="exportform" method="post" action="{{ request.script_root }}/export" target="_blank" hidden>
   <input type="hidden" name="slug" value="{{ v.slug }}">
   <input type="hidden" name="pubs" id="exportpubs">
   <input type="hidden" name="format" id="exportfmt">
 </form>
 
-<!-- slide-over: full-document browser -->
 <div id="soOverlay">
-  <aside class="slideover" role="dialog" aria-modal="true">
+  <aside class="slideover" role="dialog" aria-modal="true" aria-label="Full document">
     <div class="so-head">
-      <button id="soBack" style="display:none">‹ Back</button>
+      <button type="button" id="soBack" hidden>‹ Back</button>
       <div class="bc" id="soBreadcrumb"></div>
-      <button id="soLink" title="Copy a shareable link to this patent">🔗 Copy link</button>
-      <button id="soClose">✕ Close</button>
+      <button type="button" id="soLink">Copy link</button>
+      <button type="button" id="soClose">✕ Close</button>
     </div>
     <div class="so-body" id="soBody"></div>
   </aside>
 </div>
 
-<!-- lightbox -->
-<div class="lb" id="lb">
-  <span class="x" onclick="closeLb()">✕</span>
-  <span class="nav l" onclick="lbNav(-1)">‹</span>
-  <img id="lbimg" src="" alt="">
-  <span class="nav r" onclick="lbNav(1)">›</span>
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Figure viewer">
+  <button type="button" class="x" id="lbclose" onclick="closeLb()" aria-label="Close the figure viewer">✕</button>
+  <button type="button" class="nav l" onclick="lbNav(-1)" aria-label="Previous figure">‹</button>
+  <div id="lbstage"></div>
+  <button type="button" class="nav r" onclick="lbNav(1)" aria-label="Next figure">›</button>
   <div class="cap" id="lbcap"></div>
 </div>
 {% endblock %}
@@ -363,18 +373,21 @@ window.SLUG = {{ v.slug|tojson }};
 window.QUERY = {{ v.query|tojson }};
 window.ELEMENTS = {{ v.elements|tojson }};
 {% if v.partial %}
+/* The report is renderable but the agent is still working. Show the SAME narrative the generating
+   page shows, so the long quiet stretch between 'partial' and 'reranking' reads as progress
+   rather than a frozen sentence, and reload once the full report lands. */
 (function(){
-  const B = (window.APP_BASE || '');
-  async function poll(){
-    try{
-      const j = await (await fetch(B+'/status/'+window.SLUG)).json();
-      const m = document.getElementById('refiningMsg');
-      if(m && j.msg && j.msg!=='done') m.textContent = j.msg;
-      if(j.done){ location.reload(); return; }
-    }catch(e){}
-    setTimeout(poll, 2000);
-  }
-  setTimeout(poll, 2000);
+  const host = document.getElementById('refiningStages');
+  host.hidden = false;
+  const p = createProgress(host, {wide:{{ (v.federation is not none)|tojson }}});
+  streamJob(window.SLUG, function(ev){
+    p.apply(ev);
+    const s = document.getElementById('refiningStage');
+    if (s && ev.msg && ev.msg !== 'done') s.textContent = ev.msg;
+    if (ev.done){ p.stop(); location.reload(); return true; }
+    if (ev.status === 'error'){ p.fail(ev.msg); return true; }
+    return false;
+  });
 })();
 {% endif %}
 </script>

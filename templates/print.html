@@ -1,21 +1,47 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <title>{{ v.title }} — prior-art report</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-<style>body{background:#fff}.wrap{max-width:900px}</style>
+<style>
+/* The app is dark; a printed report is not. Re-point the SAME tokens at paper rather than
+   maintaining a second stylesheet, so this view inherits every component definition. */
+:root{
+  --s0:#fff; --s1:#fff; --s2:#f6f8fb; --s3:#fff;
+  --line:#d8e0ea; --line2:#c6d2e0;
+  --ink:#11203a; --muted:#3d4b60; --faint:#6b7a8f;
+  --accent:#0050a0; --accent-soft:rgba(0,80,160,.10); --navy:#0b2545;
+  --good:#0a7d4d; --warn:#8a5a00; --bad:#b3261e; --secret:#6b2fb0;
+  --good-soft:rgba(10,125,77,.12); --warn-soft:rgba(178,94,0,.12);
+  --bad-soft:rgba(179,38,30,.12); --secret-soft:rgba(107,47,176,.12);
+  --shadow:none;
+}
+body{background:#fff}
+.wrap{max-width:900px;padding:24px 22px}
+h1,h2,h3{color:var(--navy)}
+.refblock{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+@media print{ .chartwrap{overflow:visible} .refblock{break-inside:avoid} }
+</style>
 </head><body>
-<div class="wrap" style="padding:24px 0">
-  <h1 style="color:var(--navy)">Prior-Art Search Report</h1>
-  <p class="muted">{{ v.title }} · mode {{ v.mode }} {% if v.subject %}· subject {{ v.subject }}{% endif %}</p>
+<div class="wrap">
+  <h1>Prior-Art Search Report</h1>
+  <p class="muted">{{ v.title }} · mode {{ v.mode }}{% if v.subject %} · subject {{ v.subject }}{% endif %}</p>
   <p class="q">“{{ v.query }}”</p>
-  <p class="small muted">{{ v.n_families }} families surfaced · {{ v.rounds }} rounds · channels {{ v.channels_used|join(', ') }} · languages {{ v.languages|join(', ') }}</p>
+  <p class="small muted">{{ v.n_families }} families surfaced · {{ v.rounds }} rounds ·
+    channels {{ v.channels_used|join(', ') }} · languages {{ v.languages|join(', ') }}</p>
 
-  <h3 style="color:var(--navy);margin-top:22px">Element × Reference claim chart</h3>
-  <div class="chartwrap"><table class="chart"><thead><tr><th class="elh">Element</th>
-    {% for c in v.claim_chart.columns %}<th>{{ c.pub }}</th>{% endfor %}</tr></thead><tbody>
-    {% for row in v.claim_chart.rows %}<tr><td class="elh">{{ row.element }}</td>
-    {% for cell in row.cells %}{% if cell.covered %}<td class="cell" style="background:rgba(10,125,77,{{ '%.2f'|format(0.1+0.6*cell.intensity) }})">{{ '%.3f'|format(cell.score) }}{% if cell.coord %}<br><span class="cc">{{ cell.coord }}</span>{% endif %}</td>{% else %}<td class="cell empty">·</td>{% endif %}{% endfor %}</tr>{% endfor %}
-  </tbody></table></div>
+  <h3 style="margin-top:22px">Element × reference claim chart</h3>
+  <div class="chartwrap"><table class="chart">
+    <thead><tr><th class="elh" scope="col">Element</th>
+      {% for c in v.claim_chart.columns %}<th scope="col">{{ c.pub }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for row in v.claim_chart.rows %}<tr><th class="elh" scope="row">{{ row.element }}</th>
+      {% for cell in row.cells %}{% if cell.covered %}
+        <td class="cell" style="background:rgba(10,125,77,{{ '%.2f'|format(0.1+0.5*cell.intensity) }})">
+          {{ '%.3f'|format(cell.score) }}{% if cell.coord %}<span class="cc">{{ cell.coord }}</span>{% endif %}</td>
+      {% else %}<td class="cell empty">·</td>{% endif %}{% endfor %}</tr>{% endfor %}
+    </tbody></table></div>
 
   {% set cv = v.claim_chart.combination_view %}
   {% if cv.primary %}<div class="combo"><h4>Combination view</h4>
@@ -23,16 +49,18 @@
     {% for s in cv.secondaries %}<div>+ <code>{{ s.ref }}</code> supplies {{ s.supplies|join(', ') }}</div>{% endfor %}
     {% if cv.uncovered_elements %}<div class="unc">Uncovered: {{ cv.uncovered_elements|join(', ') }}</div>{% endif %}</div>{% endif %}
 
-  <h3 style="color:var(--navy);margin-top:22px">Ranked prior art</h3>
+  <h3 style="margin-top:22px">Ranked prior art</h3>
   {% for c in v.cards %}
-  <div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+  <div class="refblock">
     <b>#{{ c.rank }} {{ c.flag }} {{ c.pub }}</b> — {{ c.title }}
-    <span class="badge {% if c.basis=='public_prior_art' %}b-public{% elif c.basis=='secret_prior_art' %}b-secret{% else %}b-na{% endif %}">{{ c.basis.replace('_',' ') }}</span>
-    <div class="small muted">{{ c.assignees|join('; ') }} · pub {{ c.publication_date }} · prio {{ c.priority_date }} · fam {{ c.family_id }} · match {{ '%.3f'|format(c.match_score) }}
+    <span class="bbadge {% if c.basis=='public_prior_art' %}b-public{% elif c.basis=='secret_prior_art' %}b-secret{% else %}b-interval{% endif %}">{{ c.basis.replace('_',' ') }}</span>
+    <div class="small muted">{{ c.assignees|join('; ') }} · published {{ c.publication_date }} ·
+      priority {{ c.priority_date }} · family {{ c.family_id }} · match {{ '%.3f'|format(c.match_score) }}
       {% if c.cpc %}· {{ c.cpc|map(attribute='code')|join(', ') }}{% endif %}</div>
     {% if c.covers_elements %}<div class="small">covers: {{ c.covers_elements|join(' · ') }}</div>{% endif %}
   </div>
   {% endfor %}
-  <p class="small muted" style="margin-top:20px">Generated by the vacuum-gripping prior-art pilot · Postgres 17 + pgvector · Vertex embeddings + Gemini agent.</p>
+  <p class="small muted" style="margin-top:20px">Generated by the vacuum-gripping prior-art pilot ·
+    Postgres 17 + pgvector · Vertex embeddings + Gemini agent.</p>
 </div>
 </body></html>

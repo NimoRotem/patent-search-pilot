@@ -1,52 +1,61 @@
 {% extends "base.html" %}
-{% block title %}Prior-Art Search — pilot{% endblock %}
+{% block title %}Prior-art search{% endblock %}
 {% block body %}
 <div class="hero">
   <div class="wrap">
     <h1>Describe an invention. Get the prior art.</h1>
-    <p>Semantic + agentic search over a 107,795-publication vacuum-gripping corpus — element-by-element
-       claim charts, drawings, PDF facsimiles, cross-lingual (EN/DE), and a litigation-grade PDF/DOCX export.</p>
+    <p>Agentic semantic search over a 107,795-publication vacuum-handling corpus — element-by-element
+       claim charts, drawings, PDF facsimiles, EN/DE cross-lingual, real EPC date law, and a
+       PDF/DOCX export. Queries outside the corpus can be sent to external patent APIs.</p>
   </div>
 </div>
+
 <div class="wrap">
   <form class="panel searchcard" method="post" action="{{ request.script_root }}/run" id="searchform">
-    <h3>Search by invention description</h3>
     <div class="field">
-      <textarea name="query" id="qbox" rows="4"
-        placeholder="Describe the invention in plain language — the more specific the features, the better. e.g. “A cordless handheld vacuum lifter for glass and stone panels, with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that alarms the operator when grip vacuum is lost.”"></textarea>
+      <label for="qbox">What is the invention?</label>
+      <textarea name="query" id="qbox" rows="4" required
+        placeholder="Describe it in plain language — the more specific the features, the better. e.g. “A cordless handheld vacuum lifter for glass and stone panels, with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that alarms the operator when grip vacuum is lost.”"></textarea>
     </div>
-    <div style="margin:2px 0 12px">
-      <span class="lab small" style="color:var(--muted)">Try an example:</span>
+
+    <div style="margin:-4px 0 16px">
+      <span class="lab" style="display:inline;margin-right:6px">Try an example:</span>
       {% for ex in examples %}
       <button type="button" class="exchip" onclick="fillEx({{ loop.index0 }})">{{ ex.label }}</button>
       {% endfor %}
     </div>
+
     <div class="row">
       <div class="field">
-        <label>Search mode</label>
-        <select name="mode">
-          <option value="novelty">Novelty (includes secret / earlier-filed art)</option>
-          <option value="inventive_step">Inventive step (public art only)</option>
+        <label for="mode">Search mode</label>
+        {# Only the two modes the backend actually serves. INVALIDITY and FTO are refused by
+           require_available(), so offering them here would only produce a 400. #}
+        <select name="mode" id="mode">
+          <option value="novelty">Novelty — includes secret / earlier-filed art</option>
+          <option value="inventive_step">Inventive step — public art only</option>
         </select>
       </div>
       <div class="field">
-        <label>Subject patent # (optional — enables prior-art dating)</label>
-        <input type="text" name="subject" placeholder="e.g. US-11999030-B2">
-      </div>
-      <div class="field" style="display:flex;align-items:flex-end">
-        <button class="btn" type="submit" id="gobtn">🔎 Search prior art</button>
+        <label for="subject">Subject patent number <span class="muted">(optional)</span></label>
+        <input type="text" name="subject" id="subject" placeholder="e.g. US-11999030-B2">
+        <span class="small muted">Enables prior-art dating under EPC Art. 54(2)/54(3).</span>
       </div>
     </div>
-    <div class="row">
-      <div class="field">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400">
-          <input type="checkbox" name="wide" value="1">
-          <span>Also search external patent APIs (slower, costs a live API call — use when the
-                query falls outside the indexed vacuum-handling field)</span>
-        </label>
-      </div>
+
+    <label class="wide-opt" for="wide">
+      <input type="checkbox" name="wide" id="wide" value="1">
+      <span>
+        <b>Also search wider — external patent APIs</b>
+        <span class="wo-note">Adds SerpApi / BigQuery / PQAI / OpenAlex on top of the local corpus.
+          Slower (~2 min extra) and spends paid API credit, so it is never automatic. Use it when
+          the invention falls outside vacuum handling and gripping.</span>
+      </span>
+    </label>
+
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <button class="btn" type="submit" id="gobtn">Search prior art</button>
+      <span class="small muted">A new query takes ~2–4 min; it is cached afterwards.</span>
     </div>
-    <p class="small muted" style="margin:2px 0 0">First run for a new query takes ~2–4 min (the agent decomposes the invention and searches 8 channels); it's cached after.</p>
   </form>
 
   <div class="divider">or open a frozen gold-set example (instant)</div>
@@ -55,14 +64,13 @@
     {% for g in gold %}
     <form method="post" action="{{ request.script_root }}/run">
       <input type="hidden" name="gold_id" value="{{ g.id }}">
-      <button class="goldcard" type="submit" style="width:100%;text-align:left;cursor:pointer">
-        <div class="id">{{ g.id }}
-          {% if g.cached %}<span class="badge b-cached">cached</span>{% endif %}
-        </div>
-        <div><span class="badge b-cat">{{ g.category }}</span>
-             <span class="badge b-mode">{{ g.mode.replace('_',' ') }}</span></div>
-        <div class="meta">{% if g.subject %}subject {{ g.subject }}{% else %}natural-language query{% endif %}</div>
-        <div class="notes">{{ g.notes }}</div>
+      <button class="goldcard" type="submit">
+        <span class="id">{{ g.id }}
+          {% if g.cached %}<span class="badge b-cached">cached</span>{% endif %}</span>
+        <span><span class="badge">{{ g.category }}</span
+          ><span class="badge">{{ g.mode.replace('_',' ') }}</span></span>
+        <span class="small muted">{% if g.subject %}subject {{ g.subject }}{% else %}natural-language query{% endif %}</span>
+        <span class="notes">{{ g.notes }}</span>
       </button>
     </form>
     {% endfor %}
@@ -72,12 +80,15 @@
 {% block scripts %}
 <script>
 const EXAMPLES = {{ examples|tojson }};
-function fillEx(i){ const q=document.getElementById('qbox'); q.value=EXAMPLES[i].text; q.focus();
-  q.scrollIntoView({behavior:'smooth',block:'center'}); }
-document.getElementById('searchform').addEventListener('submit',e=>{
-  const q=document.getElementById('qbox').value.trim();
-  if(!q){ e.preventDefault(); alert('Describe an invention first (or pick a gold example below).'); return; }
-  document.getElementById('gobtn').textContent='⏳ Starting…'; document.getElementById('gobtn').disabled=true;
+function fillEx(i){
+  const q = document.getElementById('qbox');
+  q.value = EXAMPLES[i].text; q.focus();
+}
+document.getElementById('searchform').addEventListener('submit', e => {
+  const q = document.getElementById('qbox');
+  if(!q.value.trim()){ e.preventDefault(); q.focus(); return; }
+  const b = document.getElementById('gobtn');
+  b.textContent = 'Starting…'; b.disabled = true;
 });
 </script>
 {% endblock %}

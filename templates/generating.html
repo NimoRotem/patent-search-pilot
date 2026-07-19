@@ -3,89 +3,39 @@
 {% block body %}
 <div class="wrap">
   <div class="panel gen">
-    <h2>Searching the prior art…</h2>
-    <div class="spin" aria-hidden="true"></div>
-    <!-- This is the only indication that a multi-minute search is progressing. Without a live
-         region a screen-reader user heard nothing at all between submitting and the redirect, so
-         announce each server stage message. `polite` (not `assertive`) so it queues behind whatever
-         the user is doing rather than interrupting. -->
-    <div class="genstage" id="stage" role="status" aria-live="polite" aria-atomic="true">Decomposing the invention into technical elements…</div>
-    <!-- the bar is a time-based heartbeat, not real progress; don't announce it -->
+    <h2>Searching the prior art</h2>
+    <p class="genq">“{{ query }}” · {{ mode.replace('_',' ') }} mode</p>
+
+    {#  A narrative, not a log. Each stage carries its own explanation and, once the agent
+        reports numbers, the numbers it learned. The active stage shows how long it has been
+        running, so the multi-minute rerank never looks like a hang. #}
+    <div id="stages"></div>
+    <div class="vh" role="status" aria-live="polite" aria-atomic="true" data-progress-live></div>
+
     <div class="genbar" aria-hidden="true"><div class="genbarfill" id="bar"></div></div>
-    <!-- ticks every 500 ms: visible, but must never be a live region or it would talk nonstop -->
-    <div class="small muted" id="elapsed" aria-hidden="true">0s elapsed</div>
-    <p class="small muted" style="margin-top:14px">“{{ query }}”</p>
-    <p class="small muted">Mode: {{ mode.replace('_',' ') }} · the agent runs 8 retrieval channels across ~2 rounds, fuses and reranks. Cached after the first run.</p>
+    <div class="genfoot">
+      <span id="elapsed" aria-hidden="true">0s elapsed</span>
+      <span class="grow"></span>
+      <span>Results appear as soon as the first matches are ranked; the page keeps refining after that.</span>
+    </div>
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
-const slug = {{ slug|tojson }};
-const BASE = (window.APP_BASE || '');
-const t0 = Date.now();
-// bar advances with elapsed time as a gentle heartbeat; the STAGE text is the REAL server message.
-function tick(){
-  const s = Math.floor((Date.now()-t0)/1000);
-  document.getElementById('elapsed').textContent = s+'s elapsed';
-  const frac = Math.min(0.9, s/45);   // first cards usually stream within ~this window
-  document.getElementById('bar').style.width = (frac*100).toFixed(0)+'%';
-}
-setInterval(tick, 500); tick();
-let finished = false;
-
-// Shared handler for both transports so SSE and polling can never diverge in behaviour.
-function apply(j){
-  if(finished) return true;
-  if(j.msg){ document.getElementById('stage').textContent = j.msg; }
-  if(j.ready){   // 'partial' (first cards) or 'done' — go straight to the report, which keeps refining
-    finished = true;
-    document.getElementById('bar').style.width='100%';
-    location.href = BASE+'/report/'+slug;
-    return true;
-  }
-  if(j.status==='error'){
-    finished = true;
-    document.getElementById('stage').textContent='Error: '+j.msg;
-    return true;
-  }
-  return false;
-}
-
-// ---- fallback: the original 1.5s poll ----
-function poll(){
-  if(finished) return;
-  fetch(BASE+'/status/'+slug)
-    .then(r => r.json())
-    .then(j => { if(!apply(j)) setTimeout(poll, 1500); })
-    .catch(() => setTimeout(poll, 1500));
-}
-
-// ---- primary: server-sent events (push, no polling) ----
-function stream(){
-  if(!window.EventSource){ poll(); return; }
-  let opened = false;
-  let es;
-  try{ es = new EventSource(BASE+'/events/'+slug); }
-  catch(e){ poll(); return; }
-
-  // If SSE never connects (proxy strips streaming, 401, blocked), degrade to polling once.
-  const guard = setTimeout(() => { if(!opened && !finished){ try{es.close();}catch(e){} poll(); } }, 5000);
-
-  es.onopen = () => { opened = true; clearTimeout(guard); };
-  es.onmessage = (ev) => {
-    let j; try{ j = JSON.parse(ev.data); }catch(e){ return; }
-    if(apply(j)){ try{ es.close(); }catch(e){} }
-  };
-  es.onerror = () => {
-    // EventSource auto-reconnects; only fall back if we never got a working connection,
-    // or if the stream died before completion.
-    clearTimeout(guard);
-    if(finished){ try{ es.close(); }catch(e){} return; }
-    try{ es.close(); }catch(e){}
-    poll();
-  };
-}
-stream();
+(function(){
+  const slug = {{ slug|tojson }};
+  const p = createProgress(document.getElementById('stages'), {wide:{{ wide|default(false)|tojson }}});
+  streamJob(slug, function(ev){
+    p.apply(ev);
+    if (ev.ready){                       // 'partial' (first cards) or 'done'
+      p.stop();
+      location.href = (window.APP_BASE || '') + '/report/' + slug;
+      return true;
+    }
+    if (ev.status === 'error'){ p.fail(ev.msg); return true; }
+    return false;
+  });
+})();
 </script>
 {% endblock %}
