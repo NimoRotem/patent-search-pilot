@@ -30,6 +30,84 @@ function fmtDur(ms){
   return s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's';
 }
 
+/* ── session expiry ────────────────────────────────────────────────────────────────────────
+   Sessions last 30 days, so they lapse rarely -- but when one did, every fetch here just got
+   a 401 and swallowed it: panes stayed on their spinner and, worst of all, streamJob's SSE
+   dropped to polling and then retried a 401 every 2 s forever, so a run in progress looked
+   frozen with no explanation at all.
+
+   Every request goes through window.fetch, so intercept it once here rather than editing a
+   dozen call sites (and every future one). On a 401 we show an inline re-auth bar and sign the
+   user back in WITHOUT navigating: a redirect to /login would discard the open report, the
+   scroll position and any in-flight run. */
+let _authPrompted = false;
+
+function _authBar(){
+  let el = document.getElementById('authexpired');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'authexpired';
+  el.setAttribute('role', 'alertdialog');
+  el.setAttribute('aria-labelledby', 'authexpiredmsg');
+  el.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:10000;background:#171a21;' +
+    'border-top:1px solid #2d3341;color:#e6e8ee;padding:12px 16px;display:flex;gap:10px;' +
+    'align-items:center;flex-wrap:wrap;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif';
+  el.innerHTML =
+    '<span id="authexpiredmsg">Your session expired. Sign in again to continue — ' +
+    'this page and any run in progress are kept.</span>' +
+    '<input id="authexpiredpw" type="password" autocomplete="current-password" placeholder="Password" ' +
+    'aria-label="Access password" style="padding:7px 10px;border-radius:7px;border:1px solid #2d3341;' +
+    'background:#0f1115;color:#e6e8ee;font-size:14px">' +
+    '<button type="button" id="authexpiredgo" style="padding:7px 14px;border:0;border-radius:7px;' +
+    'background:#3b82f6;color:#fff;font-weight:600;cursor:pointer">Sign in</button>' +
+    '<span id="authexpirederr" role="alert" style="color:#f87171"></span>';
+  document.body.appendChild(el);
+
+  const submit = async () => {
+    const pw = document.getElementById('authexpiredpw').value;
+    const err = document.getElementById('authexpirederr');
+    err.textContent = '';
+    try{
+      const body = new URLSearchParams({ password: pw });
+      // redirect:'manual' so a 302 (success) is reported as an opaque response rather than
+      // being followed and replacing the page we are trying to preserve.
+      const r = await window.__rawFetch(B + '/login', {
+        method: 'POST', body, redirect: 'manual',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      });
+      if (r.status === 401){ err.textContent = 'Incorrect password.'; return; }
+      if (r.status === 429){ err.textContent = 'Too many attempts — wait a few minutes.'; return; }
+      el.remove();
+      _authPrompted = false;
+      document.dispatchEvent(new CustomEvent('auth:restored'));
+    }catch(e){ err.textContent = 'Network error.'; }
+  };
+  document.getElementById('authexpiredgo').addEventListener('click', submit);
+  document.getElementById('authexpiredpw').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submit();
+  });
+  return el;
+}
+
+function onAuthExpired(){
+  if (_authPrompted) return;
+  _authPrompted = true;
+  _authBar();
+  const pw = document.getElementById('authexpiredpw');
+  if (pw) pw.focus();
+}
+
+if (typeof window !== 'undefined' && window.fetch && !window.__rawFetch){
+  window.__rawFetch = window.fetch.bind(window);
+  window.fetch = async function(...args){
+    const r = await window.__rawFetch(...args);
+    // The login POST itself legitimately answers 401 for a wrong password; don't recurse on it.
+    const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+    if (r.status === 401 && !url.endsWith('/login')) onAuthExpired();
+    return r;
+  };
+}
+
 /* ── /api/ref cache ────────────────────────────────────────────────────────────────────────
    `light=1` skips the grounded opinion, which is a Vertex call for any reference that has none
    cached yet. Panes that only need text ask for light; the opinion and the full detail view ask
@@ -141,6 +219,37 @@ const THUMB_IO = ('IntersectionObserver' in window)
       ents.forEach(e => { if (e.isIntersecting){ io.unobserve(e.target); loadThumb(e.target); } });
     }, { rootMargin: '600px' })
   : null;
+
+/* PDF links are rendered inert; one batched manifest promotes the ones that actually resolve.
+   /pdf/<pub> 404s unless a file or a cached pdf_url exists, and most references have neither --
+   23 of 34 links on the gold report were dead. Same batching shape as resolveThumbs(). */
+async function resolvePdfLinks(){
+  const pending = [...document.querySelectorAll('.pdflink[aria-disabled="true"]')];
+  if (!pending.length) return;
+  for (let i = 0; i < pending.length; i += 40){
+    const chunk = pending.slice(i, i + 40);
+    const settle = (el, ok) => {
+      if (ok){
+        const a = document.createElement('a');
+        a.href = B + '/pdf/' + encodeURIComponent(el.dataset.pub);
+        a.target = '_blank'; a.rel = 'noopener';
+        a.textContent = 'PDF';
+        a.title = 'Open the cached PDF for ' + el.dataset.pub;
+        el.replaceWith(a);
+      } else {
+        el.title = 'No PDF cached for this reference.';
+      }
+    };
+    try{
+      const q = chunk.map(el => el.dataset.pub).join(',');
+      const map = await (await fetch(B + '/api/pdfs?pubs=' + encodeURIComponent(q))).json();
+      chunk.forEach(el => settle(el, !!map[el.dataset.pub]));
+    }catch(e){
+      // Manifest failed: leave every link in the chunk inert rather than promoting a guess.
+      chunk.forEach(el => settle(el, false));
+    }
+  }
+}
 
 /* One request resolves every unresolved thumbnail on the page. */
 async function resolveThumbs(){
@@ -333,15 +442,49 @@ function filterByElement(el){
 }
 
 /* ── lightbox ────────────────────────────────────────────────────────────────────────────── */
+// LB.imgs is a list of PLAIN OBJECTS {src, alt, pub} rather than live DOM nodes, because the
+// three places a figure can be clicked expose their set differently.
+//
+// The old build was `scope.querySelectorAll('.g img, #gMain, .cmpimg')`, which matched the
+// slideover gallery's actual markup (`.gallery > .gmain > #gMain` + `.gthumbs img`) with exactly
+// one selector -- '#gMain' -- and '.g img' with none. That yielded a ONE-element array, and an
+// explicit `if (img.id === 'gMain') LB.imgs = [img]` forced it to one even when it wasn't. So
+// prev/next rendered, were focusable, had correct aria-labels, and could never move: a gallery of
+// 11 figures paged through 1. Take the list from GAL, which already holds every figure URL.
 let LB = { imgs: [], i: 0 };
+let lbOpener = null;      // element that opened the modal, so focus can go back to it
+
+function _lbFromNodes(nodes){
+  return [...nodes].map(n => ({ src: n.src, alt: n.alt || '', pub: n.dataset ? n.dataset.pub : '' }));
+}
+
 function openLb(img){
-  const scope = img.closest('.rpane') || img.closest('.gallery') || img.closest('.cmpgrid') || document;
-  LB.imgs = [...scope.querySelectorAll('.g img, #gMain, .cmpimg')];
-  LB.i = Math.max(0, LB.imgs.indexOf(img));
-  if (img.id === 'gMain'){ LB.imgs = [img]; LB.i = 0; }
+  lbOpener = document.activeElement && document.activeElement !== document.body
+    ? document.activeElement : img;
+  const gallery = img.closest('.gallery');
+  if (gallery && GAL.imgs.length){
+    // Slideover drawings: GAL is the authoritative full list (main image + every thumbnail).
+    const thumbs = document.querySelectorAll('.gthumbs img');
+    LB.imgs = GAL.imgs.map((src, i) => ({
+      src,
+      alt: (thumbs[i] && thumbs[i].alt) || ('Figure ' + (i + 1)),
+      pub: img.dataset.pub || ''
+    }));
+    // Clicking the main image opens whichever figure the gallery is currently showing; clicking a
+    // thumbnail opens that one.
+    const ti = [...thumbs].indexOf(img);
+    LB.i = ti >= 0 ? ti : GAL.i;
+  } else {
+    const scope = img.closest('.rpane') || img.closest('.cmpgrid') || document;
+    LB.imgs = _lbFromNodes(scope.querySelectorAll('.rthumb img, .cmpimg, .g img'));
+    const j = LB.imgs.findIndex(o => o.src === img.src);
+    LB.i = j >= 0 ? j : 0;
+    if (!LB.imgs.length) { LB.imgs = _lbFromNodes([img]); LB.i = 0; }
+  }
   showLb();
   const lb = document.getElementById('lb');
   lb.classList.add('open');
+  lbSetBackgroundInert(true);
   document.getElementById('lbclose').focus();
 }
 function showLb(){
@@ -349,13 +492,70 @@ function showLb(){
   const stage = document.getElementById('lbstage');
   const el = document.createElement('img');
   el.src = im.src;
-  el.alt = im.alt || ('Figure ' + (LB.i + 1) + (im.dataset.pub ? ' of ' + im.dataset.pub : ''));
+  el.alt = im.alt || ('Figure ' + (LB.i + 1) + (im.pub ? ' of ' + im.pub : ''));
   stage.replaceChildren(el);
   document.getElementById('lbcap').textContent =
-    'Figure ' + (LB.i + 1) + ' of ' + LB.imgs.length + (im.dataset.pub ? ' · ' + im.dataset.pub : '');
+    'Figure ' + (LB.i + 1) + ' of ' + LB.imgs.length + (im.pub ? ' · ' + im.pub : '');
+  // Single-figure sets have nothing to page to; don't offer dead controls.
+  const only = LB.imgs.length < 2;
+  ['lbprev', 'lbnext'].forEach(id => { const b = document.getElementById(id); if (b) b.hidden = only; });
 }
 function lbNav(d){ if (!LB.imgs.length) return; LB.i = (LB.i + d + LB.imgs.length) % LB.imgs.length; showLb(); }
-function closeLb(){ document.getElementById('lb').classList.remove('open'); }
+
+// Inerting the background stops Tab REACHING anything behind the modal, but the browser still
+// walks off the end of the document and parks focus on <body>. Cycle within the dialog so Tab
+// from the last control returns to the first (and Shift+Tab the other way round).
+function lbTrapTab(e){
+  const lb = document.getElementById('lb');
+  const items = [...lb.querySelectorAll('button, [href], input, select, textarea, [tabindex]')]
+    .filter(el => !el.hidden && !el.disabled && el.tabIndex !== -1 && el.offsetParent !== null);
+  if (!items.length) return;
+  const first = items[0], last = items[items.length - 1];
+  const active = document.activeElement;
+  if (e.shiftKey && (active === first || !lb.contains(active))){ e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && (active === last || !lb.contains(active))){ e.preventDefault(); first.focus(); }
+}
+
+// The modal sets role=dialog/aria-modal, but that alone does not stop Tab reaching the ~380
+// buttons behind it -- three Tabs from Close landed on "Skip to main content". `inert` removes
+// the background from both the focus order and the accessibility tree.
+//
+// App A can simply inert every body child because its login dialog IS a body child. #lb is NOT:
+// it sits inside <main id="main">, so inerting body's children would inert the modal's own
+// ancestor and therefore the modal itself -- Close/Prev/Next stop taking focus entirely.
+// (Programmatic .click() still works, which makes that failure easy to miss in a scripted check.)
+// Walk up from #lb instead and inert only the SIBLINGS at each level, leaving the ancestor chain
+// live. Nothing outside the modal is reachable; everything inside it stays interactive.
+let _lbInerted = [];
+function lbSetBackgroundInert(on){
+  if (!on){
+    _lbInerted.forEach(el => { el.inert = false; el.removeAttribute('aria-hidden'); });
+    _lbInerted = [];
+    return;
+  }
+  lbSetBackgroundInert(false);      // never stack two applications
+  const lb = document.getElementById('lb');
+  if (!lb) return;
+  for (let node = lb; node && node !== document.documentElement; node = node.parentElement){
+    const parent = node.parentElement;
+    if (!parent) break;
+    [...parent.children].forEach(sib => {
+      if (sib === node || sib.inert) return;
+      sib.inert = true;
+      sib.setAttribute('aria-hidden', 'true');
+      _lbInerted.push(sib);
+    });
+  }
+}
+
+function closeLb(){
+  document.getElementById('lb').classList.remove('open');
+  lbSetBackgroundInert(false);
+  // Return focus to whatever opened the modal; otherwise keyboard users are dumped at the top of
+  // the document and lose their place in the card list.
+  if (lbOpener && document.contains(lbOpener) && typeof lbOpener.focus === 'function') lbOpener.focus();
+  lbOpener = null;
+}
 
 /* ── sort + filter ───────────────────────────────────────────────────────────────────────── */
 function applyControls(){
@@ -758,8 +958,16 @@ function streamJob(slug, onEvent){
   const done = () => { finished = true; };
   function poll(){
     if (finished) return;
-    fetch(B + '/status/' + encodeURIComponent(slug)).then(r => r.json())
-      .then(j => { if (!onEvent(j)) setTimeout(poll, 2000); else done(); })
+    fetch(B + '/status/' + encodeURIComponent(slug))
+      .then(r => {
+        // A lapsed session answers 401 with a JSON error body. Feeding that to onEvent() would
+        // be read as a malformed progress frame; the global fetch hook has already raised the
+        // re-auth bar, so just keep waiting and resume once the user signs back in.
+        if (r.status === 401){ setTimeout(poll, 2000); return null; }
+        if (!r.ok){ setTimeout(poll, 2000); return null; }
+        return r.json();
+      })
+      .then(j => { if (j == null) return; if (!onEvent(j)) setTimeout(poll, 2000); else done(); })
       .catch(() => setTimeout(poll, 2000));
   }
   if (!window.EventSource){ poll(); return; }
@@ -803,6 +1011,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (lb){
     document.addEventListener('keydown', e => {
       if (!lb.classList.contains('open')) return;
+      if (e.key === 'Tab') lbTrapTab(e);
       if (e.key === 'Escape') closeLb();
       if (e.key === 'ArrowLeft') lbNav(-1);
       if (e.key === 'ArrowRight') lbNav(1);
@@ -836,6 +1045,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.refcard .rsnip').forEach(hlNode);
   applyControls();
   resolveThumbs();
+  resolvePdfLinks();
 
   const m = (location.hash || '').match(/patent=([^&]+)/);
   if (m){ try{ openDetail(decodeURIComponent(m[1])); }catch(e){} }

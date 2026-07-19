@@ -40,13 +40,36 @@ _EN_FUNC = set((
     "having each said therein thereof whereby further"
 ).split())
 
-# Function words of the languages EP/DE/WO national-phase text actually appears in.
-_FOREIGN_FUNC = set((
-    "de la el los las un una que para con por del se su como es en y o al lo"          # Spanish
-    " der die das und ein eine mit fur ist den des dem zur zum auf wird bei aus nach"   # German
-    " le les du et pour avec dans par qui au aux sur ce il une est"                     # French
-    " di il lo gli della delle per con del che una sono"                                # Italian
-).split())
+# Function words of the languages EP/DE/WO national-phase text actually appears in, kept per
+# language so a detected source can also be NAMED (the UI shows "translated from German").
+_LANG_FUNC = {
+    "Spanish": set("de la el los las un una que para con por del se su como es en y o al lo".split()),
+    "German":  set("der die das und ein eine mit fur für ist den des dem zur zum auf wird bei aus "
+                   "nach einer einem eines durch dass dadurch gekennzeichnet wobei nicht sich von "
+                   "zu im am oder als bis dieser diese dieses an vor über unter zwischen werden "
+                   "sind ansprüche anspruch".split()),
+    "French":  set("le les du et pour avec dans par qui au aux sur ce il une est".split()),
+    "Italian": set("di il lo gli della delle per con del che una sono".split()),
+}
+_FOREIGN_FUNC = set().union(*_LANG_FUNC.values())
+
+
+def guess_source_language(text: str) -> str:
+    """Best-effort name for the source language. Deterministic, no LLM.
+
+    Only used to LABEL text we already know is non-English; an empty string means "unsure",
+    which callers render as a generic "translated" badge rather than a wrong language name.
+    """
+    words = _WORD_RE.findall((text or "").lower())[:500]
+    if not words:
+        return ""
+    scores = {lang: sum(1 for w in words if w in fn) for lang, fn in _LANG_FUNC.items()}
+    lang, hits = max(scores.items(), key=lambda kv: kv[1])
+    if hits < 3 or hits / len(words) < 0.02:
+        return ""
+    # Ambiguous when a second language scores nearly as well (Spanish/Italian share many words).
+    runner_up = max(v for k, v in scores.items() if k != lang)
+    return lang if hits >= runner_up * 1.5 else ""
 
 _WORD_RE = re.compile(r"[a-zà-ÿ]{2,}")
 
@@ -78,7 +101,13 @@ def looks_nonenglish(text: str) -> bool:
 
     Deliberately conservative: short strings and low-signal text return False, because a
     false "this is foreign" costs a wasted translation call and a wrong UI badge, whereas
-    a false "this is English" costs nothing (the translator detects the language anyway).
+    a false "this is English" is comparatively cheap.
+
+    CAVEAT that used to be stated wrongly here: the old docstring claimed a false "English"
+    "costs nothing (the translator detects the language anyway)". That was not true. translate()
+    uses this function as a PRE-CHECK and returns early when it says English, so the translator
+    is never reached and the source text is handed back labelled English. That is exactly how
+    German claims ended up rendered as English -- see split_bilingual() for the real cause.
     """
     t = (text or "").strip()
     if len(t) < 40:
@@ -93,6 +122,126 @@ def looks_nonenglish(text: str) -> bool:
     en = sum(1 for w in words if w in _EN_FUNC) / len(words)
     fr = sum(1 for w in words if w in _FOREIGN_FUNC) / len(words)
     return (fr > en and fr > 0.05) or en < 0.03
+
+
+# --- bilingual (source + machine-English) fields ---------------------------------------
+# The corpus stores many non-English claims ALREADY BILINGUAL: the original claim immediately
+# followed by its English machine translation, concatenated with no separator at all --
+#
+#   "...verbunden sind.Suction device with ..."
+#   "...verschwenkbar ist.1. Lifting device with a mast ..."
+#
+# Two consequences, both bad:
+#   1. looks_nonenglish() sees one blob that is ~half English function words, measures EN 0.230
+#      vs FOREIGN 0.142, answers False, and translate() short-circuits -- so /api/translate/DE-*
+#      returned German text labelled lang:"English" in 0.13-0.25 s having made no LLM call.
+#   2. Even labelled correctly, an attorney was being shown German and English run together
+#      mid-sentence, which is unreadable.
+#
+# Splitting the field fixes both, and costs nothing: the English half is already there, so the
+# right answer is to RETURN it rather than pay to re-translate the German half.
+#
+# Finding the boundary takes two signals together, because either alone is wrong:
+#
+#   * PUNCTUATION alone is not enough -- the junction is inconsistently marked. It can be
+#     ".1. ", ". ", or (most often) a bare "." with no space at all: "...fluchten.Lifting".
+#     Claims are also full of interior sentences, so there are many candidates.
+#   * LANGUAGE CROSSOVER alone is not precise enough -- scoring every word boundary picks an
+#     argmax a few words off the true junction, which strands German at the head of the English
+#     half ("Galgens befindet.Gripping means (121)...").
+#
+# So: enumerate the punctuation candidates (a full stop, optionally a claim number, then a
+# capital), and pick the candidate whose split best separates foreign-dominant text from
+# English-dominant text. Exact boundaries, and no reliance on any single junction spelling.
+_MIN_HALF_WORDS = 8
+# The negative lookbehind rejects single-letter abbreviations, so German "z.B." ("e.g.") is not
+# mistaken for a sentence end -- it otherwise split DE-2536829-A1 claim 1 at "...z." / "B. Glas-
+# scheiben...", handing back German as the English half.
+_BOUNDARY_RE = re.compile(r"(?<![\s(][a-zA-ZäöüÄÖÜ])\.\s*(?:\d+\s*\.\s*)?(?=[A-ZÄÖÜ])")
+
+
+def _looks_mixed(text: str) -> bool:
+    """Substantial amounts of BOTH English and a foreign language in one field.
+
+    Backstop for bilingual text whose junction split_bilingual() could not locate (no usable
+    punctuation candidate near the midpoint). Such text must never be short-circuited as
+    "English" -- that is the original defect. Returning True routes it to the real translator,
+    which costs a call but is correct.
+    """
+    words = _WORD_RE.findall((text or "").lower())[:500]
+    if len(words) < 30:
+        return False
+    en, fr = _lang_votes(words)
+    return fr >= 5 and fr / len(words) >= 0.06 and en / len(words) >= 0.06
+
+
+def _lang_votes(words):
+    """(english_votes, foreign_votes) over a word list."""
+    en = sum(1 for w in words if w in _EN_FUNC)
+    fr = sum(1 for w in words if w in _FOREIGN_FUNC)
+    return en, fr
+
+
+def split_bilingual(text: str):
+    """Split "<source-language text><its English translation>" into (source, english).
+
+    Returns None when the text does not look like a source+English pair -- monolingual text of
+    either language, text too short to judge, or no boundary with a clear language flip.
+    """
+    t = (text or "").strip()
+    if len(t) < 120:
+        return None
+
+    if len(_WORD_RE.findall(t.lower())) < _MIN_HALF_WORDS * 2:
+        return None
+
+    # Candidate cuts, restricted to the middle of the text: a claim and its translation are
+    # close to the same length, so the junction is always near the midpoint, and this also rules
+    # out degenerate near-empty halves.
+    cands = [m.end() for m in _BOUNDARY_RE.finditer(t)
+             if 0.2 * len(t) <= m.end() <= 0.8 * len(t)]
+    if not cands:
+        return None
+
+    best = None
+    for cut in cands:
+        pre = _WORD_RE.findall(t[:cut].lower())
+        post = _WORD_RE.findall(t[cut:].lower())
+        if len(pre) < _MIN_HALF_WORDS or len(post) < _MIN_HALF_WORDS:
+            continue
+        en_pre, fr_pre = _lang_votes(pre)
+        en_post, fr_post = _lang_votes(post)
+        # Fractions, so the two halves compare fairly even at uneven lengths.
+        score = ((fr_pre - en_pre) / len(pre)) + ((en_post - fr_post) / len(post))
+        if best is None or score > best[0]:
+            best = (score, cut)
+
+    if best is None:
+        return None
+    score, cut = best
+    # A genuine DE->EN flip scores well clear of this; monolingual text hovers near 0 and can go
+    # slightly positive by chance, which is why the threshold is not simply > 0.
+    if score < 0.12:
+        return None
+
+    src, eng = t[:cut].strip(), t[cut:].strip()
+    # The English half often opens with the claim number ("...ist.2. Vacuum lifting device..."),
+    # which the snap above consumes into the source half and leaves dangling there as "2.".
+    src = re.sub(r"\s*\d+\s*\.\s*$", "", src).strip()
+    if len(src) < 40 or len(eng) < 40:
+        return None
+    # Final sanity check: the halves must actually differ in language, not just in position.
+    #
+    # This deliberately does NOT call looks_nonenglish(). That function returns False for
+    # anything under 20 words by design, and a single claim's German half is routinely 15-25
+    # words -- so gating on it rejected genuine splits whose crossover score was above 1.0
+    # (measured: 29 of 120 sampled DE claims, all of them really bilingual). Compare the raw
+    # votes instead, which stays meaningful on short halves.
+    en_s, fr_s = _lang_votes(_WORD_RE.findall(src.lower()))
+    en_e, fr_e = _lang_votes(_WORD_RE.findall(eng.lower()))
+    if not (fr_s > en_s and en_e > fr_e):
+        return None
+    return src, eng
 
 
 # --- LLM translation ------------------------------------------------------------------
@@ -157,8 +306,21 @@ def translate(text: str, target: str = "English", use_cache: bool = True) -> dic
             hit["cached"] = True
             return hit
 
+    # Already bilingual? Then the English is sitting right there — hand it back instead of
+    # paying to translate the German half, and instead of mislabelling the whole blob "English".
+    pair = split_bilingual(text)
+    if pair is not None:
+        src, eng = pair
+        res = {"lang": guess_source_language(src), "translated": True, "text": eng,
+               "cached": False, "bilingual": True, "source_text": src}
+        if use_cache:
+            _store(key, dict(res))
+        return res
+
     # Cheap pre-check: don't spend calls on text the heuristic is confident is English.
-    if not looks_nonenglish(text):
+    # _looks_mixed catches bilingual text we could not cleanly split, so it goes to the
+    # translator rather than being returned as "English".
+    if not (looks_nonenglish(text) or _looks_mixed(text)):
         res = {"lang": "English", "translated": False, "text": text, "cached": False}
         if use_cache:
             _store(key, res)
@@ -207,8 +369,34 @@ def translate_publication(pub: str, fields=("abstract", "claims"), use_cache: bo
         if "claims" in fields:
             cur.execute("SELECT claim_no, text FROM claims WHERE publication_id=%s ORDER BY claim_no",
                         (row["id"],))
-            src["claims"] = "\n\n".join(f"{c['claim_no']}. {c['text']}" for c in cur.fetchall() if c["text"])
+            rows = [c for c in cur.fetchall() if c["text"]]
+            # The bilingual duplication is PER CLAIM ROW, so it has to be undone per row. Joining
+            # first and splitting once would find a single crossover in the middle of claim ~10
+            # and mangle everything either side of it.
+            claim_src, claim_eng, langs, any_bilingual = [], [], [], False
+            for c in rows:
+                one = f"{c['claim_no']}. {c['text']}"
+                pair = split_bilingual(c["text"])
+                if pair:
+                    any_bilingual = True
+                    s, e = pair
+                    claim_src.append(f"{c['claim_no']}. {s}")
+                    claim_eng.append(f"{c['claim_no']}. {e}")
+                    langs.append(guess_source_language(s))
+                else:
+                    claim_src.append(one)
+                    claim_eng.append(one)
+            src["claims"] = "\n\n".join(claim_src)
+            if any_bilingual:
+                named = [x for x in langs if x]
+                res["fields"]["claims"] = {
+                    "lang": max(set(named), key=named.count) if named else "",
+                    "translated": True, "text": "\n\n".join(claim_eng), "cached": False,
+                    "bilingual": True, "source_text": "\n\n".join(claim_src),
+                }
     for k, v in src.items():
+        if k in res["fields"]:
+            continue                                  # already resolved by the bilingual split
         res["fields"][k] = translate(v, use_cache=use_cache) if v.strip() else \
             {"lang": "", "translated": False, "text": "", "cached": False}
     return res

@@ -61,9 +61,9 @@
 
 <div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Figure viewer">
   <button type="button" class="x" id="lbclose" onclick="closeLb()" aria-label="Close the figure viewer">✕</button>
-  <button type="button" class="nav l" onclick="lbNav(-1)" aria-label="Previous figure">‹</button>
+  <button type="button" class="nav l" id="lbprev" onclick="lbNav(-1)" aria-label="Previous figure">‹</button>
   <div id="lbstage"></div>
-  <button type="button" class="nav r" onclick="lbNav(1)" aria-label="Next figure">›</button>
+  <button type="button" class="nav r" id="lbnext" onclick="lbNav(1)" aria-label="Next figure">›</button>
   <div class="cap" id="lbcap"></div>
 </div>
 {% endblock %}

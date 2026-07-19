@@ -52,6 +52,9 @@ SESSION_HOURS = _num("SESSION_HOURS", 720)          # 30 days; single-user tool,
 # keeps regression.sh / warm_reports / cron able to hit the app without embedding the password.
 TRUST_LOOPBACK = _flag("AUTH_TRUST_LOOPBACK", "1")
 _LOOPBACK = ("127.0.0.1", "::1", "localhost")
+# How many reverse proxies sit in front of us, each appending one hop to X-Forwarded-For.
+# Exactly one today (nginx). See client_ip() for why this is the security-critical number.
+TRUSTED_PROXY_HOPS = max(1, int(_num("TRUSTED_PROXY_HOPS", 1)))
 
 # Endpoints that must stay reachable without a session.
 _OPEN_ENDPOINTS = {"healthz", "auth.login", "auth.logout", "static"}
@@ -61,14 +64,43 @@ _OPEN_ENDPOINTS = {"healthz", "auth.login", "auth.logout", "static"}
 # client identity
 # ---------------------------------------------------------------------------------------------
 def client_ip():
-    """The real caller. REMOTE_ADDR is the TCP peer (unspoofable); only when that peer is our
-    trusted reverse proxy do we believe X-Forwarded-For's first hop."""
+    """The real caller, as far as we can actually prove it.
+
+    REMOTE_ADDR is the TCP peer and cannot be forged; X-Forwarded-For can be, entirely. We only
+    consult XFF when the peer is our own reverse proxy.
+
+    Which ELEMENT of XFF to believe is the whole game. nginx fronts this app with
+
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    and `$proxy_add_x_forwarded_for` APPENDS the connecting peer to whatever the client already
+    sent. A request that arrives carrying a forged header therefore reaches us as
+
+        X-Forwarded-For: <whatever the attacker wrote>, <real client IP>
+
+    so element [0] is 100% attacker-controlled and element [-1] is the one our own proxy wrote.
+    Reading [0] (as this did) keyed every per-IP bucket on a value the caller picked: rotating one
+    header handed out an unlimited supply of fresh login-attempt buckets.
+
+    Generally, with N trusted proxies each appending one hop, the last N entries are ours and the
+    first trustworthy one is at index -N. TRUSTED_PROXY_HOPS makes that explicit and configurable
+    rather than hardcoding "the last one"; if a CDN is ever put in front of nginx, set it to 2.
+    """
     peer = request.environ.get("REMOTE_ADDR", "") or "-"
-    if peer in _LOOPBACK or peer.startswith("10.") or peer.startswith("172.") or peer.startswith("192.168."):
-        xff = request.headers.get("X-Forwarded-For", "")
-        if xff:
-            return xff.split(",")[0].strip()
-    return peer
+    if not _peer_is_trusted_proxy(peer):
+        return peer
+    parts = [p.strip() for p in request.headers.get("X-Forwarded-For", "").split(",") if p.strip()]
+    if not parts:
+        return peer
+    # Clamp: a short chain means the client sent fewer hops than we expected (or none at all), so
+    # fall back to the earliest entry we have rather than indexing off the front of the list.
+    idx = max(0, len(parts) - TRUSTED_PROXY_HOPS)
+    return parts[idx]
+
+
+def _peer_is_trusted_proxy(peer):
+    return (peer in _LOOPBACK or peer.startswith("10.")
+            or peer.startswith("172.") or peer.startswith("192.168."))
 
 
 def is_loopback():
@@ -102,13 +134,18 @@ class TokenBucket:
 class Limiter:
     """Per-IP buckets plus one global bucket, for a single named class of expensive work."""
 
-    def __init__(self, name, rate, burst, global_rate, global_burst, max_ips=4096):
+    def __init__(self, name, rate, burst, global_rate, global_burst, max_ips=4096,
+                 global_exempts_known_good=False):
         self.name = name
         self.rate, self.burst = rate, burst
         self.per_ip = {}
         self.global_bucket = TokenBucket(global_rate, global_burst)
         self.lock = threading.Lock()
         self.max_ips = max_ips
+        # When set, IPs that have recently completed this action successfully skip the global
+        # backstop. See the login limiter for the reasoning.
+        self.global_exempts_known_good = global_exempts_known_good
+        self.known_good = {}          # ip -> expiry monotonic
 
     def _bucket(self, ip):
         with self.lock:
@@ -119,12 +156,39 @@ class Limiter:
                 b = self.per_ip[ip] = TokenBucket(self.rate, self.burst)
             return b
 
+    def mark_known_good(self, ip, ttl=86400.0):
+        """Record that `ip` completed this action legitimately (e.g. logged in)."""
+        if not self.global_exempts_known_good:
+            return
+        with self.lock:
+            if len(self.known_good) > self.max_ips:
+                self.known_good.clear()
+            self.known_good[ip] = time.monotonic() + ttl
+
+    def _is_known_good(self, ip):
+        with self.lock:
+            exp = self.known_good.get(ip)
+            if exp is None:
+                return False
+            if exp < time.monotonic():
+                self.known_good.pop(ip, None)
+                return False
+            return True
+
     def check(self, ip):
         ok, retry = self._bucket(ip).take()
         if not ok:
             return False, retry, f"per-IP limit for {self.name}"
         ok, retry = self.global_bucket.take()
         if not ok:
+            # A uniform global reject means one abusive source denies service to everybody. For
+            # login that is a trivial DoS: 30 requests locked out ALL logins for ~15 minutes,
+            # including the legitimate user, which is a worse outcome than the brute-force the
+            # bucket exists to stop. An IP that has authenticated successfully before is not the
+            # flood, so let it past the backstop; its own per-IP bucket (checked above, and now
+            # unspoofable) still bounds it.
+            if self.global_exempts_known_good and self._is_known_good(ip):
+                return True, 0.0, ""
             return False, retry, f"global limit for {self.name}"
         return True, 0.0, ""
 
@@ -157,8 +221,15 @@ _LIMITERS = {
     # answered in 2.0 s, unthrottled. This bucket is the actual defence: ~10 attempts per 15 min per
     # IP (burst 10, refill 1/90 s), with a global ceiling so a botnet spread across many source IPs
     # can't sidestep the per-IP bucket either. Mirrors the login bucket App A already had.
+    # The per-IP bucket is the real defence and, now that client_ip() can no longer be steered by
+    # a forged X-Forwarded-For, it is actually enforceable -- so the global backstop no longer has
+    # to be the hair trigger it was. It was 30 burst / 1 per 30 s, which any single source could
+    # drain in seconds to lock every other user out for ~15 minutes. Widened to a genuine
+    # botnet-scale ceiling (120 burst, 12/min sustained), and IPs that have logged in before skip
+    # it entirely so an attack cannot lock out the intended user.
     "auth.login": Limiter("login attempts", _num("RL_LOGIN_RATE", 1 / 90.0), _num("RL_LOGIN_BURST", 10),
-                          _num("RL_LOGIN_GRATE", 1 / 30.0), _num("RL_LOGIN_GBURST", 30)),
+                          _num("RL_LOGIN_GRATE", 1 / 5.0), _num("RL_LOGIN_GBURST", 120),
+                          global_exempts_known_good=True),
 }
 
 
@@ -170,6 +241,7 @@ def reset_limits():
     """Test helper: refill every bucket."""
     for lim in _LIMITERS.values():
         lim.per_ip.clear()
+        lim.known_good.clear()
         lim.global_bucket.tokens = lim.global_bucket.burst
 
 
@@ -371,6 +443,9 @@ def login():
             session.clear()
             session["auth"] = True
             session.permanent = True
+            # This IP demonstrably holds the password, so it is not the brute-force. Remember it
+            # so a flood from somewhere else can't lock the real user out via the global bucket.
+            _LIMITERS["auth.login"].mark_known_good(client_ip())
             nxt = _safe_next(request.form.get("next") or request.args.get("next"))
             if nxt:
                 # `next` is app-relative; re-attach the proxy prefix (/patents-data) so the
