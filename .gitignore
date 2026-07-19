@@ -35,3 +35,9 @@ data/run_budget.json
 
 # federated search response cache (regenerable, and can be large)
 data/federation_cache/
+
+# OPS weekly byte budget + translation cache (regenerable runtime state)
+data/ops_budget.json
+data/translations/
+data/finish_embed.*
+*.bak-uiredesign-*
