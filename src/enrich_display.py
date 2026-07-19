@@ -43,8 +43,35 @@ UA = {"User-Agent": "Mozilla/5.0 (patent-pilot enrichment)"}
 IMG_TIMEOUT = 40
 
 
-def espacenet_url(pub):
-    return f"https://worldwide.espacenet.com/patent/search?q={pub.replace('-','')}"
+def espacenet_url(pub, family_id=None):
+    """Espacenet deep link for a publication.
+
+    The old form (`/patent/search?q=<number>`) was a bare full-text SEARCH, which can land
+    on a result list or the wrong document. This is an exact `pn=` publication lookup, and
+    when the DOCDB simple family is known it uses the richer family-scoped path that opens
+    the document with its family panel populated. Both forms are live; the family id is
+    zero-padded to nine digits, which is what Espacenet's path expects.
+    """
+    p = pub.replace("-", "").upper()
+    q = f"?q=pn%3D{p}"
+    fid = "".join(ch for ch in str(family_id or "") if ch.isdigit())
+    if fid:
+        return (f"https://worldwide.espacenet.com/patent/search/family/{fid.zfill(9)}"
+                f"/publication/{p}{q}")
+    return f"https://worldwide.espacenet.com/patent/search/publication/{p}{q}"
+
+
+def _simple_family_id(pub):
+    """DOCDB simple family id from the corpus, for the family-scoped Espacenet link.
+    Free — it is already a column on `publications`; costs no OPS request."""
+    try:
+        with db.cursor() as cur:
+            cur.execute("SELECT simple_family_id FROM publications "
+                        "WHERE publication_number=%s LIMIT 1", (pub,))
+            row = cur.fetchone()
+            return str(row["simple_family_id"]) if row and row.get("simple_family_id") else None
+    except Exception:
+        return None
 
 
 def google_patents_url(pub):
@@ -199,6 +226,27 @@ def _normalize(pub, raw):
         if extracted:
             local_imgs = extracted
             figs_from_pdf = True
+
+    # LAST TIER — EPO OPS. Google Patents genuinely has NO drawing asset and NO PDF for a
+    # large slice of the corpus (69% of sampled DE publications, 16% of EP), and OPS has a
+    # facsimile for almost all of them. Fires only when every Google channel above came up
+    # empty, so publications that already resolve never spend a request against the shared
+    # 4 GB/week OPS quota. This also populates data/pdfs/<pub>.pdf, which is what /pdf/<pub>
+    # and /api/pdfs read — so it converts dead PDF links into real documents for free.
+    ops_info = {}
+    if not local_imgs and not local_pdf:
+        try:
+            import ops_drawings
+            ops_info = ops_drawings.recover(pub) or {}
+        except Exception:
+            ops_info = {}
+        if ops_info:
+            local_imgs = ops_info.get("images") or local_imgs
+            local_pdf = ops_info.get("pdf_local") or local_pdf
+            try:
+                ops_drawings.note_provenance(pub, ops_info)
+            except Exception:
+                pass
     # classifications -> CPC chips
     cls = []
     for c in (raw.get("classifications") or []):
@@ -251,10 +299,22 @@ def _normalize(pub, raw):
         "n_images": len(local_imgs),
         "pdf_local": local_pdf,
         "pdf_url": pdf_url,
-        "pdf_source": pdf_source,
+        "pdf_source": "epo_ops" if (ops_info and not pdf_source) else pdf_source,
         "figs_from_pdf": figs_from_pdf,
         "facsimile_digitized": bool(local_imgs or local_pdf),
-        "espacenet": espacenet_url(pub),
+        # PROVENANCE — which office each asset actually came from. A patent attorney needs
+        # to know that a drawing is the EPO's facsimile of the DE original rather than
+        # something Google rendered.
+        "drawings_source": ("epo_ops" if ops_info else
+                            ("google_pdf" if figs_from_pdf else
+                             ("google" if local_imgs else None))),
+        "drawings_provenance": (ops_info or {}).get("provenance", ""),
+        "ops_instance": (ops_info or {}).get("instance", ""),
+        "ops_pages": (ops_info or {}).get("n_pages", 0),
+        # BOTH office links, always. Neither source is a superset of the other: Google is
+        # richer for US and has the citation tooling, Espacenet holds the original
+        # facsimiles for the older and non-US publications Google simply does not carry.
+        "espacenet": espacenet_url(pub, _simple_family_id(pub)),
         "google_patents": google_patents_url(pub),
     }
 
@@ -299,10 +359,30 @@ def enrich_for_display(pub, force=False):
         return cached["_display"]
     raw = enrich.fetch_details(pub)
     if not raw:
-        # graceful: no SerpApi payload — still give the user the external links
-        disp = {"pub": pub, "facsimile_digitized": False, "images": [], "n_images": 0,
-                "pdf_local": None, "pdf_url": None, "no_details": True,
-                "espacenet": espacenet_url(pub), "google_patents": google_patents_url(pub)}
+        # No SerpApi payload at all. This is NOT a rare edge case — it is the normal
+        # outcome for exactly the publications this whole recovery path exists for (old DE
+        # / EP nationals), so it must try OPS rather than give up. Previously it returned
+        # bare links and the user saw no drawings even though the EPO had them.
+        ops_info = {}
+        try:
+            import ops_drawings
+            ops_info = ops_drawings.recover(pub) or {}
+            if ops_info:
+                ops_drawings.note_provenance(pub, ops_info)
+        except Exception:
+            ops_info = {}
+        imgs = ops_info.get("images") or []
+        disp = {"pub": pub,
+                "facsimile_digitized": bool(imgs or ops_info.get("pdf_local")),
+                "images": imgs, "n_images": len(imgs),
+                "pdf_local": ops_info.get("pdf_local"), "pdf_url": None,
+                "no_details": True,
+                "drawings_source": "epo_ops" if ops_info else None,
+                "drawings_provenance": ops_info.get("provenance", ""),
+                "ops_instance": ops_info.get("instance", ""),
+                "ops_pages": ops_info.get("n_pages", 0),
+                "espacenet": espacenet_url(pub, _simple_family_id(pub)),
+                "google_patents": google_patents_url(pub)}
         cache_path(pub).write_text(json.dumps({"_display": disp}, indent=1))
         return disp
     disp = _normalize(pub, raw)

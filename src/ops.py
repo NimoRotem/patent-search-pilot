@@ -356,8 +356,21 @@ def parse_description(xml_bytes):
     return parse_description_full(xml_bytes)[0]
 
 
+# The desc values OPS actually emits on <ops:document-instance>. "FullDocument" is the real
+# wire value for the complete facsimile — an earlier guess of "fullimage" (the last path
+# SEGMENT of its link, not its desc) matched nothing, so every full-document instance was
+# silently dropped and only publications with a separate "Drawing" instance were seen. That
+# is invisible in the common case, because most publications have both.
+IMAGE_DESCS = ("drawing", "fulldocument", "fullimage")
+
+
 def parse_images(xml_bytes):
-    """-> list of {link, pages, desc, sections} drawing/facsimile instances."""
+    """-> list of {link, pages, desc, sections} drawing/facsimile instances.
+
+    Ordered with the "Drawing" instance FIRST: it is drawing sheets by construction, so a
+    consumer can crop it without running a drawing-vs-text classifier, whereas a
+    "FullDocument" facsimile also contains cover and description pages.
+    """
     root = ET.fromstring(xml_bytes)
     out = []
     for inst in _findall_local(root, "document-instance"):
@@ -365,9 +378,70 @@ def parse_images(xml_bytes):
         link = inst.get("link")
         pages = int(inst.get("number-of-pages", "0") or 0)
         secs = [s.get("name") for s in inst.iter() if _lname(s.tag) == "document-section"]
-        if link and (desc.lower() in ("drawing", "fullimage") or "DRAWINGS" in (secs or [])):
+        if link and (desc.lower() in IMAGE_DESCS or "DRAWINGS" in (secs or [])):
             out.append({"link": link, "pages": pages, "desc": desc, "sections": secs})
+    out.sort(key=lambda i: 0 if (i["desc"] or "").lower() == "drawing" else 1)
     return out
+
+
+# ---- facsimile page retrieval ---------------------------------------------------------------
+# OPS serves facsimiles ONE PAGE PER REQUEST:
+#   GET {link}.pdf?Range=<n>   Accept: application/pdf   -> a one-page PDF
+# There is no whole-document form, so an N-page facsimile costs N requests and N pages of
+# quota. Everything here is therefore capped and cached on disk forever (drawings are
+# immutable once published, so there is no TTL to reason about).
+IMAGE_CACHE = DATA / "ops_images"
+MAX_IMAGE_PAGES = int(os.environ.get("OPS_MAX_IMAGE_PAGES", "12"))
+
+
+def fetch_image_page(link, page):
+    """One facsimile page as PDF bytes (b'' if unavailable). Disk-cached forever."""
+    import hashlib
+    key = hashlib.sha1(f"{link}|{page}".encode()).hexdigest()
+    dest = IMAGE_CACHE / f"{key}.pdf"
+    try:
+        if dest.exists() and dest.stat().st_size > 0:
+            return dest.read_bytes()
+    except Exception:
+        pass
+    st, body, _ = _ops_get(f"{link}.pdf", accept="application/pdf",
+                           params={"Range": str(page)})
+    if st != 200 or not (body or b"")[:5].startswith(b"%PDF"):
+        return b""
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(body)
+    except Exception:
+        pass
+    return body
+
+
+def fetch_facsimile(pubnum, max_pages=MAX_IMAGE_PAGES):
+    """Best available facsimile for a publication.
+
+    -> {"pages": [pdf_bytes, ...], "desc": "Drawing"|"FullDocument", "link": ..., "bytes": n}
+    or {} when OPS has no imagery. Prefers the Drawing instance.
+    """
+    data = ops_fetch(pubnum, want=("images",))
+    insts = data.get("images") or []
+    if not insts:
+        return {}
+    inst = insts[0]
+    n = min(int(inst.get("pages") or 1) or 1, max_pages)
+    pages, total = [], 0
+    for i in range(1, n + 1):
+        try:
+            b = fetch_image_page(inst["link"], i)
+        except OpsBudgetExceeded:
+            break                      # keep whatever pages we already paid for
+        if not b:
+            break
+        pages.append(b)
+        total += len(b)
+    if not pages:
+        return {}
+    return {"pages": pages, "desc": inst.get("desc") or "", "link": inst.get("link"),
+            "bytes": total, "total_pages": inst.get("pages") or len(pages)}
 
 
 def _iso_date(s):
