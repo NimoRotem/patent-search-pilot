@@ -97,6 +97,24 @@ class _PrefixMiddleware:
 
 app.wsgi_app = _PrefixMiddleware(app.wsgi_app)
 
+
+@app.context_processor
+def _inject_corpus_facts():
+    """Make `corpus` available to EVERY template.
+
+    base.html renders the corpus scope/currency disclosure in its footer, so every page that
+    extends it needs `corpus` — but it was only passed explicitly by index, out_of_domain and
+    report. notfound.html, compare.html and print.html therefore raised
+    'corpus' is undefined and returned a 500, which is how a 404 for a bad slug became a crash.
+    Supplying it here rather than at each render_template keeps the disclosure impossible to omit
+    by forgetting an argument. Explicit corpus= arguments still win; facts() is cached.
+    """
+    try:
+        return {"corpus": corpus_facts.facts()}
+    except Exception:
+        # The disclosure must never be the reason a page fails to render.
+        return {"corpus": {}}
+
 REPORTS = DATA / "reports"
 RATIONALE = DATA / "rationale"
 EXPORTS = DATA / "reports" / "exports"
@@ -213,6 +231,53 @@ def _set_job(slug, **kw):
     _publish(slug, _job_event(slug, snapshot))
 
 
+# ---------------------------------------------------------------------------------------------
+# Stage heartbeat.
+#
+# The cross-encoder head is one blocking call inside a child process; there is no per-item hook to
+# tap, and slicing it to manufacture one was measured to double the stage (RERANK_CHUNK in
+# retrieval.py). So while it runs, tick the elapsed time from a daemon thread. It costs nothing,
+# it cannot affect the result, and it turns a 56 s frozen message into a live one.
+_HEARTBEATS = {}
+_HB_LOCK = threading.Lock()
+_HB_TICK = float(os.environ.get("PROGRESS_HEARTBEAT_SEC", "3"))
+
+
+def _start_stage_heartbeat(slug, n_refs, tick=None):
+    """Tick elapsed time on `slug`'s current stage until _stop_stage_heartbeat is called."""
+    _stop_stage_heartbeat(slug)
+    tick = _HB_TICK if tick is None else tick
+    stop = threading.Event()
+
+    def _run():
+        t0 = time.time()
+        while not stop.wait(tick):
+            with _JOB_LOCK:
+                job = _JOBS.get(slug)
+                # Only keep ticking while this job is still running; never resurrect a finished
+                # or errored job, and never overwrite a newer stage's message.
+                if not job or job.get("status") != "running" or job.get("kind") != "reranking":
+                    return
+            secs = int(time.time() - t0)
+            _set_job(slug, kind="reranking",
+                     detail={"elapsed_sec": secs, "refs": n_refs, "stage": "rerank"},
+                     msg=f"Scoring the closest {n_refs} references against your claim elements "
+                         f"— {secs}s elapsed, usually about a minute…")
+
+    t = threading.Thread(target=_run, name=f"hb-{slug}", daemon=True)
+    with _HB_LOCK:
+        _HEARTBEATS[slug] = stop
+    t.start()
+    return stop
+
+
+def _stop_stage_heartbeat(slug):
+    with _HB_LOCK:
+        stop = _HEARTBEATS.pop(slug, None)
+    if stop:
+        stop.set()
+
+
 def _job_event(slug, job):
     """The single wire shape shared by /status (poll) and /events (SSE), so the fallback path and
     the streaming path can never disagree."""
@@ -283,10 +348,27 @@ def _generate(slug, query, subject, mode, wide=False):
             elif stage == "reranking":
                 _set_job(slug, kind=stage, detail={"families": data["families"]},
                          msg=f"Reranking {data['families']} families + grounding the claim chart…")
+                # This stage is the cross-encoder scoring the top-25 head, and it is the last
+                # ~40-60 s of the run. It used to sit on the single message above for 56.4 s --
+                # about half the total elapsed time -- with nothing changing, which reads as a
+                # hang. Slicing the scoring to report countable progress was measured to DOUBLE
+                # the stage (see RERANK_CHUNK in retrieval.py), so tick elapsed time instead:
+                # it costs nothing and the user can always see the run is alive and roughly how
+                # far along it is.
+                _start_stage_heartbeat(slug, RERANK_TOP)
+            elif stage == "rerank_progress":
+                # Only fires when RERANK_CHUNK is enabled; real per-item counts beat a heartbeat.
+                done, total = data["done"], data["total"]
+                if done < total:
+                    _set_job(slug, kind=stage,
+                             detail={"done": done, "total": total, "families": data["families"]},
+                             msg=f"Scoring the closest {total} references against your claim "
+                                 f"elements — {done} of {total}…")
 
         rep = A.run(query, subject=subject, mode=mode,
                     cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True),
                     on_event=on_event)
+        _stop_stage_heartbeat(slug)      # reranking finished; stop ticking before the next stage
         rep["partial"] = False
         rep["domain"] = verdict.to_dict() if verdict is not None else None
         # Federation costs real money per call, so it is opt-in per request and NEVER implicit.
@@ -301,6 +383,9 @@ def _generate(slug, query, subject, mode, wide=False):
     except Exception as e:
         traceback.print_exc()
         _set_job(slug, kind="error", status="error", msg=str(e)[:300])
+    finally:
+        # A crash mid-rerank must not leave a thread ticking progress onto a dead job.
+        _stop_stage_heartbeat(slug)
 
 
 def _federate_block(query, mode):

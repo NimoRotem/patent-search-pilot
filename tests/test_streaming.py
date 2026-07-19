@@ -35,7 +35,7 @@ def test_run_emits_partial_before_finishing(monkeypatch):
     UI can show the seed cards immediately. Uses the conftest-mocked embed/LLM (no network)."""
     A = agent.CoverageAgent(webapp.retriever())
     # keep the run short + never touch the real cross-encoder
-    monkeypatch.setattr(A.r, "rerank_families", lambda q, fam, top=25: fam[:top])
+    monkeypatch.setattr(A.r, "rerank_families", lambda q, fam, top=25, **kw: fam[:top])
     events = []
     from agent import AgentConfig
     A.run("a vacuum gripper with a seal and a pump", mode="novelty",

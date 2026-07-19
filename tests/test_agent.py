@@ -40,7 +40,7 @@ def test_report_has_expected_keys():
     A = CoverageAgent.__new__(CoverageAgent)
     # stub the retriever bits the report touches
     A.r = types.SimpleNamespace(
-        rerank_families=lambda q, fam, top=25: fam,
+        rerank_families=lambda q, fam, top=25, **kw: fam,
         family_key=lambda pid: str(pid),
     )
     A._ground = False

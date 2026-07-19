@@ -10,6 +10,7 @@ given, so only citable prior art is returned. Widths kept wide even though the c
 — the pilot measures recall, not speed.
 """
 from __future__ import annotations
+import os
 import re
 from dataclasses import dataclass, field
 import db, embed, rerank as rr
@@ -21,6 +22,19 @@ CHUNK_FETCH = 4000     # chunks pulled before aggregating to publications
 PUB_CAP = 1000         # per-channel publication cap (the spec's ~1000 width)
 RERANK_TOP = 25        # cross-encoder rerank depth (spec says ~300; 25 keeps CPU time sane on
                        # the shared box — RRF already orders well; tune up with a GPU/idle box)
+# Passages scored per cross-encoder call. Pair scores are independent, so slicing changes no
+# result — only how often the UI can be told where we are.
+#
+# DEFAULT OFF (0 = one call), because slicing is NOT free here. Measured on this box, 25
+# passages, two interleaved trials:
+#     single call    39.9 s / 43.3 s
+#     chunks of 5    76.0 s / 83.2 s
+#     chunks of 8    85.3 s / 83.0 s
+# i.e. roughly 2x SLOWER. The model batches internally (batch_size=16), so 25 passages is ~2 full
+# batches while chunks of 5 are five poorly-utilised ones. Doubling a 40 s stage to animate a
+# progress bar is a bad trade, so the UI gets an elapsed-time heartbeat instead (see webapp
+# _generate) and this stays available for a GPU/idle box where the throughput loss is affordable.
+RERANK_CHUNK = int(os.environ.get("RERANK_CHUNK", "0"))
 
 # Per-channel RRF weights (spec §2). Unweighted RRF let broad, noisy channels (CPC ranks 1000
 # docs by classification-match count; BM25 by lexeme count) out-vote a strong #1 dense hit when
@@ -421,10 +435,45 @@ class Retriever:
             r = c.fetchone()
             return r["text"] if r else ""
 
-    def rerank_families(self, query, fam, top=RERANK_TOP, external=None):
+    def rerank_families(self, query, fam, top=RERANK_TOP, external=None, on_progress=None):
+        """`on_progress(done, total)` is called as scoring advances, if given.
+
+        The cross-encoder is by far the longest single step in a run -- measured at ~2.4-3.1 s per
+        passage on this box, so ~60 s for the 25-passage head -- and it used to run as ONE opaque
+        call, which is why the UI sat on "Reranking N families…" for 56 s with no change. Scores
+        are computed per (query, passage) pair and are independent of the other pairs, so scoring
+        in slices is mathematically identical to scoring all at once and lets us report real,
+        countable progress through it.
+        """
         head, tail = fam[:top], fam[top:]
         passages = [self.best_text(pid, external=external) for _, pid, _, _ in head]
-        order = rr.rerank(query, passages)
+        order = _rerank_progressive(query, passages, on_progress=on_progress)
         reordered = [head[i] for i, _ in order]
         # blend reranker score into tuple position; keep tail after
         return reordered + tail
+
+
+def _rerank_progressive(query, passages, on_progress=None, chunk=None):
+    """rr.rerank over `passages`, reporting progress, returning the same (index, score) list.
+
+    Output is identical to a single rr.rerank call: the cross-encoder scores each (query, passage)
+    pair independently, so slicing is invisible to the result -- only to how often we can say
+    where we are. Falls back to one call when chunking is off or there is nothing to gain.
+    """
+    n = len(passages)
+    chunk = RERANK_CHUNK if chunk is None else chunk
+    if not n:
+        return []
+    if chunk <= 0 or n <= chunk:
+        out = rr.rerank(query, passages)
+        if on_progress:
+            on_progress(n, n)
+        return out
+    scored = []
+    for start in range(0, n, chunk):
+        part = passages[start:start + chunk]
+        # rr.rerank returns indices LOCAL to the slice; shift them back to absolute positions.
+        scored.extend((start + i, sc) for i, sc in rr.rerank(query, part))
+        if on_progress:
+            on_progress(min(start + chunk, n), n)
+    return sorted(scored, key=lambda t: t[1], reverse=True)

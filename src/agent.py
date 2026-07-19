@@ -238,10 +238,18 @@ class CoverageAgent:
             emit("round", {"round": rnd, "families": len(ledger.families_seen)})
 
         emit("reranking", {"families": len(ledger.families_seen)})
-        return self.report(query_text, subject, m, ledger, rounds=rnd)
+
+        # The cross-encoder head is the last ~60 s of the run and used to be a single opaque call,
+        # so the UI froze on one message for roughly half the run. Report through it.
+        def _rerank_progress(done, total):
+            emit("rerank_progress", {"done": done, "total": total,
+                                     "families": len(ledger.families_seen)})
+
+        return self.report(query_text, subject, m, ledger, rounds=rnd,
+                           on_progress=_rerank_progress)
 
     # ---- report --------------------------------------------------------------------------
-    def _final_rank(self, query_text, ledger, top=25, rerank=True):
+    def _final_rank(self, query_text, ledger, top=25, rerank=True, on_progress=None):
         """Rank by final_score (seed backbone + centrality/citation promote), then cross-encoder
         rerank the head only (reranking within the head can't change recall@100 — the top-100
         set is fixed). (spec §4 + §6 step 4). `rerank=False` skips the (slow, CPU) cross-encoder —
@@ -251,12 +259,15 @@ class CoverageAgent:
             return ordered
         head = ordered[:top]
         fam = [(fk, ledger.family_pid.get(fk), ledger.final_score(fk), {}) for fk in head]
-        reranked = self.r.rerank_families(query_text, fam, top=min(25, len(fam)))
+        reranked = self.r.rerank_families(query_text, fam, top=min(25, len(fam)),
+                                          on_progress=on_progress)
         ranked = [fk for fk, _, _, _ in reranked] + ordered[top:]
         return ranked
 
-    def report(self, query_text, subject, mode, ledger: CoverageLedger, rounds, rerank=True):
-        ranked_families = self._final_rank(query_text, ledger, rerank=rerank)
+    def report(self, query_text, subject, mode, ledger: CoverageLedger, rounds, rerank=True,
+               on_progress=None):
+        ranked_families = self._final_rank(query_text, ledger, rerank=rerank,
+                                           on_progress=on_progress)
         # combinational (inventive-step) view: which reference supplies which element
         cb = CombinationBuilder(ledger.elements)
         element_report = {}
