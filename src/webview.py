@@ -9,6 +9,7 @@ import json, re
 from datetime import date, datetime
 import db, embed, status as status_mod
 import enrich_display                       # office links + cached drawing provenance (local only)
+import ops_family                            # worldwide INPADOC family -> year/jurisdiction timeline
 from search_modes import Subject, Mode, classify_basis, Basis
 from config import DATA
 
@@ -482,6 +483,8 @@ def _attach_family_members(cur, cards):
     for c in cards:
         c["family_members"] = []
         c["n_family"] = 0
+        c["family_timeline"] = []
+        c["family_source"] = None
     reps_by_sfid = {}
     for c in cards:
         if c.get("sfid"):
@@ -502,6 +505,12 @@ def _attach_family_members(cur, cards):
         if not sfid:
             continue
         seen, out = set(), []
+        # Corpus-only timeline rows: prefer filing/priority year (what Google's Worldwide
+        # applications strip reflects), the card's own row included, so the baseline strip
+        # renders instantly with zero network cost. It is upgraded to the authoritative
+        # worldwide INPADOC family (EPO OPS) by the prefetch / lazy /api/family path.
+        tl_rows = [{"pub": c["pub"], "country": c.get("country"),
+                    "date": c.get("filing_date") or c.get("priority_date") or c.get("publication_date")}]
         for r in members.get(sfid, []):
             pn = r["publication_number"]
             if pn == c["pub"] or pn in seen:
@@ -513,10 +522,39 @@ def _attach_family_members(cur, cards):
                         "kind": r["kind_code"],
                         "date": str(r["publication_date"]) if r["publication_date"] else None,
                         "status": st})
+            tl_rows.append({"pub": pn, "country": r["country"],
+                            "date": r["filing_date"] or r["earliest_priority_date"] or r["publication_date"]})
             if len(out) >= 24:
                 break
         c["family_members"] = out
         c["n_family"] = len(out)
+        try:
+            fam = ops_family.corpus_timeline(c["pub"], tl_rows)
+            c["family_timeline"] = fam["timeline"]
+            c["family_source"] = fam["source"]      # "corpus" (partial) until OPS upgrades it
+            c["family_n"] = fam["n_members"]
+            c["family_juris"] = fam["n_jurisdictions"]
+        except Exception:
+            pass
+
+
+def ensure_family_timelines(cards):
+    """Attach the corpus-only family timeline to cards that predate the feature.
+
+    A `<slug>.view.json` cached before Feature 1 has no `family_timeline` field, and the cache is
+    served without re-running build_view. This cheap one-query upgrade (no rerank, no LLM) fills
+    the baseline strip on those cached reports so they render it on the next load. Returns True
+    when it changed anything, so the caller can persist the upgraded cache."""
+    cards = cards or []
+    if not cards or all("family_timeline" in c for c in cards):
+        return False
+    conn = db.connect(); conn.autocommit = True
+    cur = conn.cursor()
+    try:
+        _attach_family_members(cur, cards)
+    finally:
+        cur.close(); conn.close()
+    return True
 
 
 def _cached_images(pub):

@@ -192,6 +192,18 @@
                 title="Found via {{ p.label }}">{% if p.icon %}{{ p.icon }} {% endif %}{{ p.label }}</span>{% endfor %}
               {% for cp in c.cpc[:3] %}<span class="chip cpc">{{ cp.code }}</span>{% endfor %}
             </div>
+            {#  Worldwide patent family (Feature 1): a Google-Patents-style year → jurisdiction
+                strip. The server renders a corpus-only baseline (families inside our corpus);
+                app.js upgrades it in place to the authoritative worldwide EPO OPS INPADOC family
+                once the top-N prefetch (or a card open) resolves it. Grouped by application filing
+                year; hover a code for the member's publication number + filing date. #}
+            {% if c.family_timeline %}
+            <div class="famstrip" data-pub="{{ c.pub }}" data-src="{{ c.family_source or '' }}"
+                 aria-label="Worldwide patent family by application year and jurisdiction">
+              <span class="famsum">Family of {{ c.family_n }} in {{ c.family_juris }} jurisdiction{{ 's' if c.family_juris != 1 else '' }}{% if c.family_source == 'corpus' %} · corpus-only{% endif %}</span>
+              {% for g in c.family_timeline %}<span class="famyear"><span class="fy">{{ g.year }}</span>{% for code in g.codes %}<span class="fcc" title="{{ code.pub }}{% if code.date %} · filed {{ code.date }}{% endif %}">{{ code.cc }}</span>{% endfor %}</span>{% endfor %}
+            </div>
+            {% endif %}
             {% if c.abstract %}<p class="rsnip">{{ c.abstract[:230] }}{% if c.abstract|length > 230 %}…{% endif %}</p>{% endif %}
             {% if c.covers_elements %}
             <div class="rcovers"><span class="lbl2">reads on</span>

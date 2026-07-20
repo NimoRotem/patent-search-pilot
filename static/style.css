@@ -273,6 +273,17 @@ td.cell.empty{color:var(--line2)}
 .rsub{margin-top:6px;font-size:12.5px;color:var(--muted);display:flex;gap:18px;flex-wrap:wrap}
 .fldl{color:var(--faint);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-right:4px}
 .rchips{margin-top:8px;display:flex;align-items:center;flex-wrap:wrap;gap:0}
+/* Worldwide patent family timeline (Feature 1): compact year → jurisdiction strip, one line,
+   scrolls horizontally on a narrow card rather than forcing the page to. */
+.famstrip{margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  font-size:11.5px;color:var(--faint);line-height:1.4}
+.famstrip .famsum{color:var(--muted);font-weight:600;white-space:nowrap}
+.famstrip .famyear{display:inline-flex;align-items:baseline;gap:4px;white-space:nowrap}
+.famstrip .fy{color:var(--faint);font-family:ui-monospace,Menlo,monospace;font-size:10.5px}
+.famstrip .fcc{display:inline-block;font-family:ui-monospace,Menlo,monospace;font-size:10.5px;
+  font-weight:600;color:var(--ink);background:var(--s2);border:1px solid var(--line2);
+  border-radius:var(--r-sm);padding:1px 5px;cursor:default}
+.famstrip[data-src="ops"] .fcc,.famstrip[data-src="lens"] .fcc{border-color:rgba(76,141,255,.3)}
 .rsnip{margin-top:9px;font-size:13px;color:var(--muted);line-height:1.5}
 .rcovers{margin-top:8px;font-size:12px}
 .lbl2{color:var(--faint);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-right:5px}

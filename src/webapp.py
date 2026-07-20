@@ -13,6 +13,7 @@ from pathlib import Path
 from flask import (Flask, Response, render_template, request, jsonify, redirect, url_for,
                    send_from_directory, abort, stream_with_context)
 import db, embed, goldset, webview, enrich_display, llm
+import ops_family, prefetch                        # worldwide family timeline + top-N proactive enrich
 import export_data, export_pdf, export_docx
 import auth, rerank_pool
 import claim_chart, translate, drawings          # ported per-card enrichment
@@ -1005,6 +1006,13 @@ def _build_view_cached(slug, rep, regen=False):
                 # Freezing that would leave a report permanently claiming its sources failed.
                 view["source_tags"] = webview._source_tags(
                     rep, view.get("n_local", len(view.get("cards") or [])))
+                # Backfill the Feature-1 family timeline onto caches written before it existed
+                # (cheap one-query DB pass, no rerank/LLM) so old reports render the strip too.
+                try:
+                    if webview.ensure_family_timelines(view.get("cards")):
+                        vp.write_text(json.dumps(view, default=str))
+                except Exception:
+                    pass
                 return view
         except Exception:
             pass
@@ -1511,6 +1519,13 @@ def api_ref(pub):
     # Pure-heuristic language flag: costs nothing, so it is safe on every card. The actual
     # translation stays behind its own lazy endpoint.
     disp["lang_flags"] = {"abstract": translate.looks_nonenglish(disp.get("abstract") or "")}
+    # Worldwide family timeline (Feature 1). Lazy on card-open, exactly like drawings: authoritative
+    # EPO OPS INPADOC family, cached forever. A Lens family already on the display supplements it
+    # without a second network call. Never fatal — a failure just leaves the corpus-only baseline.
+    try:
+        disp["family"] = ops_family.fetch_family(pub, lens_family=disp.get("lens_family"))
+    except Exception:
+        disp["family"] = None
     return jsonify({
         "pub": pub, "display": disp, "sections": secs,
         "matched": {"coord": webview._coord_str((matched or {}).get("coord")),
@@ -1582,6 +1597,53 @@ def api_figs():
             continue
         out[pub] = webview._cached_images(pub)
     return jsonify(out)
+
+
+@app.route("/api/family")
+def api_family():
+    """Batched worldwide-family manifest for the results list — DISK CACHE ONLY, no network.
+
+    Mirrors /api/figs: the page calls this for the top-N prefetched cards to upgrade their
+    corpus-only baseline strip to the authoritative EPO OPS INPADOC timeline once the prefetch
+    worker has cached it. Returns null for a pub not yet resolved (the card keeps its baseline)
+    and never itself spends an OPS request — the live fetch happens in prefetch / /api/ref only.
+    """
+    pubs = [p for p in (request.args.get("pubs") or "").split(",") if p][:80]
+    out = {}
+    for pub in pubs:
+        if not _safe_pub(pub):
+            continue
+        fam = ops_family.load_cached(pub)
+        # Only advertise an authoritative (non-partial, has-codes) family; a cached "none"/empty
+        # answer must not clobber the server-rendered corpus baseline on the card.
+        if fam and fam.get("timeline") and fam.get("source") in ("ops", "lens"):
+            out[pub] = fam
+    return jsonify(out)
+
+
+@app.route("/api/prefetch/<slug>", methods=["GET", "POST"])
+def api_prefetch(slug):
+    """Kick off (POST) or poll (GET) proactive top-N enrichment for a report.
+
+    POST bounds itself to the report's own top-N ranked cards and returns the scheduled pub list;
+    work runs on a shared bounded pool and never blocks this request or the render. GET returns
+    progress so the page can stop polling /api/figs + /api/family once prefetch has finished.
+    """
+    if not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
+    if request.method == "GET":
+        return jsonify(prefetch.status(slug))
+    # POST: derive the top-N from the (already reranked + cached) view, so N tracks the listwise
+    # order and can never be spoofed by the client.
+    vp = REPORTS / f"{slug}.view.json"
+    pubs = []
+    if vp.exists():
+        try:
+            view = json.loads(vp.read_text())
+            pubs = [c.get("pub") for c in (view.get("cards") or []) if c.get("pub")]
+        except Exception:
+            pubs = []
+    return jsonify(prefetch.prefetch_top(slug, pubs))
 
 
 def _pdf_available(pub: str) -> bool:

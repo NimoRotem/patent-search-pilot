@@ -123,6 +123,9 @@ async function fetchRef(pub, light){
   const j = await r.json();
   j._full = !light;
   if (!hit || j._full) REFCACHE[pub] = j;
+  // Every card-open path returns the worldwide family — upgrade the card's timeline strip in
+  // place (this is also what makes a lazily-opened TAIL card resolve its authoritative family).
+  try { if (j.display && j.display.family) upgradeFamily(pub, j.display.family); } catch (e) {}
   return REFCACHE[pub];
 }
 
@@ -259,6 +262,46 @@ async function resolveThumbs(){
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   PREFETCH the TOP-N (Feature 2) — resolve drawings + family WITHOUT a click
+   ══════════════════════════════════════════════════════════════════════════════════════════
+   The server recovers drawings/PDF (Google → EPO OPS → PDF) and the worldwide family only when a
+   card is clicked. Here we ask it to do that eagerly for the top-N ranked cards (bounded + throttled
+   server-side), then poll the DISK-ONLY /api/figs and /api/family until the worker lands each one —
+   so a top-N card's "no drawing available" turns into a figure with no click, while the long tail
+   stays lazy. A genuinely drawing-less publication still resolves to an honest "no drawing available"
+   (it just resolves proactively). Kicked off AFTER the list is shown, so it never delays render. */
+async function prefetchTopN(){
+  if (!window.SLUG) return;
+  let sched;
+  try {
+    sched = await (await fetch(B + '/api/prefetch/' + encodeURIComponent(window.SLUG),
+                               { method: 'POST' })).json();
+  } catch (e) { return; }
+  const pubs = (sched && sched.pubs) || [];
+  if (!pubs.length) return;
+  const q = pubs.map(encodeURIComponent).join(',');
+  let tries = 0;
+  const sweep = async () => {
+    tries++;
+    try {
+      const figs = await (await fetch(B + '/api/figs?pubs=' + q)).json();
+      pubs.forEach(p => { const im = figs[p]; if (im && im.length) backfillThumb(p, im); });
+    } catch (e) {}
+    try {
+      const fams = await (await fetch(B + '/api/family?pubs=' + q)).json();
+      pubs.forEach(p => { if (fams[p]) upgradeFamily(p, fams[p]); });
+    } catch (e) {}
+    let st = null;
+    try { st = await (await fetch(B + '/api/prefetch/' + encodeURIComponent(window.SLUG))).json(); } catch (e) {}
+    // Stop once the worker reports done (one final sweep has just run) or after a bounded budget
+    // of polls, so a wedged fetch can never loop forever.
+    if ((st && !st.running) || tries >= 24) return;
+    setTimeout(sweep, 2500);
+  };
+  setTimeout(sweep, 1500);
+}
+
 /* Back-fill: /api/ref sometimes downloads figures that were not on disk when the page rendered.
    When detail arrives with drawings a card doesn't show, upgrade that card's thumbnail. */
 function backfillThumb(pub, images){
@@ -270,6 +313,38 @@ function backfillThumb(pub, images){
   if (!thumb || !['none', 'error'].includes(thumb.dataset.state)) return;
   thumb.dataset.state = 'loading';
   setThumb(card, images);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   WORLDWIDE FAMILY TIMELINE (Feature 1) — Google-Patents-style year → jurisdiction strip
+   ══════════════════════════════════════════════════════════════════════════════════════════
+   The card renders a corpus-only baseline server-side (families inside our corpus only). The
+   authoritative worldwide INPADOC family (EPO OPS) arrives later — via the top-N prefetch poll
+   or when a card is opened (/api/ref) — and upgrades the strip IN PLACE. Never a downgrade: an
+   authoritative strip is never replaced by a corpus one, and an empty family never clobbers a
+   baseline that already has content. */
+function famInner(family){
+  const nj = family.n_jurisdictions || 0;
+  const sum = 'Family of ' + (family.n_members || 0) + ' in ' + nj +
+    ' jurisdiction' + (nj !== 1 ? 's' : '') + (family.source === 'corpus' ? ' · corpus-only' : '');
+  let h = '<span class="famsum">' + esc(sum) + '</span>';
+  (family.timeline || []).forEach(g => {
+    h += '<span class="famyear"><span class="fy">' + esc(g.year) + '</span>';
+    (g.codes || []).forEach(c => {
+      const t = esc(c.pub || '') + (c.date ? (' · filed ' + esc(c.date)) : '');
+      h += '<span class="fcc" title="' + t + '">' + esc(c.cc) + '</span>';
+    });
+    h += '</span>';
+  });
+  return h;
+}
+function upgradeFamily(pub, family){
+  if (!family || !(family.timeline || []).length) return;      // never clobber a baseline with nothing
+  if (family.source !== 'ops' && family.source !== 'lens') return;   // only the authoritative one upgrades
+  const el = document.querySelector('.famstrip[data-pub="' + CSS.escape(pub) + '"]');
+  if (!el || el.dataset.src === 'ops' || el.dataset.src === 'lens') return;   // already authoritative
+  el.dataset.src = family.source;
+  el.innerHTML = famInner(family);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════════════════
@@ -1221,6 +1296,7 @@ document.addEventListener('DOMContentLoaded', () => {
   applyControls();
   resolveThumbs();
   resolvePdfLinks();
+  prefetchTopN();          // proactively resolve drawings + worldwide family for the top-N cards
 
   const m = (location.hash || '').match(/patent=([^&]+)/);
   if (m){ try{ openDetail(decodeURIComponent(m[1])); }catch(e){} }
