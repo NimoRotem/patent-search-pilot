@@ -51,7 +51,7 @@
       <span><b>{{ v.elements|length }}</b> invention elements</span>
       <span><b>{{ v.mode.replace('_',' ')|title }}</b> mode</span>
       {% if v.subject %}<span>subject
-        <a href="https://patents.google.com/patent/{{ v.subject.replace('-','') }}/en"
+        <a href="{{ v.subject_google or ('https://patents.google.com/patent/' + v.subject.replace('-','') + '/en') }}"
            target="_blank" rel="noopener">{{ v.subject_flag }} {{ v.subject }}</a></span>{% endif %}
       <span>{{ v.languages|join(', ')|upper }}</span>
     </div>
@@ -144,8 +144,11 @@
             {% set im0 = c.images[0] %}
             {#  A locally-recovered figure has a filename (served from /figures/<pub>/<file>); a
                 lemad-Mongo figure has file=null and a remote Google-CDN thumbnail URL that renders
-                directly — nothing was downloaded. Both render here at first paint, no click. #}
-            <img loading="lazy" decoding="async"
+                directly — nothing was downloaded. Both render here at first paint, no click.
+                loading="eager": figures are cheap CDN URLs (no download), so every card's hero
+                shows immediately, iptorch-style, instead of only the ~2 above-fold ones. decoding
+                stays async so decode never blocks first paint. #}
+            <img loading="eager" decoding="async"
                  src="{% if im0.file %}{{ request.script_root }}/figures/{{ c.pub }}/{{ im0.file }}{% else %}{{ im0.thumbnail or im0.full }}{% endif %}"
                  alt="{% if im0.from_pdf %}Page{% else %}Figure{% endif %} 1 of {{ c.pub }}">
             <span class="figbadge">{{ c.n_images }} fig{{ 's' if c.n_images != 1 else '' }}</span>
@@ -167,6 +170,9 @@
             <button type="button" class="rtitle" id="t-{{ c.pub }}" onclick="openDetail('{{ c.pub }}')">
               <span class="rank">#{{ c.rank }}</span>{{ c.flag }} {{ c.title or '(untitled)' }}</button>
             <div class="rmeta">
+              {#  c.google_patents is built server-side by pubnorm (zero-padded + kind code); the
+                  inline fallback is only for a card that somehow lacks it and still drops the
+                  leading zero, so it is a last resort, not the normal path. #}
               <a class="pn" href="{{ c.google_patents or ('https://patents.google.com/patent/' + c.pub.replace('-','') + '/en') }}"
                  target="_blank" rel="noopener" aria-label="{{ c.pub }} on Google Patents">{{ c.pub }} ↗</a>
               {% if c.espacenet %}<a class="pn" href="{{ c.espacenet }}" target="_blank"

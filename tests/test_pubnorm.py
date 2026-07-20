@@ -70,3 +70,52 @@ def test_non_us_not_zero_padded():
 def test_candidates_are_deduped_and_ordered():
     cands = pubnorm.mongo_candidates("US-2019168875-A1")
     assert len(cands) == len(set(cands))     # no duplicates
+
+
+# ---- outbound deep links (Google Patents / Espacenet) --------------------------------------
+# The dropped-leading-zero bug also produced DEAD outbound links. The user's live example:
+#   BROKEN  https://patents.google.com/patent/US2022153556        (a MISSING page)
+#   CORRECT https://patents.google.com/patent/US20220153556A1/en  (resolves)
+def test_google_url_pads_user_example():
+    assert pubnorm.google_url("US-2022153556-A1") == \
+        "https://patents.google.com/patent/US20220153556A1/en"
+
+
+def test_google_url_pads_user_example_kindless():
+    # Even without a kind code the leading zero must be restored (never the bare dropped form).
+    assert pubnorm.google_url("US2022153556") == \
+        "https://patents.google.com/patent/US20220153556/en"
+    assert "US2022153556/" not in pubnorm.google_url("US2022153556")
+
+
+def test_google_url_covers_all_jurisdictions():
+    assert pubnorm.google_url("US-2019168875-A1") == \
+        "https://patents.google.com/patent/US20190168875A1/en"          # US pre-grant padded
+    assert pubnorm.google_url("US-9737154-B2") == \
+        "https://patents.google.com/patent/US9737154B2/en"              # US grant, not padded
+    assert pubnorm.google_url("EP-4048620-B1") == \
+        "https://patents.google.com/patent/EP4048620B1/en"
+    assert pubnorm.google_url("WO-2020123456-A1") == \
+        "https://patents.google.com/patent/WO2020123456A1/en"
+    assert pubnorm.google_url("DE-1286275-B") == \
+        "https://patents.google.com/patent/DE1286275B/en"
+    assert pubnorm.google_url("CN-112233445-A") == \
+        "https://patents.google.com/patent/CN112233445A/en"
+
+
+def test_espacenet_url_pads_user_example():
+    u = pubnorm.espacenet_url("US-2022153556-A1")
+    assert "US20220153556A1" in u
+    assert "pn%3DUS20220153556A1" in u
+    assert "US2022153556A1" not in u.replace("US20220153556A1", "")     # no dropped form left
+
+
+def test_espacenet_url_family_scoped():
+    u = pubnorm.espacenet_url("US-2019168875-A1", family_id="12345")
+    assert "/family/000012345/" in u                                    # zero-padded to 9 digits
+    assert "US20190168875A1" in u
+
+
+def test_link_builders_none_on_junk():
+    assert pubnorm.google_url("") is None
+    assert pubnorm.espacenet_url(None) is None

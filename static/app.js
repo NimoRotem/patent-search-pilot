@@ -21,7 +21,31 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const normPub = s => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-const gp = pub => 'https://patents.google.com/patent/' + (pub || '').replace(/-/g, '') + '/en';
+/* Zero-pad a publication number the way Google Patents / Espacenet need it — the JS mirror of
+   src/pubnorm.py. BigQuery drops the leading zero of the 7-digit US pre-grant serial, so
+   US2022153556A1 must become US20220153556A1 or both offices 404. Returns the padded concatenated
+   form (with kind code preserved); returns the plain stripped form for anything that is not a US
+   pre-grant number, and the raw stripped string when it cannot parse at all. */
+const padPub = raw => {
+  const t = (raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const m = t.match(/^([A-Z]{2})([0-9]{2,})([A-Z][0-9]{0,2})?$/);
+  if (!m) return t;
+  let cc = m[1], num = m[2], kind = m[3] || '';
+  if (cc === 'US' && num.length >= 10 && num.length <= 11) {   // US + YYYY(4) + serial(<=7)
+    const y = parseInt(num.slice(0, 4), 10);
+    if (y >= 1999 && y <= 2035) {
+      const serial = num.slice(4);
+      if (serial.length <= 7) num = num.slice(0, 4) + serial.padStart(7, '0');
+    }
+  }
+  return cc + num + kind;
+};
+/* THE single client-side link-builders. Always prefer these over any server-supplied URL: a
+   display record cached before the padding fix still holds the dead dropped-zero form, whereas
+   these are rebuilt from the (correct) publication number every time. */
+const gp  = pub => 'https://patents.google.com/patent/' + (padPub(pub) || (pub || '').replace(/-/g, '')) + '/en';
+const esp = pub => { const p = padPub(pub) || (pub || '').replace(/-/g, '');
+  return 'https://worldwide.espacenet.com/patent/search/publication/' + p + '?q=pn%3D' + p; };
 const figUrl = (pub, file) => B + '/figures/' + encodeURIComponent(pub) + '/' + encodeURIComponent(file);
 /* A figure entry is EITHER a locally-recovered file (served from /figures/<pub>/<file>) OR a
    lemad-Mongo remote entry ({file:null, thumbnail, full} Google-CDN URLs). One accessor each for
@@ -160,9 +184,11 @@ function thumbNone(thumb){
   thumb.innerHTML = '<span class="tstate"><span aria-hidden="true">🗎</span>no drawing<br>available</span>';
 }
 
-/* States: loading (manifest in flight) → queued (manifest known, off-screen) → ok | none | error.
-   'queued' is a STATIC placeholder, never a spinner: a card the user has not scrolled to has not
-   failed at anything, and an animation there would be a lie about work in progress. */
+/* States: loading (manifest in flight) → queued (manifest known) → ok | none | error.
+   EAGER, iptorch-style: as soon as a card's figure manifest lands we fetch its hero drawing —
+   every card, not just the ones scrolled into view. Figures are cheap CDN URLs (no download),
+   so all ~25 heroes can render at first paint. 'queued' is now only a momentary placeholder
+   before loadThumb runs, never a resting state waiting on a scroll. */
 function setThumb(card, images){
   const thumb = card.querySelector('.rthumb');
   if (!thumb || thumb.dataset.state !== 'loading') return;     // already terminal — never overwrite
@@ -174,12 +200,13 @@ function setThumb(card, images){
   thumb.dataset.state = 'queued';
   thumb.innerHTML = '<span class="tstate"><span aria-hidden="true">🖼</span>' +
     images.length + ' fig' + (images.length !== 1 ? 's' : '') + '</span>';
-  if (THUMB_IO) THUMB_IO.observe(thumb); else loadThumb(thumb);
+  loadThumb(thumb);                                            // eager: load now, don't wait to scroll
 }
 
 /* Deliberately NOT loading="lazy" on a detached Image: Chrome will not start the fetch for a lazy
    image that is not in the document, so the old preload never completed and the card sat on a
-   spinner. Laziness is provided by the observer below instead — explicit, and always terminal. */
+   spinner. We now drive the fetch eagerly (see setThumb) so every card's hero resolves at first
+   paint; the onload/onerror pair keeps it terminal — a figure, or an explicit failure state. */
 function loadThumb(thumb){
   if (thumb.dataset.state !== 'queued') return;
   const pub = thumb.dataset.pub, images = thumb._figs || [];
@@ -205,12 +232,6 @@ function loadThumb(thumb){
   };
   img.src = figThumb(pub, images[0]);
 }
-
-const THUMB_IO = ('IntersectionObserver' in window)
-  ? new IntersectionObserver((ents, io) => {
-      ents.forEach(e => { if (e.isIntersecting){ io.unobserve(e.target); loadThumb(e.target); } });
-    }, { rootMargin: '600px' })
-  : null;
 
 /* PDF links are rendered inert; one batched manifest promotes the ones that actually resolve.
    /pdf/<pub> 404s unless a file or a cached pdf_url exists, and most references have neither --
@@ -439,8 +460,8 @@ async function rtab(btn){
 function paneMissing(pub, what, d){
   d = d || {};
   return '<div class="pempty">No ' + esc(what) + ' for this publication in the local corpus — ' +
-    '<a href="' + esc(d.google_patents || gp(pub)) + '" target="_blank" rel="noopener">Google Patents</a>' +
-    (d.espacenet ? ' · <a href="' + esc(d.espacenet) + '" target="_blank" rel="noopener">Espacenet</a>' : '') +
+    '<a href="' + esc(gp(pub)) + '" target="_blank" rel="noopener">Google Patents</a>' +
+    ' · <a href="' + esc(esp(pub)) + '" target="_blank" rel="noopener">Espacenet</a>' +
     '.</div>';
 }
 
@@ -549,8 +570,8 @@ async function paneFigs(card){
   backfillThumb(pub, imgs);
   if (!imgs.length)
     return '<h4>Drawings</h4><div class="nodig">No drawings are digitized for this document. ' +
-      'View it on <a href="' + esc(d.google_patents || gp(pub)) + '" target="_blank" rel="noopener">Google Patents</a>' +
-      (d.espacenet ? ' or <a href="' + esc(d.espacenet) + '" target="_blank" rel="noopener">Espacenet</a>' : '') + '.</div>';
+      'View it on <a href="' + esc(gp(pub)) + '" target="_blank" rel="noopener">Google Patents</a>' +
+      ' or <a href="' + esc(esp(pub)) + '" target="_blank" rel="noopener">Espacenet</a>.</div>';
   const kind = d.figs_from_pdf ? 'Page ' : 'Figure ';
   return '<h4>Drawings (' + imgs.length + ')</h4>' +
     (d.figs_from_pdf ? '<p class="small muted" style="margin:-4px 0 9px">Extracted from the PDF facsimile.</p>' : '') +
@@ -975,7 +996,7 @@ function renderDetail(pn, j){
   if (d.images) backfillThumb(pn, d.images);
   const flag = (d.country && FLAGS[d.country]) || '';
   let h = '<div class="so-title">' + (flag ? flag + ' ' : '') + esc(d.title || pn) + '</div>';
-  h += '<div class="so-sub"><a class="pn" href="' + esc(d.google_patents || gp(pn)) + '" target="_blank" rel="noopener">' +
+  h += '<div class="so-sub"><a class="pn" href="' + esc(gp(pn)) + '" target="_blank" rel="noopener">' +
     esc(pn) + ' ↗</a>' +
     (d.assignees && d.assignees.length ? ' · ' + esc(d.assignees.join('; ')) : '') +
     (d.publication_date ? ' · published ' + esc(d.publication_date) : '') +
@@ -983,8 +1004,8 @@ function renderDetail(pn, j){
 
   h += '<div class="so-chips">';
   if (d.pdf_url) h += '<a class="chip ch" href="' + B + '/pdf/' + encodeURIComponent(pn) + '" target="_blank" rel="noopener">PDF ⭳</a>';
-  h += '<a class="chip" href="' + esc(d.espacenet || '#') + '" target="_blank" rel="noopener">Espacenet ↗</a>';
-  h += '<a class="chip" href="' + esc(d.google_patents || gp(pn)) + '" target="_blank" rel="noopener">Google Patents ↗</a>';
+  h += '<a class="chip" href="' + esc(esp(pn)) + '" target="_blank" rel="noopener">Espacenet ↗</a>';
+  h += '<a class="chip" href="' + esc(gp(pn)) + '" target="_blank" rel="noopener">Google Patents ↗</a>';
   h += '<button type="button" class="chip el" onclick="openSimilar(\'' + esc(pn) + '\')">More like this</button>';
   if (window.SLUG) h += '<button type="button" class="chip el" id="soChartBtn" onclick="loadChart(\'' + esc(pn) + '\')">Build claim chart</button>';
   if (d.lang_flags && d.lang_flags.abstract)

@@ -149,3 +149,49 @@ def mongo_candidates(pub) -> List[str]:
 def variants(pub) -> List[str]:
     """Alias kept for callers that want every candidate spelling (same as mongo_candidates)."""
     return mongo_candidates(pub)
+
+
+# ---- external deep links (Google Patents / Espacenet) --------------------------------------
+# The SAME dropped-leading-zero bug that hid figures also produces DEAD outbound links: Google
+# Patents and Espacenet 404 on the bare `US2022153556` form and only resolve the zero-padded,
+# kind-code-bearing `US20220153556A1`. mongo_candidates() already computes that padded form
+# first, so both builders below reuse it as the single source of truth. Pure string work; never
+# fetches; returns None on junk so a caller can drop the link rather than emit a broken one.
+def _padded_concat(pub) -> Optional[str]:
+    """The most-canonical CONCATENATED spelling for an external link: the zero-padded,
+    kind-code-bearing form. This is exactly `mongo_candidates(pub)[0]` when the number parses,
+    which is the padded key Google/Espacenet need. Falls back to the stripped form, or None."""
+    cands = mongo_candidates(pub)
+    if cands:
+        return cands[0]
+    s = _strip(pub)
+    return s or None
+
+
+def google_url(pub) -> Optional[str]:
+    """Google Patents deep link that RESOLVES.
+
+    Built from the zero-padded, kind-bearing concatenated form (mongo_candidates()[0]); the bare
+    dropped-zero form (e.g. US2022153556) is a MISSING page, while US20220153556A1 resolves. This
+    is the single link-builder the UI routes every Google Patents URL through. None on junk."""
+    key = _padded_concat(pub)
+    return f"https://patents.google.com/patent/{key}/en" if key else None
+
+
+def espacenet_url(pub, family_id=None) -> Optional[str]:
+    """Espacenet deep link that RESOLVES.
+
+    An exact `pn=` publication lookup on the zero-PADDED concatenated form (family-scoped when the
+    DOCDB simple family id is known, which opens the document with its family panel populated).
+    Mirrors the shape enrich_display.espacenet_url used, but pads the number so US pre-grant links
+    stop 404ing. The family id is zero-padded to nine digits, which is what the path expects.
+    None on junk so a caller can drop the link rather than emit a broken one."""
+    key = _padded_concat(pub)
+    if not key:
+        return None
+    q = f"?q=pn%3D{key}"
+    fid = "".join(ch for ch in str(family_id or "") if ch.isdigit())
+    if fid:
+        return (f"https://worldwide.espacenet.com/patent/search/family/{fid.zfill(9)}"
+                f"/publication/{key}{q}")
+    return f"https://worldwide.espacenet.com/patent/search/publication/{key}{q}"

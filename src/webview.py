@@ -10,6 +10,7 @@ from datetime import date, datetime
 import db, embed, status as status_mod
 import enrich_display                       # office links + cached drawing provenance (local only)
 import ops_family                            # worldwide INPADOC family -> year/jurisdiction timeline
+import pubnorm                               # single link-builder: zero-padded Google/Espacenet URLs
 from search_modes import Subject, Mode, classify_basis, Basis
 from config import DATA
 
@@ -650,6 +651,37 @@ def mongo_enrich_cards(cards):
     return cards
 
 
+def fix_view_office_links(view) -> bool:
+    """Rewrite a CACHED view's outbound office links through pubnorm, in place.
+
+    A report cached before the dropped-zero fix baked the DEAD links into <slug>.view.json — a
+    Google URL with the US pre-grant leading zero dropped (US2022153556 -> a MISSING page) and an
+    un-padded Espacenet lookup. build_view now builds them correctly, but the view cache short-
+    circuits build_view, so freshly-built links never reach an already-cached report. This is the
+    cheap pure-string backfill that fixes them, mirroring the family-timeline / mongo-figure
+    backfills in _build_view_cached. Returns True if anything changed."""
+    changed = False
+    for c in (view.get("cards") or []):
+        pub = c.get("pub")
+        if not pub:
+            continue
+        g = pubnorm.google_url(pub)
+        if g and c.get("google_patents") != g:
+            c["google_patents"] = g
+            changed = True
+        e = pubnorm.espacenet_url(pub, c.get("family_id"))
+        if e and c.get("espacenet") != e:
+            c["espacenet"] = e
+            changed = True
+    subj = view.get("subject")
+    if subj:
+        sg = pubnorm.google_url(subj)
+        if sg and view.get("subject_google") != sg:
+            view["subject_google"] = sg
+            changed = True
+    return changed
+
+
 def _card_content(cur, pid, pub, matched, family_id=None):
     """Everything needed to render the card's tabs WITHOUT a round-trip: claims / description /
     figure captions straight from Postgres (already ingested for most refs) + any figure images
@@ -661,21 +693,26 @@ def _card_content(cur, pid, pub, matched, family_id=None):
     #  load_cached() never hits the network, so adding these costs nothing per card; a reference
     #  that has not been enriched yet simply has no Espacenet link until it is, rather than making
     #  the results page wait on an API call.
-    google_patents = provenance = None
-    #  BUILD the Espacenet link rather than trusting the cached one. Display records cached before
-    #  the URL scheme was corrected still hold the old bare full-text form
-    #  (/patent/search?q=<number>), which can land on a result list or on the wrong document --
-    #  exactly the bug espacenet_url() was written to fix. Constructing it here is pure string
-    #  work, costs no request, and is family-scoped when the family is known.
+    provenance = None
+    #  BUILD both office links here rather than trusting the cached ones. Display records cached
+    #  before the padding fix hold DEAD forms: the old bare Espacenet full-text search, and a
+    #  Google URL with the US pre-grant leading zero dropped (US2022153556 -> a MISSING page vs the
+    #  live US20220153556A1). pubnorm is the single link-builder — it zero-pads and adds the kind
+    #  code both offices 404 without. Pure string work, no request, family-scoped when known.
     try:
-        espacenet = enrich_display.espacenet_url(pub, family_id)
+        google_patents = pubnorm.google_url(pub)
+    except Exception:
+        google_patents = None
+    try:
+        espacenet = pubnorm.espacenet_url(pub, family_id)
     except Exception:
         espacenet = None
     try:
         cached = enrich_display.load_cached(pub) or {}
         disp = cached.get("_display") or {}
-        google_patents = disp.get("google_patents")
         provenance = disp.get("drawings_provenance")
+        if not google_patents:
+            google_patents = disp.get("google_patents")
         if not espacenet:
             espacenet = disp.get("espacenet")
     except Exception:
@@ -771,8 +808,10 @@ def _fed_card(h, qvec):
         "status": st, "basis": "n/a", "sfid": None,
         "channels": [], "prov": prov,
         "covers_elements": [], "n_covers": 0, "has_local_claims": False,
-        # office links straight off the hit; the expandable panes fetch the rest lazily
-        "espacenet": h.get("espacenet"), "google_patents": h.get("url"),
+        # office links BUILT via pubnorm (single link-builder, zero-padded/kind-coded) rather than
+        # the raw federated hit url, which carries the dropped-zero form Google/Espacenet 404 on.
+        "espacenet": pubnorm.espacenet_url(pub, h.get("family_id")) or h.get("espacenet"),
+        "google_patents": pubnorm.google_url(pub) or h.get("url"),
         "drawings_provenance": None,
         "claims": [], "description": [], "figure_caps": [], "images": [], "n_images": 0,
         "matched_coord_raw": None, "has_content": bool(abstract),
@@ -943,6 +982,8 @@ def build_view(report, top_n=25):
     return {
         "query": query, "mode": report.get("mode"), "subject": s,
         "subject_flag": FLAG.get(subject_obj.jurisdiction, "") if subject_obj else "",
+        # zero-padded Google Patents link for the subject header (same dropped-zero fix as the cards)
+        "subject_google": (pubnorm.google_url(s) if s else None),
         "rounds": report.get("rounds"), "n_families": report.get("n_families"),
         "channels_used": report.get("channels_used", []),
         "languages": report.get("languages", []),

@@ -9,6 +9,7 @@ import json
 from datetime import date
 from pathlib import Path
 import db, embed, webview, enrich_display
+import pubnorm  # single link-builder: zero-padded Google/Espacenet URLs (dropped-zero fix)
 from config import DATA
 
 REPORTS = DATA / "reports"
@@ -211,8 +212,9 @@ def assemble(slug, selected_pubs, top_n=25):
             "drawing_path": draw_path, "drawing_caption": draw_cap,
             "quoted": quoted,
             "why": rat.get("why", ""), "reads_on": rat.get("reads_on", []),
-            "google_patents": (disp or {}).get("google_patents") or card.get("google_patents"),
-            "espacenet": (disp or {}).get("espacenet") or card.get("espacenet"),
+            # zero-padded office links (pubnorm) so exported US pre-grant links resolve.
+            "google_patents": pubnorm.google_url(pub) or (disp or {}).get("google_patents") or card.get("google_patents"),
+            "espacenet": pubnorm.espacenet_url(pub, b.get("family_id")) or (disp or {}).get("espacenet") or card.get("espacenet"),
         })
     cur.close(); conn.close()
 

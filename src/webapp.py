@@ -13,6 +13,7 @@ from pathlib import Path
 from flask import (Flask, Response, render_template, request, jsonify, redirect, url_for,
                    send_from_directory, abort, stream_with_context)
 import db, embed, goldset, webview, enrich_display, llm
+import pubnorm  # single link-builder: zero-padded Google/Espacenet URLs (dropped-zero fix)
 import ops_family, prefetch                        # worldwide family timeline + top-N proactive enrich
 import export_data, export_pdf, export_docx
 import auth, rerank_pool
@@ -1024,6 +1025,16 @@ def _build_view_cached(slug, rep, regen=False):
                         vp.write_text(json.dumps(view, default=str))
                 except Exception:
                     pass
+                # Backfill CORRECT outbound office links onto caches written before the dropped-zero
+                # fix (US pre-grant Google/Espacenet URLs that 404). Cheap pure-string pass via
+                # pubnorm, gated by a flag so it runs once per cache.
+                try:
+                    if not view.get("office_links_fixed"):
+                        webview.fix_view_office_links(view)
+                        view["office_links_fixed"] = True
+                        vp.write_text(json.dumps(view, default=str))
+                except Exception:
+                    pass
                 return view
         except Exception:
             pass
@@ -1961,7 +1972,9 @@ def compare():
                                      "coord": webview._coord_str((matched or {}).get("coord")),
                                      "text": (matched or {}).get("text", "")[:1000]} if matched else None,
                          "covers": covers, "n_images": len(imgs),
-                         "google_patents": (disp or {}).get("google_patents")})
+                         # zero-padded Google Patents link (pubnorm) so US pre-grant pubs
+                         # do not 404; the cached disp value drops the leading zero.
+                         "google_patents": pubnorm.google_url(pub) or (disp or {}).get("google_patents")})
     return render_template("compare.html", slug=slug, query=q, mode=rep.get("mode"),
                            elements=rep.get("elements", []), cols=cols)
 
