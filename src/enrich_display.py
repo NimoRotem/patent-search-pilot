@@ -19,6 +19,8 @@ import requests
 import db
 from config import DATA
 import enrich  # reuse fetch_details / gp_id / _safe_date
+import pubnorm  # canonical pub key + Mongo/Google candidate spellings (dropped-zero fix)
+import mongo_corpus  # lemad 39.4M-doc pre-built corpus — figures + full text in ONE call
 
 ENRICHED = DATA / "enriched"
 FIGDIR = DATA / "figures"
@@ -345,18 +347,184 @@ def _merge_lens(pub, disp):
         disp["claims"] = L["claims"]
 
 
+# ===========================================================================================
+# lemad Mongo corpus — figures + full text in ONE call (the iptorch approach)
+# ===========================================================================================
+# iptorch shows content instantly because it reads a PRE-BUILT corpus rather than recovering
+# figures live. We do the same: one mongo_corpus.get_detail() returns the whole payload, and the
+# figures are Google-CDN {full,thumbnail} URLs that render directly — no download, no OPS, no PDF
+# raster. We only fall back to the (slow, flaky) live-recovery chain below on a genuine Mongo miss.
+
+def _mongo_images(md):
+    """Mongo figures -> display image dicts. `file` is None (nothing is downloaded); the card
+    renders `thumbnail` and the lightbox opens `full`, both remote Google-CDN URLs."""
+    out = []
+    for f in (md.get("figures") or []):
+        full = f.get("full")
+        if not full:
+            continue
+        out.append({"file": None, "full": full,
+                    "thumbnail": f.get("thumbnail") or full,
+                    "src_url": full, "from_mongo": True})
+    return out
+
+
+def _display_from_mongo(pub, md):
+    """Build the full display dict from a lemad Mongo doc alone — no SerpApi, no download.
+
+    Same shape as _normalize() so every downstream consumer keeps working, with three additions:
+    `description` (full body text Mongo carries), remote-URL image entries, and
+    drawings_source='lemad_mongo'. Citations / legal events / similar are not in this corpus —
+    they are populated lazily by ensure_raw() when the citation graph is opened."""
+    imgs = _mongo_images(md)
+    return {
+        "pub": pub,
+        "title": md.get("title"),
+        "abstract": md.get("abstract"),
+        "assignees": md.get("assignees") or [],
+        "inventors": md.get("inventors") or [],
+        "priority_date": None,
+        "filing_date": None,
+        "publication_date": md.get("publication_date"),
+        "family_id": None,
+        "country": md.get("country"),
+        "type": None,
+        "classifications": md.get("classifications") or [],
+        "citations": [],
+        "cited_by_count": 0,
+        "similar": [],
+        "legal_events": [],
+        "claims": md.get("claims"),
+        "description": md.get("description"),        # full body text, straight from the corpus
+        "images": imgs,
+        "n_images": len(imgs),
+        "pdf_local": None,                           # remote CDN pdf; nothing downloaded
+        "pdf_url": md.get("pdf_url"),
+        "pdf_source": "lemad_mongo" if md.get("pdf_url") else None,
+        "figs_from_pdf": False,
+        "facsimile_digitized": bool(imgs or md.get("pdf_url")),
+        "drawings_source": "lemad_mongo" if imgs else None,
+        "drawings_provenance": ("figures from the lemad patent corpus (Google-CDN facsimile)"
+                                if imgs else ""),
+        "ops_instance": "",
+        "ops_pages": 0,
+        "mongo_key": md.get("mongo_key"),
+        "source": "lemad_mongo",
+        "espacenet": espacenet_url(pub, _simple_family_id(pub)),
+        "google_patents": google_patents_url(pub),
+    }
+
+
+def _merge_mongo_text(disp, md):
+    """Overlay Mongo's authoritative full text onto a display built by the recovery path.
+
+    Used when Mongo has the document but NO figures (a partial stub): we keep the recovered
+    figures/pdf, but Mongo's title/abstract/claims/description/classifications/parties are more
+    complete than what a bare recovery yields, so they fill any gap. Mongo never blanks a field
+    the recovery already populated."""
+    if not md:
+        return
+    for k in ("title", "abstract", "publication_date", "country"):
+        if md.get(k) and not disp.get(k):
+            disp[k] = md[k]
+    for k in ("claims", "description", "classifications", "assignees", "inventors"):
+        if md.get(k) and not disp.get(k):
+            disp[k] = md[k]
+    if md.get("mongo_key"):
+        disp["mongo_key"] = md["mongo_key"]
+    disp.setdefault("source", "lemad_mongo+recovery")
+
+
+def remote_thumbs(pub):
+    """[{full, thumbnail}] for a pub if its cached display carries Mongo (remote) figures, else [].
+
+    For Integrate: the batch thumbnail endpoint (/api/figs) reads the figure DIRECTORY only and so
+    cannot see Mongo's remote URLs. Call this to union remote thumbnails into that manifest so the
+    results list can render a thumbnail with no download and no round-trip through recovery."""
+    pub = pubnorm.canonical(pub) or pub       # accept either stored spelling
+    cached = load_cached(pub) or {}
+    disp = cached.get("_display") or {}
+    out = []
+    for im in (disp.get("images") or []):
+        if im.get("from_mongo") and im.get("full"):
+            out.append({"full": im["full"], "thumbnail": im.get("thumbnail") or im["full"]})
+    return out
+
+
+def ensure_raw(pub):
+    """Lazily fetch + cache the SerpApi `raw` payload (citations / cited_by / similar_documents)
+    for a pub that was served from Mongo (which has none of those).
+
+    For Integrate: /api/graph reads `load_cached(pub)['raw']`. A Mongo-served pub has no `raw`, so
+    the citation graph would come up empty. Have /api/graph call `enrich_display.ensure_raw(pub)`
+    (instead of re-running enrich_for_display) to populate it on demand. Returns the raw dict or
+    None; never raises."""
+    try:
+        canon = pubnorm.canonical(pub) or pub
+        _pubkey(canon)
+    except Exception:
+        return None
+    pub = canon
+    cached = load_cached(pub) or {}
+    if cached.get("raw"):
+        return cached["raw"]
+    try:
+        raw = enrich.fetch_details(pub)
+    except Exception:
+        raw = None
+    if not raw:
+        return None
+    try:
+        cached["raw"] = raw
+        cache_path(pub).write_text(json.dumps(cached, default=str))
+    except Exception:
+        pass
+    return raw
+
+
 def enrich_for_display(pub, force=False):
     """Return the compact display dict for a publication, using the on-disk cache when present.
-    Downloads drawings + PDF locally on first call. Never blocks on a broken image."""
+
+    MONGO FIRST: try the pre-built lemad corpus. If it has the figures, we render them straight
+    from Google-CDN URLs — one call, no download, no OPS, no PDF raster (this is what makes
+    content appear instantly, as iptorch does, and it fixes the dropped-leading-zero bug that hid
+    US-2019168875-A1's four sketches). Only on a Mongo miss OR a figure-less Mongo stub do we fall
+    back to the existing live recovery (SerpApi images -> Google PDF scrape -> EPO OPS facsimile);
+    a figure-less stub still keeps Mongo's richer full text. Never blocks on a broken image."""
+    # Canonicalize FIRST so both stored spellings — the hyphenated corpus key 'US-2019168875-A1'
+    # and the concatenated report key 'US2019168875A1' — resolve to the same safe filesystem key.
+    canon = pubnorm.canonical(pub) or pub
     try:
-        _pubkey(pub)                          # reject unsafe keys before any filesystem use
+        _pubkey(canon)                        # reject unsafe keys before any filesystem use
     except ValueError:
         return {"pub": str(pub)[:60], "facsimile_digitized": False, "images": [], "n_images": 0,
                 "pdf_local": None, "pdf_url": None, "no_details": True,
                 "espacenet": None, "google_patents": None}
+    pub = canon
     cached = None if force else load_cached(pub)
     if cached and "_display" in cached:
         return cached["_display"]
+
+    # ---- MONGO FAST PATH: figures + full text in one call, nothing downloaded ----------------
+    md = None
+    try:
+        md = mongo_corpus.get_detail(pub)
+    except Exception:
+        md = None
+    if md and md.get("figures"):
+        disp = _display_from_mongo(pub, md)
+        _merge_lens(pub, disp)                # authoritative legal status/family if LENS_TOKEN set
+        cache_path(pub).write_text(json.dumps({"mongo": md, "_display": disp}, default=str))
+        try:
+            if disp.get("pdf_url"):
+                with db.cursor() as cur:
+                    cur.execute("UPDATE publications SET facsimile_path=%s "
+                                "WHERE publication_number=%s", (disp.get("pdf_url"), pub))
+        except Exception:
+            pass
+        return disp
+
+    # ---- FALLBACK: existing live recovery (Mongo missed, or has the doc but no figures) -------
     raw = enrich.fetch_details(pub)
     if not raw:
         # No SerpApi payload at all. This is NOT a rare edge case — it is the normal
@@ -383,12 +551,14 @@ def enrich_for_display(pub, force=False):
                 "ops_pages": ops_info.get("n_pages", 0),
                 "espacenet": espacenet_url(pub, _simple_family_id(pub)),
                 "google_patents": google_patents_url(pub)}
-        cache_path(pub).write_text(json.dumps({"_display": disp}, indent=1))
+        _merge_mongo_text(disp, md)            # figure-less Mongo stub still gives us full text
+        cache_path(pub).write_text(json.dumps({"mongo": md, "_display": disp}, default=str))
         return disp
     disp = _normalize(pub, raw)
+    _merge_mongo_text(disp, md)                # Mongo's fuller claims/description/CPC when present
     _merge_lens(pub, disp)                     # authoritative legal status + family (if LENS_TOKEN set)
     # persist raw + normalized display together
-    cache_path(pub).write_text(json.dumps({"raw": raw, "_display": disp}, default=str))
+    cache_path(pub).write_text(json.dumps({"raw": raw, "mongo": md, "_display": disp}, default=str))
     # keep DB facsimile_path in sync (local pdf preferred)
     try:
         if disp.get("pdf_local") or disp.get("pdf_url"):
