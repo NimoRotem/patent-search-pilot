@@ -285,6 +285,10 @@ td.cell.empty{color:var(--line2)}
   border-radius:var(--r-sm);padding:1px 5px;cursor:default}
 .famstrip[data-src="ops"] .fcc,.famstrip[data-src="lens"] .fcc{border-color:rgba(76,141,255,.3)}
 .rsnip{margin-top:9px;font-size:13px;color:var(--muted);line-height:1.5}
+.relop{margin-top:8px;font-size:12.5px;color:var(--text);line-height:1.5;padding:7px 10px;
+  border-left:3px solid var(--accent,#3b82f6);background:rgba(59,130,246,.06);border-radius:0 5px 5px 0}
+.relop-l{display:inline-block;color:var(--accent,#3b82f6);font-size:10.5px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.05em;margin-right:7px;vertical-align:1px}
 .rcovers{margin-top:8px;font-size:12px}
 .lbl2{color:var(--faint);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-right:5px}
 .relbox{flex:none;width:64px;text-align:center;padding:9px 0;border-radius:var(--r-sm);

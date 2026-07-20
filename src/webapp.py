@@ -1013,6 +1013,17 @@ def _build_view_cached(slug, rep, regen=False):
                         vp.write_text(json.dumps(view, default=str))
                 except Exception:
                     pass
+                # Backfill the eager lemad-Mongo figures + full text onto caches written before this
+                # existed (cheap: get_detail is on-disk cached, no download/OPS/LLM), gated by a flag
+                # so it runs once per cache. This is what makes an ALREADY-cached report (e.g. the
+                # gold drone report) show its sketches on reload without a costly re-rank.
+                try:
+                    if not view.get("mongo_enriched"):
+                        webview.mongo_enrich_cards(view.get("cards") or [])
+                        view["mongo_enriched"] = True
+                        vp.write_text(json.dumps(view, default=str))
+                except Exception:
+                    pass
                 return view
         except Exception:
             pass
@@ -1052,6 +1063,18 @@ def _build_view_cached(slug, rep, regen=False):
             traceback.print_exc()
             view["cards"] = (view.get("cards") or [])[:_DISPLAY_TOP]
             view["listwise_reranked"] = False
+        # EAGER MONGO DETAIL + FIGURES (iptorch-style, item 1/2). For every displayed card, pull
+        # the pre-built lemad corpus doc (figures as Google-CDN URLs + full claims/description/CPC)
+        # in ONE cheap call each — no download, no OPS, no PDF raster — and fill any gap the local
+        # corpus left. This is what makes drawings + full content appear on the card immediately,
+        # including on the federated-only PQAI hits that carry only a title/abstract, and it fixes
+        # the dropped-leading-zero pub bug that hid US-2019168875-A1's four sketches. Bounded to the
+        # displayed set (<=25), runs once here before the view is cached, so reloads stay instant.
+        try:
+            webview.mongo_enrich_cards(view.get("cards") or [])
+            view["mongo_enriched"] = True
+        except Exception:
+            traceback.print_exc()
         # Verify the element x reference matrix BEFORE it is cached and rendered. Until now a
         # filled cell there meant only "the retriever returned this publication for this element";
         # nothing checked that the cited passage discloses anything, and an audit measured 7 of 12
@@ -1494,10 +1517,22 @@ def api_ref(pub):
                 qv = _query_vec(slug, q)
                 matched = webview.match_in_pub(cur, pid, qv)
                 rat_passages = ref_passages(cur, pid, qv, secs)
-    # fall back to SerpApi claims when DB has none
+    # fall back to SerpApi/Mongo claims when DB has none
     if secs is not None and not secs["claims"] and disp.get("claims"):
         secs["claims"] = [{"claim_no": i + 1, "independent": None, "text": c, "resolved_text": None}
                           for i, c in enumerate(disp["claims"])]
+    # Federated / out-of-corpus pubs have NO Postgres row, so `secs` is None even though the lemad
+    # corpus carries the full document. Synthesize a sections dict from the Mongo-backed display so
+    # the Claims / Description panes and the full-document view render uniformly instead of showing
+    # "no full text" for a pub the corpus clearly has. Mongo claims/description are plain strings.
+    if secs is None and (disp.get("claims") or disp.get("description")):
+        secs = {
+            "claims": [{"claim_no": i + 1, "independent": None, "text": c, "resolved_text": None}
+                       for i, c in enumerate(disp.get("claims") or []) if c],
+            "paragraphs": [{"para_no": None, "heading": None, "text": t}
+                           for t in (disp.get("description") or []) if t],
+            "figures": [],
+        }
     rationale = None
     # `light=1` returns everything EXCEPT the grounded opinion. The results list needs sections
     # (claims / description) to fill a card's expandable panes, and _rationale() runs a Vertex call
@@ -1524,7 +1559,14 @@ def api_ref(pub):
     # EPO OPS INPADOC family, cached forever. A Lens family already on the display supplements it
     # without a second network call. Never fatal — a failure just leaves the corpus-only baseline.
     try:
-        disp["family"] = ops_family.fetch_family(pub, lens_family=disp.get("lens_family"))
+        # `light=1` is what the eager per-card warm and the text-only panes use; a live OPS family
+        # fetch there would fan an INPADOC request per visible card against the shared weekly OPS
+        # budget. In light mode read the disk cache only (populated by the bounded prefetch worker /
+        # a full card-open); a full (non-light) open still fetches the authoritative worldwide family.
+        if request.args.get("light") == "1":
+            disp["family"] = ops_family.load_cached(pub)
+        else:
+            disp["family"] = ops_family.fetch_family(pub, lens_family=disp.get("lens_family"))
     except Exception:
         disp["family"] = None
     return jsonify({
@@ -1596,7 +1638,16 @@ def api_figs():
     for pub in pubs:
         if not _safe_pub(pub):
             continue
-        out[pub] = webview._cached_images(pub)
+        # Disk figures first; if none are downloaded, union the lemad Mongo remote-CDN thumbnails
+        # so a Mongo-served pub shows a sketch on the list without any download or recovery round-
+        # trip (enrich_display.remote_thumbs reads only the cached display, no network).
+        imgs = webview._cached_images(pub)
+        if not imgs:
+            try:
+                imgs = enrich_display.remote_thumbs(pub)
+            except Exception:
+                imgs = []
+        out[pub] = imgs
     return jsonify(out)
 
 
@@ -1644,7 +1695,11 @@ def api_prefetch(slug):
             pubs = [c.get("pub") for c in (view.get("cards") or []) if c.get("pub")]
         except Exception:
             pubs = []
-    return jsonify(prefetch.prefetch_top(slug, pubs))
+    # Prefetch EVERY displayed card (iptorch-style), not just the top handful: Mongo figures cost
+    # no download and no OPS, so eager enrichment of the whole shown set is cheap. The ~half that
+    # Mongo misses (older EP/DE/WO/CN) still go through the bounded, OPS-budget-guarded recovery
+    # worker, so this cannot hammer the shared quota.
+    return jsonify(prefetch.prefetch_top(slug, pubs, n=len(pubs)))
 
 
 def _pdf_available(pub: str) -> bool:
@@ -1778,9 +1833,10 @@ def api_graph(pub):
     disp = enrich_display.load_cached(pub)
     raw = (disp or {}).get("raw") if disp else None
     if not raw:
-        enrich_display.enrich_for_display(pub)
-        disp = enrich_display.load_cached(pub)
-        raw = (disp or {}).get("raw") if disp else None
+        # A Mongo-served pub has a cached display but no SerpApi `raw` (citations / cited_by /
+        # similar are not in the corpus). ensure_raw lazily fetches + caches just that payload,
+        # instead of re-running the whole display enrichment.
+        raw = enrich_display.ensure_raw(pub)
     raw = raw or {}
     def _pubs(node, key):
         out = []
@@ -1887,11 +1943,20 @@ def compare():
             for el, hits in rep.get("element_evidence", {}).items():
                 if any(h.get("family") == fam for h in hits):
                     covers.append(el)
-            img = None
+            img = img_full = None
             imgs = (disp or {}).get("images") or []
             if imgs:
-                img = f"/figures/{pub}/{imgs[0]['file']}"
-            cols.append({"pub": pub, "biblio": b, "img": img,
+                im0 = imgs[0]
+                # A lemad-Mongo figure has file=None and a remote Google-CDN thumbnail/full URL;
+                # a locally-recovered figure has a filename served from /figures/<pub>/<file>. A
+                # root-relative "/figures/..." path is prefixed with script_root in the template;
+                # an absolute remote URL is used verbatim (the template only prefixes local paths).
+                if im0.get("file"):
+                    img = img_full = f"/figures/{pub}/{im0['file']}"
+                else:
+                    img = im0.get("thumbnail") or im0.get("full")
+                    img_full = im0.get("full") or im0.get("thumbnail")
+            cols.append({"pub": pub, "biblio": b, "img": img, "img_full": img_full,
                          "matched": {"kind": (matched or {}).get("kind"),
                                      "coord": webview._coord_str((matched or {}).get("coord")),
                                      "text": (matched or {}).get("text", "")[:1000]} if matched else None,

@@ -23,6 +23,11 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
 const normPub = s => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const gp = pub => 'https://patents.google.com/patent/' + (pub || '').replace(/-/g, '') + '/en';
 const figUrl = (pub, file) => B + '/figures/' + encodeURIComponent(pub) + '/' + encodeURIComponent(file);
+/* A figure entry is EITHER a locally-recovered file (served from /figures/<pub>/<file>) OR a
+   lemad-Mongo remote entry ({file:null, thumbnail, full} Google-CDN URLs). One accessor each for
+   the list/thumbnail size and the full-resolution size, so every render site handles both shapes. */
+const figThumb = (pub, im) => (im && im.file) ? figUrl(pub, im.file) : ((im && (im.thumbnail || im.full)) || '');
+const figFull  = (pub, im) => (im && im.full) ? im.full : ((im && im.file) ? figUrl(pub, im.file) : ((im && im.thumbnail) || ''));
 const FLAGS = { US: '🇺🇸', EP: '🇪🇺', WO: '🌐', DE: '🇩🇪', GB: '🇬🇧', FR: '🇫🇷', JP: '🇯🇵', CN: '🇨🇳', KR: '🇰🇷' };
 
 function fmtDur(ms){
@@ -198,7 +203,7 @@ function loadThumb(thumb){
     if (thumb.dataset.state !== 'fetching' || thumb.dataset.pub !== pub) return;
     thumbFail(thumb);
   };
-  img.src = figUrl(pub, images[0].file);
+  img.src = figThumb(pub, images[0]);
 }
 
 const THUMB_IO = ('IntersectionObserver' in window)
@@ -300,6 +305,32 @@ async function prefetchTopN(){
     setTimeout(sweep, 2500);
   };
   setTimeout(sweep, 1500);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   EAGER DETAIL WARM — every visible card's full detail, iptorch-style
+   ══════════════════════════════════════════════════════════════════════════════════════════
+   iptorch prefetches EVERY visible card's document in parallel and caches it, so its pill tabs
+   open instantly. We do the same: a bounded fan of light /api/ref calls (light=1 skips the Vertex
+   opinion and, server-side, reads the family from cache only — so this spends no LLM and no OPS)
+   populates REFCACHE for the whole shown set. A subsequent tab click then renders from cache with
+   no spinner, and any Mongo figures the call surfaces back-fill the card's thumbnail immediately.
+   Kicked off after the list is interactive so it never delays first paint; concurrency-limited so
+   it can never swamp the RAM-tight server. */
+async function warmDetails(){
+  const pubs = [...document.querySelectorAll('.refcard')].map(c => c.dataset.pub).filter(Boolean);
+  if (!pubs.length) return;
+  let i = 0;
+  const worker = async () => {
+    while (i < pubs.length){
+      const pub = pubs[i++];
+      try {
+        const j = await fetchRef(pub, true);
+        if (j && j.display && j.display.images) backfillThumb(pub, j.display.images);
+      } catch (e) {}
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);   // 3-wide: instant tabs, gentle on the box
 }
 
 /* Back-fill: /api/ref sometimes downloads figures that were not on disk when the page rendered.
@@ -524,7 +555,8 @@ async function paneFigs(card){
   return '<h4>Drawings (' + imgs.length + ')</h4>' +
     (d.figs_from_pdf ? '<p class="small muted" style="margin:-4px 0 9px">Extracted from the PDF facsimile.</p>' : '') +
     '<div class="g">' + imgs.map((im, i) =>
-      '<figure><img loading="lazy" decoding="async" src="' + figUrl(pub, im.file) + '" ' +
+      '<figure><img loading="lazy" decoding="async" src="' + esc(figThumb(pub, im)) + '" ' +
+      'data-full="' + esc(figFull(pub, im)) + '" ' +
       'alt="' + esc(kind + (i + 1) + ' of ' + pub) + '" data-pub="' + esc(pub) + '" onclick="openLb(this)">' +
       '<figcaption>' + (d.figs_from_pdf ? 'p. ' : 'fig ') + (i + 1) + '</figcaption></figure>').join('') +
     '</div>';
@@ -632,7 +664,10 @@ let LB = { imgs: [], i: 0 };
 let lbOpener = null;      // element that opened the modal, so focus can go back to it
 
 function _lbFromNodes(nodes){
-  return [...nodes].map(n => ({ src: n.src, alt: n.alt || '', pub: n.dataset ? n.dataset.pub : '' }));
+  // Prefer a data-full (the full-resolution URL, remote or local) over the possibly-thumbnail src,
+  // so the lightbox always shows the high-res figure even when the pane rendered a small thumbnail.
+  return [...nodes].map(n => ({ src: (n.dataset && n.dataset.full) || n.src, alt: n.alt || '',
+                                pub: n.dataset ? n.dataset.pub : '' }));
 }
 
 function openLb(img){
@@ -968,7 +1003,7 @@ function renderDetail(pn, j){
   }
   h += '<div id="soChart"></div><div id="soTrans"></div>';
 
-  const imgs = (d.images || []).map(im => figUrl(d.pub || pn, im.file));
+  const imgs = (d.images || []).map(im => figFull(d.pub || pn, im));
   if (imgs.length){
     GAL = { imgs, i: 0 };
     const kind = d.figs_from_pdf ? 'Page ' : 'Figure ';
@@ -1296,7 +1331,8 @@ document.addEventListener('DOMContentLoaded', () => {
   applyControls();
   resolveThumbs();
   resolvePdfLinks();
-  prefetchTopN();          // proactively resolve drawings + worldwide family for the top-N cards
+  prefetchTopN();          // proactively resolve drawings + worldwide family for every shown card
+  setTimeout(warmDetails, 1200);   // eager-warm each card's detail so its tabs open instantly
 
   const m = (location.hash || '').match(/patent=([^&]+)/);
   if (m){ try{ openDetail(decodeURIComponent(m[1])); }catch(e){} }

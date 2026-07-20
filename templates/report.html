@@ -115,7 +115,7 @@
   <div class="cards" id="cards">
     {% for c in v.cards %}
     <article class="refcard" data-pub="{{ c.pub }}"
-         data-rank="{{ c.rank }}" data-rel="{{ c.relevancy }}"
+         data-rank="{{ c.rank }}" data-rel="{{ c.get('relevancy_score') if c.get('relevancy_score') is not none else c.relevancy }}"
          data-date="{{ c.publication_date or '' }}" data-juris="{{ c.country or '' }}"
          data-basis="{{ c.basis }}" data-covers="{{ c.covers_elements|join('||') }}"
          data-ncovers="{{ c.n_covers }}" data-nimg="{{ c.n_images }}"
@@ -141,9 +141,13 @@
                 data-state="{% if c.images %}ok{% else %}loading{% endif %}"
                 onclick="openDetail('{{ c.pub }}')" aria-label="Open the full document for {{ c.pub }}">
           {% if c.images %}
+            {% set im0 = c.images[0] %}
+            {#  A locally-recovered figure has a filename (served from /figures/<pub>/<file>); a
+                lemad-Mongo figure has file=null and a remote Google-CDN thumbnail URL that renders
+                directly — nothing was downloaded. Both render here at first paint, no click. #}
             <img loading="lazy" decoding="async"
-                 src="{{ request.script_root }}/figures/{{ c.pub }}/{{ c.images[0].file }}"
-                 alt="{% if c.images[0].from_pdf %}Page{% else %}Figure{% endif %} 1 of {{ c.pub }}">
+                 src="{% if im0.file %}{{ request.script_root }}/figures/{{ c.pub }}/{{ im0.file }}{% else %}{{ im0.thumbnail or im0.full }}{% endif %}"
+                 alt="{% if im0.from_pdf %}Page{% else %}Figure{% endif %} 1 of {{ c.pub }}">
             <span class="figbadge">{{ c.n_images }} fig{{ 's' if c.n_images != 1 else '' }}</span>
             <span class="zoomhint" aria-hidden="true">🔍</span>
           {% else %}
@@ -205,6 +209,12 @@
             </div>
             {% endif %}
             {% if c.abstract %}<p class="rsnip">{{ c.abstract[:230] }}{% if c.abstract|length > 230 %}…{% endif %}</p>{% endif %}
+            {#  The iptorch-style written "why relevant" opinion (C's per-result relevance narrative),
+                shown on the card so a domain expert reads the take without opening a tab. The deeper
+                grounded opinion + best-matching passage still live in the "Why relevant" tab. #}
+            {% if c.get('relevancy_opinion') %}
+            <p class="relop"><span class="relop-l">Why relevant</span>{{ c.get('relevancy_opinion') }}</p>
+            {% endif %}
             {% if c.covers_elements %}
             <div class="rcovers"><span class="lbl2">reads on</span>
               {% for el in c.covers_elements[:5] %}<button type="button" class="chip el" data-el="{{ el|e }}"
@@ -213,9 +223,13 @@
               {% if c.covers_elements|length > 5 %}<span class="chip">+{{ c.covers_elements|length - 5 }}</span>{% endif %}
             </div>{% endif %}
           </div>
-          <div class="relbox r{{ (c.relevancy // 20) }}"
-               title="Best-passage semantic match: {{ '%.3f'|format(c.match_score) }} cosine{% if c.match_coord %} at {{ c.match_kind }} {{ c.match_coord }}{% endif %}">
-            <div class="relnum">{{ c.relevancy }}</div>
+          {#  The number is the iptorch-style per-result AI relevancy score (0-100) when C's
+              reranker scored the card; it falls back to the best-passage cosine relevancy when
+              scoring was off. The hover carries the grounded one-line reason. #}
+          {% set relscore = c.get('relevancy_score') if c.get('relevancy_score') is not none else c.relevancy %}
+          <div class="relbox r{{ (relscore // 20) }}"
+               title="{% if c.get('relevancy_source') %}AI relevancy {{ c.get('relevancy_score') }}/100{% if c.get('relevancy_opinion') %} — {{ c.get('relevancy_opinion')[:200] }}{% endif %}{% else %}Best-passage semantic match: {{ '%.3f'|format(c.match_score) }} cosine{% if c.match_coord %} at {{ c.match_kind }} {{ c.match_coord }}{% endif %}{% endif %}">
+            <div class="relnum">{{ relscore }}</div>
             <div class="rellab">relevancy</div>
           </div>
         </div>

@@ -572,6 +572,84 @@ def _cached_images(pub):
     return [{"file": f, "from_pdf": from_pdf} for f in files]
 
 
+# ---- eager lemad-Mongo enrichment of the DISPLAYED cards (iptorch-style) -------------------
+# iptorch shows everything instantly because it reads a pre-built patent corpus rather than
+# recovering figures/text live. We do the same for the final shown set: one mongo_corpus.get_detail
+# per card returns figures (Google-CDN URLs, nothing downloaded) + full claims/description/CPC, and
+# we fill ONLY the gaps the local corpus / a federated-only hit left. This is what puts a sketch
+# and full content on every card at first paint, including the external PQAI winners that arrive
+# carrying just a title + abstract. Never overwrites content the corpus already has.
+def _mongo_claim_dicts(claims):
+    return [{"claim_no": i + 1, "independent": None, "text": t, "resolved_text": None}
+            for i, t in enumerate(claims or []) if t]
+
+
+def _mongo_para_dicts(desc):
+    return [{"para_no": None, "heading": None, "text": t} for t in (desc or []) if t]
+
+
+def _mongo_images(figures):
+    out = []
+    for f in (figures or []):
+        full = f.get("full")
+        if not full:
+            continue
+        out.append({"file": None, "full": full, "thumbnail": f.get("thumbnail") or full,
+                    "src_url": full, "from_mongo": True})
+    return out
+
+
+def mongo_enrich_cards(cards):
+    """Fill each displayed card's figures + full text from the lemad Mongo corpus, in place.
+
+    Bounded to the shown set (<=25). get_detail is cheap (bounded pool, short timeouts, on-disk
+    cache, never raises) and returns remote-CDN figure URLs, so this adds no download and no OPS
+    cost. Gaps only: a field the local corpus already populated is left untouched."""
+    try:
+        import mongo_corpus
+    except Exception:
+        return cards
+    for c in (cards or []):
+        pub = c.get("pub")
+        if not pub:
+            continue
+        try:
+            md = mongo_corpus.get_detail(pub)
+        except Exception:
+            md = None
+        if not md:
+            continue
+        if not c.get("images"):
+            imgs = _mongo_images(md.get("figures"))
+            if imgs:
+                c["images"] = imgs
+                c["n_images"] = len(imgs)
+                c["drawings_source"] = c.get("drawings_source") or "lemad_mongo"
+                if not c.get("drawings_provenance"):
+                    c["drawings_provenance"] = ("figures from the lemad patent corpus "
+                                                "(Google-CDN facsimile)")
+        if md.get("claims") and not c.get("claims"):
+            c["claims"] = _mongo_claim_dicts(md["claims"])
+        if md.get("description") and not c.get("description"):
+            c["description"] = _mongo_para_dicts(md["description"])
+        if md.get("classifications") and not c.get("cpc"):
+            c["cpc"] = [{"code": x["code"], "first": bool(x.get("first"))}
+                        for x in md["classifications"] if x.get("code")][:12]
+        if md.get("abstract") and not c.get("abstract"):
+            c["abstract"] = md["abstract"]
+        if md.get("assignees") and not c.get("assignees"):
+            c["assignees"] = [a for a in md["assignees"] if a]
+        if md.get("inventors") and not c.get("inventors"):
+            c["inventors"] = [i for i in md["inventors"] if i]
+        if md.get("title") and not c.get("title"):
+            c["title"] = md["title"]
+        if md.get("publication_date") and not c.get("publication_date"):
+            c["publication_date"] = md["publication_date"]
+        if md.get("mongo_key"):
+            c["mongo_key"] = md["mongo_key"]
+    return cards
+
+
 def _card_content(cur, pid, pub, matched, family_id=None):
     """Everything needed to render the card's tabs WITHOUT a round-trip: claims / description /
     figure captions straight from Postgres (already ingested for most refs) + any figure images
