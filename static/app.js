@@ -293,6 +293,37 @@ function backfillThumb(pub, images){
    ══════════════════════════════════════════════════════════════════════════════════════════ */
 function paneOf(card){ return card.querySelector('.rpane'); }
 
+/* Tab strip modelled on iptorch.com's per-result card: one strip, one shared pane, content
+   fetched only when a tab is picked and then cached by fetchRef. Re-clicking the open tab
+   closes it, so the card collapses back to its one-line form.
+
+   GRACEFUL DEGRADATION, as iptorch does it: a section the server already knows is absent gets
+   no tab at all (the template omits it); a section whose absence is only discoverable after
+   /api/ref returns renders a single plain "not available" line with the office links, never a
+   spinner that never settles and never an error. */
+const RPANES = {
+  why:      paneWhy,
+  abstract: paneAbstract,
+  claims:   paneClaims,
+  desc:     paneDesc,
+  class:    paneClass,
+  figs:     paneFigs,
+  cites:    paneCites,
+  text:     paneText,          // retained: the detail view still asks for the combined pane
+};
+
+/* ONE listener for every card's tab strip, instead of an inline onclick per button. With ~25
+   cards x ~9 buttons that attribute was several KB of page weight on its own, and delegation
+   also means strips added later (or re-rendered) work with no re-binding. */
+document.addEventListener('click', function(ev){
+  const b = ev.target.closest && ev.target.closest('.rtabs button');
+  if (!b) return;
+  const pub = b.closest('.refcard').dataset.pub;
+  if (b.dataset.t) rtab(b);
+  else if (b.dataset.a === 'detail') openDetail(pub);
+  else if (b.dataset.a === 'similar') openSimilar(pub);
+});
+
 async function rtab(btn){
   const card = btn.closest('.refcard'), t = btn.dataset.t, p = paneOf(card);
   const wasOpen = btn.getAttribute('aria-expanded') === 'true';
@@ -302,14 +333,101 @@ async function rtab(btn){
   p.classList.add('open'); p.hidden = false;
   p.innerHTML = '<span class="ploading"><span class="spin sm" aria-hidden="true"></span> loading…</span>';
   try{
-    if (t === 'why')    p.innerHTML = await paneWhy(card);
-    if (t === 'figs')   p.innerHTML = await paneFigs(card);
-    if (t === 'text')   p.innerHTML = await paneText(card);
+    const fn = RPANES[t];
+    if (!fn){ p.innerHTML = ''; return; }
+    const html = await fn(card, p);
+    if (html != null) p.innerHTML = html;         // a pane may mount itself and return null
     hlNode(p);
   }catch(e){
     p.innerHTML = '<div class="pempty">Couldn\'t load this section. ' +
       '<a href="' + gp(card.dataset.pub) + '" target="_blank" rel="noopener">Open on Google Patents</a>.</div>';
   }
+}
+
+/* The "this section does not exist" line. One sentence, plus the two office links that WILL
+   have it — the useful thing to offer when the local corpus is thin on a document. */
+function paneMissing(pub, what, d){
+  d = d || {};
+  return '<div class="pempty">No ' + esc(what) + ' for this publication in the local corpus — ' +
+    '<a href="' + esc(d.google_patents || gp(pub)) + '" target="_blank" rel="noopener">Google Patents</a>' +
+    (d.espacenet ? ' · <a href="' + esc(d.espacenet) + '" target="_blank" rel="noopener">Espacenet</a>' : '') +
+    '.</div>';
+}
+
+async function paneAbstract(card){
+  const pub = card.dataset.pub;
+  const j = await fetchRef(pub, true);
+  const d = j.display || {};
+  if (!d.abstract) return paneMissing(pub, 'abstract', d);
+  let h = '<h4>Abstract</h4><div class="abstract">' + esc(d.abstract) + '</div>';
+  if (d.lang_flags && d.lang_flags.abstract)
+    h += '<p class="small muted" style="margin-top:8px">This abstract is not in English. ' +
+      '<button type="button" class="linkish" onclick="translatePane(this,\'' + esc(pub) + '\')">Translate</button></p>';
+  return h;
+}
+
+async function paneClaims(card){
+  const pub = card.dataset.pub;
+  const j = await fetchRef(pub, true);
+  const s = j.sections || {};
+  if (!s.claims || !s.claims.length) return paneMissing(pub, 'claims', j.display);
+  return '<h4>Claims (' + s.claims.length + ')</h4>' +
+    '<div class="scrollbox">' + claimsHTML(s.claims, j.matched) + '</div>';
+}
+
+async function paneDesc(card){
+  const pub = card.dataset.pub;
+  const j = await fetchRef(pub, true);
+  const s = j.sections || {};
+  if (!s.paragraphs || !s.paragraphs.length) return paneMissing(pub, 'description text', j.display);
+  return '<h4>Description (' + s.paragraphs.length + ' paragraphs)</h4>' +
+    '<div class="scrollbox">' + parasHTML(s.paragraphs, j.matched) + '</div>';
+}
+
+async function paneClass(card){
+  const pub = card.dataset.pub;
+  const j = await fetchRef(pub, true);
+  const d = j.display || {};
+  const cls = d.classifications || [];
+  if (!cls.length) return paneMissing(pub, 'classification data', d);
+  return '<h4>Classifications (' + cls.length + ')</h4><div class="clslist">' +
+    cls.map(c => '<div class="clsrow' + (c.first ? ' first' : '') + '">' +
+      '<code>' + esc(c.code) + '</code>' +
+      (c.first ? '<span class="ind">first</span>' : '') +
+      (c.description ? '<span class="muted small">' + esc(c.description) + '</span>' : '') +
+      '</div>').join('') + '</div>';
+}
+
+/* In-pane English translation, for the German and Japanese publications this corpus is full of.
+   Same /api/translate endpoint the full detail view uses; rendered inline so reading a DE
+   abstract does not cost a trip through the slideover. */
+async function translatePane(btn, pub){
+  const host = btn.closest('p');
+  btn.disabled = true;
+  btn.textContent = 'translating…';
+  try{
+    const j = await (await fetch(B + '/api/translate/' + encodeURIComponent(pub))).json();
+    const f = (j.fields || {}).abstract;
+    if (!j.found || !f || !f.text){
+      host.innerHTML = '<span class="small muted">No translation available for this publication.</span>';
+      return;
+    }
+    const box = document.createElement('div');
+    box.innerHTML = '<h4 style="margin-top:14px">Abstract — English' +
+      (f.lang ? ' (from ' + esc(f.lang) + ')' : '') + '</h4>' +
+      '<div class="abstract">' + esc(f.text) + '</div>';
+    host.replaceWith(box);
+  }catch(e){
+    host.innerHTML = '<span class="small muted">Translation unavailable.</span>';
+  }
+}
+
+/* Citations reuse the existing graph loader, which mounts asynchronously into the node it is
+   given and renders its own "unavailable" state — so this pane returns null and lets it own
+   the element rather than racing it for innerHTML. */
+async function paneCites(card, p){
+  loadGraph(card.dataset.pub, p);
+  return null;
 }
 
 async function paneWhy(card){

@@ -6,6 +6,12 @@
     figure manifests, opinions, citations and per-reference claim charts are fetched on demand
     (see static/app.js) instead of being inlined 25 times. Inlining them is what made this page
     1.6 MB and made its accessibility tree take minutes to build.
+
+    READING ORDER. This is a search tool: the results ARE the page. Above the fold there is a
+    compact header (what was searched, where it was searched) and then the ranked references.
+    The analytical apparatus — retrieval grid, coverage ledger, scope disclosure — lives BELOW
+    the results, collapsed. It is all still here and still reachable; it is simply not in the
+    reading path. The exports and /print keep the full disclosure: those travel without context.
     ============================================================================================ #}
 <div class="wrap">
 
@@ -21,226 +27,57 @@
   <div id="refiningStages" hidden></div>
   {% endif %}
 
-  {#  Fires on should_federate (out of domain OR low confidence), not just on a hard out-of-domain
-      verdict — a low-confidence match is exactly the case where a thin result list is most likely
-      to be misread as a clear field. Rendered above the results on purpose: the warning has to
-      reach the reader BEFORE the reference list does. #}
+  {#  Kept above the results, and kept short. This is not a caveat about the tool, it is a fact
+      about THIS query: it fell outside the indexed field, so the list below is adjacent art.
+      That changes how the results are read, which is why it precedes them. One line. #}
   {% if v.domain and v.domain.should_federate %}
-  <div class="callout callout-strong">
+  <div class="offfield">
     <span class="ci" aria-hidden="true">⚠</span>
     <div style="min-width:0">
-      <h3>{% if v.domain.in_domain %}This query is only a weak match for the indexed field{% else %}This query falls outside the indexed field{% endif %}</h3>
-      <p>{{ v.domain.reason }}</p>
-      <p>The local corpus covers vacuum gripping, lifting and handling only. For a query outside
-         that field <b>these results cannot be read as a search of your field</b>, and a thin or
-         weak result list here says nothing about what prior art exists. Treat what follows as
-         adjacent art only.</p>
-      {#  The "Search wider — external patent APIs" button that used to sit here is GONE, and so
-          is the pre-search interstitial that offered the same choice. Federation now runs on
-          every search, so re-offering it would be asking a question that has already been
-          answered. What remains is the part that was actually worth saying: that this query sits
-          outside the indexed field, stated once, above the results, where it is read against the
-          result list itself. #}
-      {% if v.federation %}
-      <p class="small muted">External patent APIs were searched for this query — see the federated
-        results below.</p>
-      {% elif v.federation_error %}
-      <p class="small muted">The external patent APIs could not be reached for this search, so
-        only the local corpus is represented below.</p>
-      {% endif %}
+      <b>{% if v.domain.in_domain %}Weak match for the indexed field{% else %}Outside the indexed field{% endif %}</b>
+      — {{ v.domain.reason }} Treat these as adjacent art.
     </div>
   </div>
   {% endif %}
 
-  {% with variant='results' %}{% include "_scope.html" %}{% endwith %}
-
-  {% if v.federation %}
-  {#  Federated hits stay in their own block on purpose: ranked_families holds LOCAL family keys
-      that build_view resolves against Postgres, so a federated key would render as a blank card.
-      Same visual language as the local list, different provenance colour. #}
-  <div class="callout fed">
-    <span class="ci" aria-hidden="true">🌐</span>
-    <div style="min-width:0;width:100%">
-      <h3>Wider search — external patent APIs</h3>
-      {% if v.federation.ok %}
-      <p>{{ v.federation.n_hits }} families from federated sources in {{ v.federation.elapsed }}s{% if v.federation.cached %}, cached{% endif %}.
-         Listed separately from the local corpus so provenance stays visible.</p>
-      <div class="fedlist">
-        {% for h in v.federation.hits %}
-        <div class="fedrow">
-          <span class="fr-rank">{{ loop.index }}</span>
-          <span style="min-width:0">
-            <span class="fr-t">{{ h.title or '(untitled)' }}</span>
-            <span class="fr-m">
-              <a href="{{ h.url or ('https://patents.google.com/patent/' + h.pub|replace('-','') + '/en') }}"
-                 target="_blank" rel="noopener">{{ h.pub }} on Google Patents ↗</a>
-              {#  Google Patents is missing drawings for German publications ~69% of the time, and
-                  its coverage of some EP/WO families is thinner than the register's. Espacenet is
-                  the office source, so it gets an equal link rather than being hidden. #}
-              {% if h.espacenet %}<a href="{{ h.espacenet }}" target="_blank" rel="noopener">Espacenet ↗</a>{% endif %}
-              {% if h.date %}<span>{{ h.date }}</span>{% endif %}
-              {% if h.assignee %}<span>{{ h.assignee }}</span>{% endif %}
-              {% for s in h.sources %}<span class="chip src">{{ s }}</span>{% endfor %}
-            </span>
-          </span>
-        </div>
-        {% endfor %}
-      </div>
-      {% else %}
-      <p>Federation was unavailable for this run — the local results below are unaffected.
-         {{ v.federation.error }}</p>
-      {% endif %}
-    </div>
-  </div>
-  {% endif %}
-
-  <!-- ── summary ─────────────────────────────────────────────────────────── -->
-  <div class="panel summary">
+  <!-- ── compact header ──────────────────────────────────────────────────── -->
+  <div class="rhead">
     <h1>{{ v.title }}</h1>
     <p class="q">“{{ v.query[:280] }}{% if v.query|length > 280 %}…{% endif %}”</p>
-    <div class="stats">
-      <div class="stat"><b>{{ v.mode.replace('_',' ')|title }}</b><span>mode</span></div>
-      {% if v.subject %}<div class="stat"><b>{{ v.subject_flag }}
-        <a href="https://patents.google.com/patent/{{ v.subject.replace('-','') }}/en" target="_blank" rel="noopener">{{ v.subject }}</a></b>
-        <span>subject patent</span></div>{% endif %}
-      <div class="stat"><b>{{ '{:,}'.format(v.n_families or 0) }}</b><span>families surfaced</span></div>
-      <div class="stat"><b>{{ v.cards|length }}</b><span>ranked references</span></div>
-      <div class="stat"><b>{{ v.elements|length }}</b><span>invention elements</span></div>
-      <div class="stat"><b>{{ v.rounds }}</b><span>agent rounds</span></div>
-      <div class="stat"><b>{{ v.channels_used|length }}</b><span>channels</span></div>
-      <div class="stat"><b>{{ v.languages|join(', ')|upper }}</b><span>languages</span></div>
+
+    <div class="facts">
+      <span><b>{{ v.cards|length }}</b> ranked references</span>
+      <span><b>{{ '{:,}'.format(v.n_families or 0) }}</b> families surfaced</span>
+      <span><b>{{ v.elements|length }}</b> invention elements</span>
+      <span><b>{{ v.mode.replace('_',' ')|title }}</b> mode</span>
+      {% if v.subject %}<span>subject
+        <a href="https://patents.google.com/patent/{{ v.subject.replace('-','') }}/en"
+           target="_blank" rel="noopener">{{ v.subject_flag }} {{ v.subject }}</a></span>{% endif %}
+      <span>{{ v.languages|join(', ')|upper }}</span>
     </div>
+
+    {#  Which APIs ran, and what each returned. Data-driven from whatever the backend reports —
+        a source added upstream (Lens) appears here without a template change. #}
+    {% if v.source_tags %}
+    <div class="srcrow" role="group" aria-label="Sources searched">
+      {% for s in v.source_tags %}
+      <span class="srctag s-{{ s.state }}"{% if s.why or s.note %} title="{{ s.why or s.note }}"{% endif %}>
+        <span class="sdot" aria-hidden="true"></span>{{ s.label }}{% if s.n %}<b>{{ s.n }}</b>{% endif %}
+        <span class="vh">— {{ {'used':'used','none':'no results','failed':'failed',
+                               'unknown':'not run','off':'not configured'}.get(s.state, s.state) }}{% if s.why %}: {{ s.why }}{% endif %}</span>
+      </span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     <div class="actions">
-      {% for ch in v.channels_used %}<span class="chip ch">{{ ch }}</span>{% endfor %}
-      <span class="grow"></span>
       <a class="btn ghost sm" href="{{ request.script_root }}/print/{{ v.slug }}" target="_blank" rel="noopener">Print / PDF view</a>
       <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}?rerun=1"
          onclick="return confirm('Re-run the agent live? This takes ~2–4 minutes.')">Re-run</a>
     </div>
   </div>
 
-  <!-- ── claim chart ─────────────────────────────────────────────────────── -->
-  {#  RELABELLED, not merely annotated. This grid used to be titled "Element x reference claim
-      chart" and coloured every cell green by retrieval score. Nothing in it had ever checked that
-      a cited passage discloses its element, yet it rendered in the visual language of an
-      attorney's claim chart, where a filled cell reads as verified coverage. An audit found 7 of
-      12 coordinate-backed cells were false positives. It is now titled as what it is — a
-      retrieval map to triage by hand — and only cells an independent verification pass confirmed
-      are shown as disclosure. #}
-  <details class="block" open>
-    <summary>
-      <span class="sec"><h2>Element × reference retrieval map <span class="draft-tag">drafting aid — verify every cell</span></h2>
-        <span class="hint">rows = invention elements · columns = references · each cell = one retrieved passage, individually verified below</span></span>
-    </summary>
-
-    <div class="chart-note">
-      <p><b>This is not a verified claim chart and must not be filed or relied on as one.</b>
-        Cells come from semantic retrieval, then each cited passage is checked by a separate model
-        pass that is asked to refute it. A cell is shown as disclosure only if that check confirms
-        the passage teaches the element — and that check is itself imperfect.
-        {% if corpus.chart_fp_pre_pct is not none %}In an audit of this feature
-        <b>{{ corpus.chart_fp_pre_pct }}% of {{ corpus.chart_fp_pre_n }} cells asserting coverage
-        were wrong</b> before that verification pass existed.{% endif %}
-        {% if corpus.chart_indep_checked %}With it, the verifier reported
-        {{ corpus.chart_fp_post_bad }} of {{ corpus.chart_fp_post_n }} surviving cells rejected —
-        but that is the verifier grading its own work. An independent review then re-read those
-        {{ corpus.chart_indep_checked }} confirmed cells against the verbatim cited passages and
-        judged <b>{{ corpus.chart_indep_overclaim }} of {{ corpus.chart_indep_checked }}
-        ({{ corpus.chart_indep_pct }}%) to be overclaims</b>. The samples are small and the
-        verifier shares a model family with the auditing judge, so treat that as a lower bound on
-        the error rate, not an upper one.{% endif %}
-        Open each cell's reference and read the cited passage before using it.</p>
-      {% set vs = v.claim_chart.verification %}
-      {% if vs and vs.covered %}
-      <ul class="chart-legend">
-        <li><span class="lg lg-ok"></span><b>{{ vs.discloses }}</b> verified — passage checked and it does teach the element</li>
-        <li><span class="lg lg-weak"></span><b>{{ vs.weak }}</b> weak — same topic, does not clearly show the element</li>
-        <li><span class="lg lg-bad"></span><b>{{ vs.unrelated }}</b> unrelated — passage is about something else</li>
-        <li><span class="lg lg-none"></span><b>{{ vs['no-coord'] }}</b> whole-document match — no specific passage exists to verify</li>
-        {% if vs.unchecked %}<li><span class="lg lg-unk"></span><b>{{ vs.unchecked }}</b> unchecked — verifier unavailable</li>{% endif %}
-      </ul>
-      {% if vs.confirmed_rate is not none %}
-      <p class="chart-rate">Of {{ vs.checked }} verifiable cells in <i>this</i> report,
-        <b>{{ (vs.confirmed_rate * 100)|round|int }}%</b> survived verification.
-        {% if vs.confirmed_rate < 0.8 %}The rest did not — treat the grid as a list of passages
-        to read, not as a coverage finding.{% endif %}</p>
-      {% endif %}
-      {% endif %}
-    </div>
-
-    <div class="chartwrap">
-      <table class="chart">
-        <caption class="vh">Which references disclose which elements of the invention</caption>
-        <thead>
-          <tr>
-            <th class="elh" scope="col">Invention element</th>
-            {% for c in v.claim_chart.columns %}
-            <th scope="col"><button type="button" class="pnlink" onclick="jumpRef('{{ c.pub }}')">{{ c.pub }}</button>
-              <span class="colcount">{{ c.n_elements }} elements</span></th>
-            {% endfor %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in v.claim_chart.rows %}
-          <tr>
-            <th class="elh" scope="row">{{ row.element }}
-              <span class="elcov">best {{ '%.3f'|format(row.coverage.get('best_score',0)) }} · {{ row.coverage.get('n_evidence',0) }} refs</span></th>
-            {% for cell in row.cells %}
-              {#  Colour now encodes VERIFICATION STATE, not retrieval score. Green previously
-                  scaled with the fused score, so a confidently-retrieved but wrong cell was the
-                  greenest thing on the page. Only a confirmed cell may look like coverage. #}
-              {% if cell.covered %}
-              {% set vst = cell.verify or 'unchecked' %}
-              <td class="cell cell-{{ vst }}">
-                <button type="button" onclick="jumpRef('{{ cell.pub }}')"
-                        aria-label="{{ cell.pub }} for “{{ row.element }}” — {{
-                          {'discloses':'verified: passage teaches this element',
-                           'weak':'weak: same topic, does not clearly show the element',
-                           'unrelated':'unrelated: passage is about something else',
-                           'no-coord':'whole-document match, no passage to verify',
-                           'unchecked':'not verified'}[vst] }} — retrieval score {{ '%.3f'|format(cell.score) }}"
-                        title="{{ cell.pub }} · {{ cell.verify_why or cell.basis }}">
-                  <span class="cmark">{{ {'discloses':'✓','weak':'~','unrelated':'✕',
-                                          'no-coord':'○','unchecked':'?'}[vst] }}</span>
-                  <span class="cs">{{ '%.3f'|format(cell.score) }}</span>
-                  {% if cell.coord %}<span class="cc">{{ cell.coord }}</span>{% endif %}
-                  {% if cell.basis=='secret_prior_art' %}<span class="cc">🔒 secret</span>
-                  {% elif cell.basis=='public_prior_art' %}<span class="cc">◆ public</span>{% endif %}
-                </button>
-              </td>
-              {% else %}<td class="cell empty">·</td>{% endif %}
-            {% endfor %}
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    {% set cv = v.claim_chart.combination_view %}
-    {% if cv.primary %}
-    <div class="combo">
-      <h4>Inventive-step combination view</h4>
-      <div>Primary reference <code>{{ cv.primary }}</code>{% if cv.covers %} covers
-        <b>{{ cv.covers|length }}</b> element(s): {{ cv.covers|join(' · ') }}{% endif %}</div>
-      {% for s in cv.secondaries %}
-      <div style="margin-top:5px">plus secondary <code>{{ s.ref }}</code> supplying {{ s.supplies|join(' · ') }}</div>
-      {% endfor %}
-      {% if cv.uncovered_elements %}
-      {#  Was "Not found anywhere in the corpus" — a completeness claim this tool cannot make at
-          19% recall@100. It states what actually happened: this run did not surface art. #}
-      <div class="unc" style="margin-top:8px">Not surfaced by this search
-        ({{ cv.uncovered_elements|length }}): {{ cv.uncovered_elements|join(' · ') }}
-        <div class="unc-note">This means the retrieval did not return art for these elements. It
-          is not a finding that none exists — see the recall and scope limits above.</div></div>
-      {% endif %}
-    </div>
-    {% endif %}
-  </details>
-
-  <!-- ── ranked list ─────────────────────────────────────────────────────── -->
-  <div class="sec"><h2>Ranked prior art</h2>
-    <span class="hint">{{ v.cards|length }} families · open any card for the full document</span></div>
-
+  <!-- ── results ─────────────────────────────────────────────────────────── -->
   <div class="controls" role="group" aria-label="Sort and filter the results">
     <span class="cgroup">
       <label class="lab" for="sortby">Sort by</label>
@@ -368,51 +205,216 @@
         </div>
       </div>
 
-      {#  Four actions, not nine of equal weight: one cheap peek each for the three things people
-          actually check inline, then the full document. Everything else lives in the drawer. #}
+      {#  Tabbed document view, modelled on iptorch.com's per-result card: one tab strip, one pane,
+          content fetched only when a tab is picked. Following iptorch, a tab whose data is known
+          to be absent server-side is NOT rendered at all (rather than rendered and then
+          apologising) — and for sections whose presence is only known after /api/ref returns, the
+          pane itself degrades to a plain "not available" line.
+
+          These are DISCLOSURE buttons, not a WAI-ARIA tablist: they toggle one shared pane, there
+          is no roving tabindex and no aria-controls, so `role="tab"` would promise a keyboard
+          contract that is not implemented. Plain buttons + aria-expanded is the honest mapping,
+          and it is also ~30 bytes/button cheaper. Clicks are handled by ONE delegated listener
+          (see app.js) rather than 8 inline onclick attributes per card — with ~25 cards that
+          attribute alone was several KB of the page.
+
+          WEIGHT: this strip is the only thing on the card that scales with the tab count, so it
+          is kept to bare attributes. Everything it opens is fetched on demand. #}
       <div class="rtabs">
         <button type="button" class="rtab" data-t="why" aria-expanded="false"
-                onclick="rtab(this)" aria-label="Why {{ c.pub }} is relevant">Why relevant</button>
+                aria-label="Why relevant, {{ c.pub }}">Why relevant</button>
+        {% if c.abstract %}
+        <button type="button" class="rtab" data-t="abstract" aria-expanded="false"
+                aria-label="Abstract, {{ c.pub }}">Abstract</button>
+        {% endif %}
+        {% if c.claims %}
+        <button type="button" class="rtab" data-t="claims" aria-expanded="false"
+                aria-label="Claims, {{ c.pub }}">Claims<span class="n">{{ c.claims|length }}</span></button>
+        {% endif %}
+        {% if c.description %}
+        <button type="button" class="rtab" data-t="desc" aria-expanded="false"
+                aria-label="Description, {{ c.pub }}">Description</button>
+        {% endif %}
+        {% if c.cpc %}
+        <button type="button" class="rtab" data-t="class" aria-expanded="false"
+                aria-label="Classifications, {{ c.pub }}">Classifications</button>
+        {% endif %}
+        {% if c.n_images %}
         <button type="button" class="rtab" data-t="figs" aria-expanded="false"
-                onclick="rtab(this)" aria-label="Drawings of {{ c.pub }}">Drawings{% if c.n_images %}<span class="n">{{ c.n_images }}</span>{% endif %}</button>
-        <button type="button" class="rtab" data-t="text" aria-expanded="false"
-                onclick="rtab(this)" aria-label="Abstract, claims and description of {{ c.pub }}">Full text{% if c.claims %}<span class="n">{{ c.claims|length }} claims</span>{% endif %}</button>
+                aria-label="Drawings, {{ c.pub }}">Drawings<span class="n">{{ c.n_images }}</span></button>
+        {% endif %}
+        <button type="button" class="rtab" data-t="cites" aria-expanded="false"
+                aria-label="Citations, {{ c.pub }}">Citations</button>
         <span class="rtab spacer"></span>
-        <button type="button" class="rtab primary" onclick="openDetail('{{ c.pub }}')"
-                aria-label="Open the full document browser for {{ c.pub }}">Full view →</button>
-        <button type="button" class="rtab" onclick="openSimilar('{{ c.pub }}')"
-                aria-label="Find patents similar to {{ c.pub }}">Similar</button>
+        <button type="button" class="rtab primary" data-a="detail"
+                aria-label="Full document, {{ c.pub }}">Full view →</button>
+        <button type="button" class="rtab" data-a="similar"
+                aria-label="Similar to {{ c.pub }}">Similar</button>
       </div>
       <div class="rpane" hidden></div>
     </article>
     {% endfor %}
   </div>
 
-  <!-- ── coverage ledger ─────────────────────────────────────────────────── -->
-  <div class="sec"><h2>Coverage ledger</h2>
-    <span class="hint">why the search stopped when it did</span></div>
-  <div class="ledger">
-    <div class="box">
-      <h4>Marginal new-family yield per round</h4>
-      <div class="yield">
-        {% set mx = (v.coverage_ledger.round_new_families or [1])|max %}
-        {% for n in v.coverage_ledger.round_new_families %}
-        <div class="ycol">
-          <div class="bar" style="height:{{ (6 + 78*n/mx)|int }}px">{{ n }}</div>
-          <div class="rnd">r{{ loop.index }}</div>
-        </div>{% endfor %}
+  {% if v.federation and v.federation.ok and v.federation.hits %}
+  {#  Federated hits stay in their own block on purpose: ranked_families holds LOCAL family keys
+      that build_view resolves against Postgres, so a federated key would render as a blank card.
+      Same visual language as the local list, different provenance colour. These are RESULTS, so
+      they sit with the results — directly under the local list, not behind a callout. #}
+  <div class="sec"><h2>Also found — external patent APIs</h2>
+    <span class="hint">{{ v.federation.n_hits }} families in {{ v.federation.elapsed }}s{% if v.federation.cached %}, cached{% endif %} · listed separately so provenance stays visible</span></div>
+  <div class="fedlist">
+    {% for h in v.federation.hits %}
+    <div class="fedrow">
+      <span class="fr-rank">{{ loop.index }}</span>
+      <span style="min-width:0">
+        <span class="fr-t">{{ h.title or '(untitled)' }}</span>
+        <span class="fr-m">
+          <a href="{{ h.url or ('https://patents.google.com/patent/' + h.pub|replace('-','') + '/en') }}"
+             target="_blank" rel="noopener">{{ h.pub }} on Google Patents ↗</a>
+          {#  Google Patents is missing drawings for German publications ~69% of the time, and
+              its coverage of some EP/WO families is thinner than the register's. Espacenet is
+              the office source, so it gets an equal link rather than being hidden. #}
+          {% if h.espacenet %}<a href="{{ h.espacenet }}" target="_blank" rel="noopener">Espacenet ↗</a>{% endif %}
+          {% if h.date %}<span>{{ h.date }}</span>{% endif %}
+          {% if h.assignee %}<span>{{ h.assignee }}</span>{% endif %}
+          {% for s in h.sources %}<span class="chip src">{{ s }}</span>{% endfor %}
+        </span>
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {#  ══ below the results ══════════════════════════════════════════════════════════════════
+      Everything analytical, collapsed. Reachable in one click, out of the reading path. #}
+  <div class="tailwrap">
+
+    <details class="tail">
+      <summary><span class="th">Element × reference grid</span>
+        <span class="ts">{{ v.elements|length }} elements × {{ v.claim_chart.columns|length }} references{% if v.claim_chart.verification and v.claim_chart.verification.covered %} · {{ v.claim_chart.verification.discloses }} verified{% endif %}</span></summary>
+      <div class="tailin">
+        <p class="gridline">Each cell is one retrieved passage; the glyph is its verification state.
+          <span class="lgi"><span class="lg lg-ok"></span>✓ verified</span>
+          <span class="lgi"><span class="lg lg-weak"></span>~ weak</span>
+          <span class="lgi"><span class="lg lg-bad"></span>✕ unrelated</span>
+          <span class="lgi"><span class="lg lg-none"></span>○ whole-document</span>
+          {% if v.claim_chart.verification and v.claim_chart.verification.unchecked %}<span class="lgi"><span class="lg lg-unk"></span>? unchecked</span>{% endif %}
+        </p>
+
+        <div class="chartwrap">
+          <table class="chart">
+            <caption class="vh">Which references disclose which elements of the invention</caption>
+            <thead>
+              <tr>
+                <th class="elh" scope="col">Invention element</th>
+                {% for c in v.claim_chart.columns %}
+                <th scope="col"><button type="button" class="pnlink" onclick="jumpRef('{{ c.pub }}')">{{ c.pub }}</button>
+                  <span class="colcount">{{ c.n_elements }} elements</span></th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in v.claim_chart.rows %}
+              <tr>
+                <th class="elh" scope="row">{{ row.element }}
+                  <span class="elcov">best {{ '%.3f'|format(row.coverage.get('best_score',0)) }} · {{ row.coverage.get('n_evidence',0) }} refs</span></th>
+                {% for cell in row.cells %}
+                  {#  Colour encodes VERIFICATION STATE, not retrieval score. Green previously
+                      scaled with the fused score, so a confidently-retrieved but wrong cell was the
+                      greenest thing on the page. Only a confirmed cell may look like coverage. #}
+                  {% if cell.covered %}
+                  {% set vst = cell.verify or 'unchecked' %}
+                  <td class="cell cell-{{ vst }}">
+                    <button type="button" onclick="jumpRef('{{ cell.pub }}')"
+                            aria-label="{{ cell.pub }} for “{{ row.element }}” — {{
+                              {'discloses':'verified: passage teaches this element',
+                               'weak':'weak: same topic, does not clearly show the element',
+                               'unrelated':'unrelated: passage is about something else',
+                               'no-coord':'whole-document match, no passage to verify',
+                               'unchecked':'not verified'}[vst] }} — retrieval score {{ '%.3f'|format(cell.score) }}"
+                            title="{{ cell.pub }} · {{ cell.verify_why or cell.basis }}">
+                      <span class="cmark">{{ {'discloses':'✓','weak':'~','unrelated':'✕',
+                                              'no-coord':'○','unchecked':'?'}[vst] }}</span>
+                      <span class="cs">{{ '%.3f'|format(cell.score) }}</span>
+                      {% if cell.coord %}<span class="cc">{{ cell.coord }}</span>{% endif %}
+                      {% if cell.basis=='secret_prior_art' %}<span class="cc">🔒 secret</span>
+                      {% elif cell.basis=='public_prior_art' %}<span class="cc">◆ public</span>{% endif %}
+                    </button>
+                  </td>
+                  {% else %}<td class="cell empty">·</td>{% endif %}
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% set cv = v.claim_chart.combination_view %}
+        {% if cv.primary %}
+        <div class="combo">
+          <h4>Inventive-step combination view</h4>
+          <div>Primary reference <code>{{ cv.primary }}</code>{% if cv.covers %} covers
+            <b>{{ cv.covers|length }}</b> element(s): {{ cv.covers|join(' · ') }}{% endif %}</div>
+          {% for s in cv.secondaries %}
+          <div style="margin-top:5px">plus secondary <code>{{ s.ref }}</code> supplying {{ s.supplies|join(' · ') }}</div>
+          {% endfor %}
+          {% if cv.uncovered_elements %}
+          {#  Was "Not found anywhere in the corpus" — a completeness claim this tool cannot make at
+              19% recall@100. It states what actually happened: this run did not surface art. #}
+          <div class="unc" style="margin-top:8px">Not surfaced by this search
+            ({{ cv.uncovered_elements|length }}): {{ cv.uncovered_elements|join(' · ') }}</div>
+          {% endif %}
+        </div>
+        {% endif %}
       </div>
-      <p class="small muted" style="margin-top:10px">The search stops when new-family yield stays
-        low across independent channels — not after a fixed loop count.</p>
-    </div>
-    <div class="box">
-      <h4>CPC branches searched ({{ v.coverage_ledger.cpc_branches|length }})</h4>
-      <div>{% for cpc in v.coverage_ledger.cpc_branches %}<span class="pill">{{ cpc }}</span>{% endfor %}</div>
-      {% if v.coverage_ledger.combination_view.uncovered_elements %}
-      <h4 style="margin-top:16px">Uncovered elements</h4>
-      <div class="uncov small">{{ v.coverage_ledger.combination_view.uncovered_elements|join(' · ') }}</div>
-      {% endif %}
-    </div>
+    </details>
+
+    <details class="tail">
+      <summary><span class="th">Coverage ledger</span>
+        <span class="ts">{{ v.rounds }} rounds · {{ v.coverage_ledger.cpc_branches|length }} CPC branches · {{ v.channels_used|length }} channels</span></summary>
+      <div class="tailin">
+        <div class="ledger">
+          <div class="box">
+            <h4>Marginal new-family yield per round</h4>
+            <div class="yield">
+              {% set mx = (v.coverage_ledger.round_new_families or [1])|max %}
+              {% for n in v.coverage_ledger.round_new_families %}
+              <div class="ycol">
+                <div class="bar" style="height:{{ (6 + 78*n/mx)|int }}px">{{ n }}</div>
+                <div class="rnd">r{{ loop.index }}</div>
+              </div>{% endfor %}
+            </div>
+            <p class="small muted" style="margin-top:10px">The search stops when new-family yield stays
+              low across independent channels — not after a fixed loop count.</p>
+          </div>
+          <div class="box">
+            <h4>CPC branches searched ({{ v.coverage_ledger.cpc_branches|length }})</h4>
+            <div>{% for cpc in v.coverage_ledger.cpc_branches %}<span class="pill">{{ cpc }}</span>{% endfor %}</div>
+            <h4 style="margin-top:16px">Retrieval channels</h4>
+            <div>{% for ch in v.channels_used %}<span class="pill">{{ ch }}</span>{% endfor %}</div>
+            {% if v.coverage_ledger.combination_view.uncovered_elements %}
+            <h4 style="margin-top:16px">Uncovered elements</h4>
+            <div class="uncov small">{{ v.coverage_ledger.combination_view.uncovered_elements|join(' · ') }}</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </details>
+
+    {#  The scope + measured-reliability disclosure. NOT deleted and NOT abbreviated — the full
+        text is still here, one click away, and /about still renders it opened and in full. The
+        exported PDF/DOCX and /print also keep it in full: an exported document travels to people
+        who never saw this screen. What changed is only that it no longer sits above the results
+        on the operator's own screen. #}
+    <details class="tail">
+      <summary><span class="th">Search scope and measured reliability</span>
+        <span class="ts">corpus limits, date ceiling, {{ corpus.recall_pct }}% measured recall@100</span></summary>
+      <div class="tailin">
+        {% with variant='results' %}{% include "_scope.html" %}{% endwith %}
+      </div>
+    </details>
+
   </div>
 </div>
 

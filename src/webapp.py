@@ -677,7 +677,15 @@ def _build_view_cached(slug, rep, regen=False):
     vp = REPORTS / f"{slug}.view.json"
     if vp.exists() and not regen and not partial:
         try:
-            return json.loads(vp.read_text())
+            view = json.loads(vp.read_text())
+            # source_tags is STATUS, not content. The cache exists to skip the query embed,
+            # the DB resolution and the claim-matrix verification -- all immutable for a
+            # finished report. Which APIs are wired up is not: it changes when a key is
+            # added upstream, and the first view built after a restart sees an empty source
+            # catalogue (the health probe is backgrounded so a render never blocks on it).
+            # Freezing that would leave a report permanently claiming its sources failed.
+            view["source_tags"] = webview._source_tags(rep, len(view.get("cards") or []))
+            return view
         except Exception:
             pass
     view = webview.build_view(rep, top_n=25)

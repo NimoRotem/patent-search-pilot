@@ -6,14 +6,22 @@
 
    Tone is deliberately flat and quantified. The failure this blocks is specific: an attorney runs
    a search, gets few results, and reads that as "the field is clear". Every claim below is either
-   a live DB reading or a cited measurement. #}
-<section class="scope {{ 'scope-results' if variant == 'results' else 'scope-search' }}"
-         aria-labelledby="scope-h">
+   a live DB reading or a cited measurement.
+
+   variant='results' is the RESULTS-PAGE variant: the same content, rendered inside a collapsed
+   <details> at the foot of the report, whose <summary> already carries the heading. So this
+   variant drops the duplicate <h2> and the lede only — every measurement below is unchanged, and
+   variant='search' (/about, the search page) and the exports still render the whole thing. #}
+{% set collapsed = (variant == 'results') %}
+<section class="scope {{ 'scope-results' if collapsed else 'scope-search' }}"
+         {% if not collapsed %}aria-labelledby="scope-h"{% else %}aria-label="Search scope and measured reliability"{% endif %}>
+  {% if not collapsed %}
   <h2 id="scope-h">Search scope and measured reliability</h2>
 
   <p class="scope-lede">This is a <b>bounded technical-field search tool</b>, not a clearance
     search. It searches one indexed field, to a fixed date, with measured recall well below
     completeness. Read these limits before relying on a result.</p>
+  {% endif %}
 
   <div class="scope-grid">
     <div class="scope-item">
