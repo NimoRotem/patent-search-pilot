@@ -1039,7 +1039,8 @@ def _build_view_cached(slug, rep, regen=False):
             cards = view.get("cards") or []
             if len(cards) > 1:
                 q = {"brief": rep.get("query") or "",
-                     "elements": rep.get("elements") or []}
+                     "elements": rep.get("elements") or [],
+                     "domain": rep.get("domain")}  # task C: OOD de-dilution reads the verdict here
                 cards = rerank_listwise.rerank_report_cards(q, cards)
             # Cap the unified list AFTER ranking, so federated-only cards compete for the visible
             # slots by relevance rather than being appended below the corpus, and the page stays

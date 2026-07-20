@@ -356,16 +356,94 @@ def _same_multiset(a: Sequence[Any], b: Sequence[Any], id_key: Optional[str]) ->
     return ca == cb
 
 
+def _domain_in_domain(domain: Any) -> bool:
+    """Interpret a domain verdict (a domain_detect.DomainVerdict OR its .to_dict()) -> in_domain
+    bool. Defaults to True when the verdict is missing/garbled, so the OOD de-dilution filter is
+    only ever applied on an EXPLICIT out-of-domain verdict — an absent verdict never silently
+    demotes local results."""
+    if domain is None:
+        return True
+    v = domain.get("in_domain") if isinstance(domain, dict) else getattr(domain, "in_domain", None)
+    return True if v is None else bool(v)
+
+
+def _relevancy_order(cards: Sequence[Any], *, in_domain: bool) -> list:
+    """Final display order: per-result relevancy SCORE is the primary key (iptorch-style), the
+    incoming LISTWISE position is the tiebreak (so the in-context work is preserved among equal
+    scores), UNSCORED tail candidates sink below scored ones, and — only when the query is out of
+    domain — local NOISE is demoted beneath everything relevant. A PERMUTATION of the input
+    (nothing dropped)."""
+    import relevancy
+    import retrieval
+    pos = {id(c): i for i, c in enumerate(cards)}   # listwise position = stable tiebreak
+
+    def key(c):
+        s = relevancy.get_score(c)
+        s = s if s is not None else -1.0            # unscored -> below every scored card
+        noise = (not in_domain) and retrieval.is_local_noise(c, score_key=relevancy.SCORE_KEY)
+        return (1 if noise else 0, -float(s), pos[id(c)])
+
+    return sorted(cards, key=key)
+
+
 def rerank_report_cards(query: Any, cards: Sequence[dict], *,
                         cfg: Optional[ListwiseConfig] = None,
                         chat_fn: Optional[Callable] = None,
-                        on_progress: Optional[Callable[[int, int], None]] = None) -> list[dict]:
-    """Convenience wrapper for the report's display `cards` list: listwise-rerank then rewrite the
-    1-based ``rank`` field so the page renders in the new order. Returns a new list; the input
-    cards are not mutated in place except for their ``rank`` value on the returned copies."""
-    ordered = listwise_rerank(query, cards, cfg=cfg, chat_fn=chat_fn, on_progress=on_progress)
+                        on_progress: Optional[Callable[[int, int], None]] = None,
+                        domain: Any = None,
+                        score_top_n: int = 32,
+                        relevancy_batch: int = 5) -> list[dict]:
+    """Produce the AUTHORITATIVE display order for the report's `cards` list, combining three
+    signals in one place so the page/exports render a domain-expert-sensible ranking:
+
+      1. OOD DE-DILUTION (cheap, no LLM): when the query is out of domain, float federated + any
+         genuinely-relevant local card to the top and sink local noise, so the bounded relevancy
+         scoring and the listwise window spend their budget on the hits that matter (see
+         retrieval.deprioritize_ood_local). In-domain queries skip this entirely.
+      2. LISTWISE rerank: order the candidates IN CONTEXT of one another (existing behaviour).
+      3. PER-RESULT relevancy SCORE + OPINION on the top ``score_top_n`` shown candidates
+         (relevancy.score_cards) — iptorch's ranking signal — then a final sort that makes the
+         score the primary key and the listwise position the tiebreak, demoting score-0 / OOD noise
+         to the bottom WITHOUT dropping anything.
+
+    The OOD verdict comes from the ``domain`` argument, or (for callers that cannot change the
+    call signature) from ``query["domain"]`` when `query` is a dict; absent -> treated as in-domain.
+
+    Returns a new list; the input cards' ``rank`` is rewritten 1..N on the returned copies, and the
+    scored cards carry ``relevancy_score`` / ``relevancy_opinion`` for display. Guaranteed to be a
+    permutation of the input cards; on any internal inconsistency it falls back to the listwise
+    order rather than returning a corrupted (dropped/duplicated) set."""
+    cards = list(cards)
+    if not cards:
+        return []
+    if domain is None and isinstance(query, dict):
+        domain = query.get("domain")
+    in_domain = _domain_in_domain(domain)
+
+    import relevancy
+    import retrieval
+
+    # (1) OOD pre-pass — cheap partition before we spend any LLM budget.
+    pre = retrieval.deprioritize_ood_local(cards, in_domain=in_domain, score_key=relevancy.SCORE_KEY)
+
+    # (2) listwise in-context ordering.
+    ordered = listwise_rerank(query, pre, cfg=cfg, chat_fn=chat_fn, on_progress=on_progress)
+
+    # (3) per-result score + opinion on the top score_top_n (bounded LLM), then score-primary order.
+    try:
+        relevancy.score_cards(query, ordered, chat_fn=chat_fn,
+                              batch_size=relevancy_batch, max_cards=score_top_n)
+        final = _relevancy_order(ordered, in_domain=in_domain)
+    except Exception:
+        final = ordered
+
+    # permutation guard: never drop/duplicate a card. Fall back to the listwise order if the
+    # relevancy re-sort somehow produced a non-permutation.
+    if not _same_multiset(cards, final, None):
+        final = ordered
+
     out = []
-    for i, c in enumerate(ordered, 1):
+    for i, c in enumerate(final, 1):
         d = dict(c)
         d["rank"] = i
         out.append(d)

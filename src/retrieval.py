@@ -65,6 +65,84 @@ def _vec(e):
     return "[" + ",".join(f"{x:.6f}" for x in e) + "]"
 
 
+# ---- out-of-domain de-dilution (task C) -----------------------------------------------------
+# The local index covers ONLY vacuum-gripping art (8 seed CPC branches). For a query OUTSIDE that
+# field (domain_detect verdict in_domain=False) the dense channel still returns its nearest
+# neighbours and RRF still orders them, so the merged display set is polluted with low-relevance
+# local rows that crowd out the federated/PQAI hits — the actual on-topic art for such a query.
+# iptorch (pure PQAI) never has this problem. This filter reproduces that behaviour at the display
+# layer: on an OOD query it floats the genuinely-relevant hits up and sinks the local noise, WITHOUT
+# dropping anything (a demoted card is still present, just lower), so the downstream permutation
+# invariant holds and no result is silently lost. In-domain queries are untouched — this is an
+# OOD-CONDITIONED filter, never a blanket disable of the local corpus.
+OOD_LOCAL_RELEVANCY_FLOOR = 55   # 0-100; a LOCAL card must clear this (LLM relevancy score if
+                                 # present, else cosine `relevancy`) OR cover a claimed element to
+                                 # stay above the noise line for an out-of-domain query.
+
+
+def _cget(c, key, default=None):
+    """Read a field from a candidate that may be a dict or an object (channel-agnostic)."""
+    if isinstance(c, dict):
+        return c.get(key, default)
+    return getattr(c, key, default)
+
+
+def is_local_noise(card, *, floor: int = OOD_LOCAL_RELEVANCY_FLOOR,
+                   score_key: str = "relevancy_score") -> bool:
+    """True iff `card` is a LOCAL-corpus candidate with no genuine relevance — the rows that dilute
+    an out-of-domain answer. Federated/external hits (``federated_only``) are NEVER noise: they came
+    from the wider search an OOD query depends on. A local card is KEPT (not noise) when it either
+    covers a claimed element (``n_covers``/``covers_elements`` — a real matched element) or clears
+    the relevance ``floor`` on its LLM relevancy score when present, else on the cosine display
+    ``relevancy``. Everything else is noise. Callers apply this ONLY when the query is out of
+    domain."""
+    if _cget(card, "federated_only"):
+        return False
+    if _cget(card, "n_covers") or _cget(card, "covers_elements"):
+        return False
+    s = _cget(card, score_key)
+    if s is None:
+        s = _cget(card, "relevancy")
+    try:
+        s = float(s)
+    except (TypeError, ValueError):
+        s = 0.0
+    return s < floor
+
+
+def deprioritize_ood_local(cards, *, in_domain: bool,
+                           floor: int = OOD_LOCAL_RELEVANCY_FLOOR,
+                           score_key: str = "relevancy_score") -> list:
+    """STABLE-partition `cards` into three tiers for an OUT-OF-DOMAIN query:
+        1. FEDERATED / external hits — the wider search (PQAI etc.) is the trustworthy source for a
+           query outside the local corpus's field, so these lead (like iptorch, which is pure PQAI);
+        2. genuinely-relevant LOCAL hits (clear the relevance floor or cover a claimed element);
+        3. LOCAL NOISE (the rest) — sunk to the bottom.
+    Order within each tier is preserved. Returns a NEW list that is a PERMUTATION of the input
+    (nothing dropped — a demoted card is simply lower), so downstream permutation checks hold.
+
+    Floating federated to the FRONT here is a display-window choice, not the final order: it ensures
+    the bounded relevancy scoring and the listwise window actually cover the federated hits (they
+    are the ones that matter for an OOD query) instead of spending the budget on local neighbours.
+    The FINAL order is still score-driven (see rerank_listwise._relevancy_order), so a high-scoring
+    local hit can still outrank a weak federated one.
+
+    IN-DOMAIN queries are returned unchanged: the local corpus genuinely answers them, so demoting
+    local rows would be a regression. This is the whole point of gating on the domain verdict."""
+    cards = list(cards)
+    if in_domain:
+        return cards
+    fed, local_keep, local_noise = [], [], []
+    for c in cards:
+        if _cget(c, "federated_only"):
+            fed.append(c)
+        elif is_local_noise(c, floor=floor, score_key=score_key):
+            local_noise.append(c)
+        else:
+            local_keep.append(c)
+    return fed + local_keep + local_noise
+
+
 def _date_clause(subject, mode, alias="p"):
     """(where_fragment, params) restricting to citable prior art; ('', []) if no subject/mode."""
     if subject is None or mode is None:
