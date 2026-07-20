@@ -391,7 +391,10 @@ def rerank_report_cards(query: Any, cards: Sequence[dict], *,
                         chat_fn: Optional[Callable] = None,
                         on_progress: Optional[Callable[[int, int], None]] = None,
                         domain: Any = None,
-                        score_top_n: int = 32,
+                        score_top_n: int = 40,   # align to ListwiseConfig.depth: every card the
+                        #                        listwise pass reranks also gets a relevancy score, so a
+                        #                        floated federated hit at head position 33-40 is not left
+                        #                        UNSCORED (which would sink it below the display cut).
                         relevancy_batch: int = 5) -> list[dict]:
     """Produce the AUTHORITATIVE display order for the report's `cards` list, combining three
     signals in one place so the page/exports render a domain-expert-sensible ranking:
