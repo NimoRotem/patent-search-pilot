@@ -21,10 +21,15 @@ import grounding                                  # length-stable quote groundin
 import corpus_facts                               # live corpus scope/currency for the disclosures
 import disclosure                                 # shared disclosure wording (web + print + PDF + DOCX)
 import federation, domain_detect                 # two-tier search + out-of-domain guard
+import retrieval                                  # search_doc_chunks (parallel doc-chunk channel)
+import img_search                                 # patent-drawing image-similarity channel
+import rerank_listwise                            # listwise agentic reranker (in-context, several at a time)
 from search_modes import require_available, ModeNotAvailable, available_modes
 from retrieval import Retriever
 from agent import CoverageAgent, AgentConfig
 from config import DATA, ROOT
+import base64, uuid
+import concurrent.futures as _cf
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 
@@ -304,17 +309,177 @@ def _write_report(slug, rep):
     (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)   # force the view to rebuild from this
 
 
-def _run_job(slug, query, subject, mode, gated, wide=False):
+def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None):
     """Thread entrypoint: run the generation, then always release the reserved budget slot.
     Kept separate from _generate so _generate's signature stays purely about doing the work."""
     try:
-        _generate(slug, query, subject, mode, wide=wide)
+        # Only pass doc_token when there is one, so callers/tests that stub _generate with the
+        # pre-existing (slug, query, subject, mode, wide) signature keep working for typed queries.
+        if doc_token is None:
+            _generate(slug, query, subject, mode, wide=wide)
+        else:
+            _generate(slug, query, subject, mode, wide=wide, doc_token=doc_token)
     finally:
         if gated and auth.run_gate:
             auth.run_gate.end()
 
 
-def _generate(slug, query, subject, mode, wide=False):
+# ---- document materials (multi-chunk + image channels) -------------------------------------
+# A dropped file / patent link is turned by ingest_input into (a) a summary brief — still the
+# text-channel query — PLUS (b) full-text chunks embedded at 768d and (c) the extracted drawings.
+# /extract stashes (b)+(c) server-side keyed by a token and returns only the token; /run carries
+# the token so the search can fan out over the document's own chunks and figures IN PARALLEL with
+# the local text channels and the federated APIs. Stashing (rather than round-tripping vectors and
+# base64 images through the browser) keeps the page weight unchanged.
+DOCSTASH = REPORTS
+# per-chunk retrieval weight by kind: independent claims / abstract / whole carry the invention;
+# dependent claims and paragraphs are supporting; figure captions weakest.
+_CHUNK_KIND_W = {"claim_own": 0.70, "claim_resolved": 0.70, "abstract": 0.90, "whole": 0.85,
+                 "paragraph": 0.50, "figure_caption": 0.40}
+
+
+def _chunk_weight(c):
+    w = _CHUNK_KIND_W.get(c.get("kind"), 0.6)
+    if c.get("independent"):
+        w = max(w, 1.0)                       # an independent claim is the strongest single signal
+    return w
+
+
+def _stash_doc(res):
+    """Persist the extract result's search materials (chunk vectors + drawing blobs) under a fresh
+    token; return the token (or None when there is nothing extra to search). Small JSON on the
+    214 GB-free disk — vectors + base64 drawings only, not the whole extract payload."""
+    try:
+        chunks = res.get("chunks") or []
+        vecs, weights = [], []
+        for c in chunks:
+            v = c.get("vector")
+            if v:
+                vecs.append(v)
+                weights.append(_chunk_weight(c))
+        figs = [im.get("b64") for im in (res.get("figure_images") or []) if im.get("b64")]
+        if not vecs and not figs:
+            return None
+        token = uuid.uuid4().hex
+        (DOCSTASH / f"doc-{token}.json").write_text(json.dumps(
+            {"chunk_vecs": vecs, "chunk_weights": weights, "figure_b64": figs,
+             "n_chunks": len(vecs), "n_figs": len(figs), "t": time.time()}))
+        return token
+    except Exception:
+        traceback.print_exc()
+        return None
+
+
+def _load_doc_materials(token):
+    """Load stashed doc materials -> {chunk_vecs, chunk_weights, figure_blobs} or None."""
+    if not token:
+        return None
+    p = DOCSTASH / f"doc-{re.sub(r'[^0-9a-f]', '', str(token))[:64]}.json"
+    if not p.exists():
+        return None
+    try:
+        d = json.loads(p.read_text())
+    except Exception:
+        return None
+    blobs = []
+    for b in d.get("figure_b64") or []:
+        try:
+            blobs.append(base64.b64decode(b))
+        except Exception:
+            continue
+    return {"chunk_vecs": d.get("chunk_vecs") or [], "chunk_weights": d.get("chunk_weights") or [],
+            "figure_blobs": blobs}
+
+
+def _image_channel(figure_blobs, k=15):
+    """Image-similarity channel: embed the query drawings and match the corpus figure index.
+    Returns {"families": [(family_key, pid, score)], "hits": [...], "state": "used|none|failed",
+    "note": str}. Never raises — a loud img_search error becomes a failed-source tag, not a crash
+    and not a silent []."""
+    out = {"families": [], "hits": [], "state": "off", "note": ""}
+    blobs = [b for b in (figure_blobs or []) if b]
+    if not blobs:
+        return out
+    try:
+        hits = img_search.search_by_images(blobs, k=k)
+        fam = getattr(retriever(), "_fam", {}) or {}
+        seen, fams = set(), []
+        for h in hits:
+            pid = h.get("publication_id")
+            fk = fam.get(pid, str(h.get("publication_number") or pid))
+            if fk in seen:
+                continue
+            seen.add(fk)
+            fams.append((fk, pid, float(h.get("score") or 0)))
+        out["families"] = fams
+        out["hits"] = hits
+        out["state"] = "used" if fams else "none"
+    except img_search.ImageIndexEmpty as e:
+        out["state"] = "none"
+        out["note"] = "image index not built yet"
+    except Exception as e:
+        traceback.print_exc()
+        out["state"] = "failed"
+        out["note"] = str(e)[:160]
+    return out
+
+
+def _dedup_preserve(seq):
+    seen, out = set(), []
+    for x in seq:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+def _merge_channel(rep, name, scored, head_keep=12, take=8):
+    """Record a NEW parallel channel's families on the report and splice its best UNIQUE finds into
+    the ranked list just below the established local head, so a document-chunk-only or image-only
+    match enters the display window and is judged by the listwise reranker alongside everything
+    else. Does NOT reorder the local ranking; the listwise pass does the final ordering."""
+    if not scored:
+        return
+    fams = [fk for fk, _, _ in scored]
+    rep.setdefault("channel_families", {})[name] = sorted(set(fams))
+    ranked = list(rep.get("ranked_families") or [])
+    have = set(ranked)
+    fresh = [fk for fk in fams if fk not in have][:take]
+    if fresh:
+        merged = ranked[:head_keep] + fresh + ranked[head_keep:]
+        rep["ranked_families"] = _dedup_preserve(merged)
+
+
+def _attach_fed_family_sources(rep):
+    """Cross-reference federated hits against the LOCAL corpus so a result found by both a local
+    channel and an external API records BOTH. For each federated hit whose publication number
+    resolves to a local family, record which APIs (PQAI / USPTO / SerpApi / …) returned it, keyed
+    by family, in rep['family_sources']. Federated hits with no local row stay in the federation
+    block (webview cannot render an external family as a card)."""
+    fed = rep.get("federation") or {}
+    hits = fed.get("hits") or []
+    if not hits:
+        return
+    keys = [federation.join_key(h.get("pub")) for h in hits if h.get("pub")]
+    try:
+        resolved = retriever().resolve_pub_numbers(keys)   # {join_key: (pid, family_key)}
+    except Exception:
+        traceback.print_exc()
+        return
+    fam_sources = rep.setdefault("family_sources", {})
+    for h in hits:
+        jk = federation.join_key(h.get("pub") or "")
+        r = resolved.get(jk)
+        if not r:
+            continue
+        fk = r[1]
+        srcs = fam_sources.setdefault(fk, [])
+        for s in (h.get("sources") or []):
+            if s not in srcs:
+                srcs.append(s)
+
+
+def _generate(slug, query, subject, mode, wide=False, doc_token=None):
     """Run one report. Runs fully concurrently with other generations — the only serialized step is
     the cross-encoder, which lives in its own child process (rerank_pool)."""
     _set_job(slug, status="running", msg="Queued…", t0=time.time())
@@ -370,20 +535,95 @@ def _generate(slug, query, subject, mode, wide=False):
                              msg=f"Scoring the closest {total} references against your claim "
                                  f"elements — {done} of {total}…")
 
-        rep = A.run(query, subject=subject, mode=mode,
-                    cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True),
-                    on_event=on_event)
+        # ---- PARALLEL MULTI-CHANNEL FAN-OUT (spec item 3) ----------------------------------
+        # These channels are independent and each opens its own DB connection / hits its own
+        # service, so they run CONCURRENTLY, not one after another:
+        #   (a) local: CoverageAgent.run — the 8 local text channels + the agentic loop, driven
+        #       by the summary/brief (this is also the longest stage; it streams the partial and
+        #       owns the cross-encoder head).
+        #   (b) federated: the external patent APIs (SerpApi/PQAI/USPTO/EPO OPS/Lens/…).
+        #   (c) docchunks: multi-chunk semantic search — each strong chunk of the query document
+        #       retrieves its own corpus neighbours, pooled (retrieval.search_doc_chunks).
+        #   (d) image: the query document's drawings matched against the corpus figure index.
+        # A typed (no-document) query simply has no (c)/(d); (a) and (b) still run in parallel.
+        doc = _load_doc_materials(doc_token)
+        parallel = ["local"] + (["federated"] if wide else [])
+        if doc and doc.get("chunk_vecs"):
+            parallel.append("docchunks")
+        if doc and doc.get("figure_blobs"):
+            parallel.append("image")
+        _set_job(slug, kind="fanout", detail={"channels": parallel},
+                 msg="Searching in parallel: local corpus (8 channels)" +
+                     (", external patent APIs" if wide else "") +
+                     (", document chunks" if "docchunks" in parallel else "") +
+                     (", figure images" if "image" in parallel else "") + "…")
+
+        timing = {}   # channel -> {"start", "end"} wall-clock — proves overlap, logged below
+
+        def _timed(name, fn, *a, **kw):
+            timing[name] = {"start": time.time()}
+            try:
+                return fn(*a, **kw)
+            finally:
+                timing[name]["end"] = time.time()
+
+        # read-only across threads (not mutated during a search); only needed by the doc channels
+        fam_map = {}
+        if "docchunks" in parallel or "image" in parallel:
+            fam_map = getattr(retriever(), "_fam", {}) or {}
+        with _cf.ThreadPoolExecutor(max_workers=len(parallel)) as ex:
+            futs = {}
+            futs["local"] = ex.submit(
+                _timed, "local", A.run, query, subject=subject, mode=mode,
+                cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True),
+                on_event=on_event)
+            if wide:
+                futs["federated"] = ex.submit(_timed, "federated", _federate_block, query, mode)
+            if "docchunks" in parallel:
+                futs["docchunks"] = ex.submit(
+                    _timed, "docchunks", retrieval.search_doc_chunks,
+                    doc["chunk_vecs"], doc["chunk_weights"], fam_map, subject, mode)
+            if "image" in parallel:
+                futs["image"] = ex.submit(_timed, "image", _image_channel, doc["figure_blobs"])
+
+            rep = futs["local"].result()      # the report backbone (raises if the agent failed)
+            fed = futs["federated"].result() if "federated" in futs else None
+            doc_fams = futs["docchunks"].result() if "docchunks" in futs else []
+            img_res = futs["image"].result() if "image" in futs else None
+
         _stop_stage_heartbeat(slug)      # reranking finished; stop ticking before the next stage
+        # Log the wall-clock windows so the parallelism is verifiable in the service log.
+        t0 = min((v["start"] for v in timing.values()), default=time.time())
+        for nm, v in sorted(timing.items(), key=lambda kv: kv[1]["start"]):
+            print(f"[fanout {slug}] {nm}: {v['start']-t0:6.2f}s .. {v.get('end', v['start'])-t0:6.2f}s "
+                  f"({v.get('end', v['start'])-v['start']:.2f}s)", flush=True)
+
         rep["partial"] = False
         rep["domain"] = verdict.to_dict() if verdict is not None else None
-        # Federation costs real money per call, so it is opt-in per request and NEVER implicit.
         if wide:
-            _set_job(slug, kind="federating",
-                     msg="Searching external patent APIs (wider search)…")
-            rep["federation"] = _federate_block(query, mode)
+            rep["federation"] = fed
+            _attach_fed_family_sources(rep)   # per-result API provenance for local overlaps
         else:
             rep["federation_offered"] = bool(verdict is not None and verdict.should_federate)
+        # Merge the new parallel channels: record their families and splice their best UNIQUE
+        # finds into the display+rerank window (dedup by family reuses the shared family map).
+        if doc_fams:
+            _merge_channel(rep, "docchunks", doc_fams)
+        if img_res and img_res.get("families"):
+            _merge_channel(rep, "image", img_res["families"])
+        if img_res:
+            rep["image_channel"] = {"state": img_res.get("state"), "note": img_res.get("note"),
+                                    "n": len(img_res.get("families") or [])}
         _write_report(slug, rep)
+        # Warm the view cache HERE (in the background job, where the user is already on the
+        # progress page) so the listwise agentic rerank + claim-matrix verification run once and
+        # the /report GET is instant instead of blocking ~40 s on first view.
+        try:
+            _set_job(slug, kind="ranking",
+                     msg="Ranking references against each other in context (listwise)…")
+            _build_view_cached(slug, rep)
+        except Exception:
+            traceback.print_exc()
         _set_job(slug, kind="done", status="done", msg="done")
     except Exception as e:
         traceback.print_exc()
@@ -431,7 +671,8 @@ def _espacenet_safe(pub, family_id=None):
         return None
 
 
-def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, wide=False):
+def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, wide=False,
+                  doc_token=None):
     """Return ('ready'|'running'|'missing'|'busy', report_or_None). Kicks off background
     generation if needed. 'busy' means the concurrency or daily spend cap is exhausted."""
     p = report_path(slug)
@@ -463,7 +704,8 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
         if regen:
             p.unlink(missing_ok=True)
             (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)
-        threading.Thread(target=_run_job, args=(slug, query, subj_obj, mode, gated, wide),
+        threading.Thread(target=_run_job,
+                         args=(slug, query, subj_obj, mode, gated, wide, doc_token),
                          daemon=True).start()
     except Exception:
         # Never leak the reserved slot or leave a phantom "running" claim if we fail to launch.
@@ -601,6 +843,10 @@ def run():
         return _error_response({"error": "unknown_mode", "detail": str(e)}, 400,
                                f"Unknown search mode: {e}")
     subject = request.form.get("subject", "").strip() or None
+    #  Document/patent-link searches carry a doc_token minted by /extract: it points at the stashed
+    #  full-text chunk vectors + drawing images so the search fans out over the document itself
+    #  (multi-chunk semantic + image channels) alongside the text channels. Empty for typed queries.
+    doc_token = (request.form.get("doc_token") or "").strip() or None
     #  FEDERATION IS NOW UNCONDITIONAL.
     #
     #  The "Also search wider — external patent APIs" checkbox is gone and every search federates.
@@ -634,13 +880,16 @@ def run():
     # `wide` MUST be part of the slug: a wide result and a narrow one are different reports and
     # would otherwise overwrite each other's cache.
     slug = slugify(query + "|" + mode + ("|wide" if wide else ""))
-    st, why = ensure_report(slug, query=query, subject=subject, mode=mode, wide=wide)
+    st, why = ensure_report(slug, query=query, subject=subject, mode=mode, wide=wide,
+                            doc_token=doc_token)
     if st == "busy":
         return _error_response({"error": "server busy", "detail": why}, 429,
                                f"The server is at capacity — {why}. Please retry shortly.")
-    # remember adhoc meta for the report page title
+    # remember adhoc meta for the report page title (doc_token persisted so a live Re-run keeps the
+    # document-chunk + image channels instead of degrading to text-only).
     (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
-        {"query": query, "mode": mode, "subject": subject, "wide": wide, "ood": ood}))
+        {"query": query, "mode": mode, "subject": subject, "wide": wide, "ood": ood,
+         "doc_token": doc_token}))
     return redirect(url_for("report", slug=slug))
 
 
@@ -673,6 +922,11 @@ def extract():
         traceback.print_exc()
         return jsonify({"ok": False, "error": f"extraction failed: {str(e)[:200]}"}), 500
     status = res.pop("status", 200 if res.get("ok") else 400)
+    # Stash the full-text chunk vectors + drawing images server-side and hand back only a token, so
+    # /run can fan out over the document itself (multi-chunk semantic + image channels) without
+    # round-tripping heavy vectors/base64 through the browser or bloating the page.
+    if res.get("ok"):
+        res["doc_token"] = _stash_doc(res)
     return jsonify(res), status
 
 
@@ -683,6 +937,7 @@ def report(slug):
     mode = "novelty"
     wide = False        # the progress view lists the federation stage only for a wide run
     ood = None          # out-of-domain verdict recorded at search time, shown as a results banner
+    doc_token = None     # document-search materials, so a live Re-run keeps the doc channels
     if slug in _GOLD:
         e = _GOLD[slug]
         query, subject, mode = e["query_text"], e.get("anchor_publication"), e["mode"]
@@ -694,8 +949,10 @@ def report(slug):
             query, subject, mode = m["query"], m.get("subject"), m.get("mode", "novelty")
             wide = bool(m.get("wide"))
             ood = m.get("ood")
+            doc_token = m.get("doc_token")
         title = "Ad-hoc search"
-    status, rep = ensure_report(slug, query=query, subject=subject, mode=mode, regen=regen)
+    status, rep = ensure_report(slug, query=query, subject=subject, mode=mode, regen=regen,
+                                wide=wide, doc_token=doc_token)
     if status == "missing":
         return render_template("notfound.html", slug=slug), 404
     if status == "busy":
@@ -732,6 +989,21 @@ def _build_view_cached(slug, rep, regen=False):
     view = webview.build_view(rep, top_n=25)
     view["partial"] = partial
     if not partial:
+        # LISTWISE AGENTIC RERANK (spec item 6). The cards are already fusion- + cross-encoder-
+        # ordered (pointwise); now re-judge the merged, family-deduped display set SEVERAL AT A
+        # TIME, each in the CONTEXT of the others, so a near-duplicate sinks and an independently
+        # strong reference (incl. a document-chunk-only or image-only find) rises. Runs once, here,
+        # before the view is cached, so /report reloads are instant. Fully fail-soft: on any error
+        # the pointwise order is kept (rerank_report_cards returns the input order).
+        try:
+            cards = view.get("cards") or []
+            if len(cards) > 1:
+                q = {"brief": rep.get("query") or "",
+                     "elements": rep.get("elements") or []}
+                view["cards"] = rerank_listwise.rerank_report_cards(q, cards)
+                view["listwise_reranked"] = True
+        except Exception:
+            traceback.print_exc()
         # Verify the element x reference matrix BEFORE it is cached and rendered. Until now a
         # filled cell there meant only "the retriever returned this publication for this element";
         # nothing checked that the cited passage discloses anything, and an audit measured 7 of 12

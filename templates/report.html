@@ -186,6 +186,10 @@
               {% elif c.basis=='secret_prior_art' %}<span class="bbadge b-secret">🔒 secret prior art</span>
               {% elif c.basis=='priority_interval' %}<span class="bbadge b-interval">priority interval</span>{% endif %}
               {% for ch in c.channels[:3] %}<span class="chip ch">{{ ch }}</span>{% endfor %}
+              {# per-result source provenance: which channel/API found this reference (item 5).
+                 Image matches are visually distinct (icon + own colour). #}
+              {% for p in c.prov %}<span class="chip {{ p.cls }}"
+                title="Found via {{ p.label }}">{% if p.icon %}{{ p.icon }} {% endif %}{{ p.label }}</span>{% endfor %}
               {% for cp in c.cpc[:3] %}<span class="chip cpc">{{ cp.code }}</span>{% endfor %}
             </div>
             {% if c.abstract %}<p class="rsnip">{{ c.abstract[:230] }}{% if c.abstract|length > 230 %}…{% endif %}</p>{% endif %}

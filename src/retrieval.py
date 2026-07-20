@@ -453,6 +453,67 @@ class Retriever:
         return reordered + tail
 
 
+# ---- document-chunk multi-vector search (parallel channel 'docchunks', spec item 3b) --------
+def search_doc_chunks(chunk_vecs, weights=None, fam_map=None, subject=None, mode=None,
+                      per_limit=400, topk=200):
+    """Pooled multi-vector dense retrieval over the query DOCUMENT's OWN chunks.
+
+    A dropped file / patent link is chunked (ingest_input) and each strong chunk is embedded at
+    768d like the corpus itself. Instead of collapsing the document to one brief vector, EVERY
+    chunk vector retrieves its own dense neighbours here; results are pooled per publication
+    keeping the best WEIGHTED cosine (weights bias independent-claim / abstract / whole chunks
+    up), then deduped by family. This is the 'docchunks' channel that fans out in parallel with
+    the local text channels, the federated APIs and image search.
+
+    Runs in its OWN psycopg connection so it is safe to call from a worker thread CONCURRENTLY
+    with the shared singleton Retriever (which owns a different connection). `fam_map` is that
+    Retriever's read-only pid->family_key map (`retriever()._fam`); reading it across threads is
+    safe because it is not mutated during a search. Returns [(family_key, publication_id, score)]
+    best-first (score = best weighted cosine; comparable to the dense channel's cosine).
+    """
+    vecs = [v for v in (chunk_vecs or []) if v]
+    if not vecs:
+        return []
+    weights = list(weights or [1.0] * len(vecs))
+    if len(weights) < len(vecs):
+        weights += [1.0] * (len(vecs) - len(weights))
+    mode = Mode(mode) if isinstance(mode, str) else mode
+    dc, dp = _date_clause(subject, mode)
+    sql = (f"SELECT c.publication_id, 1-(c.embedding <=> %s::vector) AS score FROM chunks c "
+           f"JOIN publications p ON p.id=c.publication_id WHERE c.embedding IS NOT NULL {dc} "
+           f"ORDER BY c.embedding <=> %s::vector LIMIT %s")
+    pooled = {}
+    conn = db.connect(autocommit=True)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET hnsw.ef_search = 200")
+            cur.execute("SET hnsw.iterative_scan = relaxed_order")
+            cur.execute("SET hnsw.max_scan_tuples = 12000")
+        for v, w in zip(vecs, weights):
+            vs = _vec(v)
+            with conn.cursor() as cur:
+                cur.execute(sql, [vs, *dp, vs, per_limit])
+                for r in cur.fetchall():
+                    pid = r["publication_id"]
+                    sc = float(w) * float(r["score"])
+                    if sc > pooled.get(pid, -1.0):
+                        pooled[pid] = sc
+    finally:
+        conn.close()
+    fam_map = fam_map or {}
+    ranked = sorted(pooled.items(), key=lambda t: t[1], reverse=True)
+    out, seen = [], set()
+    for pid, sc in ranked:
+        fk = fam_map.get(pid, str(pid))
+        if fk in seen:
+            continue
+        seen.add(fk)
+        out.append((fk, pid, sc))
+        if len(out) >= topk:
+            break
+    return out
+
+
 def _rerank_progressive(query, passages, on_progress=None, chunk=None):
     """rr.rerank over `passages`, reporting progress, returning the same (index, score) list.
 

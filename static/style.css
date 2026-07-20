@@ -719,3 +719,8 @@ details.tail .ts{font-size:11.5px;color:var(--faint)}
   max-height:160px;overflow:auto;background:var(--s1);border:1px solid var(--line);
   border-radius:6px;padding:9px 11px}
 .ex-snip.ex-brief{color:var(--ink)}
+
+/* per-result source provenance chips (parallel multi-channel fan-out) */
+.chip.prov-chunk{color:var(--good);border-color:rgba(63,185,80,.30);background:var(--good-soft)}
+.chip.prov-image{color:var(--secret);border-color:rgba(163,113,247,.34);background:var(--secret-soft);font-weight:600}
+.chip.prov-api{color:var(--muted);border-style:dashed}

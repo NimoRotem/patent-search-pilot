@@ -16,6 +16,10 @@
   <form class="panel searchcard" method="post" action="{{ request.script_root }}/run" id="searchform">
     <div class="field">
       <label for="qbox">What is the invention?</label>
+      {#  Set by the extract step: points at the stashed full-text chunk vectors + drawing images so
+          the SAME "Search prior art" button also fans out over the document's own chunks and figures
+          (multi-chunk semantic + image channels). Empty for a plain typed query. #}
+      <input type="hidden" name="doc_token" id="doctoken" value="">
       <textarea name="query" id="qbox" rows="4" required autofocus
         placeholder="Describe it in plain language — the more specific the features, the better. e.g. “A cordless handheld vacuum lifter for glass and stone panels, with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that alarms the operator when grip vacuum is lost.”"></textarea>
     </div>
@@ -176,6 +180,9 @@ document.getElementById('searchform').addEventListener('submit', e => {
       }
       qbox.value = d.brief;
       qbox.dispatchEvent(new Event('input'));
+      // carry the doc token so /run also searches the document's own chunks + drawings
+      const dt = document.getElementById('doctoken');
+      if(dt) dt.value = d.doc_token || '';
       renderPreview(d);
       const notes = (d.notes||[]).join(' · ');
       setStatus('Ready — review the brief below and press “Search prior art”.' + (notes?' ('+notes+')':''), 'good');

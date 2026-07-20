@@ -41,6 +41,13 @@ def _src_label(sid):
     return _SRC_LABEL.get(sid) or str(sid).replace("_", " ").title()
 
 
+# The local pgvector retrieval channels (our own corpus). The two NEW parallel channels —
+# 'docchunks' (multi-chunk semantic) and 'image' — are rendered as their own labelled chips, and
+# every other channel_families key (federated API ids) flows through the per-result API provenance.
+_LOCAL_CHANNELS = {"dense", "bm25", "exact", "cpc", "citation", "qbe", "biblio", "crosslingual",
+                   "seed"}
+
+
 # The engine's /api/health source catalogue, cached. Refreshed on a background thread so that
 # rendering a report NEVER blocks on a network call; until the first refresh lands the tag row
 # simply falls back to what the report itself records.
@@ -77,6 +84,25 @@ def _source_tags(report, n_local):
     """-> [{id,label,state,n,note}] where state is used | none | failed | off."""
     tags = [{"id": "local", "label": "Local corpus",
              "state": "used" if n_local else "none", "n": n_local, "note": "", "why": ""}]
+
+    # The two NEW parallel channels that run on a document/link search: multi-chunk semantic search
+    # of the query document's own text, and image-similarity search of its drawings. Shown in the
+    # same data-driven row so a document search visibly used them (or why it didn't).
+    cf = report.get("channel_families") or {}
+    if "docchunks" in cf:
+        n = len(cf.get("docchunks") or [])
+        tags.append({"id": "docchunks", "label": "Semantic chunk match",
+                     "state": "used" if n else "none", "n": n,
+                     "note": "the query document's own text, chunked and embedded like the corpus",
+                     "why": ""})
+    img = report.get("image_channel") or {}
+    if img or "image" in cf:
+        n = int(img.get("n") or len(cf.get("image") or []))
+        st = img.get("state") or ("used" if n else "none")
+        tags.append({"id": "image", "label": "Image match", "state": st, "n": n,
+                     "note": str(img.get("note") or "query drawings vs the corpus figure index"),
+                     "why": str(img.get("note") or "")})
+
     fed = report.get("federation")
     if not fed:
         return tags
@@ -563,6 +589,9 @@ def build_view(report, top_n=25):
     for ch, fams in report.get("channel_families", {}).items():
         for f in fams:
             fam_channels.setdefault(f, set()).add(ch)
+    # per-family federated-API provenance (a result found by both a local channel and an external
+    # API records both): {family_key: [api source ids]}, from _attach_fed_family_sources.
+    family_sources = report.get("family_sources", {}) or {}
 
     cards = []
     for rank, fam in enumerate(ranked, 1):
@@ -583,6 +612,19 @@ def build_view(report, top_n=25):
         st = status_mod.classify_status(b["kind"], b["country"], b["priority_date"],
                                         b["filing_date"], b["publication_date"])
         content = _card_content(cur, rep["id"], b["pub"], m, b.get("family_id"))
+        # Per-result source provenance (spec item 5): which channels found THIS reference. Local
+        # retrieval channels stay as plain chips (c.channels); the two new channels and every
+        # external API get labelled, visually distinct chips (c.prov) so a card shows it was
+        # found by e.g. the image search and PQAI, not just "our database".
+        allch = fam_channels.get(fam, set())
+        local_ch = sorted(x for x in allch if x in _LOCAL_CHANNELS)
+        prov = []
+        if "docchunks" in allch:
+            prov.append({"label": "Semantic chunk match", "cls": "prov-chunk"})
+        if "image" in allch:
+            prov.append({"label": "Image match", "cls": "prov-image", "icon": "🖼"})
+        for api in family_sources.get(fam, []):
+            prov.append({"label": _src_label(api), "cls": "prov-api"})
         cards.append({
             "rank": rank, "family": fam, **b,
             "match_score": round(m["score"], 3), "match_coord": _coord_str(m["coord"]),
@@ -590,7 +632,8 @@ def build_view(report, top_n=25):
             "relevancy": _relevancy(m["score"]),         # 0-100 best-passage semantic match
             "status": st,
             "sfid": rep.get("simple_family_id") or None,
-            "channels": sorted(fam_channels.get(fam, [])),
+            "channels": local_ch,
+            "prov": prov,
             "covers_elements": covered, "n_covers": len(covered),
             "has_local_claims": rep["n_claims"] > 0,
             **content,                                    # claims/description/figures/images (from DB+cache)
