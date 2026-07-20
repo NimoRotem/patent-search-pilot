@@ -189,6 +189,39 @@ def _vec(v):
     return "[" + ",".join(f"{x:.6f}" for x in v) + "]"
 
 
+def _cosine(a, b):
+    """Cosine similarity between two equal-length float vectors. 0.0 on any degenerate input —
+    used only to give a federated-only card a display relevancy comparable to the corpus cards."""
+    try:
+        n = min(len(a), len(b))
+        if not n:
+            return 0.0
+        dot = na = nb = 0.0
+        for i in range(n):
+            x = float(a[i]); y = float(b[i])
+            dot += x * y; na += x * x; nb += y * y
+        if na <= 0 or nb <= 0:
+            return 0.0
+        return dot / ((na ** 0.5) * (nb ** 0.5))
+    except Exception:
+        return 0.0
+
+
+_JK_NON_ALNUM = re.compile(r"[^A-Za-z0-9]")
+
+
+def _join_key(pub):
+    """Publication number -> a normalised join key comparable across systems (mirrors
+    federation.join_key: strip non-alphanumerics, upper-case). Kept local so build_view has no
+    import dependency on the federation client."""
+    if not pub:
+        return ""
+    pub = str(pub)
+    if "patent/" in pub:
+        pub = pub.split("patent/", 1)[1].split("/")[0]
+    return _JK_NON_ALNUM.sub("", pub).upper()
+
+
 # ---- family -> representative publication --------------------------------------------------
 def resolve_family_reps(cur, family_keys):
     """Map each family_key to its best representative publication row. Prefer a member with
@@ -545,6 +578,141 @@ def _card_content(cur, pid, pub, matched, family_id=None):
     }
 
 
+# ---- federated hits -> unified list --------------------------------------------------------
+# ONE ranked list, whatever the source. A federated hit whose publication is already in the local
+# corpus is the SAME reference we already carded from Postgres: we do not draw a second row — we
+# record its external API source(s) on that family's card (the per-result source chips already
+# support several). A federated hit with NO local row still belongs in the list, so it is built
+# into a full card from the hit's own fields and ranked alongside everything else by the listwise
+# reranker downstream. Provenance stays visible per card, not in a separate block.
+def _resolve_fed_pubs(cur, join_keys):
+    """{normalised_pub -> (publication_id, family_key)} for those present in the local corpus."""
+    keys = [k for k in dict.fromkeys(join_keys) if k]
+    if not keys:
+        return {}
+    cur.execute(
+        "SELECT id, upper(regexp_replace(publication_number, '[^A-Za-z0-9]', '', 'g')) AS k, "
+        "COALESCE(NULLIF(simple_family_id,''), publication_number) AS fam "
+        "FROM publications "
+        "WHERE upper(regexp_replace(publication_number, '[^A-Za-z0-9]', '', 'g')) = ANY(%s)",
+        (keys,))
+    return {r["k"]: (r["id"], r["fam"]) for r in cur.fetchall()}
+
+
+def _add_api_prov(card, api):
+    """Add an external-API source chip to a card, de-duplicated by label (a hit found by several
+    APIs, or a family already tagged from report['family_sources'], must not stack duplicates)."""
+    lbl = _src_label(api)
+    for p in card.get("prov", []):
+        if p.get("label") == lbl:
+            return
+    card.setdefault("prov", []).append({"label": lbl, "cls": "prov-api"})
+
+
+def _fed_card(h, qvec):
+    """Build a full result card from a federated-only hit (no local Postgres row). Every field is
+    guarded so a hit missing a title/date/assignee degrades to a blank rather than raising. The
+    expandable tabs hydrate lazily via /api/ref, which enriches an out-of-corpus pub over SerpApi,
+    so the card is not a dead end even though nothing is in the local DB."""
+    pub = h.get("pub") or ""
+    country = (h.get("country") or (pub[:2] if pub[:2].isalpha() else "")).upper()
+    title = h.get("title") or "(untitled)"
+    abstract = h.get("abstract") or ""
+    # A real semantic relevancy so the card sits comparably next to corpus cards and the listwise
+    # reranker judges it on the same footing (its channel of origin is NOT a ranking signal).
+    score = 0.0
+    if qvec is not None and (title or abstract):
+        try:
+            score = _cosine(qvec, embed.embed_query((title + ". " + abstract)[:8000], 768))
+        except Exception:
+            score = 0.0
+    # Best-effort legal status from the kind code carried in the publication number.
+    st = {"code": "external", "label": "External result", "tone": "muted",
+          "note": "Found in an external patent database; not in the local corpus."}
+    try:
+        m = re.search(r"([A-Z]\d?)$", _join_key(pub))
+        st = status_mod.classify_status(m.group(1) if m else None, country,
+                                        _d(h.get("date")), None, _d(h.get("date")))
+    except Exception:
+        pass
+    prov = []
+    for s in dict.fromkeys(h.get("sources") or []):
+        prov.append({"label": _src_label(s), "cls": "prov-api"})
+    return {
+        "rank": 0,                       # rewritten by the listwise reranker / caller
+        "family": h.get("family_id") or ("fed:" + pub),
+        "pid": None, "pub": pub, "kind": None,
+        "title": title, "abstract": abstract, "country": country,
+        "flag": FLAG.get(country, "🏳️"),
+        "publication_date": h.get("date"), "filing_date": None, "priority_date": None,
+        "family_id": h.get("family_id"), "tier": None, "facsimile_path": None,
+        "assignees": [h["assignee"]] if h.get("assignee") else [],
+        "inventors": [],
+        "cpc": [{"code": c, "first": False} for c in (h.get("cpc") or [])[:6]],
+        "legal_events": [],
+        "match_score": round(score, 3), "match_coord": "", "match_kind": None,
+        "relevancy": _relevancy(score),
+        "status": st, "basis": "n/a", "sfid": None,
+        "channels": [], "prov": prov,
+        "covers_elements": [], "n_covers": 0, "has_local_claims": False,
+        # office links straight off the hit; the expandable panes fetch the rest lazily
+        "espacenet": h.get("espacenet"), "google_patents": h.get("url"),
+        "drawings_provenance": None,
+        "claims": [], "description": [], "figure_caps": [], "images": [], "n_images": 0,
+        "matched_coord_raw": None, "has_content": bool(abstract),
+        "federated_only": True,
+    }
+
+
+def merge_federated_cards(cur, cards, fed_hits, qvec):
+    """Fold federated hits into the SAME `cards` list. Returns the (possibly extended) list.
+
+    A hit that resolves to a local family which is already a displayed card -> add its API
+    source chip(s) to that card (dedup). A hit that resolves to a local family NOT displayed ->
+    skipped (the corpus already ranked that family; it simply fell outside the window). A hit with
+    NO local row -> a full federated-only card, appended so the listwise pass can rank it in."""
+    if not fed_hits:
+        return cards
+    by_fam = {c["family"]: c for c in cards if c.get("family")}
+    by_key = {}
+    for c in cards:
+        k = _join_key(c.get("pub"))
+        if k:
+            by_key.setdefault(k, c)
+    resolved = {}
+    try:
+        resolved = _resolve_fed_pubs(cur, [_join_key(h.get("pub")) for h in fed_hits if h.get("pub")])
+    except Exception:
+        resolved = {}
+    seen_fed = set()
+    for h in fed_hits:
+        jk = _join_key(h.get("pub"))
+        if not jk or jk in seen_fed:
+            continue
+        seen_fed.add(jk)
+        srcs = h.get("sources") or []
+        # already carded (by family or by publication number)? -> just record provenance.
+        card = None
+        r = resolved.get(jk)
+        if r and r[1] in by_fam:
+            card = by_fam[r[1]]
+        elif jk in by_key:
+            card = by_key[jk]
+        if card is not None:
+            for s in srcs:
+                _add_api_prov(card, s)
+            continue
+        if r:
+            # In the corpus but ranked below the display window — represented by the corpus, so
+            # do not surface a duplicate row.
+            continue
+        # Genuinely external: render it as a full card in the same list.
+        fc = _fed_card(h, qvec)
+        cards.append(fc)
+        by_key[jk] = fc
+    return cards
+
+
 # ---- full view -----------------------------------------------------------------------------
 def build_view(report, top_n=25):
     """Assemble the whole page view model. Reference text (claims/description/figure captions) and
@@ -639,6 +807,20 @@ def build_view(report, top_n=25):
             **content,                                    # claims/description/figures/images (from DB+cache)
         })
 
+    # How many of the cards are local-corpus rows — computed BEFORE federated-only cards are
+    # folded in, so the "Local corpus" source tag keeps counting the corpus, not the merged total.
+    n_local = len(cards)
+
+    # ONE unified list: fold the federated hits into the same `cards` (dedup against the corpus,
+    # full cards for external-only hits). The listwise reranker downstream orders the merged set.
+    fed = report.get("federation") or {}
+    if fed.get("ok") and fed.get("hits"):
+        try:
+            merge_federated_cards(cur, cards, fed.get("hits") or [], qvec)
+        except Exception:
+            import traceback
+            traceback.print_exc()          # never let provenance-merge failure 500 the page
+
     _attach_family_members(cur, cards)
     chart = build_claim_chart(report)
     cur.close(); conn.close()
@@ -653,10 +835,11 @@ def build_view(report, top_n=25):
         "element_coverage": report.get("element_coverage", {}),
         "claim_chart": chart,
         "cards": cards,
+        "n_local": n_local,
         "substance_filter": {k: v for k, v in subs_stats.items() if k != "titleonly_ids"},
         "domain": report.get("domain"),
         "federation": report.get("federation"),
-        "source_tags": _source_tags(report, len(cards)),
+        "source_tags": _source_tags(report, n_local),
         "federation_offered": bool(report.get("federation_offered")),
         "coverage_ledger": {
             "cpc_branches": report.get("cpc_branches", []),

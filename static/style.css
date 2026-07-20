@@ -26,7 +26,8 @@ a:hover{text-decoration:underline}
 h1,h2,h3,h4,h5{margin:0;font-weight:650;letter-spacing:-.01em}
 .wrap{max-width:1200px;margin:0 auto;padding:0 22px}
 .muted{color:var(--muted)} .small{font-size:12.5px} .grow{flex:1}
-mark{background:rgba(210,153,34,.32);color:inherit;padding:0 2px;border-radius:3px}
+/* Query-term <mark> highlighting was removed: retrieval is semantic, not lexical, so surface-word
+   matches are not the relevance signal (see hlNode in app.js). Rule intentionally deleted. */
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 .skip{position:absolute;left:-9999px;top:0;background:var(--accent);color:#fff;padding:10px 16px;z-index:100}
 .skip:focus{left:8px;top:8px}

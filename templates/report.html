@@ -260,35 +260,10 @@
     {% endfor %}
   </div>
 
-  {% if v.federation and v.federation.ok and v.federation.hits %}
-  {#  Federated hits stay in their own block on purpose: ranked_families holds LOCAL family keys
-      that build_view resolves against Postgres, so a federated key would render as a blank card.
-      Same visual language as the local list, different provenance colour. These are RESULTS, so
-      they sit with the results — directly under the local list, not behind a callout. #}
-  <div class="sec"><h2>Also found — external patent APIs</h2>
-    <span class="hint">{{ v.federation.n_hits }} families in {{ v.federation.elapsed }}s{% if v.federation.cached %}, cached{% endif %} · listed separately so provenance stays visible</span></div>
-  <div class="fedlist">
-    {% for h in v.federation.hits %}
-    <div class="fedrow">
-      <span class="fr-rank">{{ loop.index }}</span>
-      <span style="min-width:0">
-        <span class="fr-t">{{ h.title or '(untitled)' }}</span>
-        <span class="fr-m">
-          <a href="{{ h.url or ('https://patents.google.com/patent/' + h.pub|replace('-','') + '/en') }}"
-             target="_blank" rel="noopener">{{ h.pub }} on Google Patents ↗</a>
-          {#  Google Patents is missing drawings for German publications ~69% of the time, and
-              its coverage of some EP/WO families is thinner than the register's. Espacenet is
-              the office source, so it gets an equal link rather than being hidden. #}
-          {% if h.espacenet %}<a href="{{ h.espacenet }}" target="_blank" rel="noopener">Espacenet ↗</a>{% endif %}
-          {% if h.date %}<span>{{ h.date }}</span>{% endif %}
-          {% if h.assignee %}<span>{{ h.assignee }}</span>{% endif %}
-          {% for s in h.sources %}<span class="chip src">{{ s }}</span>{% endfor %}
-        </span>
-      </span>
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
+  {#  Federated hits are no longer a separate block: build_view folds them into the ONE ranked
+      list above — a hit already in the corpus becomes extra source chips on its existing card,
+      and an external-only hit becomes a full card ranked in by relevance. Provenance stays
+      visible per card (the API name chips), which is what the separate block used to carry. #}
 
   {#  ══ below the results ══════════════════════════════════════════════════════════════════
       Everything analytical, collapsed. Reachable in one click, out of the reading path. #}
@@ -475,6 +450,11 @@ window.ELEMENTS = {{ v.elements|tojson }};
     p.apply(ev);
     const s = document.getElementById('refiningStage');
     if (s && ev.msg && ev.msg !== 'done') s.textContent = ev.msg;
+    // Live re-sort to the authoritative listwise order as soon as it is known, so a strong hit
+    // that arrived late in fusion order does not sit low until the reload. Cards move in place
+    // (keyed by pub id) so lazily-loaded tab state is preserved.
+    if (ev.detail && ev.detail.rank_order && typeof reorderCards === 'function')
+      reorderCards(ev.detail.rank_order);
     if (ev.done){ p.stop(); location.reload(); return true; }
     if (ev.status === 'error'){ p.fail(ev.msg); return true; }
     return false;

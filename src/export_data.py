@@ -124,11 +124,28 @@ def _attach_verification(slug, view, report):
     return view
 
 
+def _load_cached_view(slug):
+    p = REPORTS / f"{slug}.view.json"
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return None
+
+
 def assemble(slug, selected_pubs, top_n=25):
     report = _load_report(slug)
     if not report:
         raise ValueError(f"no cached report for {slug}")
-    view = webview.build_view(report, top_n=max(top_n, len(selected_pubs) + 5))
+    # Export the SAME unified, listwise-ordered list the web page shows. That order (and the
+    # folded-in federated-only cards) lives only in the cached view — build_view alone is fusion
+    # order and local-only. Prefer the cache; fall back to a fresh build if none exists yet.
+    cached = _load_cached_view(slug)
+    if cached and cached.get("cards"):
+        view = cached
+    else:
+        view = webview.build_view(report, top_n=max(top_n, len(selected_pubs) + 5))
     _attach_verification(slug, view, report)
     by_pub = {c["pub"]: c for c in view["cards"]}
     # honour the FULL selection: ranked-order first, then any selected pubs not in the top cards
@@ -166,31 +183,36 @@ def assemble(slug, selected_pubs, top_n=25):
         if ev:
             legal = "; ".join(f"{e.get('code') or ''} {e.get('date') or ''}".strip()
                               for e in ev[:3] if e)
+        # Federated-only references have no local DB row and SerpApi enrichment may not resolve an
+        # out-of-corpus pub, so fall back to the card's own fields (title/abstract/assignee/date/
+        # cpc came in on the federated hit). Without this a federated-only reference exported blank.
+        card_cpc = [c.get("code") for c in (card.get("cpc") or []) if c.get("code")]
         refs.append({
             "rank": card.get("rank"),
             "pub": pub,
-            "title": b.get("title") or (disp or {}).get("title"),
-            "flag": b.get("flag", ""),
-            "country": b.get("country") or (disp or {}).get("country"),
-            "assignees": b.get("assignees") or (disp or {}).get("assignees") or [],
-            "inventors": (b.get("inventors") or (disp or {}).get("inventors") or [])[:5],
-            "priority_date": b.get("priority_date") or (disp or {}).get("priority_date"),
-            "filing_date": b.get("filing_date") or (disp or {}).get("filing_date"),
-            "publication_date": b.get("publication_date") or (disp or {}).get("publication_date"),
-            "family_id": b.get("family_id") or (disp or {}).get("family_id"),
-            "cpc": [c["code"] for c in (b.get("cpc") or [])][:8] or
-                   [c["code"] for c in ((disp or {}).get("classifications") or [])][:8],
+            "title": b.get("title") or (disp or {}).get("title") or card.get("title"),
+            "flag": b.get("flag") or card.get("flag") or "",
+            "country": b.get("country") or (disp or {}).get("country") or card.get("country"),
+            "assignees": b.get("assignees") or (disp or {}).get("assignees") or card.get("assignees") or [],
+            "inventors": (b.get("inventors") or (disp or {}).get("inventors") or card.get("inventors") or [])[:5],
+            "priority_date": b.get("priority_date") or (disp or {}).get("priority_date") or card.get("priority_date"),
+            "filing_date": b.get("filing_date") or (disp or {}).get("filing_date") or card.get("filing_date"),
+            "publication_date": b.get("publication_date") or (disp or {}).get("publication_date") or card.get("publication_date"),
+            "family_id": b.get("family_id") or (disp or {}).get("family_id") or card.get("family_id"),
+            "cpc": ([c["code"] for c in (b.get("cpc") or [])][:8] or
+                    [c["code"] for c in ((disp or {}).get("classifications") or [])][:8] or
+                    card_cpc[:8]),
             "legal_status": legal,
             "basis": card.get("basis", "n/a"),
             "channels": card.get("channels", []),
             "match_score": card.get("match_score"),
             "covers_elements": card.get("covers_elements", []),
-            "abstract": b.get("abstract") or (disp or {}).get("abstract"),
+            "abstract": b.get("abstract") or (disp or {}).get("abstract") or card.get("abstract"),
             "drawing_path": draw_path, "drawing_caption": draw_cap,
             "quoted": quoted,
             "why": rat.get("why", ""), "reads_on": rat.get("reads_on", []),
-            "google_patents": (disp or {}).get("google_patents"),
-            "espacenet": (disp or {}).get("espacenet"),
+            "google_patents": (disp or {}).get("google_patents") or card.get("google_patents"),
+            "espacenet": (disp or {}).get("espacenet") or card.get("espacenet"),
         })
     cur.close(); conn.close()
 

@@ -621,7 +621,15 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
         try:
             _set_job(slug, kind="ranking",
                      msg="Ranking references against each other in context (listwise)…")
-            _build_view_cached(slug, rep)
+            view = _build_view_cached(slug, rep)
+            # Push the FINAL listwise order to any client still watching the progress stream, so
+            # cards that arrived early in fusion order re-sort to the authoritative ranking before
+            # (and independently of) the reload. Just the pub ids, in order — the client reorders
+            # its already-rendered cards in place; a client that ignores the event keeps the
+            # server-rendered order (deterministic fallback).
+            _set_job(slug, kind="rank",
+                     detail={"rank_order": [c.get("pub") for c in (view.get("cards") or []) if c.get("pub")]},
+                     msg="Final ranking ready.")
         except Exception:
             traceback.print_exc()
         _set_job(slug, kind="done", status="done", msg="done")
@@ -967,6 +975,12 @@ def report(slug):
     return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
 
 
+# Cap on the unified (local + federated) ranked list that is rendered/exported. Kept at the
+# previous local-only top-N so folding in external hits does not regress the page-weight budget:
+# federated-only cards compete for these slots by relevance instead of extending the list.
+_DISPLAY_TOP = 25
+
+
 def _build_view_cached(slug, rep, regen=False):
     """Cache the built view (query embed + DB resolution) to <slug>.view.json for instant reloads.
     A partial/streaming snapshot is NEVER cached (it would shadow the final report) and is flagged
@@ -976,34 +990,59 @@ def _build_view_cached(slug, rep, regen=False):
     if vp.exists() and not regen and not partial:
         try:
             view = json.loads(vp.read_text())
-            # source_tags is STATUS, not content. The cache exists to skip the query embed,
-            # the DB resolution and the claim-matrix verification -- all immutable for a
-            # finished report. Which APIs are wired up is not: it changes when a key is
-            # added upstream, and the first view built after a restart sees an empty source
-            # catalogue (the health probe is backgrounded so a render never blocks on it).
-            # Freezing that would leave a report permanently claiming its sources failed.
-            view["source_tags"] = webview._source_tags(rep, len(view.get("cards") or []))
-            return view
+            # Only trust a cache that was actually listwise-ranked. A cache written when the
+            # listwise pass failed at generation time (transient LLM error) is frozen in
+            # FUSION order -- serving it would show the wrong order forever, which is exactly
+            # the "strong result stuck low" bug. Treat an un-reranked cache as a miss and
+            # rebuild (which re-runs the rerank and re-folds the federated hits). A successful
+            # cache carries listwise_reranked=True and is returned instantly.
+            if view.get("listwise_reranked"):
+                # source_tags is STATUS, not content. The cache exists to skip the query embed,
+                # the DB resolution and the claim-matrix verification -- all immutable for a
+                # finished report. Which APIs are wired up is not: it changes when a key is
+                # added upstream, and the first view built after a restart sees an empty source
+                # catalogue (the health probe is backgrounded so a render never blocks on it).
+                # Freezing that would leave a report permanently claiming its sources failed.
+                view["source_tags"] = webview._source_tags(
+                    rep, view.get("n_local", len(view.get("cards") or [])))
+                return view
         except Exception:
             pass
     view = webview.build_view(rep, top_n=25)
     view["partial"] = partial
+    if partial:
+        # A partial snapshot is never cached and never reranked; keep it light (fusion order,
+        # capped) so the first render stays inside the page-weight budget.
+        view["cards"] = (view.get("cards") or [])[:_DISPLAY_TOP]
+        return view
     if not partial:
         # LISTWISE AGENTIC RERANK (spec item 6). The cards are already fusion- + cross-encoder-
-        # ordered (pointwise); now re-judge the merged, family-deduped display set SEVERAL AT A
-        # TIME, each in the CONTEXT of the others, so a near-duplicate sinks and an independently
-        # strong reference (incl. a document-chunk-only or image-only find) rises. Runs once, here,
-        # before the view is cached, so /report reloads are instant. Fully fail-soft: on any error
-        # the pointwise order is kept (rerank_report_cards returns the input order).
+        # ordered (pointwise); now re-judge the merged, family-deduped display set (local corpus
+        # + federated-only, folded in by build_view) SEVERAL AT A TIME, each in the CONTEXT of the
+        # others, so a near-duplicate sinks and an independently strong reference (incl. a
+        # document-chunk-only, image-only, or external-API find) rises. This is the AUTHORITATIVE
+        # order the page, the exports and /print all render. Runs once, here, before the view is
+        # cached, so /report reloads are instant.
+        #
+        # listwise_reranked is the cache's trust flag: only set it True when the pass actually
+        # produced an order (or there was nothing to reorder). On failure it is False, so the next
+        # view build treats the cache as stale and retries rather than freezing a fusion order.
         try:
             cards = view.get("cards") or []
             if len(cards) > 1:
                 q = {"brief": rep.get("query") or "",
                      "elements": rep.get("elements") or []}
-                view["cards"] = rerank_listwise.rerank_report_cards(q, cards)
-                view["listwise_reranked"] = True
+                cards = rerank_listwise.rerank_report_cards(q, cards)
+            # Cap the unified list AFTER ranking, so federated-only cards compete for the visible
+            # slots by relevance rather than being appended below the corpus, and the page stays
+            # inside its node budget. rerank_report_cards renumbers rank 1..N over the full pool;
+            # the trimmed head is already contiguous 1..DISPLAY_TOP.
+            view["cards"] = cards[:_DISPLAY_TOP]
+            view["listwise_reranked"] = True
         except Exception:
             traceback.print_exc()
+            view["cards"] = (view.get("cards") or [])[:_DISPLAY_TOP]
+            view["listwise_reranked"] = False
         # Verify the element x reference matrix BEFORE it is cached and rendered. Until now a
         # filled cell there meant only "the retriever returned this publication for this element";
         # nothing checked that the cited passage discloses anything, and an audit measured 7 of 12

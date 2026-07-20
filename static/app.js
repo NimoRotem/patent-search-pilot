@@ -126,31 +126,15 @@ async function fetchRef(pub, light){
   return REFCACHE[pub];
 }
 
-/* ── query-term highlighting ─────────────────────────────────────────────────────────────── */
-let QTERMS = null;
-function queryTerms(){
-  if (QTERMS) return QTERMS;
-  const stop = new Set(('the a an and or of to for with without in on at by is are be as that this from ' +
-    'which said comprising comprises having has have each least one first second means device apparatus ' +
-    'method system according wherein into such other than more also its their between within').split(' '));
-  QTERMS = [...new Set(((window.QUERY || '').toLowerCase().match(/[a-z][a-z-]{3,}/g) || [])
-    .filter(w => !stop.has(w)))].slice(0, 40);
-  return QTERMS;
-}
-function hlNode(node){
-  const terms = queryTerms(); if (!terms.length || !node) return;
-  const re = new RegExp('\\b(' + terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b', 'gi');
-  const walk = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
-  const texts = []; let n;
-  while ((n = walk.nextNode())) if (n.nodeValue.trim() && n.parentNode.nodeName !== 'MARK') texts.push(n);
-  texts.forEach(t => {
-    if (!re.test(t.nodeValue)) return;
-    re.lastIndex = 0;
-    const span = document.createElement('span');
-    span.innerHTML = esc(t.nodeValue).replace(re, m => '<mark>' + m + '</mark>');
-    t.parentNode.replaceChild(span, t);
-  });
-}
+/* ── semantic search: no query-term highlighting ─────────────────────────────────────────────
+   Highlighting exact query words was removed on purpose. Retrieval here is embedding-based
+   (dense/chunk cosine), so a card can be strongly relevant without sharing any surface words with
+   the query — "vacuum lifter" legitimately surfaces "suction cup". Marking matched words framed
+   the tool as lexical and, worse, drew the eye to the WRONG signal on a semantic match. What
+   explains a card is the grounded "Why relevant" opinion and the best-matching passage (the
+   semantically nearest chunk), not a shared token. hlNode is retained as a no-op so any residual
+   caller is harmless. */
+function hlNode(){ /* intentionally does nothing — semantic match is not word match */ }
 
 /* ══════════════════════════════════════════════════════════════════════════════════════════
    THUMBNAILS — three terminal states, owner-guarded writes
@@ -745,6 +729,31 @@ function applyControls(){
   cards.forEach(c => cont.appendChild(c));
   const sh = document.getElementById('shown');
   if (sh) sh.textContent = shown + ' of ' + cards.length + ' references shown';
+}
+
+/* Live re-rank: given the authoritative order as a list of pub ids (from the SSE 'rank' event),
+   move the already-rendered cards into that order and renumber them. Cards are MOVED, not
+   re-created, so lazily-hydrated panes and thumbnail state survive. Any card not named in the
+   order keeps its relative position after the named ones. Then applyControls re-applies the
+   current sort/filter — the default 'Relevance' sort reads data-rank, so the new order sticks.
+   A missing/empty order is a no-op, leaving the deterministic server-rendered order. */
+function reorderCards(order){
+  const cont = document.getElementById('cards');
+  if (!cont || !Array.isArray(order) || !order.length) return;
+  const byPub = {};
+  cont.querySelectorAll('.refcard').forEach(c => { byPub[normPub(c.dataset.pub)] = c; });
+  let rank = 0, moved = false;
+  order.forEach(pub => {
+    const c = byPub[normPub(pub)];
+    if (!c) return;                         // e.g. a federated-only card not yet in this DOM
+    cont.appendChild(c);                    // move in place — preserves open panes / thumbs
+    rank += 1;
+    c.dataset.rank = String(rank);
+    const rk = c.querySelector('.rtitle .rank');
+    if (rk) rk.textContent = '#' + rank;
+    moved = true;
+  });
+  if (moved && typeof applyControls === 'function') applyControls();
 }
 
 /* ── selection, export, compare ──────────────────────────────────────────────────────────── */
