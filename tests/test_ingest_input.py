@@ -192,3 +192,149 @@ def test_route_hostile_url_rejected(app_client):
                         content_type="multipart/form-data")
     assert r.status_code == 400
     assert r.get_json()["ok"] is False
+
+
+# ===========================================================================
+# FULL-TEXT QUERY CHUNKS — corpus-parity chunking, embedding, and the new
+# multi-material return contract (summary_brief + chunks + figure_images).
+# ===========================================================================
+import chunker as _corpus_chunker
+
+
+def _corpus_rows(title, abstract, claims, paragraphs, captions):
+    """Reproduce chunker.run's per-publication row logic (kinds/clip/token) INLINE, so the
+    parity test asserts against the corpus chunker's own algorithm — not a copy of ours."""
+    clip, tok = _corpus_chunker._clip, _corpus_chunker._tok
+    rows = []
+    whole = clip((title or "") + (". " + abstract if abstract else ""), 2000)
+    if whole:
+        rows.append(("whole", whole, tok(whole)))
+    if abstract:
+        a = clip(abstract)
+        rows.append(("abstract", a, tok(a)))
+    for c in claims:
+        own = clip(str(c))
+        if own:
+            rows.append(("claim_own", own, tok(own)))
+    for p in paragraphs:
+        t = clip(str(p))
+        if t:
+            rows.append(("paragraph", t, tok(t)))
+    for cap in captions:
+        t = clip(str(cap))
+        if t:
+            rows.append(("figure_caption", t, tok(t)))
+    return rows
+
+
+def test_chunk_parity_kinds_sizes_tokens():
+    """Query chunks must be byte-identical to what the CORPUS chunker would emit for the same
+    structured fields: same kinds, same clipped text, same token_count."""
+    title = "Vacuum gripper for handling porous slabs"
+    abstract = "An abstract about a suction cup gripper. " * 250         # > MAX so it gets clipped
+    claims = ["1. A vacuum gripper comprising a suction cup and a pump.",
+              "2. The gripper of claim 1, further comprising a sensor."]
+    paragraphs = ["The invention relates to vacuum handling of porous stone slabs " * 20,
+                  "A pump generates negative pressure at the suction interface " * 20]
+    captions = ["FIG. 1 is a perspective view of the gripper."]
+
+    ours = ii.build_query_chunks(title=title, abstract=abstract, claims=claims,
+                                 paragraphs=paragraphs, figure_captions=captions)
+    theirs = _corpus_rows(title, abstract, claims, paragraphs, captions)
+
+    ours_tuples = [(c["kind"], c["text"], c["token_count"]) for c in ours]
+    assert ours_tuples == theirs                       # exact parity: kind + clipped text + tokens
+    # the long abstract really was clipped to MAX_CHARS (proves _clip parity, not a no-op)
+    ab = next(c for c in ours if c["kind"] == "abstract")
+    assert len(ab["text"]) == _corpus_chunker.MAX_CHARS
+    # kinds are a subset of the corpus vocabulary
+    assert set(c["kind"] for c in ours) <= {
+        "whole", "abstract", "claim_own", "claim_resolved", "paragraph", "figure_caption"}
+
+
+def test_chunk_cap_keeps_independent_claims_first():
+    """A pathological document with more claims than the cap keeps independent claims and drops
+    the least-informative tail; the count never exceeds MAX_QUERY_CHUNKS."""
+    claims = ["1. An independent apparatus comprising A and B."]
+    claims += [f"{i}. The apparatus of claim 1, wherein feature {i}." for i in range(2, 120)]
+    chunks = ii.build_query_chunks(title="T", abstract="an abstract", claims=claims, paragraphs=[])
+    assert len(chunks) <= ii.MAX_QUERY_CHUNKS
+    kinds = [c["kind"] for c in chunks]
+    # summary chunks are kept ABOVE dependent claims even in a claim-heavy spec
+    assert "claim_own" in kinds and "abstract" in kinds and "whole" in kinds
+    # the sole independent claim survived the cap and sorts first
+    assert chunks[0]["kind"] == "claim_own" and chunks[0].get("independent")
+
+
+def test_segment_free_text_finds_claims_and_paragraphs():
+    text = (
+        "A Better Vacuum Gripper\n\n"
+        "Abstract\n"
+        "A gripper using a compliant suction cup to lift porous slabs.\n\n"
+        "Detailed Description\n"
+        "The gripper includes a vacuum pump connected to a manifold that distributes negative "
+        "pressure across several suction cups arranged in a grid pattern for stability.\n\n"
+        "A control unit monitors the vacuum level and triggers an alarm on loss of grip so the "
+        "operator is warned before the load is dropped.\n\n"
+        "What is claimed is:\n"
+        "1. A vacuum gripper comprising a suction cup and a vacuum pump.\n"
+        "2. The gripper of claim 1, further comprising a vacuum sensor.\n"
+    )
+    title, abstract, claims, paras = ii._segment_text(text)
+    assert "gripper" in title.lower()
+    assert "suction cup" in abstract.lower()
+    assert len(claims) == 2 and claims[0].startswith("1.")
+    assert ii._is_independent_claim(claims[0]) and not ii._is_independent_claim(claims[1])
+    assert len(paras) >= 2                                   # description split into paragraphs
+
+
+def test_build_returns_chunks_and_images_contract(monkeypatch):
+    """_build exposes the NEW contract: summary_brief + embedded chunks + figure_images, in
+    addition to the legacy brief. Embedding uses the (mocked) corpus embedder at 768d."""
+    import llm
+    monkeypatch.setattr(llm, "condense_for_search",
+                        lambda t: {"disclosure": "a compact brief about vacuum grippers",
+                                   "title": "Vacuum gripper"})
+    monkeypatch.setattr(llm, "describe_figures",
+                        lambda blobs, context="", **k: "a suction cup and a lever")
+    monkeypatch.setattr(ii, "_thumb", lambda b, **k: "data:image/jpeg;base64,AAA")
+    text = ("What is claimed is:\n1. A vacuum gripper comprising a suction cup and a pump.\n"
+            "2. The gripper of claim 1, further comprising a sensor.\n")
+    r = ii._build(text=text, figures=[b"png1", b"png2"], source="upload", label="d.pdf", notes=[])
+    assert r["ok"] is True
+    # summary kept
+    assert r["summary_brief"] == "a compact brief about vacuum grippers"
+    # chunks present, each embedded at 768d, kinds valid
+    assert r["chunks"] and r["n_chunks"] == len(r["chunks"])
+    for c in r["chunks"]:
+        assert c["vector"] is not None and len(c["vector"]) == ii.EMBED_DIM
+        assert c["kind"] in {"whole", "abstract", "claim_own", "claim_resolved",
+                             "paragraph", "figure_caption"}
+    assert any(c["kind"] == "claim_own" for c in r["chunks"])
+    # figure descriptions + raw images for the image channel
+    assert r["figure_descriptions"] == "a suction cup and a lever"
+    assert len(r["figure_images"]) == 2
+    assert all(fi["mime"] == "image/png" and fi["b64"] for fi in r["figure_images"])
+
+
+def test_build_figures_only_still_yields_image_channel(monkeypatch):
+    """A scanned facsimile with NO extractable text and NO vision still returns ok with the raw
+    figures exposed for image search (text channels get nothing, image channel carries it)."""
+    import llm
+    monkeypatch.setattr(llm, "condense_for_search", lambda t: {"disclosure": "", "title": ""})
+    monkeypatch.setattr(llm, "describe_figures", lambda blobs, context="", **k: "")
+    monkeypatch.setattr(ii, "_thumb", lambda b, **k: "data:image/jpeg;base64,AAA")
+    r = ii._build(text="", figures=[b"facsimile"], source="link", label="DE-1286275-B", notes=[])
+    assert r["ok"] is True
+    assert r["chunks"] == []                     # no text -> no text chunks (honest)
+    assert len(r["figure_images"]) == 1          # but the drawing is exposed to image search
+
+
+def test_embed_query_chunks_failsoft(monkeypatch):
+    import embed
+    def boom(*a, **k):
+        raise RuntimeError("vertex down")
+    monkeypatch.setattr(embed, "embed_texts", boom)
+    chunks = [{"kind": "whole", "text": "x", "token_count": 1}]
+    out = ii.embed_query_chunks(chunks)
+    assert out[0]["vector"] is None              # fail-soft: text kept, vector None
