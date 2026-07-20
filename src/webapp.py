@@ -16,6 +16,7 @@ import db, embed, goldset, webview, enrich_display, llm
 import export_data, export_pdf, export_docx
 import auth, rerank_pool
 import claim_chart, translate, drawings          # ported per-card enrichment
+import ingest_input                                # front-door document / patent-link -> search brief
 import grounding                                  # length-stable quote grounding (shared w/ claim_chart)
 import corpus_facts                               # live corpus scope/currency for the disclosures
 import disclosure                                 # shared disclosure wording (web + print + PDF + DOCX)
@@ -47,6 +48,9 @@ def _secret_key():
 
 app.secret_key = _secret_key()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+# Hard ceiling on any request body. The document-upload route caps at 30 MB itself; this is a
+# belt-and-braces WSGI-level guard so an oversized body is refused (413) before it is buffered.
+app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_BYTES", str(32 * 1024 * 1024)))
 # The session cookie carries the whole auth decision, so it must never travel in cleartext. Public
 # access is HTTPS-only (nginx terminates TLS on rotem.ai and proxies here over the VPC), so `Secure`
 # costs nothing there. Note Flask sets this flag from app.config alone — it does NOT sniff the
@@ -638,6 +642,38 @@ def run():
     (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
         {"query": query, "mode": mode, "subject": subject, "wide": wide, "ood": ood}))
     return redirect(url_for("report", slug=slug))
+
+
+@app.route("/extract", methods=["POST"])
+def extract():
+    """Front door for the document / patent-link input modes.
+
+    Accepts EITHER a multipart file upload (drag-drop or browse) OR a `url` form field
+    (Google Patents / Espacenet URL, or a bare publication number). Extracts text AND drawings,
+    runs a Gemini vision pass over the figures, and fuses everything into ONE search brief which
+    the client then submits to the existing POST /run pipeline — no second search path.
+
+    Rate-limited (endpoint 'extract' in auth._LIMITERS) and behind the auth gate, like every
+    other route that spends on Vertex. Returns JSON; on failure {ok:false,error} with a status.
+    """
+    f = request.files.get("file")
+    url = (request.form.get("url") or "").strip()
+    try:
+        if f is not None and (f.filename or "").strip():
+            data = f.read(ingest_input.MAX_BYTES + 1)
+            if len(data) > ingest_input.MAX_BYTES:
+                return jsonify({"ok": False,
+                                "error": f"file too large (max {ingest_input.MAX_BYTES // (1024*1024)} MB)"}), 413
+            res = ingest_input.extract_upload(data, f.filename)
+        elif url:
+            res = ingest_input.extract_link(url)
+        else:
+            return jsonify({"ok": False, "error": "provide a file or a patent URL"}), 400
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": f"extraction failed: {str(e)[:200]}"}), 500
+    status = res.pop("status", 200 if res.get("ok") else 400)
+    return jsonify(res), status
 
 
 @app.route("/report/<slug>")

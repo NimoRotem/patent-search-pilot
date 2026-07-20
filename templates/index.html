@@ -20,6 +20,39 @@
         placeholder="Describe it in plain language — the more specific the features, the better. e.g. “A cordless handheld vacuum lifter for glass and stone panels, with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that alarms the operator when grip vacuum is lost.”"></textarea>
     </div>
 
+    {#  DOCUMENT / PATENT-LINK INPUT.
+        Three ways in besides typing: drop a file, browse to upload, or paste a patent link.
+        Any of them POSTs to {script_root}/extract, which pulls out the text AND the drawings,
+        runs a vision pass over the figures, and fuses everything into a search brief. The brief
+        drops straight into the textarea above, so the SAME "Search prior art" button runs the
+        SAME pipeline — this is just a better way to fill the query box, not a new search path. #}
+    <div class="field ingest">
+      <span class="lab">Or start from a document or a patent link
+        <span class="muted" style="font-weight:400">— we read its text and drawings and build the query for you</span></span>
+      <div id="dropzone" class="dropzone" tabindex="0" role="button"
+           aria-label="Drop a patent PDF here, or activate to browse for a file to upload">
+        <label for="fileinput" class="vh">Upload a patent PDF, text or Word document</label>
+        <input type="file" id="fileinput" class="vh"
+               accept=".pdf,.txt,.docx,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+        <div class="dz-inner" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+          <strong>Drop a patent PDF here</strong>
+          <span class="muted small">or <button type="button" class="linklike" id="browsebtn">browse to upload</button>
+            · PDF, .txt or .docx, up to 30&nbsp;MB</span>
+        </div>
+      </div>
+      <div class="urlrow">
+        <input type="text" id="urlinput" inputmode="url" autocomplete="off"
+               aria-label="Paste a Google Patents or Espacenet URL, or a publication number"
+               placeholder="…or paste a Google Patents link, e.g. https://patents.google.com/patent/DE1286275B/en">
+        <button type="button" class="btn ghost sm" id="urlbtn">Use link</button>
+      </div>
+      <div id="extractstatus" class="ex-status small" role="status" aria-live="polite"></div>
+      <div id="extractpreview" class="ex-preview" hidden></div>
+    </div>
+
     <div class="row">
       <div class="field">
         <label for="mode">Search mode</label>
@@ -59,5 +92,141 @@ document.getElementById('searchform').addEventListener('submit', e => {
   const b = document.getElementById('gobtn');
   b.textContent = 'Starting…'; b.disabled = true;
 });
+
+/*  DOCUMENT / PATENT-LINK INPUT — extract text + drawings, fuse into the query box.
+    Prefix-aware (never hardcode /patents): everything through B = window.APP_BASE || ''.   */
+(function(){
+  const B = window.APP_BASE || '';
+  const dz = document.getElementById('dropzone');
+  const fileinput = document.getElementById('fileinput');
+  const browsebtn = document.getElementById('browsebtn');
+  const urlinput = document.getElementById('urlinput');
+  const urlbtn = document.getElementById('urlbtn');
+  const statusEl = document.getElementById('extractstatus');
+  const preview = document.getElementById('extractpreview');
+  const qbox = document.getElementById('qbox');
+  const gobtn = document.getElementById('gobtn');
+  if(!dz) return;
+
+  let busy = false;
+  const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function setStatus(msg, kind){
+    statusEl.textContent = msg || '';
+    statusEl.className = 'ex-status small ' + (kind || 'muted');
+  }
+  function setBusy(on, msg){
+    busy = on;
+    dz.setAttribute('aria-busy', on ? 'true' : 'false');
+    dz.classList.toggle('is-busy', on);
+    urlbtn.disabled = on; browsebtn.disabled = on;
+    if(msg) setStatus(msg, 'muted');
+  }
+
+  function renderPreview(d){
+    const bits = [];
+    const head = d.source === 'link'
+      ? `Publication <b>${esc(d.pub||d.label)}</b>` + (d.title ? ` — ${esc(d.title)}` : '')
+      : `<b>${esc(d.label)}</b>` + (d.title ? ` — ${esc(d.title)}` : '');
+    bits.push(`<div class="ex-head">${head}</div>`);
+
+    const tags = [];
+    if(d.text_present) tags.push(`<span class="ex-tag good">text ✓ ${Number(d.text_chars).toLocaleString()} chars</span>`);
+    else tags.push(`<span class="ex-tag warn">no text</span>`);
+    if(d.figures_present) tags.push(`<span class="ex-tag good">${d.n_figures} figure${d.n_figures===1?'':'s'} ✓</span>`);
+    else tags.push(`<span class="ex-tag warn">no figures</span>`);
+    if(d.drawings_source) tags.push(`<span class="ex-tag">drawings: ${esc(d.drawings_source)}</span>`);
+    bits.push(`<div class="ex-tags">${tags.join('')}</div>`);
+
+    if(d.thumbs && d.thumbs.length){
+      const label = d.source === 'link' ? (d.pub||'patent') : (d.label||'document');
+      bits.push(`<div class="ex-figs">` + d.thumbs.map((t,i) =>
+        `<img src="${esc(t)}" alt="Figure ${i+1} extracted from ${esc(label)}" loading="lazy">`
+      ).join('') + `</div>`);
+    }
+    if(d.text_snippet){
+      bits.push(`<div class="ex-block"><span class="ex-k">Extracted text</span>
+        <p class="ex-snip">${esc(d.text_snippet)}${d.text_chars>600?'…':''}</p></div>`);
+    }
+    if(d.vision){
+      bits.push(`<div class="ex-block"><span class="ex-k">Figures, analysed by the model
+        <span class="muted">(folded into the query as text — this enriches the search, it is not image search)</span></span>
+        <p class="ex-snip">${esc(d.vision)}</p></div>`);
+    }
+    bits.push(`<div class="ex-block"><span class="ex-k">Search brief
+      <span class="muted">(this is what will be searched — edit it above if you like)</span></span>
+      <p class="ex-snip ex-brief">${esc(d.brief)}</p></div>`);
+    preview.innerHTML = bits.join('');
+    preview.hidden = false;
+  }
+
+  async function send(fd){
+    if(busy) return;
+    setBusy(true, 'Reading the document — extracting text and drawings, analysing figures…');
+    preview.hidden = true;
+    try{
+      const r = await fetch(B + '/extract', {method:'POST', body:fd, credentials:'same-origin',
+        headers:{'X-Requested-With':'XMLHttpRequest'}});
+      let d = {};
+      try { d = await r.json(); } catch(_) {}
+      if(!r.ok || !d.ok){
+        setStatus((d && d.error) ? d.error : `Extraction failed (HTTP ${r.status}).`, 'bad');
+        return;
+      }
+      qbox.value = d.brief;
+      qbox.dispatchEvent(new Event('input'));
+      renderPreview(d);
+      const notes = (d.notes||[]).join(' · ');
+      setStatus('Ready — review the brief below and press “Search prior art”.' + (notes?' ('+notes+')':''), 'good');
+      gobtn.focus();
+    }catch(err){
+      setStatus('Network error while extracting. Please try again.', 'bad');
+    }finally{
+      setBusy(false);
+    }
+  }
+
+  function sendFile(file){
+    if(!file) return;
+    if(file.size > 30*1024*1024){ setStatus('That file is larger than 30 MB.', 'bad'); return; }
+    const fd = new FormData(); fd.append('file', file, file.name);
+    send(fd);
+  }
+  function sendUrl(){
+    const v = (urlinput.value||'').trim();
+    if(!v){ setStatus('Paste a Google Patents link or a publication number first.', 'bad'); urlinput.focus(); return; }
+    const fd = new FormData(); fd.append('url', v);
+    send(fd);
+  }
+
+  browsebtn.addEventListener('click', () => fileinput.click());
+  fileinput.addEventListener('change', () => { if(fileinput.files[0]) sendFile(fileinput.files[0]); });
+  urlbtn.addEventListener('click', sendUrl);
+  urlinput.addEventListener('keydown', e => { if(e.key==='Enter'){ e.preventDefault(); sendUrl(); }});
+
+  // keyboard-accessible drop zone: Enter/Space opens the file picker.
+  dz.addEventListener('keydown', e => {
+    if(e.key==='Enter' || e.key===' '){ e.preventDefault(); fileinput.click(); }
+  });
+  dz.addEventListener('click', e => { if(e.target===browsebtn) return; fileinput.click(); });
+
+  ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation(); dz.classList.add('dragover');
+  }));
+  ['dragleave','dragend'].forEach(ev => dz.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation();
+    if(ev==='dragleave' && dz.contains(e.relatedTarget)) return;
+    dz.classList.remove('dragover');
+  }));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation(); dz.classList.remove('dragover');
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if(f) sendFile(f);
+  });
+  // stop the page from navigating if a file is dropped outside the zone
+  window.addEventListener('dragover', e => e.preventDefault());
+  window.addEventListener('drop', e => { if(!dz.contains(e.target)) e.preventDefault(); });
+})();
 </script>
 {% endblock %}

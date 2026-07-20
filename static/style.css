@@ -682,3 +682,40 @@ details.tail .ts{font-size:11.5px;color:var(--faint)}
 .clsrow code{font-family:ui-monospace,Menlo,monospace;color:var(--ink);font-weight:650}
 .linkish{background:none;border:0;padding:0;color:var(--accent);font:inherit;cursor:pointer;
   text-decoration:underline}
+
+/* ── front-door document / patent-link input ─────────────────────────────── */
+.field.ingest{margin-top:4px}
+.linklike{background:none;border:0;padding:0;color:var(--accent);font:inherit;cursor:pointer;
+  text-decoration:underline}
+.linklike:hover{color:var(--accent-d)}
+.dropzone{border:1.5px dashed var(--line2);border-radius:var(--r);background:var(--s2);
+  padding:20px 16px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.dropzone:hover{border-color:var(--faint)}
+.dropzone.dragover{border-color:var(--accent);background:var(--accent-soft)}
+.dropzone.is-busy{opacity:.7;cursor:progress}
+.dropzone:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.dz-inner{display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--muted)}
+.dz-inner svg{color:var(--faint)}
+.dz-inner strong{color:var(--ink);font-weight:600}
+.urlrow{display:flex;gap:9px;margin-top:10px}
+.urlrow input{flex:1;min-width:0}
+.urlrow .btn{flex:0 0 auto;white-space:nowrap}
+.ex-status{margin-top:9px;min-height:1.1em}
+.ex-status.good{color:var(--good)} .ex-status.bad{color:var(--bad)} .ex-status.warn{color:var(--warn)}
+.ex-preview{margin-top:12px;border:1px solid var(--line);border-radius:var(--r-sm);
+  background:var(--s0);padding:14px}
+.ex-head{font-size:13.5px;margin-bottom:8px}
+.ex-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.ex-tag{font-size:11px;padding:2px 8px;border-radius:var(--r-pill);border:1px solid var(--line2);
+  color:var(--muted);background:var(--s1)}
+.ex-tag.good{color:var(--good);border-color:rgba(63,185,80,.32);background:var(--good-soft)}
+.ex-tag.warn{color:var(--warn);border-color:rgba(210,153,34,.32);background:var(--warn-soft)}
+.ex-figs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.ex-figs img{height:96px;width:auto;max-width:150px;object-fit:contain;background:#fff;
+  border:1px solid var(--line2);border-radius:6px;padding:3px}
+.ex-block{margin-top:10px}
+.ex-k{display:block;font-size:11.5px;color:var(--muted);font-weight:600;margin-bottom:4px}
+.ex-snip{margin:0;font-size:12.5px;color:var(--ink);line-height:1.55;white-space:pre-wrap;
+  max-height:160px;overflow:auto;background:var(--s1);border:1px solid var(--line);
+  border-radius:6px;padding:9px 11px}
+.ex-snip.ex-brief{color:var(--ink)}

@@ -210,6 +210,10 @@ _LIMITERS = {
     # per-reference claim chart: one Vertex generate call per request
     "api_chart": Limiter("claim charts", _num("RL_CHART_RATE", 1.0), _num("RL_CHART_BURST", 20),
                          _num("RL_CHART_GRATE", 2.0), _num("RL_CHART_GBURST", 40)),
+    # document/patent-link ingestion: pdftotext/pdftoppm + a Gemini condense + a Gemini vision
+    # call (and, for a link, a paid SerpApi detail fetch). Bounded like the other Vertex routes.
+    "extract":  Limiter("document extraction", _num("RL_EXTRACT_RATE", 1 / 20.0), _num("RL_EXTRACT_BURST", 6),
+                        _num("RL_EXTRACT_GRATE", 1 / 10.0), _num("RL_EXTRACT_GBURST", 20)),
     # chunked Vertex translation of a full reference
     "api_translate": Limiter("translation", _num("RL_TRANS_RATE", 1.0), _num("RL_TRANS_BURST", 20),
                              _num("RL_TRANS_GRATE", 2.0), _num("RL_TRANS_GBURST", 40)),
