@@ -192,8 +192,89 @@ def test_stream_search_stops_at_done_and_surfaces_upstream_errors(monkeypatch):
 
     nodone = ['data: {"kind":"start"}', 'data: {"kind":"end"}']
     fake_requests.post = lambda *a, **k: FakeResp(nodone)
-    with pytest.raises(RuntimeError, match="without a done"):
+    monkeypatch.setattr(F, "RETRIES", 0)      # don't pay the retry backoff in a unit test
+    with pytest.raises(RuntimeError, match="no done event"):
         F._stream_search("q", "novelty")
+
+
+def test_truncated_stream_is_retried_but_auth_failure_is_not(monkeypatch):
+    """A cut stream is transient (an App A restart mid-run looks exactly like this), so it is
+    worth one more try. A 401 is not — retrying just burns another slot against App A's
+    rate limiter and fails identically."""
+    class FakeResp:
+        def __init__(self, lines, status=200): self._l, self.status_code = lines, status
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def iter_lines(self, decode_unicode=True): return iter(self._l)
+
+    calls = []
+    good = ['data: ' + json.dumps({"kind": "done", **DONE}), 'data: {"kind":"end"}']
+
+    def flaky(*a, **k):
+        calls.append(1)
+        return FakeResp([] if len(calls) == 1 else good)
+
+    monkeypatch.setitem(__import__("sys").modules, "requests",
+                        types.SimpleNamespace(post=flaky))
+    monkeypatch.setattr(F, "RETRY_BACKOFF", 0)
+    done = F._stream_search("q", "novelty")
+    assert len(done["shortlist"]) == 3 and len(calls) == 2      # retried once, then succeeded
+
+    calls.clear()
+    monkeypatch.setitem(__import__("sys").modules, "requests",
+                        types.SimpleNamespace(post=lambda *a, **k: (calls.append(1),
+                                                                    FakeResp([], 401))[1]))
+    with pytest.raises(F.FederationError) as ei:
+        F._stream_search("q", "novelty")
+    assert ei.value.kind == "auth" and len(calls) == 1
+
+
+def test_failure_reason_is_not_double_wrapped(monkeypatch):
+    """The UI showed 'RuntimeError: RuntimeError: federated stream ended without a done
+    event' because _stream_search re-wrapped the exception in its own repr and search() then
+    did it a second time. The user-facing reason must be ONE clean sentence."""
+    class FakeResp:
+        status_code = 503
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def iter_lines(self, decode_unicode=True): return iter([])
+
+    monkeypatch.setitem(__import__("sys").modules, "requests",
+                        types.SimpleNamespace(post=lambda *a, **k: FakeResp()))
+    monkeypatch.setattr(F, "fallback_status", lambda reason: [])
+    r = F.search("a real disclosure", use_cache=False)
+    assert r.ok is False
+    assert r.error_kind == "busy"
+    assert "RuntimeError" not in r.error
+    assert r.error.count("503") == 1
+
+
+def test_source_status_shape_is_render_ready():
+    """The results page builds its tag row straight off this, so the contract matters:
+    one entry per source, data-driven from App A's own events."""
+    t = F.SourceTracker()
+    t.feed({"kind": "start", "available": ["serpapi_gpatents", "uspto"],
+            "disabled": {"lens": "LENS_TOKEN not set"}})
+    t.feed({"kind": "fanout", "by_source": {"serpapi_gpatents": 0, "uspto": 60}})
+    t.feed({"kind": "source_error", "source": "uspto", "error": "404 Not Found"})
+    by = {e["id"]: e for e in t.snapshot()}
+
+    assert by["serpapi_gpatents"]["state"] == "none"          # searched, returned nothing
+    assert by["uspto"]["state"] == "used"                     # answered AND errored -> partial
+    assert by["uspto"]["state_detail"] == "degraded"
+    assert by["uspto"]["n"] == 60 and "404" in by["uspto"]["note"]
+    assert by["lens"]["state"] == "off"                       # not configured, not a failure
+    for e in by.values():
+        assert {"id", "name", "label", "state", "n", "note"} <= set(e)
+
+
+def test_unknown_source_gets_a_label_automatically():
+    """A newly activated adapter must appear in the tag row with no change here."""
+    t = F.SourceTracker()
+    t.feed({"kind": "fanout", "by_source": {"brand_new_source": 7}})
+    e = t.snapshot()[0]
+    assert e["id"] == "brand_new_source" and e["label"] == "Brand New Source"
+    assert e["state"] == "used" and e["n"] == 7
 
 
 def test_search_two_tier_does_not_federate_unless_asked(monkeypatch):

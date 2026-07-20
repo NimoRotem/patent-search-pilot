@@ -401,8 +401,13 @@ def _federate_block(query, mode):
     try:
         fed = federation.search(query, mode=mode)
     except Exception as e:
+        # federation.search is documented never to raise; this is the belt-and-braces path.
+        # Even here, still NAME the sources so the results page can show which external APIs
+        # went unanswered rather than one opaque "federation failed".
         traceback.print_exc()
-        return {"ok": False, "error": str(e)[:300], "hits": []}
+        reason = str(e)[:300]
+        return {"ok": False, "error": reason, "error_kind": "unknown", "hits": [],
+                "source_status": federation.fallback_status(reason)}
     d = fed.to_dict()
     d["hits"] = [{"pub": h.pub_number, "title": h.title, "abstract": (h.abstract or "")[:600],
                   "assignee": h.assignee, "date": h.date, "country": h.country,
@@ -768,7 +773,152 @@ def events(slug):
 
 
 # ---- lazy per-card enrichment (drawings + PDF + sections + rationale) -----------------------
-def _rationale(slug, pub, query, elements, biblio_txt, matched_txt):
+# How much reference text the rationale generator may see. The old prompt was title+abstract
+# (900 chars) plus ONE nearest chunk (900 chars). On a reference whose nearest chunk was its
+# own abstract that is title-level reasoning, and it shows: EP-0176125-A1, an adhesive
+# wall-fixing patent, was described as disclosing a "driver pin for mechanical coupling of
+# clamping means" on nothing but a lexical match on "pin" and "clamped". Claims and the
+# description body are where disclosure actually lives.
+_RAT_BIBLIO_CHARS = 900
+_RAT_PASSAGE_CHARS = 700          # per passage
+_RAT_EVIDENCE_CHARS = 4200        # total across all passages
+_RAT_MAX_PASSAGES = 8
+_RAT_SOURCE_CHARS = 8000          # what we persist as _source_text / show the verifier
+# 1100, not the old 500: the evidence block is ~4x larger now, so the model writes more (and
+# longer-quoted) reads_on entries. At 500 the JSON came back truncated mid-object and
+# llm.chat_json returns {} on a parse error — which surfaced as a card with a BLANK
+# "why relevant", strictly worse than a title-level one. Measured at 4 of 40 before this.
+_RAT_MAX_TOKENS = 1100
+
+_CLAIM_KINDS = ("claim_own", "claim_resolved")
+_BODY_KINDS = ("paragraph", "whole", "figure_caption")
+
+
+def _english_half(text):
+    """Many DE/EP publications store a claim as the German text immediately followed by its
+    English machine translation, concatenated with NO separator. Feeding both doubles the
+    tokens and lets the model 'find' its quote in whichever half suits it."""
+    t = (text or "").strip()
+    if not t:
+        return t
+    try:
+        pair = translate.split_bilingual(t)
+        if pair and pair[1].strip():
+            return pair[1].strip()
+    except Exception:
+        pass
+    return t
+
+
+def _passage_label(p):
+    """Human location tag for a passage, used both to label it in the prompt and to cite it."""
+    c = p.get("coord") or {}
+    if isinstance(c, dict):
+        if c.get("claim_no") is not None:
+            return f"claim {c['claim_no']}"
+        if c.get("para_no") is not None:
+            return f"paragraph {c['para_no']}"
+        if c.get("figure_no") is not None:
+            return f"figure {c['figure_no']}"
+    return {"abstract": "abstract", "whole": "description",
+            "paragraph": "description", "claim_own": "claim",
+            "claim_resolved": "claim",
+            "figure_caption": "figure caption"}.get(p.get("kind") or "", "text")
+
+
+def ref_passages(cur, pid, qvec, secs=None, limit=_RAT_MAX_PASSAGES):
+    """Evidence set for the rationale: the independent claims, then the query's nearest chunks
+    across every text kind (claims, description paragraphs, abstract, figure captions).
+
+    The independent claims are SEEDED rather than left to the embedding to find. In a novelty
+    read the claims are the disclosure, but a description paragraph that merely shares
+    vocabulary with the query routinely outranks the claim it belongs to, so a purely
+    dense-ranked evidence set was often claim-free.
+    """
+    out, seen = [], set()
+
+    def add(kind, coord, text, score=0.0):
+        t = (text or "").strip()
+        if not t:
+            return
+        key = (kind, json.dumps(coord, sort_keys=True, default=str), t[:80])
+        if key in seen:
+            return
+        seen.add(key)
+        out.append({"kind": kind, "coord": coord, "text": t, "score": score})
+
+    claims = list((secs or {}).get("claims") or [])
+    if not claims and cur is not None and pid:
+        try:
+            cur.execute("SELECT claim_no, is_independent, text, resolved_text FROM claims "
+                        "WHERE publication_id=%s ORDER BY claim_no LIMIT 40", (pid,))
+            claims = [{"claim_no": r["claim_no"], "independent": r["is_independent"],
+                       "text": r["text"], "resolved_text": r["resolved_text"]}
+                      for r in cur.fetchall()]
+        except Exception:
+            claims = []
+    indep = [c for c in claims if c.get("independent")] or claims[:1]
+    for c in indep[:2]:
+        add("claim_own", {"claim_no": c.get("claim_no")},
+            c.get("resolved_text") or c.get("text"))
+
+    # The query's nearest chunks of ANY kind. webview.match_in_pub is LIMIT 1 and exists for
+    # the highlight coordinate; the rationale needs a SET, because a reference whose single
+    # nearest chunk happened to be its own abstract gave the model nothing but bibliographic
+    # text to reason from. Kept here rather than in webview to stay out of that module.
+    if cur is not None and pid and qvec is not None:
+        try:
+            cur.execute(
+                "SELECT kind, coord, 1-(embedding <=> %s::vector) AS score, text "
+                "FROM chunks WHERE publication_id=%s AND embedding IS NOT NULL "
+                "ORDER BY embedding <=> %s::vector LIMIT %s",
+                (webview._vec(qvec), pid, webview._vec(qvec), int(limit)),
+            )
+            for r in cur.fetchall():
+                coord = r["coord"] if isinstance(r["coord"], dict) else (
+                    json.loads(r["coord"]) if r["coord"] else None)
+                add(r["kind"], coord, r["text"], float(r["score"] or 0.0))
+        except Exception:
+            pass
+    return out[:limit + 2]
+
+
+def _evidence_block(passages):
+    """-> (prompt_text, passages_actually_shown). Each passage is tagged with its location so
+    the model can cite it and so a quote can be traced back to a claim/paragraph number."""
+    blocks, shown, used = [], [], 0
+    for p in passages or []:
+        t = _english_half(p.get("text"))[:_RAT_PASSAGE_CHARS]
+        if not t:
+            continue
+        label = p.get("label") or _passage_label(p)
+        piece = f"[{label}] {t}"
+        if used + len(piece) > _RAT_EVIDENCE_CHARS:
+            break
+        blocks.append(piece)
+        used += len(piece) + 2
+        shown.append({"kind": p.get("kind"), "coord": p.get("coord"),
+                      "text": t, "label": label})
+    return "\n\n".join(blocks), shown
+
+
+def _text_basis(shown):
+    """What the opinion is ACTUALLY based on — recorded, and stated in the prose when thin."""
+    kinds = {p.get("kind") for p in shown}
+    has_claims = bool(kinds & set(_CLAIM_KINDS))
+    has_body = bool(kinds & set(_BODY_KINDS))
+    if has_claims and has_body:
+        return "claims+description"
+    if has_claims:
+        return "claims"
+    if has_body:
+        return "description"
+    if "abstract" in kinds:
+        return "abstract-only"
+    return "title-only"
+
+
+def _rationale(slug, pub, query, elements, biblio_txt, matched_txt=None, passages=None):
     cache = RATIONALE / f"{slug}__{pub}.json"
     if cache.exists():
         try:
@@ -777,8 +927,19 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt):
             pass
     # Deterministic guard: with no reference text (title-less junk / un-enriched thin doc) an LLM
     # can only hallucinate. Return an explicit "not verifiable" instead of inventing disclosure.
+    # Back-compat: callers (and tests) may still pass a single passage STRING as matched_txt.
+    if passages is None:
+        if isinstance(matched_txt, (list, tuple)):
+            passages = list(matched_txt)
+        elif matched_txt:
+            passages = [{"kind": None, "coord": None, "text": matched_txt}]
+        else:
+            passages = []
+    evidence, shown = _evidence_block(passages)
+    basis = _text_basis(shown)
+
     title_abs = re.sub(r"^\S+\s*", "", (biblio_txt or "").strip()).strip(" .")
-    if len(title_abs) < 8 and not (matched_txt or "").strip():
+    if len(title_abs) < 8 and not evidence.strip():
         res = {"why": "Reference text was not available to verify relevance; treat as unconfirmed.",
                "reads_on": []}
         cache.write_text(json.dumps(res))
@@ -789,7 +950,8 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt):
     # overclaim+hallucinate was 22%; re-measured after this change.)
     sysmsg = (
         "You are a careful patent prior-art analyst. Use ONLY the reference text provided below "
-        "(its title, abstract, and best-matching passage). Do NOT use outside knowledge and do NOT "
+        "(its bibliographic data and the tagged claim / description passages). Do NOT use outside "
+        "knowledge and do NOT "
         "assume features not shown in that text. Return JSON with two keys: "
         '"why" = 1-2 sentences on why the reference is relevant, citing the SPECIFIC overlapping '
         "wording that actually appears in the reference text (quote or closely paraphrase it), "
@@ -800,22 +962,67 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt):
         'that discloses that element>"}. Include an element ONLY if you can quote reference text that '
         "explicitly discloses it; if the text is just a title or does not clearly show an element, "
         "OMIT it — an empty reads_on is the correct answer when nothing is clearly disclosed. Prefer "
-        "omitting over guessing.")
+        "omitting over guessing. Each passage is tagged with its location, e.g. [claim 1] or "
+        "[paragraph 0012]; prefer quoting a claim or description passage over the abstract, since "
+        "the abstract summarises rather than defines what is disclosed.")
+    if basis in ("abstract-only", "title-only"):
+        # Do not let a thin record be presented with the same confidence as a full one.
+        sysmsg += (" IMPORTANT: this reference's claims and description are NOT available — you "
+                   "have only its " + ("abstract" if basis == "abstract-only" else "title") +
+                   ". Say so explicitly in \"why\" (e.g. 'based on the abstract alone') and do not "
+                   "assert structural detail that only a full text could establish.")
+    bib = (biblio_txt or "")[:_RAT_BIBLIO_CHARS]
     usr = (f"Invention query: {query[:800]}\n\nInvention elements (candidates — include only the "
            f"ones the reference text actually discloses, with a quote): {json.dumps(elements)}\n\n"
-           f"Reference (the ONLY evidence you may use): {biblio_txt[:900]}\n\n"
-           f"Best-matching passage from the reference:\n{(matched_txt or '(none)')[:900]}")
-    out = llm.chat_json(sysmsg, usr, max_tokens=500) or {}
-    source = f"{biblio_txt} {matched_txt or ''}".strip()
+           f"Reference bibliographic data: {bib}\n\n"
+           f"Reference text — claims and description passages, each tagged with its location. "
+           f"This is the ONLY evidence you may use:\n"
+           f"{evidence or '(no claims or description text is available for this reference)'}")
+    out = llm.chat_json(sysmsg, usr, max_tokens=_RAT_MAX_TOKENS) or {}
+    if not (out.get("why") or "").strip() and len(shown) > 4:
+        # Still empty: retry once against a trimmed evidence set. Cheaper and more honest than
+        # caching a blank opinion, and it keeps the long tail of very verbose references.
+        short, shown_short = _evidence_block(passages[:4])
+        if short and short != evidence:
+            retry = llm.chat_json(sysmsg, usr.replace(evidence, short),
+                                  max_tokens=_RAT_MAX_TOKENS) or {}
+            if (retry.get("why") or "").strip():
+                out, evidence, shown = retry, short, shown_short
+    # Ground against EXACTLY the string the model was shown. Building `source` from the
+    # untruncated inputs (as before) let a quote verify against text the generator never saw.
+    source = f"{bib}\n\n{evidence}".strip()
     diag = []
     reads_on = _ground_reads_on(out.get("reads_on") or [], source, diag=diag)
     why, why_state = _verify_why(out.get("why", ""), source)
+    if not (why or "").strip():
+        # Never cache a silently blank rationale — say what happened instead.
+        why = ("A grounded rationale could not be generated for this reference; "
+               "treat its relevance as unconfirmed.")
+        why_state = "generation-failed"
+    # Trace each surviving element back to the claim / paragraph its quote came from. Same
+    # grounding thresholds as the keep/drop test -- this only ATTRIBUTES, it never rescues.
+    kept_set = {e.lower() for e in reads_on}
+    citations = []
+    for item in (out.get("reads_on") or []):
+        if not isinstance(item, dict):
+            continue
+        el = (item.get("element") or "").strip()
+        ev = (item.get("evidence") or "").strip()
+        if not el or not ev or el.lower() not in kept_set:
+            continue
+        loc = grounding.best_passage(ev, shown) if shown else {}
+        if loc:
+            citations.append({"element": el, "label": loc.get("label"),
+                              "kind": loc.get("kind"), "coord": loc.get("coord"),
+                              "span": round(float(loc.get("span") or 0.0), 3)})
     res = {"why": why, "reads_on": reads_on, "why_grounding": why_state,
+           "citations": citations, "text_basis": basis,
+           "n_passages": len(shown),
            # The EXACT text the generator was shown. The audit judge previously rebuilt its own
            # reference text (title+abstract+claim 1) and so graded the rationale against text the
            # generator never saw -- that desync alone inflated the measured rate. Persisting the
            # real input lets audit.judge_rationale grade like-for-like.
-           "_source_text": source[:4000],
+           "_source_text": source[:_RAT_SOURCE_CHARS],
            "grounding_diag": diag}
     cache.write_text(json.dumps(res))
     return res
@@ -896,7 +1103,8 @@ def _verify_why(why, source):
         return why, "no-source"
     try:
         out = llm.chat_json(_WHY_VERIFY_SYS,
-                            f"REFERENCE ACTUAL TEXT:\n{source[:4000]}\n\nASSERTION:\n{why}",
+                            f"REFERENCE ACTUAL TEXT:\n{source[:_RAT_SOURCE_CHARS]}\n\n"
+                            f"ASSERTION:\n{why}",
                             max_tokens=400) or {}
     except Exception:
         return why, "verifier-error"
@@ -921,7 +1129,7 @@ def api_ref(pub):
     with db.cursor() as cur:
         cur.execute("SELECT id FROM publications WHERE publication_number=%s LIMIT 1", (pub,))
         row = cur.fetchone()
-        secs, matched = None, None
+        secs, matched, rat_passages = None, None, []
         if row:
             pid = row["id"]
             secs = webview.sections(cur, pid)
@@ -929,6 +1137,7 @@ def api_ref(pub):
             if q:
                 qv = _query_vec(slug, q)
                 matched = webview.match_in_pub(cur, pid, qv)
+                rat_passages = ref_passages(cur, pid, qv, secs)
     # fall back to SerpApi claims when DB has none
     if secs is not None and not secs["claims"] and disp.get("claims"):
         secs["claims"] = [{"claim_no": i + 1, "independent": None, "text": c, "resolved_text": None}
@@ -944,8 +1153,14 @@ def api_ref(pub):
         rep = _load_report(slug)
         if q and rep:
             biblio_txt = f"{pub} {disp.get('title') or ''}. {disp.get('abstract') or ''}"
+            # SerpApi-sourced claims when the DB has none, so a BigQuery-thin record still gets
+            # claim text rather than silently degrading to title-level reasoning.
+            if not rat_passages and secs and secs.get("claims"):
+                rat_passages = [{"kind": "claim_own", "coord": {"claim_no": c.get("claim_no")},
+                                 "text": c.get("resolved_text") or c.get("text")}
+                                for c in secs["claims"][:2]]
             rationale = _rationale(slug, pub, q, rep.get("elements", []), biblio_txt,
-                                   (matched or {}).get("text"))
+                                   passages=rat_passages)
     # Pure-heuristic language flag: costs nothing, so it is safe on every card. The actual
     # translation stays behind its own lazy endpoint.
     disp["lang_flags"] = {"abstract": translate.looks_nonenglish(disp.get("abstract") or "")}
