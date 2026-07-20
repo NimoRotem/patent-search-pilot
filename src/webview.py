@@ -16,6 +16,138 @@ FLAG = {"US": "🇺🇸", "EP": "🇪🇺", "WO": "🌐", "DE": "🇩🇪", "GB"
         "JP": "🇯🇵", "CN": "🇨🇳", "KR": "🇰🇷"}
 
 
+# ---- federated source tags -----------------------------------------------------------------
+# The results header shows one tag per search source with its state for THIS run. It is built
+# data-driven, so a source activated upstream (Lens, say) appears here with no template change.
+#
+# Priority order:
+#   1. a per-source status structure on the federation payload, if the engine supplies one;
+#   2. otherwise: hit counts derived from hits[].sources, crossed with the engine's advertised
+#      source catalogue so "searched and returned nothing" is distinguishable from "not wired up".
+_SRC_LABEL = {
+    "local": "Local corpus",
+    "serpapi_gpatents": "SerpApi",
+    "bigquery_gpatents": "BigQuery",
+    "gpatents_scrape": "GP scrape",
+    "pqai": "PQAI",
+    "epo_ops": "EPO OPS",
+    "uspto": "USPTO",
+    "openalex": "OpenAlex",
+    "lens": "Lens",
+}
+
+
+def _src_label(sid):
+    return _SRC_LABEL.get(sid) or str(sid).replace("_", " ").title()
+
+
+# The engine's /api/health source catalogue, cached. Refreshed on a background thread so that
+# rendering a report NEVER blocks on a network call; until the first refresh lands the tag row
+# simply falls back to what the report itself records.
+_ENGINE_SRC = {"t": 0.0, "v": []}
+_ENGINE_TTL = 900.0
+
+
+def _engine_sources():
+    import os, threading, time
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return []                       # see module note: no stray network thread under test
+    now = time.time()
+    if _ENGINE_SRC["t"] and (now - _ENGINE_SRC["t"]) < _ENGINE_TTL:
+        return _ENGINE_SRC["v"]
+    _ENGINE_SRC["t"] = now              # claim the slot before starting, so N workers start one
+
+    def _go():
+        try:
+            import federation, requests
+            r = requests.get(federation.BASE_URL + "/api/health",
+                             headers=federation._headers(), timeout=6)
+            if r.ok:
+                d = r.json()
+                if isinstance(d.get("sources"), list):
+                    _ENGINE_SRC["v"] = [x for x in d["sources"] if isinstance(x, dict)]
+        except Exception:
+            pass                        # a health probe must never affect a page render
+
+    threading.Thread(target=_go, daemon=True).start()
+    return _ENGINE_SRC["v"]
+
+
+def _source_tags(report, n_local):
+    """-> [{id,label,state,n,note}] where state is used | none | failed | off."""
+    tags = [{"id": "local", "label": "Local corpus",
+             "state": "used" if n_local else "none", "n": n_local, "note": "", "why": ""}]
+    fed = report.get("federation")
+    if not fed:
+        return tags
+
+    # 1. Engine-supplied per-source status wins outright.
+    status = fed.get("source_status") or fed.get("by_source")
+    if isinstance(status, dict):
+        status = [{"name": k, **(v if isinstance(v, dict) else {"n": v})}
+                  for k, v in status.items()]
+    if isinstance(status, list) and status and isinstance(status[0], dict):
+        for x in status:
+            sid = x.get("id") or x.get("name")
+            if not sid:
+                continue
+            n = int(x.get("n") or x.get("n_hits") or 0)
+            st = x.get("state")
+            if not st:
+                if not x.get("enabled", True):
+                    st = "off"
+                elif x.get("error") or x.get("failed"):
+                    st = "failed"
+                else:
+                    st = "used" if n else "none"
+            tags.append({"id": sid, "label": x.get("label") or _src_label(sid),
+                         "state": st, "n": n,
+                         "note": str(x.get("note") or "")[:160],
+                         "why": str(x.get("reason") or x.get("error") or "")[:160]})
+        return tags
+
+    # 2. Derive from the hits actually recorded, crossed with the advertised catalogue.
+    counts = {}
+    for h in fed.get("hits") or []:
+        for sid in (h.get("sources") or []):
+            counts[sid] = counts.get(sid, 0) + 1
+
+    known = _engine_sources()
+    fed_ok = bool(fed.get("ok"))
+    seen = set()
+    for x in known:
+        sid = x.get("name")
+        if not sid or sid in seen:
+            continue
+        seen.add(sid)
+        n = counts.get(sid, 0)
+        if not x.get("enabled", True):
+            st = "off"
+        elif not fed_ok:
+            # The federated call failed as a whole, so no per-source outcome was ever observed.
+            # These sources are configured and healthy as far as the engine knows; saying they
+            # each "failed" would be asserting N failures we did not measure.
+            st = "unknown"
+        elif not x.get("search_available", True):
+            st = "failed"
+        else:
+            st = "used" if n else "none"
+        tags.append({"id": sid, "label": _src_label(sid), "state": st, "n": n,
+                     "note": str(x.get("note") or "")[:160],
+                     "why": str(x.get("reason") or "")[:160]})
+
+    for sid, n in sorted(counts.items()):
+        if sid not in seen:
+            tags.append({"id": sid, "label": _src_label(sid), "state": "used",
+                         "n": n, "note": "", "why": ""})
+
+    # The one failure we actually observed.
+    if not fed_ok:
+        tags.append({"id": "federation", "label": "External APIs", "state": "failed",
+                     "n": 0, "note": "", "why": str(fed.get("error") or "")[:160]})
+    return tags
+
+
 def _d(s):
     if not s:
         return None
@@ -481,6 +613,7 @@ def build_view(report, top_n=25):
         "substance_filter": {k: v for k, v in subs_stats.items() if k != "titleonly_ids"},
         "domain": report.get("domain"),
         "federation": report.get("federation"),
+        "source_tags": _source_tags(report, len(cards)),
         "federation_offered": bool(report.get("federation_offered")),
         "coverage_ledger": {
             "cpc_branches": report.get("cpc_branches", []),

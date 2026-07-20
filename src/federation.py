@@ -53,10 +53,13 @@ SELF_URL = os.environ.get("FEDERATION_SELF_URL", "https://rotem.ai/patents").rst
 FED_KEY = os.environ.get("FEDERATION_KEY", "")
 INTERNAL_URL = os.environ.get("FEDERATION_INTERNAL_URL", "http://10.128.0.13:8630").rstrip("/")
 ENABLED = os.environ.get("FEDERATION_ENABLED", "1") != "0"
-TIMEOUT = float(os.environ.get("FEDERATION_TIMEOUT", "240"))     # whole-stream budget, seconds
+TIMEOUT = float(os.environ.get("FEDERATION_TIMEOUT", "360"))     # whole-stream budget, seconds
 CONNECT_TIMEOUT = float(os.environ.get("FEDERATION_CONNECT_TIMEOUT", "10"))
 HEALTH_TIMEOUT = float(os.environ.get("FEDERATION_HEALTH_TIMEOUT", "6"))
 CACHE_TTL = float(os.environ.get("FEDERATION_CACHE_TTL", str(14 * 24 * 3600)))
+# Retries apply ONLY to a truncated/transient stream, never to auth or quota failures.
+RETRIES = int(os.environ.get("FEDERATION_RETRIES", "1"))
+RETRY_BACKOFF = float(os.environ.get("FEDERATION_RETRY_BACKOFF", "3"))
 CACHE_DIR = Path(os.environ.get("FEDERATION_CACHE_DIR", str(DATA / "federation_cache")))
 
 # The federated app only accepts these three.
@@ -145,6 +148,8 @@ class FederatedResult:
     hits: list = field(default_factory=list)        # [FederatedHit] best-first
     elements: list = field(default_factory=list)    # agent-extracted claim elements
     error: str = ""
+    error_kind: str = ""                            # stable token: auth/rate_limited/busy/...
+    sources: list = field(default_factory=list)     # [{key,label,state,hits,reason}]
     elapsed: float = 0.0
     cached: bool = False
     base_url: str = ""
@@ -152,6 +157,7 @@ class FederatedResult:
 
     def to_dict(self) -> dict:
         return {"ok": self.ok, "n_hits": len(self.hits), "error": self.error,
+                "error_kind": self.error_kind, "source_status": self.sources,
                 "elapsed": round(self.elapsed, 1), "cached": self.cached,
                 "base_url": self.base_url, "elements": self.elements}
 
@@ -191,6 +197,155 @@ def _lock_for(disclosure: str, mode: str) -> threading.Lock:
         return _locks[k]
 
 
+# --- structured failure ---------------------------------------------------------------------
+class FederationError(RuntimeError):
+    """A transport/protocol failure talking to App A.
+
+    `kind` is a stable machine-readable token the UI can branch on; str() is ONE clean
+    sentence. The old code raised RuntimeError(f"{type(e).__name__}: {e}") and then the
+    caller wrapped THAT the same way again, which is where the user-visible
+    "RuntimeError: RuntimeError: federated stream ended without a done event" came from.
+    Carry structure instead of re-stringifying an exception into its own message.
+    """
+
+    def __init__(self, kind: str, reason: str, retryable: bool = False):
+        super().__init__(reason)
+        self.kind = kind
+        self.reason = reason
+        self.retryable = retryable
+
+
+# HTTP status -> (kind, human reason). App A gained auth + rate limiting + a global
+# concurrency cap, and collapsing all three into "HTTP nnn" made them indistinguishable.
+_HTTP_REASON = {
+    401: ("auth", "App A rejected our credentials (401) — FEDERATION_KEY does not match "
+                  "the engine's PATENTS_PASSWORD"),
+    403: ("auth", "App A refused the request (403)"),
+    429: ("rate_limited", "App A rate-limited this client (429) — the per-IP search quota "
+                          "for this hour is spent"),
+    503: ("busy", "App A is at its concurrent-search cap (503) — retry shortly"),
+}
+
+# Human labels for App A's source keys. An UNKNOWN key falls back to a prettified form of
+# the key itself, so a newly activated adapter (Lens, or anything after it) shows up in the
+# UI automatically with no change here.
+SOURCE_LABELS = {
+    "serpapi_gpatents": "SerpApi Google Patents",
+    "bigquery_gpatents": "BigQuery Google Patents",
+    "pqai": "PQAI",
+    "openalex": "OpenAlex",
+    "uspto": "USPTO ODP",
+    "epo_ops": "EPO OPS",
+    "lens": "Lens.org",
+}
+
+
+def source_label(key: str) -> str:
+    return SOURCE_LABELS.get(key) or str(key).replace("_", " ").title()
+
+
+# Two vocabularies on purpose. `state` is the 4-value one webview._source_tags already
+# renders (used | none | failed | off) so the tag row works with no change over there;
+# `state_detail` keeps the finer distinction for anyone who wants it (a source that
+# answered on some rounds and errored on others is "used" with a note, not a failure).
+_UI_STATE = {
+    "used": "used",
+    "degraded": "used",
+    "no_results": "none",
+    "failed": "failed",
+    "unavailable": "failed",
+    "not_configured": "off",
+    "not_run": "off",
+}
+
+
+def _entry(key: str, detail: str, n: int = 0, reason: str = "") -> dict:
+    """One render-ready per-source tag. Keys are deliberately duplicated (id/name, n/hits,
+    note/reason) so both the existing view layer and any direct consumer read it as-is."""
+    reason = str(reason or "")[:160]
+    n = int(n or 0)
+    return {"id": key, "name": key, "label": source_label(key),
+            "state": _UI_STATE.get(detail, "none"), "state_detail": detail,
+            "n": n, "hits": n, "note": reason, "reason": reason}
+
+
+class SourceTracker:
+    """Accumulates per-source outcome from App A's own SSE events.
+
+    App A already broadcasts everything needed, so this needs no new endpoint and stays
+    data-driven:
+        start        -> {"available": [key, ...], "disabled": {key: reason}}
+        fanout       -> {"by_source": {key: n_hits}}   (once per round)
+        source_error -> {"source": key, "error": "..."}
+    """
+
+    def __init__(self):
+        self.available = []
+        self.disabled = {}
+        self.hits = {}          # key -> best per-round hit count seen
+        self.errors = {}        # key -> first error string
+
+    def feed(self, ev: dict) -> None:
+        k = ev.get("kind")
+        if k == "start":
+            for s in (ev.get("available") or []):
+                if s not in self.available:
+                    self.available.append(s)
+            for s, why in (ev.get("disabled") or {}).items():
+                self.disabled[s] = str(why)
+        elif k == "fanout":
+            for s, n in (ev.get("by_source") or {}).items():
+                try:
+                    n = int(n)
+                except Exception:
+                    continue
+                # each fanout reports THAT round's yield; keep the best round per source
+                self.hits[s] = max(self.hits.get(s, 0), n)
+                if s not in self.available:
+                    self.available.append(s)
+        elif k == "source_error":
+            s = ev.get("source") or ""
+            if s and s not in self.errors:
+                self.errors[s] = str(ev.get("error") or "")[:200]
+
+    def snapshot(self) -> list:
+        """-> [{key,label,state,hits,reason}]  state in
+        used / no_results / degraded / failed / not_configured."""
+        out = []
+        for s in self.available:
+            n = self.hits.get(s, 0)
+            err = self.errors.get(s, "")
+            if err and n <= 0:
+                state, reason = "failed", err
+            elif err:
+                # answered on some rounds, errored on others: partial, not a failure
+                state, reason = "degraded", err
+            elif n > 0:
+                state, reason = "used", ""
+            else:
+                state, reason = "no_results", ""
+            out.append(_entry(s, state, n, reason))
+        for s, why in self.disabled.items():
+            if any(o["id"] == s for o in out):
+                continue
+            out.append(_entry(s, "not_configured", 0, why))
+        return out
+
+
+def fallback_status(reason: str) -> list:
+    """When the stream never started we have no per-source data. /api/health is open and
+    free, so still NAME the sources and mark them unavailable with the real reason —
+    better than one opaque "federation failed" tag."""
+    keys = []
+    try:
+        keys = list(health().get("sources") or [])     # populated even on an auth failure
+    except Exception:
+        pass
+    if not keys:
+        keys = list(SOURCE_LABELS)
+    return [_entry(k, "unavailable", 0, reason) for k in keys]
+
+
 # --- transport ------------------------------------------------------------------------------
 def _headers() -> dict:
     """App A gates /api/search, /api/patent etc. behind a shared secret (X-Patents-Key).
@@ -218,71 +373,139 @@ def _bases() -> list:
 
 
 def health(timeout: float = HEALTH_TIMEOUT) -> dict:
-    """Probe the federated app. Never raises. -> {"ok":bool,"base_url":str,"sources":[...]}"""
+    """Probe the federated app. Never raises.
+    -> {"ok":bool,"authed":bool,"base_url":str,"sources":[...],"error":str}
+
+    /api/health is OPEN on App A, so a 200 there says nothing about whether our key works —
+    which is exactly how a missing FEDERATION_KEY hid: health reported ok while every single
+    federated search 401'd. /api/auth_status is open too AND reflects the caller's key, so
+    probe it and report an unusable key as UNHEALTHY. `sources` is still returned on an auth
+    failure so the UI can at least name the sources it could not reach.
+    """
     if not ENABLED:
-        return {"ok": False, "error": "federation disabled (FEDERATION_ENABLED=0)"}
+        return {"ok": False, "authed": False, "sources": [],
+                "error": "federation disabled (FEDERATION_ENABLED=0)"}
     import requests
     last = ""
     for base in _bases():
         try:
             r = requests.get(f"{base}/api/health", headers=_headers(), timeout=timeout)
-            if r.status_code == 200:
-                d = r.json()
-                return {"ok": True, "base_url": base, "model": d.get("model", ""),
-                        "sources": [s["name"] for s in d.get("sources", [])
-                                    if s.get("search_available")]}
-            last = f"HTTP {r.status_code}"
+            if r.status_code != 200:
+                last = f"HTTP {r.status_code}"
+                continue
+            d = r.json()
+            srcs = [x["name"] for x in d.get("sources", []) if x.get("search_available")]
+            out = {"ok": True, "authed": True, "base_url": base,
+                   "model": d.get("model", ""), "sources": srcs}
+            try:
+                a = requests.get(f"{base}/api/auth_status", headers=_headers(),
+                                 timeout=timeout).json()
+                if a.get("auth_required") and not a.get("authed"):
+                    out.update({"ok": False, "authed": False,
+                                "error": "App A requires a key and ours was not accepted — "
+                                         "FEDERATION_KEY is unset or stale"})
+            except Exception:
+                pass          # auth_status is advisory; never fail health on its account
+            return out
         except Exception as e:
             last = str(e)[:200]
-    return {"ok": False, "error": last or "unreachable"}
+    return {"ok": False, "authed": False, "sources": [], "error": last or "unreachable"}
 
 
-def _stream_search(disclosure: str, mode: str, on_event=None) -> dict:
-    """POST /api/search and consume the SSE stream to its `done` event.
-    -> the done payload dict. Raises on transport failure or if no done event arrives."""
+def _stream_once(base: str, body: dict, on_event, tracker) -> dict:
+    """One POST /api/search attempt against one base. -> done payload. Raises FederationError."""
     import requests
 
+    deadline = time.time() + TIMEOUT
+    with requests.post(f"{base}/api/search", json=body, stream=True,
+                       timeout=(CONNECT_TIMEOUT, TIMEOUT),
+                       headers={**_headers(), "Accept": "text/event-stream"}) as r:
+        if r.status_code != 200:
+            kind, reason = _HTTP_REASON.get(
+                r.status_code, ("http", f"App A returned HTTP {r.status_code}"))
+            # 5xx other than the explicit busy signal may be transient; auth/quota never are
+            raise FederationError(kind, reason,
+                                  retryable=(kind == "http" and r.status_code >= 500))
+        done = None
+        saw_end = False
+        bad_json = 0
+        for line in r.iter_lines(decode_unicode=True):
+            if time.time() > deadline:
+                raise FederationError(
+                    "timeout", f"federated search exceeded {TIMEOUT:.0f}s")
+            if not line or not line.startswith("data: "):
+                continue
+            try:
+                ev = json.loads(line[6:])
+            except Exception:
+                # NEVER silently swallow: an unparseable `done` used to look identical to a
+                # truncated stream, which hid the real cause behind a generic message.
+                bad_json += 1
+                continue
+            kind = ev.get("kind")
+            if tracker is not None:
+                try:
+                    tracker.feed(ev)
+                except Exception:
+                    pass
+            if on_event:
+                try:
+                    on_event(ev)
+                except Exception:
+                    pass              # a bad progress callback must not kill the search
+            if kind == "error":
+                raise FederationError("engine", str(ev.get("error"))[:300])
+            if kind == "done":
+                done = ev
+            elif kind == "end":
+                saw_end = True
+                break
+        if done is None:
+            if bad_json:
+                raise FederationError(
+                    "protocol",
+                    f"{bad_json} unparseable event(s) and no usable done event",
+                    retryable=True)
+            raise FederationError(
+                "truncated",
+                "App A closed the stream before finishing (no done event)" +
+                ("" if saw_end else " — the connection was cut mid-stream, which is what an "
+                                   "App A restart during a 2-4 minute run looks like"),
+                retryable=True)
+        return done
+
+
+def _stream_search(disclosure: str, mode: str, on_event=None, tracker=None) -> dict:
+    """POST /api/search and consume the SSE stream to its `done` event.
+    -> the done payload dict. Raises FederationError.
+
+    Retries ONCE on a truncated/transient failure. Truncation is not a logical error: App A's
+    pipeline runs 2-4 minutes, and any restart of App A mid-flight (a deploy, a supervisor
+    bounce) cuts an otherwise healthy 200 stream with no `done` and no `end`. A 4xx is never
+    retried — the same key or the same spent quota fails identically the second time, and a
+    retry there would just burn another slot against App A's limiter.
+    """
     body = {"disclosure": disclosure[:20000],
             "mode": mode if mode in FED_MODES else "novelty"}
-    last_err = ""
-    for base in _bases():
-        deadline = time.time() + TIMEOUT
-        try:
-            with requests.post(f"{base}/api/search", json=body, stream=True,
-                               timeout=(CONNECT_TIMEOUT, TIMEOUT),
-                               headers={**_headers(),
-                                        "Accept": "text/event-stream"}) as r:
-                if r.status_code != 200:
-                    last_err = f"HTTP {r.status_code}"
-                    continue
-                done = None
-                for line in r.iter_lines(decode_unicode=True):
-                    if time.time() > deadline:
-                        raise TimeoutError(f"federated search exceeded {TIMEOUT:.0f}s")
-                    if not line or not line.startswith("data: "):
-                        continue
-                    try:
-                        ev = json.loads(line[6:])
-                    except Exception:
-                        continue
-                    kind = ev.get("kind")
-                    if on_event:
-                        try:
-                            on_event(ev)
-                        except Exception:
-                            pass          # a bad progress callback must not kill the search
-                    if kind == "error":
-                        raise RuntimeError(str(ev.get("error"))[:300])
-                    if kind == "done":
-                        done = ev
-                    elif kind == "end":
-                        break
-                if done is None:
-                    raise RuntimeError("federated stream ended without a done event")
-                return done
-        except Exception as e:
-            last_err = f"{type(e).__name__}: {str(e)[:200]}"
-    raise RuntimeError(last_err or "federation unreachable")
+    last = None
+    for attempt in range(RETRIES + 1):
+        for base in _bases():
+            try:
+                return _stream_once(base, body, on_event, tracker)
+            except FederationError as e:
+                last = e
+                if e.kind in ("auth", "rate_limited", "busy", "engine"):
+                    raise          # another base or another try cannot help
+            except Exception as e:
+                last = FederationError(
+                    "transport", f"{type(e).__name__}: {str(e)[:200]}", retryable=True)
+        if attempt < RETRIES and last is not None and last.retryable:
+            time.sleep(RETRY_BACKOFF)
+        else:
+            break
+    if last is not None:
+        raise last
+    raise FederationError("unreachable", "federation unreachable")
 
 
 # --- normalisation into the pilot's shape ---------------------------------------------------
@@ -319,9 +542,10 @@ def search(disclosure: str, mode: str = "novelty", use_cache: bool = True,
     the user opted in, or when domain_detect says the local corpus cannot answer.
     """
     if not ENABLED:
-        return FederatedResult(ok=False, error="federation disabled (FEDERATION_ENABLED=0)")
+        return FederatedResult(ok=False, error="federation disabled (FEDERATION_ENABLED=0)",
+                               error_kind="disabled")
     if not disclosure or not disclosure.strip():
-        return FederatedResult(ok=False, error="empty disclosure")
+        return FederatedResult(ok=False, error="empty disclosure", error_kind="bad_request")
 
     mode = mode if mode in FED_MODES else "novelty"
     t0 = time.time()
@@ -331,6 +555,7 @@ def search(disclosure: str, mode: str = "novelty", use_cache: bool = True,
         if cached is not None:
             return FederatedResult(ok=True, hits=_to_hits(cached),
                                    elements=list(cached.get("elements") or []),
+                                   sources=list(cached.get("_source_status") or []),
                                    elapsed=0.0, cached=True, base_url="cache", raw_done=cached)
 
     # single-flight: a second identical request waits and then reads the cache the first wrote
@@ -341,17 +566,31 @@ def search(disclosure: str, mode: str = "novelty", use_cache: bool = True,
             if cached is not None:
                 return FederatedResult(ok=True, hits=_to_hits(cached),
                                        elements=list(cached.get("elements") or []),
+                                       sources=list(cached.get("_source_status") or []),
                                        elapsed=time.time() - t0, cached=True,
                                        base_url="cache", raw_done=cached)
+        tracker = SourceTracker()
         try:
-            done = _stream_search(disclosure, mode, on_event=on_event)
-        except Exception as e:
-            return FederatedResult(ok=False, error=f"{type(e).__name__}: {str(e)[:300]}",
+            done = _stream_search(disclosure, mode, on_event=on_event, tracker=tracker)
+        except FederationError as e:
+            # one clean sentence + a machine token; per-source detail if the stream got far
+            # enough to report any, else named-but-unavailable sources from /api/health
+            got = tracker.snapshot()
+            return FederatedResult(ok=False, error=e.reason, error_kind=e.kind,
+                                   sources=got or fallback_status(e.reason),
                                    elapsed=time.time() - t0)
+        except Exception as e:
+            reason = f"{type(e).__name__}: {str(e)[:300]}"
+            return FederatedResult(ok=False, error=reason, error_kind="unknown",
+                                   sources=tracker.snapshot() or fallback_status(reason),
+                                   elapsed=time.time() - t0)
+        # ride along in the cached payload so a cache hit still renders the source tags
+        done["_source_status"] = tracker.snapshot()
         if use_cache:
             _cache_write(disclosure, mode, done)
         return FederatedResult(ok=True, hits=_to_hits(done),
                                elements=list(done.get("elements") or []),
+                               sources=list(done.get("_source_status") or []),
                                elapsed=time.time() - t0, base_url=BASE_URL, raw_done=done)
 
 

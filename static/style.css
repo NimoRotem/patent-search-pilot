@@ -613,3 +613,72 @@ td.cell-no-coord .cmark, td.cell-unchecked .cmark{ color:#6e7681; }
 /*  Provenance sits under the thumbnail, small and muted: it is context for the drawing, not a
     claim about the reference. */
 .figprov{margin:6px 0 0;font-size:11px;line-height:1.35;max-width:150px}
+
+/* ══ REPORT: compact header, source tags, collapsed tail ══════════════════
+   The results page leads with the results. The header states what was searched and where it
+   was searched, in a strip that costs about 120px; the analytical apparatus lives in .tail
+   blocks below the list. Nothing here scales with the number of references. */
+.rhead{padding:18px 0 14px;margin:14px 0 6px;border-bottom:1px solid var(--line)}
+.rhead h1{font-size:19px;margin-bottom:6px}
+.rhead .q{font-style:italic;color:var(--muted);margin:0 0 12px;line-height:1.5;max-width:900px;
+  font-size:13.5px}
+.facts{display:flex;gap:8px 20px;flex-wrap:wrap;align-items:baseline;font-size:12.5px;
+  color:var(--faint)}
+.facts b{color:var(--ink);font-weight:650;font-size:13.5px;font-variant-numeric:tabular-nums}
+.rhead .actions{margin-top:13px}
+
+/* Per-source state. Colour AND glyph AND a visually-hidden word, so the state does not rely
+   on hue alone. Data-driven: an unknown source id renders in the neutral style. */
+.srcrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:13px}
+.srctag{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:var(--r-pill);
+  border:1px solid var(--line2);background:var(--s1);font-size:11.5px;color:var(--muted);
+  white-space:nowrap}
+.srctag b{font-variant-numeric:tabular-nums;font-weight:650;color:inherit}
+.srctag .sdot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none;opacity:.85}
+.srctag.s-used{color:var(--good);border-color:rgba(63,185,80,.34);background:var(--good-soft)}
+.srctag.s-none,.srctag.s-unknown{color:var(--muted)}
+.srctag.s-none .sdot{opacity:.35}
+/* 'not run': configured, but this search never got an answer out of it. */
+.srctag.s-unknown{opacity:.72}
+.srctag.s-unknown .sdot{background:none;border:1px solid currentColor;opacity:.6}
+.srctag.s-failed{color:var(--bad);border-color:rgba(248,81,73,.34);background:var(--bad-soft)}
+.srctag.s-off{color:var(--faint);border-style:dashed}
+.srctag.s-off .sdot{background:none;border:1px solid currentColor}
+
+/* The one-line off-field notice. Replaces a five-sentence callout: it says which way the
+   result list is skewed, once, and gets out of the way. */
+.offfield{display:flex;gap:10px;align-items:baseline;margin:16px 0 0;padding:9px 13px;
+  border-radius:var(--r-sm);background:var(--warn-soft);border:1px solid rgba(210,153,34,.3);
+  font-size:12.5px;line-height:1.5;color:#e3d5b8}
+.offfield b{color:#f0dfc0}
+.offfield .ci{flex:none}
+
+/* Collapsed analysis blocks below the results. */
+.tailwrap{margin:34px 0 10px;border-top:1px solid var(--line);padding-top:6px}
+details.tail{border-bottom:1px solid var(--line)}
+details.tail>summary{cursor:pointer;list-style:none;display:flex;align-items:baseline;gap:12px;
+  padding:13px 2px;flex-wrap:wrap}
+details.tail>summary::-webkit-details-marker{display:none}
+details.tail>summary::before{content:"▸";color:var(--faint);display:inline-block;
+  transition:transform .15s;flex:none}
+details.tail[open]>summary::before{transform:rotate(90deg)}
+details.tail>summary:hover .th{color:var(--ink)}
+details.tail .th{font-size:13px;font-weight:650;color:var(--muted)}
+details.tail .ts{font-size:11.5px;color:var(--faint)}
+.tailin{padding:4px 0 22px}
+/* Inside a .tail the scope block loses its own frame — the <details> already provides one. */
+.tailin .scope{border:0;background:none;padding:0;margin:0}
+
+/* One line of framing for the grid, then the grid. */
+.gridline{margin:0 0 12px;font-size:12px;color:var(--faint);display:flex;gap:6px 14px;
+  flex-wrap:wrap;align-items:center}
+.gridline .lgi{display:inline-flex;align-items:center;gap:5px}
+
+/* Classifications pane */
+.clslist{display:flex;flex-direction:column;gap:5px}
+.clsrow{display:flex;align-items:baseline;gap:9px;padding:6px 9px;background:var(--s1);
+  border:1px solid var(--line);border-radius:var(--r-sm);font-size:12.5px;flex-wrap:wrap}
+.clsrow.first{border-left:2px solid var(--accent)}
+.clsrow code{font-family:ui-monospace,Menlo,monospace;color:var(--ink);font-weight:650}
+.linkish{background:none;border:0;padding:0;color:var(--accent);font:inherit;cursor:pointer;
+  text-decoration:underline}
