@@ -49,6 +49,42 @@ def _recall(ranked, gold, k):
     return len(set(seen) & gold) / len(gold)
 
 
+def provenance():
+    """What produced this number: code commit + corpus size.
+
+    `eval_results.json` records only a date. That is not enough to compare two runs, and it cost
+    a real misattribution: the 0.1697 baseline was generated 2026-07-19, eight commits touching
+    retrieval landed on 07-20 (parallel multi-channel fan-out, family dedup, listwise rerank,
+    OOD de-dilution) with no re-run, and the next measurement — after a corpus ingest — read the
+    whole difference as an effect of the ingest. It was not: restricting the dense channel to the
+    pre-ingest offices reproduced the post-ingest number exactly.
+
+    A recall figure is only comparable against another figure from the same code AND the same
+    corpus, so both are stamped here and any comparison that ignores them is unsound.
+    """
+    import subprocess
+    try:
+        sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
+                             text=True, cwd=str(Path(__file__).resolve().parent.parent),
+                             timeout=10).stdout.strip() or None
+        dirty = bool(subprocess.run(["git", "status", "--porcelain", "-uno"], capture_output=True,
+                                    text=True, cwd=str(Path(__file__).resolve().parent.parent),
+                                    timeout=10).stdout.strip())
+    except Exception:
+        sha, dirty = None, None
+    import db
+    pubs = chunks = None
+    try:
+        with db.cursor() as c:
+            c.execute("SELECT count(*) n FROM publications")
+            pubs = c.fetchone()["n"]
+            c.execute("SELECT count(*) n FROM chunks")
+            chunks = c.fetchone()["n"]
+    except Exception:
+        pass
+    return {"commit": sha, "worktree_dirty": dirty, "publications": pubs, "chunks": chunks}
+
+
 def corpus_families(R):
     with R.conn.cursor() as cur:
         cur.execute("SELECT DISTINCT COALESCE(NULLIF(simple_family_id,''), publication_number) f "
@@ -88,6 +124,7 @@ def run(limit=None, configs=CONFIGS, label="baseline"):
 
     summary = {
         "label": label,
+        "provenance": provenance(),
         "n_queries": len(rows),
         "reachability_macro": round(statistics.fmean([r["reachability"] for r in rows]), 4),
         "configs": {c: {f"recall@{k}": macro(c, f"recall@{k}") for k in KS} |
