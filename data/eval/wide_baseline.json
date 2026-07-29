@@ -1,0 +1,1070 @@
+{
+ "smoke": {
+  "summary": {
+   "label": "smoke",
+   "n_queries": 3,
+   "reachability_macro": 0.1333,
+   "configs": {
+    "vector": {
+     "recall@10": 0.0,
+     "recall@100": 0.0,
+     "recall@500": 0.0,
+     "reachable@10": 0.0,
+     "reachable@100": 0.0,
+     "reachable@500": 0.0
+    },
+    "hybrid": {
+     "recall@10": 0.0,
+     "recall@100": 0.0,
+     "recall@500": 0.0,
+     "reachable@10": 0.0,
+     "reachable@100": 0.0,
+     "reachable@500": 0.0
+    }
+   },
+   "by_stratum": {
+    "B25B": {
+     "n": 3,
+     "reachability": 0.1333,
+     "recall@100": 0.0
+    }
+   }
+  },
+  "rows": [
+   {
+    "id": "wide_b25b_US11034528B2",
+    "stratum": "B25B",
+    "n_gold": 10,
+    "n_reachable": 4,
+    "reachability": 0.4,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b25b_US2019184534A1",
+    "stratum": "B25B",
+    "n_gold": 8,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b25b_US7887112B1",
+    "stratum": "B25B",
+    "n_gold": 10,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   }
+  ]
+ },
+ "baseline_after_worldwide": {
+  "summary": {
+   "label": "baseline_after_worldwide",
+   "n_queries": 36,
+   "reachability_macro": 0.1607,
+   "configs": {
+    "vector": {
+     "recall@10": 0.0076,
+     "recall@100": 0.0246,
+     "recall@500": 0.0395,
+     "reachable@10": 0.041,
+     "reachable@100": 0.104,
+     "reachable@500": 0.1355
+    },
+    "hybrid": {
+     "recall@10": 0.0076,
+     "recall@100": 0.0246,
+     "recall@500": 0.0321,
+     "reachable@10": 0.041,
+     "reachable@100": 0.104,
+     "reachable@500": 0.1197
+    }
+   },
+   "by_stratum": {
+    "B25B": {
+     "n": 6,
+     "reachability": 0.1085,
+     "recall@100": 0.0
+    },
+    "B25J": {
+     "n": 6,
+     "reachability": 0.2927,
+     "recall@100": 0.0417
+    },
+    "B65G": {
+     "n": 6,
+     "reachability": 0.3139,
+     "recall@100": 0.0208
+    },
+    "B66C": {
+     "n": 6,
+     "reachability": 0.0256,
+     "recall@100": 0.0256
+    },
+    "B66F": {
+     "n": 6,
+     "reachability": 0.0404,
+     "recall@100": 0.0
+    },
+    "F16B": {
+     "n": 6,
+     "reachability": 0.1833,
+     "recall@100": 0.0595
+    }
+   }
+  },
+  "rows": [
+   {
+    "id": "wide_b25b_US11034528B2",
+    "stratum": "B25B",
+    "n_gold": 10,
+    "n_reachable": 4,
+    "reachability": 0.4,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b25b_US2019184534A1",
+    "stratum": "B25B",
+    "n_gold": 8,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b25b_US7887112B1",
+    "stratum": "B25B",
+    "n_gold": 10,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b25b_US7980538B1",
+    "stratum": "B25B",
+    "n_gold": 34,
+    "n_reachable": 1,
+    "reachability": 0.0294,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b25b_US8347811B2",
+    "stratum": "B25B",
+    "n_gold": 23,
+    "n_reachable": 3,
+    "reachability": 0.1304,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b25b_US9452511B2",
+    "stratum": "B25B",
+    "n_gold": 22,
+    "n_reachable": 2,
+    "reachability": 0.0909,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b25j_US2021069904A1",
+    "stratum": "B25J",
+    "n_gold": 8,
+    "n_reachable": 7,
+    "reachability": 0.875,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.25,
+      "recall@500": 0.25,
+      "reachable@10": 0.0,
+      "reachable@100": 0.2857142857142857,
+      "reachable@500": 0.2857142857142857
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.25,
+      "recall@500": 0.25,
+      "reachable@10": 0.0,
+      "reachable@100": 0.2857142857142857,
+      "reachable@500": 0.2857142857142857
+     }
+    }
+   },
+   {
+    "id": "wide_b25j_US2022155179A1",
+    "stratum": "B25J",
+    "n_gold": 11,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b25j_US2022281125A1",
+    "stratum": "B25J",
+    "n_gold": 21,
+    "n_reachable": 5,
+    "reachability": 0.2381,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b25j_US8463437B2",
+    "stratum": "B25J",
+    "n_gold": 11,
+    "n_reachable": 2,
+    "reachability": 0.1818,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b25j_US9079317B2",
+    "stratum": "B25J",
+    "n_gold": 13,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b25j_US9221176B2",
+    "stratum": "B25J",
+    "n_gold": 13,
+    "n_reachable": 6,
+    "reachability": 0.4615,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b65g_US8312978B2",
+    "stratum": "B65G",
+    "n_gold": 14,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b65g_US8851266B2",
+    "stratum": "B65G",
+    "n_gold": 15,
+    "n_reachable": 2,
+    "reachability": 0.1333,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b65g_US8955420B2",
+    "stratum": "B65G",
+    "n_gold": 8,
+    "n_reachable": 8,
+    "reachability": 1.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.125,
+      "recall@100": 0.125,
+      "recall@500": 0.375,
+      "reachable@10": 0.125,
+      "reachable@100": 0.125,
+      "reachable@500": 0.375
+     },
+     "hybrid": {
+      "recall@10": 0.125,
+      "recall@100": 0.125,
+      "recall@500": 0.25,
+      "reachable@10": 0.125,
+      "reachable@100": 0.125,
+      "reachable@500": 0.25
+     }
+    }
+   },
+   {
+    "id": "wide_b65g_US9119382B2",
+    "stratum": "B65G",
+    "n_gold": 17,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b65g_US9481528B2",
+    "stratum": "B65G",
+    "n_gold": 8,
+    "n_reachable": 4,
+    "reachability": 0.5,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b65g_US9725242B2",
+    "stratum": "B65G",
+    "n_gold": 16,
+    "n_reachable": 4,
+    "reachability": 0.25,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b66c_US2019382246A1",
+    "stratum": "B66C",
+    "n_gold": 28,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b66c_US2020355160A1",
+    "stratum": "B66C",
+    "n_gold": 13,
+    "n_reachable": 2,
+    "reachability": 0.1538,
+    "configs": {
+     "vector": {
+      "recall@10": 0.07692307692307693,
+      "recall@100": 0.15384615384615385,
+      "recall@500": 0.15384615384615385,
+      "reachable@10": 0.5,
+      "reachable@100": 1.0,
+      "reachable@500": 1.0
+     },
+     "hybrid": {
+      "recall@10": 0.07692307692307693,
+      "recall@100": 0.15384615384615385,
+      "recall@500": 0.15384615384615385,
+      "reachable@10": 0.5,
+      "reachable@100": 1.0,
+      "reachable@500": 1.0
+     }
+    }
+   },
+   {
+    "id": "wide_b66c_US7506589B2",
+    "stratum": "B66C",
+    "n_gold": 14,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b66c_US8474892B1",
+    "stratum": "B66C",
+    "n_gold": 9,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b66c_US8596474B2",
+    "stratum": "B66C",
+    "n_gold": 26,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b66c_US9550475B1",
+    "stratum": "B66C",
+    "n_gold": 19,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b66f_US10507574B2",
+    "stratum": "B66F",
+    "n_gold": 14,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b66f_US11116325B2",
+    "stratum": "B66F",
+    "n_gold": 33,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b66f_US2019322192A1",
+    "stratum": "B66F",
+    "n_gold": 15,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b66f_US2021163275A1",
+    "stratum": "B66F",
+    "n_gold": 8,
+    "n_reachable": 1,
+    "reachability": 0.125,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b66f_US9309008B2",
+    "stratum": "B66F",
+    "n_gold": 17,
+    "n_reachable": 2,
+    "reachability": 0.1176,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b66f_USRE48991E",
+    "stratum": "B66F",
+    "n_gold": 42,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_f16b_US10183855B2",
+    "stratum": "F16B",
+    "n_gold": 26,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_f16b_US2022196287A1",
+    "stratum": "F16B",
+    "n_gold": 19,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_f16b_US2022381288A1",
+    "stratum": "F16B",
+    "n_gold": 14,
+    "n_reachable": 14,
+    "reachability": 1.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.07142857142857142,
+      "recall@100": 0.35714285714285715,
+      "recall@500": 0.6428571428571429,
+      "reachable@10": 0.07142857142857142,
+      "reachable@100": 0.35714285714285715,
+      "reachable@500": 0.6428571428571429
+     },
+     "hybrid": {
+      "recall@10": 0.07142857142857142,
+      "recall@100": 0.35714285714285715,
+      "recall@500": 0.5,
+      "reachable@10": 0.07142857142857142,
+      "reachable@100": 0.35714285714285715,
+      "reachable@500": 0.5
+     }
+    }
+   },
+   {
+    "id": "wide_f16b_US7134170B2",
+    "stratum": "F16B",
+    "n_gold": 11,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_f16b_US8444191B2",
+    "stratum": "F16B",
+    "n_gold": 30,
+    "n_reachable": 3,
+    "reachability": 0.1,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_f16b_US9326411B2",
+    "stratum": "F16B",
+    "n_gold": 8,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   }
+  ]
+ }
+}
