@@ -637,7 +637,21 @@ td.cell-no-coord .cmark, td.cell-unchecked .cmark{ color:#6e7681; }
 .rhead{padding:18px 0 14px;margin:14px 0 6px;border-bottom:1px solid var(--line)}
 .rhead h1{font-size:19px;margin-bottom:6px}
 .rhead .q{font-style:italic;color:var(--muted);margin:0 0 12px;line-height:1.5;max-width:900px;
-  font-size:13.5px}
+  font-size:13.5px;white-space:pre-wrap}
+/*  The searched text in full, visually clamped rather than server-truncated. The string is always
+    complete in the DOM — Ctrl-F, select-all and the print stylesheet all see the whole thing —
+    so the toggle only lifts the clamp. -webkit-line-clamp is the only cross-browser way to end a
+    clamp on an ellipsis mid-line; every engine we serve supports it. */
+.qwrap{margin:0 0 12px;max-width:900px}
+.qwrap .q{margin:0}
+.qwrap.clamped .q{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+  overflow:hidden}
+.qwrap.clamped.open .q{display:block;overflow:visible;max-height:46vh;overflow-y:auto;
+  padding-right:6px}
+.qmore{margin-top:5px;background:none;border:0;padding:0;cursor:pointer;font:inherit;
+  font-size:12px;font-style:normal;color:var(--accent);display:inline-flex;align-items:baseline;gap:7px}
+.qmore:hover{text-decoration:underline}
+.qmore .qn{color:var(--faint);font-variant-numeric:tabular-nums}
 .facts{display:flex;gap:8px 20px;flex-wrap:wrap;align-items:baseline;font-size:12.5px;
   color:var(--faint)}
 .facts b{color:var(--ink);font-weight:650;font-size:13.5px;font-variant-numeric:tabular-nums}
@@ -669,8 +683,10 @@ td.cell-no-coord .cmark, td.cell-unchecked .cmark{ color:#6e7681; }
 .offfield b{color:#f0dfc0}
 .offfield .ci{flex:none}
 
-/* Collapsed analysis blocks below the results. */
-.tailwrap{margin:34px 0 10px;border-top:1px solid var(--line);padding-top:6px}
+/*  Collapsed analysis blocks. They sit directly under the header, ABOVE the results, so the grid
+    and the measured-recall figure are one click away instead of one full scroll away. Closed, the
+    whole group is three summary rows — hence the tighter margin than when it trailed the page. */
+.tailwrap{margin:2px 0 18px;padding-top:2px}
 details.tail{border-bottom:1px solid var(--line)}
 details.tail>summary{cursor:pointer;list-style:none;display:flex;align-items:baseline;gap:12px;
   padding:13px 2px;flex-wrap:wrap}

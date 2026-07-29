@@ -17,7 +17,10 @@ GOLD="grabo_gripper_novelty grabo_gripper_inventive grabo_extended_frame grabo_d
 for g in $GOLD; do
   html=$(curl -s $BASE/report/$g)
   c=$(echo "$html" | grep -oc 'class="refcard"')
-  chart=$(echo "$html" | grep -oc 'Element × Reference claim chart')
+  # The heading is "Element × reference grid" — it was renamed away from "claim chart" by the
+  # disclosure work (a retrieval map is not a claim chart), and this gate went on matching the old
+  # string, so all 11 gold reports had been failing here on a wording change, not a defect.
+  chart=$(echo "$html" | grep -oc 'Element × reference grid')
   if [ "$c" -ge 10 ] && [ "$chart" -ge 1 ]; then ok "$g ($c cards, chart)"; else bad "$g (cards=$c chart=$chart)"; fi
 done
 
@@ -39,11 +42,15 @@ curl -s -X POST $BASE/api/flags/grabo_gripper_novelty -H 'Content-Type: applicat
 curl -s $BASE/api/flags/grabo_gripper_novelty | grep -q '"regtest"' && ok "flag persisted" || bad "flag persist"
 curl -s -X POST $BASE/api/flags/grabo_gripper_novelty -H 'Content-Type: application/json' -d '{"pub":"US-3005652-A","flag":"","note":""}' >/dev/null  # reset
 
-echo "== export PDF + DOCX (gold AND free-text) =="
-for fmt in pdf docx; do
+echo "== export PDF + DOCX + XLSX + MD (gold AND free-text) =="
+for fmt in pdf docx xlsx md; do
   sz=$(curl -s -X POST $BASE/export -d "slug=grabo_gripper_novelty" -d "pubs=US-3005652-A,US-11207792-B2,US-9457478-B2" -d "format=$fmt" -o /tmp/reg_gold.$fmt -w "%{size_download}")
   [ "${sz:-0}" -gt 20000 ] && ok "gold export $fmt ($sz b)" || bad "gold export $fmt"
 done
+# The Markdown export exists to carry the reference text the other three drop, so "it downloaded"
+# is not enough of a check: assert it actually contains claim text and no images/links.
+grep -q '#### Claims (' /tmp/reg_gold.md && ok "md carries full claim text" || bad "md has no claims"
+! grep -q '](http' /tmp/reg_gold.md && ok "md is link-free" || bad "md leaked hyperlinks"
 FT=$(ls -t data/reports/adhoc-*.json 2>/dev/null | grep -vE '\.(view|meta)\.json$' | head -1 | xargs -n1 basename 2>/dev/null | sed 's/\.json$//')
 if [ -n "$FT" ]; then
   pubs=$($PY -c "import sys;sys.path.insert(0,'src');import json,webview;v=webview.build_view(json.load(open('data/reports/$FT.json')),top_n=4);print(','.join(c['pub'] for c in v['cards'][:4]))" 2>/dev/null | grep -v FutureWarning)

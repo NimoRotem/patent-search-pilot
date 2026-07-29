@@ -15,7 +15,7 @@ from flask import (Flask, Response, render_template, request, jsonify, redirect,
 import db, embed, goldset, webview, enrich_display, llm
 import pubnorm  # single link-builder: zero-padded Google/Espacenet URLs (dropped-zero fix)
 import ops_family, prefetch                        # worldwide family timeline + top-N proactive enrich
-import export_data, export_pdf, export_docx
+import export_data, export_pdf, export_docx, export_xlsx, export_md
 import auth, rerank_pool
 import claim_chart, translate, drawings          # ported per-card enrichment
 import ingest_input                                # front-door document / patent-link -> search brief
@@ -134,6 +134,28 @@ FLAGS = DATA / "reports"
 REPORTS.mkdir(parents=True, exist_ok=True)
 RATIONALE.mkdir(parents=True, exist_ok=True)
 EXPORTS.mkdir(parents=True, exist_ok=True)
+
+#  The four export shapes, in one table so /export, the export bar and the tests cannot disagree
+#  about which formats exist. They differ along exactly two axes:
+#    drawings — resolve one local figure file per reference (PDF/DOCX/XLSX embed it; Markdown is
+#               text-only, and skipping the resolve also skips any CDN fetch, so .md stays fast)
+#    text     — attach every reference's FULL claims + description. Only Markdown wants this: in a
+#               paginated document it is hundreds of pages, and the other three already quote the
+#               single best-matching passage.
+EXPORT_FORMATS = {
+    "pdf":  {"render": lambda m, o: export_pdf.render(m, o),  "drawings": True,  "text": False,
+             "mime": "application/pdf", "label": "PDF"},
+    "docx": {"render": lambda m, o: export_docx.render(m, o), "drawings": True,  "text": False,
+             "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+             "label": "Word"},
+    "xlsx": {"render": lambda m, o: export_xlsx.render(m, o), "drawings": True,  "text": False,
+             "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+             "label": "Excel"},
+    #  Bare "text/markdown": Flask appends the charset itself for text/* types, so spelling it out
+    #  here produced a doubled "charset=utf-8; charset=utf-8" header.
+    "md":   {"render": lambda m, o: export_md.render(m, o),   "drawings": False, "text": True,
+             "mime": "text/markdown", "label": "Markdown"},
+}
 
 _GOLD = {e["id"]: e for e in goldset.load()["entries"]}
 _JOBS = {}          # slug -> {"status": "running|partial|done|error", "msg": ...}
@@ -1810,8 +1832,8 @@ def export():
     slug = request.form.get("slug", "").strip()
     fmt = request.form.get("format", "pdf").strip().lower()
     pubs = [p for p in request.form.get("pubs", "").split(",") if p.strip()]
-    if not slug or not pubs or fmt not in ("pdf", "docx"):
-        return jsonify({"error": "need slug, pubs, format(pdf|docx)"}), 400
+    if not slug or not pubs or fmt not in EXPORT_FORMATS:
+        return jsonify({"error": "need slug, pubs, format(%s)" % "|".join(EXPORT_FORMATS)}), 400
     # `slug` arrives in a form field, so no route converter has vetted it, and it is about to become
     # part of a path we WRITE to. Validate before touching the filesystem.
     if not valid_slug(slug):
@@ -1822,19 +1844,16 @@ def export():
         # An unknown slug used to raise inside assemble() and surface as an unhandled HTML 500.
         if not report_path(slug).exists() and slug not in _GOLD:
             return jsonify({"error": "unknown report", "slug": slug}), 404
+        spec = EXPORT_FORMATS[fmt]
         try:
-            model = export_data.assemble(slug, pubs)
+            model = export_data.assemble(slug, pubs, include_text=spec["text"],
+                                         include_drawings=spec["drawings"])
         except Exception as e:
             return jsonify({"error": "could not assemble export", "detail": str(e)[:200]}), 400
-        if fmt == "pdf":
-            export_pdf.render(model, out)
-        else:
-            export_docx.render(model, out)
+        spec["render"](model, out)
     dl = f"prior-art-{slug}.{fmt}"
-    mime = "application/pdf" if fmt == "pdf" else \
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     return send_from_directory(EXPORTS, out.name, as_attachment=True,
-                               download_name=dl, mimetype=mime)
+                               download_name=dl, mimetype=EXPORT_FORMATS[fmt]["mime"])
 
 
 # ---- citation graph + more-like-this -------------------------------------------------------

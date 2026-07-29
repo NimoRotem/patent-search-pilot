@@ -8,10 +8,12 @@
     1.6 MB and made its accessibility tree take minutes to build.
 
     READING ORDER. This is a search tool: the results ARE the page. Above the fold there is a
-    compact header (what was searched, where it was searched) and then the ranked references.
-    The analytical apparatus — retrieval grid, coverage ledger, scope disclosure — lives BELOW
-    the results, collapsed. It is all still here and still reachable; it is simply not in the
-    reading path. The exports and /print keep the full disclosure: those travel without context.
+    compact header (what was searched, in full and expandable, and where it was searched), then
+    the analytical apparatus — retrieval grid, coverage ledger, scope disclosure — as three
+    COLLAPSED summary rows, then the ranked references. The apparatus moved up from the bottom of
+    the page because reaching it meant scrolling past every result; collapsed it costs three rows
+    and stays out of the reading path. The exports and /print keep the full disclosure expanded:
+    those travel without context.
     ============================================================================================ #}
 <div class="wrap">
 
@@ -43,7 +45,19 @@
   <!-- ── compact header ──────────────────────────────────────────────────── -->
   <div class="rhead">
     <h1>{{ v.title }}</h1>
-    <p class="q">“{{ v.query[:280] }}{% if v.query|length > 280 %}…{% endif %}”</p>
+    {#  WHAT WAS SEARCHED, in full. The header used to hard-truncate at 280 characters with an
+        ellipsis and no way back — for a document/patent-link search the query IS a multi-paragraph
+        brief, so the operator could not see what the agent actually ran. The whole string is now in
+        the DOM (copyable, findable, printable) and only visually clamped to three lines; the toggle
+        expands it in place. Capped at 20k chars so a pathological paste cannot bloat the page. #}
+    {% set qfull = v.query[:20000] %}
+    <div class="qwrap{% if v.query|length > 240 %} clamped{% endif %}" id="qwrap">
+      <p class="q" id="qtext">“{{ qfull }}{% if v.query|length > 20000 %} […truncated]{% endif %}”</p>
+      {% if v.query|length > 240 %}
+      <button type="button" class="qmore" id="qmore" aria-expanded="false" aria-controls="qtext"
+              onclick="toggleQuery()">Show full search <span class="qn">{{ '{:,}'.format(v.query|length) }} chars</span></button>
+      {% endif %}
+    </div>
 
     <div class="facts">
       <span><b>{{ v.cards|length }}</b> ranked references</span>
@@ -75,6 +89,140 @@
       <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}?rerun=1"
          onclick="return confirm('Re-run the agent live? This takes ~2–4 minutes.')">Re-run</a>
     </div>
+  </div>
+
+  {#  ══ above the results ══════════════════════════════════════════════════════════════════
+      The analytical apparatus — retrieval grid, coverage ledger, scope disclosure — sits here,
+      directly under the header and still COLLAPSED. It used to live at the very bottom, which
+      meant scrolling past 25 result cards to reach the grid or the recall figure. Collapsed it
+      costs three summary rows and stays out of the reading path; open, it is where the eye
+      already is. /print and the exports keep their own full-width, always-expanded copies. #}
+  <div class="tailwrap">
+
+    <details class="tail">
+      <summary><span class="th">Element × reference grid</span>
+        <span class="ts">{{ v.elements|length }} elements × {{ v.claim_chart.columns|length }} references{% if v.claim_chart.verification and v.claim_chart.verification.covered %} · {{ v.claim_chart.verification.discloses }} verified{% endif %}</span></summary>
+      <div class="tailin">
+        <p class="gridline">Each cell is one retrieved passage; the glyph is its verification state.
+          <span class="lgi"><span class="lg lg-ok"></span>✓ verified</span>
+          <span class="lgi"><span class="lg lg-weak"></span>~ weak</span>
+          <span class="lgi"><span class="lg lg-bad"></span>✕ unrelated</span>
+          <span class="lgi"><span class="lg lg-none"></span>○ whole-document</span>
+          {% if v.claim_chart.verification and v.claim_chart.verification.unchecked %}<span class="lgi"><span class="lg lg-unk"></span>? unchecked</span>{% endif %}
+        </p>
+
+        <div class="chartwrap">
+          <table class="chart">
+            <caption class="vh">Which references disclose which elements of the invention</caption>
+            <thead>
+              <tr>
+                <th class="elh" scope="col">Invention element</th>
+                {% for c in v.claim_chart.columns %}
+                <th scope="col"><button type="button" class="pnlink" onclick="jumpRef('{{ c.pub }}')">{{ c.pub }}</button>
+                  <span class="colcount">{{ c.n_elements }} elements</span></th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in v.claim_chart.rows %}
+              <tr>
+                <th class="elh" scope="row">{{ row.element }}
+                  <span class="elcov">best {{ '%.3f'|format(row.coverage.get('best_score',0)) }} · {{ row.coverage.get('n_evidence',0) }} refs</span></th>
+                {% for cell in row.cells %}
+                  {#  Colour encodes VERIFICATION STATE, not retrieval score. Green previously
+                      scaled with the fused score, so a confidently-retrieved but wrong cell was the
+                      greenest thing on the page. Only a confirmed cell may look like coverage. #}
+                  {% if cell.covered %}
+                  {% set vst = cell.verify or 'unchecked' %}
+                  <td class="cell cell-{{ vst }}">
+                    <button type="button" onclick="jumpRef('{{ cell.pub }}')"
+                            aria-label="{{ cell.pub }} for “{{ row.element }}” — {{
+                              {'discloses':'verified: passage teaches this element',
+                               'weak':'weak: same topic, does not clearly show the element',
+                               'unrelated':'unrelated: passage is about something else',
+                               'no-coord':'whole-document match, no passage to verify',
+                               'unchecked':'not verified'}[vst] }} — retrieval score {{ '%.3f'|format(cell.score) }}"
+                            title="{{ cell.pub }} · {{ cell.verify_why or cell.basis }}">
+                      <span class="cmark">{{ {'discloses':'✓','weak':'~','unrelated':'✕',
+                                              'no-coord':'○','unchecked':'?'}[vst] }}</span>
+                      <span class="cs">{{ '%.3f'|format(cell.score) }}</span>
+                      {% if cell.coord %}<span class="cc">{{ cell.coord }}</span>{% endif %}
+                      {% if cell.basis=='secret_prior_art' %}<span class="cc">🔒 secret</span>
+                      {% elif cell.basis=='public_prior_art' %}<span class="cc">◆ public</span>{% endif %}
+                    </button>
+                  </td>
+                  {% else %}<td class="cell empty">·</td>{% endif %}
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% set cv = v.claim_chart.combination_view %}
+        {% if cv.primary %}
+        <div class="combo">
+          <h4>Inventive-step combination view</h4>
+          <div>Primary reference <code>{{ cv.primary }}</code>{% if cv.covers %} covers
+            <b>{{ cv.covers|length }}</b> element(s): {{ cv.covers|join(' · ') }}{% endif %}</div>
+          {% for s in cv.secondaries %}
+          <div style="margin-top:5px">plus secondary <code>{{ s.ref }}</code> supplying {{ s.supplies|join(' · ') }}</div>
+          {% endfor %}
+          {% if cv.uncovered_elements %}
+          {#  Was "Not found anywhere in the corpus" — a completeness claim this tool cannot make at
+              19% recall@100. It states what actually happened: this run did not surface art. #}
+          <div class="unc" style="margin-top:8px">Not surfaced by this search
+            ({{ cv.uncovered_elements|length }}): {{ cv.uncovered_elements|join(' · ') }}</div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </details>
+
+    <details class="tail">
+      <summary><span class="th">Coverage ledger</span>
+        <span class="ts">{{ v.rounds }} rounds · {{ v.coverage_ledger.cpc_branches|length }} CPC branches · {{ v.channels_used|length }} channels</span></summary>
+      <div class="tailin">
+        <div class="ledger">
+          <div class="box">
+            <h4>Marginal new-family yield per round</h4>
+            <div class="yield">
+              {% set mx = (v.coverage_ledger.round_new_families or [1])|max %}
+              {% for n in v.coverage_ledger.round_new_families %}
+              <div class="ycol">
+                <div class="bar" style="height:{{ (6 + 78*n/mx)|int }}px">{{ n }}</div>
+                <div class="rnd">r{{ loop.index }}</div>
+              </div>{% endfor %}
+            </div>
+            <p class="small muted" style="margin-top:10px">The search stops when new-family yield stays
+              low across independent channels — not after a fixed loop count.</p>
+          </div>
+          <div class="box">
+            <h4>CPC branches searched ({{ v.coverage_ledger.cpc_branches|length }})</h4>
+            <div>{% for cpc in v.coverage_ledger.cpc_branches %}<span class="pill">{{ cpc }}</span>{% endfor %}</div>
+            <h4 style="margin-top:16px">Retrieval channels</h4>
+            <div>{% for ch in v.channels_used %}<span class="pill">{{ ch }}</span>{% endfor %}</div>
+            {% if v.coverage_ledger.combination_view.uncovered_elements %}
+            <h4 style="margin-top:16px">Uncovered elements</h4>
+            <div class="uncov small">{{ v.coverage_ledger.combination_view.uncovered_elements|join(' · ') }}</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </details>
+
+    {#  The scope + measured-reliability disclosure. NOT deleted and NOT abbreviated — the full
+        text is still here, one click away, and /about still renders it opened and in full. The
+        exported PDF/DOCX and /print also keep it in full: an exported document travels to people
+        who never saw this screen. What changed is only that it no longer sits above the results
+        on the operator's own screen. #}
+    <details class="tail">
+      <summary><span class="th">Search scope and measured reliability</span>
+        <span class="ts">corpus limits, date ceiling, {{ corpus.recall_pct }}% measured recall@100</span></summary>
+      <div class="tailin">
+        {% with variant='results' %}{% include "_scope.html" %}{% endwith %}
+      </div>
+    </details>
   </div>
 
   <!-- ── results ─────────────────────────────────────────────────────────── -->
@@ -297,136 +445,7 @@
       and an external-only hit becomes a full card ranked in by relevance. Provenance stays
       visible per card (the API name chips), which is what the separate block used to carry. #}
 
-  {#  ══ below the results ══════════════════════════════════════════════════════════════════
-      Everything analytical, collapsed. Reachable in one click, out of the reading path. #}
-  <div class="tailwrap">
 
-    <details class="tail">
-      <summary><span class="th">Element × reference grid</span>
-        <span class="ts">{{ v.elements|length }} elements × {{ v.claim_chart.columns|length }} references{% if v.claim_chart.verification and v.claim_chart.verification.covered %} · {{ v.claim_chart.verification.discloses }} verified{% endif %}</span></summary>
-      <div class="tailin">
-        <p class="gridline">Each cell is one retrieved passage; the glyph is its verification state.
-          <span class="lgi"><span class="lg lg-ok"></span>✓ verified</span>
-          <span class="lgi"><span class="lg lg-weak"></span>~ weak</span>
-          <span class="lgi"><span class="lg lg-bad"></span>✕ unrelated</span>
-          <span class="lgi"><span class="lg lg-none"></span>○ whole-document</span>
-          {% if v.claim_chart.verification and v.claim_chart.verification.unchecked %}<span class="lgi"><span class="lg lg-unk"></span>? unchecked</span>{% endif %}
-        </p>
-
-        <div class="chartwrap">
-          <table class="chart">
-            <caption class="vh">Which references disclose which elements of the invention</caption>
-            <thead>
-              <tr>
-                <th class="elh" scope="col">Invention element</th>
-                {% for c in v.claim_chart.columns %}
-                <th scope="col"><button type="button" class="pnlink" onclick="jumpRef('{{ c.pub }}')">{{ c.pub }}</button>
-                  <span class="colcount">{{ c.n_elements }} elements</span></th>
-                {% endfor %}
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in v.claim_chart.rows %}
-              <tr>
-                <th class="elh" scope="row">{{ row.element }}
-                  <span class="elcov">best {{ '%.3f'|format(row.coverage.get('best_score',0)) }} · {{ row.coverage.get('n_evidence',0) }} refs</span></th>
-                {% for cell in row.cells %}
-                  {#  Colour encodes VERIFICATION STATE, not retrieval score. Green previously
-                      scaled with the fused score, so a confidently-retrieved but wrong cell was the
-                      greenest thing on the page. Only a confirmed cell may look like coverage. #}
-                  {% if cell.covered %}
-                  {% set vst = cell.verify or 'unchecked' %}
-                  <td class="cell cell-{{ vst }}">
-                    <button type="button" onclick="jumpRef('{{ cell.pub }}')"
-                            aria-label="{{ cell.pub }} for “{{ row.element }}” — {{
-                              {'discloses':'verified: passage teaches this element',
-                               'weak':'weak: same topic, does not clearly show the element',
-                               'unrelated':'unrelated: passage is about something else',
-                               'no-coord':'whole-document match, no passage to verify',
-                               'unchecked':'not verified'}[vst] }} — retrieval score {{ '%.3f'|format(cell.score) }}"
-                            title="{{ cell.pub }} · {{ cell.verify_why or cell.basis }}">
-                      <span class="cmark">{{ {'discloses':'✓','weak':'~','unrelated':'✕',
-                                              'no-coord':'○','unchecked':'?'}[vst] }}</span>
-                      <span class="cs">{{ '%.3f'|format(cell.score) }}</span>
-                      {% if cell.coord %}<span class="cc">{{ cell.coord }}</span>{% endif %}
-                      {% if cell.basis=='secret_prior_art' %}<span class="cc">🔒 secret</span>
-                      {% elif cell.basis=='public_prior_art' %}<span class="cc">◆ public</span>{% endif %}
-                    </button>
-                  </td>
-                  {% else %}<td class="cell empty">·</td>{% endif %}
-                {% endfor %}
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-
-        {% set cv = v.claim_chart.combination_view %}
-        {% if cv.primary %}
-        <div class="combo">
-          <h4>Inventive-step combination view</h4>
-          <div>Primary reference <code>{{ cv.primary }}</code>{% if cv.covers %} covers
-            <b>{{ cv.covers|length }}</b> element(s): {{ cv.covers|join(' · ') }}{% endif %}</div>
-          {% for s in cv.secondaries %}
-          <div style="margin-top:5px">plus secondary <code>{{ s.ref }}</code> supplying {{ s.supplies|join(' · ') }}</div>
-          {% endfor %}
-          {% if cv.uncovered_elements %}
-          {#  Was "Not found anywhere in the corpus" — a completeness claim this tool cannot make at
-              19% recall@100. It states what actually happened: this run did not surface art. #}
-          <div class="unc" style="margin-top:8px">Not surfaced by this search
-            ({{ cv.uncovered_elements|length }}): {{ cv.uncovered_elements|join(' · ') }}</div>
-          {% endif %}
-        </div>
-        {% endif %}
-      </div>
-    </details>
-
-    <details class="tail">
-      <summary><span class="th">Coverage ledger</span>
-        <span class="ts">{{ v.rounds }} rounds · {{ v.coverage_ledger.cpc_branches|length }} CPC branches · {{ v.channels_used|length }} channels</span></summary>
-      <div class="tailin">
-        <div class="ledger">
-          <div class="box">
-            <h4>Marginal new-family yield per round</h4>
-            <div class="yield">
-              {% set mx = (v.coverage_ledger.round_new_families or [1])|max %}
-              {% for n in v.coverage_ledger.round_new_families %}
-              <div class="ycol">
-                <div class="bar" style="height:{{ (6 + 78*n/mx)|int }}px">{{ n }}</div>
-                <div class="rnd">r{{ loop.index }}</div>
-              </div>{% endfor %}
-            </div>
-            <p class="small muted" style="margin-top:10px">The search stops when new-family yield stays
-              low across independent channels — not after a fixed loop count.</p>
-          </div>
-          <div class="box">
-            <h4>CPC branches searched ({{ v.coverage_ledger.cpc_branches|length }})</h4>
-            <div>{% for cpc in v.coverage_ledger.cpc_branches %}<span class="pill">{{ cpc }}</span>{% endfor %}</div>
-            <h4 style="margin-top:16px">Retrieval channels</h4>
-            <div>{% for ch in v.channels_used %}<span class="pill">{{ ch }}</span>{% endfor %}</div>
-            {% if v.coverage_ledger.combination_view.uncovered_elements %}
-            <h4 style="margin-top:16px">Uncovered elements</h4>
-            <div class="uncov small">{{ v.coverage_ledger.combination_view.uncovered_elements|join(' · ') }}</div>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-    </details>
-
-    {#  The scope + measured-reliability disclosure. NOT deleted and NOT abbreviated — the full
-        text is still here, one click away, and /about still renders it opened and in full. The
-        exported PDF/DOCX and /print also keep it in full: an exported document travels to people
-        who never saw this screen. What changed is only that it no longer sits above the results
-        on the operator's own screen. #}
-    <details class="tail">
-      <summary><span class="th">Search scope and measured reliability</span>
-        <span class="ts">corpus limits, date ceiling, {{ corpus.recall_pct }}% measured recall@100</span></summary>
-      <div class="tailin">
-        {% with variant='results' %}{% include "_scope.html" %}{% endwith %}
-      </div>
-    </details>
-
-  </div>
 </div>
 
 <div class="exportbar" id="exportbar">
@@ -435,8 +454,14 @@
     <span class="grow"></span>
     <button class="btn ghost sm" onclick="clearSel()">Clear</button>
     <button class="btn ghost sm" onclick="openCompare()">Compare</button>
-    <button class="btn sm" onclick="doExport('pdf')">Export PDF</button>
-    <button class="btn sm" onclick="doExport('docx')">Export DOCX</button>
+    {#  Four shapes, one selection. PDF/Word are the document; Excel is the result list with each
+        reference's sketch in its row; Markdown is text-only but carries the FULL claims and
+        description that every other format drops. The titles say which is which, because
+        "Export MD" tells nobody why they would want it. #}
+    <button class="btn sm" onclick="doExport('pdf')" title="Paginated report — cover, retrieval map, one section per reference with its drawing">Export PDF</button>
+    <button class="btn sm" onclick="doExport('docx')" title="The same report, editable in Word">Word</button>
+    <button class="btn sm" onclick="doExport('xlsx')" title="Spreadsheet — one row per reference with its sketch embedded, sortable and filterable">Excel</button>
+    <button class="btn sm ghost" onclick="doExport('md')" title="Plain text, no images or links — but includes every reference's full claims and description">Markdown (full text)</button>
   </div>
 </div>
 <form id="exportform" method="post" action="{{ request.script_root }}/export" target="_blank" hidden>

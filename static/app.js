@@ -655,6 +655,20 @@ function graphHTML(g){
     col('Forward — cited by', g.forward || []) + col('Similar', g.similar || []) + '</div>';
 }
 
+/* ── the searched text ───────────────────────────────────────────────────────────────────── */
+// The header holds the WHOLE query string; `.clamped` only hides the overflow behind a three-line
+// -webkit-line-clamp. So this lifts a CSS class — it never fetches, and there is nothing to
+// truncate on the way back. Collapsing scrolls the header back into view, because a 40-line brief
+// collapsing to three lines otherwise leaves the viewport parked far below where it started.
+function toggleQuery(){
+  const w = document.getElementById('qwrap'), b = document.getElementById('qmore');
+  if (!w || !b) return;
+  const open = w.classList.toggle('open');
+  b.setAttribute('aria-expanded', open ? 'true' : 'false');
+  b.firstChild.nodeValue = open ? 'Show less ' : 'Show full search ';
+  if (!open) w.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 /* ── jump / element filter ───────────────────────────────────────────────────────────────── */
 function jumpRef(pub){
   const el = document.querySelector('.refcard[data-pub="' + CSS.escape(pub) + '"]');
@@ -900,6 +914,16 @@ function doExport(fmt){
   if (!sel.length){ alert('Select at least one reference first (the checkbox on the left of a card).'); return; }
   document.getElementById('exportpubs').value = sel.join(',');
   document.getElementById('exportfmt').value = fmt;
+  // The form posts into a new tab, so this side of the connection never learns when the file is
+  // ready. Building one is not instant either — the first PDF/DOCX/XLSX for a report may pull a
+  // figure per reference off the CDN — so say so on the button rather than looking dead. The
+  // label restores on a timer because there is no completion event to hang it off.
+  const btn = (typeof event !== 'undefined' && event && event.currentTarget) || null;
+  if (btn){
+    const was = btn.textContent;
+    btn.textContent = 'building…'; btn.disabled = true;
+    setTimeout(() => { btn.textContent = was; btn.disabled = false; }, 6000);
+  }
   document.getElementById('exportform').submit();
 }
 function openCompare(){
