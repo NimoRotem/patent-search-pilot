@@ -268,8 +268,26 @@ def _orig_abstracts_from_staging(staging_tbl, log=print):
     return out
 
 
-def build_chunk_rows(cur, pub_ids, orig=None):
+#  Chunk kinds omitted under two-tier depth. Description paragraphs are 62% of all chunks and
+#  figure captions ride with them, so skipping both is a ~71% cut in chunk count, embedding spend
+#  and index RAM.
+#
+#  MEASURED COST OF DOING THIS (frozen 11-query gold set, dense channel, everything else
+#  identical): recall@100 0.1658 full depth -> 0.1619 without paragraphs -> 0.1619 without
+#  paragraphs and captions. So 71% of the corpus budget buys 2.4% of relative recall.
+#
+#  What it DOES cost is evidence, not retrieval. Paragraphs are what the claim chart quotes and
+#  what a reader checks a rationale against — the OPS backfill moved recall by zero but did raise
+#  lenient p@10 0.54 -> 0.594 and cut whole-document-only chart cells. So the design is: index
+#  shallow, and fetch description on demand for the documents that actually surface (the display
+#  path already does exactly this via lemad-Mongo / EPO OPS).
+TWO_TIER_SKIP_KINDS = ("paragraph", "figure_caption")
+
+
+def build_chunk_rows(cur, pub_ids, orig=None, two_tier=False):
     """Assemble chunk rows for `pub_ids`. Mirrors chunker.run()'s per-publication logic.
+
+    two_tier=True indexes abstract + claims + whole only (see TWO_TIER_SKIP_KINDS).
 
     Returns list of (publication_id, kind, ref_id, coord_json, lang, text, token_count).
     """
@@ -289,16 +307,19 @@ def build_chunk_rows(cur, pub_ids, orig=None):
     claims_by = {}
     for c in cur.fetchall():
         claims_by.setdefault(c["publication_id"], []).append(c)
-    cur.execute(f"SELECT id, publication_id, para_no, heading, page_no, lang, text "
-                f"FROM paragraphs WHERE publication_id IN {inlist}", pub_ids)
-    paras_by = {}
-    for p in cur.fetchall():
-        paras_by.setdefault(p["publication_id"], []).append(p)
-    cur.execute(f"SELECT id, publication_id, figure_no, caption FROM figures "
-                f"WHERE publication_id IN {inlist}", pub_ids)
-    figs_by = {}
-    for f in cur.fetchall():
-        figs_by.setdefault(f["publication_id"], []).append(f)
+    paras_by, figs_by = {}, {}
+    #  Under two-tier the paragraph/figure rows are not even SELECTed. Skipping them here rather
+    #  than filtering the assembled rows later is what keeps the ingest fast on a wide corpus:
+    #  description is by far the largest table to read.
+    if not two_tier:
+        cur.execute(f"SELECT id, publication_id, para_no, heading, page_no, lang, text "
+                    f"FROM paragraphs WHERE publication_id IN {inlist}", pub_ids)
+        for p in cur.fetchall():
+            paras_by.setdefault(p["publication_id"], []).append(p)
+        cur.execute(f"SELECT id, publication_id, figure_no, caption FROM figures "
+                    f"WHERE publication_id IN {inlist}", pub_ids)
+        for f in cur.fetchall():
+            figs_by.setdefault(f["publication_id"], []).append(f)
 
     _clip, _tok = chunker._clip, chunker._tok
     rows = []
@@ -338,7 +359,7 @@ def build_chunk_rows(cur, pub_ids, orig=None):
     return rows
 
 
-def chunk_publications(pub_ids, orig=None, log=print, batch=CHUNK_BATCH):
+def chunk_publications(pub_ids, orig=None, log=print, batch=CHUNK_BATCH, two_tier=False):
     """COPY chunk rows for the given publications, in bounded batches.
 
     Chunks are inserted with embedding NULL. That is deliberate and is what keeps this safe
@@ -354,7 +375,7 @@ def chunk_publications(pub_ids, orig=None, log=print, batch=CHUNK_BATCH):
     try:
         for i in range(0, len(pub_ids), batch):
             sub = pub_ids[i:i + batch]
-            rows = build_chunk_rows(cur, sub, orig)
+            rows = build_chunk_rows(cur, sub, orig, two_tier=two_tier)
             if rows:
                 with cur.copy("COPY chunks (publication_id, kind, ref_id, coord, lang, text, "
                               "token_count) FROM STDIN") as cp:

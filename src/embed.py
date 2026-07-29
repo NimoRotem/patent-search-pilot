@@ -101,11 +101,21 @@ def _bulk_update(conn, table, col, pairs):
     conn.commit()
 
 
-def run(dim=EMBED_DIM, limit=None, order_priority=True, shard=None):
+def run(dim=EMBED_DIM, limit=None, order_priority=True, shard=None, where_sql=""):
     """shard=(k,n) processes only chunks with id % n == k -> run n processes in parallel to beat
-    the GIL bottleneck on response parsing (Vertex has no rate-limit here)."""
+    the GIL bottleneck on response parsing (Vertex has no rate-limit here).
+
+    where_sql is an extra AND-fragment restricting WHICH pending chunks to embed. It exists so a
+    wide ingest can be embedded in a chosen ORDER rather than by chunk id: on the Tier-1 corpus
+    the wide gold set measured B66C (2.6% reachable) and B66F (4.0%) as corpus-starved while
+    B25J (29.3%) and B65G (31.4%) are ranking-limited, so embedding the starved subclasses first
+    makes the first re-measurable improvement land hours earlier — and if a multi-hour run is
+    interrupted, the most valuable part is already live. Callers build the fragment; it is never
+    taken from user input.
+    """
     conn = db.connect()
     shard_sql = f" AND id %% {shard[1]} = {shard[0]}" if shard else ""
+    shard_sql += where_sql
     total = db.scalar(f"SELECT count(*) FROM chunks WHERE embedding IS NULL{shard_sql}")
     print(f"[embed] {total:,} chunks pending at {dim}-dim shard={shard}")
     order = "CASE kind WHEN 'paragraph' THEN 2 WHEN 'figure_caption' THEN 3 ELSE 1 END, id" \

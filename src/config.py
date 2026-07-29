@@ -67,5 +67,19 @@ JURISDICTIONS = ["US", "EP", "WO", "DE"]
 #  Measured: the 8 seed subgroups hold 25,786 pubs across US/EP/WO/DE and 80,308 worldwide.
 INGEST_JURISDICTIONS = [c for c in os.environ.get("INGEST_JURISDICTIONS", "").split(",") if c.strip()]
 
+#  INGEST scope — which CPC prefixes the BigQuery extract pulls. Defaults to SEED_CPC.
+#
+#  Deliberately SEPARATE from SEED_CPC rather than a redefinition of it. SEED_CPC is the *field
+#  definition*: domain_detect.py calibrates its in-domain / out-of-domain thresholds against it
+#  (SEED_SUBCLASSES = {c[:4] for c in SEED_CPC}), and agent.py feeds it to the LLM as the
+#  neighbouring-class context. Widening SEED_CPC therefore silently invalidates a calibrated
+#  router, which is a ranking change disguised as a config edit — exactly the class of change the
+#  M9 lesson says must be measured, not assumed. Widening the INGEST is safe; re-pointing the
+#  router is a separate, measured step.
+#
+#  What the corpus actually holds is reported from the DATA (corpus_facts), not from either
+#  constant, so the disclosure cannot drift out of step with either one.
+INGEST_CPC = [c for c in os.environ.get("INGEST_CPC", "").split(",") if c.strip()] or SEED_CPC
+
 DATA = ROOT / "data"
 PDF_DIR = DATA / "pdfs"
