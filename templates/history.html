@@ -22,7 +22,11 @@
     <ul class="histlist">
       {% for e in entries %}
       <li class="histrow">
-        <a class="histq" href="{{ request.script_root }}/report/{{ e.slug }}">{{ e.query or e.slug }}</a>
+        {#  The list clamps each query to two lines to keep rows uniform. Carry the whole string in
+            the title so hovering identifies a search without opening it — the report page itself
+            now shows the query in full and expandable. #}
+        <a class="histq" href="{{ request.script_root }}/report/{{ e.slug }}"
+           title="{{ e.query or e.slug }}">{{ e.query or e.slug }}</a>
         <span class="small muted">
           <span class="badge">{{ e.mode.replace('_',' ') }}</span>
           {% if e.subject %}<span class="badge">subject {{ e.subject }}</span>{% endif %}
