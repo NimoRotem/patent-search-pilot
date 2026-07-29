@@ -49,7 +49,23 @@ SEED_CPC_TITLES = {
     "F16B47/00": "suction cups",
     "B65G7/12": "carrying objects by hand",
 }
+#  Fallback only. The disclosure now reports the jurisdictions actually present in the corpus
+#  (corpus_facts reads them from the publications table); this constant is used only if that read
+#  fails, so a DB hiccup degrades to the historic scope rather than to an empty statement.
 JURISDICTIONS = ["US", "EP", "WO", "DE"]
+
+#  INGEST scope — which offices the BigQuery extract pulls. Empty list = WORLDWIDE (no country
+#  filter at all).
+#
+#  This was hard-coded as `country_code IN ('US','EP','WO','DE')` in five places across
+#  ingest_bq.py and incremental_ingest.py. Two reasons it had to become config:
+#    1. BigQuery bills COLUMNS REFERENCED, not rows matched, on this unpartitioned table — the
+#       full-text extract costs the same $9.57 whether it returns 25,786 rows or 170 million. The
+#       four-office filter was therefore buying nothing at the source; it only shrank the corpus.
+#    2. Leaving the weekly delta job narrower than the bootstrap would quietly re-narrow the
+#       corpus over time, so both read this one value.
+#  Measured: the 8 seed subgroups hold 25,786 pubs across US/EP/WO/DE and 80,308 worldwide.
+INGEST_JURISDICTIONS = [c for c in os.environ.get("INGEST_JURISDICTIONS", "").split(",") if c.strip()]
 
 DATA = ROOT / "data"
 PDF_DIR = DATA / "pdfs"

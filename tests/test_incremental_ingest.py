@@ -84,10 +84,41 @@ def test_delta_sql_applies_the_date_window_and_seed_cpc_filter():
     sql = ingest_bq.delta_extract_sql(dt.date(2026, 1, 15), dt.date(2026, 3, 1))
     assert "publication_date >= 20260115" in sql
     assert "publication_date <= 20260301" in sql
-    assert "country_code IN ('US','EP','WO','DE')" in sql
     assert "UNNEST(cpc)" in sql
     # open-ended window omits the upper bound entirely
     assert "publication_date <=" not in ingest_bq.delta_extract_sql(dt.date(2026, 1, 15))
+
+
+def test_delta_jurisdiction_comes_from_config_not_a_hardcoded_list():
+    """The delta must search the SAME offices the corpus was built from.
+
+    This used to assert the literal `country_code IN ('US','EP','WO','DE')`, hard-coded in five
+    places across ingest_bq. That is now config.INGEST_JURISDICTIONS (empty = worldwide), because
+    BigQuery bills columns referenced rather than rows matched — the four-office filter bought
+    nothing at the source and only shrank the corpus.
+
+    The real risk the test now guards is a SPLIT: if the weekly delta kept a narrower scope than
+    the bootstrap, it would re-narrow the corpus one week at a time, silently, and the only
+    symptom would be slowly worsening recall on non-US art.
+    """
+    import bqclient
+    assert bqclient.juris_predicate() in ingest_bq.delta_extract_sql(dt.date(2026, 1, 15))
+    assert bqclient.juris_predicate() in ingest_bq._CORE_WHERE, \
+        "delta and bootstrap must share one jurisdiction scope"
+
+    # worldwide (the configured default) must be a real predicate, not an omitted clause, so a
+    # call site can never forget to handle the empty case and pull the whole table by accident.
+    assert bqclient.juris_predicate() == "TRUE" or "country_code IN (" in bqclient.juris_predicate()
+
+    import config
+    saved = config.INGEST_JURISDICTIONS
+    try:
+        config.INGEST_JURISDICTIONS = ["US", "EP"]
+        assert bqclient.juris_predicate() == "country_code IN ('US','EP')"
+        config.INGEST_JURISDICTIONS = []
+        assert bqclient.juris_predicate() == "TRUE"
+    finally:
+        config.INGEST_JURISDICTIONS = saved
 
 
 def test_delta_writes_to_its_own_staging_table_not_core():

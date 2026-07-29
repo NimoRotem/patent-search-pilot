@@ -27,6 +27,10 @@ from config import SEED_CPC, SEED_CPC_TITLES, JURISDICTIONS
 _CACHE = {"t": 0.0, "v": None}
 _LOCK = threading.Lock()
 _TTL = 900          # 15 min; ingest advances the ceiling at most weekly
+# A country must hold at least this share of the corpus to be listed as an indexed jurisdiction.
+# Below it, a few rows dragged in by a family/citation hop would otherwise read as "we cover that
+# office", which is exactly the kind of overstatement the disclosure exists to prevent.
+_JURIS_MIN_SHARE = 0.005            # 0.5%
 
 
 # --- measured reliability -------------------------------------------------------------------
@@ -109,6 +113,32 @@ def _query_db():
             out["chunks"] = cur.fetchone()["n"]
         except Exception:
             out["chunks"] = None
+        #  Jurisdictions are read from the DATA, not from a config constant.
+        #
+        #  They used to come from config.JURISDICTIONS = ["US","EP","WO","DE"], and disclosure.py
+        #  turned that into the sentence "US, EP, WO, DE only — no JP, CN, KR, GB, FR or other
+        #  national collections". The moment the corpus was widened past those four that sentence
+        #  became false — in the one document on the page whose entire job is to state the tool's
+        #  limits honestly. A disclosure that can drift out of step with the corpus is worse than
+        #  no disclosure, so it now reports what is actually in the table.
+        #
+        #  Countries below the threshold are still counted but not listed: a handful of stray rows
+        #  from a citation-expansion hop is not "coverage" of that office, and listing it would
+        #  overstate scope in the other direction.
+        try:
+            cur.execute("SELECT country AS cc, count(*) AS n FROM publications "
+                        "WHERE country IS NOT NULL AND country <> '' "
+                        "GROUP BY country ORDER BY n DESC")
+            rows = [(r["cc"], r["n"]) for r in cur.fetchall()]
+            total = sum(n for _cc, n in rows) or 1
+            out["jurisdictions"] = [cc for cc, n in rows if n / total >= _JURIS_MIN_SHARE]
+            out["jurisdictions_all_n"] = len(rows)
+            out["jurisdictions_trace"] = [cc for cc, n in rows
+                                          if n / total < _JURIS_MIN_SHARE]
+        except Exception:
+            out["jurisdictions"] = None
+            out["jurisdictions_all_n"] = None
+            out["jurisdictions_trace"] = []
     return out
 
 
@@ -138,7 +168,10 @@ def facts(force: bool = False) -> dict:
         "max_date_str": mx.isoformat() if mx else None,
         "min_date": live.get("min_date"),
         "min_year": live["min_date"].year if live.get("min_date") else None,
-        "jurisdictions": JURISDICTIONS,
+        #  Live from the corpus; falls back to the configured target only if the DB read failed,
+        #  so a hiccup degrades to the old constant rather than to an empty scope statement.
+        "jurisdictions": live.get("jurisdictions") or JURISDICTIONS,
+        "jurisdictions_trace": live.get("jurisdictions_trace") or [],
         "cpc_count": len(SEED_CPC),
         "cpc": [{"code": c, "title": SEED_CPC_TITLES.get(c, "")} for c in SEED_CPC],
         "field_summary": "vacuum gripping, lifting and handling",

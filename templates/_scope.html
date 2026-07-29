@@ -27,9 +27,12 @@
     <div class="scope-item">
       <span class="scope-k">Corpus</span>
       <span class="scope-v">{% if corpus.publications %}{{ '{:,}'.format(corpus.publications) }}{% else %}—{% endif %} publications</span>
+      {#  The jurisdiction sentence is BUILT FROM THE LIVE CORPUS by disclosure._juris_sentence,
+          not written here. It used to be the literal prose "… only — no JP, CN, KR, GB, FR …",
+          which would have quietly become false the moment the corpus was widened past those four
+          offices — in the one block on the page whose job is to state the tool's limits. #}
       <span class="scope-d">Limited to {{ corpus.cpc_count }} CPC classes covering
-        {{ corpus.field_summary }}. {{ corpus.jurisdictions|join(', ') }} only — no JP, CN, KR, GB,
-        FR or other national collections, and no non-patent literature.</span>
+        {{ corpus.field_summary }}. {{ juris_sentence }} No non-patent literature.</span>
     </div>
 
     <div class="scope-item">

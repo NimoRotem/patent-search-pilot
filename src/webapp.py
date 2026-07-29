@@ -122,10 +122,15 @@ def _inject_corpus_facts():
     by forgetting an argument. Explicit corpus= arguments still win; facts() is cached.
     """
     try:
-        return {"corpus": corpus_facts.facts(), "disc": disclosure}
+        f = corpus_facts.facts()
+        # Built once here so the web scope block, /print, /about and the exported PDF/DOCX/XLSX/MD
+        # all state the SAME jurisdiction coverage, derived from the corpus rather than written
+        # into each surface by hand.
+        return {"corpus": f, "disc": disclosure,
+                "juris_sentence": disclosure._juris_sentence(f)}
     except Exception:
         # The disclosure must never be the reason a page fails to render.
-        return {"corpus": {}}
+        return {"corpus": {}, "juris_sentence": ""}
 
 REPORTS = DATA / "reports"
 RATIONALE = DATA / "rationale"

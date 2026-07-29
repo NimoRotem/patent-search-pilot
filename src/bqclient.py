@@ -121,6 +121,21 @@ def cpc_like_clause(alias: str = "c", col: str = "code") -> str:
     return " OR ".join(f"{alias}.{col} LIKE '{code}%'" for code in SEED_CPC)
 
 
+def juris_predicate(col: str = "country_code") -> str:
+    """SQL predicate restricting the extract to config.INGEST_JURISDICTIONS.
+
+    Returns `TRUE` when the list is empty, i.e. WORLDWIDE — as a predicate rather than as "caller
+    must omit the AND", so every call site stays a plain `WHERE <juris> AND <cpc>` and no site can
+    forget to handle the empty case and silently pull the whole table when it meant four offices
+    (or vice versa).
+    """
+    from config import INGEST_JURISDICTIONS
+    if not INGEST_JURISDICTIONS:
+        return "TRUE"
+    inner = ",".join("'" + c.strip().upper().replace("'", "") + "'" for c in INGEST_JURISDICTIONS)
+    return f"{col} IN ({inner})"
+
+
 def ensure_dataset(dataset: str = "patent_pilot", location: str = "US"):
     ds_id = f"{GCP_PROJECT}.{dataset}"
     try:

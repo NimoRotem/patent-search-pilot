@@ -62,7 +62,7 @@ FROM {SRC}
 
 _SEED_CPC_PREDICATE = f"EXISTS (SELECT 1 FROM UNNEST(cpc) c WHERE {bqclient.cpc_like_clause()})"
 
-_CORE_WHERE = f"""WHERE country_code IN ('US','EP','WO','DE')
+_CORE_WHERE = f"""WHERE {bqclient.juris_predicate()}
   AND {_SEED_CPC_PREDICATE}
 """
 
@@ -109,7 +109,7 @@ FRESHNESS_SQL = f"""
 SELECT MAX(publication_date) AS max_pub_date,
        COUNT(*) AS n_rows
 FROM {SRC}
-WHERE country_code IN ('US','EP','WO','DE')
+WHERE {bqclient.juris_predicate()}
 """
 
 
@@ -123,7 +123,7 @@ def delta_count_sql(since, until=None):
     return f"""
 SELECT COUNT(*) AS n, MIN(publication_date) AS mn, MAX(publication_date) AS mx
 FROM {SRC}
-WHERE country_code IN ('US','EP','WO','DE')
+WHERE {bqclient.juris_predicate()}
   AND publication_date >= {_date_int(since)}{upper}
   AND {_SEED_CPC_PREDICATE}
 """
@@ -136,7 +136,7 @@ def delta_extract_sql(since, until=None, dest=DELTA_TBL):
     table is loadable by ingest_pg.load_table(dest, tier="core", ...) with no changes.
     """
     upper = f"\n  AND publication_date <= {_date_int(until)}" if until else ""
-    where = f"""WHERE country_code IN ('US','EP','WO','DE')
+    where = f"""WHERE {bqclient.juris_predicate()}
   AND publication_date >= {_date_int(since)}{upper}
   AND {_SEED_CPC_PREDICATE}
 """
@@ -156,7 +156,7 @@ WITH core_fams AS (SELECT DISTINCT family_id FROM {CORE_TBL} WHERE family_id IS 
 cited AS (SELECT DISTINCT c.pub AS publication_number FROM {CORE_TBL}, UNNEST(cites) c),
 wanted AS (
   SELECT publication_number FROM {SRC} p
-  WHERE country_code IN ('US','EP','WO','DE') AND (
+  WHERE {bqclient.juris_predicate()} AND (
     CAST(family_id AS STRING) IN (SELECT family_id FROM core_fams)
     OR publication_number IN (SELECT publication_number FROM cited)
   )
