@@ -244,13 +244,11 @@ def source_label(key: str) -> str:
     return SOURCE_LABELS.get(key) or str(key).replace("_", " ").title()
 
 
-# Two vocabularies on purpose. `state` is the 4-value one webview._source_tags already
-# renders (used | none | failed | off) so the tag row works with no change over there;
-# `state_detail` keeps the finer distinction for anyone who wants it (a source that
-# answered on some rounds and errored on others is "used" with a note, not a failure).
+# `state` is presentation-ready and keeps a mixed success/failure distinct from a clean success.
+# `state_detail` is retained for older consumers and cached reports.
 _UI_STATE = {
     "used": "used",
-    "degraded": "used",
+    "degraded": "degraded",
     "no_results": "none",
     "failed": "failed",
     "unavailable": "failed",
@@ -259,10 +257,24 @@ _UI_STATE = {
 }
 
 
+def _display_reason(detail: str, reason: str) -> str:
+    """Turn provider exceptions into short, useful UI copy without exposing a traceback/URL."""
+    clean = " ".join(str(reason or "").split())
+    code = re.search(r"(?:HTTP\s*)?([45]\d\d)\b", clean, re.I)
+    suffix = f" (HTTP {code.group(1)})" if code else ""
+    if detail == "degraded":
+        return f"Partial results: one or more provider queries failed{suffix}."
+    if detail in ("failed", "unavailable"):
+        return f"Provider request failed{suffix}."
+    if detail == "not_configured":
+        return "Not configured for this deployment."
+    return clean[:157] + ("…" if len(clean) > 157 else "")
+
+
 def _entry(key: str, detail: str, n: int = 0, reason: str = "") -> dict:
     """One render-ready per-source tag. Keys are deliberately duplicated (id/name, n/hits,
     note/reason) so both the existing view layer and any direct consumer read it as-is."""
-    reason = str(reason or "")[:160]
+    reason = _display_reason(detail, reason)
     n = int(n or 0)
     return {"id": key, "name": key, "label": source_label(key),
             "state": _UI_STATE.get(detail, "none"), "state_detail": detail,

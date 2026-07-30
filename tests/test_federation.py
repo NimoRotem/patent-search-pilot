@@ -260,9 +260,10 @@ def test_source_status_shape_is_render_ready():
     by = {e["id"]: e for e in t.snapshot()}
 
     assert by["serpapi_gpatents"]["state"] == "none"          # searched, returned nothing
-    assert by["uspto"]["state"] == "used"                     # answered AND errored -> partial
+    assert by["uspto"]["state"] == "degraded"                 # answered AND errored -> partial
     assert by["uspto"]["state_detail"] == "degraded"
-    assert by["uspto"]["n"] == 60 and "404" in by["uspto"]["note"]
+    assert by["uspto"]["n"] == 60 and by["uspto"]["note"] == (
+        "Partial results: one or more provider queries failed (HTTP 404).")
     assert by["lens"]["state"] == "off"                       # not configured, not a failure
     for e in by.values():
         assert {"id", "name", "label", "state", "n", "note"} <= set(e)

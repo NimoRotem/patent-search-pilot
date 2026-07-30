@@ -666,6 +666,7 @@ td.cell-no-coord .cmark, td.cell-unchecked .cmark{ color:#6e7681; }
 .srctag b{font-variant-numeric:tabular-nums;font-weight:650;color:inherit}
 .srctag .sdot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none;opacity:.85}
 .srctag.s-used{color:var(--good);border-color:rgba(63,185,80,.34);background:var(--good-soft)}
+.srctag.s-degraded{color:var(--warn);border-color:rgba(210,153,34,.34);background:var(--warn-soft)}
 .srctag.s-none,.srctag.s-unknown{color:var(--muted)}
 .srctag.s-none .sdot{opacity:.35}
 /* 'not run': configured, but this search never got an answer out of it. */
@@ -697,6 +698,8 @@ details.tail[open]>summary::before{transform:rotate(90deg)}
 details.tail>summary:hover .th{color:var(--ink)}
 details.tail .th{font-size:13px;font-weight:650;color:var(--muted)}
 details.tail .ts{font-size:11.5px;color:var(--faint)}
+details.tail.pending>summary{cursor:default}
+details.tail.pending>summary::before{visibility:hidden}
 .tailin{padding:4px 0 22px}
 /* Inside a .tail the scope block loses its own frame — the <details> already provides one. */
 .tailin .scope{border:0;background:none;padding:0;margin:0}
@@ -751,6 +754,35 @@ details.tail .ts{font-size:11.5px;color:var(--faint)}
   max-height:160px;overflow:auto;background:var(--s1);border:1px solid var(--line);
   border-radius:6px;padding:9px 11px}
 .ex-snip.ex-brief{color:var(--ink)}
+
+/* Keep the report readable at phone widths. Controls become labelled rows and the card body gets
+   the full width below its compact triage/thumbnail row; only the family strip may scroll locally. */
+@media (max-width:640px){
+  .wrap{padding-left:12px;padding-right:12px;min-width:0}
+  header.top .wrap{gap:8px 12px;flex-wrap:wrap}
+  header.top .brand{flex:1 0 100%}
+  header.top .grow{display:none}
+  footer{padding-left:12px;padding-right:12px;overflow-wrap:anywhere}
+
+  .controls{align-items:stretch;gap:9px;padding:11px;max-width:100%}
+  .controls .cgroup{display:grid;grid-template-columns:minmax(82px,auto) minmax(0,1fr);
+    width:100%;min-width:0}
+  .controls .cgroup select{width:100%;max-width:100%;min-width:0}
+  .controls .toggle{flex:1 1 140px}
+  #shown{width:100%;margin-left:0;white-space:normal}
+
+  .refhead{display:grid;grid-template-columns:32px minmax(0,1fr);gap:10px;padding:12px;min-width:0}
+  .selcol{grid-column:1;grid-row:1;min-width:0}
+  .rthumb{grid-column:2;grid-row:1;width:118px;max-width:100%;height:124px}
+  .figprov{grid-column:2;max-width:100%;margin-top:-4px;overflow-wrap:anywhere}
+  .rbody{grid-column:1 / -1;width:100%;min-width:0;flex-direction:column;gap:10px}
+  .rmain{width:100%;min-width:0}
+  .rmeta,.rsub,.rchips,.rcovers{max-width:100%;overflow-wrap:anywhere}
+  .famstrip{width:100%;max-width:100%;min-width:0;flex-wrap:nowrap;overflow-x:auto;
+    overscroll-behavior-inline:contain;padding-bottom:4px}
+  .famstrip .famsum{white-space:normal;min-width:118px}
+  .relbox{align-self:flex-start}
+}
 
 /* per-result source provenance chips (parallel multi-channel fan-out) */
 .chip.prov-chunk{color:var(--good);border-color:rgba(63,185,80,.30);background:var(--good-soft)}

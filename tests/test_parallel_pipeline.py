@@ -153,6 +153,18 @@ def test_source_tags_image_not_built_shows_none():
     assert by_id["image"]["state"] == "none"
 
 
+def test_source_tags_preserve_degraded_provider_without_raw_exception():
+    rep = {"federation": {"source_status": [{
+        "id": "uspto", "label": "USPTO ODP", "state": "used",
+        "state_detail": "degraded", "n": 75,
+        "note": "404 Client Error for url https://example.invalid/private/provider/path",
+    }]}}
+    tag = {t["id"]: t for t in webview._source_tags(rep, n_local=2)}["uspto"]
+    assert tag["state"] == "degraded" and tag["n"] == 75
+    assert tag["why"] == "Partial results: one or more provider queries failed (HTTP 404)."
+    assert "example.invalid" not in tag["why"]
+
+
 def test_attach_fed_family_sources_maps_api_provenance(monkeypatch):
     import federation
     rep = {"federation": {"hits": [

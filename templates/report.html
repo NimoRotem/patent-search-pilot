@@ -77,7 +77,7 @@
       {% for s in v.source_tags %}
       <span class="srctag s-{{ s.state }}"{% if s.why or s.note %} title="{{ s.why or s.note }}"{% endif %}>
         <span class="sdot" aria-hidden="true"></span>{{ s.label }}{% if s.n %}<b>{{ s.n }}</b>{% endif %}
-        <span class="vh">— {{ {'used':'used','none':'no results','failed':'failed',
+        <span class="vh">— {{ {'used':'used','degraded':'partial results','none':'no results','failed':'failed',
                                'unknown':'not run','off':'not configured'}.get(s.state, s.state) }}{% if s.why %}: {{ s.why }}{% endif %}</span>
       </span>
       {% endfor %}
@@ -99,9 +99,9 @@
       already is. /print and the exports keep their own full-width, always-expanded copies. #}
   <div class="tailwrap">
 
-    <details class="tail">
+    <details class="tail{% if v.partial %} pending{% endif %}">
       <summary><span class="th">Element × reference grid</span>
-        <span class="ts">{{ v.elements|length }} elements × {{ v.claim_chart.columns|length }} references{% if v.claim_chart.verification and v.claim_chart.verification.covered %} · {{ v.claim_chart.verification.discloses }} verified{% endif %}</span></summary>
+        <span class="ts">{% if v.partial %}available when final ranking completes{% else %}{{ v.elements|length }} elements × {{ v.claim_chart.columns|length }} references{% if v.claim_chart.verification and v.claim_chart.verification.covered %} · {{ v.claim_chart.verification.discloses }} verified{% endif %}{% endif %}</span></summary>
       <div class="tailin">
         <p class="gridline">Each cell is one retrieved passage; the glyph is its verification state.
           <span class="lgi"><span class="lg lg-ok"></span>✓ verified</span>
@@ -179,9 +179,9 @@
       </div>
     </details>
 
-    <details class="tail">
+    <details class="tail{% if v.partial %} pending{% endif %}">
       <summary><span class="th">Coverage ledger</span>
-        <span class="ts">{{ v.rounds }} rounds · {{ v.coverage_ledger.cpc_branches|length }} CPC branches · {{ v.channels_used|length }} channels</span></summary>
+        <span class="ts">{% if v.partial %}available when agentic refinement completes{% else %}{{ v.rounds }} rounds · {{ v.coverage_ledger.cpc_branches|length }} CPC branches · {{ v.channels_used|length }} channels{% endif %}</span></summary>
       <div class="tailin">
         <div class="ledger">
           <div class="box">
@@ -495,6 +495,7 @@
 window.SLUG = {{ v.slug|tojson }};
 window.QUERY = {{ v.query|tojson }};
 window.ELEMENTS = {{ v.elements|tojson }};
+window.PARTIAL = {{ v.partial|tojson }};
 {% if v.partial %}
 /* The report is renderable but the agent is still working. Show the SAME narrative the generating
    page shows, so the long quiet stretch between 'partial' and 'reranking' reads as progress

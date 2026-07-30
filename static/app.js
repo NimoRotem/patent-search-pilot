@@ -298,7 +298,7 @@ async function resolveThumbs(){
    stays lazy. A genuinely drawing-less publication still resolves to an honest "no drawing available"
    (it just resolves proactively). Kicked off AFTER the list is shown, so it never delays render. */
 async function prefetchTopN(){
-  if (!window.SLUG) return;
+  if (!window.SLUG || window.PARTIAL) return;
   let sched;
   try {
     sched = await (await fetch(B + '/api/prefetch/' + encodeURIComponent(window.SLUG),
@@ -339,6 +339,7 @@ async function prefetchTopN(){
    Kicked off after the list is interactive so it never delays first paint; concurrency-limited so
    it can never swamp the RAM-tight server. */
 async function warmDetails(){
+  if (window.PARTIAL) return;
   const pubs = [...document.querySelectorAll('.refcard')].map(c => c.dataset.pub).filter(Boolean);
   if (!pubs.length) return;
   let i = 0;
@@ -1201,7 +1202,7 @@ const STAGES = [
   { key: 'decompose', rank: 0, name: 'Reading the disclosure',
     note: 'Decomposing the invention into independent technical elements.' },
   { key: 'search',    rank: 1, name: 'Searching the corpus',
-    note: 'Eight retrieval channels across 107,795 publications — dense, sparse, CPC, citation, cross-lingual.' },
+    note: 'Searching the live corpus through dense, sparse, CPC, citation and cross-lingual retrieval channels.' },
   { key: 'expand',    rank: 2, name: 'Expanding the candidate set',
     note: 'Following citations, patent families and EN/DE equivalents outward from the seed hits.' },
   { key: 'rounds',    rank: 3, name: 'Refinement rounds',
@@ -1209,7 +1210,7 @@ const STAGES = [
   { key: 'rerank',    rank: 4, name: 'Reranking and grounding',
     note: 'A bge-reranker cross-encoder rescores every candidate, then each claim-chart cell is grounded in real text. This is the slowest step.' },
   { key: 'federate',  rank: 5, name: 'Wider search — external APIs',
-    note: 'Querying SerpApi, BigQuery, PQAI and OpenAlex, then fusing by reciprocal rank.' },
+    note: 'Querying every configured external source in parallel, then fusing the results by reciprocal rank.' },
   { key: 'done',      rank: 6, name: 'Report ready', note: '' }
 ];
 const KIND_RANK = { elements: 1, seeded: 2, partial: 2, round: 3, reranking: 4, federating: 5, done: 6 };
@@ -1376,8 +1377,12 @@ document.addEventListener('DOMContentLoaded', () => {
   applyControls();
   resolveThumbs();
   resolvePdfLinks();
-  prefetchTopN();          // proactively resolve drawings + worldwide family for every shown card
-  setTimeout(warmDetails, 1200);   // eager-warm each card's detail so its tabs open instantly
+  // A partial report is replaced shortly and the agent is still consuming the same server. Avoid
+  // warming disposable cards; the final page performs both bounded prefetches after reload.
+  if (!window.PARTIAL){
+    prefetchTopN();        // proactively resolve drawings + worldwide family for shown final cards
+    setTimeout(warmDetails, 1200); // eager-warm final card details so their tabs open instantly
+  }
 
   const m = (location.hash || '').match(/patent=([^&]+)/);
   if (m){ try{ openDetail(decodeURIComponent(m[1])); }catch(e){} }

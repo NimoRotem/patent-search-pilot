@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import ops
 import ops_drawings
+import webview
 
 
 # Verbatim shape of a real OPS images response (DE1286275B, 2026-07-19).
@@ -87,3 +88,28 @@ def test_want_for_national_docs_skips_fulltext():
     assert "claims" not in ops.want_for("DE-1286275-B")
     assert "images" in ops.want_for("DE-1286275-B")
     assert "claims" in ops.want_for("EP-2496850-A1")
+
+
+def test_stale_cached_figure_is_pruned_before_render(monkeypatch, tmp_path):
+    monkeypatch.setattr(webview.enrich_display, "FIGDIR", tmp_path)
+    pubdir = tmp_path / "US-1234567-A1"
+    pubdir.mkdir()
+    (pubdir / "live.png").write_bytes(b"image")
+    remote = {"file": None, "thumbnail": "https://images.example/one.png"}
+    cards = [{"pub": "US-1234567-A1", "images": [
+        {"file": "missing.png"}, {"file": "live.png"}, remote,
+    ], "n_images": 3}]
+
+    assert webview.prune_missing_image_files(cards) is True
+    assert cards[0]["images"] == [{"file": "live.png"}, remote]
+    assert cards[0]["n_images"] == 2
+
+
+def test_unsafe_cached_figure_path_is_never_rendered(monkeypatch, tmp_path):
+    monkeypatch.setattr(webview.enrich_display, "FIGDIR", tmp_path)
+    cards = [{"pub": "US-1234567-A1", "images": [{"file": "../escape.png"}],
+              "n_images": 1, "drawings_provenance": "cache"}]
+
+    assert webview.prune_missing_image_files(cards) is True
+    assert cards[0]["images"] == [] and cards[0]["n_images"] == 0
+    assert cards[0]["drawings_provenance"] is None

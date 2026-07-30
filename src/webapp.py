@@ -1062,6 +1062,14 @@ def _build_view_cached(slug, rep, regen=False):
                         vp.write_text(json.dumps(view, default=str))
                 except Exception:
                     pass
+                # A view cache can outlive a recovered figure file. Drop stale local entries so
+                # the page renders a settled placeholder (and can backfill from /api/figs) instead
+                # of issuing a guaranteed-broken /figures/... request on every reload.
+                try:
+                    if webview.prune_missing_image_files(view.get("cards") or []):
+                        vp.write_text(json.dumps(view, default=str))
+                except Exception:
+                    pass
                 return view
         except Exception:
             pass
@@ -1123,6 +1131,7 @@ def _build_view_cached(slug, rep, regen=False):
             claim_chart.verify_matrix(view.get("claim_chart") or {}, rep)
         except Exception:
             traceback.print_exc()
+        webview.prune_missing_image_files(view.get("cards") or [])
         vp.write_text(json.dumps(view, default=str))
     return view
 
