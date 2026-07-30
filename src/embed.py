@@ -18,8 +18,16 @@ EMBED_PROVIDER = os.environ.get("EMBED_PROVIDER", "vertex")
 VERTEX_EMBED_MODEL = "gemini-embedding-001"
 SUB = 200          # inputs per API call (gemini-embedding batch)
 FETCH = 4000       # rows pulled per DB round (frequent commits, short txns)
-WORKERS = 14       # ~14 concurrent stays under the Vertex gemini-embedding QPM quota
-                   # (3 shards x16 = 48 concurrent tripped 429 RESOURCE_EXHAUSTED)
+#  Concurrent Vertex calls PER PROCESS. Env-overridable because the right value depends on how
+#  many shard processes are running: the quota is account-wide, so N shards x WORKERS is what
+#  actually has to stay under it. 3 shards x 16 = 48 concurrent tripped 429 RESOURCE_EXHAUSTED,
+#  so 3 x 12 = 36 is the tuned setting for a sharded bulk run and 14 remains fine single-stream.
+#
+#  Sharding is the ONLY lever here that does not take search offline. Measured single-stream on
+#  the dedicated box: ~68 chunks/sec with the HNSW index live, i.e. ~25 h for a 6M-chunk backlog.
+#  The alternative (drop index -> embed at ~376/sec -> rebuild) is no faster overall once the
+#  multi-hour rebuild is counted, and it dark-arts the live app for the whole window.
+WORKERS = int(os.environ.get("EMBED_WORKERS", "14"))
 
 _local = threading.local()
 def _genai():

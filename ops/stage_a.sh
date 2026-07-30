@@ -65,14 +65,20 @@ def pending(where=""):
     return db.scalar(f"SELECT count(*) FROM chunks WHERE embedding IS NULL{where}") or 0
 
 def cpc_where(sub):
-    #  Bare `publication_id`, no table alias: embed.run's own query is
-    #  `SELECT id, text FROM chunks WHERE embedding IS NULL{fragment}` with no alias, and the
-    #  count above uses the same shape. One fragment, valid in both.
+    #  MUST qualify the outer column as `chunks.publication_id`.
+    #
+    #  This read `cl.publication_id = publication_id`, and inside the EXISTS the bare name
+    #  resolves to the INNER table — so it meant `cl.publication_id = cl.publication_id`, always
+    #  true. The EXISTS then only asked "does ANY classification row anywhere start with this
+    #  prefix", which is trivially true, so the filter matched every pending chunk (6,260,599)
+    #  rather than the subclass's 433,371. Nothing was corrupted and everything still got
+    #  embedded — but the benchmark-priority ordering silently did not happen.
+    #
     #  '%%' not '%': these fragments are spliced into SQL that psycopg still parses for
     #  placeholders even when no parameters are passed, so a literal LIKE wildcard must be
     #  doubled — exactly as embed.run already does for its `id %% n` shard clause.
     return (" AND EXISTS (SELECT 1 FROM classifications cl "
-            "WHERE cl.publication_id = publication_id "
+            "WHERE cl.publication_id = chunks.publication_id "
             f"AND replace(cl.symbol,' ','') LIKE '{sub}%%')")
 
 # Starved first (measured on the wide gold set), then the ranking-limited ones, then a final
