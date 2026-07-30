@@ -153,7 +153,7 @@ no embedded claims today; OPS fills them. It's the only external blocker.
 | per-card enrichment `/api/ref` (cached) | ~40–160 ms | drawings + sections + rationale |
 | vector search (core dense) | **p50 288 ms · p95 400 ms** | |
 | hybrid search | ~4 s | **BM25-bound; eval-only** — the live UI never runs it |
-| fresh free-text search (full agentic report) | ~60–90 s | backgrounded + polled; cached after |
+| fresh free-text search | first cards ≤60 s; final target ≤300 s | backgrounded + polled; cached after |
 | supervisor restart → `/healthz` 200 | < 7 s | OS page-cache keeps the index warm (first load ~50 ms) |
 
 **Memory:** Postgres capped at 6 g (page-caches the 6 GB HNSW); the webapp base is ~165 MB and the
@@ -161,19 +161,30 @@ CPU reranker (~2 GB) is **lazy-loaded** only when a report is generated. ~10 GB 
 16-request concurrent read/export burst added ~55 MB.
 
 **Safe concurrency:** report **reads / API / export are cheap and highly concurrent** (read-only,
-served from cache). Report **generation is serialized to one at a time** (`_GEN_LOCK`) — the reranker
-and genai client aren't thread-safe, and this also bounds memory to one reranker in RAM. Concurrent
-free-text searches queue rather than collide or OOM. BM25's cost is off the hot path (the live UI
-uses cached loads + the agentic config, neither of which runs BM25).
+served from cache). Report generations overlap; cross-encoder calls alone queue through one
+dedicated child process, keeping one model copy in RAM and avoiding tokenizer contention. BM25's
+cost is off the hot path (the live UI uses cached loads + the agentic config, neither runs BM25).
 
 ## QA checklist (release-candidate regression — `./regression.sh`)
 
-Two layers of automated checks:
-- **`./run_tests.sh`** — 33 hermetic pytest unit/integration tests (~7 s, no paid APIs): retrieval
+Three layers of automated checks:
+- **`./run_tests.sh`** — hermetic pytest unit/integration tests (no paid APIs): retrieval
   fusion (locks in the weighted-RRF + dense-floor fix — it fails if you break the dense weight),
   family dedup, date/basis engine, agent ranking + stop-condition, valid PDF/DOCX export, every API
   endpoint + edge case, and the OPS parser.
-- **`./regression.sh`** — 30 live end-to-end HTTP checks against the running app.
+- **`./regression.sh`** — live cached-report and endpoint checks against the running app.
+- **`ops/ui_e2e_acceptance.py`** — submits a fresh search through `/run`, times progressive and
+  final results, requires agent stages and grounded cards, verifies real cross-encoder plus
+  listwise reranking, and (with `--wide`) requires several external providers to contribute.
+
+Example from the authenticated service loopback:
+
+```bash
+python3 ops/ui_e2e_acceptance.py \
+  --query "A vacuum lifting tool with isolated chambers and predictive seal-loss sensing" \
+  --wide --require-source USPTO --require-source Lens \
+  --output /tmp/patent-ui-acceptance.json
+```
 
 `./regression.sh` all green = shippable. Covers:
 

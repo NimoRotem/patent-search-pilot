@@ -53,6 +53,8 @@ def test_report_has_expected_keys():
     rep = A.report("a seal element", subject=None, mode=Mode.NOVELTY, ledger=led, rounds=1)
     for k in ["query", "mode", "elements", "element_coverage", "element_evidence",
               "combination_view", "ranked_families", "channel_families", "round_new_families",
-              "n_families", "llm_usage"]:
+              "n_families", "llm_usage", "cross_encoder_rerank"]:
         assert k in rep, f"report missing key: {k}"
     assert rep["ranked_families"] == ["famX"]
+    assert rep["cross_encoder_rerank"]["attempted"] is True
+    assert rep["cross_encoder_rerank"]["applied"] is None

@@ -554,7 +554,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
                 # the stage (see RERANK_CHUNK in retrieval.py), so tick elapsed time instead:
                 # it costs nothing and the user can always see the run is alive and roughly how
                 # far along it is.
-                _start_stage_heartbeat(slug, RERANK_TOP)
+                _start_stage_heartbeat(slug, retrieval.RERANK_TOP)
             elif stage == "rerank_progress":
                 # Only fires when RERANK_CHUNK is enabled; real per-item counts beat a heartbeat.
                 done, total = data["done"], data["total"]
@@ -616,11 +616,18 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
                 futs["image"] = ex.submit(_timed, "image", _image_channel, doc["figure_blobs"])
 
             rep = futs["local"].result()      # the report backbone (raises if the agent failed)
+            # The cross-encoder is complete once the local future resolves. Stop its heartbeat
+            # immediately; otherwise a slower external API fan-out leaves the page claiming it is
+            # still reranking. Name that wait explicitly so the operator can see the real hold-up.
+            _stop_stage_heartbeat(slug)
+            if "federated" in futs and not futs["federated"].done():
+                _set_job(slug, kind="federating", detail={"local_done": True},
+                         msg="Local ranking is ready — waiting for the wider patent APIs…")
             fed = futs["federated"].result() if "federated" in futs else None
             doc_fams = futs["docchunks"].result() if "docchunks" in futs else []
             img_res = futs["image"].result() if "image" in futs else None
 
-        _stop_stage_heartbeat(slug)      # reranking finished; stop ticking before the next stage
+        _stop_stage_heartbeat(slug)      # idempotent: also covers a no-local-results edge case
         # Log the wall-clock windows so the parallelism is verifiable in the service log.
         t0 = min((v["start"] for v in timing.values()), default=time.time())
         for nm, v in sorted(timing.items(), key=lambda kv: kv[1]["start"]):

@@ -15,7 +15,10 @@
     and stays out of the reading path. The exports and /print keep the full disclosure expanded:
     those travel without context.
     ============================================================================================ #}
-<div class="wrap">
+<div class="wrap"
+     data-partial="{{ 'true' if v.partial else 'false' }}"
+     data-cross-encoder-reranked="{{ 'true' if v.cross_encoder_rerank and v.cross_encoder_rerank.applied else 'false' }}"
+     data-listwise-reranked="{{ 'true' if v.listwise_reranked else 'false' }}">
 
   {% if v.partial %}
   <div class="refining" id="refiningBanner">

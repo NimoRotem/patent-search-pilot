@@ -1028,6 +1028,7 @@ def build_view(report, top_n=25):
         "channels_used": report.get("channels_used", []),
         "languages": report.get("languages", []),
         "llm_usage": report.get("llm_usage", {}),
+        "cross_encoder_rerank": report.get("cross_encoder_rerank", {}),
         "elements": report["elements"],
         "element_coverage": report.get("element_coverage", {}),
         "claim_chart": chart,

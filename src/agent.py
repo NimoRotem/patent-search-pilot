@@ -249,25 +249,37 @@ class CoverageAgent:
                            on_progress=_rerank_progress)
 
     # ---- report --------------------------------------------------------------------------
-    def _final_rank(self, query_text, ledger, top=25, rerank=True, on_progress=None):
+    def _final_rank(self, query_text, ledger, top=25, rerank=True, on_progress=None,
+                    return_meta=False):
         """Rank by final_score (seed backbone + centrality/citation promote), then cross-encoder
         rerank the head only (reranking within the head can't change recall@100 — the top-100
         set is fixed). (spec §4 + §6 step 4). `rerank=False` skips the (slow, CPU) cross-encoder —
         used for the fast progressive/partial snapshot that streams to the UI before the full run."""
         ordered = sorted(ledger.family_score, key=ledger.final_score, reverse=True)
         if not rerank:
-            return ordered
+            meta = {"attempted": False, "applied": False, "scored": 0,
+                    "requested": 0, "model": "BAAI/bge-reranker-v2-m3"}
+            return (ordered, meta) if return_meta else ordered
         head = ordered[:top]
         fam = [(fk, ledger.family_pid.get(fk), ledger.final_score(fk), {}) for fk in head]
-        reranked = self.r.rerank_families(query_text, fam, top=min(25, len(fam)),
-                                          on_progress=on_progress)
+        outcome = self.r.rerank_families(query_text, fam, top=min(25, len(fam)),
+                                         on_progress=on_progress, return_meta=return_meta)
+        if (return_meta and isinstance(outcome, tuple) and len(outcome) == 2
+                and isinstance(outcome[1], dict)):
+            reranked, meta = outcome
+        else:
+            # Compatibility for simple Retriever test doubles and third-party adapters which
+            # still implement the historical list-only return contract.
+            reranked = outcome
+            meta = {"attempted": bool(head), "applied": None, "scored": None,
+                    "requested": len(head), "model": "BAAI/bge-reranker-v2-m3"}
         ranked = [fk for fk, _, _, _ in reranked] + ordered[top:]
-        return ranked
+        return (ranked, meta) if return_meta else ranked
 
     def report(self, query_text, subject, mode, ledger: CoverageLedger, rounds, rerank=True,
                on_progress=None):
-        ranked_families = self._final_rank(query_text, ledger, rerank=rerank,
-                                           on_progress=on_progress)
+        ranked_families, cross_encoder_rerank = self._final_rank(
+            query_text, ledger, rerank=rerank, on_progress=on_progress, return_meta=True)
         # combinational (inventive-step) view: which reference supplies which element
         cb = CombinationBuilder(ledger.elements)
         element_report = {}
@@ -295,6 +307,7 @@ class CoverageAgent:
             "languages": sorted(ledger.languages),
             "cpc_branches": sorted(ledger.cpc_branches),
             "llm_usage": llm.usage(),
+            "cross_encoder_rerank": cross_encoder_rerank,
             "ranked_families": ranked_families,
             "channel_families": {k: sorted(v) for k, v in ledger.channel_families.items()},
             "round_new_families": ledger.round_new,

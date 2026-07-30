@@ -513,7 +513,8 @@ class Retriever:
             r = c.fetchone()
             return r["text"] if r else ""
 
-    def rerank_families(self, query, fam, top=RERANK_TOP, external=None, on_progress=None):
+    def rerank_families(self, query, fam, top=RERANK_TOP, external=None, on_progress=None,
+                        return_meta=False):
         """`on_progress(done, total)` is called as scoring advances, if given.
 
         The cross-encoder is by far the longest single step in a run -- measured at ~2.4-3.1 s per
@@ -527,8 +528,27 @@ class Retriever:
         passages = [self.best_text(pid, external=external) for _, pid, _, _ in head]
         order = _rerank_progressive(query, passages, on_progress=on_progress)
         reordered = [head[i] for i, _ in order]
+        # Both reranker implementations deliberately return identity order with exact 0.0 scores
+        # when the model is unavailable, times out, or raises. Preserve that graceful fallback,
+        # but expose whether a real model result was obtained so the end-to-end acceptance gate
+        # can distinguish "the reranking stage ran" from "the reranker actually scored it".
+        # Keep this metadata local to the call: reports are generated concurrently, so a module-
+        # level "last status" would race and could attribute another request's outcome.
+        try:
+            scores = [float(score) for _, score in order]
+        except (TypeError, ValueError):
+            scores = []
+        meta = {
+            "attempted": bool(head),
+            "applied": bool(head) and len(order) == len(head) and len(scores) == len(order)
+                       and any(abs(score) > 1e-12 for score in scores),
+            "scored": len(order),
+            "requested": len(head),
+            "model": "BAAI/bge-reranker-v2-m3",
+        }
         # blend reranker score into tuple position; keep tail after
-        return reordered + tail
+        result = reordered + tail
+        return (result, meta) if return_meta else result
 
 
 # ---- document-chunk multi-vector search (parallel channel 'docchunks', spec item 3b) --------
