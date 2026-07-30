@@ -2,6 +2,17 @@
 from agent import AgentConfig, CoverageLedger, CoverageAgent
 
 
+def test_search_worker_default_has_bounded_serial_fallback(monkeypatch):
+    monkeypatch.delenv("AGENT_SEARCH_WORKERS", raising=False)
+    assert AgentConfig().search_workers == 2
+    monkeypatch.setenv("AGENT_SEARCH_WORKERS", "1")
+    assert AgentConfig().search_workers == 1
+    monkeypatch.setenv("AGENT_SEARCH_WORKERS", "8")
+    assert AgentConfig().search_workers == 2
+    monkeypatch.setenv("AGENT_SEARCH_WORKERS", "invalid")
+    assert AgentConfig().search_workers == 2
+
+
 def test_seed_backbone_ranks_above_element_only_finds():
     """final_score keeps the whole-query 'seed' hits at the top (agentic can't score below vector),
     while promoting central / citation-reached unique finds."""

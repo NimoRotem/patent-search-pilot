@@ -8,7 +8,8 @@ families is consistently low across channels, capped by budget (not loop count).
 """
 from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import os
 import time
 import embed, llm
 from retrieval import Retriever
@@ -16,6 +17,15 @@ from search_modes import Mode, CombinationBuilder, ElementMapping, Basis, classi
 from config import SEED_CPC, SEED_CPC_TITLES
 
 FIELD = "vacuum gripping / suction lifting devices"
+
+
+def _default_search_workers():
+    """Two-way overlap by default; AGENT_SEARCH_WORKERS=1 is an instant serial rollback."""
+    try:
+        requested = int(os.environ.get("AGENT_SEARCH_WORKERS", "2"))
+    except (TypeError, ValueError):
+        requested = 2
+    return 1 if requested <= 1 else 2
 
 
 class CoverageLedger:
@@ -107,7 +117,9 @@ class AgentConfig:
     elements_per_round: int = 4
     evidence_per_element: int = 6
     ground: bool = True          # per-evidence coordinate grounding (costly); off for the ablation
-    search_workers: int = 2      # bounded independent ANN passes; two UI jobs => at most four
+    # Bounded independent ANN passes; two UI jobs => at most four. Environment override permits
+    # an operational serial fallback without reverting or changing ranking behavior.
+    search_workers: int = field(default_factory=_default_search_workers)
 
 
 class CoverageAgent:
