@@ -29,6 +29,8 @@ def test_home_is_just_the_search(app_client):
     assert "Search scope and measured reliability" not in html   # wall moved to /about
     assert 'name="wide"' not in html               # federation is unconditional, no checkbox
     assert "/about" in html                        # one compact line links to the relocated content
+    assert "First matches" in html                 # distinguish useful partials from final refinement
+    assert "pageshow" in html                      # BFCache restore re-enables the submit button
 
 
 def test_about_holds_the_relocated_disclosure(app_client):

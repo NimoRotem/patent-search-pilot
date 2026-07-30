@@ -76,8 +76,8 @@
 
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <button class="btn" type="submit" id="gobtn">Search prior art</button>
-      <span class="small muted">Searches the local corpus and external patent APIs. ~2–4 min;
-        cached afterwards.</span>
+      <span class="small muted">Searches the local corpus and external patent APIs. First matches
+        usually appear within a minute; full refinement can take several minutes. Cached afterwards.</span>
     </div>
 
     {#  The one line that replaces the wall. Every number is live from the DB via
@@ -90,11 +90,20 @@
 {% endblock %}
 {% block scripts %}
 <script>
-document.getElementById('searchform').addEventListener('submit', e => {
+const searchForm = document.getElementById('searchform');
+const searchButton = document.getElementById('gobtn');
+searchForm.addEventListener('submit', e => {
   const q = document.getElementById('qbox');
   if(!q.value.trim()){ e.preventDefault(); q.focus(); return; }
-  const b = document.getElementById('gobtn');
-  b.textContent = 'Starting…'; b.disabled = true;
+  searchButton.textContent = 'Starting…'; searchButton.disabled = true;
+});
+
+// Back/forward cache restores the DOM exactly as it looked at navigation time. Without resetting
+// this state, returning from a report leaves “Starting…” disabled and makes another search
+// impossible until a hard refresh.
+window.addEventListener('pageshow', () => {
+  searchButton.textContent = 'Search prior art';
+  searchButton.disabled = false;
 });
 
 /*  DOCUMENT / PATENT-LINK INPUT — extract text + drawings, fuse into the query box.
