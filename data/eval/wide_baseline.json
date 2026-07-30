@@ -2031,5 +2031,970 @@
     }
    }
   ]
+ },
+ "stageA_final": {
+  "summary": {
+   "label": "stageA_final",
+   "provenance": {
+    "commit": "59d7431",
+    "worktree_dirty": true,
+    "publications": 2508320,
+    "chunks": 11507821
+   },
+   "n_queries": 36,
+   "reachability_macro": 0.4632,
+   "configs": {
+    "vector": {
+     "recall@10": 0.0236,
+     "recall@100": 0.0957,
+     "recall@500": 0.187,
+     "reachable@10": 0.0919,
+     "reachable@100": 0.212,
+     "reachable@500": 0.3759
+    },
+    "hybrid": {
+     "recall@10": 0.0236,
+     "recall@100": 0.0937,
+     "recall@500": 0.1601,
+     "reachable@10": 0.0919,
+     "reachable@100": 0.2097,
+     "reachable@500": 0.3273
+    }
+   },
+   "by_stratum": {
+    "B25B": {
+     "n": 6,
+     "reachability": 0.5016,
+     "recall@100": 0.0511
+    },
+    "B25J": {
+     "n": 6,
+     "reachability": 0.5211,
+     "recall@100": 0.1314
+    },
+    "B65G": {
+     "n": 6,
+     "reachability": 0.6259,
+     "recall@100": 0.1161
+    },
+    "B66C": {
+     "n": 6,
+     "reachability": 0.3392,
+     "recall@100": 0.0861
+    },
+    "B66F": {
+     "n": 6,
+     "reachability": 0.3867,
+     "recall@100": 0.1034
+    },
+    "F16B": {
+     "n": 6,
+     "reachability": 0.4046,
+     "recall@100": 0.0858
+    }
+   }
+  },
+  "rows": [
+   {
+    "id": "wide_b25b_US11034528B2",
+    "stratum": "B25B",
+    "n_gold": 10,
+    "n_reachable": 9,
+    "reachability": 0.9,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b25b_US2019184534A1",
+    "stratum": "B25B",
+    "n_gold": 8,
+    "n_reachable": 4,
+    "reachability": 0.5,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.125,
+      "recall@500": 0.25,
+      "reachable@10": 0.0,
+      "reachable@100": 0.25,
+      "reachable@500": 0.5
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.125,
+      "recall@500": 0.25,
+      "reachable@10": 0.0,
+      "reachable@100": 0.25,
+      "reachable@500": 0.5
+     }
+    }
+   },
+   {
+    "id": "wide_b25b_US7887112B1",
+    "stratum": "B25B",
+    "n_gold": 10,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b25b_US7980538B1",
+    "stratum": "B25B",
+    "n_gold": 34,
+    "n_reachable": 21,
+    "reachability": 0.6176,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.08823529411764706,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.14285714285714285
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.058823529411764705,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.09523809523809523
+     }
+    }
+   },
+   {
+    "id": "wide_b25b_US8347811B2",
+    "stratum": "B25B",
+    "n_gold": 23,
+    "n_reachable": 4,
+    "reachability": 0.1739,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b25b_US9452511B2",
+    "stratum": "B25B",
+    "n_gold": 22,
+    "n_reachable": 18,
+    "reachability": 0.8182,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.18181818181818182,
+      "recall@500": 0.22727272727272727,
+      "reachable@10": 0.0,
+      "reachable@100": 0.2222222222222222,
+      "reachable@500": 0.2777777777777778
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.18181818181818182,
+      "recall@500": 0.18181818181818182,
+      "reachable@10": 0.0,
+      "reachable@100": 0.2222222222222222,
+      "reachable@500": 0.2222222222222222
+     }
+    }
+   },
+   {
+    "id": "wide_b25j_US2021069904A1",
+    "stratum": "B25J",
+    "n_gold": 8,
+    "n_reachable": 7,
+    "reachability": 0.875,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.25,
+      "recall@500": 0.5,
+      "reachable@10": 0.0,
+      "reachable@100": 0.2857142857142857,
+      "reachable@500": 0.5714285714285714
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.25,
+      "recall@500": 0.375,
+      "reachable@10": 0.0,
+      "reachable@100": 0.2857142857142857,
+      "reachable@500": 0.42857142857142855
+     }
+    }
+   },
+   {
+    "id": "wide_b25j_US2022155179A1",
+    "stratum": "B25J",
+    "n_gold": 11,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b25j_US2022281125A1",
+    "stratum": "B25J",
+    "n_gold": 21,
+    "n_reachable": 16,
+    "reachability": 0.7619,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.09523809523809523,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.125
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.09523809523809523,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.125
+     }
+    }
+   },
+   {
+    "id": "wide_b25j_US8463437B2",
+    "stratum": "B25J",
+    "n_gold": 11,
+    "n_reachable": 2,
+    "reachability": 0.1818,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b25j_US9079317B2",
+    "stratum": "B25J",
+    "n_gold": 13,
+    "n_reachable": 4,
+    "reachability": 0.3077,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.07692307692307693,
+      "recall@500": 0.07692307692307693,
+      "reachable@10": 0.0,
+      "reachable@100": 0.25,
+      "reachable@500": 0.25
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.07692307692307693,
+      "recall@500": 0.07692307692307693,
+      "reachable@10": 0.0,
+      "reachable@100": 0.25,
+      "reachable@500": 0.25
+     }
+    }
+   },
+   {
+    "id": "wide_b25j_US9221176B2",
+    "stratum": "B25J",
+    "n_gold": 13,
+    "n_reachable": 13,
+    "reachability": 1.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.23076923076923078,
+      "recall@100": 0.46153846153846156,
+      "recall@500": 0.8461538461538461,
+      "reachable@10": 0.23076923076923078,
+      "reachable@100": 0.46153846153846156,
+      "reachable@500": 0.8461538461538461
+     },
+     "hybrid": {
+      "recall@10": 0.23076923076923078,
+      "recall@100": 0.46153846153846156,
+      "recall@500": 0.7692307692307693,
+      "reachable@10": 0.23076923076923078,
+      "reachable@100": 0.46153846153846156,
+      "reachable@500": 0.7692307692307693
+     }
+    }
+   },
+   {
+    "id": "wide_b65g_US8312978B2",
+    "stratum": "B65G",
+    "n_gold": 14,
+    "n_reachable": 2,
+    "reachability": 0.1429,
+    "configs": {
+     "vector": {
+      "recall@10": 0.07142857142857142,
+      "recall@100": 0.07142857142857142,
+      "recall@500": 0.07142857142857142,
+      "reachable@10": 0.5,
+      "reachable@100": 0.5,
+      "reachable@500": 0.5
+     },
+     "hybrid": {
+      "recall@10": 0.07142857142857142,
+      "recall@100": 0.07142857142857142,
+      "recall@500": 0.07142857142857142,
+      "reachable@10": 0.5,
+      "reachable@100": 0.5,
+      "reachable@500": 0.5
+     }
+    }
+   },
+   {
+    "id": "wide_b65g_US8851266B2",
+    "stratum": "B65G",
+    "n_gold": 15,
+    "n_reachable": 12,
+    "reachability": 0.8,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.26666666666666666,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.3333333333333333
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.13333333333333333,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.16666666666666666
+     }
+    }
+   },
+   {
+    "id": "wide_b65g_US8955420B2",
+    "stratum": "B65G",
+    "n_gold": 8,
+    "n_reachable": 8,
+    "reachability": 1.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.125,
+      "recall@500": 0.25,
+      "reachable@10": 0.0,
+      "reachable@100": 0.125,
+      "reachable@500": 0.25
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.125,
+      "recall@500": 0.25,
+      "reachable@10": 0.0,
+      "reachable@100": 0.125,
+      "reachable@500": 0.25
+     }
+    }
+   },
+   {
+    "id": "wide_b65g_US9119382B2",
+    "stratum": "B65G",
+    "n_gold": 17,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_b65g_US9481528B2",
+    "stratum": "B65G",
+    "n_gold": 8,
+    "n_reachable": 8,
+    "reachability": 1.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b65g_US9725242B2",
+    "stratum": "B65G",
+    "n_gold": 16,
+    "n_reachable": 13,
+    "reachability": 0.8125,
+    "configs": {
+     "vector": {
+      "recall@10": 0.125,
+      "recall@100": 0.5,
+      "recall@500": 0.75,
+      "reachable@10": 0.15384615384615385,
+      "reachable@100": 0.6153846153846154,
+      "reachable@500": 0.9230769230769231
+     },
+     "hybrid": {
+      "recall@10": 0.125,
+      "recall@100": 0.5,
+      "recall@500": 0.6875,
+      "reachable@10": 0.15384615384615385,
+      "reachable@100": 0.6153846153846154,
+      "reachable@500": 0.8461538461538461
+     }
+    }
+   },
+   {
+    "id": "wide_b66c_US2019382246A1",
+    "stratum": "B66C",
+    "n_gold": 28,
+    "n_reachable": 8,
+    "reachability": 0.2857,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.03571428571428571,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.125
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.03571428571428571,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.125
+     }
+    }
+   },
+   {
+    "id": "wide_b66c_US2020355160A1",
+    "stratum": "B66C",
+    "n_gold": 13,
+    "n_reachable": 2,
+    "reachability": 0.1538,
+    "configs": {
+     "vector": {
+      "recall@10": 0.07692307692307693,
+      "recall@100": 0.07692307692307693,
+      "recall@500": 0.15384615384615385,
+      "reachable@10": 0.5,
+      "reachable@100": 0.5,
+      "reachable@500": 1.0
+     },
+     "hybrid": {
+      "recall@10": 0.07692307692307693,
+      "recall@100": 0.07692307692307693,
+      "recall@500": 0.15384615384615385,
+      "reachable@10": 0.5,
+      "reachable@100": 0.5,
+      "reachable@500": 1.0
+     }
+    }
+   },
+   {
+    "id": "wide_b66c_US7506589B2",
+    "stratum": "B66C",
+    "n_gold": 14,
+    "n_reachable": 5,
+    "reachability": 0.3571,
+    "configs": {
+     "vector": {
+      "recall@10": 0.07142857142857142,
+      "recall@100": 0.07142857142857142,
+      "recall@500": 0.21428571428571427,
+      "reachable@10": 0.2,
+      "reachable@100": 0.2,
+      "reachable@500": 0.6
+     },
+     "hybrid": {
+      "recall@10": 0.07142857142857142,
+      "recall@100": 0.07142857142857142,
+      "recall@500": 0.07142857142857142,
+      "reachable@10": 0.2,
+      "reachable@100": 0.2,
+      "reachable@500": 0.2
+     }
+    }
+   },
+   {
+    "id": "wide_b66c_US8474892B1",
+    "stratum": "B66C",
+    "n_gold": 9,
+    "n_reachable": 2,
+    "reachability": 0.2222,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b66c_US8596474B2",
+    "stratum": "B66C",
+    "n_gold": 26,
+    "n_reachable": 10,
+    "reachability": 0.3846,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.07692307692307693,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.2
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.07692307692307693,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.2
+     }
+    }
+   },
+   {
+    "id": "wide_b66c_US9550475B1",
+    "stratum": "B66C",
+    "n_gold": 19,
+    "n_reachable": 12,
+    "reachability": 0.6316,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.3684210526315789,
+      "recall@500": 0.47368421052631576,
+      "reachable@10": 0.0,
+      "reachable@100": 0.5833333333333334,
+      "reachable@500": 0.75
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.3684210526315789,
+      "recall@500": 0.47368421052631576,
+      "reachable@10": 0.0,
+      "reachable@100": 0.5833333333333334,
+      "reachable@500": 0.75
+     }
+    }
+   },
+   {
+    "id": "wide_b66f_US10507574B2",
+    "stratum": "B66F",
+    "n_gold": 14,
+    "n_reachable": 1,
+    "reachability": 0.0714,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_b66f_US11116325B2",
+    "stratum": "B66F",
+    "n_gold": 33,
+    "n_reachable": 3,
+    "reachability": 0.0909,
+    "configs": {
+     "vector": {
+      "recall@10": 0.030303030303030304,
+      "recall@100": 0.030303030303030304,
+      "recall@500": 0.030303030303030304,
+      "reachable@10": 0.3333333333333333,
+      "reachable@100": 0.3333333333333333,
+      "reachable@500": 0.3333333333333333
+     },
+     "hybrid": {
+      "recall@10": 0.030303030303030304,
+      "recall@100": 0.030303030303030304,
+      "recall@500": 0.030303030303030304,
+      "reachable@10": 0.3333333333333333,
+      "reachable@100": 0.3333333333333333,
+      "reachable@500": 0.3333333333333333
+     }
+    }
+   },
+   {
+    "id": "wide_b66f_US2019322192A1",
+    "stratum": "B66F",
+    "n_gold": 15,
+    "n_reachable": 6,
+    "reachability": 0.4,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.13333333333333333,
+      "recall@500": 0.3333333333333333,
+      "reachable@10": 0.0,
+      "reachable@100": 0.3333333333333333,
+      "reachable@500": 0.8333333333333334
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.13333333333333333,
+      "recall@500": 0.2,
+      "reachable@10": 0.0,
+      "reachable@100": 0.3333333333333333,
+      "reachable@500": 0.5
+     }
+    }
+   },
+   {
+    "id": "wide_b66f_US2021163275A1",
+    "stratum": "B66F",
+    "n_gold": 8,
+    "n_reachable": 8,
+    "reachability": 1.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.125,
+      "recall@500": 0.5,
+      "reachable@10": 0.0,
+      "reachable@100": 0.125,
+      "reachable@500": 0.5
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.125,
+      "recall@500": 0.375,
+      "reachable@10": 0.0,
+      "reachable@100": 0.125,
+      "reachable@500": 0.375
+     }
+    }
+   },
+   {
+    "id": "wide_b66f_US9309008B2",
+    "stratum": "B66F",
+    "n_gold": 17,
+    "n_reachable": 6,
+    "reachability": 0.3529,
+    "configs": {
+     "vector": {
+      "recall@10": 0.058823529411764705,
+      "recall@100": 0.11764705882352941,
+      "recall@500": 0.17647058823529413,
+      "reachable@10": 0.16666666666666666,
+      "reachable@100": 0.3333333333333333,
+      "reachable@500": 0.5
+     },
+     "hybrid": {
+      "recall@10": 0.058823529411764705,
+      "recall@100": 0.11764705882352941,
+      "recall@500": 0.17647058823529413,
+      "reachable@10": 0.16666666666666666,
+      "reachable@100": 0.3333333333333333,
+      "reachable@500": 0.5
+     }
+    }
+   },
+   {
+    "id": "wide_b66f_USRE48991E",
+    "stratum": "B66F",
+    "n_gold": 42,
+    "n_reachable": 17,
+    "reachability": 0.4048,
+    "configs": {
+     "vector": {
+      "recall@10": 0.047619047619047616,
+      "recall@100": 0.21428571428571427,
+      "recall@500": 0.3333333333333333,
+      "reachable@10": 0.11764705882352941,
+      "reachable@100": 0.5294117647058824,
+      "reachable@500": 0.8235294117647058
+     },
+     "hybrid": {
+      "recall@10": 0.047619047619047616,
+      "recall@100": 0.21428571428571427,
+      "recall@500": 0.30952380952380953,
+      "reachable@10": 0.11764705882352941,
+      "reachable@100": 0.5294117647058824,
+      "reachable@500": 0.7647058823529411
+     }
+    }
+   },
+   {
+    "id": "wide_f16b_US10183855B2",
+    "stratum": "F16B",
+    "n_gold": 26,
+    "n_reachable": 10,
+    "reachability": 0.3846,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   },
+   {
+    "id": "wide_f16b_US2022196287A1",
+    "stratum": "F16B",
+    "n_gold": 19,
+    "n_reachable": 0,
+    "reachability": 0.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": null,
+      "reachable@100": null,
+      "reachable@500": null
+     }
+    }
+   },
+   {
+    "id": "wide_f16b_US2022381288A1",
+    "stratum": "F16B",
+    "n_gold": 14,
+    "n_reachable": 14,
+    "reachability": 1.0,
+    "configs": {
+     "vector": {
+      "recall@10": 0.07142857142857142,
+      "recall@100": 0.35714285714285715,
+      "recall@500": 0.6428571428571429,
+      "reachable@10": 0.07142857142857142,
+      "reachable@100": 0.35714285714285715,
+      "reachable@500": 0.6428571428571429
+     },
+     "hybrid": {
+      "recall@10": 0.07142857142857142,
+      "recall@100": 0.2857142857142857,
+      "recall@500": 0.5714285714285714,
+      "reachable@10": 0.07142857142857142,
+      "reachable@100": 0.2857142857142857,
+      "reachable@500": 0.5714285714285714
+     }
+    }
+   },
+   {
+    "id": "wide_f16b_US7134170B2",
+    "stratum": "F16B",
+    "n_gold": 11,
+    "n_reachable": 9,
+    "reachability": 0.8182,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.09090909090909091,
+      "recall@500": 0.2727272727272727,
+      "reachable@10": 0.0,
+      "reachable@100": 0.1111111111111111,
+      "reachable@500": 0.3333333333333333
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.09090909090909091,
+      "recall@500": 0.2727272727272727,
+      "reachable@10": 0.0,
+      "reachable@100": 0.1111111111111111,
+      "reachable@500": 0.3333333333333333
+     }
+    }
+   },
+   {
+    "id": "wide_f16b_US8444191B2",
+    "stratum": "F16B",
+    "n_gold": 30,
+    "n_reachable": 3,
+    "reachability": 0.1,
+    "configs": {
+     "vector": {
+      "recall@10": 0.06666666666666667,
+      "recall@100": 0.06666666666666667,
+      "recall@500": 0.06666666666666667,
+      "reachable@10": 0.6666666666666666,
+      "reachable@100": 0.6666666666666666,
+      "reachable@500": 0.6666666666666666
+     },
+     "hybrid": {
+      "recall@10": 0.06666666666666667,
+      "recall@100": 0.06666666666666667,
+      "recall@500": 0.06666666666666667,
+      "reachable@10": 0.6666666666666666,
+      "reachable@100": 0.6666666666666666,
+      "reachable@500": 0.6666666666666666
+     }
+    }
+   },
+   {
+    "id": "wide_f16b_US9326411B2",
+    "stratum": "F16B",
+    "n_gold": 8,
+    "n_reachable": 1,
+    "reachability": 0.125,
+    "configs": {
+     "vector": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     },
+     "hybrid": {
+      "recall@10": 0.0,
+      "recall@100": 0.0,
+      "recall@500": 0.0,
+      "reachable@10": 0.0,
+      "reachable@100": 0.0,
+      "reachable@500": 0.0
+     }
+    }
+   }
+  ]
  }
 }
