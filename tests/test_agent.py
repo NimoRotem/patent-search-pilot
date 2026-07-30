@@ -1,5 +1,5 @@
 """Coverage-ledger agent tests: ranking (seed backbone + centrality), stop-condition, keys."""
-from agent import CoverageLedger, CoverageAgent
+from agent import AgentConfig, CoverageLedger, CoverageAgent
 
 
 def test_seed_backbone_ranks_above_element_only_finds():
@@ -58,3 +58,119 @@ def test_report_has_expected_keys():
     assert rep["ranked_families"] == ["famX"]
     assert rep["cross_encoder_rerank"]["attempted"] is True
     assert rep["cross_encoder_rerank"]["applied"] is None
+
+
+def test_independent_element_searches_use_bounded_workers(monkeypatch):
+    """Every pass still runs and merges in order, but independent elements overlap in time."""
+    import threading
+    import time
+    import types
+
+    state = {"active": 0, "max_active": 0, "calls": [], "closed": 0}
+    lock = threading.Lock()
+
+    class FakeRetriever:
+        def fork(self):
+            return FakeRetriever()
+
+        def close(self):
+            with lock:
+                state["closed"] += 1
+
+        def search(self, query, **kwargs):
+            with lock:
+                state["active"] += 1
+                state["max_active"] = max(state["max_active"], state["active"])
+                state["calls"].append(query)
+            time.sleep(0.03)
+            with lock:
+                state["active"] -= 1
+            pid = f"pid-{query}"
+            return types.SimpleNamespace(
+                family_ranked=[(f"fam-{query}", pid, 0.8, {"dense": 1})],
+                channel_hits={"dense": [pid]},
+            )
+
+        @staticmethod
+        def family_key(pid):
+            return f"family-for-{pid}"
+
+        @staticmethod
+        def rerank_families(query, fam, return_meta=False, **kwargs):
+            meta = {"attempted": True, "applied": True, "scored": len(fam),
+                    "requested": len(fam), "model": "fake"}
+            return (fam, meta) if return_meta else fam
+
+    agent = CoverageAgent(FakeRetriever())
+    monkeypatch.setattr(agent, "decompose", lambda *a, **k: ["e1", "e2", "e3", "e4"])
+    events = []
+    rep = agent.run(
+        "whole invention", cfg=AgentConfig(max_rounds=0, ground=False, search_workers=2),
+        on_event=lambda stage, data: events.append((stage, data)),
+    )
+
+    assert state["max_active"] == 2
+    assert state["closed"] == 4
+    assert state["calls"][0] == "whole invention"
+    assert set(state["calls"][1:]) == {"e1", "e2", "e3", "e4"}
+    assert rep["n_families"] == 5
+    progress = [data["search_done"] for stage, data in events if stage == "seed_progress"]
+    assert progress == [2, 3, 4, 5]
+
+
+def test_parallel_and_serial_searches_produce_the_same_report(monkeypatch):
+    """Concurrency changes wall time only; ranking/evidence/stopping outputs stay identical."""
+    import types
+    import llm
+
+    class DeterministicRetriever:
+        def fork(self):
+            return DeterministicRetriever()
+
+        def close(self):
+            pass
+
+        def search(self, query, **kwargs):
+            slug = query.replace(" ", "-")
+            rows = [
+                (f"fam-{slug}", f"pid-{slug}", 0.8, {"dense": 1}),
+                ("fam-common", "pid-common", 0.5, {"citation": 1}),
+            ]
+            return types.SimpleNamespace(
+                family_ranked=rows,
+                channel_hits={"dense": [rows[0][1]], "citation": [rows[1][1]]},
+            )
+
+        @staticmethod
+        def family_key(pid):
+            return pid.replace("pid-", "fam-")
+
+        @staticmethod
+        def rerank_families(query, fam, return_meta=False, **kwargs):
+            meta = {"attempted": True, "applied": True, "scored": len(fam),
+                    "requested": len(fam), "model": "fake"}
+            return (fam, meta) if return_meta else fam
+
+    def run(workers):
+        agent = CoverageAgent(DeterministicRetriever())
+        monkeypatch.setattr(agent, "decompose", lambda *a, **k: ["e1", "e2", "e3"])
+        monkeypatch.setattr(agent, "plan", lambda el, ledger: {
+            "queries": [f"{el} q1", f"{el} q2"], "synonyms": [], "de": "",
+        })
+        return agent.run(
+            "whole", cfg=AgentConfig(max_rounds=1, elements_per_round=2,
+                                     ground=False, search_workers=workers))
+
+    # Simulate a long-lived worker which already served several searches. The process total must
+    # not make either new job start with an exhausted per-search budget.
+    monkeypatch.setattr(
+        llm, "_usage", {"calls": 100, "prompt_tokens": 1000, "completion_tokens": 100})
+    serial = run(1)
+    parallel = run(2)
+    assert serial["rounds"] == parallel["rounds"] == 1
+    keys = (
+        "rounds", "n_families", "element_coverage", "element_evidence",
+        "ranked_families", "channel_families", "round_new_families",
+        "cross_encoder_rerank",
+    )
+    assert {key: serial[key] for key in keys} == {key: parallel[key] for key in keys}

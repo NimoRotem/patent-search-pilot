@@ -4,6 +4,8 @@ scoring/stopping) lives elsewhere — NOT here.
 
 Provider: Vertex AI `gemini-2.5-flash` via the GCE service account (OpenAI account is quota-blocked)."""
 from __future__ import annotations
+from contextlib import contextmanager
+from contextvars import ContextVar
 import json, threading
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 
@@ -16,8 +18,48 @@ def _client():
     return _local.c
 
 _usage = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
+_usage_lock = threading.Lock()
+_usage_scope = ContextVar("patent_llm_usage_scope", default=None)
+
+
 def usage():
-    return dict(_usage)
+    """Usage for the active search scope, or process totals outside one.
+
+    Agent jobs run concurrently in long-lived gunicorn workers. A process-global counter cannot
+    enforce a per-search budget: after one 40-call job, every later job would start exhausted and
+    silently skip refinement. Context-local accounting isolates each job while process totals are
+    retained for operational telemetry outside a scope.
+    """
+    scoped = _usage_scope.get()
+    if scoped is not None:
+        return dict(scoped)
+    with _usage_lock:
+        return dict(_usage)
+
+
+@contextmanager
+def usage_session():
+    """Start a zeroed, concurrency-safe per-search usage counter."""
+    token = _usage_scope.set({"calls": 0, "prompt_tokens": 0, "completion_tokens": 0})
+    try:
+        yield
+    finally:
+        _usage_scope.reset(token)
+
+
+def _record_usage(prompt_tokens=0, completion_tokens=0):
+    values = {
+        "calls": 1,
+        "prompt_tokens": int(prompt_tokens or 0),
+        "completion_tokens": int(completion_tokens or 0),
+    }
+    scoped = _usage_scope.get()
+    if scoped is not None:
+        for key, value in values.items():
+            scoped[key] += value
+    with _usage_lock:
+        for key, value in values.items():
+            _usage[key] += value
 
 
 @retry(wait=wait_exponential(min=1, max=20), stop=stop_after_attempt(5),
@@ -39,11 +81,11 @@ def chat_json(system, user, max_tokens=1200):
         resp = _call(system, user, max_tokens)
     except Exception:
         return {}
-    _usage["calls"] += 1
     um = getattr(resp, "usage_metadata", None)
-    if um:
-        _usage["prompt_tokens"] += getattr(um, "prompt_token_count", 0) or 0
-        _usage["completion_tokens"] += getattr(um, "candidates_token_count", 0) or 0
+    _record_usage(
+        getattr(um, "prompt_token_count", 0) if um else 0,
+        getattr(um, "candidates_token_count", 0) if um else 0,
+    )
     try:
         return json.loads(resp.text)
     except Exception:
@@ -126,11 +168,11 @@ def describe_figures(image_blobs, context: str = "", max_images: int = 4) -> str
         resp = _call_vision(_FIGURES_SYS, parts, max_tokens=700)
     except Exception:
         return ""
-    _usage["calls"] += 1
     um = getattr(resp, "usage_metadata", None)
-    if um:
-        _usage["prompt_tokens"] += getattr(um, "prompt_token_count", 0) or 0
-        _usage["completion_tokens"] += getattr(um, "candidates_token_count", 0) or 0
+    _record_usage(
+        getattr(um, "prompt_token_count", 0) if um else 0,
+        getattr(um, "candidates_token_count", 0) if um else 0,
+    )
     try:
         return (resp.text or "").strip()
     except Exception:

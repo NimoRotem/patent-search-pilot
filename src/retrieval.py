@@ -14,7 +14,7 @@ import os
 import re
 from dataclasses import dataclass, field
 import db, embed, rerank as rr
-from search_modes import Mode, Subject, citable_where
+from search_modes import Mode, citable_where
 from config import SEED_CPC
 
 RRF_K = 40             # smaller K sharpens the rank-1 advantage of a strong channel
@@ -184,7 +184,7 @@ class Result:
 
 
 class Retriever:
-    def __init__(self):
+    def __init__(self, family_map=None):
         self.conn = db.connect()
         self.conn.autocommit = True
         with self.conn.cursor() as c:
@@ -196,11 +196,25 @@ class Retriever:
             c.execute("SET hnsw.max_scan_tuples = 12000")
         # pre-load pid -> family map once (one query) — per-pub lookups during dedup were the
         # dominant hidden cost (~1000 queries/search).
-        self._fam = {}
-        with self.conn.cursor() as c:
-            c.execute("SELECT id, COALESCE(NULLIF(simple_family_id,''), publication_number) k FROM publications")
-            for r in c.fetchall():
-                self._fam[r["id"]] = r["k"]
+        if family_map is None:
+            self._fam = {}
+            with self.conn.cursor() as c:
+                c.execute("SELECT id, COALESCE(NULLIF(simple_family_id,''), publication_number) k FROM publications")
+                for r in c.fetchall():
+                    self._fam[r["id"]] = r["k"]
+        else:
+            # Agent element searches run concurrently on independent PostgreSQL connections. The
+            # publication->family map is several million rows and immutable during a search, so
+            # share it instead of re-reading and duplicating it for every short-lived worker.
+            self._fam = family_map
+
+    def fork(self):
+        """Return a search worker with its own DB connection and the shared read-only family map."""
+        return Retriever(family_map=self._fam)
+
+    def close(self):
+        """Release this retriever's connection (used by bounded agent search workers)."""
+        self.conn.close()
 
     # ---- helpers -------------------------------------------------------------------------
     def family_key(self, pid):

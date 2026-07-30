@@ -7,12 +7,12 @@ stopping signal — NEW relevant families produced per query. Stop when marginal
 families is consistently low across channels, capped by budget (not loop count).
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
-import json
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 import time
 import embed, llm
 from retrieval import Retriever
-from search_modes import Mode, Subject, CombinationBuilder, ElementMapping, Basis, classify_basis, usable_for
+from search_modes import Mode, CombinationBuilder, ElementMapping, Basis, classify_basis, usable_for
 from config import SEED_CPC, SEED_CPC_TITLES
 
 FIELD = "vacuum gripping / suction lifting devices"
@@ -107,6 +107,7 @@ class AgentConfig:
     elements_per_round: int = 4
     evidence_per_element: int = 6
     ground: bool = True          # per-evidence coordinate grounding (costly); off for the ablation
+    search_workers: int = 2      # bounded independent ANN passes; two UI jobs => at most four
 
 
 class CoverageAgent:
@@ -137,37 +138,73 @@ class CoverageAgent:
         return out
 
     # ---- one search + ledger update ------------------------------------------------------
-    def _run_search(self, query, subject, mode, ledger, element=None, cpc=None, phrases=None,
-                    assignees=None, alt_vecs=None, cfg="agentic", is_seed=False):
+    def _fetch_search(self, query, subject, mode, element=None, cpc=None, phrases=None,
+                      assignees=None, alt_vecs=None, cfg="agentic", retriever=None):
+        """Execute one retrieval pass without mutating the shared coverage ledger.
+
+        Keeping retrieval and ledger application separate lets independent element queries use
+        separate PostgreSQL connections concurrently. Results are still applied in the original
+        deterministic query order, so ranking, hit counts and stopping behavior stay unchanged.
+        """
+        r = retriever or self.r
         # sub-searches fuse by RRF only; a single cross-encoder rerank runs at report time
         # (spec §6: rerank the final cascade, not every sub-query — and it bounds CPU cost)
-        res = self.r.search(query, subject=subject, mode=mode, config=cfg, cpc_hints=cpc,
-                            phrases=phrases, assignee_hints=assignees, alt_query_vecs=alt_vecs,
-                            do_rerank=False, topk=200)
+        res = r.search(query, subject=subject, mode=mode, config=cfg, cpc_hints=cpc,
+                       phrases=phrases, assignee_hints=assignees, alt_query_vecs=alt_vecs,
+                       do_rerank=False, topk=200)
         scored = [(fk, pid, float(sc)) for fk, pid, sc, _ in res.family_ranked]
-        n_new = ledger.register_families(scored, bucket=("seed" if is_seed else "element"))
-        for ch, pids in res.channel_hits.items():
-            ledger.channel_families.setdefault(ch, set()).update(self.r.family_key(p) for p in pids[:100])
-        if cpc:
-            ledger.cpc_branches.update(cpc)
+        channel_families = {
+            ch: [r.family_key(p) for p in pids[:100]]
+            for ch, pids in res.channel_hits.items()
+        }
         # map the strongest reranked families to this element as evidence
+        evidence = []
         if element:
             qv = embed.embed_query(query[:2000], 768) if getattr(self, "_ground", True) else None
             for fk, pid, score, prov in res.family_ranked[:5]:
                 if qv is not None:                       # full coordinate grounding (report path)
-                    g = self._ground_vec(pid, qv, subject)
+                    g = self._ground_vec(pid, qv, subject, retriever=r)
                     ev = {"family": fk, "pub": g["pub"], "coord": g["coord"], "kind": g["kind"],
                           "basis": g["basis"], "score": float(score), "channels": list(prov.keys())}
                 else:                                    # light evidence (ablation): family + score
                     ev = {"family": fk, "pub": None, "coord": None, "kind": None,
                           "basis": "n/a", "score": float(score), "channels": list(prov.keys())}
-                ledger.add_evidence(element, ev)
+                evidence.append(ev)
+        return {
+            "result": res,
+            "scored": scored,
+            "channel_families": channel_families,
+            "cpc": list(cpc or []),
+            "element": element,
+            "evidence": evidence,
+        }
+
+    @staticmethod
+    def _apply_search(fetched, ledger, is_seed=False):
+        """Apply a completed retrieval pass to the ledger in deterministic query order."""
+        n_new = ledger.register_families(
+            fetched["scored"], bucket=("seed" if is_seed else "element"))
+        for ch, families in fetched["channel_families"].items():
+            ledger.channel_families.setdefault(ch, set()).update(families)
+        ledger.cpc_branches.update(fetched["cpc"])
+        if fetched["element"]:
+            for ev in fetched["evidence"]:
+                ledger.add_evidence(fetched["element"], ev)
+        return fetched["result"], n_new
+
+    def _run_search(self, query, subject, mode, ledger, element=None, cpc=None, phrases=None,
+                    assignees=None, alt_vecs=None, cfg="agentic", is_seed=False):
+        fetched = self._fetch_search(
+            query, subject, mode, element=element, cpc=cpc, phrases=phrases,
+            assignees=assignees, alt_vecs=alt_vecs, cfg=cfg)
+        res, n_new = self._apply_search(fetched, ledger, is_seed=is_seed)
         return res, n_new
 
-    def _ground_vec(self, pid, qv, subject):
+    def _ground_vec(self, pid, qv, subject, retriever=None):
         """Best chunk of a publication vs a PRE-COMPUTED query vector -> grounded citation."""
+        r = retriever or self.r
         vs = "[" + ",".join(f"{x:.6f}" for x in qv) + "]"
-        with self.r.conn.cursor() as c:
+        with r.conn.cursor() as c:
             c.execute("SELECT p.publication_number, p.publication_date, p.filing_date, "
                       "p.earliest_priority_date, ch.kind, ch.coord "
                       "FROM chunks ch JOIN publications p ON p.id=ch.publication_id "
@@ -186,6 +223,13 @@ class CoverageAgent:
 
     # ---- main loop -----------------------------------------------------------------------
     def run(self, query_text, subject=None, mode="novelty", cfg: AgentConfig = None, on_event=None):
+        """Run one agent job with an isolated per-search LLM budget and usage record."""
+        with llm.usage_session():
+            return self._run(query_text, subject=subject, mode=mode, cfg=cfg,
+                             on_event=on_event)
+
+    def _run(self, query_text, subject=None, mode="novelty", cfg: AgentConfig = None,
+             on_event=None):
         """`on_event(stage, data)` (optional) streams progress to the UI: 'elements' (decomposed),
         'partial' (a fast, un-reranked snapshot after the seed search — the first cards the user
         sees, in ~a few seconds), and 'round' (per refinement round). It must never raise."""
@@ -229,6 +273,65 @@ class CoverageAgent:
             emit(progress_stage, detail)
             return result
 
+        def searched_batch(progress_stage, specs, progress_round=None):
+            """Run independent passes concurrently, then apply them in their original order.
+
+            A psycopg connection cannot be shared by concurrent queries. Production Retriever
+            supplies ``fork()`` so each worker owns one connection while sharing only the large,
+            read-only family map. Test doubles and adapters without ``fork`` keep the historical
+            serial behavior. Two workers is deliberate: the app allows two simultaneous searches
+            and the database has eight CPUs, so the worst case remains bounded at four ANN passes.
+            """
+            nonlocal search_done
+            specs = list(specs)
+            if not specs:
+                return []
+            fork = getattr(getattr(self, "r", None), "fork", None)
+            workers = min(max(1, int(cfg.search_workers)), len(specs))
+            if workers == 1 or not callable(fork):
+                return [searched(
+                    progress_stage, spec["query"], subject, m, ledger,
+                    progress_round=progress_round,
+                    **{k: v for k, v in spec.items() if k != "query"})
+                    for spec in specs]
+
+            def fetch(spec):
+                worker = fork()
+                started = time.monotonic()
+                try:
+                    kwargs = {k: v for k, v in spec.items()
+                              if k not in ("query", "is_seed")}
+                    result = self._fetch_search(
+                        spec["query"], subject, m, retriever=worker, **kwargs)
+                    return result, round(time.monotonic() - started, 1)
+                finally:
+                    close = getattr(worker, "close", None)
+                    if callable(close):
+                        close()
+
+            out = []
+            with ThreadPoolExecutor(max_workers=workers,
+                                    thread_name_prefix="patent-agent-search") as ex:
+                futures = [ex.submit(fetch, spec) for spec in specs]
+                # Consume in input order. All futures are already running/queued, so this keeps
+                # ledger tie behavior deterministic without forfeiting retrieval concurrency.
+                for spec, future in zip(specs, futures):
+                    fetched, seconds = future.result()
+                    result = self._apply_search(
+                        fetched, ledger, is_seed=bool(spec.get("is_seed")))
+                    search_done += 1
+                    detail = {
+                        "search_done": search_done,
+                        "search_max": search_max,
+                        "search_seconds": seconds,
+                        "families": len(ledger.families_seen),
+                    }
+                    if progress_round is not None:
+                        detail["round"] = progress_round
+                    emit(progress_stage, detail)
+                    out.append(result)
+            return out
+
         # seed round: broad search on the whole invention (the vector-equivalent backbone). This one
         # search already yields strong results (the eval shows seed/vector ~= agentic at k=100), so
         # stream it as the first partial render before the slower element+round refinement runs.
@@ -236,8 +339,9 @@ class CoverageAgent:
                  element=None, is_seed=True)
         emit("partial", {"report": self.report(query_text, subject, m, ledger, rounds=0, rerank=False)})
         # attribute seed hits to elements too (cap the per-element seed searches for runtime)
-        for el in elements[:6]:
-            searched("seed_progress", el, subject, m, ledger, element=el)
+        searched_batch("seed_progress", [
+            {"query": el, "element": el} for el in elements[:6]
+        ])
         ledger.note_round(len(ledger.families_seen))
         emit("seeded", {"families": len(ledger.families_seen)})
 
@@ -247,6 +351,7 @@ class CoverageAgent:
             rnd += 1
             before = len(ledger.families_seen)
             targets = (ledger.undercovered() or elements)[:cfg.elements_per_round]
+            round_specs = []
             for el in targets:
                 if llm.usage()["calls"] >= cfg.llm_call_budget:
                     break
@@ -257,10 +362,15 @@ class CoverageAgent:
                     ledger.languages.add("de")
                     alt_vecs = [embed.embed_query(de, 768)]
                 for q in (plan.get("queries") or [el])[:3]:
-                    searched("round_progress", q, subject, m, ledger, progress_round=rnd,
-                             element=el,
-                             cpc=plan.get("cpc"), phrases=plan.get("phrases"),
-                             assignees=plan.get("assignees"), alt_vecs=alt_vecs)
+                    round_specs.append({
+                        "query": q,
+                        "element": el,
+                        "cpc": plan.get("cpc"),
+                        "phrases": plan.get("phrases"),
+                        "assignees": plan.get("assignees"),
+                        "alt_vecs": alt_vecs,
+                    })
+            searched_batch("round_progress", round_specs, progress_round=rnd)
             ledger.note_round(len(ledger.families_seen) - before)
             emit("round", {"round": rnd, "families": len(ledger.families_seen)})
 
