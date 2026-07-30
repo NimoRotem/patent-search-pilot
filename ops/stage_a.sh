@@ -42,7 +42,10 @@ nice -n 10 ionice -c2 -n7 "$PY" -u - >> "$LOG" 2>&1 <<'PYEOF'
 import sys, time; sys.path.insert(0, '.')
 import incremental_ingest as ii, ingest_bq
 t = time.time()
-ids = ii.unchunked_publication_ids()
+# two_tier MUST match the chunk_publications() call below. If the queue counted description-only
+# publications as chunkable while the chunker skipped their paragraphs, they would come back on
+# every run forever and the backlog would never read zero.
+ids = ii.unchunked_publication_ids(two_tier=True)
 print(f"[chunk] {len(ids):,} publications need chunking (two-tier)", flush=True)
 if ids:
     orig = ii._orig_abstracts_from_staging(ingest_bq.CORE_TBL)

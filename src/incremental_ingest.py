@@ -205,34 +205,56 @@ def bq_delta_count(since, until=None, log=print):
 # asserts this against publications that the original chunker already processed -- if the
 # two ever drift, that test fails.
 
-# Publications that have no chunks AND have some text to chunk. The second condition is not
-# cosmetic: 210 publications in the live corpus (old DE-*-C documents) carry bibliographic
-# data only -- BigQuery has no title, abstract, claims or description for them, so they are
-# permanently unchunkable. Without the text predicate they would be re-queued, re-scanned and
-# re-attempted on every weekly run forever, and the "N publications need chunking" log line
-# would never reach zero, masking real backlog.
-_UNCHUNKED_SQL = """
-SELECT p.id FROM publications p
-WHERE p.id > %s
-  AND NOT EXISTS (SELECT 1 FROM chunks c WHERE c.publication_id = p.id)
-  AND (coalesce(p.title,'') <> ''
+# Publications that have no chunks AND have text THIS DEPTH SETTING WILL ACTUALLY CHUNK. The
+# second condition is not cosmetic: 210 publications in the live corpus (old DE-*-C documents)
+# carry bibliographic data only -- BigQuery has no title, abstract, claims or description for
+# them, so they are permanently unchunkable. Without the text predicate they would be re-queued,
+# re-scanned and re-attempted on every weekly run forever, and the "N publications need chunking"
+# log line would never reach zero, masking real backlog.
+#
+# TWO-TIER MADE THAT PREDICATE WRONG. Under two_tier=True the chunker skips paragraphs and figure
+# captions, so a publication whose ONLY text is a description produces zero chunks and then
+# re-queues forever -- precisely the failure the paragraph above exists to prevent. The live
+# corpus has exactly three (US-1303033-A, US-1705145-A, US-2511795-A: pre-1950 US grants with
+# description text but no title, abstract or claims), which is why the symptom was three ids and
+# not a flood. The queue therefore has to ask the same question the chunker will answer.
+_UNCHUNKED_TEXT_ANY = """(coalesce(p.title,'') <> ''
        OR coalesce(p.abstract,'') <> ''
        OR EXISTS (SELECT 1 FROM claims cl WHERE cl.publication_id = p.id)
        OR EXISTS (SELECT 1 FROM paragraphs pa WHERE pa.publication_id = p.id)
        OR EXISTS (SELECT 1 FROM figures fg WHERE fg.publication_id = p.id
-                                             AND coalesce(fg.caption,'') <> ''))
+                                             AND coalesce(fg.caption,'') <> ''))"""
+
+# Two-tier indexes whole + abstract + claims only, so only those may qualify a publication.
+_UNCHUNKED_TEXT_TWO_TIER = """(coalesce(p.title,'') <> ''
+       OR coalesce(p.abstract,'') <> ''
+       OR EXISTS (SELECT 1 FROM claims cl WHERE cl.publication_id = p.id))"""
+
+_UNCHUNKED_SQL = """
+SELECT p.id FROM publications p
+WHERE p.id > %s
+  AND NOT EXISTS (SELECT 1 FROM chunks c WHERE c.publication_id = p.id)
+  AND {text_pred}
 ORDER BY p.id
 """
 
 
-def unchunked_publication_ids(min_pub_id=0, limit=None):
+def unchunked_publication_ids(min_pub_id=0, limit=None, two_tier=None):
     """The resumable/idempotent work queue: publications that still need chunking.
 
     If the job dies after loading but before chunking, the next run picks up exactly the
     publications that still need work -- no bookkeeping table required, the absence of
     chunks IS the state.
+
+    two_tier must match the depth the chunker will run at, or the queue and the chunker disagree
+    about what counts as chunkable and the difference re-queues forever. Defaults to the
+    TWO_TIER_DEFAULT env flag so a box configured for two-tier ingest cannot get this wrong by
+    omission.
     """
-    q = _UNCHUNKED_SQL
+    if two_tier is None:
+        two_tier = os.environ.get("TWO_TIER_DEFAULT", "").strip() not in ("", "0", "false", "False")
+    q = _UNCHUNKED_SQL.format(
+        text_pred=_UNCHUNKED_TEXT_TWO_TIER if two_tier else _UNCHUNKED_TEXT_ANY)
     params = [min_pub_id]
     if limit:
         q += " LIMIT %s"

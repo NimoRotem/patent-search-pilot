@@ -147,11 +147,13 @@ def test_loader_conflict_clause_is_idempotent():
 
 
 def test_unchunked_queue_is_empty_on_a_fully_processed_corpus():
-    """The work queue is 'publications with no chunks that DO have text'. On the live,
-    fully-processed corpus it must be empty -- that emptiness is what makes the job
-    resumable: after a crash, whatever is left in this queue is exactly the outstanding
-    work, with no separate bookkeeping table to get out of sync."""
-    assert inc.unchunked_publication_ids(limit=5) == []
+    """The work queue is 'publications with no chunks that DO have text THIS DEPTH will chunk'.
+    On the live, fully-processed corpus it must be empty -- that emptiness is what makes the job
+    resumable: after a crash, whatever is left in this queue is exactly the outstanding work,
+    with no separate bookkeeping table to get out of sync.
+
+    The live corpus is chunked TWO-TIER, so the queue must be asked at that depth."""
+    assert inc.unchunked_publication_ids(limit=5, two_tier=True) == []
 
 
 def test_textless_publications_are_excluded_from_the_queue():
@@ -168,7 +170,7 @@ def test_textless_publications_are_excluded_from_the_queue():
         no_chunks = cur.fetchone()["c"]
     assert no_chunks >= textless
     # ...yet the work queue is empty, i.e. every chunkable publication is chunked
-    assert inc.unchunked_publication_ids() == []
+    assert inc.unchunked_publication_ids(two_tier=True) == []
 
 
 def test_unchunked_query_respects_min_id_and_limit():
@@ -428,3 +430,31 @@ def test_verify_embeddings_passes_on_the_live_corpus():
     assert out["ok"] is True
     assert out["newest"][0]["dims"] == 768
     assert out["drift"] < inc.NORM_DRIFT_TOLERANCE
+
+
+def test_queue_depth_must_match_chunker_depth():
+    """The queue and the chunker have to agree about what counts as chunkable.
+
+    Two-tier depth skips description paragraphs, so a publication whose ONLY text is a
+    description yields zero chunks and — if the queue still counted it as having text — would be
+    re-queued, re-scanned and re-attempted forever, exactly the failure the text predicate exists
+    to prevent. The live corpus contains three such documents (pre-1950 US grants with description
+    text but no title, abstract or claims), which is why the symptom was three ids rather than a
+    flood and could easily have been dismissed as noise.
+
+    Full depth SHOULD still queue them: at that depth their paragraphs do produce chunks.
+    """
+    two = inc.unchunked_publication_ids(two_tier=True)
+    full = inc.unchunked_publication_ids(two_tier=False)
+    assert two == [], f"two-tier queue must be drained, got {two[:5]}"
+    assert set(two) <= set(full), "two-tier queue can only ever be a subset of full-depth"
+    for pid in set(full) - set(two):
+        with db.cursor() as cur:
+            cur.execute("""SELECT coalesce(title,'') t, coalesce(abstract,'') a,
+                             EXISTS (SELECT 1 FROM claims c WHERE c.publication_id=p.id) cl,
+                             EXISTS (SELECT 1 FROM paragraphs g WHERE g.publication_id=p.id) pa
+                           FROM publications p WHERE p.id=%s""", (pid,))
+            r = cur.fetchone()
+        assert not r["t"] and not r["a"] and not r["cl"], \
+            f"pub {pid} has two-tier-chunkable text yet is missing from the two-tier queue"
+        assert r["pa"], f"pub {pid} is queued at full depth but has no paragraphs to chunk"
