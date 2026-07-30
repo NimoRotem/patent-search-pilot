@@ -9,6 +9,7 @@ families is consistently low across channels, capped by budget (not loop count).
 from __future__ import annotations
 from dataclasses import dataclass, field
 import json
+import time
 import embed, llm
 from retrieval import Retriever
 from search_modes import Mode, Subject, CombinationBuilder, ElementMapping, Basis, classify_basis, usable_for
@@ -204,14 +205,39 @@ class CoverageAgent:
         ledger.languages.add("en")
         emit("elements", {"n": len(elements), "elements": elements})
 
+        # Every retrieval pass can take several seconds against the growing ANN index. Emit a real
+        # counter after each one so the browser does not sit on a single sentence for minutes while
+        # the seed-element and agentic-round searches advance. `search_max` is an honest upper
+        # bound: early stopping or an LLM returning fewer than three queries can finish sooner.
+        search_done = 0
+        search_max = (1 + min(6, len(elements))
+                      + cfg.max_rounds * cfg.elements_per_round * 3)
+
+        def searched(progress_stage, query, *args, progress_round=None, **kwargs):
+            nonlocal search_done
+            started = time.monotonic()
+            result = self._run_search(query, *args, **kwargs)
+            search_done += 1
+            detail = {
+                "search_done": search_done,
+                "search_max": search_max,
+                "search_seconds": round(time.monotonic() - started, 1),
+                "families": len(ledger.families_seen),
+            }
+            if progress_round is not None:
+                detail["round"] = progress_round
+            emit(progress_stage, detail)
+            return result
+
         # seed round: broad search on the whole invention (the vector-equivalent backbone). This one
         # search already yields strong results (the eval shows seed/vector ~= agentic at k=100), so
         # stream it as the first partial render before the slower element+round refinement runs.
-        self._run_search(query_text, subject, m, ledger, element=None, is_seed=True)
+        searched("search_progress", query_text, subject, m, ledger,
+                 element=None, is_seed=True)
         emit("partial", {"report": self.report(query_text, subject, m, ledger, rounds=0, rerank=False)})
         # attribute seed hits to elements too (cap the per-element seed searches for runtime)
         for el in elements[:6]:
-            self._run_search(el, subject, m, ledger, element=el)
+            searched("seed_progress", el, subject, m, ledger, element=el)
         ledger.note_round(len(ledger.families_seen))
         emit("seeded", {"families": len(ledger.families_seen)})
 
@@ -231,9 +257,10 @@ class CoverageAgent:
                     ledger.languages.add("de")
                     alt_vecs = [embed.embed_query(de, 768)]
                 for q in (plan.get("queries") or [el])[:3]:
-                    self._run_search(q, subject, m, ledger, element=el,
-                                     cpc=plan.get("cpc"), phrases=plan.get("phrases"),
-                                     assignees=plan.get("assignees"), alt_vecs=alt_vecs)
+                    searched("round_progress", q, subject, m, ledger, progress_round=rnd,
+                             element=el,
+                             cpc=plan.get("cpc"), phrases=plan.get("phrases"),
+                             assignees=plan.get("assignees"), alt_vecs=alt_vecs)
             ledger.note_round(len(ledger.families_seen) - before)
             emit("round", {"round": rnd, "families": len(ledger.families_seen)})
 

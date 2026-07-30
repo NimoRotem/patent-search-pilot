@@ -139,6 +139,15 @@ def test_heartbeat_updates_a_running_rerank_stage(job):
     assert webapp._JOBS[job]["detail"].get("refs") == 25
 
 
+def test_heartbeat_keeps_ticking_after_partial_results_are_visible(job):
+    webapp._set_job(job, status="partial", kind="reranking", msg="Reranking…")
+    webapp._start_stage_heartbeat(job, 25, tick=0.05)
+    time.sleep(0.2)
+    msg = webapp._JOBS[job]["msg"]
+    webapp._stop_stage_heartbeat(job)
+    assert "elapsed" in msg
+
+
 def test_heartbeat_message_actually_changes(job):
     """The whole defect was a message that never changed."""
     webapp._start_stage_heartbeat(job, 25, tick=0.05)

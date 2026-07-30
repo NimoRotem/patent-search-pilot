@@ -1193,9 +1193,8 @@ async function openSimilar(pn){
 /* ══════════════════════════════════════════════════════════════════════════════════════════
    PROGRESS NARRATIVE — shared by the generating page and the in-place "refining" banner
    ══════════════════════════════════════════════════════════════════════════════════════════
-   The agent emits elements / partial / seeded / round / reranking / federating / done. Between
-   'partial' and 'reranking' there can be minutes where only SSE keep-alives arrive, and the old
-   UI simply froze on one sentence. So the stage list is a state machine that never moves
+   The agent emits elements / per-search progress / partial / seeded / round / reranking /
+   federating / done. The stage list is a state machine that never moves
    backwards, each stage keeps the numbers it learned, and the active stage shows how long it has
    been running — a silent server still reads as visible, honest progress. */
 const STAGES = [
@@ -1208,12 +1207,16 @@ const STAGES = [
   { key: 'rounds',    rank: 3, name: 'Refinement rounds',
     note: 'Re-querying on the elements that are still uncovered, until new families stop appearing.' },
   { key: 'rerank',    rank: 4, name: 'Reranking and grounding',
-    note: 'A bge-reranker cross-encoder rescores every candidate, then each claim-chart cell is grounded in real text. This is the slowest step.' },
+    note: 'A bge-reranker cross-encoder rescores the closest 25 references, then each claim-chart cell is grounded in real text.' },
   { key: 'federate',  rank: 5, name: 'Wider search — external APIs',
     note: 'Querying every configured external source in parallel, then fusing the results by reciprocal rank.' },
   { key: 'done',      rank: 6, name: 'Report ready', note: '' }
 ];
-const KIND_RANK = { elements: 1, seeded: 2, partial: 2, round: 3, reranking: 4, federating: 5, done: 6 };
+const KIND_RANK = {
+  elements: 1, search_progress: 1, seeded: 2, seed_progress: 2, partial: 2,
+  round: 3, round_progress: 3, reranking: 4, rerank_progress: 4,
+  federating: 5, done: 6
+};
 
 function createProgress(mount, opts){
   opts = opts || {};
@@ -1230,6 +1233,10 @@ function createProgress(mount, opts){
     if (d.elements) out.push(d.elements + ' element' + (d.elements !== 1 ? 's' : '') + ' identified');
     if (d.families) out.push(d.families.toLocaleString() + ' candidate families');
     if (d.round) out.push('round ' + d.round);
+    if (state.rank <= 3 && d.search_done) {
+      out.push(d.search_done + ' of up to ' + d.search_max + ' retrieval passes');
+      if (d.search_seconds != null) out.push('last pass ' + Number(d.search_seconds).toFixed(1) + 's');
+    }
     return out;
   }
   function paint(){

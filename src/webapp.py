@@ -295,7 +295,8 @@ def _start_stage_heartbeat(slug, n_refs, tick=None):
                 job = _JOBS.get(slug)
                 # Only keep ticking while this job is still running; never resurrect a finished
                 # or errored job, and never overwrite a newer stage's message.
-                if not job or job.get("status") != "running" or job.get("kind") != "reranking":
+                if (not job or job.get("status") not in ("running", "partial")
+                        or job.get("kind") != "reranking"):
                     return
             secs = int(time.time() - t0)
             _set_job(slug, kind="reranking",
@@ -538,6 +539,16 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
                 _set_job(slug, kind=stage, status="partial",
                          detail={"families": len(rep.get("ranked_families") or [])},
                          msg="Showing the first matches — refining (more channels, rounds, claim chart)…")
+            elif stage in ("search_progress", "seed_progress", "round_progress"):
+                done, maximum = data["search_done"], data["search_max"]
+                phase = {
+                    "search_progress": "Initial whole-invention search",
+                    "seed_progress": "Element expansion",
+                    "round_progress": f"Refinement round {data.get('round', '')}".strip(),
+                }[stage]
+                _set_job(slug, kind=stage, detail=data,
+                         msg=f"{phase}: {done} of up to {maximum} retrieval passes complete "
+                             f"({data['families']} families; last pass {data['search_seconds']:.1f}s).")
             elif stage == "seeded":
                 _set_job(slug, kind=stage, detail={"families": data["families"]},
                          msg=f"{data['families']} candidate families — expanding via citations, families, cross-lingual…")
