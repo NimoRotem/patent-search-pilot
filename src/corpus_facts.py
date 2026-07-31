@@ -24,9 +24,14 @@ import time
 import db
 from config import SEED_CPC, SEED_CPC_TITLES, JURISDICTIONS
 
-_CACHE = {"t": 0.0, "v": None}
+_CACHE = {"t": 0.0, "v": None, "refreshing": False, "last_attempt": 0.0}
 _LOCK = threading.Lock()
-_TTL = 900          # 15 min; ingest advances the ceiling at most weekly
+# Exact corpus scans cover millions of rows. They are deliberately refreshed in a daemon thread:
+# a cold cache or an expired value must never put those scans on a page-rendering request. During
+# bulk embedding an exact refresh has taken more than two minutes, and the old implementation held
+# _LOCK for that entire time, serialising every template behind it.
+_TTL = 3600         # scope/currency changes slowly; one exact refresh per hour is sufficient
+_RETRY_TTL = 60     # do not start one failing background query per incoming request
 # A country must hold at least this share of the corpus to be listed as an indexed jurisdiction.
 # Below it, a few rows dragged in by a family/citation hop would otherwise read as "we cover that
 # office", which is exactly the kind of overstatement the disclosure exists to prevent.
@@ -142,6 +147,60 @@ def _query_db():
     return out
 
 
+def _empty_live():
+    return {"publications": None, "max_date": None, "min_date": None, "chunks": None}
+
+
+def _refresh_cache():
+    """Refresh exact facts without occupying a request or holding the cache lock."""
+    try:
+        live = _query_db()
+    except Exception:
+        live = None
+    now = time.time()
+    with _LOCK:
+        if live is not None:
+            _CACHE["v"], _CACHE["t"] = live, now
+        _CACHE["refreshing"] = False
+
+
+def _live_facts(force: bool):
+    """Return a current-or-stale snapshot and refresh it off the request path.
+
+    `force=True` preserves the original synchronous behaviour for explicit maintenance callers.
+    Normal web requests return immediately: stale data is preferable to making the search page
+    unavailable while an exact COUNT/GROUP BY competes with corpus ingestion.
+    """
+    if force:
+        try:
+            live = _query_db()
+        except Exception:
+            with _LOCK:
+                return _CACHE["v"] or _empty_live()
+        with _LOCK:
+            _CACHE["v"], _CACHE["t"] = live, time.time()
+        return live
+
+    now = time.time()
+    start_refresh = False
+    with _LOCK:
+        live = _CACHE["v"]
+        stale = live is None or now - _CACHE["t"] >= _TTL
+        retry_ready = now - _CACHE["last_attempt"] >= _RETRY_TTL
+        if stale and not _CACHE["refreshing"] and retry_ready:
+            _CACHE["refreshing"] = True
+            _CACHE["last_attempt"] = now
+            start_refresh = True
+
+    if start_refresh:
+        threading.Thread(
+            target=_refresh_cache,
+            name="corpus-facts-refresh",
+            daemon=True,
+        ).start()
+    return live or _empty_live()
+
+
 def facts(force: bool = False) -> dict:
     """Scope + currency + reliability in one dict for the templates.
 
@@ -149,16 +208,7 @@ def facts(force: bool = False) -> dict:
     entirely, which is the worst possible failure mode here. On error the counts come back None
     and the templates degrade to "unavailable" instead of to silence.
     """
-    now = time.time()
-    with _LOCK:
-        if not force and _CACHE["v"] is not None and now - _CACHE["t"] < _TTL:
-            live = _CACHE["v"]
-        else:
-            try:
-                live = _query_db()
-            except Exception:
-                live = {"publications": None, "max_date": None, "min_date": None, "chunks": None}
-            _CACHE["v"], _CACHE["t"] = live, now
+    live = _live_facts(force)
 
     mx = live.get("max_date")
     return {
