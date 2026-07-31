@@ -129,7 +129,10 @@ def _download(url, dest: Path, retries=2):
             time.sleep(1.5 * (i + 1))
         finally:
             if tmp is not None:
-                tmp.unlink(missing_ok=True)
+                try:
+                    tmp.unlink(missing_ok=True)
+                except OSError:
+                    pass
     return False
 
 
@@ -158,15 +161,20 @@ def extract_pdf_drawings(pdf_path, pub, cap=16, min_side=340):
     except ValueError:
         return []
     figdir.mkdir(parents=True, exist_ok=True)
-    tmp = figdir / "_pdfx"
-    if tmp.exists():
-        for x in tmp.glob("*"):
-            x.unlink(missing_ok=True)
-    tmp.mkdir(exist_ok=True)
+    # Card warming can reach the same publication concurrently. A shared `_pdfx` directory lets
+    # one extractor delete/move another extractor's output. Isolate each invocation just as the
+    # download path does; final figure publication below is already an atomic same-filesystem move.
+    tmp = Path(tempfile.mkdtemp(prefix=".pdfx-", dir=figdir))
     try:
         subprocess.run(["pdfimages", "-png", "-p", str(pdf_path), str(tmp / "p")],
                        timeout=180, capture_output=True)
     except Exception:
+        for x in tmp.glob("*"):
+            x.unlink(missing_ok=True)
+        try:
+            tmp.rmdir()
+        except OSError:
+            pass
         return []
     cands = []                                     # (page, file, area)
     for f in sorted(tmp.glob("p-*.png")):
@@ -205,6 +213,38 @@ def extract_pdf_drawings(pdf_path, pub, cap=16, min_side=340):
 
 def cache_path(pub):
     return ENRICHED / f"{_pubkey(pub)}.json"
+
+
+def _write_cache(pub, payload):
+    """Atomically publish one enrichment cache entry.
+
+    Concurrent card warmers can finish the same patent together. Direct `write_text()` truncates
+    the shared destination before writing, so another reader can observe invalid JSON and two
+    writers can corrupt each other. A unique same-directory file plus `os.replace()` guarantees
+    every reader sees either the previous complete document or the next complete document.
+    Cache I/O is best-effort: inability to persist must not turn an otherwise valid API response
+    into HTTP 500.
+    """
+    tmp = None
+    try:
+        dest = cache_path(pub)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=dest.parent,
+                prefix=f".{dest.name}.", suffix=".tmp", delete=False) as f:
+            tmp = Path(f.name)
+            json.dump(payload, f, default=str)
+        os.replace(tmp, dest)
+        tmp = None
+        return True
+    except OSError:
+        return False
+    finally:
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def load_cached(pub):
@@ -494,7 +534,7 @@ def ensure_raw(pub):
         return None
     try:
         cached["raw"] = raw
-        cache_path(pub).write_text(json.dumps(cached, default=str))
+        _write_cache(pub, cached)
     except Exception:
         pass
     return raw
@@ -532,7 +572,7 @@ def enrich_for_display(pub, force=False):
     if md and md.get("figures"):
         disp = _display_from_mongo(pub, md)
         _merge_lens(pub, disp)                # authoritative legal status/family if LENS_TOKEN set
-        cache_path(pub).write_text(json.dumps({"mongo": md, "_display": disp}, default=str))
+        _write_cache(pub, {"mongo": md, "_display": disp})
         try:
             if disp.get("pdf_url"):
                 with db.cursor() as cur:
@@ -570,13 +610,13 @@ def enrich_for_display(pub, force=False):
                 "espacenet": espacenet_url(pub, _simple_family_id(pub)),
                 "google_patents": google_patents_url(pub)}
         _merge_mongo_text(disp, md)            # figure-less Mongo stub still gives us full text
-        cache_path(pub).write_text(json.dumps({"mongo": md, "_display": disp}, default=str))
+        _write_cache(pub, {"mongo": md, "_display": disp})
         return disp
     disp = _normalize(pub, raw)
     _merge_mongo_text(disp, md)                # Mongo's fuller claims/description/CPC when present
     _merge_lens(pub, disp)                     # authoritative legal status + family (if LENS_TOKEN set)
     # persist raw + normalized display together
-    cache_path(pub).write_text(json.dumps({"raw": raw, "mongo": md, "_display": disp}, default=str))
+    _write_cache(pub, {"raw": raw, "mongo": md, "_display": disp})
     # keep DB facsimile_path in sync (local pdf preferred)
     try:
         if disp.get("pdf_local") or disp.get("pdf_url"):
