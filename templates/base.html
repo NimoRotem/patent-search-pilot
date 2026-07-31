@@ -7,7 +7,12 @@
 <title>{% block title %}rotemAI patent search{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🔎</text></svg>">
-<script>window.APP_BASE = {{ request.script_root|tojson }};</script>
+<script>
+window.APP_BASE = {{ request.script_root|tojson }};
+/* The progress narrative uses the same live/cached corpus fact as the footer.  Never bake a
+   publication count into app.js: ingestion changes it while the UI asset remains cached. */
+window.CORPUS_PUBLICATIONS = {{ (corpus.publications if corpus and corpus.publications else 0)|tojson }};
+</script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to main content</a>

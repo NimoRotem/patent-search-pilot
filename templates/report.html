@@ -183,6 +183,17 @@
       </div>
     </details>
 
+    {% if v.query_claim_grid and v.query_claim_grid.available %}
+    <details class="tail" id="queryClaimGrid">
+      <summary><span class="th">Claim × reference grid</span>
+        <span class="ts" id="queryClaimGridSummary">Building {{ v.query_claim_grid.n_selected }} uploaded claims × up to {{ v.query_claim_grid.max_refs }} references in the background…</span></summary>
+      <div class="tailin" id="queryClaimGridBody" aria-live="polite">
+        <div class="claimgrid-loading"><span class="spin sm" aria-hidden="true"></span>
+          Reading the uploaded claims against the ranked references. The report remains usable while this runs.</div>
+      </div>
+    </details>
+    {% endif %}
+
     <details class="tail{% if v.partial %} pending{% endif %}">
       <summary><span class="th">Coverage ledger</span>
         <span class="ts">{% if v.partial %}available when agentic refinement completes{% else %}{{ v.rounds }} rounds · {{ v.coverage_ledger.cpc_branches|length }} CPC branches · {{ v.channels_used|length }} channels{% endif %}</span></summary>
@@ -371,7 +382,7 @@
                 shown on the card so a domain expert reads the take without opening a tab. The deeper
                 grounded opinion + best-matching passage still live in the "Why relevant" tab. #}
             {% if c.get('relevancy_opinion') %}
-            <p class="relop"><span class="relop-l">Why relevant</span>{{ c.get('relevancy_opinion') }}</p>
+            <p class="relop" data-rationale-state="summary"><span class="relop-l">Why relevant</span>{{ c.get('relevancy_opinion') }}</p>
             {% endif %}
             {% if c.covers_elements %}
             <div class="rcovers"><span class="lbl2">reads on</span>

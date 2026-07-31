@@ -194,6 +194,36 @@ def test_route_hostile_url_rejected(app_client):
     assert r.get_json()["ok"] is False
 
 
+def test_route_stashes_claims_but_does_not_return_vectors_or_full_images(
+        app_client, monkeypatch, tmp_path):
+    import base64
+    import webapp
+
+    extracted = {
+        "ok": True, "status": 200, "source": "upload", "label": "claims.txt",
+        "brief": "a vacuum lifter", "summary_brief": "a vacuum lifter",
+        "text_present": True, "text_chars": 80, "text_snippet": "claim text",
+        "figures_present": True, "n_figures": 1, "thumbs": [], "notes": [],
+        "n_chunks": 1, "n_claims": 1,
+        "chunks": [{"kind": "claim_own", "text": "a vacuum lifter claim",
+                    "coord": {"claim_no": 1}, "independent": True,
+                    "vector": [0.1, 0.2]}],
+        "figure_images": [{"mime": "image/png",
+                           "b64": base64.b64encode(b"PNGDATA").decode()}],
+    }
+    monkeypatch.setattr(webapp, "DOCSTASH", tmp_path)
+    monkeypatch.setattr(webapp.ingest_input, "extract_upload", lambda *a, **k: dict(extracted))
+    r = app_client.post("/extract", data={"file": (io.BytesIO(b"claims"), "claims.txt")},
+                        content_type="multipart/form-data")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["doc_token"] and body["n_claims"] == 1
+    assert "chunks" not in body and "figure_images" not in body
+    loaded = webapp._load_doc_materials(body["doc_token"])
+    assert loaded["claims"][0]["claim_no"] == 1
+    assert loaded["figure_blobs"] == [b"PNGDATA"]
+
+
 # ===========================================================================
 # FULL-TEXT QUERY CHUNKS — corpus-parity chunking, embedding, and the new
 # multi-material return contract (summary_brief + chunks + figure_images).

@@ -142,20 +142,33 @@ if (typeof window !== 'undefined' && window.fetch && !window.__rawFetch){
    cached yet. Panes that only need text ask for light; the opinion and the full detail view ask
    for the real thing. A light response is upgraded in place once a full one arrives. */
 const REFCACHE = {};
-async function fetchRef(pub, light){
+const REFPENDING = {};
+async function fetchRef(pub, light, rationaleOnly){
   const hit = REFCACHE[pub];
-  if (hit && (!light ? hit._full : true)) return hit;
-  const url = B + '/api/ref/' + encodeURIComponent(pub) +
-              '?slug=' + encodeURIComponent(window.SLUG || '') + (light ? '&light=1' : '');
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('ref ' + r.status);
-  const j = await r.json();
-  j._full = !light;
-  if (!hit || j._full) REFCACHE[pub] = j;
-  // Every card-open path returns the worldwide family — upgrade the card's timeline strip in
-  // place (this is also what makes a lazily-opened TAIL card resolve its authoritative family).
-  try { if (j.display && j.display.family) upgradeFamily(pub, j.display.family); } catch (e) {}
-  return REFCACHE[pub];
+  if (hit && (rationaleOnly ? hit._rationale : (!light ? hit._full : true))) return hit;
+  const key = pub + (rationaleOnly ? ':rationale' : (light ? ':light' : ':full'));
+  if (REFPENDING[key]) return REFPENDING[key];
+  REFPENDING[key] = (async () => {
+    const url = B + '/api/ref/' + encodeURIComponent(pub) +
+                '?slug=' + encodeURIComponent(window.SLUG || '') + (light ? '&light=1' : '') +
+                (rationaleOnly ? '&rationale=1' : '');
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('ref ' + r.status);
+    const j = await r.json();
+    j._full = !light;
+    j._rationale = !!j.rationale;
+    const current = REFCACHE[pub];
+    // Information order is full > rationale-only > light. A late, cheaper reply never downgrades
+    // a richer cached response.
+    if (!current || j._full || (!current._full && j._rationale) ||
+        (!current._full && !current._rationale)) REFCACHE[pub] = j;
+    // Every card-open path returns the worldwide family — upgrade the card's timeline strip in
+    // place (this is also what makes a lazily-opened TAIL card resolve its authoritative family).
+    try { if (j.display && j.display.family) upgradeFamily(pub, j.display.family); } catch (e) {}
+    return REFCACHE[pub];
+  })();
+  try { return await REFPENDING[key]; }
+  finally { delete REFPENDING[key]; }
 }
 
 /* ── semantic search: no query-term highlighting ─────────────────────────────────────────────
@@ -212,25 +225,51 @@ function loadThumb(thumb){
   const pub = thumb.dataset.pub, images = thumb._figs || [];
   if (!images.length){ thumbNone(thumb); return; }
   thumb.dataset.state = 'fetching';
-  const img = new Image();
-  img.decoding = 'async';
-  img.alt = (images[0].from_pdf ? 'Page' : 'Figure') + ' 1 of ' + pub;
-  // Commit the <img> only once the bytes actually decode, so a 404 or a corrupt file becomes an
-  // explicit error state instead of a broken-image icon or a blank box.
-  img.onload = () => {
+  let i = 0;
+  const attempt = () => {
     if (thumb.dataset.state !== 'fetching' || thumb.dataset.pub !== pub) return;
-    thumb.dataset.state = 'ok';
-    thumb.textContent = '';
-    thumb.appendChild(img);
-    thumb.insertAdjacentHTML('beforeend',
-      '<span class="figbadge">' + images.length + ' fig' + (images.length !== 1 ? 's' : '') + '</span>' +
-      '<span class="zoomhint" aria-hidden="true">🔍</span>');
+    if (i >= images.length){ thumbFail(thumb); return; }
+    const n = i++, im = images[n], src = figThumb(pub, im);
+    if (!src){ attempt(); return; }
+    const img = new Image();
+    img.decoding = 'async';
+    img.alt = (im.from_pdf ? 'Page' : 'Figure') + ' ' + (n + 1) + ' of ' + pub;
+    // A manifest can contain one stale CDN URL followed by valid drawings. Try every candidate;
+    // only show "unavailable" once the whole manifest has failed.
+    img.onload = () => {
+      if (thumb.dataset.state !== 'fetching' || thumb.dataset.pub !== pub) return;
+      thumb.dataset.state = 'ok';
+      thumb.textContent = '';
+      thumb.appendChild(img);
+      thumb.insertAdjacentHTML('beforeend',
+        '<span class="figbadge">' + images.length + ' fig' + (images.length !== 1 ? 's' : '') + '</span>' +
+        '<span class="zoomhint" aria-hidden="true">🔍</span>');
+    };
+    img.onerror = attempt;
+    img.src = src;
   };
-  img.onerror = () => {
-    if (thumb.dataset.state !== 'fetching' || thumb.dataset.pub !== pub) return;
-    thumbFail(thumb);
-  };
-  img.src = figThumb(pub, images[0]);
+  attempt();
+}
+
+/* Server-rendered thumbnails arrive before this script. If their first CDN image already failed,
+   detect it (including an error that fired before DOMContentLoaded), fetch the cached detail
+   manifest, and let loadThumb try its remaining figures. */
+function recoverBrokenInitialThumbs(){
+  document.querySelectorAll('.rthumb[data-state="ok"]').forEach(thumb => {
+    const img = thumb.querySelector('img');
+    if (!img) return;
+    const recover = () => {
+      if (thumb.dataset.state !== 'ok') return;
+      thumb.dataset.state = 'error';
+      thumbFail(thumb);
+      const pub = thumb.dataset.pub;
+      fetchRef(pub, true).then(j => {
+        if (j && j.display && j.display.images) backfillThumb(pub, j.display.images);
+      }).catch(() => {});
+    };
+    if (img.complete && !img.naturalWidth) recover();
+    else img.addEventListener('error', recover, {once:true});
+  });
 }
 
 /* PDF links are rendered inert; one batched manifest promotes the ones that actually resolve.
@@ -353,6 +392,155 @@ async function warmDetails(){
     }
   };
   await Promise.all([worker(), worker(), worker()]);   // 3-wide: instant tabs, gentle on the box
+}
+
+/* Generate the expensive, full-text-grounded explanation for the highest-ranked cards in the
+   background. Previously that deeper read happened only after a user clicked "Why relevant",
+   leaving the list itself with a short batch-reranker opinion. Two workers and eight cards bound
+   both spend and pressure; fetchRef's pending map also makes a simultaneous click share the call. */
+async function warmRationales(){
+  if (window.PARTIAL || !window.SLUG) return;
+  const pubs = [...document.querySelectorAll('.refcard')]
+    .slice(0, 8).map(c => c.dataset.pub).filter(Boolean);
+  let i = 0;
+  const worker = async () => {
+    while (i < pubs.length){
+      const pub = pubs[i++];
+      try {
+        // light=1 keeps worldwide-family lookup cache-only; rationale=1 still performs the deep
+        // text analysis. This avoids racing the drawing/family prefetch for the same OPS budget.
+        const j = await fetchRef(pub, true, true);
+        if (j && j.display && j.display.images) backfillThumb(pub, j.display.images);
+        if (j && j.rationale) applyCardRationale(pub, j.rationale);
+      } catch (e) {}
+    }
+  };
+  await Promise.all([worker(), worker()]);
+}
+
+function rationaleBasis(r){
+  const labels = { 'claims+description':'claims + description', claims:'claims',
+                   description:'description', 'abstract-only':'abstract only',
+                   'title-only':'title only' };
+  return labels[(r && r.text_basis) || ''] || ((r && r.text_basis) || 'reference text');
+}
+
+function rationaleMeta(r){
+  if (!r) return '';
+  const bits = [];
+  if (r.n_passages) bits.push(r.n_passages + ' passages');
+  if (r.text_basis) bits.push(rationaleBasis(r));
+  const locs = [...new Set((r.citations || []).map(c => c.label).filter(Boolean))].slice(0, 4);
+  if (locs.length) bits.push(locs.join(', '));
+  return bits.length ? '<div class="why-meta">Grounded in ' + esc(bits.join(' · ')) + '</div>' : '';
+}
+
+function applyCardRationale(pub, r){
+  if (!r || !r.why) return;
+  const card = document.querySelector('.refcard[data-pub="' + CSS.escape(pub) + '"]');
+  if (!card) return;
+  const main = card.querySelector('.rmain');
+  if (!main) return;
+  let p = main.querySelector('.relop');
+  if (!p){
+    p = document.createElement('p');
+    p.className = 'relop';
+    const before = main.querySelector('.rcovers');
+    if (before) main.insertBefore(p, before); else main.appendChild(p);
+  }
+  p.dataset.rationaleState = 'full';
+  p.innerHTML = '<span class="relop-l">Why relevant</span>' + esc(r.why) + rationaleMeta(r);
+}
+
+/* Uploaded-patent Claim x Reference grid. The server starts this analysis as soon as the final
+   ranking exists; the page merely polls and paints it. No button click is required. */
+function renderQueryClaimGrid(d){
+  const body = document.getElementById('queryClaimGridBody');
+  const summary = document.getElementById('queryClaimGridSummary');
+  if (!body || !summary || !d) return;
+  if (d.status === 'error'){
+    summary.textContent = 'Background analysis failed';
+    body.innerHTML = '<div class="pempty">The claim-level grid could not be completed. The element grid and ranked results are unaffected.</div>';
+    return;
+  }
+  if (d.status === 'unavailable'){
+    summary.textContent = 'Not available';
+    body.innerHTML = '<div class="pempty">' + esc(d.reason || 'No uploaded claims were available.') + '</div>';
+    return;
+  }
+  if (d.status !== 'done'){
+    const nc = d.n_claims || '', nr = d.n_refs || '';
+    summary.textContent = 'Building ' + (nc ? nc + ' claims' : 'uploaded claims') +
+      (nr ? ' × ' + nr + ' references' : '') + ' in the background…';
+    return;
+  }
+  if (!d.available){
+    summary.textContent = 'Not available';
+    body.innerHTML = '<div class="pempty">' + esc(d.reason || 'No uploaded claims were available.') + '</div>';
+    return;
+  }
+  const counts = d.counts || {};
+  summary.textContent = d.n_claims_shown + ' claims × ' + d.n_refs_shown + ' references · ' +
+    (counts.disclosed || 0) + ' disclosed · ' + (d.seconds || 0) + 's background analysis';
+  const marks = {disclosed:'✓', partial:'~', uncertain:'?', absent:'—'};
+  const cls = {disclosed:'discloses', partial:'weak', uncertain:'unchecked', absent:'unrelated'};
+  let h = '<p class="gridline">Each row keeps an uploaded claim intact. A green cell has a grounded quotation and survived a separate refutation pass; it is not a legal claim-construction conclusion. ' +
+    '<span class="lgi"><span class="lg lg-ok"></span>✓ disclosed</span>' +
+    '<span class="lgi"><span class="lg lg-weak"></span>~ partial</span>' +
+    '<span class="lgi"><span class="lg lg-unk"></span>? uncertain</span>' +
+    '<span class="lgi"><span class="lg lg-bad"></span>— absent</span></p>';
+  if (d.truncated_claims || d.truncated_refs){
+    const notes = [];
+    if (d.truncated_claims) notes.push('showing ' + d.n_claims_shown + ' of ' + d.n_claims_total + ' claims (independent claims first)');
+    if (d.truncated_refs) notes.push('top ' + d.n_refs_shown + ' of ' + d.n_refs_total + ' ranked references');
+    h += '<p class="claimgrid-bound">Bounded background analysis: ' + esc(notes.join(' · ')) + '.</p>';
+  }
+  h += '<div class="chartwrap"><table class="chart query-claim-chart"><caption class="vh">Which ranked references disclose each uploaded patent claim</caption><thead><tr>' +
+    '<th class="elh" scope="col">Uploaded claim</th>' +
+    (d.columns || []).map(c => '<th scope="col"><button type="button" class="pnlink" data-pub="' + esc(c.pub) +
+      '" onclick="jumpRef(this.dataset.pub)">' + esc(c.pub) + '</button><span class="colcount">rank ' + esc(c.rank || '') + '</span></th>').join('') +
+    '</tr></thead><tbody>';
+  (d.rows || []).forEach(row => {
+    const txt = row.text || '', short = txt.length > 210 ? txt.slice(0, 210) + '…' : txt;
+    const claimText = txt.length > 210
+      ? '<details class="qclaim"><summary>' + esc(short) + '</summary><p>' + esc(txt) + '</p></details>'
+      : '<div class="qclaim-short">' + esc(short) + '</div>';
+    h += '<tr><th class="elh" scope="row"><span class="qclaim-no">Claim ' + esc(row.claim_no) +
+      (row.independent ? ' · independent' : '') + '</span>' + claimText + '</th>';
+    (row.cells || []).forEach(cell => {
+      const v = marks[cell.verdict] ? cell.verdict : 'uncertain';
+      const tip = [v, cell.location, cell.quote].filter(Boolean).join(' · ').slice(0, 600);
+      h += '<td class="cell cell-' + cls[v] + '"><button type="button" data-pub="' + esc(cell.pub) +
+        '" onclick="jumpRef(this.dataset.pub)" title="' + esc(tip) + '"><span class="cmark">' +
+        marks[v] + '</span><span class="cs">' + esc(v) + '</span>' +
+        (cell.location ? '<span class="cc">' + esc(cell.location) + '</span>' : '') + '</button></td>';
+    });
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>';
+  body.innerHTML = h;
+}
+
+async function warmQueryClaimGrid(){
+  if (window.PARTIAL || !window.SLUG || !document.getElementById('queryClaimGrid')) return;
+  let d = null;
+  try {
+    const r = await fetch(B + '/api/query-claim-grid/' + encodeURIComponent(window.SLUG), {method:'POST'});
+    d = await r.json();
+    renderQueryClaimGrid(d);
+  } catch (e) { return; }
+  if (d && (d.status === 'done' || d.status === 'error' || d.status === 'unavailable')) return;
+  let tries = 0;
+  const poll = async () => {
+    tries++;
+    try {
+      d = await (await fetch(B + '/api/query-claim-grid/' + encodeURIComponent(window.SLUG))).json();
+      renderQueryClaimGrid(d);
+    } catch (e) {}
+    if (d && (d.status === 'done' || d.status === 'error' || d.status === 'unavailable')) return;
+    if (tries < 240) setTimeout(poll, 2500); // bounded ten-minute observer; server work continues
+  };
+  setTimeout(poll, 1500);
 }
 
 /* Back-fill: /api/ref sometimes downloads figures that were not on disk when the page rendered.
@@ -556,7 +744,7 @@ async function paneWhy(card){
 }
 function renderWhy(r){
   if (!r || !r.why) return '<div class="pempty">No AI opinion was generated for this reference.</div>';
-  let h = '<div class="why">' + esc(r.why) + '</div>';
+  let h = '<div class="why">' + esc(r.why) + '</div>' + rationaleMeta(r);
   if (r.reads_on && r.reads_on.length)
     h += '<div class="readson"><span class="lbl2">reads on</span>' +
       r.reads_on.map(x => '<span class="chip el">' + esc(x) + '</span>').join('') + '</div>';
@@ -1197,11 +1385,15 @@ async function openSimilar(pn){
    federating / done. The stage list is a state machine that never moves
    backwards, each stage keeps the numbers it learned, and the active stage shows how long it has
    been running — a silent server still reads as visible, honest progress. */
+const LIVE_CORPUS_N = Number((typeof window !== 'undefined' && window.CORPUS_PUBLICATIONS) || 0);
+const LIVE_CORPUS_NOTE = LIVE_CORPUS_N
+  ? 'Searching ' + LIVE_CORPUS_N.toLocaleString() + ' publications in the latest measured corpus snapshot through dense, sparse, CPC, citation and cross-lingual retrieval channels.'
+  : 'Searching the live indexed corpus through dense, sparse, CPC, citation and cross-lingual retrieval channels.';
 const STAGES = [
   { key: 'decompose', rank: 0, name: 'Reading the disclosure',
     note: 'Decomposing the invention into independent technical elements.' },
   { key: 'search',    rank: 1, name: 'Searching the corpus',
-    note: 'Searching the live corpus through dense, sparse, CPC, citation and cross-lingual retrieval channels.' },
+    note: LIVE_CORPUS_NOTE },
   { key: 'expand',    rank: 2, name: 'Expanding the candidate set',
     note: 'Following citations, patent families and EN/DE equivalents outward from the seed hits.' },
   { key: 'rounds',    rank: 3, name: 'Refinement rounds',
@@ -1382,6 +1574,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadFlags();
   document.querySelectorAll('.refcard .rsnip').forEach(hlNode);
   applyControls();
+  recoverBrokenInitialThumbs();
   resolveThumbs();
   resolvePdfLinks();
   // A partial report is replaced shortly and the agent is still consuming the same server. Avoid
@@ -1389,6 +1582,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!window.PARTIAL){
     prefetchTopN();        // proactively resolve drawings + worldwide family for shown final cards
     setTimeout(warmDetails, 1200); // eager-warm final card details so their tabs open instantly
+    setTimeout(warmRationales, 2600); // deeper top-card explanations, no click required
+    warmQueryClaimGrid();  // uploaded claims x references; server already runs it in background
   }
 
   const m = (location.hash || '').match(/patent=([^&]+)/);

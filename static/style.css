@@ -289,6 +289,7 @@ td.cell.empty{color:var(--line2)}
   border-left:3px solid var(--accent,#3b82f6);background:rgba(59,130,246,.06);border-radius:0 5px 5px 0}
 .relop-l{display:inline-block;color:var(--accent,#3b82f6);font-size:10.5px;font-weight:600;
   text-transform:uppercase;letter-spacing:.05em;margin-right:7px;vertical-align:1px}
+.why-meta{margin-top:5px;color:var(--faint);font-size:10.5px;line-height:1.45}
 .rcovers{margin-top:8px;font-size:12px}
 .lbl2{color:var(--faint);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-right:5px}
 .relbox{flex:none;width:64px;text-align:center;padding:9px 0;border-radius:var(--r-sm);
@@ -703,6 +704,23 @@ details.tail.pending>summary::before{visibility:hidden}
 .tailin{padding:4px 0 22px}
 /* Inside a .tail the scope block loses its own frame — the <details> already provides one. */
 .tailin .scope{border:0;background:none;padding:0;margin:0}
+
+/* Uploaded Claim x Reference grid: async state plus readable full-claim rows. */
+.claimgrid-loading{display:flex;align-items:center;gap:9px;color:var(--faint);font-size:12.5px;
+  padding:12px 14px;background:var(--s1);border:1px dashed var(--line2);border-radius:var(--r-sm)}
+.claimgrid-bound{margin:0 0 10px;padding:7px 10px;color:var(--muted);font-size:11.5px;
+  background:var(--warn-soft);border-left:2px solid var(--warn);border-radius:0 var(--r-sm) var(--r-sm) 0}
+.query-claim-chart th.elh{min-width:300px;max-width:430px;vertical-align:top}
+.qclaim-no{display:block;color:var(--accent);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.04em;margin-bottom:5px}
+.qclaim,.qclaim-short{font-weight:400;color:var(--muted);font-size:11.5px;line-height:1.5}
+.qclaim>summary{cursor:pointer;list-style:none;text-align:left}
+.qclaim>summary::-webkit-details-marker{display:none}
+.qclaim>summary::after{content:' show full';color:var(--accent);font-size:10px;white-space:nowrap}
+.qclaim[open]>summary::after{content:' collapse'}
+.qclaim p{margin:7px 0 0;padding:8px;background:var(--s2);border-radius:var(--r-sm);
+  white-space:normal;text-align:left;max-height:260px;overflow-y:auto}
+.query-claim-chart .cs{text-transform:capitalize;font-size:10.5px}
 
 /* One line of framing for the grid, then the grid. */
 .gridline{margin:0 0 12px;font-size:12px;color:var(--faint);display:flex;gap:6px 14px;

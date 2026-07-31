@@ -15,6 +15,7 @@ from flask import (Flask, Response, render_template, request, jsonify, redirect,
 import db, embed, goldset, webview, enrich_display, llm
 import pubnorm  # single link-builder: zero-padded Google/Espacenet URLs (dropped-zero fix)
 import ops_family, prefetch                        # worldwide family timeline + top-N proactive enrich
+import query_claim_grid                            # uploaded-claim x ranked-reference background grid
 import export_data, export_pdf, export_docx, export_xlsx, export_md
 import auth, rerank_pool
 import claim_chart, translate, drawings          # ported per-card enrichment
@@ -337,6 +338,12 @@ def _job_event(slug, job):
 def _write_report(slug, rep):
     report_path(slug).write_text(json.dumps(rep, default=str, indent=1))
     (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)   # force the view to rebuild from this
+    # A rerun can reuse the same slug with a different uploaded document.  Never let its old
+    # Claim x Reference analysis survive the source report it was built from.
+    try:
+        query_claim_grid.invalidate(slug, REPORTS)
+    except Exception:
+        traceback.print_exc()
 
 
 def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None):
@@ -378,7 +385,9 @@ def _chunk_weight(c):
 def _stash_doc(res):
     """Persist the extract result's search materials (chunk vectors + drawing blobs) under a fresh
     token; return the token (or None when there is nothing extra to search). Small JSON on the
-    214 GB-free disk — vectors + base64 drawings only, not the whole extract payload."""
+    214 GB-free disk — vectors + base64 drawings + the uploaded claim rows, not the whole extract
+    payload.  Claims are retained even when embedding failed, because the asynchronous
+    Claim x Reference grid can still compare their text with the ranked references."""
     try:
         chunks = res.get("chunks") or []
         vecs, weights = [], []
@@ -388,12 +397,25 @@ def _stash_doc(res):
                 vecs.append(v)
                 weights.append(_chunk_weight(c))
         figs = [im.get("b64") for im in (res.get("figure_images") or []) if im.get("b64")]
-        if not vecs and not figs:
+        claims = []
+        if res.get("source") == "upload":
+            for i, c in enumerate(chunks):
+                if c.get("kind") != "claim_own" or not (c.get("text") or "").strip():
+                    continue
+                coord = c.get("coord") if isinstance(c.get("coord"), dict) else {}
+                claims.append({
+                    "claim_no": coord.get("claim_no") or i + 1,
+                    "text": str(c.get("text"))[:8000],
+                    "independent": bool(c.get("independent")),
+                })
+        if not vecs and not figs and not claims:
             return None
         token = uuid.uuid4().hex
         (DOCSTASH / f"doc-{token}.json").write_text(json.dumps(
             {"chunk_vecs": vecs, "chunk_weights": weights, "figure_b64": figs,
-             "n_chunks": len(vecs), "n_figs": len(figs), "t": time.time()}))
+             "claims": claims, "source": res.get("source"), "label": res.get("label"),
+             "n_chunks": len(vecs), "n_figs": len(figs), "n_claims": len(claims),
+             "t": time.time()}))
         return token
     except Exception:
         traceback.print_exc()
@@ -401,7 +423,7 @@ def _stash_doc(res):
 
 
 def _load_doc_materials(token):
-    """Load stashed doc materials -> {chunk_vecs, chunk_weights, figure_blobs} or None."""
+    """Load stashed retrieval materials plus uploaded-claim metadata, or return None."""
     if not token:
         return None
     p = DOCSTASH / f"doc-{re.sub(r'[^0-9a-f]', '', str(token))[:64]}.json"
@@ -418,7 +440,25 @@ def _load_doc_materials(token):
         except Exception:
             continue
     return {"chunk_vecs": d.get("chunk_vecs") or [], "chunk_weights": d.get("chunk_weights") or [],
-            "figure_blobs": blobs}
+            "figure_blobs": blobs, "claims": d.get("claims") or [],
+            "source": d.get("source"), "label": d.get("label")}
+
+
+def _attach_query_document(report, doc):
+    """Persist only the uploaded claims needed by the second report grid.
+
+    Link-based query-by-example searches deliberately do not get this grid: the requested feature
+    is for a *full uploaded patent document*, where the user supplied the claim set to analyse.
+    """
+    if not doc or doc.get("source") != "upload" or not doc.get("claims"):
+        return report
+    report["query_document"] = {
+        "source": "upload",
+        "label": doc.get("label") or "uploaded patent",
+        "claims": doc.get("claims")[:60],
+        "n_claims": len(doc.get("claims") or []),
+    }
+    return report
 
 
 def _image_channel(figure_blobs, k=15):
@@ -661,6 +701,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
         if img_res:
             rep["image_channel"] = {"state": img_res.get("state"), "note": img_res.get("note"),
                                     "n": len(img_res.get("families") or [])}
+        _attach_query_document(rep, doc)
         _write_report(slug, rep)
         # Warm the view cache HERE (in the background job, where the user is already on the
         # progress page) so the listwise agentic rerank + claim-matrix verification run once and
@@ -669,6 +710,10 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
             _set_job(slug, kind="ranking",
                      msg="Ranking references against each other in context (listwise)…")
             view = _build_view_cached(slug, rep)
+            # Uploaded patent claims are analysed against the final ranked references on a
+            # separate one-wide worker.  Scheduling is instant, so "Report ready" is never held
+            # behind 8 grounded/refuted claim-chart passes.
+            query_claim_grid.ensure(slug, rep, view, REPORTS)
             # Push the FINAL listwise order to any client still watching the progress stream, so
             # cards that arrived early in fusion order re-sort to the authoritative ranking before
             # (and independently of) the reload. Just the pub ids, in order — the client reorders
@@ -982,6 +1027,12 @@ def extract():
     # round-tripping heavy vectors/base64 through the browser or bloating the page.
     if res.get("ok"):
         res["doc_token"] = _stash_doc(res)
+        # The browser needs the brief, preview thumbnails, counts and token — never the 768-float
+        # vectors, full claim chunks, or full-resolution base64 drawings.  The old response kept
+        # those heavy fields despite the server-side stash and could turn a 30 MB upload into a
+        # much larger JSON response.
+        res.pop("chunks", None)
+        res.pop("figure_images", None)
     return jsonify(res), status
 
 
@@ -1019,6 +1070,12 @@ def report(slug):
     view["slug"] = slug
     view["title"] = title
     view["is_gold"] = slug in _GOLD
+    # Also schedule on report-open.  This covers a process restart between generation and the
+    # worker starting, while ensure() keeps the operation idempotent and cache-backed.
+    try:
+        query_claim_grid.ensure(slug, rep, view, REPORTS)
+    except Exception:
+        traceback.print_exc()
     return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
 
 
@@ -1044,6 +1101,12 @@ def _build_view_cached(slug, rep, regen=False):
             # rebuild (which re-runs the rerank and re-folds the federated hits). A successful
             # cache carries listwise_reranked=True and is returned instantly.
             if view.get("listwise_reranked"):
+                # Query-document metadata is small and can be backfilled onto a cache written by
+                # an older release without rebuilding or reranking the report.
+                qmeta = query_claim_grid.metadata(rep)
+                if view.get("query_claim_grid") != qmeta:
+                    view["query_claim_grid"] = qmeta
+                    vp.write_text(json.dumps(view, default=str))
                 # source_tags is STATUS, not content. The cache exists to skip the query embed,
                 # the DB resolution and the claim-matrix verification -- all immutable for a
                 # finished report. Which APIs are wired up is not: it changes when a key is
@@ -1093,6 +1156,7 @@ def _build_view_cached(slug, rep, regen=False):
             pass
     view = webview.build_view(rep, top_n=25)
     view["partial"] = partial
+    view["query_claim_grid"] = query_claim_grid.metadata(rep)
     if partial:
         # A partial snapshot is never cached and never reranked; keep it light (fusion order,
         # capped) so the first render stays inside the page-weight budget.
@@ -1223,16 +1287,15 @@ def events(slug):
 # wall-fixing patent, was described as disclosing a "driver pin for mechanical coupling of
 # clamping means" on nothing but a lexical match on "pin" and "clamped". Claims and the
 # description body are where disclosure actually lives.
-_RAT_BIBLIO_CHARS = 900
-_RAT_PASSAGE_CHARS = 700          # per passage
-_RAT_EVIDENCE_CHARS = 4200        # total across all passages
-_RAT_MAX_PASSAGES = 8
-_RAT_SOURCE_CHARS = 8000          # what we persist as _source_text / show the verifier
-# 1100, not the old 500: the evidence block is ~4x larger now, so the model writes more (and
-# longer-quoted) reads_on entries. At 500 the JSON came back truncated mid-object and
-# llm.chat_json returns {} on a parse error — which surfaced as a card with a BLANK
-# "why relevant", strictly worse than a title-level one. Measured at 4 of 40 before this.
-_RAT_MAX_TOKENS = 1100
+_RAT_VERSION = 2                  # invalidates thin, pre-full-text rationale cache entries
+_RAT_BIBLIO_CHARS = 1400
+_RAT_PASSAGE_CHARS = 1100         # enough context to preserve a complete claim relationship
+_RAT_EVIDENCE_CHARS = 9000        # claims + description diversity, not one nearest snippet
+_RAT_MAX_PASSAGES = 12
+_RAT_SOURCE_CHARS = 16000         # exact verifier/audit evidence (still bounded)
+# The richer answer includes the concrete overlap, the material gap, grounded reads_on entries,
+# and citations.  1100 tokens frequently truncated that JSON once 8-12 passages were supplied.
+_RAT_MAX_TOKENS = 1800
 
 _CLAIM_KINDS = ("claim_own", "claim_resolved")
 _BODY_KINDS = ("paragraph", "whole", "figure_caption")
@@ -1302,7 +1365,7 @@ def ref_passages(cur, pid, qvec, secs=None, limit=_RAT_MAX_PASSAGES):
         except Exception:
             claims = []
     indep = [c for c in claims if c.get("independent")] or claims[:1]
-    for c in indep[:2]:
+    for c in indep[:3]:
         add("claim_own", {"claim_no": c.get("claim_no")},
             c.get("resolved_text") or c.get("text"))
 
@@ -1316,7 +1379,7 @@ def ref_passages(cur, pid, qvec, secs=None, limit=_RAT_MAX_PASSAGES):
                 "SELECT kind, coord, 1-(embedding <=> %s::vector) AS score, text "
                 "FROM chunks WHERE publication_id=%s AND embedding IS NOT NULL "
                 "ORDER BY embedding <=> %s::vector LIMIT %s",
-                (webview._vec(qvec), pid, webview._vec(qvec), int(limit)),
+                (webview._vec(qvec), pid, webview._vec(qvec), int(limit * 2)),
             )
             for r in cur.fetchall():
                 coord = r["coord"] if isinstance(r["coord"], dict) else (
@@ -1324,7 +1387,33 @@ def ref_passages(cur, pid, qvec, secs=None, limit=_RAT_MAX_PASSAGES):
                 add(r["kind"], coord, r["text"], float(r["score"] or 0.0))
         except Exception:
             pass
-    return out[:limit + 2]
+
+    # Guarantee a description view when one exists.  Dense similarity can fill its entire head
+    # with near-duplicate claims; that is excellent retrieval but poor explanation context.
+    if not any(p.get("kind") in _BODY_KINDS for p in out):
+        for p in list((secs or {}).get("paragraphs") or [])[:2]:
+            add("paragraph", {"para_no": p.get("para_no")}, p.get("text"))
+
+    # Preserve evidence diversity under the hard cap: independent claims first, then body text,
+    # then an abstract if present, and finally the remaining nearest chunks in their score order.
+    picked = []
+
+    def take(kinds, n):
+        for p in out:
+            if len([x for x in picked if x.get("kind") in kinds]) >= n:
+                break
+            if p.get("kind") in kinds and p not in picked:
+                picked.append(p)
+
+    take(set(_CLAIM_KINDS), 4)
+    take(set(_BODY_KINDS), 4)
+    take({"abstract"}, 1)
+    for p in out:
+        if p not in picked:
+            picked.append(p)
+        if len(picked) >= limit:
+            break
+    return picked[:limit]
 
 
 def _evidence_block(passages):
@@ -1362,11 +1451,24 @@ def _text_basis(shown):
     return "title-only"
 
 
+def _write_rationale_cache(cache, result):
+    """Atomic write: background warming and a user click may finish the same rationale together."""
+    tmp = cache.with_name(
+        f".{cache.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        tmp.write_text(json.dumps(result))
+        os.replace(tmp, cache)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def _rationale(slug, pub, query, elements, biblio_txt, matched_txt=None, passages=None):
     cache = RATIONALE / f"{slug}__{pub}.json"
     if cache.exists():
         try:
-            return json.loads(cache.read_text())
+            cached = json.loads(cache.read_text())
+            if cached.get("_version") == _RAT_VERSION:
+                return cached
         except Exception:
             pass
     # Deterministic guard: with no reference text (title-less junk / un-enriched thin doc) an LLM
@@ -1384,9 +1486,11 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt=None, passage
 
     title_abs = re.sub(r"^\S+\s*", "", (biblio_txt or "").strip()).strip(" .")
     if len(title_abs) < 8 and not evidence.strip():
-        res = {"why": "Reference text was not available to verify relevance; treat as unconfirmed.",
-               "reads_on": []}
-        cache.write_text(json.dumps(res))
+        res = {"_version": _RAT_VERSION,
+               "why": "Reference text was not available to verify relevance; treat as unconfirmed.",
+               "reads_on": [], "citations": [], "text_basis": "title-only", "n_passages": 0,
+               "why_grounding": "no-source", "_source_text": "", "grounding_diag": []}
+        _write_rationale_cache(cache, res)
         return res
     # M9 rationale-accuracy tightening: ground STRICTLY in the provided text and make anti-overclaim
     # DETERMINISTIC — the model must quote the supporting words per element, and code drops any
@@ -1397,11 +1501,16 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt=None, passage
         "(its bibliographic data and the tagged claim / description passages). Do NOT use outside "
         "knowledge and do NOT "
         "assume features not shown in that text. Return JSON with two keys: "
-        '"why" = 1-2 sentences on why the reference is relevant, citing the SPECIFIC overlapping '
-        "wording that actually appears in the reference text (quote or closely paraphrase it), "
-        "HEDGED ('appears to', 'the abstract mentions') on partial matches. Every specific feature "
-        'you name in "why" must be one you can also ground in reads_on — never name a structural '
-        'feature the text does not show. "reads_on" = a list of objects {"element":"<one invention '
+        '"why" = 2-3 concise sentences that (1) identify the SPECIFIC mechanism, component '
+        "relationship, or control behaviour that overlaps the user's disclosure, (2) cite where "
+        "the strongest support appears (claim or paragraph when tagged), and (3) state the most "
+        "important query limitation that the supplied reference text does NOT establish. Use the "
+        "actual technical nouns and relationships, not generic phrases such as 'same field' or "
+        "'similar system'. Cite or closely paraphrase wording that actually appears in the text, "
+        "HEDGED ('appears to', 'the abstract mentions') on partial matches. Every AFFIRMATIVE "
+        'overlap you name in "why" must be one you can also ground in reads_on. You may name an '
+        'unshown query limitation only when explicitly saying the supplied reference text does NOT '
+        'establish it. "reads_on" = a list of objects {"element":"<one invention '
         'element, verbatim from the list>","evidence":"<a short quote copied from the reference text '
         'that discloses that element>"}. Include an element ONLY if you can quote reference text that '
         "explicitly discloses it; if the text is just a title or does not clearly show an element, "
@@ -1416,7 +1525,7 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt=None, passage
                    ". Say so explicitly in \"why\" (e.g. 'based on the abstract alone') and do not "
                    "assert structural detail that only a full text could establish.")
     bib = (biblio_txt or "")[:_RAT_BIBLIO_CHARS]
-    usr = (f"Invention query: {query[:800]}\n\nInvention elements (candidates — include only the "
+    usr = (f"Invention disclosure: {query[:2000]}\n\nInvention elements (candidates — include only the "
            f"ones the reference text actually discloses, with a quote): {json.dumps(elements)}\n\n"
            f"Reference bibliographic data: {bib}\n\n"
            f"Reference text — claims and description passages, each tagged with its location. "
@@ -1459,7 +1568,8 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt=None, passage
             citations.append({"element": el, "label": loc.get("label"),
                               "kind": loc.get("kind"), "coord": loc.get("coord"),
                               "span": round(float(loc.get("span") or 0.0), 3)})
-    res = {"why": why, "reads_on": reads_on, "why_grounding": why_state,
+    res = {"_version": _RAT_VERSION,
+           "why": why, "reads_on": reads_on, "why_grounding": why_state,
            "citations": citations, "text_basis": basis,
            "n_passages": len(shown),
            # The EXACT text the generator was shown. The audit judge previously rebuilt its own
@@ -1468,7 +1578,7 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt=None, passage
            # real input lets audit.judge_rationale grade like-for-like.
            "_source_text": source[:_RAT_SOURCE_CHARS],
            "grounding_diag": diag}
-    cache.write_text(json.dumps(res))
+    _write_rationale_cache(cache, res)
     return res
 
 
@@ -1599,22 +1709,30 @@ def api_ref(pub):
             "figures": [],
         }
     rationale = None
-    # `light=1` returns everything EXCEPT the grounded opinion. The results list needs sections
+    # `light=1` normally returns everything EXCEPT the grounded opinion. The results list needs sections
     # (claims / description) to fill a card's expandable panes, and _rationale() runs a Vertex call
     # for any pub that has no cached opinion yet — so without this, merely opening the Claims tab
     # (or lazily hydrating a card) would spend LLM budget the user never asked for. The opinion is
-    # still fetched eagerly by the "Why relevant" pane and the full detail view.
-    if slug and request.args.get("light") != "1":
+    # still fetched eagerly by the "Why relevant" pane and the full detail view. The automatic
+    # background warmer sends `light=1&rationale=1`: it asks for the opinion while keeping the
+    # unrelated worldwide-family lookup cache-only.
+    if slug and (request.args.get("light") != "1" or request.args.get("rationale") == "1"):
         q = _query_for_slug(slug)
         rep = _load_report(slug)
         if q and rep:
             biblio_txt = f"{pub} {disp.get('title') or ''}. {disp.get('abstract') or ''}"
-            # SerpApi-sourced claims when the DB has none, so a BigQuery-thin record still gets
-            # claim text rather than silently degrading to title-level reasoning.
-            if not rat_passages and secs and secs.get("claims"):
-                rat_passages = [{"kind": "claim_own", "coord": {"claim_no": c.get("claim_no")},
-                                 "text": c.get("resolved_text") or c.get("text")}
-                                for c in secs["claims"][:2]]
+            # Federated/Mongo-only references have no vector-ranked local chunks.  Still give the
+            # analyst a balanced full-text slice instead of silently degrading to claims 1-2.
+            if not rat_passages and secs:
+                rat_passages = [
+                    {"kind": "claim_own", "coord": {"claim_no": c.get("claim_no")},
+                     "text": c.get("resolved_text") or c.get("text")}
+                    for c in (secs.get("claims") or [])[:4]
+                ]
+                rat_passages.extend({
+                    "kind": "paragraph", "coord": {"para_no": p.get("para_no")},
+                    "text": p.get("text"),
+                } for p in (secs.get("paragraphs") or [])[:4])
             rationale = _rationale(slug, pub, q, rep.get("elements", []), biblio_txt,
                                    passages=rat_passages)
     # Pure-heuristic language flag: costs nothing, so it is safe on every card. The actual
@@ -1765,6 +1883,29 @@ def api_prefetch(slug):
     # Mongo misses (older EP/DE/WO/CN) still go through the bounded, OPS-budget-guarded recovery
     # worker, so this cannot hammer the shared quota.
     return jsonify(prefetch.prefetch_top(slug, pubs, n=len(pubs)))
+
+
+@app.route("/api/query-claim-grid/<slug>", methods=["GET", "POST"])
+def api_query_claim_grid(slug):
+    """Start or poll the uploaded Claim x Reference grid without blocking the report page."""
+    if not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
+    if request.method == "GET":
+        return jsonify(query_claim_grid.status(slug, REPORTS))
+
+    rep = _load_report(slug)
+    if not rep:
+        return jsonify({"error": "report not found"}), 404
+    vp = REPORTS / f"{slug}.view.json"
+    if not vp.exists():
+        return jsonify({"status": "waiting", "available": True,
+                        "reason": "final ranking is not ready"}), 202
+    try:
+        view = json.loads(vp.read_text())
+    except Exception:
+        return jsonify({"status": "waiting", "available": True,
+                        "reason": "final ranking is not ready"}), 202
+    return jsonify(query_claim_grid.ensure(slug, rep, view, REPORTS))
 
 
 def _pdf_available(pub: str) -> bool:

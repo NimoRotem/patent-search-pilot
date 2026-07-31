@@ -474,6 +474,7 @@ def _build(text: str, figures: list[bytes], source: str, label: str, notes: list
         "summary_brief": disclosure,               # full-document summary (kept, in addition to chunks)
         "chunks": chunks,                          # [{kind,text,coord,token_count,independent,vector}]
         "n_chunks": len(chunks),
+        "n_claims": sum(1 for c in chunks if c.get("kind") == "claim_own"),
         "figure_descriptions": vision,             # vision text (alias of `vision`)
         "figure_images": figure_images,            # [{mime,b64}] full-res drawings for image search
         "notes": notes,

@@ -105,6 +105,58 @@ def test_rationale_guard_no_text_returns_unconfirmed(tmp_path, monkeypatch):
     assert "not available" in res["why"].lower() or "unconfirmed" in res["why"].lower()
 
 
+def test_rationale_reads_diverse_full_text_and_versions_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(webapp, "RATIONALE", tmp_path)
+    # A pre-upgrade cache must not freeze the old thin explanation.
+    (tmp_path / "slugY__US-1-A1.json").write_text(json.dumps({"why": "old", "reads_on": []}))
+    calls = []
+
+    def fake(system, user, **kwargs):
+        calls.append((system, user, kwargs))
+        if "You verify one AI-written sentence" in system:
+            return {"supported": True, "unsupported": [], "corrected": ""}
+        return {
+            "why": ("Claim 1 describes a vacuum plate coupled to a controller, matching the "
+                    "disclosure's plate-control relationship; the supplied text does not establish RFID identification."),
+            "reads_on": [{"element": "vacuum plate controlled by a handle unit",
+                          "evidence": "vacuum plate coupled to a controller"}],
+        }
+
+    monkeypatch.setattr(webapp.llm, "chat_json", fake)
+    passages = [
+        {"kind": "claim_own", "coord": {"claim_no": 1},
+         "text": "A vacuum plate coupled to a controller for lifting a workpiece."},
+        {"kind": "paragraph", "coord": {"para_no": "0042"},
+         "text": "The controller changes a displayed lifting capacity for the attached plate."},
+    ]
+    result = webapp._rationale(
+        "slugY", "US-1-A1", "vacuum lifter with RFID plate identification",
+        ["vacuum plate controlled by a handle unit"],
+        "US-1-A1 Vacuum lifting apparatus.", passages=passages)
+    assert result["_version"] == webapp._RAT_VERSION
+    assert result["text_basis"] == "claims+description" and result["n_passages"] == 2
+    assert "RFID" in result["why"]
+    assert "most important query limitation" in calls[0][0]
+    assert len(calls[0][1]) > 250
+    before = len(calls)
+    assert webapp._rationale("slugY", "US-1-A1", "ignored", [], "ignored")["why"] == result["why"]
+    assert len(calls) == before                         # v2 cache reused, no second LLM pass
+
+
+def test_ref_passages_seeds_claims_and_description_without_dense_query():
+    secs = {
+        "claims": [
+            {"claim_no": 1, "independent": True, "text": "first independent claim"},
+            {"claim_no": 2, "independent": True, "text": "second independent claim"},
+            {"claim_no": 3, "independent": True, "text": "third independent claim"},
+        ],
+        "paragraphs": [{"para_no": "0010", "text": "description of the plate reader"}],
+    }
+    passages = webapp.ref_passages(None, None, None, secs)
+    assert sum(p["kind"] == "claim_own" for p in passages) == 3
+    assert any(p["kind"] == "paragraph" for p in passages)
+
+
 # ---- claim-chart strength flag -------------------------------------------------------------
 def test_claim_chart_marks_whole_only_cells_weak(gold_slug):
     rep = json.loads((webapp.REPORTS / f"{gold_slug}.json").read_text())

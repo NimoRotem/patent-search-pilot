@@ -149,6 +149,7 @@ window.addEventListener('pageshow', () => {
     else tags.push(`<span class="ex-tag warn">no text</span>`);
     if(d.figures_present) tags.push(`<span class="ex-tag good">${d.n_figures} figure${d.n_figures===1?'':'s'} ✓</span>`);
     else tags.push(`<span class="ex-tag warn">no figures</span>`);
+    if(d.n_claims) tags.push(`<span class="ex-tag good">${d.n_claims} claim${d.n_claims===1?'':'s'} ✓ · claim grid will build automatically</span>`);
     if(d.drawings_source) tags.push(`<span class="ex-tag">drawings: ${esc(d.drawings_source)}</span>`);
     bits.push(`<div class="ex-tags">${tags.join('')}</div>`);
 
