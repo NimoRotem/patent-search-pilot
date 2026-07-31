@@ -13,8 +13,23 @@ def test_report_template_publishes_durable_pipeline_markers():
         'data-cross-encoder-reranked=',
         'data-listwise-reranked=',
         'data-agent-rounds=',
+        'data-family=',
     ):
         assert marker in template
+
+
+def test_parser_collects_a_gold_family_group():
+    args = U.parser().parse_args(
+        [
+            "--query",
+            "representative disclosure",
+            "--expect-any-family",
+            "34201690",
+            "--expect-any-family",
+            "63449883",
+        ]
+    )
+    assert args.expect_any_family == ["34201690", "63449883"]
 
 
 def _args(**overrides):
