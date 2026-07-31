@@ -48,7 +48,15 @@ def report_facts(body: str) -> dict:
         match = re.search(rf'\bdata-{re.escape(name)}="(\d+)"', body)
         return None if not match else int(match.group(1))
 
-    publications = re.findall(r'<article class="refcard"[^>]*data-pub="([^"]+)"', body)
+    card_tags = re.findall(r'<article class="refcard"[^>]*>', body)
+    publications = []
+    families = []
+    for tag in card_tags:
+        pub_match = re.search(r'\bdata-pub="([^"]+)"', tag)
+        family_match = re.search(r'\bdata-family="([^"]*)"', tag)
+        if pub_match:
+            publications.append(html.unescape(pub_match.group(1)))
+            families.append(html.unescape(family_match.group(1)) if family_match else "")
     source_tags = []
     for state, raw in re.findall(
         r'<span class="srctag s-([^" ]+)"[^>]*>(.*?)</span>\s*</span>',
@@ -62,6 +70,7 @@ def report_facts(body: str) -> dict:
         "status_code": None,
         "cards": len(publications),
         "publications": publications,
+        "families": families,
         "first_publications": publications[:5],
         "source_tags": source_tags,
         "verified_references": max((int(n) for n in verified), default=0),
@@ -136,6 +145,15 @@ def acceptance_failures(result: dict, args: argparse.Namespace) -> list[str]:
     for pub in args.expect_pub or []:
         if normalize_pub(pub) not in ranked:
             failures.append(f"expected publication absent from top {args.expected_top}: {pub}")
+
+    ranked_families = [
+        normalize_pub(f) for f in final.get("families", [])[: args.expected_top]
+    ]
+    for family in args.expect_family or []:
+        if normalize_pub(family) not in ranked_families:
+            failures.append(
+                f"expected family absent from top {args.expected_top}: {family}"
+            )
 
     tags = final.get("source_tags") or []
     contributing = [
@@ -281,6 +299,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--require-stage", action="append")
     ap.add_argument("--require-source", action="append")
     ap.add_argument("--expect-pub", action="append")
+    ap.add_argument("--expect-family", action="append")
     ap.add_argument("--expected-top", type=int, default=25)
     ap.add_argument("--output", type=Path)
     return ap

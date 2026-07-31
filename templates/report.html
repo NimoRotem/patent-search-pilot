@@ -266,7 +266,7 @@
 
   <div class="cards" id="cards">
     {% for c in v.cards %}
-    <article class="refcard" data-pub="{{ c.pub }}"
+    <article class="refcard" data-pub="{{ c.pub }}" data-family="{{ c.family or '' }}"
          data-rank="{{ c.rank }}" data-rel="{{ c.get('relevancy_score') if c.get('relevancy_score') is not none else c.relevancy }}"
          data-date="{{ c.publication_date or '' }}" data-juris="{{ c.country or '' }}"
          data-basis="{{ c.basis }}" data-covers="{{ c.covers_elements|join('||') }}"

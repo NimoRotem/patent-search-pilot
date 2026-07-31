@@ -30,6 +30,7 @@ def _args(**overrides):
         "require_stage": None,
         "require_source": ["USPTO", "Lens"],
         "expect_pub": ["US-1234567-A1"],
+        "expect_family": ["FAM-123"],
         "expected_top": 25,
     }
     values.update(overrides)
@@ -47,6 +48,7 @@ def _result():
             "status_code": 200,
             "cards": 25,
             "publications": ["US1234567A1", "EP-7654321-B1"],
+            "families": ["FAM-123", "FAM-456"],
             "source_tags": [
                 {"state": "used", "text": "Local corpus 25"},
                 {"state": "used", "text": "SerpApi 22"},
@@ -74,13 +76,14 @@ def test_report_facts_extracts_cards_sources_and_grounding():
         <span class="vh">— used</span></span>
       <span class="srctag s-degraded"><span class="sdot"></span>USPTO<b>75</b>
         <span class="vh">— partial results</span></span>
-      <article class="refcard" data-pub="US-123-A1"></article>
-      <article class="refcard" data-pub="EP-456-B1"></article>
+      <article class="refcard" data-pub="US-123-A1" data-family="FAM-123"></article>
+      <article class="refcard" data-pub="EP-456-B1" data-family="FAM-456"></article>
       Element × reference grid · 4 verified
       </div>
     """
     facts = U.report_facts(body)
     assert facts["publications"] == ["US-123-A1", "EP-456-B1"]
+    assert facts["families"] == ["FAM-123", "FAM-456"]
     assert [t["state"] for t in facts["source_tags"]] == ["used", "degraded"]
     assert facts["verified_references"] == 4 and facts["has_claim_grid"] is True
     assert facts["partial"] is False
@@ -109,6 +112,7 @@ def test_acceptance_reports_every_missing_contract():
         "has_claim_grid": False,
         "has_refining_banner": True,
         "publications": ["US-999-A1"],
+        "families": ["FAM-999"],
         "source_tags": [{"state": "used", "text": "Local corpus 3"}],
         "partial": True,
         "cross_encoder_reranked": False,
@@ -132,6 +136,7 @@ def test_acceptance_reports_every_missing_contract():
         "verified references",
         "required pipeline stage not observed",
         "expected publication absent",
+        "expected family absent",
         "contributing external sources",
         "required source tag absent",
     ):
