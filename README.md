@@ -182,7 +182,7 @@ Example from the authenticated service loopback:
 ```bash
 python3 ops/ui_e2e_acceptance.py \
   --query "robotic end-of-arm vacuum gripper for handling sheets or panels with an array of suction cups and independent vacuum zones" \
-  --wide --require-source USPTO --require-source Lens \
+  --mode inventive_step --wide --require-source USPTO --require-source Lens \
   --expect-any-family 34201690 --expect-any-family 63449883 \
   --expect-any-family 70050062 \
   --output /tmp/patent-ui-acceptance.json
