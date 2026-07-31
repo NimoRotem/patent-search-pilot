@@ -1803,7 +1803,9 @@ def _safe_pub(pub):
 def figures(pub, fname):
     if not _safe_pub(pub) or not _FNAME_RE.match(fname):   # reject traversal / odd names early
         abort(404)
-    d = enrich_display.FIGDIR / pub
+    # Recovery persists assets under the corpus' hyphenated key even when a federated result is
+    # compact (US20220256273A1). Keep the public URL stable but serve from that shared directory.
+    d = enrich_display.FIGDIR / enrich_display._canonical_pubkey(pub)
     if not (d / fname).exists():
         abort(404)
     return send_from_directory(d, fname)                    # Flask safe_join is the second guard
@@ -1915,9 +1917,10 @@ def _pdf_available(pub: str) -> bool:
     """Would /pdf/<pub> actually serve something? Same two sources the route itself uses."""
     if not _safe_pub(pub):
         return False
-    if (enrich_display.PDFDIR / f"{pub}.pdf").exists():
+    canon = enrich_display._canonical_pubkey(pub)
+    if (enrich_display.PDFDIR / f"{canon}.pdf").exists():
         return True
-    disp = enrich_display.load_cached(pub)
+    disp = enrich_display.load_cached(canon)
     return bool((disp or {}).get("_display", {}).get("pdf_url")) if disp else False
 
 
@@ -1939,12 +1942,13 @@ def api_pdfs():
 def pdf(pub):
     if not _safe_pub(pub):
         abort(404)
-    f = enrich_display.PDFDIR / f"{pub}.pdf"
+    canon = enrich_display._canonical_pubkey(pub)
+    f = enrich_display.PDFDIR / f"{canon}.pdf"
     if f.exists():
-        return send_from_directory(enrich_display.PDFDIR, f"{pub}.pdf",
+        return send_from_directory(enrich_display.PDFDIR, f"{canon}.pdf",
                                    mimetype="application/pdf")
     # fall back to remote pdf if we have it cached in enriched json
-    disp = enrich_display.load_cached(pub)
+    disp = enrich_display.load_cached(canon)
     url = (disp or {}).get("_display", {}).get("pdf_url") if disp else None
     if url:
         return redirect(url)

@@ -49,6 +49,17 @@ def _pubkey(pub):
     return str(pub)
 
 
+def _canonical_pubkey(pub):
+    """Validated filesystem key shared by compact and DOCDB spellings.
+
+    Federated providers commonly return ``US20220256273A1`` while the corpus and
+    recovery workers persist assets under ``US-20220256273-A1``.  Always collapse
+    both spellings before touching a cache path so the UI and the background worker
+    address the same files.
+    """
+    return _pubkey(pubnorm.canonical(pub) or pub)
+
+
 for d in (ENRICHED, FIGDIR, PDFDIR):
     d.mkdir(parents=True, exist_ok=True)
 
@@ -163,7 +174,7 @@ def extract_pdf_drawings(pdf_path, pub, cap=16, min_side=340):
     figure sheets. Returns display-shaped image dicts (already saved under the figure dir)."""
     from PIL import Image
     try:
-        figdir = FIGDIR / _pubkey(pub)
+        figdir = FIGDIR / _canonical_pubkey(pub)
     except ValueError:
         return []
     figdir.mkdir(parents=True, exist_ok=True)
@@ -218,7 +229,7 @@ def extract_pdf_drawings(pdf_path, pub, cap=16, min_side=340):
 
 
 def cache_path(pub):
-    return ENRICHED / f"{_pubkey(pub)}.json"
+    return ENRICHED / f"{_canonical_pubkey(pub)}.json"
 
 
 def _write_cache(pub, payload):
@@ -268,7 +279,7 @@ def load_cached(pub):
 
 def _normalize(pub, raw):
     """Turn the raw SerpApi payload into a compact display dict + record local asset paths."""
-    pub = _pubkey(pub)                       # never build a figure dir from an unvalidated key
+    pub = _canonical_pubkey(pub)             # compact and DOCDB spellings share one safe dir
     imgs = raw.get("images") or []
     figdir = FIGDIR / pub
     figdir.mkdir(parents=True, exist_ok=True)

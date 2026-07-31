@@ -51,6 +51,13 @@ def test_web_pub_validator_accepts_canonical_and_compact_numbers():
         assert not webapp._safe_pub(bad)
 
 
+def test_compact_and_canonical_publications_share_cache_paths():
+    import enrich_display as e
+
+    assert e._canonical_pubkey("US20220256273A1") == "US-20220256273-A1"
+    assert e.cache_path("US20220256273A1") == e.cache_path("US-20220256273-A1")
+
+
 def test_enrich_display_bad_pub_is_graceful():
     import enrich_display as e
     # a caller passing an unsafe key gets a graceful no-details dict, not a traversal/crash
@@ -79,7 +86,9 @@ def test_normal_figure_and_pdf_still_served(app_client, monkeypatch, tmp_path):
 def test_compact_publication_figure_is_served(app_client, monkeypatch, tmp_path):
     import enrich_display
 
-    pubdir = tmp_path / "US20220256273A1"
+    # The recovery worker writes the canonical DOCDB directory even when the result card and URL
+    # use the compact identifier returned by an external provider.
+    pubdir = tmp_path / "US-20220256273-A1"
     pubdir.mkdir()
     (pubdir / "000.png").write_bytes(b"compact publication figure")
     monkeypatch.setattr(enrich_display, "FIGDIR", tmp_path)
@@ -87,3 +96,18 @@ def test_compact_publication_figure_is_served(app_client, monkeypatch, tmp_path)
     response = app_client.get("/figures/US20220256273A1/000.png")
     assert response.status_code == 200
     assert response.data == b"compact publication figure"
+
+    manifest = app_client.get("/api/figs?pubs=US20220256273A1").get_json()
+    assert manifest["US20220256273A1"] == [{"file": "000.png", "from_pdf": False}]
+
+
+def test_compact_publication_pdf_uses_canonical_cache(app_client, monkeypatch, tmp_path):
+    import enrich_display
+
+    (tmp_path / "US-20220256273-A1.pdf").write_bytes(b"%PDF-1.4\n%%EOF")
+    monkeypatch.setattr(enrich_display, "PDFDIR", tmp_path)
+
+    assert app_client.get("/pdf/US20220256273A1").status_code == 200
+    assert app_client.get("/api/pdfs?pubs=US20220256273A1").get_json() == {
+        "US20220256273A1": True
+    }

@@ -566,8 +566,8 @@ def ensure_family_timelines(cards):
 def _cached_images(pub):
     """Figure image files already downloaded for this pub (served at /figures/<pub>/<file>)."""
     try:
-        from enrich_display import FIGDIR, _pubkey
-        d = FIGDIR / _pubkey(pub)
+        from enrich_display import FIGDIR, _canonical_pubkey
+        d = FIGDIR / _canonical_pubkey(pub)
     except Exception:
         return []
     if not d.exists():
@@ -591,7 +591,7 @@ def prune_missing_image_files(cards):
         if not images:
             continue
         try:
-            pubdir = enrich_display.FIGDIR / enrich_display._pubkey(card.get("pub"))
+            pubdir = enrich_display.FIGDIR / enrich_display._canonical_pubkey(card.get("pub"))
         except (TypeError, ValueError):
             pubdir = None
         kept = []
