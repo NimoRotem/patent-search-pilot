@@ -12,6 +12,7 @@ def test_report_template_publishes_durable_pipeline_markers():
         'data-partial=',
         'data-cross-encoder-reranked=',
         'data-listwise-reranked=',
+        'data-agent-rounds=',
     ):
         assert marker in template
 
@@ -23,6 +24,7 @@ def _args(**overrides):
         "min_first_cards": 1,
         "min_final_cards": 10,
         "min_verified": 1,
+        "min_agent_rounds": 1,
         "wide": True,
         "min_external_sources": 4,
         "require_stage": None,
@@ -58,6 +60,7 @@ def _result():
             "partial": False,
             "cross_encoder_reranked": True,
             "listwise_reranked": True,
+            "agent_rounds": 2,
         },
         "total_seconds": 220.0,
     }
@@ -66,7 +69,7 @@ def _result():
 def test_report_facts_extracts_cards_sources_and_grounding():
     body = """
       <div class="wrap" data-partial="false" data-cross-encoder-reranked="true"
-           data-listwise-reranked="true">
+           data-listwise-reranked="true" data-agent-rounds="2">
       <span class="srctag s-used"><span class="sdot"></span>SerpApi<b>22</b>
         <span class="vh">— used</span></span>
       <span class="srctag s-degraded"><span class="sdot"></span>USPTO<b>75</b>
@@ -83,6 +86,7 @@ def test_report_facts_extracts_cards_sources_and_grounding():
     assert facts["partial"] is False
     assert facts["cross_encoder_reranked"] is True
     assert facts["listwise_reranked"] is True
+    assert facts["agent_rounds"] == 2
 
 
 def test_acceptance_passes_only_with_latency_stages_sources_and_expected_rank():
@@ -102,6 +106,7 @@ def test_acceptance_reports_every_missing_contract():
         "partial": True,
         "cross_encoder_reranked": False,
         "listwise_reranked": False,
+        "agent_rounds": 0,
     })
     result["events"] = [{"kind": "partial"}, {"kind": "done"}]
     result["total_seconds"] = 301.0
@@ -116,6 +121,7 @@ def test_acceptance_reports_every_missing_contract():
         "missing the final-view marker",
         "cross-encoder reranker did not produce real model scores",
         "listwise agentic reranker did not produce the final order",
+        "agentic refinement rounds",
         "verified references",
         "required pipeline stage not observed",
         "expected publication absent",

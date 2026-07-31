@@ -43,6 +43,10 @@ def report_facts(body: str) -> dict:
         match = re.search(rf'\bdata-{re.escape(name)}="(true|false)"', body)
         return None if not match else match.group(1) == "true"
 
+    def data_int(name: str):
+        match = re.search(rf'\bdata-{re.escape(name)}="(\d+)"', body)
+        return None if not match else int(match.group(1))
+
     publications = re.findall(r'<article class="refcard"[^>]*data-pub="([^"]+)"', body)
     source_tags = []
     for state, raw in re.findall(
@@ -65,6 +69,7 @@ def report_facts(body: str) -> dict:
         "partial": data_bool("partial"),
         "cross_encoder_reranked": data_bool("cross-encoder-reranked"),
         "listwise_reranked": data_bool("listwise-reranked"),
+        "agent_rounds": data_int("agent-rounds"),
         "bytes": len(body.encode("utf-8")),
     }
 
@@ -111,6 +116,11 @@ def acceptance_failures(result: dict, args: argparse.Namespace) -> list[str]:
         failures.append("cross-encoder reranker did not produce real model scores")
     if final.get("listwise_reranked") is not True:
         failures.append("listwise agentic reranker did not produce the final order")
+    if (final.get("agent_rounds") or 0) < args.min_agent_rounds:
+        failures.append(
+            f"agentic refinement rounds {final.get('agent_rounds') or 0} "
+            f"< {args.min_agent_rounds}"
+        )
     if final.get("verified_references", 0) < args.min_verified:
         failures.append(
             f"verified references {final.get('verified_references', 0)} < {args.min_verified}"
@@ -168,6 +178,7 @@ def run(args: argparse.Namespace) -> dict:
             "min_first_cards": args.min_first_cards,
             "min_final_cards": args.min_final_cards,
             "min_verified": args.min_verified,
+            "min_agent_rounds": args.min_agent_rounds,
             "min_external_sources": args.min_external_sources,
         },
         "events": [],
@@ -264,6 +275,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--min-first-cards", type=int, default=1)
     ap.add_argument("--min-final-cards", type=int, default=10)
     ap.add_argument("--min-verified", type=int, default=1)
+    ap.add_argument("--min-agent-rounds", type=int, default=1)
     ap.add_argument("--min-external-sources", type=int, default=4)
     ap.add_argument("--require-stage", action="append")
     ap.add_argument("--require-source", action="append")

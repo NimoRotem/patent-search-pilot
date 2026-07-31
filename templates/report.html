@@ -18,7 +18,8 @@
 <div class="wrap"
      data-partial="{{ 'true' if v.partial else 'false' }}"
      data-cross-encoder-reranked="{{ 'true' if v.cross_encoder_rerank and v.cross_encoder_rerank.applied else 'false' }}"
-     data-listwise-reranked="{{ 'true' if v.listwise_reranked else 'false' }}">
+     data-listwise-reranked="{{ 'true' if v.listwise_reranked else 'false' }}"
+     data-agent-rounds="{{ v.rounds or 0 }}">
 
   {% if v.partial %}
   <div class="refining" id="refiningBanner">
