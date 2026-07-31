@@ -93,6 +93,13 @@ def test_acceptance_passes_only_with_latency_stages_sources_and_expected_rank():
     assert U.acceptance_failures(_result(), _args()) == []
 
 
+def test_durable_round_count_does_not_depend_on_transient_round_event():
+    result = _result()
+    assert all(event["kind"] != "round" for event in result["events"])
+    assert result["final"]["agent_rounds"] == 2
+    assert U.acceptance_failures(result, _args()) == []
+
+
 def test_acceptance_reports_every_missing_contract():
     result = _result()
     result["first_ready"]["at_seconds"] = 61.0

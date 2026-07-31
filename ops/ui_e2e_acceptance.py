@@ -23,11 +23,12 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 
-# `rank` is deliberately not a polling requirement: the server writes that status immediately
-# before `done`, so a correct run can pass through it between polls. The final HTML's explicit
-# listwise marker is the durable proof. Likewise, a wide run need not pause in `federating` when
-# its APIs finish before the local agent; contributing provider chips are the durable proof there.
-DEFAULT_STAGES = ("elements", "partial", "seeded", "round", "reranking", "done")
+# `rank` and `round` are deliberately not polling requirements: the server can write either
+# immediately before the next state, so a correct run can pass through between polls. The final
+# HTML's explicit listwise marker and agent-round count are the durable proof. Likewise, a wide run
+# need not pause in `federating` when its APIs finish before the local agent; contributing provider
+# chips are the durable proof there.
+DEFAULT_STAGES = ("elements", "partial", "seeded", "reranking", "done")
 
 
 def elapsed(start: float) -> float:
