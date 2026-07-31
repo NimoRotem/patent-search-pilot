@@ -1786,9 +1786,12 @@ def _query_vec(slug, q):
     return _QCACHE[slug]
 
 
-# A publication number is like "US-11207792-B2"; a figure filename like "003.png". Validate both
+# A publication number can be canonical ("US-11207792-B2") or a compact identifier returned by
+# a federated provider ("US20220256273A1"); a figure filename is like "003.png". Validate both
 # BEFORE any path use — defense-in-depth against traversal on top of Flask's safe_join.
-_PUB_RE = re.compile(r"^[A-Za-z]{2}-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$")
+_PUB_RE = re.compile(
+    r"^[A-Za-z]{2}(?:[A-Za-z0-9]{3,38}|-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)$"
+)
 _FNAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 

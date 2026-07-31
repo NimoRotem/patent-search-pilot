@@ -31,8 +31,24 @@ def test_pubkey_rejects_unsafe_keys():
         with pytest.raises(ValueError):
             e._pubkey(bad)
     # valid publication numbers pass through unchanged
-    for good in ["US-11999030-B2", "DE-202019005606-U1", "WO-2020193405-A1", "EP-2496850-A1"]:
+    for good in [
+        "US-11999030-B2",
+        "DE-202019005606-U1",
+        "WO-2020193405-A1",
+        "EP-2496850-A1",
+        "US20220256273A1",
+        "CN219950370U",
+    ]:
         assert e._pubkey(good) == good
+
+
+def test_web_pub_validator_accepts_canonical_and_compact_numbers():
+    import webapp
+
+    for good in ["US-11207792-B2", "US20220256273A1", "CN219950370U"]:
+        assert webapp._safe_pub(good)
+    for bad in ["US/20220256273/A1", "../../etc/passwd", "US.2022.A1", "US-1 A1", "A" * 41]:
+        assert not webapp._safe_pub(bad)
 
 
 def test_enrich_display_bad_pub_is_graceful():
@@ -43,7 +59,31 @@ def test_enrich_display_bad_pub_is_graceful():
     assert e.load_cached("../../../etc/passwd") is None
 
 
-def test_normal_figure_and_pdf_still_served(app_client):
+def test_normal_figure_and_pdf_still_served(app_client, monkeypatch, tmp_path):
     # regression guard: hardening must not break legitimate serving
+    import enrich_display
+
+    figdir = tmp_path / "figures"
+    pdfdir = tmp_path / "pdfs"
+    (figdir / "US-11207792-B2").mkdir(parents=True)
+    pdfdir.mkdir()
+    (figdir / "US-11207792-B2" / "000.png").write_bytes(b"canonical figure")
+    (pdfdir / "US-11207792-B2.pdf").write_bytes(b"%PDF-1.4\n%%EOF")
+    monkeypatch.setattr(enrich_display, "FIGDIR", figdir)
+    monkeypatch.setattr(enrich_display, "PDFDIR", pdfdir)
+
     assert app_client.get("/figures/US-11207792-B2/000.png").status_code == 200
-    assert app_client.get("/pdf/US-11207792-B2").status_code in (200, 302)
+    assert app_client.get("/pdf/US-11207792-B2").status_code == 200
+
+
+def test_compact_publication_figure_is_served(app_client, monkeypatch, tmp_path):
+    import enrich_display
+
+    pubdir = tmp_path / "US20220256273A1"
+    pubdir.mkdir()
+    (pubdir / "000.png").write_bytes(b"compact publication figure")
+    monkeypatch.setattr(enrich_display, "FIGDIR", tmp_path)
+
+    response = app_client.get("/figures/US20220256273A1/000.png")
+    assert response.status_code == 200
+    assert response.data == b"compact publication figure"

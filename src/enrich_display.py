@@ -31,7 +31,13 @@ ENRICHED = DATA / "enriched"
 FIGDIR = DATA / "figures"
 PDFDIR = DATA / "pdfs"
 
-_PUB_RE = re.compile(r"^[A-Za-z]{2}-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$")
+# Accept both the canonical DOCDB spelling (``US-20220256273-A1``) and the
+# compact spelling returned by several federated providers (``US20220256273A1``).
+# The character class remains deliberately narrow: no dots, slashes, escapes,
+# whitespace or punctuation can reach a cache path.
+_PUB_RE = re.compile(
+    r"^[A-Za-z]{2}(?:[A-Za-z0-9]{3,38}|-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)$"
+)
 
 
 def _pubkey(pub):
