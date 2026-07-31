@@ -155,6 +155,17 @@ def acceptance_failures(result: dict, args: argparse.Namespace) -> list[str]:
                 f"expected family absent from top {args.expected_top}: {family}"
             )
 
+    expected_any_families = [
+        normalize_pub(family) for family in args.expect_any_family or []
+    ]
+    if expected_any_families and not any(
+        family in ranked_families for family in expected_any_families
+    ):
+        failures.append(
+            f"none of the expected families appeared in the top {args.expected_top}: "
+            + ", ".join(args.expect_any_family)
+        )
+
     tags = final.get("source_tags") or []
     contributing = [
         tag
@@ -300,6 +311,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--require-source", action="append")
     ap.add_argument("--expect-pub", action="append")
     ap.add_argument("--expect-family", action="append")
+    ap.add_argument("--expect-any-family", action="append")
     ap.add_argument("--expected-top", type=int, default=25)
     ap.add_argument("--output", type=Path)
     return ap

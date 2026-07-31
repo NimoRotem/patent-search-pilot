@@ -31,6 +31,7 @@ def _args(**overrides):
         "require_source": ["USPTO", "Lens"],
         "expect_pub": ["US-1234567-A1"],
         "expect_family": ["FAM-123"],
+        "expect_any_family": ["FAM-X", "FAM-123"],
         "expected_top": 25,
     }
     values.update(overrides)
@@ -137,6 +138,7 @@ def test_acceptance_reports_every_missing_contract():
         "required pipeline stage not observed",
         "expected publication absent",
         "expected family absent",
+        "none of the expected families",
         "contributing external sources",
         "required source tag absent",
     ):
