@@ -181,10 +181,15 @@ Example from the authenticated service loopback:
 
 ```bash
 python3 ops/ui_e2e_acceptance.py \
-  --query "A vacuum lifting tool with isolated chambers and predictive seal-loss sensing" \
+  --query "robotic end-of-arm vacuum gripper for handling sheets or panels with an array of suction cups and independent vacuum zones" \
   --wide --require-source USPTO --require-source Lens \
+  --expect-any-family 34201690 --expect-any-family 63449883 \
+  --expect-any-family 70050062 \
   --output /tmp/patent-ui-acceptance.json
 ```
+
+Repeat `--expect-family` when every listed family must rank in the top 25, or repeat
+`--expect-any-family` with a gold set when at least one relevant family must rank there.
 
 `./regression.sh` all green = shippable. Covers:
 
