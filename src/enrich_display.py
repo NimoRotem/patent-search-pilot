@@ -13,7 +13,12 @@ we mark facsimile_not_digitized and still surface claims/abstract/events + Espac
 Never returns a broken image URL (only locally-downloaded files are advertised).
 """
 from __future__ import annotations
-import os, re, json, time, hashlib, subprocess
+import json
+import os
+import re
+import subprocess
+import tempfile
+import time
 from pathlib import Path
 import requests
 import db
@@ -99,19 +104,32 @@ def _download(url, dest: Path, retries=2):
     if dest.exists() and dest.stat().st_size > 0:
         return True
     for i in range(retries):
+        tmp = None
         try:
             r = requests.get(url, headers=UA, timeout=IMG_TIMEOUT, stream=True)
             if r.status_code == 200:
-                tmp = dest.with_suffix(dest.suffix + ".tmp")
-                with open(tmp, "wb") as f:
+                # Several result-card warmers may discover the same uncached document at once.
+                # A single `<dest>.tmp` lets one request rename the file while another is still
+                # writing/statting it, turning an otherwise successful /api/ref into a 500. Give
+                # every request its own same-directory temporary file, then atomically publish it.
+                # Concurrent winners contain the same remote payload, so replacing the destination
+                # is safe; no reader can observe a partial file.
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(
+                        mode="wb", dir=dest.parent, prefix=f".{dest.name}.", suffix=".tmp",
+                        delete=False) as f:
+                    tmp = Path(f.name)
                     for chunk in r.iter_content(65536):
                         f.write(chunk)
                 if tmp.stat().st_size > 0:
-                    tmp.rename(dest)
+                    os.replace(tmp, dest)
+                    tmp = None
                     return True
-                tmp.unlink(missing_ok=True)
-        except requests.RequestException:
+        except (requests.RequestException, OSError):
             time.sleep(1.5 * (i + 1))
+        finally:
+            if tmp is not None:
+                tmp.unlink(missing_ok=True)
     return False
 
 
