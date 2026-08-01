@@ -223,3 +223,14 @@ def test_password_session_version_rejects_unversioned_and_older_signed_sessions(
         session["session_version"] = USER["session_version"] - 1
     response = account_client.get("/", follow_redirects=False)
     assert response.status_code == 302 and "/login" in response.headers["Location"]
+
+
+def test_unknown_browser_page_is_branded_but_unknown_api_stays_json(account_client):
+    with account_client.session_transaction() as session:
+        session["user_id"] = USER["id"]
+        session["session_version"] = USER["session_version"]
+    page = account_client.get("/qa-page-that-does-not-exist")
+    assert page.status_code == 404
+    assert "That page is not available" in page.get_data(as_text=True)
+    api = account_client.get("/api/qa-page-that-does-not-exist")
+    assert api.status_code == 404 and api.is_json and api.get_json()["error"] == "not found"

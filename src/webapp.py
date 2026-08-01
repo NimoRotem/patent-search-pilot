@@ -113,6 +113,16 @@ class _PrefixMiddleware:
 app.wsgi_app = _PrefixMiddleware(app.wsgi_app)
 
 
+@app.errorhandler(404)
+def page_not_found(_error):
+    """Keep browser dead ends inside the product while preserving JSON API contracts."""
+    wants_json = (request.path.startswith(("/api/", "/status/", "/events/")) or
+                  "application/json" in request.headers.get("Accept", ""))
+    if wants_json:
+        return jsonify({"error": "not found"}), 404
+    return render_template("error404.html", missing_path=request.path), 404
+
+
 @app.context_processor
 def _inject_corpus_facts():
     """Make `corpus` available to EVERY template.

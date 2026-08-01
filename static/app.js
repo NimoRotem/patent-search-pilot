@@ -520,6 +520,38 @@ async function warmDetails(){
   await Promise.all([worker(), worker(), worker()]);   // 3-wide: instant tabs, gentle on the box
 }
 
+/* A partial card can initially have no drawing because /api/figs is intentionally disk-only.
+   Previously only the first four cards were warmed, so a later card could say "no drawing" while
+   opening its full view immediately recovered several real figures.  Resolve those missing partial
+   thumbnails in the background with the section-only endpoint: two workers, a 12 s hard deadline,
+   and no full-document payload.  Final reports are handled durably by the server prefetch worker,
+   including when the browser has already been closed. */
+async function warmMissingThumbs(){
+  if (!window.PARTIAL || !window.SLUG) return;
+  const pubs = [...document.querySelectorAll('.refcard')].filter(card => {
+    const thumb = card.querySelector('.rthumb');
+    return thumb && ['none','error'].includes(thumb.dataset.state);
+  }).map(card => card.dataset.pub).filter(Boolean);
+  let i = 0;
+  const worker = async () => {
+    while (i < pubs.length){
+      const pub = pubs[i++];
+      try {
+        const url = B + '/api/ref/' + encodeURIComponent(pub) + '?slug=' +
+          encodeURIComponent(window.SLUG) + '&light=1&section=figs';
+        const r = await fetchTimed(url, 12000);
+        if (!r.ok) continue;
+        const item = await r.json();
+        if (item.display && item.display.images && item.display.images.length){
+          SECTIONCACHE[pub + ':figs'] = item;
+          backfillThumb(pub, item.display.images);
+        }
+      } catch (e) {}
+    }
+  };
+  await Promise.all([worker(), worker()]);
+}
+
 /* Generate the expensive, full-text-grounded explanation for the highest-ranked cards in the
    background. Previously that deeper read happened only after a user clicked "Why relevant",
    leaving the list itself with a short batch-reranker opinion. Two workers and eight cards bound
@@ -1767,6 +1799,8 @@ document.addEventListener('DOMContentLoaded', () => {
     prefetchTopN();        // proactively resolve drawings + worldwide family for shown final cards
     setTimeout(warmRationales, 2600); // deeper top-card explanations, no click required
     warmQueryClaimGrid();  // uploaded claims x references; server already runs it in background
+  } else {
+    setTimeout(warmMissingThumbs, 1200);
   }
 
   const m = (location.hash || '').match(/patent=([^&]+)/);

@@ -284,14 +284,22 @@ class Retriever:
         return self._pubs_from_chunks(sql, [q, *dp, PUB_CAP])
 
     def channel_claim_bm25(self, q, subject=None, mode=None):
-        """Lexical search restricted to claims, fused with claim_dense by weighted RRF."""
+        """Precise lexical search restricted to claims, fused with claim_dense by weighted RRF.
+
+        Claim mode used to OR as many as 18 terms and then group every matching claim chunk.  On
+        the 25M-chunk corpus, a short element such as ``base plate controller`` matched millions of
+        rows and one pass took more than five minutes in production.  Claim-dense already supplies
+        the broad-recall channel, so this complementary lexical channel deliberately requires the
+        four most specific (longest) stemmed terms.  The GIN index can intersect those postings
+        directly, keeping the pass bounded while still surfacing literal claim-language matches.
+        """
         if not q or not q.strip():
             return []
         dc, dp = _date_clause(subject, mode)
         sql = (f"WITH tq AS (SELECT to_tsquery('english', NULLIF(array_to_string(ARRAY("
                f"  SELECT w FROM unnest(tsvector_to_array(to_tsvector('english', %s))) w "
-               f"  ORDER BY length(w) DESC LIMIT 18), ' | '), '')) q) "
-               f"SELECT c.publication_id, count(*) AS score "
+               f"  ORDER BY length(w) DESC LIMIT 4), ' & '), '')) q) "
+               f"SELECT c.publication_id, max(ts_rank_cd(c.tsv, tq.q)) AS score "
                f"FROM chunks c JOIN publications p ON p.id=c.publication_id, tq "
                f"WHERE tq.q IS NOT NULL AND c.kind IN ('claim_own','claim_resolved') "
                f"AND c.tsv @@ tq.q {dc} GROUP BY c.publication_id ORDER BY score DESC LIMIT %s")

@@ -272,7 +272,8 @@ class CoverageAgent:
         # the seed-element and agentic-round searches advance. `search_max` is an honest upper
         # bound: early stopping or an LLM returning fewer than three queries can finish sooner.
         search_done = 0
-        search_max = (1 + min(6, len(elements))
+        split_claim_seed = self._search_config == "claim_agentic"
+        search_max = ((2 if split_claim_seed else 1) + min(6, len(elements))
                       + cfg.max_rounds * cfg.elements_per_round * 3)
 
         def searched(progress_stage, query, *args, progress_round=None, **kwargs):
@@ -350,12 +351,23 @@ class CoverageAgent:
                     out.append(result)
             return out
 
-        # seed round: broad search on the whole invention (the vector-equivalent backbone). This one
-        # search already yields strong results (the eval shows seed/vector ~= agentic at k=100), so
-        # stream it as the first partial render before the slower element+round refinement runs.
-        searched("search_progress", query_text, subject, m, ledger,
-                 element=None, is_seed=True)
-        emit("partial", {"report": self.report(query_text, subject, m, ledger, rounds=0, rerank=False)})
+        # Seed round: expose the vector-equivalent backbone before slower lexical/graph expansion.
+        # In claims mode the previous combined pass waited for claim_bm25 before emitting anything;
+        # a production 25M-chunk query measured 331.8 s.  Claim-dense already yields the useful
+        # semantic head, so stream it first and continue the precise lexical/CPC/citation channels
+        # as the next counted pass.  The all-text path keeps its established single-pass ranking.
+        if split_claim_seed:
+            searched("search_progress", query_text, subject, m, ledger,
+                     element=None, is_seed=True, cfg=["claim_dense"])
+            emit("partial", {"report": self.report(
+                query_text, subject, m, ledger, rounds=0, rerank=False)})
+            searched("search_progress", query_text, subject, m, ledger, element=None,
+                     is_seed=True, cfg=["claim_bm25", "cpc", "citation", "qbe"])
+        else:
+            searched("search_progress", query_text, subject, m, ledger,
+                     element=None, is_seed=True)
+            emit("partial", {"report": self.report(
+                query_text, subject, m, ledger, rounds=0, rerank=False)})
         # attribute seed hits to elements too (cap the per-element seed searches for runtime)
         searched_batch("seed_progress", [
             {"query": el, "element": el} for el in elements[:6]
