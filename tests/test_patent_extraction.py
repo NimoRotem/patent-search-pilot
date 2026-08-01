@@ -473,3 +473,27 @@ def test_recovery_survives_an_unavailable_account_store(monkeypatch):
 
     monkeypatch.setattr(webapp.db, "cursor", boom)
     assert webapp.recover_interrupted_searches() == {"completed": 0, "failed": 0}
+
+
+def test_extract_jobs_are_bounded(app_client, monkeypatch):
+    """A background extraction is outside gunicorn's worker pool, so it needs its own bound:
+    each one holds up to 30 MB of upload, runs poppler and makes about a dozen Vertex calls."""
+    import webapp
+
+    monkeypatch.setattr(webapp, "_EXTRACT_SLOTS", __import__("threading").BoundedSemaphore(1))
+    started = []
+    monkeypatch.setattr(webapp.ingest_input, "extract_upload",
+                        lambda *a, **k: started.append(1) or {"ok": True, "chunks": []})
+    webapp._EXTRACT_SLOTS.acquire()                       # pretend one extraction is in flight
+    r = app_client.post("/extract", data={"file": (io.BytesIO(b"text"), "a.txt"), "async": "1"},
+                        content_type="multipart/form-data")
+    assert r.status_code == 429 and r.get_json()["ok"] is False
+    webapp._EXTRACT_SLOTS.release()
+    r = app_client.post("/extract", data={"file": (io.BytesIO(b"text"), "a.txt"), "async": "1"},
+                        content_type="multipart/form-data")
+    assert r.status_code == 202 and r.get_json()["job"]
+
+
+def test_extract_status_unknown_job(app_client):
+    r = app_client.get("/extract/status/" + "0" * 32)
+    assert r.status_code == 404 and r.get_json()["state"] == "unknown"

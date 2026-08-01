@@ -1269,6 +1269,9 @@ def extract():
     # phase actually running. The synchronous path is kept for programmatic callers and tests.
     if request.form.get("async") == "1":
         job = _start_extract_job(data, (f.filename if f is not None else ""), url)
+        if job is None:
+            return jsonify({"ok": False, "error": "the server is reading other documents right "
+                                                  "now — please try again in a minute"}), 429
         return jsonify({"ok": True, "job": job, "state": "running"}), 202
 
     try:
@@ -1314,6 +1317,13 @@ _EXTRACT_PCT = {k: p for k, _, p in EXTRACT_STAGES}
 _EXTRACT_LABEL = {k: label for k, label, _ in EXTRACT_STAGES}
 EXTRACT_JOB_TTL = 30 * 60
 EXTRACT_JOBS_MAX = 200
+# Running the extraction on a background thread takes it out from under gunicorn's worker pool,
+# which is what used to bound it. One extraction holds its uploaded bytes (up to 30 MB), runs
+# poppler and the drawing extractor, and makes ~11 Vertex calls; unbounded, a handful of
+# simultaneous uploads would take the box down. Saturation is reported as "busy", the same way
+# an over-subscribed search is.
+EXTRACT_MAX_CONCURRENT = int(os.environ.get("EXTRACT_MAX_CONCURRENT", "4"))
+_EXTRACT_SLOTS = threading.BoundedSemaphore(EXTRACT_MAX_CONCURRENT)
 _EXTRACT_JOBS = {}
 _EXTRACT_JOBS_LOCK = threading.Lock()
 
@@ -1337,7 +1347,10 @@ def _extract_jobs_sweep():
 
 
 def _start_extract_job(data, filename, url):
+    """Start a background extraction. Returns the job id, or None when the box is at capacity."""
     _extract_jobs_sweep()
+    if not _EXTRACT_SLOTS.acquire(blocking=False):
+        return None
     job = uuid.uuid4().hex
     with _EXTRACT_JOBS_LOCK:
         _EXTRACT_JOBS[job] = {"state": "running", "stage": "read", "pct": 3,
@@ -1366,6 +1379,8 @@ def _start_extract_job(data, filename, url):
             traceback.print_exc()
             _extract_job_set(job, state="error", pct=100,
                              msg=f"extraction failed: {str(e)[:200]}")
+        finally:
+            _EXTRACT_SLOTS.release()
 
     threading.Thread(target=work, name=f"extract-{job[:8]}", daemon=True).start()
     return job
