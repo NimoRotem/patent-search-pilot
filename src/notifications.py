@@ -213,6 +213,30 @@ def queue_search_completion(slug):
     return rows
 
 
+def queue_draft_completion(user, project, version):
+    """Queue one durable message for a newly published immutable draft version."""
+    if not user or not user.get("is_active") or not user.get("email_on_completion", True):
+        return None
+    project_id = int(project["id"])
+    version_no = int(version["version_no"])
+    draft_url = f"{PUBLIC_BASE_URL}/drafts/{project_id}?version={version_no}"
+    mail = accounts.enqueue_mail(
+        to_email=user["email"], user_id=user["id"], kind="draft_complete",
+        dedupe_key=f"draft-complete:{user['id']}:{project_id}:{version_no}",
+        subject="Your US patent application working draft is ready",
+        body_text=(
+            f"Hello {user['full_name']},\n\n"
+            f"Draft version {version_no} for “{str(project.get('title') or '')[:180]}” is ready.\n\n"
+            f"Open, review and edit the draft:\n{draft_url}\n\n"
+            "The draft is AI-assisted working material. Confirm every technical statement, "
+            "claim limitation, inventor detail and filing requirement with qualified US patent "
+            "counsel before filing.\n"
+        ),
+    )
+    kick()
+    return mail
+
+
 def queue_password_reset(email, reset_url):
     token, user = accounts.create_password_reset(email)
     if not token or not user:

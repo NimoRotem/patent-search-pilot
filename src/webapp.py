@@ -8,10 +8,10 @@ endpoint; the agent report is cached to data/reports/<slug>.json and never block
 Per-card drawings/PDF/sections/rationale are enriched lazily via /api/ref.
 """
 from __future__ import annotations
-import json, os, re, queue, secrets, threading, hashlib, time, traceback
+import difflib, json, os, re, queue, secrets, threading, hashlib, time, traceback
 from pathlib import Path
 from flask import (Flask, Response, render_template, request, jsonify, redirect, url_for,
-                   send_from_directory, abort, stream_with_context)
+                   send_from_directory, send_file, abort, stream_with_context)
 import db, embed, goldset, webview, enrich_display, llm
 import pubnorm  # single link-builder: zero-padded Google/Espacenet URLs (dropped-zero fix)
 import ops_family, prefetch                        # worldwide family timeline + top-N proactive enrich
@@ -19,6 +19,7 @@ import query_claim_grid                            # uploaded-claim x ranked-ref
 import report_archive                              # automatic top-50 full-text Markdown ZIP
 import export_data, export_pdf, export_docx, export_xlsx, export_md
 import auth, accounts, notifications, rerank_pool
+import drafting, draft_export, draft_worker
 import claim_chart, translate, drawings          # ported per-card enrichment
 import ingest_input                                # front-door document / patent-link -> search brief
 import grounding                                  # length-stable quote grounding (shared w/ claim_chart)
@@ -258,6 +259,14 @@ def slugify(text):
     return "adhoc-" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
 
 
+def search_slug(query, mode, *, wide, search_focus, subject=None, doc_token=None):
+    """Stable cache identity for every input that can change retrieval/report content."""
+    return slugify("|".join((
+        query, mode, "wide" if wide else "narrow", search_focus,
+        f"subject:{subject or '-'}", f"document:{doc_token or '-'}",
+    )))
+
+
 def report_path(slug):
     return REPORTS / f"{slug}.json"
 
@@ -339,6 +348,7 @@ def _job_event(slug, job):
 def _write_report(slug, rep):
     report_path(slug).write_text(json.dumps(rep, default=str, indent=1))
     (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)   # force the view to rebuild from this
+    (REPORTS / f"{slug}.detail-preview.json").unlink(missing_ok=True)
     # A rerun can reuse the same slug with a different uploaded document.  Never let its old
     # Claim x Reference analysis survive the source report it was built from.
     try:
@@ -721,6 +731,13 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             _set_job(slug, kind="ranking",
                      msg="Ranking references against each other in context (listwise)…")
             view = _build_view_cached(slug, rep)
+            # Persist tab-ready text and start bounded figure/family/rationale preparation HERE,
+            # inside the durable search job. These must finish even when the user chose email and
+            # closed the browser; client-side warming is only a latency optimization after this.
+            _write_detail_preview(slug, view)
+            final_pubs = [c.get("pub") for c in (view.get("cards") or []) if c.get("pub")]
+            prefetch.prefetch_top(slug, final_pubs, n=len(final_pubs))
+            _schedule_background_report_analysis(slug, final_pubs[:8])
             # Uploaded patent claims are analysed against the final ranked references on a
             # separate one-wide worker.  Scheduling is instant, so "Report ready" is never held
             # behind 8 grounded/refuted claim-chart passes.
@@ -832,6 +849,7 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
         if regen:
             p.unlink(missing_ok=True)
             (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)
+            (REPORTS / f"{slug}.detail-preview.json").unlink(missing_ok=True)
         threading.Thread(target=_run_job,
                          args=(slug, query, subj_obj, mode, gated, wide, doc_token, search_focus),
                          daemon=True).start()
@@ -873,6 +891,89 @@ def _gold_cards():
              "query": e.get("query_text", ""),
              "cached": report_path(e["id"]).exists()}
             for e in _GOLD.values()]
+
+
+def _detail_preview_item(card):
+    """The text-only subset tabs need, shaped like ``/api/ref`` but with no live lookups.
+
+    ``build_view`` already paid for these claims/paragraphs while assembling the report. Writing
+    the subset once avoids 25 repeat database round trips and means the first tab click can be a
+    memory hit even while the search is still refining.
+    """
+    pub = card.get("pub")
+    cpc = card.get("cpc") or []
+    return {
+        "pub": pub,
+        "display": {
+            "title": card.get("title"), "abstract": card.get("abstract"),
+            "classifications": cpc, "images": card.get("images") or [],
+            "n_images": card.get("n_images") or 0,
+            "google_patents": card.get("google_patents"), "espacenet": card.get("espacenet"),
+            "lang_flags": {"abstract": translate.looks_nonenglish(card.get("abstract") or "")},
+        },
+        "sections": {
+            "claims": card.get("claims") or [],
+            "paragraphs": card.get("description") or [],
+            "figures": card.get("figure_caps") or [],
+            "citations": [],
+        },
+        "matched": {
+            "coord": card.get("match_coord"), "kind": card.get("match_kind"),
+            "score": card.get("match_score") or 0,
+            "coord_raw": card.get("matched_coord_raw"),
+        } if card.get("match_kind") or card.get("match_coord") else None,
+        "rationale": None,
+        "_preview": True,
+    }
+
+
+def _write_detail_preview(slug, view):
+    if not valid_slug(slug):
+        return
+    items = {}
+    for card in (view or {}).get("cards") or []:
+        pub = card.get("pub")
+        if pub and pub not in items:
+            items[pub] = _detail_preview_item(card)
+        if len(items) >= _DISPLAY_TOP:
+            break
+    if not items:
+        return
+    path = REPORTS / f"{slug}.detail-preview.json"
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        tmp.write_text(json.dumps({"version": 1, "partial": bool((view or {}).get("partial")),
+                                   "items": items}, default=str))
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _detail_preview_section(item, section):
+    """Return only the cached fields needed by one result-card tab."""
+    display, sections = item.get("display") or {}, item.get("sections") or {}
+    base_display = {
+        "title": display.get("title"), "google_patents": display.get("google_patents"),
+        "espacenet": display.get("espacenet"),
+    }
+    out = {"pub": item.get("pub"), "display": base_display, "sections": {},
+           "matched": item.get("matched"), "rationale": None, "_preview": True}
+    if section == "abstract":
+        out["display"].update(abstract=display.get("abstract"),
+                              lang_flags=display.get("lang_flags") or {})
+    elif section == "claims":
+        out["sections"]["claims"] = sections.get("claims") or []
+    elif section == "desc":
+        out["sections"]["paragraphs"] = sections.get("paragraphs") or []
+    elif section == "class":
+        out["display"]["classifications"] = display.get("classifications") or []
+    elif section == "figs":
+        out["display"].update(images=display.get("images") or [],
+                              n_images=display.get("n_images") or 0)
+        out["sections"]["figures"] = sections.get("figures") or []
+    else:
+        return item
+    return out
 
 
 def _can_access_report(slug):
@@ -959,6 +1060,7 @@ def _account_history_entries(user_id, *, saved_only=False, limit=300):
                     "search_focus": row.get("search_focus") or "all_text",
                     "subject": row.get("subject"), "ood": False, "when": when or "",
                     "status": row.get("status") or "running", "saved": bool(row.get("saved")),
+                    "notify_email": bool(row.get("notify_email")),
                     "notification_status": row.get("notification_status")})
     return out
 
@@ -1058,8 +1160,11 @@ def run():
         ood = v.to_dict()
     # `wide` MUST be part of the slug: a wide result and a narrow one are different reports and
     # would otherwise overwrite each other's cache.
-    slug = slugify(query + "|" + mode + ("|wide" if wide else "")
-                   + ("|claims" if search_focus == "claims" else "|all-text"))
+    # Every input that changes retrieval or eligibility belongs in the cache identity. Omitting an
+    # anchor publication or uploaded-document token can return another search's report/claim grid
+    # for the same visible query.
+    slug = search_slug(query, mode, wide=wide, search_focus=search_focus,
+                       subject=subject, doc_token=doc_token)
     st, why = ensure_report(slug, query=query, subject=subject, mode=mode, wide=wide,
                             doc_token=doc_token, search_focus=search_focus)
     if st == "busy":
@@ -1075,7 +1180,7 @@ def run():
         try:
             accounts.record_search(user["id"], slug, query, mode, search_focus, subject,
                                    notify_email=notify,
-                                   status=("complete" if st == "ready" else "running"), saved=True)
+                                   status=("complete" if st == "ready" else "running"), saved=False)
             if st == "ready" and notify:
                 notifications.queue_search_completion(slug)
         except Exception:
@@ -1160,14 +1265,25 @@ def report(slug):
     if status == "busy":
         return render_template("notfound.html", slug=f"{slug} — {rep}"), 429
     if status != "ready":
+        active_search = None
+        user = auth.current_user()
+        if user:
+            try:
+                active_search = accounts.get_search(user["id"], slug)
+            except Exception:
+                pass
         return render_template("generating.html", slug=slug, title=title,
                                query=(query or "")[:400], mode=mode, wide=wide,
-                               search_focus=search_focus)
+                               search_focus=search_focus, active_search=active_search)
     view = _build_view_cached(slug, rep, regen)
     view["slug"] = slug
     view["title"] = title
     view["is_gold"] = slug in _GOLD
     view["search_focus"] = rep.get("search_focus") or search_focus
+    try:
+        _write_detail_preview(slug, view)
+    except Exception:
+        traceback.print_exc()
     user = auth.current_user()
     view["account_search"] = None
     if user:
@@ -1227,6 +1343,40 @@ def api_saved_search(slug):
             status="complete", saved=saved)
     row = accounts.set_search_saved(user["id"], slug, saved, title=data.get("title"))
     return jsonify({"ok": True, "saved": bool(row.get("saved")), "title": row.get("title")})
+
+
+@app.route("/api/searches/<slug>/notification", methods=["GET", "POST"])
+def api_search_notification(slug):
+    """Let a signed-in user switch from waiting in the tab to a durable email alert."""
+    if not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
+    user = auth.current_user()
+    if not user:
+        return jsonify({"error": "a named account is required"}), 403
+    row = accounts.get_search(user["id"], slug)
+    if not row:
+        return jsonify({"error": "search is not in this account"}), 404
+    if request.method == "GET":
+        return jsonify({"enabled": bool(row.get("notify_email")),
+                        "status": row.get("notification_status") or "not_requested"})
+    auth.require_csrf()
+    data = request.get_json(silent=True) or request.form
+    raw = data.get("enabled", True)
+    enabled = raw is True or str(raw).lower() in ("1", "true", "yes", "on")
+    row = accounts.set_search_notification(user["id"], slug, enabled)
+    # If completion raced this click, queue now instead of waiting for an event that already ran.
+    # The durable outbox key makes the concurrent worker path idempotent.
+    cached_report = _load_report(slug)
+    report_complete = bool(cached_report and not cached_report.get("partial"))
+    if enabled and (row.get("status") == "complete" or report_complete):
+        try:
+            notifications.queue_search_completion(slug)
+            row = accounts.get_search(user["id"], slug) or row
+        except Exception:
+            traceback.print_exc()
+    return jsonify({"enabled": bool(row.get("notify_email")),
+                    "status": row.get("notification_status") or "pending",
+                    "email": user["email"]})
 
 
 @app.route("/api/archive/<slug>", methods=["GET", "POST"])
@@ -1772,6 +1922,88 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt=None, passage
     return res
 
 
+_REPORT_ANALYSIS_POOL = None
+_REPORT_ANALYSIS_LOCK = threading.Lock()
+_REPORT_ANALYSIS_RUNNING = set()
+
+
+def _report_analysis_pool():
+    global _REPORT_ANALYSIS_POOL
+    with _REPORT_ANALYSIS_LOCK:
+        if _REPORT_ANALYSIS_POOL is None:
+            _REPORT_ANALYSIS_POOL = _cf.ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="report-analysis")
+        return _REPORT_ANALYSIS_POOL
+
+
+def _warm_one_rationale(slug, pub, query, elements):
+    """Build the same full-text-grounded cache as /api/ref without a browser request."""
+    cache = RATIONALE / f"{slug}__{pub}.json"
+    if cache.exists():
+        try:
+            if json.loads(cache.read_text()).get("_version") == _RAT_VERSION:
+                return
+        except Exception:
+            pass
+    disp = enrich_display.enrich_for_display(pub)
+    secs, passages = None, []
+    with db.cursor() as cur:
+        cur.execute("SELECT id FROM publications WHERE publication_number=%s LIMIT 1", (pub,))
+        row = cur.fetchone()
+        if row:
+            secs = webview.sections(cur, row["id"])
+            qv = _query_vec(slug, query)
+            passages = ref_passages(cur, row["id"], qv, secs)
+    if secs is None and (disp.get("claims") or disp.get("description")):
+        secs = {
+            "claims": [{"claim_no": i + 1, "text": c} for i, c in
+                       enumerate(disp.get("claims") or []) if c],
+            "paragraphs": [{"para_no": None, "text": p} for p in
+                           (disp.get("description") or []) if p],
+        }
+    if not passages and secs:
+        passages = [
+            {"kind": "claim_own", "coord": {"claim_no": c.get("claim_no")},
+             "text": c.get("resolved_text") or c.get("text")}
+            for c in (secs.get("claims") or [])[:4]
+        ]
+        passages.extend({"kind": "paragraph", "coord": {"para_no": p.get("para_no")},
+                         "text": p.get("text")}
+                        for p in (secs.get("paragraphs") or [])[:4])
+    biblio = f"{pub} {disp.get('title') or ''}. {disp.get('abstract') or ''}"
+    _rationale(slug, pub, query, elements, biblio, passages=passages)
+
+
+def _background_report_analysis(slug, pubs):
+    try:
+        rep = _load_report(slug) or {}
+        query, elements = rep.get("query") or "", rep.get("elements") or []
+        if not query:
+            return
+        for pub in pubs:
+            try:
+                _warm_one_rationale(slug, pub, query, elements)
+            except Exception:
+                traceback.print_exc()
+    finally:
+        with _REPORT_ANALYSIS_LOCK:
+            _REPORT_ANALYSIS_RUNNING.discard(slug)
+
+
+def _schedule_background_report_analysis(slug, pubs):
+    """One bounded server-side task per report; survives a closed browser tab."""
+    pubs = [pub for pub in pubs if _safe_pub(pub)][:8]
+    if not pubs:
+        return False
+    pool = _report_analysis_pool()
+    with _REPORT_ANALYSIS_LOCK:
+        if slug in _REPORT_ANALYSIS_RUNNING:
+            return False
+        _REPORT_ANALYSIS_RUNNING.add(slug)
+    pool.submit(_background_report_analysis, slug, pubs)
+    return True
+
+
 _WORD_RE = re.compile(r"[a-z0-9]+")
 
 def _ground_reads_on(raw, ref_text, min_overlap=None, diag=None):
@@ -1859,6 +2091,30 @@ def _verify_why(why, source):
         return corrected, "corrected"
     return ("The reference is topically related, but its available text does not clearly "
             "disclose specific elements of the query; treat as unconfirmed."), "stripped"
+
+
+@app.route("/api/ref-batch/<slug>")
+def api_ref_batch(slug):
+    """Return already-built tab text for the visible result cards in one cheap request."""
+    if not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
+    path = REPORTS / f"{slug}.detail-preview.json"
+    if not path.exists():
+        return jsonify({"items": {}, "ready": False}), 202
+    try:
+        payload = json.loads(path.read_text())
+    except Exception:
+        return jsonify({"items": {}, "ready": False}), 202
+    wanted = [p for p in request.args.get("pubs", "").split(",") if _safe_pub(p)][:_DISPLAY_TOP]
+    items = payload.get("items") or {}
+    if wanted:
+        items = {pub: items[pub] for pub in wanted if pub in items}
+    section = request.args.get("section", "").strip()
+    if section in {"abstract", "claims", "desc", "class", "figs"}:
+        items = {pub: _detail_preview_section(item, section) for pub, item in items.items()}
+    return jsonify({"items": items, "ready": True, "partial": bool(payload.get("partial"))})
 
 
 @app.route("/api/ref/<pub>")
@@ -2162,7 +2418,12 @@ def print_view(slug):
     #  Calling build_view directly is why the print view rendered cells that nothing had checked.
     view = _build_view_cached(slug, rep)
     view["slug"] = slug
-    view["title"] = slug
+    user = auth.current_user()
+    account_search = accounts.get_search(user["id"], slug) if user else None
+    view["title"] = (account_search or {}).get("title") or slug
+    view["account_search"] = account_search
+    view["query_claim_grid_data"] = query_claim_grid.status(slug, REPORTS)
+    view["printed_at"] = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
     return render_template("print.html", v=view)
 
 
@@ -2434,6 +2695,409 @@ def api_translate(pub):
     return jsonify(translate.translate_publication(pub))
 
 
+# ---- account-owned US application drafting ------------------------------------------------
+_DRAFTING_SERVICE = None
+
+
+def _draft_report_loader(principal, slug, owner_user_id):
+    """Load only an authoritative, final server-side report for the project's owner."""
+    principal.require_active()
+    owner_user_id = int(owner_user_id)
+    if principal.user_id != owner_user_id and not principal.is_admin:
+        raise drafting.DraftingNotFound("Search report was not found.")
+    if slug not in _GOLD:
+        try:
+            owned = accounts.can_access_search(owner_user_id, slug)
+        except Exception:
+            owned = False
+        # An administrator may inspect operational reports, but an ordinary drafting project can
+        # only depend on a report row that belongs to its account.
+        if not owned and not principal.is_admin:
+            raise drafting.DraftingNotFound("Search report was not found in this account.")
+    rep = _load_report(slug)
+    if not rep:
+        raise drafting.DraftingNotFound("Search report was not found.")
+    if rep.get("partial"):
+        raise drafting.DraftingConflict("Wait for the final ranking before starting a draft.")
+    view = _build_view_cached(slug, rep)
+    view["slug"] = slug
+    return view
+
+
+def _drafting_service():
+    global _DRAFTING_SERVICE
+    if _DRAFTING_SERVICE is None:
+        _DRAFTING_SERVICE = drafting.DraftingService(
+            drafting.DraftingRepository(), _draft_report_loader)
+    return _DRAFTING_SERVICE
+
+
+def _draft_identity():
+    user = auth.current_user()
+    if not user:
+        raise drafting.DraftingPermissionDenied("A named account is required for drafting.")
+    return user, drafting.Principal.from_user(user)
+
+
+def _draft_error_status(exc):
+    if isinstance(exc, drafting.DraftingNotFound):
+        return 404
+    if isinstance(exc, drafting.DraftingPermissionDenied):
+        return 403
+    if isinstance(exc, drafting.DraftingConflict):
+        return 409
+    return 400
+
+
+def _draft_error_redirect(project_id, exc):
+    return redirect(url_for("draft_detail", project_id=project_id, error=str(exc)[:300]))
+
+
+def _draft_report_choices(user, limit=300):
+    choices = []
+    try:
+        rows = accounts.list_searches(user["id"], limit=limit)
+    except Exception:
+        rows = []
+    for row in rows:
+        if row.get("status") != "complete" or not report_path(row["slug"]).exists():
+            continue
+        choices.append({
+            "slug": row["slug"], "title": row.get("title"),
+            "query": row.get("query") or "", "mode": row.get("mode") or "novelty",
+            "search_focus": row.get("search_focus") or "all_text",
+            "updated_at": row.get("updated_at"),
+        })
+    return choices
+
+
+def _draft_new_context(user, principal, slug, selected=None, values=None, error=""):
+    choices = _draft_report_choices(user)
+    report_view = None
+    if slug:
+        try:
+            report_view = _draft_report_loader(principal, slug, user["id"])
+        except drafting.DraftingError as exc:
+            error = error or str(exc)
+    values = dict(values or {})
+    if report_view:
+        account_search = accounts.get_search(user["id"], slug) or {}
+        values.setdefault("title", account_search.get("title") or
+                          (report_view.get("query") or "US patent application")[:180])
+        values.setdefault("disclosure_text", report_view.get("query") or "")
+        defaults = []
+        if user.get("organization"):
+            defaults.append(f"Organization: {user['organization']}")
+        if user.get("default_applicant"):
+            defaults.append(f"Applicant: {user['default_applicant']}")
+        if user.get("default_inventors"):
+            defaults.append(f"Inventors:\n{user['default_inventors']}")
+        values.setdefault("inventor_notes", "\n\n".join(defaults))
+    cards = list((report_view or {}).get("cards") or [])
+    selected = list(selected or [])
+    if cards and not selected:
+        selected = [card.get("pub") for card in cards[:5] if card.get("pub")]
+    return {"choices": choices, "report_view": report_view, "search_slug": slug,
+            "selected": set(selected), "values": values, "error": error}
+
+
+@app.route("/drafts")
+def drafts_list():
+    try:
+        user, principal = _draft_identity()
+        include_all = bool(principal.is_admin and request.args.get("all") == "1")
+        projects = _drafting_service().list_projects(principal, include_all=include_all)
+        return render_template("drafts.html", projects=projects, include_all=include_all,
+                               user=user)
+    except drafting.DraftingError as exc:
+        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
+
+
+@app.route("/drafts/new", methods=["GET", "POST"])
+def draft_new():
+    try:
+        user, principal = _draft_identity()
+    except drafting.DraftingError as exc:
+        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
+    slug = (request.values.get("search_slug") or request.values.get("slug") or "").strip()
+    selected = request.values.getlist("pubs")
+    # Selection-bar GET links encode the publications as one comma-separated value.
+    if len(selected) == 1 and "," in selected[0]:
+        selected = [value for value in selected[0].split(",") if value]
+    if request.method == "POST":
+        auth.require_csrf()
+        values = {"title": request.form.get("title", ""),
+                  "disclosure_text": request.form.get("disclosure_text", ""),
+                  "inventor_notes": request.form.get("inventor_notes", "")}
+        try:
+            service = _drafting_service()
+            project = service.create_project_with_references(
+                principal, search_slug=slug, title=values["title"],
+                disclosure_text=values["disclosure_text"], inventor_notes=values["inventor_notes"],
+                publication_numbers=selected)
+            return redirect(url_for("draft_detail", project_id=project["id"], created="1"))
+        except drafting.DraftingError as exc:
+            ctx = _draft_new_context(user, principal, slug, selected, values, str(exc))
+            return render_template("draft_new.html", **ctx), _draft_error_status(exc)
+    ctx = _draft_new_context(user, principal, slug, selected)
+    return render_template("draft_new.html", **ctx)
+
+
+def _draft_detail_context(principal, project_id):
+    service = _drafting_service()
+    project = service.get_project(principal, project_id, include_versions=True)
+    chosen_no = request.args.get("version", type=int) or int(project.get("latest_version_no") or 0)
+    version = next((v for v in project.get("versions", [])
+                    if int(v.get("version_no") or 0) == chosen_no), None)
+    version_diff = ""
+    if version:
+        previous = next((v for v in project.get("versions", [])
+                         if int(v.get("version_no") or 0) == int(version["version_no"]) - 1), None)
+        if previous:
+            chunks = []
+            for key, heading in drafting.SECTION_ORDER:
+                before = str((previous.get("sections") or {}).get(key) or "").splitlines()
+                after = str((version.get("sections") or {}).get(key) or "").splitlines()
+                if before != after:
+                    chunks.extend(difflib.unified_diff(
+                        before, after, fromfile=f"v{previous['version_no']} {heading}",
+                        tofile=f"v{version['version_no']} {heading}", lineterm=""))
+            version_diff = "\n".join(chunks)[:60_000]
+    try:
+        report_view = _draft_report_loader(principal, project["search_slug"], project["user_id"])
+    except drafting.DraftingError:
+        report_view = {"cards": []}
+    selected_pubs = {r["publication_number"] for r in project.get("references", [])}
+    jobs = project.get("jobs") or []
+    return {"project": project, "version": version,
+            "latest_job": jobs[0] if jobs else None,
+            "report_cards": report_view.get("cards") or [], "selected_pubs": selected_pubs,
+            "section_order": drafting.SECTION_ORDER, "version_diff": version_diff,
+            "generation_key": secrets.token_urlsafe(24),
+            "error": request.args.get("error", ""), "message": request.args.get("message", ""),
+            "created": request.args.get("created") == "1"}
+
+
+@app.route("/drafts/<int:project_id>")
+def draft_detail(project_id):
+    try:
+        _user, principal = _draft_identity()
+        return render_template("draft.html", **_draft_detail_context(principal, project_id))
+    except drafting.DraftingError as exc:
+        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
+
+
+@app.route("/drafts/<int:project_id>/project", methods=["POST"])
+def draft_update_project(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        _drafting_service().update_project(
+            principal, project_id, title=request.form.get("title", ""),
+            disclosure_text=request.form.get("disclosure_text", ""),
+            inventor_notes=request.form.get("inventor_notes", ""),
+            expected_revision=request.form.get("expected_revision", type=int))
+        return redirect(url_for("draft_detail", project_id=project_id,
+                                message="Project inputs saved. Generate a new version when ready."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/references", methods=["POST"])
+def draft_update_references(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        _drafting_service().select_references(
+            principal, project_id, request.form.getlist("pubs"),
+            expected_revision=request.form.get("expected_revision", type=int))
+        return redirect(url_for("draft_detail", project_id=project_id,
+                                message="Prior-art source selection saved."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/generate", methods=["POST"])
+def draft_generate(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        idem = request.form.get("idempotency_key") or secrets.token_urlsafe(18)
+        job = _drafting_service().queue_generation(
+            principal, project_id, instructions=request.form.get("instructions", ""),
+            idempotency_key=idem)
+        draft_worker.kick()
+        state = job.get("status") or "queued"
+        message = ("Draft generation queued. You may leave this page safely."
+                   if state in {"queued", "running"}
+                   else f"That generation request is already {state}. Reload to start another.")
+        return redirect(url_for("draft_detail", project_id=project_id,
+                                message=message))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/retry/<int:job_id>", methods=["POST"])
+def draft_retry(project_id, job_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        job = _drafting_service().get_generation(principal, job_id)
+        if int(job["project_id"]) != project_id:
+            raise drafting.DraftingNotFound("Draft generation was not found.")
+        _drafting_service().retry_generation(
+            principal, job_id, idempotency_key=secrets.token_urlsafe(18))
+        draft_worker.kick()
+        return redirect(url_for("draft_detail", project_id=project_id,
+                                message="Draft generation queued again."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/cancel/<int:job_id>", methods=["POST"])
+def draft_cancel(project_id, job_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        job = _drafting_service().get_generation(principal, job_id)
+        if int(job["project_id"]) != project_id:
+            raise drafting.DraftingNotFound("Draft generation was not found.")
+        _drafting_service().cancel_generation(principal, job_id)
+        return redirect(url_for("draft_detail", project_id=project_id,
+                                message="Draft generation cancelled; your project was preserved."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/versions", methods=["POST"])
+def draft_save_version(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        sections = {key: request.form.get(key, "") for key, _heading in drafting.SECTION_ORDER}
+        version = _drafting_service().save_edited_version(
+            principal, project_id, sections,
+            base_version_no=request.form.get("base_version_no", type=int))
+        return redirect(url_for("draft_detail", project_id=project_id,
+                                version=version["version_no"], message="Edits saved as a new version."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/versions/<int:version_no>/status", methods=["POST"])
+def draft_version_status(project_id, version_no):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        _drafting_service().set_version_status(
+            principal, project_id, version_no, request.form.get("status", "draft"))
+        return redirect(url_for("draft_detail", project_id=project_id, version=version_no,
+                                message="Version review status updated."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/versions/<int:version_no>/restore", methods=["POST"])
+def draft_restore_version(project_id, version_no):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        service = _drafting_service()
+        prior = service.get_version(principal, project_id, version_no)
+        restored = service.save_edited_version(
+            principal, project_id, prior["sections"], base_version_no=version_no)
+        return redirect(url_for(
+            "draft_detail", project_id=project_id, version=restored["version_no"],
+            message=f"Version {version_no} restored as new version {restored['version_no']}."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/archive", methods=["POST"])
+def draft_archive(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        archived = request.form.get("archived", "1") == "1"
+        _drafting_service().archive_project(principal, project_id, archived=archived)
+        if archived:
+            return redirect(url_for("drafts_list"))
+        return redirect(url_for("draft_detail", project_id=project_id,
+                                message="Draft project restored."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/api/drafts/<int:project_id>/status")
+def api_draft_status(project_id):
+    try:
+        _user, principal = _draft_identity()
+        project = _drafting_service().get_project(principal, project_id, include_versions=True)
+        jobs = project.get("jobs") or []
+        job = jobs[0] if jobs else None
+        return jsonify({
+            "id": project["id"], "status": project["status"],
+            "revision": project["revision"], "latest_version_no": project["latest_version_no"],
+            "reference_count": len(project.get("references") or []),
+            "job": ({key: job.get(key) for key in
+                     ("id", "status", "attempts", "max_attempts", "last_error", "created_at",
+                      "started_at", "completed_at")} if job else None),
+            "ready_url": (url_for("draft_detail", project_id=project_id,
+                                  version=project["latest_version_no"])
+                          if project.get("latest_version_no") and
+                          not (job and job.get("status") in {"queued", "running"}) else None),
+        })
+    except drafting.DraftingError as exc:
+        return jsonify({"error": str(exc)}), _draft_error_status(exc)
+
+
+@app.route("/drafts/<int:project_id>/download/<fmt>")
+def draft_download(project_id, fmt):
+    if fmt not in {"md", "docx", "pdf"}:
+        abort(404)
+    try:
+        _user, principal = _draft_identity()
+        service = _drafting_service()
+        project = service.get_project(principal, project_id, include_versions=False)
+        version_no = request.args.get("version", type=int) or int(project.get("latest_version_no") or 0)
+        if not version_no:
+            raise drafting.DraftingNotFound("No draft version is ready to download.")
+        version = service.get_version(principal, project_id, version_no)
+        refs = project.get("references") or []
+        name = draft_export.download_name(project, version_no, fmt)
+        if fmt == "md":
+            return Response(
+                draft_export.render_markdown(project, version, refs),
+                mimetype="text/markdown",
+                headers={"Content-Disposition": f'attachment; filename="{name}"'})
+        if fmt == "docx":
+            return send_file(
+                draft_export.render_docx(project, version, refs), as_attachment=True,
+                download_name=name,
+                mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        return send_file(draft_export.render_pdf(project, version, refs), as_attachment=True,
+                         download_name=name, mimetype="application/pdf")
+    except drafting.DraftingError as exc:
+        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
+
+
+@app.route("/drafts/<int:project_id>/print")
+def draft_print(project_id):
+    try:
+        _user, principal = _draft_identity()
+        service = _drafting_service()
+        project = service.get_project(principal, project_id, include_versions=False)
+        version_no = request.args.get("version", type=int) or int(project.get("latest_version_no") or 0)
+        if not version_no:
+            raise drafting.DraftingNotFound("No draft version is ready to print.")
+        version = service.get_version(principal, project_id, version_no)
+        return render_template("draft_print.html", project=project, version=version,
+                               section_order=drafting.SECTION_ORDER,
+                               notice=draft_export.WORKING_DRAFT_NOTICE)
+    except drafting.DraftingError as exc:
+        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
+
+
 @app.route("/api/modes")
 def api_modes():
     """Capabilities, so the UI can build its mode picker from truth instead of a hard-coded list.
@@ -2453,12 +3117,14 @@ def healthz():
     if auth.run_gate:
         h["runs"] = auth.run_gate.stats()
     h["mail"] = notifications.transport_status()
+    h["draft_worker"] = draft_worker.status()
     return jsonify(h)
 
 
 # ---- auth + rate limiting (registered LAST, after every route exists) ------------------------
 auth.init_app(app, state_path=DATA / "run_budget.json")
 notifications.init_app(app)
+draft_worker.init_app(app, _drafting_service)
 
 
 if __name__ == "__main__":

@@ -7,9 +7,9 @@ import accounts
 import auth
 import webapp
 
-
 USER = {"id": 71, "email": "analyst@example.test", "full_name": "Patent Analyst",
-        "is_admin": False, "is_active": True, "email_on_completion": True}
+        "is_admin": False, "is_active": True, "email_on_completion": True,
+        "session_version": 3}
 
 
 @pytest.fixture()
@@ -44,6 +44,7 @@ def test_registration_creates_named_session(account_client, monkeypatch):
     assert response.status_code == 302
     with account_client.session_transaction() as session:
         assert session["user_id"] == USER["id"]
+        assert session["session_version"] == USER["session_version"]
         assert session.get("auth") is not True
 
 
@@ -61,8 +62,8 @@ def test_named_login_and_account_navigation(account_client, monkeypatch):
 
 
 def test_legacy_login_is_an_admin_bootstrap(account_client, monkeypatch):
-    monkeypatch.setattr(accounts, "list_users", lambda: [])
-    monkeypatch.setattr(accounts, "mail_stats", lambda: {})
+    monkeypatch.setattr(accounts, "list_users", list)
+    monkeypatch.setattr(accounts, "mail_stats", dict)
     response = account_client.post("/login", data={"password": "legacy-admin-password"})
     assert response.status_code == 302
     admin = account_client.get("/admin/users")
@@ -91,3 +92,104 @@ def test_trusted_loopback_automation_can_open_ad_hoc_reports(monkeypatch):
     with webapp.app.test_request_context("/report/adhoc-test",
                                          environ_base={"REMOTE_ADDR": "127.0.0.1"}):
         assert webapp._can_access_report("adhoc-test") is True
+
+
+def test_running_search_offers_wait_email_or_history(account_client, monkeypatch):
+    with account_client.session_transaction() as session:
+        session["user_id"] = USER["id"]
+        session["csrf_token"] = "csrf-test"
+    row = {"slug": "adhoc-running", "notify_email": False,
+           "notification_status": "not_requested", "status": "running"}
+    monkeypatch.setattr(accounts, "can_access_search", lambda uid, slug: True)
+    monkeypatch.setattr(accounts, "get_search", lambda uid, slug: dict(row))
+    monkeypatch.setattr(webapp, "ensure_report", lambda *a, **k: ("running", None))
+    response = account_client.get("/report/adhoc-running")
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "Email me when ready" in body
+    assert "Leave and view history" in body
+    assert "/notification" in body
+
+
+def test_notification_toggle_does_not_email_a_partial_report(account_client, monkeypatch):
+    with account_client.session_transaction() as session:
+        session["user_id"] = USER["id"]
+        session["csrf_token"] = "csrf-test"
+    row = {"slug": "adhoc-running", "notify_email": True,
+           "notification_status": "pending", "status": "running"}
+    monkeypatch.setattr(accounts, "get_search", lambda uid, slug: dict(row))
+    monkeypatch.setattr(accounts, "set_search_notification", lambda uid, slug, enabled: dict(row))
+    monkeypatch.setattr(webapp, "_load_report", lambda slug: {"partial": True})
+    queued = []
+    monkeypatch.setattr(webapp.notifications, "queue_search_completion", lambda slug: queued.append(slug))
+    response = account_client.post(
+        "/api/searches/adhoc-running/notification", json={"enabled": True},
+        headers={"X-CSRF-Token": "csrf-test"})
+    assert response.status_code == 200
+    assert response.get_json()["enabled"] is True
+    assert queued == []
+
+
+def test_notification_toggle_queues_if_report_already_finished(account_client, monkeypatch):
+    with account_client.session_transaction() as session:
+        session["user_id"] = USER["id"]
+        session["csrf_token"] = "csrf-test"
+    before = {"notify_email": False, "notification_status": "not_requested", "status": "running"}
+    enabled = {"notify_email": True, "notification_status": "pending", "status": "running"}
+    after = {"notify_email": True, "notification_status": "queued", "status": "complete"}
+    calls = {"get": 0, "queued": []}
+    def get_search(uid, slug):
+        calls["get"] += 1
+        return dict(before if calls["get"] == 1 else after)
+    monkeypatch.setattr(accounts, "get_search", get_search)
+    monkeypatch.setattr(accounts, "set_search_notification", lambda uid, slug, on: dict(enabled))
+    monkeypatch.setattr(webapp, "_load_report", lambda slug: {"partial": False})
+    monkeypatch.setattr(webapp.notifications, "queue_search_completion",
+                        lambda slug: calls["queued"].append(slug))
+    response = account_client.post(
+        "/api/searches/adhoc-finished/notification", json={"enabled": True},
+        headers={"X-CSRF-Token": "csrf-test"})
+    assert response.status_code == 200
+    assert calls["queued"] == ["adhoc-finished"]
+    assert response.get_json()["status"] == "queued"
+
+
+def test_batch_reference_preview_is_cache_only_and_scoped(account_client, monkeypatch, tmp_path):
+    with account_client.session_transaction() as session:
+        session["user_id"] = USER["id"]
+    monkeypatch.setattr(webapp, "REPORTS", tmp_path)
+    monkeypatch.setattr(webapp, "_can_access_report", lambda slug: True)
+    card = {"pub": "US-123-A", "title": "Fast text", "abstract": "Ready now",
+            "claims": [{"claim_no": 1, "text": "A device."}],
+            "description": [{"para_no": "0001", "text": "Description."}],
+            "cpc": [{"code": "B66C1/02"}], "images": [], "n_images": 0}
+    webapp._write_detail_preview("adhoc-preview", {"partial": True, "cards": [card]})
+    response = account_client.get("/api/ref-batch/adhoc-preview?pubs=US-123-A")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["partial"] is True
+    assert data["items"]["US-123-A"]["sections"]["claims"][0]["text"] == "A device."
+    assert data["items"]["US-123-A"]["_preview"] is True
+    claim_only = account_client.get(
+        "/api/ref-batch/adhoc-preview?pubs=US-123-A&section=claims").get_json()["items"]["US-123-A"]
+    assert "claims" in claim_only["sections"]
+    assert "paragraphs" not in claim_only["sections"] and "abstract" not in claim_only["display"]
+
+
+def test_search_cache_identity_includes_subject_and_uploaded_document():
+    base = webapp.search_slug("same query", "novelty", wide=True, search_focus="claims")
+    anchored = webapp.search_slug(
+        "same query", "novelty", wide=True, search_focus="claims", subject="US-123-A")
+    uploaded = webapp.search_slug(
+        "same query", "novelty", wide=True, search_focus="claims", doc_token="document-1")
+    assert len({base, anchored, uploaded}) == 3
+    assert uploaded == webapp.search_slug(
+        "same query", "novelty", wide=True, search_focus="claims", doc_token="document-1")
+
+
+def test_password_session_version_revokes_an_older_signed_session(account_client):
+    with account_client.session_transaction() as session:
+        session["user_id"] = USER["id"]
+        session["session_version"] = USER["session_version"] - 1
+    response = account_client.get("/", follow_redirects=False)
+    assert response.status_code == 302 and "/login" in response.headers["Location"]

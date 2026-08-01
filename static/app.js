@@ -84,6 +84,10 @@ function _authBar(){
   el.innerHTML =
     '<span id="authexpiredmsg">Your session expired. Sign in again to continue — ' +
     'this page and any run in progress are kept.</span>' +
+    (window.NAMED_ACCOUNT_SESSION ?
+      '<input id="authexpiredemail" type="email" autocomplete="username" placeholder="Email" ' +
+      'aria-label="Account email" style="padding:7px 10px;border-radius:7px;border:1px solid #2d3341;' +
+      'background:#0f1115;color:#e6e8ee;font-size:14px">' : '') +
     '<input id="authexpiredpw" type="password" autocomplete="current-password" placeholder="Password" ' +
     'aria-label="Access password" style="padding:7px 10px;border-radius:7px;border:1px solid #2d3341;' +
     'background:#0f1115;color:#e6e8ee;font-size:14px">' +
@@ -91,20 +95,23 @@ function _authBar(){
     'background:#3b82f6;color:#fff;font-weight:600;cursor:pointer">Sign in</button>' +
     '<span id="authexpirederr" role="alert" style="color:#f87171"></span>';
   document.body.appendChild(el);
+  const emailInput = document.getElementById('authexpiredemail');
+  if (emailInput) emailInput.value = window.CURRENT_USER_EMAIL || '';
 
   const submit = async () => {
     const pw = document.getElementById('authexpiredpw').value;
+    const email = emailInput ? emailInput.value : '';
     const err = document.getElementById('authexpirederr');
     err.textContent = '';
     try{
-      const body = new URLSearchParams({ password: pw });
+      const body = new URLSearchParams({ password: pw, email });
       // redirect:'manual' so a 302 (success) is reported as an opaque response rather than
       // being followed and replacing the page we are trying to preserve.
       const r = await window.__rawFetch(B + '/login', {
         method: 'POST', body, redirect: 'manual',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       });
-      if (r.status === 401){ err.textContent = 'Incorrect password.'; return; }
+      if (r.status === 401){ err.textContent = 'Email or password is incorrect.'; return; }
       if (r.status === 429){ err.textContent = 'Too many attempts — wait a few minutes.'; return; }
       el.remove();
       _authPrompted = false;
@@ -143,16 +150,62 @@ if (typeof window !== 'undefined' && window.fetch && !window.__rawFetch){
    for the real thing. A light response is upgraded in place once a full one arrives. */
 const REFCACHE = {};
 const REFPENDING = {};
+const PREVIEWPENDING = {};
+const SECTIONCACHE = {};
+
+async function fetchTimed(url, timeoutMs = 12000){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try { return await fetch(url, {signal: controller.signal}); }
+  finally { clearTimeout(timer); }
+}
+
+async function fetchSection(pub, section){
+  const key = pub + ':' + section;
+  if (SECTIONCACHE[key]) return SECTIONCACHE[key];
+  const url = B + '/api/ref-batch/' + encodeURIComponent(window.SLUG || '') +
+    '?pubs=' + encodeURIComponent(pub) + '&section=' + encodeURIComponent(section);
+  for (let attempt = 0; attempt < 2; attempt++){
+    try{
+      const r = await fetchTimed(url);
+      if (!r.ok) throw new Error('preview ' + r.status);
+      const data = await r.json(), item = data.items && data.items[pub];
+      if (!item) throw new Error('preview unavailable');
+      SECTIONCACHE[key] = item;
+      return item;
+    }catch(e){ if (attempt) break; }
+  }
+  return fetchRef(pub, true);
+}
+async function fetchPreview(pub){
+  if (REFCACHE[pub]) return REFCACHE[pub];
+  if (PREVIEWPENDING[pub]) return PREVIEWPENDING[pub];
+  PREVIEWPENDING[pub] = (async () => {
+    const r = await fetch(B + '/api/ref-batch/' + encodeURIComponent(window.SLUG || '') +
+                          '?pubs=' + encodeURIComponent(pub));
+    if (!r.ok) return null;
+    const data = await r.json(), item = data.items && data.items[pub];
+    if (!item) return null;
+    item._full = false; item._rationale = false; item._preview = true;
+    if (!REFCACHE[pub]) REFCACHE[pub] = item;
+    return REFCACHE[pub];
+  })();
+  try { return await PREVIEWPENDING[pub]; }
+  finally { delete PREVIEWPENDING[pub]; }
+}
 async function fetchRef(pub, light, rationaleOnly){
   const hit = REFCACHE[pub];
   if (hit && (rationaleOnly ? hit._rationale : (!light ? hit._full : true))) return hit;
+  if (light && !rationaleOnly){
+    try { const preview = await fetchPreview(pub); if (preview) return preview; } catch (e) {}
+  }
   const key = pub + (rationaleOnly ? ':rationale' : (light ? ':light' : ':full'));
   if (REFPENDING[key]) return REFPENDING[key];
   REFPENDING[key] = (async () => {
     const url = B + '/api/ref/' + encodeURIComponent(pub) +
                 '?slug=' + encodeURIComponent(window.SLUG || '') + (light ? '&light=1' : '') +
                 (rationaleOnly ? '&rationale=1' : '');
-    const r = await fetch(url);
+    const r = await fetchTimed(url, light ? 15000 : 25000);
     if (!r.ok) throw new Error('ref ' + r.status);
     const j = await r.json();
     j._full = !light;
@@ -378,13 +431,30 @@ async function prefetchTopN(){
    Kicked off after the list is interactive so it never delays first paint; concurrency-limited so
    it can never swamp the RAM-tight server. */
 async function warmDetails(){
-  if (window.PARTIAL) return;
-  const pubs = [...document.querySelectorAll('.refcard')].map(c => c.dataset.pub).filter(Boolean);
+  const all = [...document.querySelectorAll('.refcard')].map(c => c.dataset.pub).filter(Boolean);
+  // Partial results are provisional, so warm four; final reports warm six. The server separately
+  // prepares the top eight grounded rationales and all cached tab previews after ranking.
+  const pubs = all.slice(0, window.PARTIAL ? 4 : 6);
   if (!pubs.length) return;
+  try {
+    const q = pubs.map(encodeURIComponent).join(',');
+    const r = await fetch(B + '/api/ref-batch/' + encodeURIComponent(window.SLUG) + '?pubs=' + q);
+    if (r.ok){
+      const data = await r.json();
+      Object.entries(data.items || {}).forEach(([pub, item]) => {
+        if (!REFCACHE[pub]){
+          item._full = false; item._rationale = false; item._preview = true;
+          REFCACHE[pub] = item;
+          if (item.display && item.display.images) backfillThumb(pub, item.display.images);
+        }
+      });
+    }
+  } catch (e) {}
+  const missing = pubs.filter(pub => !REFCACHE[pub]);
   let i = 0;
   const worker = async () => {
-    while (i < pubs.length){
-      const pub = pubs[i++];
+    while (i < missing.length){
+      const pub = missing[i++];
       try {
         const j = await fetchRef(pub, true);
         if (j && j.display && j.display.images) backfillThumb(pub, j.display.images);
@@ -624,6 +694,21 @@ document.addEventListener('click', function(ev){
   else if (b.dataset.a === 'similar') openSimilar(pub);
 });
 
+// Pointer/keyboard intent gets priority over the background queue. On a slow connection this
+// usually completes while the user is moving from the tab label to the content pane.
+function warmIntendedTab(ev){
+  const b = ev.target.closest && ev.target.closest('.rtabs button[data-t]');
+  if (!b) return;
+  const card = b.closest('.refcard');
+  if (card && card.dataset.pub){
+    if (['abstract','claims','desc','class','figs'].includes(b.dataset.t))
+      fetchSection(card.dataset.pub, b.dataset.t).catch(() => {});
+    else if (!REFCACHE[card.dataset.pub]) fetchRef(card.dataset.pub, true).catch(() => {});
+  }
+}
+document.addEventListener('pointerover', warmIntendedTab, {passive:true});
+document.addEventListener('focusin', warmIntendedTab);
+
 async function rtab(btn){
   const card = btn.closest('.refcard'), t = btn.dataset.t, p = paneOf(card);
   const wasOpen = btn.getAttribute('aria-expanded') === 'true';
@@ -631,6 +716,7 @@ async function rtab(btn){
   if (wasOpen){ p.classList.remove('open'); p.hidden = true; return; }
   btn.setAttribute('aria-expanded', 'true');
   p.classList.add('open'); p.hidden = false;
+  p.setAttribute('aria-busy', 'true');
   p.innerHTML = '<span class="ploading"><span class="spin sm" aria-hidden="true"></span> loading…</span>';
   try{
     const fn = RPANES[t];
@@ -640,9 +726,18 @@ async function rtab(btn){
     hlNode(p);
   }catch(e){
     p.innerHTML = '<div class="pempty">Couldn\'t load this section. ' +
-      '<a href="' + gp(card.dataset.pub) + '" target="_blank" rel="noopener">Open on Google Patents</a>.</div>';
-  }
+      '<button type="button" class="linkish pane-retry" data-tab="' + esc(t) + '">Retry</button> or ' +
+      '<a href="' + gp(card.dataset.pub) + '" target="_blank" rel="noopener">open on Google Patents</a>.</div>';
+  }finally{ p.removeAttribute('aria-busy'); }
 }
+
+document.addEventListener('click', function(ev){
+  const retry = ev.target.closest && ev.target.closest('.pane-retry');
+  if (!retry) return;
+  const card = retry.closest('.refcard');
+  const tab = card && card.querySelector('.rtab[data-t="' + retry.dataset.tab + '"]');
+  if (tab){ tab.setAttribute('aria-expanded', 'false'); rtab(tab); }
+});
 
 /* The "this section does not exist" line. One sentence, plus the two office links that WILL
    have it — the useful thing to offer when the local corpus is thin on a document. */
@@ -656,7 +751,7 @@ function paneMissing(pub, what, d){
 
 async function paneAbstract(card){
   const pub = card.dataset.pub;
-  const j = await fetchRef(pub, true);
+  const j = await fetchSection(pub, 'abstract');
   const d = j.display || {};
   if (!d.abstract) return paneMissing(pub, 'abstract', d);
   let h = '<h4>Abstract</h4><div class="abstract">' + esc(d.abstract) + '</div>';
@@ -668,7 +763,7 @@ async function paneAbstract(card){
 
 async function paneClaims(card){
   const pub = card.dataset.pub;
-  const j = await fetchRef(pub, true);
+  const j = await fetchSection(pub, 'claims');
   const s = j.sections || {};
   if (!s.claims || !s.claims.length) return paneMissing(pub, 'claims', j.display);
   return '<h4>Claims (' + s.claims.length + ')</h4>' +
@@ -677,7 +772,7 @@ async function paneClaims(card){
 
 async function paneDesc(card){
   const pub = card.dataset.pub;
-  const j = await fetchRef(pub, true);
+  const j = await fetchSection(pub, 'desc');
   const s = j.sections || {};
   if (!s.paragraphs || !s.paragraphs.length) return paneMissing(pub, 'description text', j.display);
   return '<h4>Description (' + s.paragraphs.length + ' paragraphs)</h4>' +
@@ -686,7 +781,7 @@ async function paneDesc(card){
 
 async function paneClass(card){
   const pub = card.dataset.pub;
-  const j = await fetchRef(pub, true);
+  const j = await fetchSection(pub, 'class');
   const d = j.display || {};
   const cls = d.classifications || [];
   if (!cls.length) return paneMissing(pub, 'classification data', d);
@@ -747,13 +842,13 @@ function renderWhy(r){
   let h = '<div class="why">' + esc(r.why) + '</div>' + rationaleMeta(r);
   if (r.reads_on && r.reads_on.length)
     h += '<div class="readson"><span class="lbl2">reads on</span>' +
-      r.reads_on.map(x => '<span class="chip el">' + esc(x) + '</span>').join('') + '</div>';
+      r.reads_on.map(x => '<span class="chip">' + esc(x) + '</span>').join('') + '</div>';
   return h;
 }
 
 async function paneFigs(card){
   const pub = card.dataset.pub;
-  const j = await fetchRef(pub, true);
+  const j = await fetchSection(pub, 'figs');
   const d = j.display || {};
   const imgs = d.images || [];
   backfillThumb(pub, imgs);
@@ -765,9 +860,10 @@ async function paneFigs(card){
   return '<h4>Drawings (' + imgs.length + ')</h4>' +
     (d.figs_from_pdf ? '<p class="small muted" style="margin:-4px 0 9px">Extracted from the PDF facsimile.</p>' : '') +
     '<div class="g">' + imgs.map((im, i) =>
-      '<figure><img loading="lazy" decoding="async" src="' + esc(figThumb(pub, im)) + '" ' +
+      '<figure><button type="button" class="figbutton" onclick="openLb(this.querySelector(\'img\'))" ' +
+      'aria-label="Open ' + esc(kind + (i + 1) + ' of ' + pub) + '"><img loading="lazy" decoding="async" src="' + esc(figThumb(pub, im)) + '" ' +
       'data-full="' + esc(figFull(pub, im)) + '" ' +
-      'alt="' + esc(kind + (i + 1) + ' of ' + pub) + '" data-pub="' + esc(pub) + '" onclick="openLb(this)">' +
+      'alt="' + esc(kind + (i + 1) + ' of ' + pub) + '" data-pub="' + esc(pub) + '"></button>' +
       '<figcaption>' + (d.figs_from_pdf ? 'p. ' : 'fig ') + (i + 1) + '</figcaption></figure>').join('') +
     '</div>';
 }
@@ -895,6 +991,7 @@ function _lbFromNodes(nodes){
 }
 
 function openLb(img){
+  if (!img) return;
   lbOpener = document.activeElement && document.activeElement !== document.body
     ? document.activeElement : img;
   const gallery = img.closest('.gallery');
@@ -1095,7 +1192,10 @@ const selectedPubs = () => [...document.querySelectorAll('.selbox:checked')].map
 function updateBar(){
   const n = selectedPubs().length;
   document.getElementById('selcount').textContent = n + ' selected';
-  document.getElementById('exportbar').classList.toggle('show', n > 0);
+  const bar = document.getElementById('exportbar');
+  bar.hidden = n === 0;
+  bar.inert = n === 0;
+  bar.classList.toggle('show', n > 0);
 }
 function clearSel(){ document.querySelectorAll('.selbox:checked').forEach(b => (b.checked = false)); updateBar(); }
 function doExport(fmt){
@@ -1119,6 +1219,12 @@ function openCompare(){
   const sel = selectedPubs();
   if (sel.length < 2 || sel.length > 3){ alert('Select 2 or 3 references to compare side by side.'); return; }
   window.open(B + '/compare?slug=' + encodeURIComponent(window.SLUG) + '&pubs=' + encodeURIComponent(sel.join(',')), '_blank');
+}
+function startDraft(){
+  const sel = selectedPubs();
+  if (!sel.length){ alert('Select at least one ranked reference for the drafting source set.'); return; }
+  const query = new URLSearchParams({search_slug: window.SLUG, pubs: sel.join(',')});
+  location.href = B + '/drafts/new?' + query.toString();
 }
 
 /* ── triage flags ────────────────────────────────────────────────────────────────────────── */
@@ -1183,6 +1289,9 @@ async function openDetail(pn, push = true){
   document.getElementById('soBack').hidden = detailStack.length <= 1;
   document.getElementById('soBreadcrumb').textContent = detailStack.join('  ›  ');
   setHash(pn);
+  overlay().hidden = false;
+  overlay().inert = false;
+  overlay().setAttribute('aria-hidden', 'false');
   overlay().classList.add('open');
   soSetBackgroundInert(true);
   document.body.style.overflow = 'hidden';
@@ -1190,14 +1299,25 @@ async function openDetail(pn, push = true){
   const body = document.getElementById('soBody');
   body.innerHTML = '<div class="so-loading"><span class="spin" aria-hidden="true"></span>' +
     '<div>Loading ' + esc(pn) + ' — drawings, claims, citations…</div></div>';
-  try{ renderDetail(pn, await fetchRef(pn)); }
+  let shown = false;
+  try{
+    const preview = REFCACHE[pn] || await fetchPreview(pn);
+    if (preview){ renderDetail(pn, preview); shown = true; }
+    const full = await fetchRef(pn);
+    if ((detailStack[detailStack.length - 1] || '').replace(/ · similar$/, '') === pn)
+      renderDetail(pn, full);
+  }
   catch(e){
+    if (shown) return;
     body.innerHTML = '<div class="so-loading"><div>Couldn\'t load ' + esc(pn) + '.</div>' +
       '<a class="btn ghost sm" href="' + gp(pn) + '" target="_blank" rel="noopener">Open on Google Patents</a></div>';
   }
 }
 function closeDetail(){
   overlay().classList.remove('open');
+  overlay().inert = true;
+  overlay().setAttribute('aria-hidden', 'true');
+  overlay().hidden = true;
   soSetBackgroundInert(false);
   detailStack.length = 0;
   document.body.style.overflow = '';
@@ -1245,14 +1365,16 @@ function renderDetail(pn, j){
     h += '<h2>Drawings — ' + imgs.length + (d.figs_from_pdf ? ', from the PDF facsimile' : '') + '</h2>';
     h += '<div class="gallery"><div class="gmain">' +
       (imgs.length > 1 ? '<button class="gnav l" onclick="galPrev()" aria-label="Previous figure">‹</button>' : '') +
-      '<img id="gMain" src="' + imgs[0] + '" data-pub="' + esc(pn) + '" onclick="openLb(this)" ' +
-      'alt="' + esc(kind + '1 of ' + pn) + '">' +
+      '<button type="button" class="gzoom" onclick="openLb(this.querySelector(\'img\'))" aria-label="Open current drawing full size">' +
+      '<img id="gMain" src="' + imgs[0] + '" data-pub="' + esc(pn) + '" ' +
+      'alt="' + esc(kind + '1 of ' + pn) + '"></button>' +
       (imgs.length > 1 ? '<button class="gnav r" onclick="galNext()" aria-label="Next figure">›</button>' : '') +
       '<span class="gcount" id="gCount">1 / ' + imgs.length + '</span></div>';
     if (imgs.length > 1)
       h += '<div class="gthumbs">' + imgs.map((u, i) =>
+        '<button type="button" onclick="galSet(' + i + ')" aria-label="Show ' + esc(kind + (i + 1)) + '">' +
         '<img src="' + u + '" alt="' + esc(kind + (i + 1) + ' of ' + pn) + '" class="' + (i === 0 ? 'sel' : '') +
-        '" onclick="galSet(' + i + ')" loading="lazy">').join('') + '</div>';
+        '" loading="lazy"></button>').join('') + '</div>';
     h += '</div>';
   }
 
@@ -1527,7 +1649,8 @@ function guardStaticFigures(){
       const box = document.createElement('div');
       box.className = 'nodig';
       box.textContent = 'Drawing unavailable.';
-      img.replaceWith(box);
+      const button = img.closest('.cmpimgbtn');
+      if (button) button.replaceWith(box); else img.replaceWith(box);
     };
     if (img.complete && img.naturalWidth === 0) fail(); else img.addEventListener('error', fail);
   });
@@ -1536,6 +1659,8 @@ function guardStaticFigures(){
 /* ── init ────────────────────────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   guardStaticFigures();
+  const compactReport = window.matchMedia && window.matchMedia('(max-width:640px)').matches;
+  document.querySelectorAll('.reportoverview,.resultfilters').forEach(d => { d.open = !compactReport; });
   const lb = document.getElementById('lb');
   if (lb){
     document.addEventListener('keydown', e => {
@@ -1578,11 +1703,11 @@ document.addEventListener('DOMContentLoaded', () => {
   recoverBrokenInitialThumbs();
   resolveThumbs();
   resolvePdfLinks();
-  // A partial report is replaced shortly and the agent is still consuming the same server. Avoid
-  // warming disposable cards; the final page performs both bounded prefetches after reload.
+  // Text tabs are a first-result feature, not a final-report feature. Warm a bounded partial head
+  // immediately; the final reload replaces it with one batched cache fill for all visible cards.
+  setTimeout(warmDetails, window.PARTIAL ? 250 : 700);
   if (!window.PARTIAL){
     prefetchTopN();        // proactively resolve drawings + worldwide family for shown final cards
-    setTimeout(warmDetails, 1200); // eager-warm final card details so their tabs open instantly
     setTimeout(warmRationales, 2600); // deeper top-card explanations, no click required
     warmQueryClaimGrid();  // uploaded claims x references; server already runs it in background
   }

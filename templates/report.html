@@ -48,7 +48,7 @@
 
   <!-- ── compact header ──────────────────────────────────────────────────── -->
   <div class="rhead">
-    <h1>{{ v.title }}</h1>
+    <h1 id="reportTitle">{{ (v.account_search.title if v.account_search and v.account_search.title else v.title) }}</h1>
     {#  WHAT WAS SEARCHED, in full. The header used to hard-truncate at 280 characters with an
         ellipsis and no way back — for a document/patent-link search the query IS a multi-paragraph
         brief, so the operator could not see what the agent actually ran. The whole string is now in
@@ -90,12 +90,14 @@
     {% endif %}
 
     <div class="actions">
+      {% if current_user %}<a class="btn sm" href="{{ request.script_root }}/drafts/new?search_slug={{ v.slug }}">Draft US application</a>{% endif %}
       <a class="btn ghost sm" href="{{ request.script_root }}/print/{{ v.slug }}" target="_blank" rel="noopener">Print / PDF view</a>
       {% if current_user %}
       <button type="button" class="btn ghost sm save-report{% if v.account_search and v.account_search.saved %} saved{% endif %}"
               id="saveReportBtn" data-saved="{{ 'true' if v.account_search and v.account_search.saved else 'false' }}">
         {{ '✓ Saved report' if v.account_search and v.account_search.saved else 'Save report' }}
       </button>
+      <button type="button" class="btn ghost sm" id="renameReportBtn">Rename report</button>
       {% endif %}
       <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}?rerun=1"
          onclick="return confirm('Re-run the agent live? First matches usually appear within a minute; full refinement can take several minutes.')">Re-run</a>
@@ -123,6 +125,8 @@
       meant scrolling past 25 result cards to reach the grid or the recall figure. Collapsed it
       costs three summary rows and stays out of the reading path; open, it is where the eye
       already is. /print and the exports keep their own full-width, always-expanded copies. #}
+  <details class="reportoverview">
+    <summary>Report overview <span>grids, coverage and search scope</span></summary>
   <div class="tailwrap">
 
     <details class="tail{% if v.partial %} pending{% endif %}">
@@ -261,8 +265,11 @@
       </div>
     </details>
   </div>
+  </details>
 
   <!-- ── results ─────────────────────────────────────────────────────────── -->
+  <details class="resultfilters">
+    <summary>Filter and sort results</summary>
   <div class="controls" role="group" aria-label="Sort and filter the results">
     <span class="cgroup">
       <label class="lab" for="sortby">Sort by</label>
@@ -296,6 +303,7 @@
     <label class="toggle"><input type="checkbox" id="fdraw" onchange="applyControls()"> Has drawings</label>
     <span id="shown" role="status" aria-live="polite" aria-atomic="true"></span>
   </div>
+  </details>
 
   <div class="cards" id="cards">
     {% for c in v.cards %}
@@ -442,29 +450,29 @@
           WEIGHT: this strip is the only thing on the card that scales with the tab count, so it
           is kept to bare attributes. Everything it opens is fetched on demand. #}
       <div class="rtabs">
-        <button type="button" class="rtab" data-t="why" aria-expanded="false"
+        <button type="button" class="rtab" data-t="why" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
                 aria-label="Why relevant, {{ c.pub }}">Why relevant</button>
         {% if c.abstract %}
-        <button type="button" class="rtab" data-t="abstract" aria-expanded="false"
+        <button type="button" class="rtab" data-t="abstract" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
                 aria-label="Abstract, {{ c.pub }}">Abstract</button>
         {% endif %}
         {% if c.claims %}
-        <button type="button" class="rtab" data-t="claims" aria-expanded="false"
+        <button type="button" class="rtab" data-t="claims" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
                 aria-label="Claims, {{ c.pub }}">Claims<span class="n">{{ c.claims|length }}</span></button>
         {% endif %}
         {% if c.description %}
-        <button type="button" class="rtab" data-t="desc" aria-expanded="false"
+        <button type="button" class="rtab" data-t="desc" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
                 aria-label="Description, {{ c.pub }}">Description</button>
         {% endif %}
         {% if c.cpc %}
-        <button type="button" class="rtab" data-t="class" aria-expanded="false"
+        <button type="button" class="rtab" data-t="class" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
                 aria-label="Classifications, {{ c.pub }}">Classifications</button>
         {% endif %}
         {% if c.n_images %}
-        <button type="button" class="rtab" data-t="figs" aria-expanded="false"
+        <button type="button" class="rtab" data-t="figs" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
                 aria-label="Drawings, {{ c.pub }}">Drawings<span class="n">{{ c.n_images }}</span></button>
         {% endif %}
-        <button type="button" class="rtab" data-t="cites" aria-expanded="false"
+        <button type="button" class="rtab" data-t="cites" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
                 aria-label="Citations, {{ c.pub }}">Citations</button>
         <span class="rtab spacer"></span>
         <button type="button" class="rtab primary" data-a="detail"
@@ -472,7 +480,7 @@
         <button type="button" class="rtab" data-a="similar"
                 aria-label="Similar to {{ c.pub }}">Similar</button>
       </div>
-      <div class="rpane" hidden></div>
+      <div class="rpane" id="pane-{{ c.pub }}" role="region" aria-live="polite" hidden></div>
     </article>
     {% endfor %}
   </div>
@@ -485,12 +493,13 @@
 
 </div>
 
-<div class="exportbar" id="exportbar">
+<div class="exportbar" id="exportbar" hidden inert>
   <div class="wrap" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
     <b id="selcount">0 selected</b>
     <span class="grow"></span>
     <button class="btn ghost sm" onclick="clearSel()">Clear</button>
     <button class="btn ghost sm" onclick="openCompare()">Compare</button>
+    {% if current_user %}<button class="btn sm" onclick="startDraft()" title="Open a versioned US application workspace grounded in the selected references">Start US draft</button>{% endif %}
     {#  Four shapes, one selection. PDF/Word are the document; Excel is the result list with each
         reference's sketch in its row; Markdown is text-only but carries the FULL claims and
         description that every other format drops. The titles say which is which, because
@@ -507,7 +516,7 @@
   <input type="hidden" name="format" id="exportfmt">
 </form>
 
-<div id="soOverlay">
+<div id="soOverlay" hidden inert aria-hidden="true">
   <aside class="slideover" role="dialog" aria-modal="true" aria-label="Full document">
     <div class="so-head">
       <button type="button" id="soBack" hidden>‹ Back</button>
@@ -558,6 +567,27 @@ window.REPORT_SAVED = {{ (v.account_search and v.account_search.saved)|default(f
         save.textContent = d.saved ? '✓ Saved report' : 'Save report';
       }catch(_){ save.textContent = 'Could not save — retry'; }
       finally{ save.disabled = false; }
+    });
+  }
+  const rename = document.getElementById('renameReportBtn');
+  if(rename){
+    rename.addEventListener('click', async () => {
+      const heading = document.getElementById('reportTitle');
+      const title = prompt('Report title', heading ? heading.textContent.trim() : 'Patent search report');
+      if(title === null || !title.trim()) return;
+      rename.disabled = true;
+      try{
+        const r = await fetch(B + '/api/searches/' + encodeURIComponent(window.SLUG), {
+          method:'POST', credentials:'same-origin',
+          headers:{'Content-Type':'application/json','X-CSRF-Token':window.CSRF_TOKEN || ''},
+          body:JSON.stringify({saved:true,title:title.trim().slice(0,180)})
+        });
+        const d = await r.json();
+        if(!r.ok) throw new Error(d.error || 'rename failed');
+        if(heading) heading.textContent = d.title || title.trim();
+        if(save){ save.dataset.saved='true'; save.classList.add('saved'); save.textContent='✓ Saved report'; }
+      }catch(_){ rename.textContent = 'Could not rename — retry'; }
+      finally{ rename.disabled = false; }
     });
   }
 

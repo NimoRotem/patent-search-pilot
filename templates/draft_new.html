@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Start US patent draft — rotemAI patent search{% endblock %}
+{% block body %}
+<div class="wrap draftpage">
+  <div class="pagehead">
+    <div><h1>Start a US patent application draft</h1>
+      <p class="muted">The inventor disclosure is the source of truth. Search references are used only for background and differentiation.</p></div>
+    <a class="btn ghost sm" href="{{ request.script_root }}/drafts">Draft library</a>
+  </div>
+  {% if error %}<div class="formerror" role="alert">{{ error }}</div>{% endif %}
+
+  <section class="panel draftstep">
+    <span class="stepno">1</span>
+    <div class="draftstep-body">
+      <h2>Source search report</h2>
+      {% if choices %}
+      <form method="get" class="reportpicker">
+        <label for="draft-report">Completed report</label>
+        <select id="draft-report" name="search_slug" required>
+          <option value="">Choose a completed search…</option>
+          {% for item in choices %}<option value="{{ item.slug }}"{% if item.slug == search_slug %} selected{% endif %}>
+            {{ item.title or item.query[:90] or item.slug }} · {{ item.mode.replace('_',' ') }}
+          </option>{% endfor %}
+        </select>
+        <button class="btn ghost sm" type="submit">Load report</button>
+      </form>
+      {% else %}
+      <p class="muted">No completed reports are available in this account yet.</p>
+      <a class="btn" href="{{ request.script_root }}/">Run a prior-art search</a>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if report_view %}
+  <form method="post" class="draftcreate">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="search_slug" value="{{ search_slug }}">
+    <section class="panel draftstep">
+      <span class="stepno">2</span>
+      <div class="draftstep-body">
+        <h2>Inventor disclosure and filing setup</h2>
+        <div class="draftwarning"><b>Do not import features from prior art.</b> Expand the text below with the structures, steps, alternatives and drawings actually supplied by the inventor. Missing facts stay marked as drafting notes.</div>
+        <label for="draft-title">Working title</label>
+        <input id="draft-title" type="text" name="title" maxlength="240" required value="{{ values.title or '' }}">
+        <label for="draft-disclosure">Invention disclosure</label>
+        <textarea id="draft-disclosure" name="disclosure_text" rows="14" maxlength="240000" required>{{ values.disclosure_text or '' }}</textarea>
+        <div class="fieldhint">Include how it works, required relationships, alternatives, materials, dimensions when material, and figure descriptions. Minimum 40 characters.</div>
+        <label for="draft-notes">Inventor, applicant and filing notes <span class="muted">(optional)</span></label>
+        <textarea id="draft-notes" name="inventor_notes" rows="6" maxlength="40000" placeholder="Inventors, applicant, priority applications, government support, drawing notes…">{{ values.inventor_notes or '' }}</textarea>
+      </div>
+    </section>
+
+    <section class="panel draftstep">
+      <span class="stepno">3</span>
+      <div class="draftstep-body">
+        <h2>Prior-art sources</h2>
+        <p class="small muted">Choose 1–50 references from the authoritative ranked report. They may inform Background; they cannot supply missing invention matter.</p>
+        <div class="draftrefs" role="group" aria-label="Select prior-art references">
+          {% for card in report_view.cards %}
+          <label class="draftref">
+            <input type="checkbox" name="pubs" value="{{ card.pub }}"{% if card.pub in selected %} checked{% endif %}>
+            <span class="draftref-rank">#{{ card.rank }}</span>
+            <span><b>{{ card.pub }}</b> · {{ card.title or '(untitled)' }}
+              <small>{{ card.get('relevancy_opinion') or (card.abstract or '')[:180] or 'Open the report to review this source.' }}</small></span>
+          </label>
+          {% endfor %}
+        </div>
+        <div class="draftcreate-actions">
+          <a class="btn ghost" href="{{ request.script_root }}/report/{{ search_slug }}" target="_blank" rel="noopener">Review full search report</a>
+          <button class="btn" type="submit">Create drafting workspace</button>
+        </div>
+      </div>
+    </section>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

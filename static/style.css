@@ -56,7 +56,7 @@ footer{color:var(--faint);font-size:12px;text-align:center;padding:34px 22px 46p
 .btn.ghost:hover{background:var(--s2);border-color:var(--faint);color:var(--ink)}
 .btn.sm{padding:7px 13px;font-size:13px}
 .btn.xs{padding:5px 9px;font-size:11.5px}
-textarea,input[type=text],input[type=email],input[type=password],select{width:100%;padding:11px 13px;
+textarea,input:not([type]),input[type=text],input[type=email],input[type=password],input[type=search],select{width:100%;padding:11px 13px;
   border:1px solid var(--line2);border-radius:var(--r-sm);font:inherit;color:var(--ink);
   background:var(--s2);appearance:none}
 select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
@@ -154,6 +154,13 @@ a.chip:hover,button.chip:hover{color:var(--ink);border-color:var(--faint);text-d
   flex-wrap:wrap}
 .genbar{height:3px;background:var(--s2);border-radius:2px;overflow:hidden;margin-top:14px}
 .genbarfill{height:100%;background:var(--accent);width:0;transition:width .6s ease}
+.waitchoice{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 18px;align-items:center;
+  margin:14px 0 20px;padding:13px 14px;background:var(--s2);border:1px solid var(--line2);
+  border-radius:var(--r-sm)}
+.waitcopy{display:flex;flex-direction:column;min-width:0}.waitcopy b{font-size:13px}
+.waitcopy span,.waitstatus{font-size:12px;color:var(--muted);line-height:1.45}
+.waitactions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.waitstatus{grid-column:1/-1;min-height:17px}
 /* same narrative, condensed, while the report refines in place */
 .refining{display:flex;gap:13px;align-items:flex-start;padding:13px 16px;background:var(--s1);
   border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r);margin:18px 0}
@@ -168,6 +175,9 @@ a.chip:hover,button.chip:hover{color:var(--ink);border-color:var(--faint);text-d
 .stat b{display:block;font-size:17px;font-weight:650}
 .stat span{font-size:11.5px;color:var(--faint)}
 .actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:15px}
+.reportoverview>summary,.resultfilters>summary{display:none}
+details.reportoverview:not([open])>.tailwrap,details.resultfilters:not([open])>.controls{display:flex}
+details.reportoverview:not([open])>.tailwrap{display:block}
 
 .callout{display:flex;gap:13px;padding:15px 17px;border-radius:var(--r);border:1px solid var(--line);
   background:var(--s1);border-left:3px solid var(--warn);margin:18px 0}
@@ -335,7 +345,8 @@ td.cell.empty{color:var(--line2)}
 .hd{font-weight:650;color:var(--ink)}
 .g{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
 .g figure{margin:0;background:#fff;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
-.g img{width:100%;height:132px;object-fit:contain;display:block;cursor:zoom-in;background:#fff}
+.figbutton,.gzoom,.gthumbs button,.cmpimgbtn{border:0;padding:0;background:transparent;cursor:zoom-in;display:block;width:100%}
+.g img{width:100%;height:132px;object-fit:contain;display:block;background:#fff}
 .g figcaption{font-size:10.5px;color:var(--faint);text-align:center;padding:3px;background:var(--s2)}
 .figcaps{margin-top:12px;font-size:12.5px;color:var(--muted)}
 .figcap{padding:4px 0;border-bottom:1px solid var(--line)}
@@ -434,12 +445,14 @@ details.sec2 .secbody .scrollbox{max-height:460px}
    overflow its frame and get cropped. Both the frame and the image are bounded by the same
    absolute token instead, which always resolves. */
 .gmain img{max-width:100%;max-height:var(--galh);object-fit:contain;cursor:zoom-in}
+.gzoom{width:100%;height:100%;display:grid;place-items:center}
 .gnav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(13,17,23,.72);color:#fff;
   border:0;width:36px;height:52px;font-size:22px;cursor:pointer;border-radius:var(--r-sm)}
 .gnav.l{left:8px} .gnav.r{right:8px}
 .gcount{position:absolute;bottom:8px;right:10px;background:rgba(13,17,23,.72);color:#fff;
   font-size:11px;padding:2px 9px;border-radius:var(--r-pill)}
 .gthumbs{display:flex;gap:7px;overflow-x:auto;margin-top:9px;padding-bottom:5px}
+.gthumbs button{width:66px;flex:none}
 .gthumbs img{width:66px;height:66px;object-fit:contain;background:#fff;border:1px solid var(--line);
   border-radius:6px;cursor:pointer;flex:none}
 .gthumbs img.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
@@ -472,7 +485,7 @@ details.sec2 .secbody .scrollbox{max-height:460px}
 .cmptitle{font-weight:650;font-size:14px;margin:5px 0 4px;line-height:1.35}
 .cmpsec{padding:13px 14px;border-bottom:1px solid var(--line)}
 .cmpsec h5{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin-bottom:8px}
-.cmpimg{width:100%;height:210px;object-fit:contain;background:#fff;border-radius:var(--r-sm);cursor:zoom-in}
+.cmpimg{width:100%;height:210px;object-fit:contain;background:#fff;border-radius:var(--r-sm);display:block}
 .cmp-el{font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--line);color:var(--muted)}
 
 /* ══ responsive ═══════════════════════════════════════════════════════════ */
@@ -793,14 +806,22 @@ details.tail.pending>summary::before{visibility:hidden}
 .formsuccess{color:var(--good);border-color:rgba(63,185,80,.32);background:var(--good-soft)}
 .notifyopt{display:flex;align-items:flex-start;gap:8px;margin:13px 0 0;color:var(--muted);font-size:12.5px}
 .notifyopt input,.checkrow input{accent-color:var(--accent);margin-top:3px}
+.notifychoice{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  margin-top:15px;padding:12px 13px;background:var(--s2);border:1px solid var(--line);
+  border-radius:var(--r-sm)}
+.notifychoice>div{display:flex;flex-direction:column;min-width:220px;flex:1}
+.notifychoice>div b{font-size:12.5px}.notifychoice>div span{font-size:11.5px;color:var(--muted)}
+.notifychoice .notifyopt{margin:0;max-width:420px}
 .genmail{font-size:12.5px;color:var(--muted);margin:8px 0 18px}
 .historytabs{display:flex;gap:5px;margin:10px 0 14px}
 .historytabs a{padding:6px 11px;border:1px solid var(--line);border-radius:var(--r-pill);font-size:12.5px;color:var(--muted)}
 .historytabs a.active,.historytabs a:hover{background:var(--accent-soft);border-color:rgba(76,141,255,.4);color:var(--ink);text-decoration:none}
+.historytools{display:grid;grid-template-columns:minmax(220px,1fr) 170px auto;gap:9px;align-items:end;margin:12px 0}.historytools label{font-size:11.5px;color:var(--muted);font-weight:600}.historytools label span{display:block;margin-bottom:4px}.historyempty{padding:18px;text-align:center;color:var(--muted)}.examples{margin-top:26px}.examples>summary{font-size:16px;font-weight:650;cursor:pointer;list-style:none}.examples>summary::-webkit-details-marker{display:none}.examples>summary::before{content:'▸';color:var(--faint);margin-right:8px}.examples[open]>summary::before{content:'▾'}
 .accountpage,.adminpage{padding-top:26px}
 .pagehead{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}
 .pagehead h1{font-size:24px}.pagehead p{margin:4px 0 0}
 .accountgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.profilestats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}
 .accountpanel{padding:20px}.accountpanel h2{font-size:16px}
 .checkrow{display:flex!important;gap:8px;align-items:flex-start;font-weight:500!important;margin:8px 0}
 .adminstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}
@@ -822,6 +843,26 @@ details.tail.pending>summary::before{visibility:hidden}
 .archivecopy b{font-size:12.5px}.archivecopy span{font-size:11.5px;color:var(--muted);line-height:1.45}
 .save-report.saved{color:var(--good);border-color:rgba(63,185,80,.4);background:var(--good-soft)}
 
+/* ── versioned US drafting workspace ───────────────────────────────────── */
+.draftpage{padding-top:26px}.draftlist{display:flex;flex-direction:column;gap:10px}
+.draftrow{padding:16px 18px;display:flex;align-items:center;gap:18px}.draftrow-main{min-width:0;flex:1}
+.draftrow-top,.draftmeta{display:flex;align-items:center;gap:8px 13px;flex-wrap:wrap}
+.draftrow h2{font-size:16px;margin:7px 0 3px}.draftrow p{margin:0}
+.statuspill{display:inline-flex;align-items:center;padding:3px 9px;border:1px solid var(--line2);border-radius:var(--r-pill);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:var(--s2)}
+.status-ready{color:var(--good);background:var(--good-soft);border-color:rgba(63,185,80,.35)}
+.status-queued,.status-generating{color:var(--accent);background:var(--accent-soft);border-color:rgba(76,141,255,.4)}
+.status-archived{color:var(--faint)}
+.emptystate{text-align:center;padding:48px 28px;max-width:720px;margin:34px auto}.emptystate h2{font-size:20px;margin:10px 0 7px}.emptystate p{max-width:600px;margin:0 auto 20px}.emptyicon{font:700 34px Georgia,serif;color:var(--accent)}
+.draftstep{display:grid;grid-template-columns:42px minmax(0,1fr);gap:14px;padding:20px;margin-bottom:12px}.stepno{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:750}.draftstep-body{min-width:0}.draftstep h2,.draftpanel h2{font-size:17px;margin-bottom:5px}.draftstep label,.draftinputs label,.drafteditor label,.generatepanel label{display:block;font-size:12px;color:var(--muted);font-weight:650;margin:14px 0 6px}.fieldhint{font-size:11.5px;color:var(--faint);margin-top:5px}.reportpicker{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 10px;align-items:end;margin-top:12px}.reportpicker label{grid-column:1/-1;margin:0}
+.draftwarning{padding:11px 13px;margin:13px 0;background:var(--warn-soft);border:1px solid rgba(210,153,34,.32);border-radius:var(--r-sm);font-size:12.5px;color:#e4c777;line-height:1.55}.draftwarning b{color:#f0d68a}.draftwarning code{font-size:11.5px}
+.draftrefs{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:var(--r-sm);margin:12px 0;padding:4px}.draftrefs.compact{max-height:430px}.draftref{display:grid;grid-template-columns:22px 34px minmax(0,1fr);gap:8px;align-items:start;padding:10px;border-bottom:1px solid var(--line);cursor:pointer}.draftref:last-child{border-bottom:0}.draftref:hover{background:var(--s2)}.draftref input{accent-color:var(--accent);width:17px;height:17px;margin-top:2px}.draftref-rank{font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}.draftref b{font-size:12.5px}.draftref small{display:block;color:var(--muted);font-size:11.5px;line-height:1.45;margin-top:3px}.draftcreate-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:16px}.draftcreate-actions>span{margin-right:auto}
+.drafthead{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:17px}.draftcrumb{font-size:11.5px;color:var(--faint);margin-bottom:5px}.drafthead h1{font-size:25px;line-height:1.25}.draftmeta{font-size:12px;color:var(--muted);margin-top:8px}.drafthead-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.draftjob{display:flex;align-items:center;gap:14px;padding:15px 17px;margin-bottom:14px;border-left:3px solid var(--accent)}.draftjob>div{min-width:0;flex:1}.draftjob h2{font-size:15px}.draftjob p{margin:3px 0 0;color:var(--muted);font-size:12.5px}.draftjob.failed{border-left-color:var(--bad)}
+.draftworkspace{display:grid;grid-template-columns:190px minmax(0,1fr);gap:16px;align-items:start}.draftside{position:sticky;top:70px;display:flex;flex-direction:column;padding:10px;background:var(--s1);border:1px solid var(--line);border-radius:var(--r)}.draftside>a{padding:8px 9px;color:var(--muted);font-size:12.5px;border-radius:6px}.draftside>a:hover{background:var(--s2);color:var(--ink);text-decoration:none}.draftreview{border-top:1px solid var(--line);margin-top:7px;padding:12px 9px 4px;display:flex;flex-direction:column;gap:5px}.draftreview b{font-size:11px;text-transform:uppercase;letter-spacing:.06em}.draftreview span{font-size:10.5px;color:var(--faint);line-height:1.4}.draftmain{display:flex;flex-direction:column;gap:12px;min-width:0}.draftpanel{padding:19px}.draftpanel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.inlineform{display:flex;gap:7px;align-items:center}.inlineform select{width:auto;padding-top:7px;padding-bottom:7px;font-size:12.5px}
+details.draftpanel>summary{list-style:none;cursor:pointer;margin:-19px;padding:18px 19px}details.draftpanel>summary::-webkit-details-marker{display:none}details.draftpanel>summary span{display:flex;flex-direction:column;gap:2px}details.draftpanel>summary small{font-weight:400;color:var(--muted)}details.draftpanel[open]>summary{border-bottom:1px solid var(--line);margin-bottom:16px}
+.drafteditor textarea{font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;min-height:110px}.drafteditor #section-title{min-height:72px}.draftinputs button,.generatepanel button{margin-top:13px}.draftempty{padding:30px 10px;text-align:center;color:var(--muted)}.generatepanel{border-left:3px solid var(--accent)}.generatepanel form{margin-top:10px}.versionlist{display:flex;flex-direction:column;margin-top:11px;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}.versionrow{display:grid;grid-template-columns:110px minmax(0,1fr) auto;gap:10px;padding:9px 11px;color:var(--muted);border-bottom:1px solid var(--line);font-size:11.5px}.versionrow:last-child{border-bottom:0}.versionrow:hover,.versionrow.current{background:var(--s2);text-decoration:none;color:var(--ink)}.versionrow b{font-size:12.5px}.archiveproject{text-align:right}
+.versiondiff{margin-top:16px;border-top:1px solid var(--line);padding-top:13px}.versiondiff summary{cursor:pointer;color:var(--accent);font-size:12.5px}.versiondiff pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:480px;overflow:auto;background:var(--s0);border:1px solid var(--line);border-radius:var(--r-sm);padding:12px;font-size:11px;line-height:1.5;margin-top:9px}
+
 /* Keep the report readable at phone widths. Controls become labelled rows and the card body gets
    the full width below its compact triage/thumbnail row; only the family strip may scroll locally. */
 @media (max-width:640px){
@@ -832,7 +873,20 @@ details.tail.pending>summary::before{visibility:hidden}
   footer{padding-left:12px;padding-right:12px;overflow-wrap:anywhere}
   .authwrap{padding-top:28px}.authcard{padding:20px}.authlinks{flex-direction:column;gap:6px}
   .accountgrid{grid-template-columns:1fr}.adminstats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .profilestats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .historytools{grid-template-columns:1fr}.historytools .btn{width:100%;justify-content:center}
+  .waitchoice{grid-template-columns:1fr}.waitactions{justify-content:flex-start}
   .archivecard{align-items:flex-start;flex-wrap:wrap}.archivecopy{min-width:180px}
+  .reportoverview>summary,.resultfilters>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 13px;margin:10px 0;background:var(--s1);border:1px solid var(--line);border-radius:var(--r-sm);font-size:13px;font-weight:650;cursor:pointer;list-style:none}
+  .reportoverview>summary span{font-size:11px;color:var(--muted);font-weight:400}.reportoverview>summary::-webkit-details-marker,.resultfilters>summary::-webkit-details-marker{display:none}
+  details.reportoverview:not([open])>.tailwrap,details.resultfilters:not([open])>.controls{display:none}
+  .reportoverview[open]>summary,.resultfilters[open]>summary{border-color:var(--accent);color:var(--accent)}
+  .reportoverview .tailwrap{margin-top:0}.resultfilters .controls{margin-bottom:10px}
+  header.top a:not(.brand){min-height:40px;display:inline-flex;align-items:center}
+  .btn.sm,.rtab,.fp{min-height:44px}.fp{width:44px}.flagpills{flex-direction:row}
+  .draftpage{padding-top:18px}.draftrow,.drafthead,.draftpanel-head{align-items:stretch;flex-direction:column}.draftrow>.btn{justify-content:center}
+  .draftstep{grid-template-columns:1fr;padding:16px}.reportpicker{grid-template-columns:1fr}.reportpicker label{grid-column:auto}.draftcreate-actions>*{width:100%;justify-content:center}
+  .draftworkspace{grid-template-columns:1fr}.draftside{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.draftreview{grid-column:1/-1}.drafthead-actions{justify-content:stretch}.drafthead-actions .btn{flex:1;justify-content:center}.draftjob{align-items:flex-start;flex-wrap:wrap}.draftjob form{width:100%}.draftjob .btn{width:100%;justify-content:center}.draftpanel{padding:15px}details.draftpanel>summary{margin:-15px;padding:15px}details.draftpanel[open]>summary{margin-bottom:14px}.versionrow{grid-template-columns:1fr}.inlineform{width:100%}.inlineform select{flex:1}.drafteditor textarea{min-height:170px}.draftrefs{max-height:62dvh}
 
   .controls{align-items:stretch;gap:9px;padding:11px;max-width:100%}
   .controls .cgroup{display:grid;grid-template-columns:minmax(82px,auto) minmax(0,1fr);
@@ -841,17 +895,22 @@ details.tail.pending>summary::before{visibility:hidden}
   .controls .toggle{flex:1 1 140px}
   #shown{width:100%;margin-left:0;white-space:normal}
 
-  .refhead{display:grid;grid-template-columns:32px minmax(0,1fr);gap:10px;padding:12px;min-width:0}
-  .selcol{grid-column:1;grid-row:1;min-width:0}
-  .rthumb{grid-column:2;grid-row:1;width:118px;max-width:100%;height:124px}
-  .figprov{grid-column:2;max-width:100%;margin-top:-4px;overflow-wrap:anywhere}
-  .rbody{grid-column:1 / -1;width:100%;min-width:0;flex-direction:column;gap:10px}
+  .refhead{display:grid;grid-template-columns:118px minmax(0,1fr);gap:10px;padding:12px;min-width:0}
+  .selcol{grid-column:2;grid-row:1;min-width:0;align-self:start;flex-direction:row;flex-wrap:wrap}
+  .rthumb{grid-column:1;grid-row:1;width:118px;max-width:100%;height:124px}
+  .figprov{grid-column:1 / -1;grid-row:2;max-width:100%;margin-top:-4px;overflow-wrap:anywhere}
+  .rbody{grid-column:1 / -1;grid-row:3;width:100%;min-width:0;flex-direction:column;gap:10px}
   .rmain{width:100%;min-width:0}
   .rmeta,.rsub,.rchips,.rcovers{max-width:100%;overflow-wrap:anywhere}
   .famstrip{width:100%;max-width:100%;min-width:0;flex-wrap:nowrap;overflow-x:auto;
     overscroll-behavior-inline:contain;padding-bottom:4px}
   .famstrip .famsum{white-space:normal;min-width:118px}
   .relbox{align-self:flex-start}
+  .scrollbox{max-height:65dvh}
+}
+
+@media (max-width:640px){
+  .cmpgrid{grid-template-columns:1fr!important}.cmpcol{min-width:0}.cmphead,.cmpsec{overflow-wrap:anywhere}.cmpsec .para{max-width:100%;overflow-wrap:anywhere}
 }
 
 /* per-result source provenance chips (parallel multi-channel fan-out) */

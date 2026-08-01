@@ -94,6 +94,11 @@ def worker_exit(server, worker):
     except Exception:
         pass
     try:
+        import draft_worker
+        draft_worker.stop_worker()
+    except Exception:
+        pass
+    try:
         import report_archive
         report_archive.shutdown(wait=False)
     except Exception:

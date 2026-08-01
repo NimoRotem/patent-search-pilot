@@ -6,7 +6,24 @@
     <h2>Searching the prior art</h2>
     <p class="genq">“{{ query }}” · {{ mode.replace('_',' ') }} mode ·
       {{ 'claims-focused search' if search_focus == 'claims' else 'all patent text' }}</p>
-    {% if current_user %}<p class="genmail">This search is saved to your account. You can leave this page and return from Search history.</p>{% endif %}
+    {% if current_user %}
+    <section class="waitchoice" aria-labelledby="wait-choice-title">
+      <div class="waitcopy">
+        <b id="wait-choice-title">Keep waiting here, or leave safely</b>
+        <span>This search is saved to your history. First results open automatically; full refinement continues on the server if you leave.</span>
+      </div>
+      <div class="waitactions">
+        <button type="button" class="btn ghost sm" id="emailWhenReady"
+                data-enabled="{{ 'true' if active_search and active_search.notify_email else 'false' }}">
+          {% if active_search and active_search.notify_email %}✓ Email alert on{% else %}Email me when ready{% endif %}
+        </button>
+        <a class="btn ghost sm" href="{{ request.script_root }}/history">Leave and view history</a>
+      </div>
+      <div class="waitstatus small" id="emailReadyStatus" role="status" aria-live="polite">
+        {% if active_search and active_search.notify_email %}We will email {{ current_user.email }} when the final report is complete.{% endif %}
+      </div>
+    </section>
+    {% endif %}
 
     {#  A narrative, not a log. Each stage carries its own explanation and, once the agent
         reports numbers, the numbers it learned. The active stage shows how long it has been
@@ -27,6 +44,30 @@
 <script>
 (function(){
   const slug = {{ slug|tojson }};
+  const emailButton = document.getElementById('emailWhenReady');
+  const emailStatus = document.getElementById('emailReadyStatus');
+  if(emailButton){
+    emailButton.addEventListener('click', async () => {
+      const enabled = emailButton.dataset.enabled !== 'true';
+      emailButton.disabled = true;
+      try{
+        const r = await fetch((window.APP_BASE || '') + '/api/searches/' + encodeURIComponent(slug) + '/notification', {
+          method:'POST', credentials:'same-origin',
+          headers:{'Content-Type':'application/json','X-CSRF-Token':window.CSRF_TOKEN || ''},
+          body:JSON.stringify({enabled})
+        });
+        const d = await r.json();
+        if(!r.ok) throw new Error(d.error || 'notification update failed');
+        emailButton.dataset.enabled = d.enabled ? 'true' : 'false';
+        emailButton.textContent = d.enabled ? '✓ Email alert on' : 'Email me when ready';
+        emailStatus.textContent = d.enabled
+          ? 'You can close this tab. We will email ' + d.email + ' when the final report is complete.'
+          : 'Email alert is off. This page and Search history will still show progress.';
+      }catch(_){
+        emailStatus.textContent = 'Could not change the email alert. Your search is still running and saved.';
+      }finally{ emailButton.disabled = false; }
+    });
+  }
   const p = createProgress(document.getElementById('stages'), {wide:{{ wide|default(false)|tojson }}});
   streamJob(slug, function(ev){
     p.apply(ev);

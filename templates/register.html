@@ -4,12 +4,12 @@
 <div class="wrap authwrap">
   <section class="panel authcard" aria-labelledby="register-title">
     <h1 id="register-title">Create account</h1>
-    <p class="muted">Your searches and reports are saved automatically and remain available from any device.</p>
+    <p class="muted">Your search history follows you across devices; star the reports you want in your saved library.</p>
     {% if error %}<div class="formerror" role="alert">{{ error }}</div>{% endif %}
     <form method="post" class="authform">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label for="register-name">Full name</label>
-      <input id="register-name" name="full_name" required maxlength="120"
+      <input id="register-name" type="text" name="full_name" required maxlength="120"
              autocomplete="name" value="{{ values.full_name }}" autofocus>
       <label for="register-email">Email</label>
       <input id="register-email" type="email" name="email" required maxlength="254"

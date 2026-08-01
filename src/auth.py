@@ -225,6 +225,10 @@ _LIMITERS = {
     # PDF/DOCX rendering
     "export":   Limiter("exports", _num("RL_EXPORT_RATE", 0.5), _num("RL_EXPORT_BURST", 10),
                         _num("RL_EXPORT_GRATE", 1.0), _num("RL_EXPORT_GBURST", 20)),
+    # One long-form model call (plus bounded retries) queued into the durable drafting worker.
+    "draft_generate": Limiter(
+        "US draft generation", _num("RL_DRAFT_RATE", 1 / 120.0), _num("RL_DRAFT_BURST", 3),
+        _num("RL_DRAFT_GRATE", 1 / 30.0), _num("RL_DRAFT_GBURST", 12)),
     # Password guessing. The handler's time.sleep(0.5) only serialises a SINGLE connection, so N
     # parallel requests still get N guesses per 0.5 s — measured: 10 concurrent wrong passwords all
     # answered in 2.0 s, unthrottled. This bucket is the actual defence: ~10 attempts per 15 min per
@@ -398,8 +402,17 @@ def current_user():
     if uid:
         try:
             candidate = accounts.get_user(uid)
-            if candidate and candidate.get("is_active"):
+            current_version = int((candidate or {}).get("session_version") or 1)
+            stored_version = session.get("session_version")
+            # Existing sessions created before this migration are adopted once. Password changes
+            # increment the database value, invalidating every other signed session immediately.
+            if candidate and candidate.get("is_active") and (
+                    stored_version is None or int(stored_version) == current_version):
+                if stored_version is None:
+                    session["session_version"] = current_version
                 user = candidate
+            elif candidate:
+                session.clear()
         except Exception:
             user = None
     g.patent_user = user
@@ -526,6 +539,7 @@ def login():
             if user:
                 session.clear()
                 session["user_id"] = user["id"]
+                session["session_version"] = int(user.get("session_version") or 1)
                 session["csrf_token"] = secrets.token_urlsafe(32)
                 session.permanent = True
                 _LIMITERS["auth.login"].mark_known_good(client_ip())
@@ -580,6 +594,7 @@ def register():
                 user = accounts.create_user(values["email"], values["full_name"], password)
                 session.clear()
                 session["user_id"] = user["id"]
+                session["session_version"] = int(user.get("session_version") or 1)
                 session["csrf_token"] = secrets.token_urlsafe(32)
                 session.permanent = True
                 return redirect(url_for("index"))
@@ -625,6 +640,7 @@ def reset_password(token):
                 user = accounts.reset_password(token, password)
                 session.clear()
                 session["user_id"] = user["id"]
+                session["session_version"] = int(user.get("session_version") or 1)
                 session["csrf_token"] = secrets.token_urlsafe(32)
                 session.permanent = True
                 return redirect(url_for("index"))
@@ -650,20 +666,32 @@ def account():
             if action == "profile":
                 user = accounts.update_profile(
                     user["id"], full_name=request.form.get("full_name", ""),
-                    email_on_completion=request.form.get("email_on_completion") == "1")
+                    email_on_completion=request.form.get("email_on_completion") == "1",
+                    organization=request.form.get("organization", ""),
+                    default_applicant=request.form.get("default_applicant", ""),
+                    default_inventors=request.form.get("default_inventors", ""),
+                    preferred_jurisdiction=request.form.get("preferred_jurisdiction", "US"))
                 g.patent_user = user
                 message = "Account preferences saved."
             elif action == "password":
                 new = request.form.get("new_password", "")
                 if new != request.form.get("new_password_confirm", ""):
                     raise ValueError("New passwords do not match.")
-                accounts.change_password(user["id"], request.form.get("current_password", ""), new)
+                user = accounts.change_password(
+                    user["id"], request.form.get("current_password", ""), new)
+                session["session_version"] = int(user.get("session_version") or 1)
+                g.patent_user = user
                 message = "Password changed."
         except ValueError as exc:
             error = str(exc)
         except Exception:
             error = "The account could not be updated right now."
-    return render_template("account.html", user=user, message=message, error=error)
+    try:
+        activity = accounts.account_activity(user["id"])
+    except Exception:
+        activity = {"searches": 0, "saved": 0, "completed": 0, "emailed": 0}
+    return render_template("account.html", user=user, activity=activity,
+                           message=message, error=error)
 
 
 @bp.route("/admin/users")

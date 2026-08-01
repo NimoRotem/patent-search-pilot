@@ -90,11 +90,14 @@
     </div>
 
     {% if current_user %}
-    <label class="notifyopt"><input type="checkbox" name="notify_email" value="1"
-      {% if current_user.email_on_completion %}checked{% endif %}>
-      Email {{ current_user.email }} when the final report is ready</label>
+    <div class="notifychoice">
+      <div><b>How should this finish?</b><span>You can keep watching live results or leave the search running in your account.</span></div>
+      <label class="notifyopt"><input type="checkbox" name="notify_email" value="1"
+        {% if current_user.email_on_completion %}checked{% endif %}>
+        Email {{ current_user.email }} when the final report is ready</label>
+    </div>
     {% else %}
-    <p class="small muted notifyopt">Use a named account to receive report-ready email alerts.</p>
+    <p class="small muted notifyopt"><a href="{{ request.script_root }}/login">Sign in</a> to save the search, leave it running, and receive a report-ready email.</p>
     {% endif %}
 
     {#  The one line that replaces the wall. Every number is live from the DB via

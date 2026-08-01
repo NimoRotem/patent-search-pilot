@@ -13,6 +13,8 @@ window.APP_BASE = {{ request.script_root|tojson }};
    publication count into app.js: ingestion changes it while the UI asset remains cached. */
 window.CORPUS_PUBLICATIONS = {{ (corpus.publications if corpus and corpus.publications else 0)|tojson }};
 window.CSRF_TOKEN = {{ csrf_token()|tojson }};
+window.CURRENT_USER_EMAIL = {{ (current_user.email if current_user else '')|tojson }};
+window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
 </script>
 </head>
 <body>
@@ -23,6 +25,7 @@ window.CSRF_TOKEN = {{ csrf_token()|tojson }};
     <span class="grow"></span>
     <a href="{{ request.script_root }}/">New search</a>
     <a href="{{ request.script_root }}/history">Search history</a>
+    {% if current_user %}<a href="{{ request.script_root }}/drafts">Drafts</a>{% endif %}
     <a href="{{ request.script_root }}/about">About</a>
     {% if current_is_admin %}<a href="{{ request.script_root }}/admin/users">Admin</a>{% endif %}
     {% if current_user %}
