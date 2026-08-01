@@ -20,8 +20,12 @@ from config import SEED_CPC
 RRF_K = 40             # smaller K sharpens the rank-1 advantage of a strong channel
 CHUNK_FETCH = 4000     # chunks pulled before aggregating to publications
 PUB_CAP = 1000         # per-channel publication cap (the spec's ~1000 width)
-RERANK_TOP = 25        # cross-encoder rerank depth (spec says ~300; 25 keeps CPU time sane on
-                       # the shared box — RRF already orders well; tune up with a GPU/idle box)
+# Cross-encoder rerank depth. Raised 25 -> 50 because the deep full-text analysis reads the top
+# 50 references, and reading a reference the cross-encoder never scored means charting whatever
+# RRF happened to leave at rank 40. Measured ~40 s for 25 passages on this box, so 50 roughly
+# doubles that stage; it runs once per search, in the background, and every reference it orders
+# is one the agent then reads in full. Env-overridable for a slower box.
+RERANK_TOP = int(os.environ.get("RERANK_TOP", "50"))
 # Passages scored per cross-encoder call. Pair scores are independent, so slicing changes no
 # result — only how often the UI can be told where we are.
 #
