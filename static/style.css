@@ -905,6 +905,7 @@ details.draftpanel>summary{list-style:none;cursor:pointer;margin:-19px;padding:1
   header.top a:not(.brand){min-height:40px;display:inline-flex;align-items:center}
   .btn.sm,.rtab,.fp{min-height:44px}.fp{width:44px}.flagpills{flex-direction:row}
   .draftpage{padding-top:18px}.draftrow,.drafthead,.draftpanel-head{align-items:stretch;flex-direction:column}.draftrow>.btn{justify-content:center}
+  .draftlibrary-head{align-items:stretch;flex-direction:column}.draftlibrary-head>.btn{width:100%;justify-content:center}
   .draftstep{grid-template-columns:1fr;padding:16px}.reportpicker{grid-template-columns:1fr}.reportpicker label{grid-column:auto}.draftcreate-actions>*{width:100%;justify-content:center}
   .draftworkspace{grid-template-columns:1fr}.draftside{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.draftreview{grid-column:1/-1}.drafthead-actions{justify-content:stretch}.drafthead-actions .btn{flex:1;justify-content:center}.draftjob{align-items:flex-start;flex-wrap:wrap}.draftjob form{width:100%}.draftjob .btn{width:100%;justify-content:center}.draftpanel{padding:15px}details.draftpanel>summary{margin:-15px;padding:15px}details.draftpanel[open]>summary{margin-bottom:14px}.versionrow{grid-template-columns:1fr}.inlineform{width:100%}.inlineform select{flex:1}.drafteditor textarea{min-height:170px}.draftrefs{max-height:62dvh}
 

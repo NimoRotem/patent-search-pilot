@@ -26,6 +26,8 @@ def test_ui_uses_live_corpus_count_and_background_enrichment_contracts():
     report = (root / "templates" / "report.html").read_text()
     admin_users = (root / "templates" / "admin_users.html").read_text()
     admin_searches = (root / "templates" / "admin_searches.html").read_text()
+    print_template = (root / "templates" / "print.html").read_text()
+    drafts = (root / "templates" / "drafts.html").read_text()
     about = (root / "templates" / "about.html").read_text()
     assert "107,795" not in js and "107795" not in js
     assert "CORPUS_PUBLICATIONS" in js and "CORPUS_PUBLICATIONS" in base
@@ -40,6 +42,10 @@ def test_ui_uses_live_corpus_count_and_background_enrichment_contracts():
     assert '.admintable td[data-label]::before' in css
     assert 'data-label="Manage"' in admin_users
     assert 'data-label="Notification"' in admin_searches
+    assert "filename='style.css', v=asset_version" in base
+    assert "filename='app.js', v=asset_version" in base
+    assert "filename='style.css', v=asset_version" in print_template
+    assert "draftlibrary-head" in drafts and ".draftlibrary-head>.btn" in css
 
 
 def test_parser_collects_a_gold_family_group():

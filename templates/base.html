@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>{% block title %}rotemAI patent search{% endblock %}</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🔎</text></svg>">
 <script>
 window.APP_BASE = {{ request.script_root|tojson }};
@@ -44,7 +44,7 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
   {% if corpus and corpus.publications %}{{ '{:,}'.format(corpus.publications) }} publications{% if corpus.chunks %} / {{ '{:.2f}M'.format(corpus.chunks / 1000000) }} chunks{% endif %}{% else %}local corpus{% endif %} ·
   {{ corpus.cpc_count or 8 }} CPC classes, {{ (corpus.jurisdictions or ['US','EP','WO','DE'])|join('/') }}{% if corpus.max_date_str %} · current to {{ corpus.max_date_str }}{% endif %} ·
   768-dimensional semantic embeddings · Gemini agent · bge reranker · external patent API federation</footer>
-<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js', v=asset_version) }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

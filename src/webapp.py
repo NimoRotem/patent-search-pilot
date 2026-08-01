@@ -38,6 +38,30 @@ import concurrent.futures as _cf
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 
+
+def _asset_version():
+    """Content-derived cache key for browser assets.
+
+    The public proxy deliberately caches static files.  An unversioned ``style.css`` left an
+    already-open browser on the pre-deploy mobile layout even though the new CSS was live on the
+    server.  Hashing both shared assets once at process start makes every deploy select the exact
+    matching CSS/JS without disabling useful caching.
+    """
+    override = os.environ.get("PATENT_STATIC_VERSION", "").strip()
+    if override:
+        return override
+    digest = hashlib.sha256()
+    for name in ("style.css", "app.js"):
+        path = Path(app.static_folder) / name
+        try:
+            digest.update(path.read_bytes())
+        except OSError:
+            digest.update(name.encode("utf-8"))
+    return digest.hexdigest()[:12]
+
+
+ASSET_VERSION = _asset_version()
+
 # Signed-session key. Persisted next to .env (gitignored) so sessions survive restarts; generated
 # on first boot if absent. NEVER hard-coded and never committed.
 def _secret_key():
@@ -139,11 +163,11 @@ def _inject_corpus_facts():
         # Built once here so the web scope block, /print, /about and the exported PDF/DOCX/XLSX/MD
         # all state the SAME jurisdiction coverage, derived from the corpus rather than written
         # into each surface by hand.
-        return {"corpus": f, "disc": disclosure,
+        return {"corpus": f, "disc": disclosure, "asset_version": ASSET_VERSION,
                 "juris_sentence": disclosure._juris_sentence(f)}
     except Exception:
         # The disclosure must never be the reason a page fails to render.
-        return {"corpus": {}, "juris_sentence": ""}
+        return {"corpus": {}, "asset_version": ASSET_VERSION, "juris_sentence": ""}
 
 REPORTS = DATA / "reports"
 RATIONALE = DATA / "rationale"

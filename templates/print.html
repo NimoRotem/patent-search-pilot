@@ -3,7 +3,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <title>{{ v.title }} — {{ disc.DOC_TITLE }}</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
 <style>
 /* The app is dark; a printed report is not. Re-point the SAME tokens at paper rather than
    maintaining a second stylesheet, so this view inherits every component definition. */
