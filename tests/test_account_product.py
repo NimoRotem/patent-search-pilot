@@ -61,6 +61,22 @@ def test_named_login_and_account_navigation(account_client, monkeypatch):
     assert 'name="notify_email"' in body
 
 
+def test_inline_reauthentication_mints_new_csrf_and_named_session(account_client, monkeypatch):
+    monkeypatch.setattr(accounts, "authenticate", lambda email, password: dict(USER))
+    with account_client.session_transaction() as session:
+        session["csrf_token"] = "expired-page-token"
+    response = account_client.post(
+        "/login", data={"email": USER["email"], "password": "long-enough-password"},
+        headers={"Accept": "application/json", "X-Reauth": "1"})
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True and payload["csrf_token"] != "expired-page-token"
+    with account_client.session_transaction() as session:
+        assert session["user_id"] == USER["id"]
+        assert session["session_version"] == USER["session_version"]
+        assert session["csrf_token"] == payload["csrf_token"]
+
+
 def test_legacy_login_is_an_admin_bootstrap(account_client, monkeypatch):
     monkeypatch.setattr(accounts, "list_users", list)
     monkeypatch.setattr(accounts, "mail_stats", dict)
@@ -179,6 +195,11 @@ def test_batch_reference_preview_is_cache_only_and_scoped(account_client, monkey
         "/api/ref-batch/adhoc-preview?pubs=US-123-A&section=claims").get_json()["items"]["US-123-A"]
     assert "claims" in claim_only["sections"]
     assert "paragraphs" not in claim_only["sections"] and "abstract" not in claim_only["display"]
+
+    source = data["items"]["US-123-A"] | {"rationale": {"summary": "Specific overlap."}}
+    why_only = webapp._detail_preview_section(source, "why")
+    assert why_only["rationale"]["summary"] == "Specific overlap."
+    assert "abstract" not in why_only["display"] and why_only["sections"] == {}
 
 
 def test_search_cache_identity_includes_subject_and_uploaded_document():

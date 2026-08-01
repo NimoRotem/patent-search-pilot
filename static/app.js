@@ -70,6 +70,8 @@ function fmtDur(ms){
    user back in WITHOUT navigating: a redirect to /login would discard the open report, the
    scroll position and any in-flight run. */
 let _authPrompted = false;
+let _authRestorePromise = null;
+let _authRestoreResolve = null;
 
 function _authBar(){
   let el = document.getElementById('authexpired');
@@ -77,6 +79,7 @@ function _authBar(){
   el = document.createElement('div');
   el.id = 'authexpired';
   el.setAttribute('role', 'alertdialog');
+  el.setAttribute('aria-modal', 'true');
   el.setAttribute('aria-labelledby', 'authexpiredmsg');
   el.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:10000;background:#171a21;' +
     'border-top:1px solid #2d3341;color:#e6e8ee;padding:12px 16px;display:flex;gap:10px;' +
@@ -105,16 +108,24 @@ function _authBar(){
     err.textContent = '';
     try{
       const body = new URLSearchParams({ password: pw, email });
-      // redirect:'manual' so a 302 (success) is reported as an opaque response rather than
-      // being followed and replacing the page we are trying to preserve.
       const r = await window.__rawFetch(B + '/login', {
-        method: 'POST', body, redirect: 'manual',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        method: 'POST', body,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json', 'X-Reauth': '1' }
       });
       if (r.status === 401){ err.textContent = 'Email or password is incorrect.'; return; }
       if (r.status === 429){ err.textContent = 'Too many attempts — wait a few minutes.'; return; }
+      const data = await r.json();
+      if (!r.ok || !data.csrf_token){ err.textContent = data.error || 'Sign-in failed.'; return; }
+      window.CSRF_TOKEN = data.csrf_token;
+      document.querySelectorAll('input[name="csrf_token"]').forEach(input => {
+        input.value = data.csrf_token;
+      });
       el.remove();
       _authPrompted = false;
+      const resolve = _authRestoreResolve;
+      _authRestorePromise = null; _authRestoreResolve = null;
+      if (resolve) resolve();
       document.dispatchEvent(new CustomEvent('auth:restored'));
     }catch(e){ err.textContent = 'Network error.'; }
   };
@@ -122,24 +133,53 @@ function _authBar(){
   document.getElementById('authexpiredpw').addEventListener('keydown', e => {
     if (e.key === 'Enter') submit();
   });
+  el.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const focusable = [...el.querySelectorAll('input,button')].filter(node => !node.disabled);
+    if (!focusable.length) return;
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+  });
   return el;
 }
 
 function onAuthExpired(){
-  if (_authPrompted) return;
-  _authPrompted = true;
-  _authBar();
-  const pw = document.getElementById('authexpiredpw');
-  if (pw) pw.focus();
+  if (!_authRestorePromise)
+    _authRestorePromise = new Promise(resolve => { _authRestoreResolve = resolve; });
+  if (!_authPrompted){
+    _authPrompted = true;
+    _authBar();
+    const pw = document.getElementById('authexpiredpw');
+    if (pw) pw.focus();
+  }
+  return _authRestorePromise;
 }
 
 if (typeof window !== 'undefined' && window.fetch && !window.__rawFetch){
   window.__rawFetch = window.fetch.bind(window);
   window.fetch = async function(...args){
+    // Snapshot the request before the first fetch can consume its body.  On retry we construct a
+    // fresh Request and replace an existing CSRF header with the token minted by inline login.
+    // This is what lets the *interrupted mutation itself* finish, instead of merely making the
+    // next button click work.
+    let retryRequest = null;
+    try{
+      retryRequest = (typeof Request !== 'undefined' && args[0] instanceof Request)
+        ? new Request(args[0].clone(), args[1]) : new Request(args[0], args[1]);
+    }catch(e){}
     const r = await window.__rawFetch(...args);
     // The login POST itself legitimately answers 401 for a wrong password; don't recurse on it.
     const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
-    if (r.status === 401 && !url.endsWith('/login')) onAuthExpired();
+    if (r.status === 401 && !url.endsWith('/login')){
+      await onAuthExpired();
+      if (retryRequest){
+        const headers = new Headers(retryRequest.headers);
+        if (headers.has('X-CSRF-Token')) headers.set('X-CSRF-Token', window.CSRF_TOKEN || '');
+        return window.__rawFetch(new Request(retryRequest, {headers}));
+      }
+      return window.__rawFetch(...args);
+    }
     return r;
   };
 }
@@ -165,17 +205,33 @@ async function fetchSection(pub, section){
   if (SECTIONCACHE[key]) return SECTIONCACHE[key];
   const url = B + '/api/ref-batch/' + encodeURIComponent(window.SLUG || '') +
     '?pubs=' + encodeURIComponent(pub) + '&section=' + encodeURIComponent(section);
-  for (let attempt = 0; attempt < 2; attempt++){
-    try{
-      const r = await fetchTimed(url);
-      if (!r.ok) throw new Error('preview ' + r.status);
-      const data = await r.json(), item = data.items && data.items[pub];
-      if (!item) throw new Error('preview unavailable');
-      SECTIONCACHE[key] = item;
-      return item;
-    }catch(e){ if (attempt) break; }
-  }
-  return fetchRef(pub, true);
+  try{
+    const r = await fetchTimed(url, 5000);
+    if (!r.ok) throw new Error('preview ' + r.status);
+    const data = await r.json(), item = data.items && data.items[pub];
+    if (!item) throw new Error('preview unavailable');
+    SECTIONCACHE[key] = item;
+    return item;
+  }catch(e){}
+  // Cache generation may still be finishing. The live fallback is still section-shaped on the
+  // wire and has its own hard deadline; it never silently turns one click into a full document.
+  const live = B + '/api/ref/' + encodeURIComponent(pub) + '?slug=' +
+    encodeURIComponent(window.SLUG || '') + '&light=1&section=' + encodeURIComponent(section);
+  const r = await fetchTimed(live, 12000);
+  if (!r.ok) throw new Error('section ' + r.status);
+  SECTIONCACHE[key] = await r.json();
+  return SECTIONCACHE[key];
+}
+
+async function fetchWhy(pub){
+  const key = pub + ':why';
+  if (SECTIONCACHE[key] && SECTIONCACHE[key].rationale) return SECTIONCACHE[key];
+  const url = B + '/api/ref/' + encodeURIComponent(pub) + '?slug=' +
+    encodeURIComponent(window.SLUG || '') + '&light=1&rationale=1&section=why';
+  const r = await fetchTimed(url, 20000);
+  if (!r.ok) throw new Error('rationale ' + r.status);
+  SECTIONCACHE[key] = await r.json();
+  return SECTIONCACHE[key];
 }
 async function fetchPreview(pub){
   if (REFCACHE[pub]) return REFCACHE[pub];
@@ -701,7 +757,8 @@ function warmIntendedTab(ev){
   if (!b) return;
   const card = b.closest('.refcard');
   if (card && card.dataset.pub){
-    if (['abstract','claims','desc','class','figs'].includes(b.dataset.t))
+    if (b.dataset.t === 'why') fetchWhy(card.dataset.pub).catch(() => {});
+    else if (['abstract','claims','desc','class','figs'].includes(b.dataset.t))
       fetchSection(card.dataset.pub, b.dataset.t).catch(() => {});
     else if (!REFCACHE[card.dataset.pub]) fetchRef(card.dataset.pub, true).catch(() => {});
   }
@@ -826,7 +883,7 @@ async function paneCites(card, p){
 }
 
 async function paneWhy(card){
-  const j = await fetchRef(card.dataset.pub);           // full: the opinion IS the point here
+  const j = await fetchWhy(card.dataset.pub);
   if (j.display && j.display.images) backfillThumb(card.dataset.pub, j.display.images);
   let h = '<h4>Why this reference is relevant <span class="muted" style="text-transform:none;letter-spacing:0">— grounded AI opinion</span></h4>' +
           renderWhy(j.rationale);

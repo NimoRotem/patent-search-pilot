@@ -971,6 +971,10 @@ def _detail_preview_section(item, section):
         out["display"].update(images=display.get("images") or [],
                               n_images=display.get("n_images") or 0)
         out["sections"]["figures"] = sections.get("figures") or []
+    elif section == "why":
+        out["display"].update(images=display.get("images") or [],
+                              n_images=display.get("n_images") or 0)
+        out["rationale"] = item.get("rationale")
     else:
         return item
     return out
@@ -2112,7 +2116,7 @@ def api_ref_batch(slug):
     if wanted:
         items = {pub: items[pub] for pub in wanted if pub in items}
     section = request.args.get("section", "").strip()
-    if section in {"abstract", "claims", "desc", "class", "figs"}:
+    if section in {"abstract", "claims", "desc", "class", "figs", "why"}:
         items = {pub: _detail_preview_section(item, section) for pub, item in items.items()}
     return jsonify({"items": items, "ready": True, "partial": bool(payload.get("partial"))})
 
@@ -2200,14 +2204,18 @@ def api_ref(pub):
             disp["family"] = ops_family.fetch_family(pub, lens_family=disp.get("lens_family"))
     except Exception:
         disp["family"] = None
-    return jsonify({
+    payload = {
         "pub": pub, "display": disp, "sections": secs,
         "matched": {"coord": webview._coord_str((matched or {}).get("coord")),
                     "kind": (matched or {}).get("kind"),
                     "score": round((matched or {}).get("score", 0) or 0, 3),
                     "coord_raw": (matched or {}).get("coord")} if matched else None,
         "rationale": rationale,
-    })
+    }
+    section = request.args.get("section", "").strip()
+    if section in {"abstract", "claims", "desc", "class", "figs", "why"}:
+        payload = _detail_preview_section(payload, section)
+    return jsonify(payload)
 
 
 _QCACHE = {}

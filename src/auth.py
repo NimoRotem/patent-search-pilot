@@ -526,6 +526,8 @@ _TOOMANY_HTML = """<!doctype html><meta charset=utf-8>
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     error = ""
+    inline = (request.headers.get("X-Reauth") == "1" or
+              "application/json" in request.headers.get("Accept", ""))
     if request.method == "POST":
         email = request.form.get("email", "").strip()
         supplied = request.form.get("password", "")
@@ -542,6 +544,9 @@ def login():
                 session["csrf_token"] = secrets.token_urlsafe(32)
                 session.permanent = True
                 _LIMITERS["auth.login"].mark_known_good(client_ip())
+                if inline:
+                    return jsonify({"ok": True, "csrf_token": session["csrf_token"],
+                                    "email": user["email"]})
                 nxt = _safe_next(request.form.get("next") or request.args.get("next"))
                 if nxt:
                     return redirect((request.script_root or "") + nxt)
@@ -549,6 +554,8 @@ def login():
             if not error:
                 error = "Email or password is incorrect."
             time.sleep(0.5)
+            if inline:
+                return jsonify({"ok": False, "error": error}), 401
             return render_template("login.html", error=error,
                                    next_path=_safe_next(request.form.get("next") or request.args.get("next"))), 401
         expected = _password()
@@ -562,6 +569,8 @@ def login():
             # This IP demonstrably holds the password, so it is not the brute-force. Remember it
             # so a flood from somewhere else can't lock the real user out via the global bucket.
             _LIMITERS["auth.login"].mark_known_good(client_ip())
+            if inline:
+                return jsonify({"ok": True, "csrf_token": session["csrf_token"]})
             nxt = _safe_next(request.form.get("next") or request.args.get("next"))
             if nxt:
                 # `next` is app-relative; re-attach the proxy prefix (/patents-data) so the
@@ -570,6 +579,8 @@ def login():
             return redirect(url_for("index"))
         error = "Incorrect password."
         time.sleep(0.5)                      # blunt the brute-force rate
+        if inline:
+            return jsonify({"ok": False, "error": error}), 401
     if accounts_enabled():
         return render_template("login.html", error=error,
                                next_path=_safe_next(request.args.get("next"))), (401 if error else 200)
