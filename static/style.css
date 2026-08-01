@@ -880,6 +880,20 @@ details.draftpanel>summary{list-style:none;cursor:pointer;margin:-19px;padding:1
   .authwrap{padding-top:28px}.authcard{padding:20px}.authlinks{flex-direction:column;gap:6px}
   .accountgrid{grid-template-columns:1fr}.adminstats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .profilestats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .adminpage .tablewrap{overflow:visible;border:0}
+  .adminpage .admintable{display:block;min-width:0;background:transparent}
+  .adminpage .admintable thead{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+    overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .adminpage .admintable tbody{display:grid;gap:10px}
+  .adminpage .admintable tr{display:block;background:var(--s1);border:1px solid var(--line);
+    border-radius:var(--r);overflow:hidden}
+  .adminpage .admintable td{display:grid;grid-template-columns:96px minmax(0,1fr);gap:10px;
+    align-items:start;padding:9px 11px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+  .adminpage .admintable td:last-child{border-bottom:0}
+  .adminpage .admintable td[data-label]::before{content:attr(data-label);color:var(--faint);
+    font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+  .adminpage .admintable .adminempty{display:block}
+  .adminpage .adminactions{margin-top:-3px}
   .historytools{grid-template-columns:1fr}.historytools .btn{width:100%;justify-content:center}
   .waitchoice{grid-template-columns:1fr}.waitactions{justify-content:flex-start}
   .archivecard{align-items:flex-start;flex-wrap:wrap}.archivecopy{min-width:180px}

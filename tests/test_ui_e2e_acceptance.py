@@ -24,6 +24,8 @@ def test_ui_uses_live_corpus_count_and_background_enrichment_contracts():
     css = (root / "static" / "style.css").read_text()
     base = (root / "templates" / "base.html").read_text()
     report = (root / "templates" / "report.html").read_text()
+    admin_users = (root / "templates" / "admin_users.html").read_text()
+    admin_searches = (root / "templates" / "admin_searches.html").read_text()
     about = (root / "templates" / "about.html").read_text()
     assert "107,795" not in js and "107795" not in js
     assert "CORPUS_PUBLICATIONS" in js and "CORPUS_PUBLICATIONS" in base
@@ -35,6 +37,9 @@ def test_ui_uses_live_corpus_count_and_background_enrichment_contracts():
     assert "warmQueryClaimGrid" in js and "/api/query-claim-grid/" in js
     assert "Claim × reference grid" in report
     assert ".chartwrap .vh{left:0;top:0}" in css
+    assert '.admintable td[data-label]::before' in css
+    assert 'data-label="Manage"' in admin_users
+    assert 'data-label="Notification"' in admin_searches
 
 
 def test_parser_collects_a_gold_family_group():

@@ -19,12 +19,12 @@
       <tbody>
       {% for u in users %}
       <tr>
-        <td><b>{{ u.full_name }}</b><span>{{ u.email }}</span></td>
-        <td>{{ 'Administrator' if u.is_admin else 'User' }}</td>
-        <td><span class="badge {{ 'b-cached' if u.is_active else 'b-warn' }}">{{ 'active' if u.is_active else 'suspended' }}</span></td>
-        <td>{{ u.searches }} total · {{ u.saved_searches }} saved</td>
-        <td><span>{{ u.created_at }}</span><span>{{ u.last_login_at or 'never' }}</span></td>
-        <td><div class="adminactions">
+        <td data-label="User"><b>{{ u.full_name }}</b><span>{{ u.email }}</span></td>
+        <td data-label="Role">{{ 'Administrator' if u.is_admin else 'User' }}</td>
+        <td data-label="State"><span class="badge {{ 'b-cached' if u.is_active else 'b-warn' }}">{{ 'active' if u.is_active else 'suspended' }}</span></td>
+        <td data-label="Searches">{{ u.searches }} total · {{ u.saved_searches }} saved</td>
+        <td data-label="Joined / login"><span>{{ u.created_at }}</span><span>{{ u.last_login_at or 'never' }}</span></td>
+        <td data-label="Manage"><div class="adminactions">
           <form method="post" action="{{ request.script_root }}/admin/users/{{ u.id }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="{{ 'demote' if u.is_admin else 'promote' }}">
@@ -37,7 +37,7 @@
           </form>
         </div></td>
       </tr>
-      {% else %}<tr><td colspan="6" class="muted">No named accounts yet. The shared administrator login remains active.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="6" class="muted adminempty">No named accounts yet. The shared administrator login remains active.</td></tr>{% endfor %}
       </tbody>
     </table>
   </div>

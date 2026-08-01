@@ -6,12 +6,12 @@
   <div class="tablewrap"><table class="admintable">
     <thead><tr><th>Owner</th><th>Search</th><th>Mode / focus</th><th>Status</th><th>Notification</th><th>Updated</th></tr></thead>
     <tbody>{% for s in searches %}<tr>
-      <td><b>{{ s.full_name }}</b><span>{{ s.email }}</span></td>
-      <td><a href="{{ request.script_root }}/report/{{ s.slug }}">{{ s.title or s.query or s.slug }}</a><span>{{ s.slug }}</span></td>
-      <td>{{ s.mode.replace('_',' ') }} · {{ 'claims' if s.search_focus == 'claims' else 'all text' }}</td>
-      <td><span class="badge {{ 'b-cached' if s.status == 'complete' else '' }}">{{ s.status }}</span>{% if s.saved %} · saved{% endif %}</td>
-      <td>{{ s.notification_status }}</td><td>{{ s.updated_at }}</td>
-    </tr>{% else %}<tr><td colspan="6" class="muted">No account searches yet.</td></tr>{% endfor %}</tbody>
+      <td data-label="Owner"><b>{{ s.full_name }}</b><span>{{ s.email }}</span></td>
+      <td data-label="Search"><a href="{{ request.script_root }}/report/{{ s.slug }}">{{ s.title or s.query or s.slug }}</a><span>{{ s.slug }}</span></td>
+      <td data-label="Mode / focus">{{ s.mode.replace('_',' ') }} · {{ 'claims' if s.search_focus == 'claims' else 'all text' }}</td>
+      <td data-label="Status"><span class="badge {{ 'b-cached' if s.status == 'complete' else '' }}">{{ s.status }}</span>{% if s.saved %} · saved{% endif %}</td>
+      <td data-label="Notification">{{ s.notification_status }}</td><td data-label="Updated">{{ s.updated_at }}</td>
+    </tr>{% else %}<tr><td colspan="6" class="muted adminempty">No account searches yet.</td></tr>{% endfor %}</tbody>
   </table></div>
 </div>
 {% endblock %}
