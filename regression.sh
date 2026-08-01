@@ -51,9 +51,9 @@ done
 # is not enough of a check: assert it actually contains claim text and no images/links.
 grep -q '#### Claims (' /tmp/reg_gold.md && ok "md carries full claim text" || bad "md has no claims"
 ! grep -q '](http' /tmp/reg_gold.md && ok "md is link-free" || bad "md leaked hyperlinks"
-# Archive progress is also JSON beside the report. It is metadata, not a report input to
-# webview.build_view; exclude it exactly like the existing view/meta sidecars.
-FT=$(ls -t data/reports/adhoc-*.json 2>/dev/null | grep -vE '\.(view|meta|archive)\.json$' | head -1 | xargs -n1 basename 2>/dev/null | sed 's/\.json$//')
+# Every real ad-hoc report has a `.meta.json` companion. Discover from that positive marker rather
+# than trying to maintain a growing denylist of sidecars (`view`, `archive`, `claim-grid`, …).
+FT=$(ls -t data/reports/adhoc-*.meta.json 2>/dev/null | head -1 | xargs -n1 basename 2>/dev/null | sed 's/\.meta\.json$//')
 if [ -n "$FT" ]; then
   pubs=$($PY -c "import sys;sys.path.insert(0,'src');import json,webview;v=webview.build_view(json.load(open('data/reports/$FT.json')),top_n=4);print(','.join(c['pub'] for c in v['cards'][:4]))" 2>/dev/null | grep -v FutureWarning)
   sz=$(curl -s -X POST $BASE/export -d "slug=$FT" -d "pubs=$pubs" -d "format=pdf" -o /tmp/reg_ft.pdf -w "%{size_download}")
