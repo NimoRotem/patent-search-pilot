@@ -43,6 +43,16 @@ def test_claim_rrf_uses_claim_dense_floor():
     assert "claim_dense" in out[0][2]
 
 
+def test_retriever_accepts_explicit_channel_sequence(monkeypatch):
+    r = object.__new__(retrieval.Retriever)
+    r._fam = {7: "F7"}
+    monkeypatch.setattr(retrieval.embed, "embed_query", lambda *_args, **_kwargs: [0.1])
+    monkeypatch.setattr(r, "channel_claim_dense", lambda *_args: [(7, 0.9)])
+    out = r.search("RFID plate", config=["claim_dense"], do_rerank=False)
+    assert out.channel_hits == {"claim_dense": [7]}
+    assert out.family_ranked[0][0] == "F7"
+
+
 def test_claim_search_emits_dense_partial_before_lexical_expansion(monkeypatch):
     a = agent.CoverageAgent.__new__(agent.CoverageAgent)
     monkeypatch.setattr(a, "decompose", lambda text, subject: ["RFID plate"])

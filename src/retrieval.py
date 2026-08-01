@@ -502,7 +502,7 @@ class Retriever:
             return Result(ranked_pubs=[], family_ranked=[], channel_hits={}, query=query or "")
         qvec = embed.embed_query(query[:8000], 768)
         ch = {}
-        preset = {
+        presets = {
             "keyword": ["exact", "bm25"],
             "vector": ["dense"],
             "hybrid": ["exact", "bm25", "dense", "cpc"],
@@ -510,7 +510,15 @@ class Retriever:
             "agentic": ["dense", "cpc", "citation", "qbe", "biblio", "crosslingual"],
             "claim_agentic": ["claim_dense", "claim_bm25", "cpc", "citation", "qbe",
                               "biblio", "crosslingual"],
-        }.get(config, config if isinstance(config, list) else ["bm25", "dense"])
+        }
+        # Callers may pass an explicit bounded channel sequence.  Resolve that before a mapping
+        # lookup: ``dict.get(config, ...)`` still hashes ``config`` before evaluating its fallback,
+        # so a list raises ``TypeError: unhashable type: 'list'`` even though it is otherwise a
+        # valid explicit preset.
+        if isinstance(config, (list, tuple)):
+            preset = list(config)
+        else:
+            preset = presets.get(config, ["bm25", "dense"])
         # Cross-lingual query translation is available (query_translations) and used by the agent,
         # but M5 diagnosis showed it does NOT help the DE gap and even hurts (the corpus is
         # English-dominant, so translating a German query to English promotes English distractors).
