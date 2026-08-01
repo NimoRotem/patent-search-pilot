@@ -1142,7 +1142,8 @@ async function setFlag(btn){
   else card.removeAttribute('data-flag');
   try{
     await fetch(B + '/api/flags/' + encodeURIComponent(window.SLUG), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json',
+        'X-CSRF-Token': window.CSRF_TOKEN || '' },
       body: JSON.stringify({ pub, flag: next })
     });
   }catch(e){}

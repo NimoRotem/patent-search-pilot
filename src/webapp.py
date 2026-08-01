@@ -16,8 +16,9 @@ import db, embed, goldset, webview, enrich_display, llm
 import pubnorm  # single link-builder: zero-padded Google/Espacenet URLs (dropped-zero fix)
 import ops_family, prefetch                        # worldwide family timeline + top-N proactive enrich
 import query_claim_grid                            # uploaded-claim x ranked-reference background grid
+import report_archive                              # automatic top-50 full-text Markdown ZIP
 import export_data, export_pdf, export_docx, export_xlsx, export_md
-import auth, rerank_pool
+import auth, accounts, notifications, rerank_pool
 import claim_chart, translate, drawings          # ported per-card enrichment
 import ingest_input                                # front-door document / patent-link -> search brief
 import grounding                                  # length-stable quote grounding (shared w/ claim_chart)
@@ -346,16 +347,21 @@ def _write_report(slug, rep):
         traceback.print_exc()
 
 
-def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None):
+def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None,
+             search_focus="all_text"):
     """Thread entrypoint: run the generation, then always release the reserved budget slot.
     Kept separate from _generate so _generate's signature stays purely about doing the work."""
     try:
         # Only pass doc_token when there is one, so callers/tests that stub _generate with the
         # pre-existing (slug, query, subject, mode, wide) signature keep working for typed queries.
-        if doc_token is None:
+        if doc_token is None and search_focus == "all_text":
+            # Preserve the historical call shape for adapters/tests that wrap _generate.
             _generate(slug, query, subject, mode, wide=wide)
+        elif doc_token is None:
+            _generate(slug, query, subject, mode, wide=wide, search_focus=search_focus)
         else:
-            _generate(slug, query, subject, mode, wide=wide, doc_token=doc_token)
+            _generate(slug, query, subject, mode, wide=wide, doc_token=doc_token,
+                      search_focus=search_focus)
     finally:
         if gated and auth.run_gate:
             auth.run_gate.end()
@@ -549,7 +555,8 @@ def _attach_fed_family_sources(rep):
                 srcs.append(s)
 
 
-def _generate(slug, query, subject, mode, wide=False, doc_token=None):
+def _generate(slug, query, subject, mode, wide=False, doc_token=None,
+              search_focus="all_text"):
     """Run one report. Runs fully concurrently with other generations — the only serialized step is
     the cross-encoder, which lives in its own child process (rerank_pool)."""
     _set_job(slug, status="running", msg="Queued…", t0=time.time())
@@ -655,7 +662,9 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
             futs = {}
             futs["local"] = ex.submit(
                 _timed, "local", A.run, query, subject=subject, mode=mode,
-                cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True),
+                cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True,
+                                search_config=("claim_agentic" if search_focus == "claims"
+                                               else "agentic")),
                 on_event=on_event)
             if wide:
                 futs["federated"] = ex.submit(_timed, "federated", _federate_block, query, mode)
@@ -686,6 +695,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
                   f"({v.get('end', v['start'])-v['start']:.2f}s)", flush=True)
 
         rep["partial"] = False
+        rep["search_focus"] = search_focus
         rep["domain"] = verdict.to_dict() if verdict is not None else None
         if wide:
             rep["federation"] = fed
@@ -706,6 +716,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
         # Warm the view cache HERE (in the background job, where the user is already on the
         # progress page) so the listwise agentic rerank + claim-matrix verification run once and
         # the /report GET is instant instead of blocking ~40 s on first view.
+        view = None
         try:
             _set_job(slug, kind="ranking",
                      msg="Ranking references against each other in context (listwise)…")
@@ -724,9 +735,26 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
                      msg="Final ranking ready.")
         except Exception:
             traceback.print_exc()
+        # Build the requested top-50 full-text Markdown archive proactively.  The single-wide
+        # worker resolves text/sketch links while the user reads the report; a download click never
+        # starts this expensive work.
+        if "PYTEST_CURRENT_TEST" not in os.environ:
+            try:
+                report_archive.ensure(slug, rep, view or {}, REPORTS)
+            except Exception:
+                traceback.print_exc()
         _set_job(slug, kind="done", status="done", msg="done")
+        if "PYTEST_CURRENT_TEST" not in os.environ:
+            try:
+                notifications.queue_search_completion(slug)
+            except Exception:
+                traceback.print_exc()
     except Exception as e:
         traceback.print_exc()
+        try:
+            accounts.mark_search_failed(slug)
+        except Exception:
+            pass
         _set_job(slug, kind="error", status="error", msg=str(e)[:300])
     finally:
         # A crash mid-rerank must not leave a thread ticking progress onto a dead job.
@@ -772,7 +800,7 @@ def _espacenet_safe(pub, family_id=None):
 
 
 def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, wide=False,
-                  doc_token=None):
+                  doc_token=None, search_focus="all_text"):
     """Return ('ready'|'running'|'missing'|'busy', report_or_None). Kicks off background
     generation if needed. 'busy' means the concurrency or daily spend cap is exhausted."""
     p = report_path(slug)
@@ -805,7 +833,7 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
             p.unlink(missing_ok=True)
             (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)
         threading.Thread(target=_run_job,
-                         args=(slug, query, subj_obj, mode, gated, wide, doc_token),
+                         args=(slug, query, subj_obj, mode, gated, wide, doc_token, search_focus),
                          daemon=True).start()
     except Exception:
         # Never leak the reserved slot or leave a phantom "running" claim if we fail to launch.
@@ -845,6 +873,19 @@ def _gold_cards():
              "query": e.get("query_text", ""),
              "cached": report_path(e["id"]).exists()}
             for e in _GOLD.values()]
+
+
+def _can_access_report(slug):
+    """Named users see their own searches; administrators retain operational access to all."""
+    if slug in _GOLD or not auth.accounts_enabled(app) or auth.is_admin():
+        return True
+    user = auth.current_user()
+    if not user:
+        return False
+    try:
+        return accounts.can_access_search(user["id"], slug)
+    except Exception:
+        return False
 
 
 @app.route("/")
@@ -902,6 +943,21 @@ def _history_entries(limit=200):
     return out
 
 
+def _account_history_entries(user_id, *, saved_only=False, limit=300):
+    out = []
+    for row in accounts.list_searches(user_id, saved_only=saved_only, limit=limit):
+        when = row.get("updated_at")
+        if hasattr(when, "strftime"):
+            when = when.strftime("%Y-%m-%d %H:%M")
+        out.append({"slug": row["slug"], "query": (row.get("query") or "")[:400],
+                    "title": row.get("title"), "mode": row.get("mode") or "novelty",
+                    "search_focus": row.get("search_focus") or "all_text",
+                    "subject": row.get("subject"), "ood": False, "when": when or "",
+                    "status": row.get("status") or "running", "saved": bool(row.get("saved")),
+                    "notification_status": row.get("notification_status")})
+    return out
+
+
 @app.route("/history")
 def history():
     """Search history + the frozen gold-set examples, clearly separated.
@@ -910,12 +966,25 @@ def history():
     (instant)". They are demo fixtures, not the user's work, so they are labelled as examples here
     rather than mixed into the history list.
     """
-    return render_template("history.html", entries=_history_entries(), gold=_gold_cards(),
+    user = auth.current_user()
+    if user:
+        try:
+            entries = _account_history_entries(
+                user["id"], saved_only=request.args.get("saved") == "1")
+        except Exception:
+            entries = []
+    else:
+        entries = _history_entries()
+    return render_template("history.html", entries=entries, gold=_gold_cards(),
+                           named_account=bool(user), saved_only=request.args.get("saved") == "1",
                            corpus=corpus_facts.facts())
 
 
 @app.route("/run", methods=["POST"])
 def run():
+    user = auth.current_user()
+    if user:
+        auth.require_csrf()
     gold_id = request.form.get("gold_id", "").strip()
     if gold_id and gold_id in _GOLD:
         e = _GOLD[gold_id]
@@ -926,6 +995,11 @@ def run():
                                    f"The server is at capacity — {why}. Please retry shortly.")
         return redirect(url_for("report", slug=gold_id))
     query = request.form.get("query", "").strip()
+    search_focus = request.form.get("search_focus", "all_text").strip()
+    if search_focus not in ("all_text", "claims"):
+        return _error_response({"error": "unknown_search_focus",
+                                "detail": "Search focus must be all_text or claims."}, 400,
+                               "Unknown search focus.")
     # Validate at the API boundary, not the dropdown: the form had no allowlist, so a crafted
     # POST could reach the pipeline with mode=invalidity (returning novelty dates mislabelled as
     # an invalidity opinion) or mode=fto (unhandled 500).
@@ -979,9 +1053,10 @@ def run():
         ood = v.to_dict()
     # `wide` MUST be part of the slug: a wide result and a narrow one are different reports and
     # would otherwise overwrite each other's cache.
-    slug = slugify(query + "|" + mode + ("|wide" if wide else ""))
+    slug = slugify(query + "|" + mode + ("|wide" if wide else "")
+                   + ("|claims" if search_focus == "claims" else "|all-text"))
     st, why = ensure_report(slug, query=query, subject=subject, mode=mode, wide=wide,
-                            doc_token=doc_token)
+                            doc_token=doc_token, search_focus=search_focus)
     if st == "busy":
         return _error_response({"error": "server busy", "detail": why}, 429,
                                f"The server is at capacity — {why}. Please retry shortly.")
@@ -989,7 +1064,17 @@ def run():
     # document-chunk + image channels instead of degrading to text-only).
     (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
         {"query": query, "mode": mode, "subject": subject, "wide": wide, "ood": ood,
-         "doc_token": doc_token}))
+         "doc_token": doc_token, "search_focus": search_focus}))
+    if user:
+        notify = request.form.get("notify_email") == "1"
+        try:
+            accounts.record_search(user["id"], slug, query, mode, search_focus, subject,
+                                   notify_email=notify,
+                                   status=("complete" if st == "ready" else "running"), saved=True)
+            if st == "ready" and notify:
+                notifications.queue_search_completion(slug)
+        except Exception:
+            traceback.print_exc()
     return redirect(url_for("report", slug=slug))
 
 
@@ -1005,6 +1090,8 @@ def extract():
     Rate-limited (endpoint 'extract' in auth._LIMITERS) and behind the auth gate, like every
     other route that spends on Vertex. Returns JSON; on failure {ok:false,error} with a status.
     """
+    if auth.current_user():
+        auth.require_csrf()
     f = request.files.get("file")
     url = (request.form.get("url") or "").strip()
     try:
@@ -1038,12 +1125,15 @@ def extract():
 
 @app.route("/report/<slug>")
 def report(slug):
+    if not _can_access_report(slug):
+        abort(404)
     regen = request.args.get("rerun") == "1"
     query = subject = None
     mode = "novelty"
     wide = False        # the progress view lists the federation stage only for a wide run
     ood = None          # out-of-domain verdict recorded at search time, shown as a results banner
     doc_token = None     # document-search materials, so a live Re-run keeps the doc channels
+    search_focus = "all_text"
     if slug in _GOLD:
         e = _GOLD[slug]
         query, subject, mode = e["query_text"], e.get("anchor_publication"), e["mode"]
@@ -1056,27 +1146,118 @@ def report(slug):
             wide = bool(m.get("wide"))
             ood = m.get("ood")
             doc_token = m.get("doc_token")
+            search_focus = m.get("search_focus") or "all_text"
         title = "Ad-hoc search"
     status, rep = ensure_report(slug, query=query, subject=subject, mode=mode, regen=regen,
-                                wide=wide, doc_token=doc_token)
+                                wide=wide, doc_token=doc_token, search_focus=search_focus)
     if status == "missing":
         return render_template("notfound.html", slug=slug), 404
     if status == "busy":
         return render_template("notfound.html", slug=f"{slug} — {rep}"), 429
     if status != "ready":
         return render_template("generating.html", slug=slug, title=title,
-                               query=(query or "")[:400], mode=mode, wide=wide)
+                               query=(query or "")[:400], mode=mode, wide=wide,
+                               search_focus=search_focus)
     view = _build_view_cached(slug, rep, regen)
     view["slug"] = slug
     view["title"] = title
     view["is_gold"] = slug in _GOLD
+    view["search_focus"] = rep.get("search_focus") or search_focus
+    user = auth.current_user()
+    view["account_search"] = None
+    if user:
+        try:
+            view["account_search"] = accounts.get_search(user["id"], slug)
+            accounts.mark_search_viewed(user["id"], slug)
+        except Exception:
+            pass
     # Also schedule on report-open.  This covers a process restart between generation and the
     # worker starting, while ensure() keeps the operation idempotent and cache-backed.
     try:
         query_claim_grid.ensure(slug, rep, view, REPORTS)
     except Exception:
         traceback.print_exc()
+    if "PYTEST_CURRENT_TEST" not in os.environ:
+        try:
+            report_archive.ensure(slug, rep, view, REPORTS)
+        except Exception:
+            traceback.print_exc()
+    view["archive"] = report_archive.metadata(slug, REPORTS)
     return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
+
+
+@app.route("/api/searches/<slug>", methods=["GET", "POST"])
+def api_saved_search(slug):
+    """Bookmark/unbookmark a report in the signed-in user's account."""
+    if not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
+    user = auth.current_user()
+    if not user:
+        return jsonify({"error": "a named account is required"}), 403
+    if request.method == "GET":
+        row = accounts.get_search(user["id"], slug)
+        return jsonify({"exists": bool(row), "saved": bool(row and row.get("saved")),
+                        "title": row.get("title") if row else None})
+    auth.require_csrf()
+    data = request.get_json(silent=True) or request.form
+    saved = data.get("saved")
+    saved = saved is True or str(saved).lower() in ("1", "true", "yes", "on")
+    row = accounts.get_search(user["id"], slug)
+    if not row:
+        rep = _load_report(slug)
+        if not rep:
+            return jsonify({"error": "report not found"}), 404
+        meta = REPORTS / f"{slug}.meta.json"
+        m = {}
+        if meta.exists():
+            try:
+                m = json.loads(meta.read_text())
+            except Exception:
+                pass
+        row = accounts.record_search(
+            user["id"], slug, m.get("query") or rep.get("query") or "",
+            m.get("mode") or rep.get("mode") or "novelty",
+            m.get("search_focus") or rep.get("search_focus") or "all_text",
+            m.get("subject") or rep.get("subject"), notify_email=False,
+            status="complete", saved=saved)
+    row = accounts.set_search_saved(user["id"], slug, saved, title=data.get("title"))
+    return jsonify({"ok": True, "saved": bool(row.get("saved")), "title": row.get("title")})
+
+
+@app.route("/api/archive/<slug>", methods=["GET", "POST"])
+def api_archive(slug):
+    if not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
+    if request.method == "GET":
+        return jsonify(report_archive.status(slug, REPORTS))
+    if auth.current_user():
+        auth.require_csrf()
+    rep = _load_report(slug)
+    if not rep:
+        return jsonify({"error": "report not found"}), 404
+    vp = REPORTS / f"{slug}.view.json"
+    view = {}
+    if vp.exists():
+        try:
+            view = json.loads(vp.read_text())
+        except Exception:
+            pass
+    return jsonify(report_archive.ensure(slug, rep, view, REPORTS))
+
+
+@app.route("/archive/<slug>/download")
+def download_archive(slug):
+    if not valid_slug(slug) or not _can_access_report(slug):
+        abort(404)
+    path = report_archive.archive_path(slug, REPORTS)
+    if not path:
+        abort(404)
+    st = report_archive.status(slug, REPORTS)
+    return send_from_directory(path.parent, path.name, as_attachment=True,
+                               download_name=st.get("download_name") or path.name,
+                               mimetype="application/zip")
 
 
 # Cap on the unified (local + federated) ranked list that is rendered/exported. Kept at the
@@ -1222,6 +1403,8 @@ def _build_view_cached(slug, rep, regen=False):
 def status(slug):
     """Polling fallback. Kept as the compatibility path for clients without EventSource (and for
     regression.sh); /events/<slug> is the primary, push-based channel."""
+    if not _can_access_report(slug):
+        abort(404)
     with _JOB_LOCK:
         job = dict(_JOBS.get(slug, {}))
     ev = _job_event(slug, job)
@@ -1241,6 +1424,8 @@ def events(slug):
     1800s); we additionally send X-Accel-Buffering: no so no other proxy re-buffers us, and a
     comment heartbeat every 15 s so idle connections are not reaped.
     """
+    if not _can_access_report(slug):
+        abort(404)
     q = _subscribe(slug)
 
     def gen():
@@ -1678,6 +1863,8 @@ def api_ref(pub):
     # Query strings bypass the route converter, so vet it here.
     if slug and not valid_slug(slug):
         return jsonify({"error": "invalid slug"}), 400
+    if slug and not _can_access_report(slug):
+        abort(404)
     disp = enrich_display.enrich_for_display(pub)
     # DB sections + matched coordinate (for highlighting)
     with db.cursor() as cur:
@@ -1871,6 +2058,8 @@ def api_prefetch(slug):
     """
     if not valid_slug(slug):
         return jsonify({"error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
     if request.method == "GET":
         return jsonify(prefetch.status(slug))
     # POST: derive the top-N from the (already reranked + cached) view, so N tracks the listwise
@@ -1895,6 +2084,8 @@ def api_query_claim_grid(slug):
     """Start or poll the uploaded Claim x Reference grid without blocking the report page."""
     if not valid_slug(slug):
         return jsonify({"error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
     if request.method == "GET":
         return jsonify(query_claim_grid.status(slug, REPORTS))
 
@@ -1957,6 +2148,8 @@ def pdf(pub):
 
 @app.route("/print/<slug>")
 def print_view(slug):
+    if not _can_access_report(slug):
+        abort(404)
     rep = _load_report(slug)
     if not rep:
         abort(404)
@@ -1989,11 +2182,25 @@ def api_flags(slug):
     # hold it to the same character set as every other filesystem-bound slug.
     if not valid_slug(slug):
         return jsonify({"ok": False, "error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
+    user = auth.current_user()
     if request.method == "POST":
         data = request.get_json(force=True) or {}
         pub = data.get("pub")
         if not pub:
             return jsonify({"ok": False}), 400
+        if user:
+            auth.require_csrf()
+            try:
+                entry = accounts.save_report_flag(
+                    user["id"], slug, pub,
+                    flag=data.get("flag") if "flag" in data else None,
+                    note=data.get("note") if "note" in data else None)
+                return jsonify({"ok": True, "flags": accounts.load_report_flags(user["id"], slug),
+                                "entry": entry})
+            except ValueError as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 400
         flags = load_flags(slug)
         entry = flags.get(pub, {})
         if "flag" in data:
@@ -2003,6 +2210,8 @@ def api_flags(slug):
         flags[pub] = entry
         _flags_path(slug).write_text(json.dumps(flags, indent=1))
         return jsonify({"ok": True, "flags": flags})
+    if user:
+        return jsonify(accounts.load_report_flags(user["id"], slug))
     return jsonify(load_flags(slug))
 
 
@@ -2018,6 +2227,8 @@ def export():
     # part of a path we WRITE to. Validate before touching the filesystem.
     if not valid_slug(slug):
         return jsonify({"error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
     key = hashlib.sha1((slug + "|" + fmt + "|" + ",".join(sorted(pubs))).encode()).hexdigest()[:12]
     out = EXPORTS / f"{slug}__{key}.{fmt}"
     if not out.exists():
@@ -2130,6 +2341,8 @@ def api_morelike(pub):
 @app.route("/compare")
 def compare():
     slug = request.args.get("slug", "")
+    if slug and not _can_access_report(slug):
+        abort(404)
     pubs = [p for p in request.args.get("pubs", "").split(",") if p.strip()][:3]
     if not valid_slug(slug):
         abort(400)
@@ -2187,6 +2400,8 @@ def api_chart(pub):
     slug = request.args.get("slug", "")
     if not valid_slug(slug):        # reaches `RATIONALE / f"chart__{slug}__{pub}.json"` below
         return jsonify({"error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
     rep = _load_report(slug) or {}
     elements = rep.get("elements", [])
     if not elements:
@@ -2232,11 +2447,13 @@ def healthz():
     h = {"ok": True, "gold": len(_GOLD)}
     if auth.run_gate:
         h["runs"] = auth.run_gate.stats()
+    h["mail"] = notifications.transport_status()
     return jsonify(h)
 
 
 # ---- auth + rate limiting (registered LAST, after every route exists) ------------------------
 auth.init_app(app, state_path=DATA / "run_budget.json")
+notifications.init_app(app)
 
 
 if __name__ == "__main__":

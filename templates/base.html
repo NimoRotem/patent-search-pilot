@@ -12,6 +12,7 @@ window.APP_BASE = {{ request.script_root|tojson }};
 /* The progress narrative uses the same live/cached corpus fact as the footer.  Never bake a
    publication count into app.js: ingestion changes it while the UI asset remains cached. */
 window.CORPUS_PUBLICATIONS = {{ (corpus.publications if corpus and corpus.publications else 0)|tojson }};
+window.CSRF_TOKEN = {{ csrf_token()|tojson }};
 </script>
 </head>
 <body>
@@ -23,6 +24,16 @@ window.CORPUS_PUBLICATIONS = {{ (corpus.publications if corpus and corpus.public
     <a href="{{ request.script_root }}/">New search</a>
     <a href="{{ request.script_root }}/history">Search history</a>
     <a href="{{ request.script_root }}/about">About</a>
+    {% if current_is_admin %}<a href="{{ request.script_root }}/admin/users">Admin</a>{% endif %}
+    {% if current_user %}
+      <a class="accountnav" href="{{ request.script_root }}/account" title="{{ current_user.email }}">{{ current_user.full_name }}</a>
+      <a href="{{ request.script_root }}/logout">Sign out</a>
+    {% elif current_is_admin %}
+      <span class="accountnav muted">Administrator</span><a href="{{ request.script_root }}/logout">Sign out</a>
+    {% elif account_mode %}
+      <a href="{{ request.script_root }}/login">Sign in</a>
+      <a href="{{ request.script_root }}/register">Create account</a>
+    {% endif %}
   </div>
 </header>
 <main id="main">{% block body %}{% endblock %}</main>

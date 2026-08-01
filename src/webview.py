@@ -36,6 +36,8 @@ _SRC_LABEL = {
     "uspto": "USPTO",
     "openalex": "OpenAlex",
     "lens": "Lens",
+    "claim_dense": "Claim semantic",
+    "claim_bm25": "Claim keyword",
 }
 
 
@@ -46,8 +48,8 @@ def _src_label(sid):
 # The local pgvector retrieval channels (our own corpus). The two NEW parallel channels —
 # 'docchunks' (multi-chunk semantic) and 'image' — are rendered as their own labelled chips, and
 # every other channel_families key (federated API ids) flows through the per-result API provenance.
-_LOCAL_CHANNELS = {"dense", "bm25", "exact", "cpc", "citation", "qbe", "biblio", "crosslingual",
-                   "seed"}
+_LOCAL_CHANNELS = {"dense", "bm25", "claim_dense", "claim_bm25", "exact", "cpc",
+                   "citation", "qbe", "biblio", "crosslingual", "seed"}
 
 
 # The engine's /api/health source catalogue, cached. Refreshed on a background thread so that

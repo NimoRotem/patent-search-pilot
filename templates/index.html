@@ -14,6 +14,7 @@
     untouched. That is the point where somebody decides what a result means, and it stays there.  #}
 <div class="wrap searchpage">
   <form class="panel searchcard" method="post" action="{{ request.script_root }}/run" id="searchform">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field">
       <label for="qbox">What is the invention?</label>
       {#  Set by the extract step: points at the stashed full-text chunk vectors + drawing images so
@@ -68,6 +69,14 @@
         </select>
       </div>
       <div class="field">
+        <label for="search-focus">Search focus</label>
+        <select name="search_focus" id="search-focus">
+          <option value="all_text">All patent text — broadest recall</option>
+          <option value="claims">Claims — claim-text semantic + keyword search</option>
+        </select>
+        <span class="small muted">Claim focus expands claim-level hits through patent families and citations.</span>
+      </div>
+      <div class="field">
         <label for="subject">Subject patent number <span class="muted">(optional)</span></label>
         <input type="text" name="subject" id="subject" placeholder="e.g. US-11999030-B2">
         <span class="small muted">Enables prior-art dating under EPC Art. 54(2)/54(3).</span>
@@ -79,6 +88,14 @@
       <span class="small muted">Searches the local corpus and external patent APIs. First matches
         usually appear within a minute; full refinement can take several minutes. Cached afterwards.</span>
     </div>
+
+    {% if current_user %}
+    <label class="notifyopt"><input type="checkbox" name="notify_email" value="1"
+      {% if current_user.email_on_completion %}checked{% endif %}>
+      Email {{ current_user.email }} when the final report is ready</label>
+    {% else %}
+    <p class="small muted notifyopt">Use a named account to receive report-ready email alerts.</p>
+    {% endif %}
 
     {#  The one line that replaces the wall. Every number is live from the DB via
         corpus_facts.facts() — never hardcoded — so it cannot state a corpus size or a date
@@ -181,7 +198,7 @@ window.addEventListener('pageshow', () => {
     preview.hidden = true;
     try{
       const r = await fetch(B + '/extract', {method:'POST', body:fd, credentials:'same-origin',
-        headers:{'X-Requested-With':'XMLHttpRequest'}});
+        headers:{'X-Requested-With':'XMLHttpRequest','X-CSRF-Token':window.CSRF_TOKEN || ''}});
       let d = {};
       try { d = await r.json(); } catch(_) {}
       if(!r.ok || !d.ok){
@@ -193,6 +210,8 @@ window.addEventListener('pageshow', () => {
       // carry the doc token so /run also searches the document's own chunks + drawings
       const dt = document.getElementById('doctoken');
       if(dt) dt.value = d.doc_token || '';
+      const focus = document.getElementById('search-focus');
+      if(focus && d.source === 'upload' && d.n_claims) focus.value = 'claims';
       renderPreview(d);
       const notes = (d.notes||[]).join(' · ');
       setStatus('Ready — review the brief below and press “Search prior art”.' + (notes?' ('+notes+')':''), 'good');

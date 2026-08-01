@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Create account — rotemAI patent search{% endblock %}
+{% block body %}
+<div class="wrap authwrap">
+  <section class="panel authcard" aria-labelledby="register-title">
+    <h1 id="register-title">Create account</h1>
+    <p class="muted">Your searches and reports are saved automatically and remain available from any device.</p>
+    {% if error %}<div class="formerror" role="alert">{{ error }}</div>{% endif %}
+    <form method="post" class="authform">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="register-name">Full name</label>
+      <input id="register-name" name="full_name" required maxlength="120"
+             autocomplete="name" value="{{ values.full_name }}" autofocus>
+      <label for="register-email">Email</label>
+      <input id="register-email" type="email" name="email" required maxlength="254"
+             autocomplete="email" value="{{ values.email }}">
+      <label for="register-password">Password</label>
+      <input id="register-password" type="password" name="password" required minlength="10"
+             maxlength="256" autocomplete="new-password" aria-describedby="password-hint">
+      <span class="small muted" id="password-hint">At least 10 characters.</span>
+      <label for="register-password-confirm">Confirm password</label>
+      <input id="register-password-confirm" type="password" name="password_confirm" required
+             minlength="10" maxlength="256" autocomplete="new-password">
+      <button class="btn" type="submit">Create account</button>
+    </form>
+    <p class="authfoot muted">Already registered? <a href="{{ request.script_root }}/login">Sign in</a>.</p>
+  </section>
+</div>
+{% endblock %}

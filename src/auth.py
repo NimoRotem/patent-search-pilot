@@ -14,10 +14,11 @@ Everything is configured from .env. Nothing here writes a secret to a tracked fi
 """
 from __future__ import annotations
 import os, hmac, json, time, threading, secrets
+from functools import wraps
 from pathlib import Path
 from urllib.parse import urlparse
 from flask import (Blueprint, request, session, redirect, url_for, render_template_string,
-                   jsonify, current_app)
+                   render_template, jsonify, current_app, g, abort)
 
 # Every secret below is read from the environment AT IMPORT TIME, so `load_dotenv()` must already
 # have run. That is `config`'s job. Until now this module never imported it and worked only by
@@ -25,6 +26,8 @@ from flask import (Blueprint, request, session, redirect, url_for, render_templa
 # `auth`. Reordering those two imports would have silently emptied APP_PASSWORD and disabled the
 # whole gate. Import it explicitly so the dependency is real rather than incidental.
 import config  # noqa: F401  (imported for its load_dotenv side effect)
+import accounts
+import notifications
 
 bp = Blueprint("auth", __name__)
 
@@ -46,6 +49,7 @@ def _num(name, default):
 
 APP_PASSWORD = _env("APP_PASSWORD")
 API_TOKEN = _env("APP_API_TOKEN")
+ACCOUNTS_ENABLED = _flag("USER_ACCOUNTS_ENABLED", "1")
 SESSION_HOURS = _num("SESSION_HOURS", 720)          # 30 days; single-user tool, don't nag
 # Requests arriving on the loopback interface are on-box (port 8631 is VPC-only behind the GCP
 # firewall, and nginx proxies from another VM so its traffic is NOT loopback). Exempting loopback
@@ -57,7 +61,8 @@ _LOOPBACK = ("127.0.0.1", "::1", "localhost")
 TRUSTED_PROXY_HOPS = max(1, int(_num("TRUSTED_PROXY_HOPS", 1)))
 
 # Endpoints that must stay reachable without a session.
-_OPEN_ENDPOINTS = {"healthz", "auth.login", "auth.logout", "static"}
+_OPEN_ENDPOINTS = {"healthz", "auth.login", "auth.logout", "auth.register",
+                   "auth.forgot_password", "auth.reset_password", "static"}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -234,6 +239,15 @@ _LIMITERS = {
     "auth.login": Limiter("login attempts", _num("RL_LOGIN_RATE", 1 / 90.0), _num("RL_LOGIN_BURST", 10),
                           _num("RL_LOGIN_GRATE", 1 / 5.0), _num("RL_LOGIN_GBURST", 120),
                           global_exempts_known_good=True),
+    "auth.forgot_password": Limiter(
+        "password reset requests", _num("RL_RESET_RATE", 1 / 120.0), _num("RL_RESET_BURST", 5),
+        _num("RL_RESET_GRATE", 1 / 15.0), _num("RL_RESET_GBURST", 30)),
+    # Public signup is intentionally available, but a bot must not be able to fill the users table
+    # or spend unbounded password-hashing CPU. A human can still retry a form several times.
+    "auth.register": Limiter(
+        "account registrations", _num("RL_REGISTER_RATE", 1 / 300.0),
+        _num("RL_REGISTER_BURST", 4), _num("RL_REGISTER_GRATE", 1 / 30.0),
+        _num("RL_REGISTER_GBURST", 20)),
 }
 
 
@@ -344,7 +358,17 @@ def auth_enabled(app=None):
         return False
     if app.config.get("TESTING") and not app.config.get("FORCE_AUTH"):
         return False
-    return bool(app.config.get("APP_PASSWORD") or APP_PASSWORD)
+    return accounts_enabled(app) or bool(app.config.get("APP_PASSWORD") or APP_PASSWORD)
+
+
+def accounts_enabled(app=None):
+    """Named-account mode. Tests keep the historical password gate unless they opt in."""
+    app = app or current_app
+    if app.config.get("ACCOUNTS_DISABLED"):
+        return False
+    if app.config.get("TESTING") and not app.config.get("FORCE_ACCOUNTS"):
+        return False
+    return bool(app.config.get("ACCOUNTS_ENABLED", ACCOUNTS_ENABLED))
 
 
 def _password(app=None):
@@ -365,8 +389,34 @@ def _wants_json():
     return "application/json" in accept and "text/html" not in accept
 
 
+def current_user():
+    """Active named user for this request, cached on Flask ``g``."""
+    if hasattr(g, "patent_user"):
+        return g.patent_user
+    user = None
+    uid = session.get("user_id")
+    if uid:
+        try:
+            candidate = accounts.get_user(uid)
+            if candidate and candidate.get("is_active"):
+                user = candidate
+        except Exception:
+            user = None
+    g.patent_user = user
+    return user
+
+
+def is_legacy_admin():
+    return session.get("auth") is True and not session.get("user_id")
+
+
+def is_admin():
+    user = current_user()
+    return is_legacy_admin() or bool(user and user.get("is_admin"))
+
+
 def _authenticated():
-    if session.get("auth") is True:
+    if current_user() is not None or session.get("auth") is True:
         return True
     # Bearer / X-API-Key for scripts and cron, if configured.
     tok = API_TOKEN or current_app.config.get("APP_API_TOKEN")
@@ -377,6 +427,31 @@ def _authenticated():
         if supplied and hmac.compare_digest(supplied, tok):
             return True
     return False
+
+
+def csrf_token():
+    token = session.get("csrf_token")
+    if not token:
+        token = session["csrf_token"] = secrets.token_urlsafe(32)
+    return token
+
+
+def require_csrf():
+    supplied = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token") or ""
+    expected = session.get("csrf_token") or ""
+    if not expected or not supplied or not hmac.compare_digest(supplied, expected):
+        abort(400, "The form expired. Reload the page and try again.")
+
+
+def admin_required(fn):
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        if not _authenticated():
+            return redirect(url_for("auth.login", next=request.path))
+        if not is_admin():
+            abort(403)
+        return fn(*args, **kwargs)
+    return wrapped
 
 
 def _safe_next(raw):
@@ -440,12 +515,36 @@ _TOOMANY_HTML = """<!doctype html><meta charset=utf-8>
 def login():
     error = ""
     if request.method == "POST":
+        email = request.form.get("email", "").strip()
         supplied = request.form.get("password", "")
+        if accounts_enabled() and email:
+            try:
+                user = accounts.authenticate(email, supplied)
+            except Exception:
+                user = None
+                error = "Accounts are temporarily unavailable. The administrator login still works."
+            if user:
+                session.clear()
+                session["user_id"] = user["id"]
+                session["csrf_token"] = secrets.token_urlsafe(32)
+                session.permanent = True
+                _LIMITERS["auth.login"].mark_known_good(client_ip())
+                nxt = _safe_next(request.form.get("next") or request.args.get("next"))
+                if nxt:
+                    return redirect((request.script_root or "") + nxt)
+                return redirect(url_for("index"))
+            if not error:
+                error = "Email or password is incorrect."
+            time.sleep(0.5)
+            return render_template("login.html", error=error,
+                                   next_path=_safe_next(request.form.get("next") or request.args.get("next"))), 401
         expected = _password()
         # constant-time: don't leak the password length/prefix via timing
         if expected and hmac.compare_digest(supplied, expected):
             session.clear()
             session["auth"] = True
+            session["legacy_admin"] = True
+            session["csrf_token"] = secrets.token_urlsafe(32)
             session.permanent = True
             # This IP demonstrably holds the password, so it is not the brute-force. Remember it
             # so a flood from somewhere else can't lock the real user out via the global bucket.
@@ -458,7 +557,160 @@ def login():
             return redirect(url_for("index"))
         error = "Incorrect password."
         time.sleep(0.5)                      # blunt the brute-force rate
+    if accounts_enabled():
+        return render_template("login.html", error=error,
+                               next_path=_safe_next(request.args.get("next"))), (401 if error else 200)
     return render_template_string(_LOGIN_HTML, error=error), (401 if error else 200)
+
+
+@bp.route("/register", methods=["GET", "POST"])
+def register():
+    if not accounts_enabled():
+        return redirect(url_for("auth.login"))
+    error = ""
+    values = {"full_name": request.form.get("full_name", ""),
+              "email": request.form.get("email", "")}
+    if request.method == "POST":
+        require_csrf()
+        password = request.form.get("password", "")
+        if password != request.form.get("password_confirm", ""):
+            error = "Passwords do not match."
+        else:
+            try:
+                user = accounts.create_user(values["email"], values["full_name"], password)
+                session.clear()
+                session["user_id"] = user["id"]
+                session["csrf_token"] = secrets.token_urlsafe(32)
+                session.permanent = True
+                return redirect(url_for("index"))
+            except ValueError as exc:
+                error = str(exc)
+            except Exception:
+                error = "Account creation is temporarily unavailable. Please try again shortly."
+    return render_template("register.html", error=error, values=values), (400 if error else 200)
+
+
+@bp.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if not accounts_enabled():
+        return redirect(url_for("auth.login"))
+    submitted = False
+    if request.method == "POST":
+        require_csrf()
+        email = request.form.get("email", "")
+        try:
+            def reset_url(token):
+                return f"{notifications.PUBLIC_BASE_URL}/reset-password/{token}"
+            notifications.queue_password_reset(email, reset_url)
+        except Exception:
+            # Deliberately generic: this endpoint must not enumerate registered addresses, and a
+            # temporary mail problem should not change the response for a known account.
+            pass
+        submitted = True
+    return render_template("forgot_password.html", submitted=submitted)
+
+
+@bp.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    if not accounts_enabled():
+        return redirect(url_for("auth.login"))
+    error = ""
+    if request.method == "POST":
+        require_csrf()
+        password = request.form.get("password", "")
+        if password != request.form.get("password_confirm", ""):
+            error = "Passwords do not match."
+        else:
+            try:
+                user = accounts.reset_password(token, password)
+                session.clear()
+                session["user_id"] = user["id"]
+                session["csrf_token"] = secrets.token_urlsafe(32)
+                session.permanent = True
+                return redirect(url_for("index"))
+            except ValueError as exc:
+                error = str(exc)
+            except Exception:
+                error = "Password reset is temporarily unavailable."
+    return render_template("reset_password.html", error=error, token=token), (400 if error else 200)
+
+
+@bp.route("/account", methods=["GET", "POST"])
+def account():
+    user = current_user()
+    if not user:
+        if is_legacy_admin():
+            return redirect(url_for("auth.admin_users"))
+        return redirect(url_for("auth.login", next="/account"))
+    message = error = ""
+    if request.method == "POST":
+        require_csrf()
+        action = request.form.get("action")
+        try:
+            if action == "profile":
+                user = accounts.update_profile(
+                    user["id"], full_name=request.form.get("full_name", ""),
+                    email_on_completion=request.form.get("email_on_completion") == "1")
+                g.patent_user = user
+                message = "Account preferences saved."
+            elif action == "password":
+                new = request.form.get("new_password", "")
+                if new != request.form.get("new_password_confirm", ""):
+                    raise ValueError("New passwords do not match.")
+                accounts.change_password(user["id"], request.form.get("current_password", ""), new)
+                message = "Password changed."
+        except ValueError as exc:
+            error = str(exc)
+        except Exception:
+            error = "The account could not be updated right now."
+    return render_template("account.html", user=user, message=message, error=error)
+
+
+@bp.route("/admin/users")
+@admin_required
+def admin_users():
+    try:
+        users = accounts.list_users()
+        stats = accounts.mail_stats()
+        store_error = None
+    except Exception as exc:
+        users, stats = [], {}
+        store_error = str(exc)[:200]
+    return render_template("admin_users.html", users=users, mail_stats=stats,
+                           mail_transport=notifications.transport_status(), store_error=store_error)
+
+
+@bp.route("/admin/users/<int:user_id>", methods=["POST"])
+@admin_required
+def admin_update_user(user_id):
+    require_csrf()
+    action = request.form.get("action")
+    kwargs = {}
+    if action == "promote":
+        kwargs["is_admin"] = True
+    elif action == "demote":
+        kwargs["is_admin"] = False
+    elif action == "activate":
+        kwargs["is_active"] = True
+    elif action == "deactivate":
+        kwargs["is_active"] = False
+    else:
+        abort(400)
+    try:
+        accounts.update_user_role(user_id, **kwargs)
+        return redirect(url_for("auth.admin_users"))
+    except ValueError as exc:
+        return render_template("notfound.html", slug=str(exc)), 400
+
+
+@bp.route("/admin/searches")
+@admin_required
+def admin_searches():
+    try:
+        searches = accounts.list_searches(all_users=True, limit=1000)
+    except Exception:
+        searches = []
+    return render_template("admin_searches.html", searches=searches)
 
 
 @bp.route("/logout")
@@ -473,6 +725,15 @@ def init_app(app, state_path=None):
     app.register_blueprint(bp)
     app.permanent_session_lifetime = datetime.timedelta(seconds=int(SESSION_HOURS * 3600))
     init_run_gate(state_path)
+
+    @app.context_processor
+    def _auth_context():
+        try:
+            user = current_user()
+        except Exception:
+            user = None
+        return {"current_user": user, "account_mode": accounts_enabled(app),
+                "current_is_admin": is_admin(), "csrf_token": csrf_token}
 
     @app.before_request
     def _gate():                                              # noqa: unused
@@ -492,7 +753,7 @@ def init_app(app, state_path=None):
         lim = limiter_for(ep)
         # Only POST /login spends a login token; GETs just render the form, and charging them
         # would lock a legitimate user out of the page by reloading it.
-        if ep == "auth.login" and request.method != "POST":
+        if ep in ("auth.login", "auth.forgot_password", "auth.register") and request.method != "POST":
             lim = None
         if lim is not None and not (TRUST_LOOPBACK and is_loopback()):
             ok, retry, why = lim.check(client_ip())

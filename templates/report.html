@@ -68,6 +68,7 @@
       <span><b>{{ '{:,}'.format(v.n_families or 0) }}</b> families surfaced</span>
       <span><b>{{ v.elements|length }}</b> invention elements</span>
       <span><b>{{ v.mode.replace('_',' ')|title }}</b> mode</span>
+      <span><b>{{ 'Claims' if v.search_focus == 'claims' else 'All text' }}</b> search focus</span>
       {% if v.subject %}<span>subject
         <a href="{{ v.subject_google or ('https://patents.google.com/patent/' + v.subject.replace('-','') + '/en') }}"
            target="_blank" rel="noopener">{{ v.subject_flag }} {{ v.subject }}</a></span>{% endif %}
@@ -90,8 +91,28 @@
 
     <div class="actions">
       <a class="btn ghost sm" href="{{ request.script_root }}/print/{{ v.slug }}" target="_blank" rel="noopener">Print / PDF view</a>
+      {% if current_user %}
+      <button type="button" class="btn ghost sm save-report{% if v.account_search and v.account_search.saved %} saved{% endif %}"
+              id="saveReportBtn" data-saved="{{ 'true' if v.account_search and v.account_search.saved else 'false' }}">
+        {{ '✓ Saved report' if v.account_search and v.account_search.saved else 'Save report' }}
+      </button>
+      {% endif %}
       <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}?rerun=1"
          onclick="return confirm('Re-run the agent live? First matches usually appear within a minute; full refinement can take several minutes.')">Re-run</a>
+    </div>
+    <div class="archivecard" id="archiveCard" data-status="{{ v.archive.status or 'not_started' }}">
+      <div class="archiveicon" aria-hidden="true">ZIP</div>
+      <div class="archivecopy">
+        <b>Top-50 full-text patent archive</b>
+        <span id="archiveStatus">
+          {% if v.archive.ready %}Ready — {{ v.archive.n_patents }} Markdown files; {{ v.archive.n_full_text }} include both claims and full description.
+          {% elif v.archive.status == 'error' %}Archive generation needs a retry.
+          {% else %}Building automatically in the background: one Markdown file per ranked patent, with full text and sketch links.{% endif %}
+        </span>
+      </div>
+      <a class="btn sm" id="archiveDownload" href="{{ request.script_root }}/archive/{{ v.slug }}/download"
+         {% if not v.archive.ready %}hidden{% endif %}>Download ZIP</a>
+      <button type="button" class="btn ghost sm" id="archiveRetry" {% if v.archive.status != 'error' %}hidden{% endif %}>Retry</button>
     </div>
   </div>
 
@@ -511,6 +532,79 @@ window.SLUG = {{ v.slug|tojson }};
 window.QUERY = {{ v.query|tojson }};
 window.ELEMENTS = {{ v.elements|tojson }};
 window.PARTIAL = {{ v.partial|tojson }};
+window.ARCHIVE_READY = {{ (v.archive.ready or false)|tojson }};
+window.REPORT_SAVED = {{ (v.account_search and v.account_search.saved)|default(false)|tojson }};
+
+/* Saved report + automatic top-50 Markdown archive. Both are account/report state, not retrieval
+   controls, so failures never disturb the ranked results already on screen. */
+(function(){
+  const B = window.APP_BASE || '';
+  const save = document.getElementById('saveReportBtn');
+  if(save){
+    save.addEventListener('click', async () => {
+      const next = save.dataset.saved !== 'true';
+      save.disabled = true;
+      try{
+        const r = await fetch(B + '/api/searches/' + encodeURIComponent(window.SLUG), {
+          method:'POST', credentials:'same-origin',
+          headers:{'Content-Type':'application/json','X-CSRF-Token':window.CSRF_TOKEN || ''},
+          body:JSON.stringify({saved:next})
+        });
+        const d = await r.json();
+        if(!r.ok) throw new Error(d.error || 'save failed');
+        save.dataset.saved = d.saved ? 'true' : 'false';
+        save.classList.toggle('saved', !!d.saved);
+        save.textContent = d.saved ? '✓ Saved report' : 'Save report';
+      }catch(_){ save.textContent = 'Could not save — retry'; }
+      finally{ save.disabled = false; }
+    });
+  }
+
+  const card = document.getElementById('archiveCard');
+  const status = document.getElementById('archiveStatus');
+  const download = document.getElementById('archiveDownload');
+  const retry = document.getElementById('archiveRetry');
+  if(!card) return;
+  let timer = null;
+  function renderArchive(d){
+    card.dataset.status = d.status || 'building';
+    if(d.ready){
+      status.textContent = 'Ready — ' + (d.n_patents || 0) + ' Markdown files; ' +
+        (d.n_full_text || 0) + ' include both claims and full description.';
+      download.hidden = false; retry.hidden = true;
+      if(timer) clearTimeout(timer);
+      return true;
+    }
+    download.hidden = true;
+    if(d.status === 'error'){
+      status.textContent = 'Archive generation failed: ' + (d.error || 'unknown error') + '.';
+      retry.hidden = false;
+      return true;
+    }
+    retry.hidden = true;
+    const progress = d.n_patents ? ' (' + (d.n_done || 0) + ' of ' + d.n_patents + ')' : '';
+    status.textContent = (d.message || 'Building full-text Markdown files in the background…') + progress;
+    return false;
+  }
+  async function poll(){
+    try{
+      const d = await (await fetch(B + '/api/archive/' + encodeURIComponent(window.SLUG),
+        {credentials:'same-origin'})).json();
+      if(!renderArchive(d)) timer = setTimeout(poll, 3500);
+    }catch(_){ timer = setTimeout(poll, 6000); }
+  }
+  async function start(){
+    try{
+      const r = await fetch(B + '/api/archive/' + encodeURIComponent(window.SLUG), {
+        method:'POST', credentials:'same-origin', headers:{'X-CSRF-Token':window.CSRF_TOKEN || ''}
+      });
+      renderArchive(await r.json());
+    }catch(_){}
+    poll();
+  }
+  retry.addEventListener('click', start);
+  if(!window.ARCHIVE_READY) start();
+})();
 {% if v.partial %}
 /* The report is renderable but the agent is still working. Show the SAME narrative the generating
    page shows, so the long quiet stretch between 'partial' and 'reranking' reads as progress

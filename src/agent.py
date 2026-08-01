@@ -117,6 +117,9 @@ class AgentConfig:
     elements_per_round: int = 4
     evidence_per_element: int = 6
     ground: bool = True          # per-evidence coordinate grounding (costly); off for the ablation
+    # "claim_agentic" makes the primary semantic + lexical candidate channels search claim text
+    # only. Citation/family and cross-lingual expansion still run around those claim-level seeds.
+    search_config: str = "agentic"
     # Bounded independent ANN passes; two UI jobs => at most four. Environment override permits
     # an operational serial fallback without reverting or changing ranking behavior.
     search_workers: int = field(default_factory=_default_search_workers)
@@ -159,6 +162,8 @@ class CoverageAgent:
         deterministic query order, so ranking, hit counts and stopping behavior stay unchanged.
         """
         r = retriever or self.r
+        if cfg == "agentic":
+            cfg = getattr(self, "_search_config", "agentic")
         # sub-searches fuse by RRF only; a single cross-encoder rerank runs at report time
         # (spec §6: rerank the final cascade, not every sub-query — and it bounds CPU cost)
         res = r.search(query, subject=subject, mode=mode, config=cfg, cpc_hints=cpc,
@@ -247,6 +252,7 @@ class CoverageAgent:
         sees, in ~a few seconds), and 'round' (per refinement round). It must never raise."""
         cfg = cfg or AgentConfig(mode=mode)
         self._ground = cfg.ground
+        self._search_config = cfg.search_config
         m = Mode(mode)
 
         def emit(stage, data):
@@ -443,9 +449,14 @@ class CoverageAgent:
         combination = cb.combination()
         cov = ledger.element_coverage()
         return {
-            "query": query_text[:200],
+            # This report is the durable saved record.  Keeping only 200 characters made a long
+            # disclosure impossible to recover from History/export even though the search itself
+            # used the full text.  Cap only pathological payloads; the UI clamps visually.
+            "query": query_text[:20000],
             "subject": subject.number if subject else None,
             "mode": mode.value,
+            "search_focus": ("claims" if getattr(self, "_search_config", "agentic")
+                             == "claim_agentic" else "all_text"),
             "rounds": rounds,
             "n_families": len(ledger.families_seen),
             "elements": ledger.elements,

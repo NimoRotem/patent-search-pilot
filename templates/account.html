@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Account — rotemAI patent search{% endblock %}
+{% block body %}
+<div class="wrap accountpage">
+  <div class="pagehead"><div><h1>Account</h1><p class="muted">{{ user.email }}{% if user.is_admin %} · administrator{% endif %}</p></div></div>
+  {% if message %}<div class="formsuccess" role="status">{{ message }}</div>{% endif %}
+  {% if error %}<div class="formerror" role="alert">{{ error }}</div>{% endif %}
+  <div class="accountgrid">
+    <section class="panel accountpanel">
+      <h2>Profile and alerts</h2>
+      <form method="post" class="authform">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="profile">
+        <label for="profile-name">Full name</label>
+        <input id="profile-name" name="full_name" value="{{ user.full_name }}" required maxlength="120">
+        <label class="checkrow"><input type="checkbox" name="email_on_completion" value="1"
+          {% if user.email_on_completion %}checked{% endif %}> Email me when a search report is ready</label>
+        <button class="btn" type="submit">Save preferences</button>
+      </form>
+    </section>
+    <section class="panel accountpanel">
+      <h2>Change password</h2>
+      <form method="post" class="authform">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="password">
+        <label for="current-password">Current password</label>
+        <input id="current-password" type="password" name="current_password" required autocomplete="current-password">
+        <label for="new-password">New password</label>
+        <input id="new-password" type="password" name="new_password" required minlength="10" maxlength="256" autocomplete="new-password">
+        <label for="new-password-confirm">Confirm new password</label>
+        <input id="new-password-confirm" type="password" name="new_password_confirm" required minlength="10" maxlength="256" autocomplete="new-password">
+        <button class="btn ghost" type="submit">Change password</button>
+      </form>
+    </section>
+  </div>
+</div>
+{% endblock %}

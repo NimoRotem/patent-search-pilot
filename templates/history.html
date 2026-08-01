@@ -16,6 +16,12 @@
 
   <section aria-labelledby="hist-h">
     <h2 id="hist-h">Your searches</h2>
+    {% if named_account %}
+    <nav class="historytabs" aria-label="Search history filter">
+      <a class="{{ 'active' if not saved_only else '' }}" href="{{ request.script_root }}/history">All searches</a>
+      <a class="{{ 'active' if saved_only else '' }}" href="{{ request.script_root }}/history?saved=1">Saved reports</a>
+    </nav>
+    {% endif %}
     {% if entries %}
     <p class="small muted">{{ entries|length }} cached search{{ 'es' if entries|length != 1 else '' }},
       most recent first. These open instantly from cache.</p>
@@ -26,19 +32,22 @@
             the title so hovering identifies a search without opening it — the report page itself
             now shows the query in full and expandable. #}
         <a class="histq" href="{{ request.script_root }}/report/{{ e.slug }}"
-           title="{{ e.query or e.slug }}">{{ e.query or e.slug }}</a>
+           title="{{ e.query or e.slug }}">{{ e.title or e.query or e.slug }}</a>
         <span class="small muted">
           <span class="badge">{{ e.mode.replace('_',' ') }}</span>
+          {% if e.search_focus == 'claims' %}<span class="badge">claim search</span>{% endif %}
           {% if e.subject %}<span class="badge">subject {{ e.subject }}</span>{% endif %}
           {% if e.ood %}<span class="badge b-warn" title="The detector judged this query to be outside the indexed field">outside indexed field</span>{% endif %}
+          {% if e.status %}<span class="badge {{ 'b-cached' if e.status == 'complete' else ('b-warn' if e.status == 'failed' else '') }}">{{ e.status }}</span>{% endif %}
+          {% if e.saved %}<span class="badge">saved</span>{% endif %}
+          {% if e.notification_status in ('queued','sent') %}<span class="badge">email {{ e.notification_status }}</span>{% endif %}
           <span>{{ e.when }}</span>
         </span>
       </li>
       {% endfor %}
     </ul>
     {% else %}
-    <p class="small muted">No searches yet. Results are cached as you run them and will appear
-      here, newest first.</p>
+    <p class="small muted">{% if saved_only %}No saved reports yet.{% else %}No searches yet. Results are saved as you run them and will appear here, newest first.{% endif %}</p>
     {% endif %}
   </section>
 
@@ -49,6 +58,7 @@
     <div class="goldgrid">
       {% for g in gold %}
       <form method="post" action="{{ request.script_root }}/run">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="gold_id" value="{{ g.id }}">
         <button class="goldcard" type="submit">
           <span class="id">{{ g.id }}

@@ -4,7 +4,9 @@
 <div class="wrap">
   <div class="panel gen">
     <h2>Searching the prior art</h2>
-    <p class="genq">“{{ query }}” · {{ mode.replace('_',' ') }} mode</p>
+    <p class="genq">“{{ query }}” · {{ mode.replace('_',' ') }} mode ·
+      {{ 'claims-focused search' if search_focus == 'claims' else 'all patent text' }}</p>
+    {% if current_user %}<p class="genmail">This search is saved to your account. You can leave this page and return from Search history.</p>{% endif %}
 
     {#  A narrative, not a log. Each stage carries its own explanation and, once the agent
         reports numbers, the numbers it learned. The active stage shows how long it has been
