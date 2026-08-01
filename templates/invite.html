@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Open your account — rotemAI patent search{% endblock %}
+{% block body %}
+{#  An invitation, not an administrator-set password. The person choosing the password is the
+    person who will use it — nobody else ever knows it.  #}
+<div class="wrap authwrap">
+  <div class="panel authcard">
+    <h1>Open your account</h1>
+    <p class="muted">You were invited as <b>{{ invite.email }}</b>. Choose a password and the
+      account is yours.</p>
+    {% if error %}<div class="formerror" role="alert">{{ error }}</div>{% endif %}
+    <form method="post" action="{{ request.script_root }}/invite/{{ token }}">
+      <label>Your name
+        <input type="text" name="full_name" value="{{ invite.full_name or '' }}" required
+               autocomplete="name" maxlength="120"></label>
+      <label>Password
+        <input type="password" name="password" required autocomplete="new-password"></label>
+      <label>Password again
+        <input type="password" name="password_confirm" required autocomplete="new-password"></label>
+      <button class="btn" type="submit">Open my account</button>
+    </form>
+    <p class="small muted">This link works once. Your email address is already confirmed by using
+      it, so search-completion emails will reach you.</p>
+  </div>
+</div>
+{% endblock %}

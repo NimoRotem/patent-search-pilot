@@ -23,6 +23,26 @@
       <input type="hidden" name="doc_token" id="doctoken" value="">
       <textarea name="query" id="qbox" rows="4" required autofocus
         placeholder="Describe it in plain language — the more specific the features, the better. e.g. “A cordless handheld vacuum lifter for glass and stone panels, with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that alarms the operator when grip vacuum is lost.”"></textarea>
+      {#  Retrieval here is semantic, so a three-word query retrieves the FIELD rather than the
+          invention. This expands what you wrote into the vocabulary the corpus is written in —
+          and shows what it added, so an expansion that drifted can be rejected rather than
+          silently searched.  #}
+      <div class="qimprove">
+        <button type="button" class="btn ghost sm" id="improveBtn"
+                title="Expand this into the terminology a patent examiner would use">Improve this description</button>
+        <span class="small muted" id="improveStatus" role="status" aria-live="polite"></span>
+      </div>
+      <div id="improveOut" class="improveout" hidden>
+        <div class="improvehead">
+          <b>Suggested description</b>
+          <span class="grow"></span>
+          <button type="button" class="btn sm" id="improveUse">Use this</button>
+          <button type="button" class="btn ghost sm" id="improveKeep">Keep mine</button>
+        </div>
+        <p class="ex-snip" id="improveText"></p>
+        <div id="improveAdded" class="improveadded small"></div>
+        <div id="improveQs" class="improveqs small"></div>
+      </div>
     </div>
 
     {#  DOCUMENT / PATENT-LINK INPUT.
@@ -191,6 +211,56 @@ window.addEventListener('pageshow', () => {
   searchButton.textContent = 'Search prior art';
   searchButton.disabled = false;
 });
+
+/*  IMPROVE THE DESCRIPTION — one model pass over what the user typed.
+    The suggestion is never applied silently: it is shown beside what it added and what it still
+    cannot tell, and the user chooses.                                                          */
+(function(){
+  const B = window.APP_BASE || '';
+  const btn = document.getElementById('improveBtn');
+  const box = document.getElementById('qbox');
+  const out = document.getElementById('improveOut');
+  const status = document.getElementById('improveStatus');
+  if(!btn) return;
+  let suggested = '';
+  const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  btn.addEventListener('click', async () => {
+    const q = (box.value || '').trim();
+    if(q.length < 8){ status.textContent = 'Write a sentence or two first.'; box.focus(); return; }
+    btn.disabled = true; const was = btn.textContent; btn.textContent = 'Thinking…';
+    status.textContent = ''; out.hidden = true;
+    try{
+      const r = await fetch(B + '/api/improve-query', {method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json','X-CSRF-Token':window.CSRF_TOKEN || ''},
+        body: JSON.stringify({query: q})});
+      const d = await r.json();
+      if(!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      if(!d.changed){
+        status.textContent = 'Your description already reads well for this engine.';
+        return;
+      }
+      suggested = d.improved;
+      document.getElementById('improveText').textContent = d.improved;
+      document.getElementById('improveAdded').innerHTML = (d.added||[]).length
+        ? '<b>What was added</b><ul><li>' + d.added.map(esc).join('</li><li>') + '</li></ul>' : '';
+      document.getElementById('improveQs').innerHTML = (d.questions||[]).length
+        ? '<b>Still unclear — answering these would sharpen the search</b><ul><li>'
+          + d.questions.map(esc).join('</li><li>') + '</li></ul>' : '';
+      out.hidden = false;
+    }catch(err){ status.textContent = 'Could not improve that: ' + (err.message || err); }
+    finally{ btn.disabled = false; btn.textContent = was; }
+  });
+  document.getElementById('improveUse').addEventListener('click', () => {
+    box.value = suggested; box.dispatchEvent(new Event('input'));
+    out.hidden = true; status.textContent = 'Applied — edit it further if you like.';
+    box.focus();
+  });
+  document.getElementById('improveKeep').addEventListener('click', () => {
+    out.hidden = true; status.textContent = 'Kept your own wording.';
+  });
+})();
 
 /*  DOCUMENT / PATENT-LINK INPUT — extract text + drawings, fuse into the query box.
     Prefix-aware (never hardcode /patents): everything through B = window.APP_BASE || ''.   */

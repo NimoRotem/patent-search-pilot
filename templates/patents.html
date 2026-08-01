@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Saved patents — rotemAI patent search{% endblock %}
+{% block body %}
+{#  A reference that mattered enough to keep, kept across searches.
+
+    Triage flags live and die with one report. This list does not: a document saved here stays
+    findable when the search that surfaced it is months old, carries the reader's own note, and
+    remembers which search it came from so the evidence can be reopened.  #}
+<div class="wrap librarypage">
+  <div class="pagehead">
+    <div>
+      <h1>Saved patents</h1>
+      <p class="muted">{{ n }} publication{{ '' if n == 1 else 's' }} kept from your searches.
+        Notes are yours and are never shown to anyone else.</p>
+    </div>
+    <a class="btn ghost sm" href="{{ request.script_root }}/">New search</a>
+  </div>
+
+  <form class="libfilter" method="get" action="{{ request.script_root }}/library">
+    <input type="search" name="q" value="{{ q }}" placeholder="Filter by number, title, note or tag"
+           aria-label="Filter saved patents">
+    <button class="btn ghost sm" type="submit">Filter</button>
+    {% if q %}<a class="pnlink" href="{{ request.script_root }}/library">Clear</a>{% endif %}
+  </form>
+
+  {% if rows %}
+  <ul class="liblist">
+    {% for r in rows %}
+    <li class="librow" data-pub="{{ r.publication_number }}">
+      <div class="libmain">
+        <div class="libhead">
+          <b>{{ r.publication_number }}</b>
+          {% if r.display_title %}<span class="libtitle">{{ r.display_title }}</span>{% endif %}
+          {% if r.tag %}<span class="badge">{{ r.tag }}</span>{% endif %}
+        </div>
+        <div class="libmeta small muted">
+          Saved {{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '' }}
+          {% if r.source_slug %} · from
+            <a href="{{ request.script_root }}/report/{{ r.source_slug }}">the search that found it</a>
+          {% endif %}
+          {% if r.google_patents %} · <a href="{{ r.google_patents }}" target="_blank" rel="noopener">Google Patents ↗</a>{% endif %}
+        </div>
+        <textarea class="libnote" rows="2" aria-label="Your note on {{ r.publication_number }}"
+                  placeholder="Add a note — why this one matters">{{ r.note }}</textarea>
+        <div class="small libstatus" role="status" aria-live="polite"></div>
+      </div>
+      <div class="libactions">
+        <button type="button" class="btn ghost xs libsave">Save note</button>
+        <button type="button" class="btn ghost xs libremove">Remove</button>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="panel libempty">
+    {% if q %}Nothing matches “{{ q }}”. <a class="pnlink" href="{{ request.script_root }}/library">Clear the filter</a>.
+    {% else %}Nothing saved yet. On any report, press <b>Save</b> on a reference to keep it here.{% endif %}
+  </p>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const B = window.APP_BASE || '';
+  async function call(body){
+    const r = await fetch(B + '/api/library', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':window.CSRF_TOKEN || ''},
+      body: JSON.stringify(body)});
+    const d = await r.json();
+    if(!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    return d;
+  }
+  document.querySelectorAll('.librow').forEach(row => {
+    const pub = row.dataset.pub;
+    const status = row.querySelector('.libstatus');
+    row.querySelector('.libsave').addEventListener('click', async e => {
+      e.target.disabled = true;
+      try{
+        await call({action:'note', pub, note: row.querySelector('.libnote').value});
+        status.textContent = 'Note saved.'; status.className = 'small libstatus good';
+      }catch(err){ status.textContent = err.message; status.className = 'small libstatus bad'; }
+      finally{ e.target.disabled = false; }
+    });
+    row.querySelector('.libremove').addEventListener('click', async e => {
+      if(!confirm('Remove ' + pub + ' from your saved patents?')) return;
+      e.target.disabled = true;
+      try{ await call({action:'remove', pub}); row.remove(); }
+      catch(err){ status.textContent = err.message; status.className = 'small libstatus bad';
+                  e.target.disabled = false; }
+    });
+  });
+})();
+</script>
+{% endblock %}

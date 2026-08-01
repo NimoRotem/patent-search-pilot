@@ -86,6 +86,77 @@ def _header_footer(cv: _canvas.Canvas, doc):
     cv.restoreState()
 
 
+_NARRATIVE_HEADINGS = (("purpose", "Purpose of this search"),
+                       ("key_findings", "Key findings"),
+                       ("analysis", "Analysis"))
+
+
+def _letterhead(model, S):
+    """The firm/client block that turns a retrieval export into work product.
+
+    Entirely optional: with no report document, or an empty one, this returns nothing and the
+    export is byte-for-byte what it was before the feature existed.
+    """
+    doc = model.get("report_doc") or {}
+    if not any(str(doc.get(k) or "").strip() for k in
+               ("firm_name", "firm_address", "firm_attorney", "attorney_email", "firm_detail",
+                "client_name", "client_reference_number", "matter_title",
+                "subject_patent_number", "subject_patent_date")):
+        return []
+    out = []
+    logo = model.get("report_logo")
+    left = []
+    if doc.get("firm_name"):
+        left.append(Paragraph(f"<b>{_esc(doc['firm_name'])}</b>", S["h3"]))
+    for key in ("firm_address", "firm_attorney", "attorney_email", "firm_detail"):
+        if doc.get(key):
+            left.append(Paragraph(_esc(doc[key]), S["small"]))
+    if logo:
+        img = _scaled_image(logo, 2.0 * inch, 0.9 * inch)
+        head = Table([[left or [Paragraph("", S["small"])], img or ""]],
+                     colWidths=[4.3 * inch, 2.5 * inch])
+        head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
+                                  ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                                  ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                  ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+        out.append(head)
+    else:
+        out.extend(left)
+    out.append(HRFlowable(width="100%", thickness=1, color=LINE, spaceBefore=6, spaceAfter=8))
+
+    matter = [(k.replace("_", " ").title(), doc.get(k)) for k in
+              ("matter_title", "client_name", "client_reference_number",
+               "subject_patent_number", "subject_patent_date")]
+    _LABEL = {"Matter Title": "Matter", "Client Name": "Client",
+              "Client Reference Number": "Client reference",
+              "Subject Patent Number": "Subject application",
+              "Subject Patent Date": "Subject date"}
+    matter = [(_LABEL.get(k, k), v) for k, v in matter if str(v or "").strip()]
+    if matter:
+        t = Table([[Paragraph(f"<b>{_esc(k)}</b>", S["small"]), Paragraph(_esc(v), S["small"])]
+                   for k, v in matter], colWidths=[1.6 * inch, 5.2 * inch])
+        t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
+                               ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                               ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]))
+        out.append(t)
+        out.append(Spacer(1, 6))
+    return out
+
+
+def _narrative(model, S):
+    """Purpose / key findings / analysis, printed above the evidence."""
+    doc = model.get("report_doc") or {}
+    out = []
+    for key, heading in _NARRATIVE_HEADINGS:
+        body = str(doc.get(key) or "").strip()
+        if not body:
+            continue
+        out.append(Paragraph(heading, S["h2"]))
+        for para in [p for p in body.split("\n") if p.strip()]:
+            out.append(Paragraph(_esc(para), S["body"]))
+    return out
+
+
 def render(model, out_path):
     S = _styles()
     doc = SimpleDocTemplate(str(out_path), pagesize=letter,
@@ -93,6 +164,12 @@ def render(model, out_path):
                             topMargin=0.8 * inch, bottomMargin=0.8 * inch,
                             title=f"{disclosure.DOC_TITLE} — {model['title']}")
     story = []
+
+    # ---- letterhead + matter, when the author has filled them in ----
+    # A search report that a firm sends to a client opens with who prepared it and for whom. When
+    # nothing has been entered the block is omitted entirely rather than printed empty, so an
+    # internal export stays exactly as it was.
+    story.extend(_letterhead(model, S))
 
     # ---- cover ----
     story.append(Spacer(1, 0.6 * inch))
@@ -134,6 +211,12 @@ def render(model, out_path):
     story.append(Paragraph("<b>Indexed CPC classes:</b> " + _esc("; ".join(disclosure.cpc_lines())),
                            S["small"]))
     story.append(Paragraph(_esc(disclosure.not_indexed()), S["small"]))
+
+    # ---- the author's own framing, above the machine's ----
+    # Purpose / key findings / analysis are what the reader of a client report actually reads
+    # first. They sit after the scope disclosure (so nobody reaches a conclusion before reading
+    # the limits) and before the executive summary the tool generates for itself.
+    story.extend(_narrative(model, S))
 
     # ---- executive summary ----
     story.append(Paragraph("Executive summary", S["h2"]))

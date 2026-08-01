@@ -237,6 +237,32 @@ def queue_draft_completion(user, project, version):
     return mail
 
 
+def queue_invitation(email, full_name, invite_url, inviter_name=""):
+    """The email that carries an invitation link. Sent once, at creation."""
+    who = f" by {inviter_name}" if inviter_name else ""
+    name = (full_name or "").strip() or "there"
+    return accounts.enqueue_mail(
+        to_email=email, user_id=None, search_slug=None, kind="invitation",
+        dedupe_key=f"invite:{email.lower()}:{hashlib.sha256(invite_url.encode()).hexdigest()[:16]}",
+        subject="You have been invited to rotemAI patent search",
+        body_text=(f"Hello {name},\n\nYou have been invited{who} to rotemAI patent search, a "
+                   "prior-art search and drafting tool.\n\nChoose a password and open your "
+                   f"account here:\n{invite_url}\n\nThe link works once and expires in two "
+                   "weeks. If you were not expecting this, ignore it — no account exists until "
+                   "the link is used.\n"))
+
+
+def queue_email_verification(user, verify_url):
+    return accounts.enqueue_mail(
+        to_email=user["email"], user_id=user["id"], search_slug=None, kind="verify_email",
+        dedupe_key=f"verify:{user['id']}:{hashlib.sha256(verify_url.encode()).hexdigest()[:16]}",
+        subject="Confirm your email address",
+        body_text=(f"Hello {user.get('full_name') or ''},\n\nConfirm this address so we can "
+                   "email you when a search finishes:\n"
+                   f"{verify_url}\n\nThe link expires in seven days. Your account already works "
+                   "— confirming only enables the completion emails.\n"))
+
+
 def queue_password_reset(email, reset_url):
     token, user = accounts.create_password_reset(email)
     if not token or not user:
