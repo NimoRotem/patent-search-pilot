@@ -16,6 +16,33 @@ def test_google_patents_parser_extracts_full_sections():
     assert "vacuum lifter" in " ".join(parser.clean(parser.abstract))
 
 
+def test_google_full_text_refreshes_partial_cache_and_retries(tmp_path, monkeypatch):
+    cache = tmp_path / "US-1234567-A1.json"
+    cache.write_text(json.dumps({"claims": ["1. Cached claim."], "description": [],
+                                 "abstract": ["Cached abstract."]}))
+    monkeypatch.setattr(report_archive, "_google_cache_path", lambda pub: cache)
+    monkeypatch.setattr(report_archive.pubnorm, "google_url",
+                        lambda pub: "https://patents.example/US1234567A1/en")
+    monkeypatch.setattr(report_archive.pubnorm, "mongo_candidates", lambda pub: [])
+    monkeypatch.setattr(report_archive._STOP, "wait", lambda seconds: False)
+
+    class Response:
+        def __init__(self, status, text=""):
+            self.status_code = status
+            self.text = text
+
+    responses = [Response(503), Response(200, """
+      <section itemprop='claims'><div>1. Fresh claim.</div></section>
+      <section itemprop='description'><p>Recovered complete description.</p></section>
+    """)]
+    monkeypatch.setattr(report_archive.requests, "get",
+                        lambda *args, **kwargs: responses.pop(0))
+    recovered = report_archive._google_full_text("US-1234567-A1")
+    assert recovered["claims"] == ["1. Cached claim."]
+    assert recovered["description"] == ["Recovered complete description."]
+    assert json.loads(cache.read_text())["description"]
+
+
 def _record(pub):
     return {
         "publication": {"publication_number": pub, "title": "RFID vacuum lifting tool",

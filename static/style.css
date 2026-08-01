@@ -206,6 +206,12 @@ details.block>summary::before{content:"▸";color:var(--faint);margin-right:8px;
 details.block[open]>summary::before{transform:rotate(90deg)}
 details.block>summary .sec{display:inline-flex;margin:22px 0 10px}
 .chartwrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--s1)}
+/* Absolutely positioned screen-reader labels otherwise keep their static position in the last
+   table cell. Chromium counts that clipped 1px box in the document scroll area even though the
+   wide matrix itself is correctly contained by chartwrap, creating a stray 36px page scrollbar
+   on phones. Anchor only those hidden labels at the wrapper origin; their accessible names are
+   unchanged and the table retains its intentional local horizontal scroll. */
+.chartwrap .vh{left:0;top:0}
 table.chart{border-collapse:collapse;width:100%;font-size:12px}
 table.chart th,table.chart td{border:1px solid var(--line);padding:7px 9px;text-align:center}
 table.chart thead th{background:var(--s2);font-size:11px;white-space:nowrap}

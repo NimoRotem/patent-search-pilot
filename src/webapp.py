@@ -2622,6 +2622,37 @@ def api_morelike(pub):
 
 
 # ---- side-by-side compare ------------------------------------------------------------------
+def _compare_biblio(cur, pid, pub, display):
+    """Return a complete comparison header for local *and* federated-only references.
+
+    The final list can legitimately contain an API-federated publication whose compact number is
+    not an exact ``publications.publication_number`` match.  Its rich metadata has already been
+    cached by the same enrichment path used by the detail drawer, so an ``(untitled)`` comparison
+    header is both slower to understand and inconsistent with the card the user just selected.
+    """
+    if pid:
+        return webview.biblio(cur, pid)
+    d = display or {}
+    country = (d.get("country") or str(pub)[:2]).upper()
+    return {
+        "pid": None,
+        "pub": d.get("pub") or pub,
+        "kind": d.get("type"),
+        "title": d.get("title"),
+        "abstract": d.get("abstract"),
+        "country": country,
+        "flag": webview.FLAG.get(country, "🏳️"),
+        "publication_date": d.get("publication_date"),
+        "filing_date": d.get("filing_date"),
+        "priority_date": d.get("priority_date"),
+        "family_id": d.get("family_id"),
+        "assignees": d.get("assignees") or [],
+        "inventors": d.get("inventors") or [],
+        "cpc": d.get("classifications") or [],
+        "legal_events": d.get("legal_events") or [],
+    }
+
+
 @app.route("/compare")
 def compare():
     slug = request.args.get("slug", "")
@@ -2641,8 +2672,8 @@ def compare():
             cur.execute("SELECT id FROM publications WHERE publication_number=%s LIMIT 1", (pub,))
             row = cur.fetchone()
             pid = row["id"] if row else None
-            b = webview.biblio(cur, pid) if pid else {"pub": pub}
             disp = enrich_display.enrich_for_display(pub)
+            b = _compare_biblio(cur, pid, pub, disp)
             matched = webview.match_in_pub(cur, pid, qv) if (pid and qv is not None) else None
             # which elements this family covers (from report evidence)
             fam = b.get("family_id")

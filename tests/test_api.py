@@ -93,6 +93,22 @@ def test_compare_and_print(app_client):
     assert app_client.get(f"/print/{GOLD}").status_code == 200
 
 
+def test_compare_uses_cached_metadata_for_a_federated_only_reference():
+    import webapp
+
+    b = webapp._compare_biblio(None, None, "US20220380181A1", {
+        "pub": "US-20220380181-A1",
+        "country": "US",
+        "title": "Modular power pack for a vacuum pad lifter",
+        "assignees": ["Vacuworx Global LLC"],
+        "publication_date": "2022-12-01",
+    })
+    assert b["pub"] == "US-20220380181-A1"
+    assert b["title"].startswith("Modular power pack")
+    assert b["assignees"] == ["Vacuworx Global LLC"]
+    assert b["flag"] == "🇺🇸"
+
+
 def test_export_pdf_and_docx(app_client):
     for fmt, magic in (("pdf", b"%PDF-"), ("docx", b"PK")):
         r = app_client.post("/export", data={"slug": GOLD,

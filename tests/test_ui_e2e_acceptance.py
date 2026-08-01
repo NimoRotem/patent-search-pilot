@@ -21,6 +21,7 @@ def test_report_template_publishes_durable_pipeline_markers():
 def test_ui_uses_live_corpus_count_and_background_enrichment_contracts():
     root = Path(__file__).resolve().parents[1]
     js = (root / "static" / "app.js").read_text()
+    css = (root / "static" / "style.css").read_text()
     base = (root / "templates" / "base.html").read_text()
     report = (root / "templates" / "report.html").read_text()
     about = (root / "templates" / "about.html").read_text()
@@ -30,8 +31,10 @@ def test_ui_uses_live_corpus_count_and_background_enrichment_contracts():
     assert "warmRationales" in js and "applyCardRationale" in js
     assert "&rationale=1" in js
     assert "recoverBrokenInitialThumbs" in js and "img.onerror = attempt" in js
+    assert "warmMissingThumbs" in js and "section=figs" in js
     assert "warmQueryClaimGrid" in js and "/api/query-claim-grid/" in js
     assert "Claim × reference grid" in report
+    assert ".chartwrap .vh{left:0;top:0}" in css
 
 
 def test_parser_collects_a_gold_family_group():

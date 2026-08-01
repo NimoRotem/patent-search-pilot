@@ -37,6 +37,7 @@ ARCHIVE_DIR = DATA / "reports" / "archives"
 TEXT_CACHE = DATA / "archive_text_cache"
 PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or "https://rotem.ai/patents").rstrip("/")
 TOP_N = max(1, min(int(os.environ.get("ARCHIVE_TOP_N", "50")), 50))
+ARCHIVE_FORMAT_VERSION = 2
 _POOL = ThreadPoolExecutor(max_workers=max(1, int(os.environ.get("ARCHIVE_WORKERS", "1"))),
                            thread_name_prefix="patent-archive")
 _LOCK = threading.Lock()
@@ -51,6 +52,7 @@ class _ArchiveInterrupted(RuntimeError):
 
 def _signature(report):
     payload = {
+        "archive_format": ARCHIVE_FORMAT_VERSION,
         "query": report.get("query"),
         "mode": report.get("mode"),
         "ranked": (report.get("ranked_families") or [])[:160],
@@ -107,7 +109,8 @@ def metadata(slug, reports_dir):
     st = status(slug, reports_dir)
     return {k: st.get(k) for k in (
         "status", "ready", "top_n", "n_patents", "n_full_text", "n_missing_text",
-        "generated_at", "download_name", "error") if st.get(k) is not None}
+        "missing_publications", "generated_at", "download_name", "error")
+            if st.get(k) is not None}
 
 
 def ensure(slug, report, final_view, reports_dir):
@@ -276,24 +279,70 @@ def _google_cache_path(pub):
 
 def _google_full_text(pub):
     cache = _google_cache_path(pub)
+    result = {"claims": [], "description": [], "abstract": []}
     if cache and cache.exists():
         try:
-            return json.loads(cache.read_text())
+            saved = json.loads(cache.read_text())
+            for key in result:
+                if isinstance(saved.get(key), list):
+                    result[key] = saved[key]
+            # A complete cached specification is immutable.  An abstract-only or claims-only
+            # response is not: Google occasionally serves a transient consent/throttle shell,
+            # and the old worker cached that partial response forever.
+            if result["claims"] and result["description"]:
+                return result
         except Exception:
             pass
-    result = {"claims": [], "description": [], "abstract": []}
-    try:
-        response = requests.get(pubnorm.google_url(pub), headers={
-            "User-Agent": "Mozilla/5.0 (compatible; rotemAI patent research archive/1.0)"},
-            timeout=30)
-        if response.status_code == 200 and len(response.text) < 25_000_000:
-            parser = _GoogleTextParser()
-            parser.feed(response.text)
-            result = {"claims": parser.clean(parser.claims),
-                      "description": parser.clean(parser.description),
-                      "abstract": parser.clean(parser.abstract)}
-    except Exception:
-        pass
+
+    urls = []
+    primary = pubnorm.google_url(pub)
+    if primary:
+        urls.append(primary)
+    # A few upstream providers drop the leading zero from US pre-grant serials.  Google normally
+    # accepts the padded form, but trying the remaining normalized spellings makes the archive
+    # resilient to older report/cache records without turning this into a broad web search.
+    for candidate in pubnorm.mongo_candidates(pub):
+        compact = re.sub(r"[^A-Za-z0-9]", "", candidate).upper()
+        parsed = pubnorm.parse(compact)
+        if not parsed or not parsed[2]:
+            continue
+        url = f"https://patents.google.com/patent/{compact}/en"
+        if url not in urls:
+            urls.append(url)
+        if len(urls) >= 3:
+            break
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; rotemAI patent research archive/2.0)",
+        "Accept-Language": "en-US,en;q=0.8",
+    }
+    for url_index, url in enumerate(urls):
+        attempts = 3 if url_index == 0 else 1
+        for attempt in range(attempts):
+            if _STOP.is_set():
+                raise _ArchiveInterrupted()
+            response = None
+            try:
+                response = requests.get(url, headers=headers, timeout=30)
+                if response.status_code == 200 and len(response.text) < 25_000_000:
+                    parser = _GoogleTextParser()
+                    parser.feed(response.text)
+                    fetched = {"claims": parser.clean(parser.claims),
+                               "description": parser.clean(parser.description),
+                               "abstract": parser.clean(parser.abstract)}
+                    for key, values in fetched.items():
+                        if values and not result[key]:
+                            result[key] = values
+                    if result["claims"] and result["description"]:
+                        break
+                if response.status_code not in (408, 425, 429, 500, 502, 503, 504):
+                    break
+            except requests.RequestException:
+                pass
+            if attempt + 1 < attempts and _STOP.wait(1.0 + attempt):
+                raise _ArchiveInterrupted()
+        if result["claims"] and result["description"]:
+            break
     if cache and any(result.values()):
         try:
             _atomic_json(cache, result)
@@ -375,6 +424,36 @@ def _merge_record(cur, card):
             sources.append("Google Patents full-document page")
         if not p.get("abstract") and gp.get("abstract"):
             p["abstract"] = "\n".join(gp["abstract"])
+
+    # Google does not consistently expose every EP/WO specification.  OPS is the issuing-office
+    # source for those records, so use its bounded, quota-aware text endpoints only for fields
+    # that are still absent.  National records are deliberately excluded because OPS documents
+    # that their full-text endpoints return 404 for those jurisdictions.
+    if (not claims or not paragraphs) and str(pub).upper()[:2] in ("EP", "WO"):
+        try:
+            import ops
+            if ops.have_creds():
+                wanted = tuple(name for name, missing in (
+                    ("claims", not claims), ("description", not paragraphs)) if missing)
+                recovered = ops.ops_fetch(pub, want=wanted)
+                if not claims:
+                    claims = [{"claim_no": c.get("claim_no") or i + 1,
+                               "is_independent": None,
+                               "lang": recovered.get("claims_lang"),
+                               "text": c.get("text"), "resolved_text": None}
+                              for i, c in enumerate(recovered.get("claims") or [])
+                              if c.get("text")]
+                if not paragraphs:
+                    paragraphs = [{"para_no": para.get("para_no"),
+                                   "heading": para.get("heading"), "page_no": None,
+                                   "lang": recovered.get("desc_lang"),
+                                   "text": para.get("text")}
+                                  for para in (recovered.get("paragraphs") or [])
+                                  if para.get("text")]
+                if recovered.get("claims") or recovered.get("paragraphs"):
+                    sources.append("EPO OPS official full-text service")
+        except Exception:
+            pass
 
     for key in ("title", "abstract", "country", "publication_date", "filing_date",
                 "earliest_priority_date", "simple_family_id"):
@@ -510,6 +589,7 @@ def _build(slug, report, final_view, reports_dir, sig):
         output = ARCHIVE_DIR / archive_name
         manifest = []
         n_full = 0
+        missing_publications = []
         with tempfile.NamedTemporaryFile(dir=ARCHIVE_DIR, prefix=f".{slug}.", suffix=".tmp",
                                          delete=False) as tmp_file:
             tmp = Path(tmp_file.name)
@@ -532,6 +612,8 @@ def _build(slug, report, final_view, reports_dir, sig):
                         filename = _safe_filename(idx, card["pub"], record["publication"].get("title"))
                         zf.writestr(filename, markdown.encode("utf-8"))
                         n_full += int(record["full_text"])
+                        if not record["full_text"]:
+                            missing_publications.append(card["pub"])
                         manifest.append({"rank": idx, "publication": card["pub"],
                                          "title": record["publication"].get("title"),
                                          "file": filename, "full_text": record["full_text"],
@@ -563,6 +645,7 @@ def _build(slug, report, final_view, reports_dir, sig):
         state = _set_state(
             slug, reports_dir, status="ready", ready=True, signature=sig, top_n=TOP_N,
             n_patents=len(cards), n_full_text=n_full, n_missing_text=len(cards) - n_full,
+            missing_publications=missing_publications,
             n_done=len(cards), archive_file=archive_name,
             download_name=f"prior-art-{slug}-top-{TOP_N}-full-text.zip",
             generated_at=datetime.now(timezone.utc).isoformat(), message="Archive ready")
