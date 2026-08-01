@@ -22,7 +22,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 from urllib.parse import urlparse
 
 try:
@@ -1083,8 +1083,12 @@ class DraftingRepository:
             return version
 
 
-ReportLoader = Callable[[Principal, str, int], Sequence[Mapping[str, Any]] | Mapping[str, Any]]
-DraftGenerator = Callable[[str, str], Mapping[str, Any] | str]
+# These aliases are evaluated at import time.  Keep them compatible with the production Python
+# 3.9 runtime; postponed annotations do not postpone a type-alias expression itself.
+ReportLoader = Callable[
+    [Principal, str, int], Union[Sequence[Mapping[str, Any]], Mapping[str, Any]]
+]
+DraftGenerator = Callable[[str, str], Union[Mapping[str, Any], str]]
 
 
 def public_job(job: Mapping[str, Any]) -> dict[str, Any]:
