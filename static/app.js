@@ -760,6 +760,7 @@ function paneOf(card){ return card.querySelector('.rpane'); }
    /api/ref returns renders a single plain "not available" line with the office links, never a
    spinner that never settles and never an error. */
 const RPANES = {
+  analysis: paneAnalysis,
   why:      paneWhy,
   abstract: paneAbstract,
   claims:   paneClaims,
@@ -790,6 +791,7 @@ function warmIntendedTab(ev){
   const card = b.closest('.refcard');
   if (card && card.dataset.pub){
     if (b.dataset.t === 'why') fetchWhy(card.dataset.pub).catch(() => {});
+    else if (b.dataset.t === 'analysis') fetchDeep(card.dataset.pub).catch(() => {});
     else if (['abstract','claims','desc','class','figs'].includes(b.dataset.t))
       fetchSection(card.dataset.pub, b.dataset.t).catch(() => {});
     else if (!REFCACHE[card.dataset.pub]) fetchRef(card.dataset.pub, true).catch(() => {});
@@ -827,6 +829,90 @@ document.addEventListener('click', function(ev){
   const tab = card && card.querySelector('.rtab[data-t="' + retry.dataset.tab + '"]');
   if (tab){ tab.setAttribute('aria-expanded', 'false'); rtab(tab); }
 });
+
+/*  THE ANALYSIS PANE — what this reference actually discloses, feature by feature and, when the
+    search started from a patent, claim by claim.
+
+    Every cell shows the verbatim quote and the real location (claim 7, paragraph 41) that code
+    resolved from that quote. A cell the refuting pass would not confirm is shown as UNCERTAIN
+    with the refuter's reason, not quietly left green: the point of the table is that a reader can
+    disagree with it, and for that they need the quote, the place, and the doubt.                */
+const DEEPCACHE = {};
+
+async function fetchDeep(pub){
+  if (DEEPCACHE[pub]) return DEEPCACHE[pub];
+  const r = await fetch(B + '/api/deep/' + encodeURIComponent(window.SLUG) +
+                        '?pub=' + encodeURIComponent(pub), {credentials: 'same-origin'});
+  const d = await r.json();
+  if (d.status === 'done') DEEPCACHE[pub] = d;
+  return d;
+}
+
+function verdictCell(row){
+  const v = esc(row.verdict || 'absent');
+  const cls = 'vt vt-' + v;
+  let cell = '<td class="' + cls + '"><b>' + v + '</b>';
+  if (row.refuted) cell += '<span class="vtwhy" title="' + esc(row.refuted) +
+    '">checked and downgraded</span>';
+  cell += '</td>';
+  let quote = '<td class="vq">';
+  if (row.quote){
+    quote += '<q>' + esc(row.quote) + '</q>';
+    if (row.location) quote += '<span class="vloc">' + esc(row.location) + '</span>';
+    if (row.note) quote += '<span class="vnote">' + esc(row.note) + '</span>';
+  } else {
+    const why = {
+      'model-absent': 'nothing in this reference teaches it',
+      'dropped-ungrounded-quote': 'the reader offered a quote that is not in this reference — dropped',
+      'dropped-unlocatable-quote': 'the quote could not be traced to a passage — dropped',
+      'no-reference-text': 'the corpus holds no text for this publication',
+      'no-row-returned': 'no answer was returned for this row',
+    }[row.grounding] || 'not disclosed';
+    quote += '<span class="vnone">' + esc(why) + '</span>';
+  }
+  quote += '</td>';
+  return cell + quote;
+}
+
+function deepTable(caption, rows){
+  if (!rows || !rows.length) return '';
+  return '<div class="deeptbl"><b class="deepcap">' + esc(caption) + '</b>' +
+    '<table><thead><tr><th>' + (rows[0].kind === 'claim' ? 'Subject claim' : 'Feature') +
+    '</th><th>Verdict</th><th>What this reference discloses, and where</th></tr></thead><tbody>' +
+    rows.map(r => '<tr><td class="vi">' + esc(r.item) + '</td>' + verdictCell(r) + '</tr>').join('') +
+    '</tbody></table></div>';
+}
+
+async function paneAnalysis(card){
+  const pub = card.dataset.pub;
+  const d = await fetchDeep(pub);
+  if (d.status === 'running'){
+    const n = d.done || 0, t = d.total || 0;
+    return '<div class="pempty">Reading the top references in full — ' + n + ' of ' + t +
+      ' done. This reference has not been read yet; reopen this tab in a moment.</div>';
+  }
+  if (d.status === 'error')
+    return '<div class="pempty">The full-text analysis failed: ' + esc(d.error || '') + '</div>';
+  if (d.status !== 'done' || !d.found)
+    return '<div class="pempty">This reference was not among the ones read in full ' +
+      '(the deepest ' + esc(String(window.DEEP_TOP_N || 50)) + ' are).</div>';
+
+  const r = d.reference;
+  let head = '<div class="deephead">';
+  if (r.method === 'no-text')
+    head += '<span class="vwarn">The local corpus holds no text for this publication, so nothing ' +
+      'could be read. Open it at the office to judge it.</span>';
+  else
+    head += '<span class="muted small">Read ' + Number(r.chars || 0).toLocaleString() +
+      ' characters — ' + (r.n_claims_read || 0) + ' claims and ' + (r.n_paragraphs_read || 0) +
+      ' description paragraphs' + (r.text_truncated ? ', truncated at the text budget' : '') + '.' +
+      (r.refuted ? ' ' + r.refuted + ' cell(s) downgraded by the refuting check.' : '') + '</span>';
+  head += '</div>';
+
+  const body = deepTable('Features of the search input', r.features) +
+               deepTable('Claims of the subject patent', r.claims);
+  return head + (body || '<div class="pempty">Nothing to chart for this reference.</div>');
+}
 
 /* The "this section does not exist" line. One sentence, plus the two office links that WILL
    have it — the useful thing to offer when the local corpus is thin on a document. */
@@ -1874,6 +1960,45 @@ function bindMoreReferences(){
   });
 }
 
+/*  Progress for the full-text reading. It takes minutes, so the strip says how far it has got
+    and then gets out of the way; the per-reference tables are behind each card's tab.          */
+function bindDeepStrip(){
+  const strip = document.getElementById('deepStrip');
+  if (!strip) return;
+  const text = document.getElementById('deepText');
+  const link = document.getElementById('deepAll');
+  let tries = 0;
+  async function poll(){
+    if (tries++ > 240) return;
+    try{
+      const r = await fetch(B + '/api/deep/' + encodeURIComponent(window.SLUG),
+                            {credentials: 'same-origin'});
+      const d = await r.json();
+      if (d.status === 'done'){
+        const c = d.counts || {};
+        strip.classList.add('done');
+        text.textContent = 'Read ' + (d.n_analysed || 0) + ' of ' + (d.n_references || 0) +
+          ' references in full — ' + (c.disclosed || 0) + ' disclosed, ' + (c.partial || 0) +
+          ' partial, ' + (c.uncertain || 0) + ' uncertain, ' + (c.absent || 0) + ' absent' +
+          (d.refuted ? ' (' + d.refuted + ' downgraded on checking)' : '') + '.';
+        if (link) link.hidden = false;
+        return;
+      }
+      if (d.status === 'error'){
+        strip.classList.add('failed');
+        text.textContent = 'The full-text reading failed: ' + (d.error || 'unknown error');
+        return;
+      }
+      if (d.status === 'running' && d.total){
+        text.textContent = 'Reading the top ' + d.total + ' references in full — ' +
+          (d.done || 0) + ' done' + (d.pub ? ' (' + d.pub + ')' : '') + '…';
+      }
+    }catch(e){ /* a dropped poll is not a failed analysis */ }
+    setTimeout(poll, 4000);
+  }
+  poll();
+}
+
 function guardStaticFigures(){
   document.querySelectorAll('.rthumb img, .cmpimg').forEach(img => {
     const fail = () => {
@@ -1934,6 +2059,7 @@ document.addEventListener('DOMContentLoaded', () => {
   bindLibrary();
   bindRefine();
   bindMoreReferences();
+  bindDeepStrip();
   document.querySelectorAll('.refcard .rsnip').forEach(hlNode);
   applyControls();
   recoverBrokenInitialThumbs();

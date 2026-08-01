@@ -487,6 +487,12 @@
           WEIGHT: this strip is the only thing on the card that scales with the tab count, so it
           is kept to bare attributes. Everything it opens is fetched on demand. #}
       <div class="rtabs">
+        {#  The full-text reading of THIS reference: what it discloses, feature by feature and —
+            when the search started from a patent — claim by claim, each with the verbatim quote
+            and the passage it came from. First tab because it is the answer, not a detail.  #}
+        <button type="button" class="rtab rtab-analysis" data-t="analysis" aria-expanded="false"
+                aria-controls="pane-{{ c.pub }}" aria-label="What this reference discloses, {{ c.pub }}">
+          What it discloses</button>
         <button type="button" class="rtab" data-t="why" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
                 aria-label="Why relevant, {{ c.pub }}">Why relevant</button>
         {% if c.abstract %}
@@ -521,6 +527,24 @@
     </article>
     {% endfor %}
   </div>
+
+  {#  THE FULL-TEXT READING.
+
+      Retrieval ranks; this reads. Every one of the top {{ v.deep_analysis.n_references if v.deep_analysis else 50 }}
+      references is pulled in full out of the corpus and charted against the search input, and
+      the per-reference tables live behind each card's "What it discloses" tab. This strip only
+      says how far the reading has got, because it takes minutes and a blank tab would look
+      broken.  #}
+  {% if v.deep_analysis and v.deep_analysis.available %}
+  <div class="wrap deepstrip" id="deepStrip" data-total="{{ v.deep_analysis.n_references }}">
+    <span class="deepdot" aria-hidden="true"></span>
+    <span id="deepText">Reading the top {{ v.deep_analysis.n_references }} references in full and
+      charting each against {{ v.deep_analysis.n_features }} feature{{ '' if v.deep_analysis.n_features == 1 else 's' }}{% if v.deep_analysis.n_subject_claims %}
+      and {{ v.deep_analysis.n_subject_claims }} claim{{ '' if v.deep_analysis.n_subject_claims == 1 else 's' }} of {{ v.deep_analysis.subject_label or 'the uploaded patent' }}{% endif %}…</span>
+    <span class="grow"></span>
+    <a class="pnlink" id="deepAll" href="{{ request.script_root }}/analysis/{{ v.slug }}" hidden>Open the full analysis</a>
+  </div>
+  {% endif %}
 
   {#  THE RANKED TAIL.
 
@@ -610,6 +634,7 @@
 <script>
 window.SLUG = {{ v.slug|tojson }};
 window.QUERY = {{ v.query|tojson }};
+window.DEEP_TOP_N = {{ (v.deep_analysis.n_references if v.deep_analysis else 50)|tojson }};
 window.ELEMENTS = {{ v.elements|tojson }};
 window.PARTIAL = {{ v.partial|tojson }};
 window.ARCHIVE_READY = {{ (v.archive.ready or false)|tojson }};

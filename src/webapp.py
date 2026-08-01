@@ -16,6 +16,7 @@ import db, embed, goldset, webview, enrich_display, llm
 import pubnorm  # single link-builder: zero-padded Google/Espacenet URLs (dropped-zero fix)
 import ops_family, prefetch                        # worldwide family timeline + top-N proactive enrich
 import query_claim_grid                            # uploaded-claim x ranked-reference background grid
+import deep_analysis                               # full-text agentic reading of the top references
 import report_archive                              # automatic top-50 full-text Markdown ZIP
 import export_data, export_pdf, export_docx, export_xlsx, export_md, export_ids
 import deliverables                                # letterhead / matter / narrative + share links
@@ -497,6 +498,9 @@ def _stash_doc(res):
             {"chunk_vecs": vecs, "chunk_weights": weights, "figure_b64": figs,
              "claims": claims, "source": res.get("source"), "label": res.get("label"),
              "title": res.get("title"), "full_text": full_text,
+             #  The uploaded document's own publication number, when it identified itself. The
+             #  analysis needs it to avoid charting that patent against its own claims.
+             "publication_number": res.get("publication_number") or res.get("pub") or "",
              "n_chunks": len(vecs), "n_figs": len(figs), "n_claims": len(claims),
              "t": time.time()}))
         return token
@@ -525,6 +529,7 @@ def _load_doc_materials(token):
     return {"chunk_vecs": d.get("chunk_vecs") or [], "chunk_weights": d.get("chunk_weights") or [],
             "figure_blobs": blobs, "claims": d.get("claims") or [],
             "source": d.get("source"), "label": d.get("label"), "title": d.get("title"),
+            "publication_number": d.get("publication_number") or "",
             "full_text": str(d.get("full_text") or "")[:drafting.MAX_DISCLOSURE_CHARS]}
 
 
@@ -540,6 +545,7 @@ def _attach_query_document(report, doc):
     report["query_document"] = {
         "source": "upload",
         "label": doc.get("label") or "uploaded patent",
+        "publication_number": doc.get("publication_number") or "",
         "title": doc.get("title"),
         "disclosure_text": str(doc.get("full_text") or "")[:drafting.MAX_DISCLOSURE_CHARS],
         "claims": (doc.get("claims") or [])[:60],
@@ -1565,6 +1571,13 @@ def report(slug):
             report_archive.ensure(slug, rep, view, REPORTS)
         except Exception:
             traceback.print_exc()
+        #  Read the top references in full and chart each against the search input. Minutes of
+        #  model time, so it starts here and the page polls; the report is fully usable meanwhile.
+        try:
+            deep_analysis.ensure(slug, rep, view, REPORTS)
+        except Exception:
+            traceback.print_exc()
+    view["deep_analysis"] = deep_analysis.metadata(rep, view)
     view["archive"] = report_archive.metadata(slug, REPORTS)
     return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
 
@@ -2604,6 +2617,77 @@ def api_prefetch(slug):
     # Mongo misses (older EP/DE/WO/CN) still go through the bounded, OPS-budget-guarded recovery
     # worker, so this cannot hammer the shared quota.
     return jsonify(prefetch.prefetch_top(slug, pubs, n=len(pubs)))
+
+
+@app.route("/analysis/<slug>")
+def analysis_page(slug):
+    """Every reference's two tables on one page — the reading, end to end.
+
+    The per-card tab answers "what does THIS one disclose". This answers the other question an
+    attorney actually has: across everything that was read, which feature is disclosed where, and
+    what did nothing reach. It is also the printable form of the analysis.
+    """
+    if not _can_access_report(slug):
+        abort(404)
+    rep = _load_report(slug)
+    if not rep:
+        abort(404)
+    data = deep_analysis.result(slug, REPORTS)
+    view = _build_view_cached(slug, rep)
+    user = auth.current_user()
+    account_search = accounts.get_search(user["id"], slug) if user else None
+    if not data:
+        try:
+            deep_analysis.ensure(slug, rep, view, REPORTS)
+        except Exception:
+            traceback.print_exc()
+    return render_template("analysis.html", slug=slug, data=data,
+                           status=deep_analysis.status(slug, REPORTS),
+                           title=(account_search or {}).get("title") or slug,
+                           query=rep.get("query", ""))
+
+
+@app.route("/api/deep/<slug>", methods=["GET", "POST"])
+def api_deep_analysis(slug):
+    """The full-text reading of the top references: status while it runs, the charts when done.
+
+    POST starts it (or restarts it after a re-run); GET polls. The payload is large — fifty
+    references with a quote per cell — so a `?pub=` filter returns just one reference for a card
+    that has been opened, and the summary is returned without the reference bodies unless asked.
+    """
+    if not _can_access_report(slug):
+        abort(404)
+    rep = _load_report(slug)
+    if not rep:
+        return jsonify({"status": "missing"}), 404
+    if request.method == "POST":
+        if auth.current_user():
+            auth.require_csrf()
+        view = _build_view_cached(slug, rep)
+        return jsonify(deep_analysis.ensure(slug, rep, view, REPORTS))
+
+    data = deep_analysis.result(slug, REPORTS)
+    if not data:
+        return jsonify(deep_analysis.status(slug, REPORTS))
+    pub = (request.args.get("pub") or "").strip()
+    if pub:
+        one = next((r for r in data.get("references") or [] if r.get("pub") == pub), None)
+        if not one:
+            return jsonify({"status": "done", "found": False, "pub": pub})
+        return jsonify({"status": "done", "found": True, "reference": one,
+                        "features": data.get("features") or [],
+                        "claims": data.get("claims") or []})
+    if request.args.get("full") == "1":
+        return jsonify(data)
+    #  Summary only: the per-reference bodies are the bulk and the page fetches them per card.
+    light = {k: v for k, v in data.items() if k != "references"}
+    light["references"] = [{"pub": r.get("pub"), "rank": r.get("rank"),
+                            "title": r.get("title"), "method": r.get("method"),
+                            "counts": r.get("counts") or {},
+                            "chars": r.get("chars"), "refuted": r.get("refuted"),
+                            "text_truncated": r.get("text_truncated")}
+                           for r in data.get("references") or []]
+    return jsonify(light)
 
 
 @app.route("/api/query-claim-grid/<slug>", methods=["GET", "POST"])
