@@ -1730,6 +1730,150 @@ function streamJob(slug, onEvent){
 /* Server-rendered figures (the direct-first card thumbnails and the compare page) bypass the
    loader above, so they need the same promise: a figure or an explicit failure state, never a
    broken-image icon. Covers images that already failed before this ran. */
+/*  SAVED PATENTS — the star on each card.
+
+    A triage flag belongs to this report; a saved patent belongs to the person. The two look
+    similar on screen and are deliberately separate underneath: clearing a flag must not remove a
+    document somebody chose to keep. The current state is fetched once per report render rather
+    than per card, so a page of 25 costs one request.                                            */
+function bindLibrary(){
+  const btns = [...document.querySelectorAll('.libbtn')];
+  if (!btns.length) return;
+
+  function paint(btn, saved){
+    btn.classList.toggle('on', !!saved);
+    btn.setAttribute('aria-pressed', saved ? 'true' : 'false');
+    btn.textContent = saved ? '★' : '☆';
+    btn.title = saved ? 'Saved — press to remove from your saved patents'
+                      : 'Keep this publication in your saved patents';
+  }
+
+  fetch(B + '/api/library/state?pubs=' + encodeURIComponent(btns.map(b => b.dataset.pub).join(',')),
+        {credentials: 'same-origin'})
+    .then(r => r.ok ? r.json() : null)
+    .then(d => { if (!d) return; const set = new Set(d.saved || []);
+                 btns.forEach(b => paint(b, set.has(b.dataset.pub))); })
+    .catch(() => {});
+
+  btns.forEach(btn => btn.addEventListener('click', async e => {
+    e.stopPropagation();
+    const pub = btn.dataset.pub;
+    const wasSaved = btn.classList.contains('on');
+    const card = btn.closest('.refcard');
+    const title = card ? (card.querySelector('.rtitle') || {}).textContent || '' : '';
+    btn.disabled = true;
+    paint(btn, !wasSaved);                       // optimistic: the round trip is not the feedback
+    try{
+      const r = await fetch(B + '/api/library', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.CSRF_TOKEN || ''},
+        body: JSON.stringify({action: wasSaved ? 'remove' : 'save', pub,
+                              title: title.trim().slice(0, 300), slug: window.SLUG || ''})});
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      paint(btn, !!d.saved);
+    }catch(err){
+      paint(btn, wasSaved);                      // put it back; do not lie about what was stored
+      btn.title = 'Could not save: ' + (err.message || err);
+    }finally{ btn.disabled = false; }
+  }));
+}
+
+/*  REFINE AND SEARCH AGAIN — edit the query, keep the settings, start a NEW report.
+    Deliberately not an in-place re-run: a different query is a different search, and overwriting
+    the report somebody may already have cited is not a refinement.                              */
+function bindRefine(){
+  const btn = document.getElementById('qeditbtn');
+  const form = document.getElementById('qeditbox');
+  if (!btn || !form) return;
+  const ta = document.getElementById('qeditta');
+  const status = document.getElementById('qeditstatus');
+  btn.addEventListener('click', () => {
+    const open = !form.hidden;
+    form.hidden = open;
+    btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+    if (!open) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  });
+  document.getElementById('qeditcancel').addEventListener('click', () => {
+    form.hidden = true; btn.setAttribute('aria-expanded', 'false'); btn.focus();
+  });
+  document.getElementById('qeditimprove').addEventListener('click', async e => {
+    const b = e.target;
+    b.disabled = true; const was = b.textContent; b.textContent = 'Thinking…';
+    status.textContent = '';
+    try{
+      const r = await fetch(B + '/api/improve-query', {method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.CSRF_TOKEN || ''},
+        body: JSON.stringify({query: ta.value})});
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      if (!d.changed) { status.textContent = 'Already reads well for this engine.'; return; }
+      ta.value = d.improved;
+      status.textContent = 'Rewritten — read it before searching.' +
+        ((d.questions || []).length ? ' Still unclear: ' + d.questions[0] : '');
+    }catch(err){ status.textContent = 'Could not improve that: ' + (err.message || err); }
+    finally{ b.disabled = false; b.textContent = was; }
+  });
+  form.addEventListener('submit', () => {
+    status.textContent = 'Starting a new search…';
+  });
+}
+
+/*  THE RANKED TAIL — cheap rows beyond the analysed cards. Deliberately a table, not more cards:
+    these have had no drawing, claim match or explanation computed, and dressing them as cards
+    would imply an analysis that did not happen.                                                 */
+function bindMoreReferences(){
+  const btn = document.getElementById('moreRefBtn');
+  if (!btn) return;
+  const wrap = document.getElementById('moreRefWrap');
+  const body = document.getElementById('moreRefBody');
+  const note = document.getElementById('moreRefNote');
+  const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c =>
+    ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+
+  btn.addEventListener('click', async () => {
+    const offset = Number(btn.dataset.offset || 25);
+    btn.disabled = true;
+    const was = btn.textContent;
+    btn.textContent = 'Loading…';
+    try{
+      const r = await fetch(B + '/api/more-references/' + encodeURIComponent(window.SLUG) +
+                            '?offset=' + offset, {credentials: 'same-origin'});
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      d.rows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          `<td data-label="#">${row.rank}</td>` +
+          `<td data-label="Publication"><b>${esc(row.pub)}</b></td>` +
+          `<td data-label="Title">${esc(row.title) || '<span class="muted">no title in the corpus</span>'}</td>` +
+          `<td data-label="Dates"><span>${esc(row.publication_date) || '—'}</span>` +
+          `<span class="muted">priority ${esc(row.priority_date) || '—'}</span></td>` +
+          `<td data-label=""><a href="${esc(row.google_patents)}" target="_blank" rel="noopener">Google ↗</a>` +
+          (row.espacenet ? ` · <a href="${esc(row.espacenet)}" target="_blank" rel="noopener">Espacenet ↗</a>` : '') +
+          `</td>`;
+        body.appendChild(tr);
+      });
+      wrap.hidden = false;
+      btn.dataset.offset = d.next;
+      note.textContent = body.children.length + ' further references shown of ' +
+        d.total.toLocaleString() + ' families ranked.';
+      if (d.exhausted || !d.rows.length){
+        btn.remove();
+        if (!body.children.length) note.textContent =
+          'No further references could be resolved — the remaining families are federated-only.';
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Show 25 more';
+      }
+    }catch(err){
+      note.textContent = 'Could not load more: ' + (err.message || err);
+      btn.disabled = false;
+      btn.textContent = was;
+    }
+  });
+}
+
 function guardStaticFigures(){
   document.querySelectorAll('.rthumb img, .cmpimg').forEach(img => {
     const fail = () => {
@@ -1787,6 +1931,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.fp').forEach(b =>
     b.addEventListener('click', e => { e.stopPropagation(); setFlag(b); }));
   loadFlags();
+  bindLibrary();
+  bindRefine();
+  bindMoreReferences();
   document.querySelectorAll('.refcard .rsnip').forEach(hlNode);
   applyControls();
   recoverBrokenInitialThumbs();

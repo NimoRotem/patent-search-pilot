@@ -133,6 +133,90 @@
         </div>{% else %}<p class="muted">No versions yet.</p>{% endif %}
       </section>
 
+      {#  PATENT FIGURES.
+
+          The specification already says what each drawing shows and numbers every part; those
+          two facts are what the model is given, so the numerals on the figure are the draft's
+          own rather than invented. Every generation is kept as a version because the workflow
+          that actually works is generate -> look -> adjust -> compare, and a drawing that is
+          replaced the moment the next one arrives cannot be compared.
+
+          These are drafting aids. 37 CFR 1.84 governs sheet size, margins, line weight, shading
+          and lettering for a FORMAL drawing and nothing here checks any of it.  #}
+      <section class="panel draftpanel" id="figures">
+        <h2>Patent figures</h2>
+        <p class="small muted">Generated from this draft's own drawing descriptions and reference
+          numerals. Drafting aids only — not formal drawings under 37&nbsp;CFR&nbsp;1.84. Check
+          every numeral against the specification before filing.</p>
+
+        {% if figure_suggestions %}
+        <div class="figsuggest">
+          <b class="small">From your “Brief Description of the Drawings”</b>
+          <div class="figchips">
+            {% for f in figure_suggestions %}
+            <button type="button" class="figchip" data-label="{{ f.label }}" data-caption="{{ f.caption }}"
+                    title="{{ f.caption }}">{{ f.label }} — {{ f.caption[:70] }}{% if f.caption|length > 70 %}…{% endif %}</button>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <form class="fignew" id="fignew">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="figrow">
+            <label>Figure label
+              <input type="text" id="figLabel" placeholder="FIG. 1" maxlength="80"></label>
+            <label>What it shows
+              <input type="text" id="figCaption" maxlength="400"
+                     placeholder="a side elevation view of the vacuum lifter, showing the pump inside the body"></label>
+          </div>
+          <div class="figactions">
+            <button type="button" class="btn sm" id="figGen">Draw this figure</button>
+            <span class="small muted" id="figStatus" role="status" aria-live="polite"></span>
+          </div>
+        </form>
+
+        <div class="figlist" id="figList">
+          {% for f in figures %}
+          <article class="figcard" data-fig="{{ f.id }}">
+            <div class="fighead">
+              <b>{{ f.figure_label }}</b>
+              <span class="small muted">{{ f.caption }}</span>
+              <span class="grow"></span>
+              <span class="small muted">v{{ f.active_version }} of {{ f.n_versions }}</span>
+            </div>
+            <img class="figimg" alt="{{ f.figure_label }} — {{ f.caption }}"
+                 src="{{ request.script_root }}/drafts/{{ project.id }}/figures/{{ f.id }}.png?version={{ f.active_version }}">
+            <div class="figedit">
+              <input type="text" class="figinstr" maxlength="1000"
+                     placeholder="Change something — e.g. “make the pump smaller and move it into the handle”">
+              <button type="button" class="btn ghost sm figapply">Apply change</button>
+            </div>
+            {% if f.n_versions > 1 %}
+            <div class="figvers">
+              {% for v in f.versions %}
+              <button type="button" class="figver{% if v.version_no == f.active_version %} on{% endif %}"
+                      data-version="{{ v.version_no }}"
+                      title="{{ v.instruction or 'first generation' }}">v{{ v.version_no }}</button>
+              {% endfor %}
+            </div>
+            {% endif %}
+            <div class="figfoot">
+              <span class="small figstatus" role="status" aria-live="polite"></span>
+              <span class="grow"></span>
+              <form method="post" action="{{ request.script_root }}/drafts/{{ project.id }}/figures/{{ f.id }}/delete"
+                    onsubmit="return confirm('Delete {{ f.figure_label }} and all its versions?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn ghost xs" type="submit">Delete figure</button>
+              </form>
+            </div>
+          </article>
+          {% else %}
+          <p class="muted small" id="figEmpty">No figures yet.</p>
+          {% endfor %}
+        </div>
+      </section>
+
       <form method="post" action="{{ request.script_root }}/drafts/{{ project.id }}/archive" class="archiveproject">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="archived" value="{{ '0' if project.status == 'archived' else '1' }}">
         <button class="btn ghost sm" type="submit">{{ 'Restore project' if project.status == 'archived' else 'Archive project' }}</button>
@@ -142,6 +226,79 @@
 </div>
 {% endblock %}
 {% block scripts %}
+<script>
+/*  Figure generation is synchronous — about five seconds per image — so the button waits rather
+    than handing off to a job queue the user would then have to poll for something they are
+    watching happen.                                                                            */
+(function(){
+  const B = window.APP_BASE || '';
+  const PID = {{ project.id|tojson }};
+  const list = document.getElementById('figList');
+  if(!list) return;
+  const status = document.getElementById('figStatus');
+
+  async function post(path, body){
+    const r = await fetch(B + '/drafts/' + PID + path, {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':window.CSRF_TOKEN || ''},
+      body: JSON.stringify(body || {})});
+    const d = await r.json();
+    if(!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    return d;
+  }
+
+  document.querySelectorAll('.figchip').forEach(chip => chip.addEventListener('click', () => {
+    document.getElementById('figLabel').value = chip.dataset.label || '';
+    document.getElementById('figCaption').value = chip.dataset.caption || '';
+    document.getElementById('figCaption').focus();
+  }));
+
+  const gen = document.getElementById('figGen');
+  gen.addEventListener('click', async () => {
+    const label = document.getElementById('figLabel').value.trim();
+    const caption = document.getElementById('figCaption').value.trim();
+    if(!caption){ status.textContent = 'Say what the figure shows first.'; return; }
+    gen.disabled = true; const was = gen.textContent; gen.textContent = 'Drawing…';
+    status.textContent = 'Drawing the figure — about five seconds.';
+    try{
+      await post('/figures', {label, caption});
+      location.reload();
+    }catch(err){
+      status.textContent = 'Could not draw that: ' + (err.message || err);
+      gen.disabled = false; gen.textContent = was;
+    }
+  });
+
+  list.querySelectorAll('.figcard').forEach(card => {
+    const id = card.dataset.fig;
+    const st = card.querySelector('.figstatus');
+    const img = card.querySelector('.figimg');
+    card.querySelector('.figapply').addEventListener('click', async e => {
+      const instruction = card.querySelector('.figinstr').value.trim();
+      if(!instruction){ st.textContent = 'Describe the change first.'; st.className = 'small figstatus bad'; return; }
+      e.target.disabled = true; const was = e.target.textContent; e.target.textContent = 'Applying…';
+      st.textContent = 'Redrawing with your change…'; st.className = 'small figstatus muted';
+      try{
+        await post('/figures', {figure_id: id, instruction});
+        location.reload();
+      }catch(err){
+        st.textContent = 'Could not apply that: ' + (err.message || err);
+        st.className = 'small figstatus bad';
+        e.target.disabled = false; e.target.textContent = was;
+      }
+    });
+    card.querySelectorAll('.figver').forEach(b => b.addEventListener('click', async () => {
+      const n = b.dataset.version;
+      try{
+        await post('/figures/' + id + '/activate', {version_no: Number(n)});
+        card.querySelectorAll('.figver').forEach(x => x.classList.remove('on'));
+        b.classList.add('on');
+        img.src = B + '/drafts/' + PID + '/figures/' + id + '.png?version=' + n + '&t=' + Date.now();
+        st.textContent = 'Showing version ' + n + '.'; st.className = 'small figstatus good';
+      }catch(err){ st.textContent = err.message; st.className = 'small figstatus bad'; }
+    }));
+  });
+})();
+</script>
 {% if project.status in ['queued','generating'] %}<script>
 (function(){
   const base = window.APP_BASE || '', id = {{ project.id|tojson }};

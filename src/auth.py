@@ -61,8 +61,17 @@ _LOOPBACK = ("127.0.0.1", "::1", "localhost")
 TRUSTED_PROXY_HOPS = max(1, int(_num("TRUSTED_PROXY_HOPS", 1)))
 
 # Endpoints that must stay reachable without a session.
+#
+# `shared_report` and `shared_report_logo` are open because that is the whole point of a share
+# link: a client with no account opens one report. The capability is the token itself, which is
+# stored hashed, resolves to exactly ONE slug, is revocable, and grants nothing else — every
+# route that writes, exports, re-runs or reaches another report stays gated below.
 _OPEN_ENDPOINTS = {"healthz", "auth.login", "auth.logout", "auth.register",
-                   "auth.forgot_password", "auth.reset_password", "static"}
+                   "auth.forgot_password", "auth.reset_password", "static",
+                   "shared_report", "shared_report_logo",
+                   # An invitee has no account yet; a verification link may be opened from a mail
+                   # client with no session. Both are single-use, expiring, hashed tokens.
+                   "auth.accept_invitation", "auth.verify_email"}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -219,6 +228,18 @@ _LIMITERS = {
     # call (and, for a link, a paid SerpApi detail fetch). Bounded like the other Vertex routes.
     "extract":  Limiter("document extraction", _num("RL_EXTRACT_RATE", 1 / 20.0), _num("RL_EXTRACT_BURST", 6),
                         _num("RL_EXTRACT_GRATE", 1 / 10.0), _num("RL_EXTRACT_GBURST", 20)),
+    # One Vertex call each: rewriting a query, drafting a narrative section of a client report,
+    # and generating a patent figure. All are cheap individually and all are a button somebody can
+    # hold down, so they get their own buckets rather than riding on a neighbour's.
+    "api_improve_query": Limiter("query improvement", _num("RL_IMPROVE_RATE", 0.5),
+                                 _num("RL_IMPROVE_BURST", 10), _num("RL_IMPROVE_GRATE", 1.0),
+                                 _num("RL_IMPROVE_GBURST", 30)),
+    "api_report_suggest": Limiter("report narrative drafting", _num("RL_SUGGEST_RATE", 0.5),
+                                  _num("RL_SUGGEST_BURST", 8), _num("RL_SUGGEST_GRATE", 1.0),
+                                  _num("RL_SUGGEST_GBURST", 20)),
+    "draft_drawing": Limiter("patent figure generation", _num("RL_DRAWING_RATE", 1 / 15.0),
+                             _num("RL_DRAWING_BURST", 6), _num("RL_DRAWING_GRATE", 1 / 6.0),
+                             _num("RL_DRAWING_GBURST", 20)),
     # chunked Vertex translation of a full reference
     "api_translate": Limiter("translation", _num("RL_TRANS_RATE", 1.0), _num("RL_TRANS_BURST", 20),
                              _num("RL_TRANS_GRATE", 2.0), _num("RL_TRANS_GBURST", 40)),
@@ -602,6 +623,16 @@ def register():
         else:
             try:
                 user = accounts.create_user(values["email"], values["full_name"], password)
+                #  Verification confirms we can REACH the address; it does not gate the account.
+                #  Locking somebody out of a tool they just signed up for because a mail relay is
+                #  slow is worse than the risk it removes, and the completion email — the only
+                #  thing that needs a working address — is what verification actually protects.
+                try:
+                    token = accounts.create_email_verification(user["id"])
+                    notifications.queue_email_verification(
+                        user, f"{notifications.PUBLIC_BASE_URL}/verify-email/{token}")
+                except Exception:
+                    pass
                 session.clear()
                 session["user_id"] = user["id"]
                 session["session_version"] = int(user.get("session_version") or 1)
@@ -668,7 +699,8 @@ def account():
         if is_legacy_admin():
             return redirect(url_for("auth.admin_users"))
         return redirect(url_for("auth.login", next="/account"))
-    message = error = ""
+    message = request.args.get("message", "")
+    error = request.args.get("error", "")
     if request.method == "POST":
         require_csrf()
         action = request.form.get("action")
@@ -714,8 +746,15 @@ def admin_users():
     except Exception as exc:
         users, stats = [], {}
         store_error = str(exc)[:200]
+    try:
+        invitations = accounts.list_invitations()
+    except Exception:
+        invitations = []
     return render_template("admin_users.html", users=users, mail_stats=stats,
-                           mail_transport=notifications.transport_status(), store_error=store_error)
+                           mail_transport=notifications.transport_status(),
+                           store_error=store_error, invitations=invitations,
+                           message=request.args.get("message", ""),
+                           error=request.args.get("error", ""))
 
 
 @bp.route("/admin/users/<int:user_id>", methods=["POST"])
@@ -739,6 +778,119 @@ def admin_update_user(user_id):
         return redirect(url_for("auth.admin_users"))
     except ValueError as exc:
         return render_template("notfound.html", slug=str(exc)), 400
+
+
+@bp.route("/verify-email/<token>")
+def verify_email(token):
+    user = accounts.verify_email(token)
+    if not user:
+        return render_template("notfound.html",
+                               slug="that confirmation link has expired or was already used"), 404
+    return render_template("verified.html", user=user)
+
+
+@bp.route("/account/resend-verification", methods=["POST"])
+def resend_verification():
+    user = current_user()
+    if not user:
+        return redirect(url_for("auth.login"))
+    require_csrf()
+    try:
+        token = accounts.create_email_verification(user["id"])
+        notifications.queue_email_verification(
+            user, f"{notifications.PUBLIC_BASE_URL}/verify-email/{token}")
+        notifications.kick()
+    except Exception:
+        return redirect(url_for("auth.account", error="Could not send that just now."))
+    return redirect(url_for("auth.account", message="Confirmation email sent."))
+
+
+@bp.route("/invite/<token>", methods=["GET", "POST"])
+def accept_invitation(token):
+    """Open an invitation: the invitee chooses their own password, then is signed in.
+
+    Deliberately outside the auth gate — the whole point is that the person has no account yet.
+    The token is the capability, is single-use, expires, and creates exactly the account the
+    administrator named.
+    """
+    invite = accounts.get_invitation(token)
+    if not invite:
+        return render_template("notfound.html",
+                               slug="that invitation has expired, been used, or was withdrawn"), 404
+    error = ""
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        if password != request.form.get("password_confirm", ""):
+            error = "Passwords do not match."
+        else:
+            try:
+                user = accounts.accept_invitation(token, request.form.get("full_name", ""), password)
+                session.clear()
+                session["user_id"] = user["id"]
+                session["session_version"] = int(user.get("session_version") or 1)
+                session["csrf_token"] = secrets.token_urlsafe(32)
+                session.permanent = True
+                return redirect(url_for("index"))
+            except ValueError as exc:
+                error = str(exc)
+            except Exception:
+                error = "Could not open that account. Please try again."
+    return render_template("invite.html", invite=invite, error=error, token=token)
+
+
+@bp.route("/admin/invitations", methods=["POST"])
+@admin_required
+def admin_invite():
+    require_csrf()
+    me = current_user()
+    email = request.form.get("email", "")
+    try:
+        token, invite = accounts.create_invitation(
+            email, request.form.get("full_name", ""),
+            is_admin=request.form.get("is_admin") == "1",
+            invited_by=(me or {}).get("id"))
+        notifications.queue_invitation(
+            invite["email"], invite.get("full_name") or "",
+            f"{notifications.PUBLIC_BASE_URL}/invite/{token}",
+            inviter_name=(me or {}).get("full_name") or "")
+        notifications.kick()
+        return redirect(url_for("auth.admin_users",
+                                message=f"Invitation sent to {invite['email']}."))
+    except ValueError as exc:
+        return redirect(url_for("auth.admin_users", error=str(exc)))
+    except Exception:
+        return redirect(url_for("auth.admin_users", error="Could not send that invitation."))
+
+
+@bp.route("/admin/invitations/<int:invitation_id>/revoke", methods=["POST"])
+@admin_required
+def admin_revoke_invite(invitation_id):
+    require_csrf()
+    accounts.revoke_invitation(invitation_id)
+    return redirect(url_for("auth.admin_users", message="Invitation withdrawn."))
+
+
+@bp.route("/admin/users/<int:user_id>/delete", methods=["POST"])
+@admin_required
+def admin_delete_user(user_id):
+    require_csrf()
+    me = current_user()
+    try:
+        accounts.delete_user(user_id, acting_admin_id=(me or {}).get("id"))
+        return redirect(url_for("auth.admin_users", message="Account deleted."))
+    except ValueError as exc:
+        return redirect(url_for("auth.admin_users", error=str(exc)))
+
+
+@bp.route("/admin/searches/<slug>")
+@admin_required
+def admin_search_detail(slug):
+    """Who ran one search, when, and what happened to it."""
+    try:
+        events = accounts.search_events(slug)
+    except Exception:
+        events = []
+    return render_template("admin_search_detail.html", slug=slug, events=events)
 
 
 @bp.route("/admin/searches")

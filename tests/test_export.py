@@ -220,16 +220,20 @@ def test_assemble_carries_the_card_fields_every_export_needs(model):
         assert k in model, f"model is missing {k!r}"
 
 
-def test_export_route_accepts_all_four_formats(app_client, monkeypatch):
+def test_export_route_accepts_every_declared_format(app_client, monkeypatch):
     """/export used to hard-code ('pdf','docx'); the format table is now the single source of
-    truth for the route, the export bar and these tests."""
+    truth for the route, the export bar and these tests.
+
+    Asserted against the table itself rather than a hardcoded set, so adding a format (the IDS
+    citation listing was the fifth) does not require editing an assertion that was only ever
+    restating the table."""
     import webapp
-    assert set(webapp.EXPORT_FORMATS) == {"pdf", "docx", "xlsx", "md"}
+    assert set(webapp.EXPORT_FORMATS) >= {"pdf", "docx", "xlsx", "md", "ids"}
     r = app_client.post("/export", data={"slug": "grabo_gripper_novelty",
                                          "pubs": ",".join(SEL), "format": "tex"})
     assert r.status_code == 400
     body = r.get_json()
-    for f in ("pdf", "docx", "xlsx", "md"):
+    for f in webapp.EXPORT_FORMATS:
         assert f in body["error"]
 
     r = app_client.post("/export", data={"slug": "grabo_gripper_novelty",

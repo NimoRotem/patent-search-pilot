@@ -17,7 +17,14 @@ import pubnorm  # single link-builder: zero-padded Google/Espacenet URLs (droppe
 import ops_family, prefetch                        # worldwide family timeline + top-N proactive enrich
 import query_claim_grid                            # uploaded-claim x ranked-reference background grid
 import report_archive                              # automatic top-50 full-text Markdown ZIP
-import export_data, export_pdf, export_docx, export_xlsx, export_md
+import export_data, export_pdf, export_docx, export_xlsx, export_md, export_ids
+import deliverables                                # letterhead / matter / narrative + share links
+import library                                     # saved publications, across searches
+#  NOT `import figures`: this module already defines a route function called `figures`
+#  (the reference-drawing file server at /figures/<pub>/<name>), and the import was
+#  shadowed by it at definition time — the app booted straight into
+#  "'function' object has no attribute 'ensure_schema'".
+import draft_figures                               # model-generated patent drawings for a draft
 import auth, accounts, notifications, rerank_pool
 import drafting, draft_export, draft_worker
 import claim_chart, translate, drawings          # ported per-card enrichment
@@ -119,7 +126,14 @@ class _PrefixMiddleware:
     `X-Forwarded-Prefix` header (e.g. `/patents-data` when fronted at rotem.ai/patents-data).
     Sets SCRIPT_NAME so Flask's `url_for` / `request.script_root` become prefix-aware, and strips
     the prefix from PATH_INFO if the proxy passes it through. With no header the app serves at the
-    root exactly as before (127.0.0.1:8631), so nothing changes for direct/local access."""
+    root exactly as before (127.0.0.1:8631), so nothing changes for direct/local access.
+
+    TRAP, and it has bitten once: our nginx uses `proxy_pass http://host:8631/` with a TRAILING
+    SLASH, which already strips `/patents/` before the request arrives. The defensive strip below
+    then fires a SECOND time on any route whose own path begins with the prefix — a route at
+    `/patents` arrived as PATH_INFO `/patents`, was stripped to `""`, and silently served the
+    index instead. Do not name a route after the mount prefix; the saved-publication library is
+    at `/library` for exactly this reason."""
 
     def __init__(self, wsgi_app):
         self.wsgi_app = wsgi_app
@@ -173,9 +187,16 @@ REPORTS = DATA / "reports"
 RATIONALE = DATA / "rationale"
 EXPORTS = DATA / "reports" / "exports"
 FLAGS = DATA / "reports"
+#  Uploaded report logos, materialised from the database so reportlab and python-docx have a path
+#  to embed. The database row is authoritative; these are a cache and are safe to delete.
+LOGOS = DATA / "reports" / "logos"
+#  Model-generated patent figures for a draft, one PNG per version.
+DRAWINGS = DATA / "draft_drawings"
 REPORTS.mkdir(parents=True, exist_ok=True)
 RATIONALE.mkdir(parents=True, exist_ok=True)
 EXPORTS.mkdir(parents=True, exist_ok=True)
+LOGOS.mkdir(parents=True, exist_ok=True)
+DRAWINGS.mkdir(parents=True, exist_ok=True)
 
 #  The four export shapes, in one table so /export, the export bar and the tests cannot disagree
 #  about which formats exist. They differ along exactly two axes:
@@ -197,6 +218,10 @@ EXPORT_FORMATS = {
     #  here produced a doubled "charset=utf-8; charset=utf-8" header.
     "md":   {"render": lambda m, o: export_md.render(m, o),   "drawings": False, "text": True,
              "mime": "text/markdown", "label": "Markdown"},
+    #  The citation listing for a USPTO Information Disclosure Statement. Needs no drawings and no
+    #  full text — only the bibliographic fields, which every reference already carries.
+    "ids":  {"render": lambda m, o: export_ids.render(m, o),  "drawings": False, "text": False,
+             "mime": "application/pdf", "label": "IDS (SB/08a)"},
 }
 
 _GOLD = {e["id"]: e for e in goldset.load()["entries"]}
@@ -1514,6 +1539,9 @@ def report(slug):
     view["title"] = title
     view["is_gold"] = slug in _GOLD
     view["search_focus"] = rep.get("search_focus") or search_focus
+    #  Carried so "Refine and search again" keeps the uploaded document's chunk + image channels
+    #  instead of silently degrading the new search to text-only.
+    view["doc_token"] = doc_token or ""
     try:
         _write_detail_preview(slug, view)
     except Exception:
@@ -2719,6 +2747,442 @@ def api_flags(slug):
     return jsonify(load_flags(slug))
 
 
+# ---- patent figures for a draft: generate, edit, keep every version -------------------------
+def _figure_project(principal, project_id):
+    """The project, checked against this principal — figures inherit the draft's permissions."""
+    return _drafting_service().get_project(principal, project_id)
+
+
+@app.route("/drafts/<int:project_id>/figures", methods=["POST"])
+def draft_figure_generate(project_id):
+    """Generate a new figure, or apply a change to an existing one.
+
+    Synchronous on purpose: one image is ~5 s, which is inside a request, and a job queue for it
+    would add a status-polling surface for something the user is watching happen.
+    """
+    try:
+        user, principal = _draft_identity()
+    except drafting.DraftingError as exc:
+        return _error_response({"error": str(exc)}, _draft_error_status(exc), str(exc))
+    auth.require_csrf()
+    try:
+        project = _figure_project(principal, project_id)
+    except drafting.DraftingError as exc:
+        return _error_response({"error": str(exc)}, _draft_error_status(exc), str(exc))
+
+    body = request.get_json(silent=True) or request.form.to_dict() or {}
+    label = str(body.get("label") or "").strip()[:80]
+    caption = str(body.get("caption") or "").strip()[:400]
+    instruction = str(body.get("instruction") or "").strip()[:1000]
+    figure_id = body.get("figure_id")
+    figure_id = int(figure_id) if str(figure_id or "").isdigit() else None
+    if not figure_id and not (label or caption):
+        return jsonify({"ok": False, "error": "describe the figure first"}), 400
+    if not figure_id and not label:
+        label = "FIG. %d" % (len(_figures_for(project)) + 1)
+
+    version = None
+    try:
+        version = _drafting_service().get_project(principal, project_id, include_versions=True)
+        latest = int(version.get("latest_version_no") or 0)
+        sections = next((v.get("sections") or {} for v in version.get("versions", [])
+                         if int(v.get("version_no") or 0) == latest), {})
+    except Exception:
+        sections = {}
+    try:
+        out = draft_figures.render_figure(
+            project["id"], project["user_id"], label=label, caption=caption, sections=sections,
+            instruction=instruction, figure_id=figure_id,
+            #  Before the specification is generated the inventor's disclosure is the ONLY place
+            #  the reference numerals exist, and it is usually where they originated.
+            disclosure=str(project.get("disclosure_text") or "")[:40000])
+    except draft_figures.FigureError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": f"could not draw that: {str(exc)[:180]}"}), 500
+    return jsonify({"ok": True, **out})
+
+
+@app.route("/drafts/<int:project_id>/figures/<int:figure_id>.png")
+def draft_figure_png(project_id, figure_id):
+    user, principal = _draft_identity()
+    _figure_project(principal, project_id)
+    version = request.args.get("version", type=int)
+    mime, data = draft_figures.png_bytes(figure_id, user["id"], version)
+    if not data:
+        abort(404)
+    return Response(data, mimetype=mime or "image/png",
+                    headers={"Cache-Control": "private, max-age=300"})
+
+
+@app.route("/drafts/<int:project_id>/figures/<int:figure_id>/activate", methods=["POST"])
+def draft_figure_activate(project_id, figure_id):
+    user, principal = _draft_identity()
+    auth.require_csrf()
+    _figure_project(principal, project_id)
+    body = request.get_json(silent=True) or request.form.to_dict() or {}
+    try:
+        n = int(body.get("version_no"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "which version?"}), 400
+    if not draft_figures.set_active(figure_id, user["id"], n):
+        return jsonify({"ok": False, "error": "no such version"}), 404
+    return jsonify({"ok": True, "version_no": n})
+
+
+@app.route("/drafts/<int:project_id>/figures/<int:figure_id>/delete", methods=["POST"])
+def draft_figure_delete(project_id, figure_id):
+    user, principal = _draft_identity()
+    auth.require_csrf()
+    _figure_project(principal, project_id)
+    draft_figures.delete_figure(figure_id, user["id"])
+    return redirect(url_for("draft_detail", project_id=project_id, message="Figure deleted."))
+
+
+MORE_REFERENCES_PAGE = 25
+MORE_REFERENCES_MAX = 300
+
+
+@app.route("/api/more-references/<slug>")
+def api_more_references(slug):
+    """The ranked tail beyond the cards the page shows.
+
+    The report ranks thousands of families but builds full cards for the top 25 only, because a
+    card costs a database resolution, a drawing, a claim match and a grounded explanation. That
+    is the right default — semantic ranking puts the art at the top — but "there are 2,186
+    families and you may see 25 of them" is not something a searcher should have to accept on
+    trust when they are looking for one specific document.
+
+    So this resolves the tail CHEAPLY: one batched query for each family's representative
+    publication, returning bibliographic rows and links, with no rerank, no drawing fetch and no
+    explanation. The response says plainly that these are ranked but not analysed.
+    """
+    if not _can_access_report(slug):
+        abort(404)
+    rep = _load_report(slug)
+    if not rep:
+        return jsonify({"ok": False, "error": "no report"}), 404
+    try:
+        offset = max(0, min(int(request.args.get("offset", MORE_REFERENCES_PAGE)),
+                            MORE_REFERENCES_MAX))
+        limit = max(1, min(int(request.args.get("limit", MORE_REFERENCES_PAGE)),
+                           MORE_REFERENCES_PAGE))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "bad offset or limit"}), 400
+
+    ranked = rep.get("ranked_families") or []
+    page = ranked[offset:offset + limit]
+    if not page:
+        return jsonify({"ok": True, "rows": [], "offset": offset, "total": len(ranked),
+                        "exhausted": True})
+    conn = db.connect()
+    conn.autocommit = True
+    cur = conn.cursor()
+    try:
+        reps = webview.resolve_family_reps(cur, page)
+    finally:
+        conn.close()
+    rows = []
+    for i, fam in enumerate(page):
+        r = reps.get(fam)
+        if not r:
+            continue                      # a federated-only family has no local publication row
+        pub = r["publication_number"]
+        rows.append({
+            "rank": offset + i + 1, "pub": pub, "title": r.get("title") or "",
+            "country": r.get("country") or "",
+            "publication_date": str(r.get("publication_date") or "")[:10],
+            "priority_date": str(r.get("earliest_priority_date") or "")[:10],
+            "google_patents": pubnorm.google_url(pub),
+            "espacenet": pubnorm.espacenet_url(pub, r.get("simple_family_id")),
+        })
+    return jsonify({"ok": True, "rows": rows, "offset": offset, "next": offset + limit,
+                    "total": len(ranked),
+                    "exhausted": offset + limit >= min(len(ranked), MORE_REFERENCES_MAX)})
+
+
+@app.route("/api/improve-query", methods=["POST"])
+def api_improve_query():
+    """Rewrite a typed query into the vocabulary the corpus is written in.
+
+    Rate-limited with the other model-spending endpoints. Returns the improvement AND what was
+    added, because an expansion the user cannot inspect is one they cannot reject.
+    """
+    if auth.current_user():
+        auth.require_csrf()
+    body = request.get_json(silent=True) or request.form.to_dict() or {}
+    text = str(body.get("query") or "").strip()
+    if len(text) < 8:
+        return jsonify({"ok": False, "error": "write a little more first"}), 400
+    try:
+        out = llm.improve_query(text[:16000])
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": f"could not improve that: {str(exc)[:160]}"}), 500
+    if not out.get("changed"):
+        return jsonify({"ok": True, "changed": False, "improved": out["improved"],
+                        "added": [], "questions": out.get("questions") or []})
+    return jsonify({"ok": True, "changed": True, **out})
+
+
+# ---- the saved-patent library: references that outlive the search that found them ------------
+@app.route("/library")
+def saved_patents():
+    user = _require_user()
+    q = (request.args.get("q") or "").strip()
+    rows = library.listing(user["id"], query=q)
+    #  Resolve each publication's display record lazily and fail soft: a library entry must still
+    #  list when the corpus has never seen that number (a federated-only hit, say).
+    for r in rows:
+        try:
+            disp = enrich_display.load_cached(r["publication_number"]) or {}
+        except Exception:
+            disp = {}
+        r["display_title"] = r.get("title") or disp.get("title") or ""
+        r["google_patents"] = pubnorm.google_url(r["publication_number"])
+    return render_template("patents.html", rows=rows, q=q, n=len(rows))
+
+
+@app.route("/api/library", methods=["POST"])
+def api_library():
+    """Save, annotate or remove one publication. Used by the report cards and the library page."""
+    user = _require_user()
+    auth.require_csrf()
+    body = request.get_json(silent=True) or request.form.to_dict() or {}
+    action = (body.get("action") or "save").strip()
+    pub = body.get("pub") or body.get("publication_number") or ""
+    try:
+        if action == "remove":
+            removed = library.remove(user["id"], pub)
+            return jsonify({"ok": True, "saved": False, "removed": removed,
+                            "count": library.count(user["id"])})
+        if action == "note":
+            row = library.update_note(user["id"], pub, body.get("note") or "")
+            if not row:
+                return jsonify({"ok": False, "error": "not in your library"}), 404
+            return jsonify({"ok": True, "saved": True})
+        row = library.save(user["id"], pub, title=body.get("title") or "",
+                           note=body.get("note") or "", tag=body.get("tag") or "",
+                           source_slug=body.get("slug") or "")
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": str(exc)[:160]}), 500
+    return jsonify({"ok": True, "saved": True, "pub": row["publication_number"],
+                    "count": library.count(user["id"])})
+
+
+@app.route("/api/library/state")
+def api_library_state():
+    """Which of the publications on this page are already saved — one call per report render."""
+    user = auth.current_user()
+    if not user:
+        return jsonify({"saved": [], "count": 0})
+    pubs = [p for p in (request.args.get("pubs") or "").split(",") if p.strip()]
+    try:
+        return jsonify({"saved": sorted(library.saved_set(user["id"], pubs)),
+                        "count": library.count(user["id"])})
+    except Exception:
+        traceback.print_exc()
+        return jsonify({"saved": [], "count": 0})
+
+
+# ---- the client-facing document: letterhead, matter, narrative, share link -------------------
+def _require_user():
+    """The signed-in account, or refuse.
+
+    The before_request gate already turns anonymous traffic away, with one deliberate exception:
+    loopback on this host is trusted so the box can drive its own API. These routes all write
+    rows keyed by user id, so they need a real account rather than that exemption.
+    """
+    user = auth.current_user()
+    if user:
+        return user
+    if _wants_json():
+        abort(Response(json.dumps({"ok": False, "error": "a named account is required"}),
+                       status=401, mimetype="application/json"))
+    abort(redirect(url_for("auth.login", next=request.full_path.rstrip("?") or "/")))
+
+
+def _report_doc(slug):
+    """This user's report document for `slug`, or None. Never raises — a missing accounts store
+    must degrade to a plain retrieval export, not a 500 on the download button."""
+    user = auth.current_user()
+    if not user:
+        return None
+    try:
+        return deliverables.get(user["id"], slug)
+    except Exception:
+        traceback.print_exc()
+        return None
+
+
+def _report_logo_path(slug):
+    """Materialise the stored logo as a file the PDF/DOCX writers can embed, or None.
+
+    reportlab and python-docx both want a path or a stream; keeping one cached file per report
+    avoids re-writing it for every one of the four export formats."""
+    user = auth.current_user()
+    if not user:
+        return None
+    try:
+        mime, data = deliverables.logo(user["id"], slug)
+    except Exception:
+        return None
+    if not data:
+        return None
+    ext = deliverables.LOGO_MIMES.get(mime, ".png")
+    p = LOGOS / f"{slug}-{user['id']}{ext}"
+    try:
+        if not p.exists() or p.stat().st_size != len(data):
+            p.write_bytes(data)
+        return str(p)
+    except Exception:
+        return None
+
+
+@app.route("/report/<slug>/details", methods=["GET", "POST"])
+def report_details(slug):
+    """Edit the letterhead, matter details and narrative that head the exported document."""
+    user = _require_user()
+    if not _can_access_report(slug):
+        abort(404)
+    error = ""
+    if request.method == "POST":
+        auth.require_csrf()
+        try:
+            deliverables.save(user["id"], slug, request.form.to_dict())
+            if _wants_json():
+                return jsonify({"ok": True})
+            return redirect(url_for("report_details", slug=slug, saved=1))
+        except Exception as exc:
+            traceback.print_exc()
+            error = str(exc)[:200]
+    doc = deliverables.get_or_create(user["id"], slug)
+    rep = _load_report(slug) or {}
+    account_search = accounts.get_search(user["id"], slug) if user else None
+    return render_template("report_details.html", slug=slug, doc=doc, error=error,
+                           saved=request.args.get("saved") == "1",
+                           query=rep.get("query", ""),
+                           title=(account_search or {}).get("title") or slug,
+                           letterhead_fields=deliverables.LETTERHEAD_FIELDS,
+                           matter_fields=deliverables.MATTER_FIELDS)
+
+
+@app.route("/report/<slug>/logo", methods=["POST"])
+def report_logo_upload(slug):
+    user = _require_user()
+    auth.require_csrf()
+    if not _can_access_report(slug):
+        abort(404)
+    if request.form.get("action") == "clear":
+        deliverables.clear_logo(user["id"], slug)
+        return redirect(url_for("report_details", slug=slug, saved=1))
+    f = request.files.get("logo")
+    if f is None or not (f.filename or "").strip():
+        return _error_response({"error": "no file"}, 400, "Choose a logo image first.")
+    data = f.read(deliverables.MAX_LOGO_BYTES + 1)
+    try:
+        deliverables.set_logo(user["id"], slug, data, f.mimetype or "")
+    except ValueError as exc:
+        return _error_response({"error": str(exc)}, 400, str(exc))
+    return redirect(url_for("report_details", slug=slug, saved=1))
+
+
+@app.route("/report/<slug>/logo.img")
+def report_logo(slug):
+    user = _require_user()
+    if not _can_access_report(slug):
+        abort(404)
+    mime, data = deliverables.logo(user["id"], slug)
+    if not data:
+        abort(404)
+    return Response(data, mimetype=mime or "image/png",
+                    headers={"Cache-Control": "private, max-age=60"})
+
+
+@app.route("/api/report/<slug>/suggest/<kind>", methods=["POST"])
+def api_report_suggest(slug, kind):
+    """Draft the purpose / key findings / analysis from the report itself."""
+    _require_user()
+    auth.require_csrf()
+    if not _can_access_report(slug):
+        abort(404)
+    if kind not in deliverables.NARRATIVE_FIELDS:
+        return jsonify({"ok": False, "error": "unknown section"}), 400
+    rep = _load_report(slug)
+    if not rep:
+        return jsonify({"ok": False, "error": "no report yet"}), 404
+    try:
+        view = _build_view_cached(slug, rep)
+        text = deliverables.suggest(kind, view, rep)
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": f"could not draft that section: {str(exc)[:160]}"}), 500
+    if not text:
+        return jsonify({"ok": False, "error": "the model returned nothing for this section"}), 502
+    return jsonify({"ok": True, "text": text})
+
+
+@app.route("/report/<slug>/share", methods=["POST"])
+def report_share(slug):
+    """Mint or revoke the read-only link. The token is shown ONCE, at mint time."""
+    user = _require_user()
+    auth.require_csrf()
+    if not _can_access_report(slug):
+        abort(404)
+    if (request.get_json(silent=True) or {}).get("revoke") or request.form.get("revoke"):
+        deliverables.revoke_share(user["id"], slug)
+        return jsonify({"ok": True, "shared": False})
+    token = deliverables.create_share(user["id"], slug)
+    return jsonify({"ok": True, "shared": True,
+                    "url": f"{notifications.PUBLIC_BASE_URL}/shared/{token}"})
+
+
+@app.route("/shared/<token>")
+def shared_report(token):
+    """A read-only report for somebody with the link and no account.
+
+    The token is a capability for ONE report. It carries no session, cannot be swapped for
+    another slug, and every mutating route stays behind the normal login — this view renders the
+    same report template with editing, exporting and re-running switched off.
+    """
+    doc = deliverables.by_share_token(token)
+    if not doc:
+        abort(404)
+    slug = doc["slug"]
+    rep = _load_report(slug)
+    if not rep:
+        abort(404)
+    view = _build_view_cached(slug, rep)
+    #  Fill the SAME keys the owner's report route fills. Hand-rolling a subset is how the first
+    #  version of this shipped, and it 500'd on `v.archive` — a key the template reads and this
+    #  route had never heard of. Anything the template can read must be present here too.
+    view["slug"] = slug
+    view["title"] = doc.get("matter_title") or slug
+    view["is_gold"] = slug in _GOLD
+    view["search_focus"] = rep.get("search_focus") or "all_text"
+    view["doc_token"] = ""
+    view["account_search"] = None
+    view["archive"] = report_archive.metadata(slug, REPORTS)
+    view["query_claim_grid_data"] = query_claim_grid.status(slug, REPORTS)
+    view["report_doc"] = doc
+    view["share_token"] = token
+    view["read_only"] = True
+    return render_template("report.html", v=view, read_only=True, share_token=token,
+                           ood=None, corpus=corpus_facts.facts())
+
+
+@app.route("/shared/<token>/logo.img")
+def shared_report_logo(token):
+    mime, data = deliverables.logo_by_share_token(token)
+    if not data:
+        abort(404)
+    return Response(data, mimetype=mime or "image/png")
+
+
 # ---- export selected references -> PDF / DOCX (the headline) --------------------------------
 @app.route("/export", methods=["POST"])
 def export():
@@ -2733,7 +3197,13 @@ def export():
         return jsonify({"error": "invalid slug"}), 400
     if not _can_access_report(slug):
         abort(404)
-    key = hashlib.sha1((slug + "|" + fmt + "|" + ",".join(sorted(pubs))).encode()).hexdigest()[:12]
+    #  The letterhead, matter details and narrative are PART of the exported document, so they
+    #  belong in the cache identity. Without the revision stamp, editing the client name and
+    #  re-exporting hands back the file built before the edit.
+    doc = _report_doc(slug)
+    rev = str((doc or {}).get("updated_at") or "")
+    key = hashlib.sha1((slug + "|" + fmt + "|" + ",".join(sorted(pubs)) + "|" + rev)
+                       .encode()).hexdigest()[:12]
     out = EXPORTS / f"{slug}__{key}.{fmt}"
     if not out.exists():
         # An unknown slug used to raise inside assemble() and surface as an unhandled HTML 500.
@@ -2745,6 +3215,8 @@ def export():
                                          include_drawings=spec["drawings"])
         except Exception as e:
             return jsonify({"error": "could not assemble export", "detail": str(e)[:200]}), 400
+        model["report_doc"] = doc
+        model["report_logo"] = _report_logo_path(slug) if doc and doc.get("has_logo") else None
         spec["render"](model, out)
     dl = f"prior-art-{slug}.{fmt}"
     return send_from_directory(EXPORTS, out.name, as_attachment=True,
@@ -3154,7 +3626,20 @@ def _draft_detail_context(principal, project_id):
             "section_order": drafting.SECTION_ORDER, "version_diff": version_diff,
             "generation_key": secrets.token_urlsafe(24),
             "error": request.args.get("error", ""), "message": request.args.get("message", ""),
-            "created": request.args.get("created") == "1"}
+            "created": request.args.get("created") == "1",
+            #  Figures live beside the draft, not inside a version: a drawing survives a
+            #  regeneration of the text, which is what makes iterating on it worth doing.
+            "figures": _figures_for(project),
+            "figure_suggestions": draft_figures.figures_from_draft((version or {}).get("sections") or {})}
+
+
+def _figures_for(project):
+    """This project's figures, or [] if the store is unavailable — never break the draft page."""
+    try:
+        return draft_figures.listing(project["id"], project["user_id"])
+    except Exception:
+        traceback.print_exc()
+        return []
 
 
 @app.route("/drafts/<int:project_id>")
@@ -3461,6 +3946,11 @@ def recover_interrupted_searches():
 # ---- auth + rate limiting (registered LAST, after every route exists) ------------------------
 auth.init_app(app, state_path=DATA / "run_budget.json")
 notifications.init_app(app)
+for _schema in (deliverables.ensure_schema, library.ensure_schema, draft_figures.ensure_schema):
+    try:
+        _schema()
+    except Exception:                   # a missing accounts store must not stop the app booting
+        traceback.print_exc()
 draft_worker.init_app(app, _drafting_service)
 if "PYTEST_CURRENT_TEST" not in os.environ:
     recover_interrupted_searches()

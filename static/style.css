@@ -986,3 +986,115 @@ details.draftpanel>summary{list-style:none;cursor:pointer;margin:-19px;padding:1
 .chip.prov-chunk{color:var(--good);border-color:rgba(63,185,80,.30);background:var(--good-soft)}
 .chip.prov-image{color:var(--secret);border-color:rgba(163,113,247,.34);background:var(--secret-soft);font-weight:600}
 .chip.prov-api{color:var(--muted);border-style:dashed}
+
+/* ── report details: letterhead, matter, narrative, logo, share ──────────────────────────── */
+.detailspage{max-width:900px;padding-top:22px;padding-bottom:40px}
+.dsec{padding:18px 20px;margin-bottom:14px}
+.dsec h2{font-size:15px;margin-bottom:4px}
+.dsec>p.small{margin:0 0 12px}
+.dsec label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:10px}
+.dsec label input,.dsec label textarea{display:block;width:100%;margin-top:4px}
+.drow{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+.dnarr{margin-top:14px}
+.dnarrhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:5px}
+.dnarrhead label{margin:0;flex:1;min-width:220px;color:var(--ink)}
+.dnarr textarea{width:100%;background:var(--s0);border:1px solid var(--line2);border-radius:6px;
+  color:var(--ink);font:13px/1.6 inherit;padding:9px 11px;resize:vertical}
+.dnarr textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.suggeststatus{margin-top:5px;min-height:1.1em}
+.suggeststatus.good{color:var(--good)} .suggeststatus.bad{color:var(--bad)}
+.dactions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0 20px}
+.formok{border:1px solid rgba(63,185,80,.4);background:var(--good-soft);color:var(--ink);
+  border-radius:var(--r-sm);padding:9px 12px;font-size:13px;margin-bottom:14px}
+.logorow{align-items:center}
+.dlogo{max-width:220px;max-height:90px;background:#fff;border:1px solid var(--line2);
+  border-radius:6px;padding:6px}
+.logoforms{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.logoforms form{display:flex;gap:8px;align-items:center}
+.shareout{margin-top:12px}
+.sharerow{display:flex;gap:8px;margin-top:4px}
+.sharerow input{flex:1;min-width:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+@media (max-width:700px){ .drow{grid-template-columns:1fr} }
+
+/* ── saved patents ───────────────────────────────────────────────────────────────────────── */
+.libbtn{background:none;border:1px solid transparent;color:var(--faint);cursor:pointer;
+  font-size:15px;line-height:1;border-radius:6px;padding:2px 5px;margin-top:4px}
+.libbtn:hover{color:var(--warn);border-color:rgba(210,153,34,.4)}
+.libbtn.on{color:var(--warn)}
+.librarypage{max-width:1000px;padding-top:22px;padding-bottom:40px}
+.libfilter{display:flex;gap:9px;align-items:center;margin-bottom:16px}
+.libfilter input{flex:1;min-width:0;max-width:460px}
+.liblist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.librow{display:flex;gap:14px;align-items:flex-start;background:var(--s1);
+  border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 14px}
+.libmain{flex:1;min-width:0}
+.libhead{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap}
+.libtitle{color:var(--muted);font-size:13px}
+.libmeta{margin:3px 0 7px}
+.libnote{width:100%;background:var(--s0);border:1px solid var(--line2);border-radius:6px;
+  color:var(--ink);font:12.5px/1.5 inherit;padding:7px 9px;resize:vertical}
+.libstatus{margin-top:4px;min-height:1em}
+.libstatus.good{color:var(--good)} .libstatus.bad{color:var(--bad)}
+.libactions{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
+.libempty{padding:18px 20px;color:var(--muted)}
+
+/* ── improve the description ─────────────────────────────────────────────────────────────── */
+.qimprove{display:flex;align-items:center;gap:11px;margin-top:8px;flex-wrap:wrap}
+.improveout{margin-top:11px;border:1px solid var(--line);border-radius:var(--r-sm);
+  background:var(--s1);padding:12px 14px}
+.improvehead{display:flex;align-items:center;gap:9px;margin-bottom:8px;flex-wrap:wrap}
+.improveout .ex-snip{max-height:220px}
+.improveadded,.improveqs{margin-top:9px;color:var(--muted)}
+.improveadded ul,.improveqs ul{margin:4px 0 0;padding-left:18px;line-height:1.6}
+.improveqs{color:var(--warn)}
+
+/* ── refine and search again ─────────────────────────────────────────────────────────────── */
+.qedit{margin-top:12px;border:1px solid var(--line2);border-radius:var(--r-sm);
+  background:var(--s2);padding:12px 14px}
+.qedit label{display:block;margin-bottom:6px}
+.qedit textarea{width:100%;background:var(--s0);border:1px solid var(--line2);border-radius:6px;
+  color:var(--ink);font:13px/1.6 inherit;padding:9px 11px;resize:vertical}
+.qedit textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.qeditactions{display:flex;align-items:center;gap:10px;margin-top:9px;flex-wrap:wrap}
+
+/* ── patent figures in the draft workspace ───────────────────────────────────────────────── */
+.figsuggest{margin:10px 0 14px}
+.figchips{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px}
+.figchip{background:var(--s2);border:1px solid var(--line2);border-radius:var(--r-pill);
+  color:var(--muted);font-size:11.5px;padding:4px 11px;cursor:pointer;text-align:left}
+.figchip:hover{border-color:var(--accent);color:var(--ink)}
+.fignew{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s2);
+  padding:12px 14px;margin-bottom:14px}
+.figrow{display:grid;grid-template-columns:150px 1fr;gap:0 14px}
+.figrow label{display:block;font-size:12px;color:var(--muted);margin-bottom:8px}
+.figrow input{display:block;width:100%;margin-top:4px}
+.figactions{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.figlist{display:flex;flex-direction:column;gap:16px}
+.figcard{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s1);padding:12px 14px}
+.fighead{display:flex;align-items:baseline;gap:10px;margin-bottom:9px;flex-wrap:wrap}
+.figimg{display:block;width:100%;max-width:560px;margin:0 auto;background:#fff;
+  border:1px solid var(--line2);border-radius:6px;padding:6px}
+.figedit{display:flex;gap:9px;margin-top:11px;flex-wrap:wrap}
+.figedit input{flex:1;min-width:220px}
+.figvers{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+.figver{background:var(--s2);border:1px solid var(--line2);border-radius:var(--r-pill);
+  color:var(--muted);font-size:11px;padding:2px 9px;cursor:pointer}
+.figver.on{border-color:var(--accent);color:var(--ink);background:var(--accent-soft)}
+.figfoot{display:flex;align-items:center;gap:10px;margin-top:9px}
+.figstatus.good{color:var(--good)} .figstatus.bad{color:var(--bad)}
+@media (max-width:640px){ .figrow{grid-template-columns:1fr} }
+
+/* ── invitations + account administration ────────────────────────────────────────────────── */
+.invitesec .inviteform{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px}
+.invitesec .inviteform label{margin:0;flex:1;min-width:180px}
+.invitesec .invadmin{display:flex;align-items:center;gap:7px;flex:0 0 auto;color:var(--muted);
+  font-size:12.5px;padding-bottom:8px}
+.invitesec .invadmin input{width:auto;margin:0}
+.btn.danger:hover{color:var(--bad);border-color:rgba(248,81,73,.45);background:var(--bad-soft)}
+.admq{display:block;max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── the ranked tail beyond the analysed cards ───────────────────────────────────────────── */
+.moreref{margin:22px auto 6px;display:flex;flex-direction:column;gap:9px}
+.moreref>button{align-self:flex-start}
+.morereftable td>span{display:block}
+.moderefdisc{margin:10px 2px 0}

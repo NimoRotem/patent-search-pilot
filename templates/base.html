@@ -25,7 +25,8 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
     <span class="grow"></span>
     <a href="{{ request.script_root }}/">New search</a>
     <a href="{{ request.script_root }}/history">Search history</a>
-    {% if current_user %}<a href="{{ request.script_root }}/drafts">Drafts</a>{% endif %}
+    {% if current_user %}<a href="{{ request.script_root }}/library">Saved patents</a>
+    <a href="{{ request.script_root }}/drafts">Drafts</a>{% endif %}
     <a href="{{ request.script_root }}/about">About</a>
     {% if current_is_admin %}<a href="{{ request.script_root }}/admin/users">Admin</a>{% endif %}
     {% if current_user %}

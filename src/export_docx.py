@@ -50,11 +50,62 @@ def _run(p, text, bold=False, color=None, size=None, italic=False):
     return r
 
 
+_NARRATIVE_HEADINGS = (("purpose", "Purpose of this search"),
+                       ("key_findings", "Key findings"),
+                       ("analysis", "Analysis"))
+
+
+def _letterhead(doc_obj, model):
+    """Firm and matter details at the head of the document, when they have been filled in.
+
+    Omitted entirely when empty, so an internal export is unchanged by the feature existing.
+    """
+    rd = model.get("report_doc") or {}
+    keys = ("firm_name", "firm_address", "firm_attorney", "attorney_email", "firm_detail",
+            "client_name", "client_reference_number", "matter_title",
+            "subject_patent_number", "subject_patent_date")
+    if not any(str(rd.get(k) or "").strip() for k in keys):
+        return
+    logo = model.get("report_logo")
+    if logo:
+        try:
+            doc_obj.add_picture(logo, width=Inches(1.8))
+        except Exception:
+            pass
+    if rd.get("firm_name"):
+        p = doc_obj.add_paragraph(); _run(p, rd["firm_name"], bold=True, size=12, color=NAVY)
+    for key in ("firm_address", "firm_attorney", "attorney_email", "firm_detail"):
+        if rd.get(key):
+            p = doc_obj.add_paragraph(); _run(p, rd[key], size=8.5, color=MUTED)
+    labels = (("matter_title", "Matter"), ("client_name", "Client"),
+              ("client_reference_number", "Client reference"),
+              ("subject_patent_number", "Subject application"),
+              ("subject_patent_date", "Subject date"))
+    for key, label in labels:
+        if str(rd.get(key) or "").strip():
+            p = doc_obj.add_paragraph()
+            _run(p, label + ": ", bold=True, size=9)
+            _run(p, str(rd[key]), size=9)
+
+
+def _narrative(doc_obj, model):
+    rd = model.get("report_doc") or {}
+    for key, heading in _NARRATIVE_HEADINGS:
+        body = str(rd.get(key) or "").strip()
+        if not body:
+            continue
+        doc_obj.add_heading(heading, level=2)
+        for para in [x for x in body.split("\n") if x.strip()]:
+            doc_obj.add_paragraph(para)
+
+
 def render(model, out_path):
     doc = Document()
     styles = doc.styles
     styles["Normal"].font.name = "Calibri"
     styles["Normal"].font.size = Pt(10)
+
+    _letterhead(doc, model)
 
     # ---- cover ----
     h = doc.add_heading(disclosure.DOC_TITLE, level=0)
@@ -81,6 +132,10 @@ def render(model, out_path):
     # On the cover, ahead of any result. An exported document has to stand alone: the reader may
     # never have seen the web page, cannot hover a tooltip, and may be reading it months later.
     _scope_section(doc)
+
+    # The author's framing sits after the scope disclosure and before the generated summary, so
+    # nobody reads a conclusion before the limits it is subject to.
+    _narrative(doc, model)
 
     # ---- executive summary ----
     doc.add_heading("Executive summary", level=1)

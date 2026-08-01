@@ -69,6 +69,29 @@ _SCHEMA = (
          last_error text, next_attempt_at timestamptz NOT NULL DEFAULT now(),
          created_at timestamptz NOT NULL DEFAULT now(), sent_at timestamptz)""",
     "CREATE INDEX IF NOT EXISTS app_mail_outbox_pending_idx ON app_mail_outbox (status, next_attempt_at, id)",
+    # Invitations and email verification. Both are one-shot capability tokens stored HASHED, for
+    # the same reason the password-reset token is: a database copy must not hand over live links.
+    """CREATE TABLE IF NOT EXISTS app_invitations (
+         id bigserial PRIMARY KEY,
+         email text NOT NULL, full_name text NOT NULL DEFAULT '',
+         is_admin boolean NOT NULL DEFAULT false,
+         token_hash text NOT NULL UNIQUE,
+         invited_by bigint REFERENCES app_users(id) ON DELETE SET NULL,
+         expires_at timestamptz NOT NULL,
+         accepted_at timestamptz, accepted_user_id bigint REFERENCES app_users(id) ON DELETE SET NULL,
+         revoked_at timestamptz,
+         created_at timestamptz NOT NULL DEFAULT now())""",
+    "CREATE INDEX IF NOT EXISTS app_invitations_email_idx ON app_invitations (lower(email))",
+    "CREATE INDEX IF NOT EXISTS app_invitations_open_idx ON app_invitations (created_at DESC)",
+    "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS email_verified_at timestamptz",
+    """CREATE TABLE IF NOT EXISTS app_email_verifications (
+         id bigserial PRIMARY KEY,
+         user_id bigint NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+         token_hash text NOT NULL UNIQUE,
+         expires_at timestamptz NOT NULL,
+         used_at timestamptz,
+         created_at timestamptz NOT NULL DEFAULT now())""",
+    "CREATE INDEX IF NOT EXISTS app_email_verif_user_idx ON app_email_verifications (user_id, created_at DESC)",
     """CREATE TABLE IF NOT EXISTS app_password_reset_tokens (
          id bigserial PRIMARY KEY, user_id bigint NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
          token_hash text NOT NULL UNIQUE, expires_at timestamptz NOT NULL,
@@ -507,3 +530,168 @@ def mail_stats():
 def reset_schema_cache_for_tests():
     global _SCHEMA_READY
     _SCHEMA_READY = False
+
+
+# ---------------------------------------------------------------------------
+# invitations: an administrator adds somebody, they choose their own password
+# ---------------------------------------------------------------------------
+INVITE_TTL_HOURS = 14 * 24
+VERIFY_TTL_HOURS = 7 * 24
+
+
+def _digest(token: str) -> str:
+    return hashlib.sha256((token or "").encode()).hexdigest()
+
+
+def create_invitation(email, full_name="", *, is_admin=False, invited_by=None,
+                      ttl_hours=INVITE_TTL_HOURS):
+    """Invite somebody. Returns (token, row); the token is shown once and never stored raw.
+
+    An administrator creating the account and setting a password FOR the user would mean the
+    administrator knows that password, which is exactly the thing an account system exists to
+    avoid. An invitation hands over the right to create the account, once, and expires.
+    """
+    ensure_schema()
+    email = _email(email)
+    if get_user_by_email(email):
+        raise ValueError("That email address already has an account.")
+    token = secrets.token_urlsafe(36)
+    expires = datetime.now(timezone.utc) + timedelta(hours=max(1, min(int(ttl_hours), 720)))
+    with db.cursor() as cur:
+        # One open invitation per address: re-inviting supersedes the previous link rather than
+        # leaving two working ones.
+        cur.execute("UPDATE app_invitations SET revoked_at=now() "
+                    "WHERE lower(email)=lower(%s) AND accepted_at IS NULL AND revoked_at IS NULL",
+                    (email,))
+        cur.execute("INSERT INTO app_invitations(email,full_name,is_admin,token_hash,invited_by,"
+                    "expires_at) VALUES (%s,%s,%s,%s,%s,%s) RETURNING *",
+                    (email, _name(full_name) if full_name else "", bool(is_admin), _digest(token),
+                     int(invited_by) if invited_by else None, expires))
+        return token, dict(cur.fetchone())
+
+
+def get_invitation(token):
+    """The open, unexpired invitation for this token, or None."""
+    ensure_schema()
+    if not token or len(str(token)) > 200:
+        return None
+    with db.cursor() as cur:
+        cur.execute("SELECT * FROM app_invitations WHERE token_hash=%s AND accepted_at IS NULL "
+                    "AND revoked_at IS NULL AND expires_at > now()", (_digest(token),))
+        row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def accept_invitation(token, full_name, password):
+    """Consume an invitation and create the account. Returns the new public user."""
+    ensure_schema()
+    _password(password)
+    digest = _digest(token or "")
+    with db.cursor() as cur:
+        cur.execute("SELECT * FROM app_invitations WHERE token_hash=%s AND accepted_at IS NULL "
+                    "AND revoked_at IS NULL AND expires_at > now() FOR UPDATE", (digest,))
+        invite = cur.fetchone()
+        if not invite:
+            raise ValueError("That invitation link is not valid any more. Ask for a new one.")
+        name = _name(full_name or invite.get("full_name") or invite["email"].split("@")[0])
+        cur.execute("INSERT INTO app_users(email,full_name,password_hash,is_admin,"
+                    "email_verified_at) VALUES (%s,%s,%s,%s, now()) RETURNING *",
+                    (invite["email"], name, generate_password_hash(password),
+                     bool(invite["is_admin"])))
+        user = cur.fetchone()
+        cur.execute("UPDATE app_invitations SET accepted_at=now(), accepted_user_id=%s WHERE id=%s",
+                    (user["id"], invite["id"]))
+    return public_user(user)
+
+
+def revoke_invitation(invitation_id):
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("UPDATE app_invitations SET revoked_at=now() WHERE id=%s AND accepted_at IS NULL",
+                    (int(invitation_id),))
+        return cur.rowcount > 0
+
+
+def list_invitations(limit=100):
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("SELECT i.*, u.full_name AS invited_by_name FROM app_invitations i "
+                    "LEFT JOIN app_users u ON u.id=i.invited_by "
+                    "ORDER BY i.created_at DESC LIMIT %s", (int(limit),))
+        rows = []
+        for r in cur.fetchall():
+            d = dict(r)
+            d.pop("token_hash", None)          # a hash is not a link; never let it look like one
+            d["state"] = ("accepted" if d.get("accepted_at") else
+                          "revoked" if d.get("revoked_at") else
+                          "expired" if d.get("expires_at") and
+                          d["expires_at"] < datetime.now(timezone.utc) else "open")
+            rows.append(d)
+        return rows
+
+
+# ---------------------------------------------------------------------------
+# email verification
+# ---------------------------------------------------------------------------
+def create_email_verification(user_id, ttl_hours=VERIFY_TTL_HOURS):
+    ensure_schema()
+    token = secrets.token_urlsafe(36)
+    expires = datetime.now(timezone.utc) + timedelta(hours=max(1, min(int(ttl_hours), 720)))
+    with db.cursor() as cur:
+        cur.execute("INSERT INTO app_email_verifications(user_id,token_hash,expires_at) "
+                    "VALUES (%s,%s,%s)", (int(user_id), _digest(token), expires))
+    return token
+
+
+def verify_email(token):
+    """Consume a verification token. Returns the public user, or None."""
+    ensure_schema()
+    digest = _digest(token or "")
+    with db.cursor() as cur:
+        cur.execute("SELECT * FROM app_email_verifications WHERE token_hash=%s AND used_at IS NULL "
+                    "AND expires_at > now() FOR UPDATE", (digest,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        cur.execute("UPDATE app_email_verifications SET used_at=now() WHERE id=%s", (row["id"],))
+        cur.execute("UPDATE app_users SET email_verified_at=COALESCE(email_verified_at, now()), "
+                    "updated_at=now() WHERE id=%s RETURNING *", (row["user_id"],))
+        user = cur.fetchone()
+    return public_user(user) if user else None
+
+
+# ---------------------------------------------------------------------------
+# administrator account removal
+# ---------------------------------------------------------------------------
+def delete_user(user_id, *, acting_admin_id=None):
+    """Remove an account and everything keyed to it.
+
+    Refuses to delete the LAST administrator: an account store with no way in is not a state an
+    administrator can undo from the UI, and 'suspend' already covers every other case.
+    """
+    ensure_schema()
+    user_id = int(user_id)
+    if acting_admin_id and int(acting_admin_id) == user_id:
+        raise ValueError("You cannot delete the account you are signed in with.")
+    with db.cursor() as cur:
+        cur.execute("SELECT is_admin FROM app_users WHERE id=%s", (user_id,))
+        row = cur.fetchone()
+        if not row:
+            raise ValueError("No such account.")
+        if row["is_admin"]:
+            cur.execute("SELECT count(*) AS n FROM app_users WHERE is_admin AND is_active "
+                        "AND id <> %s", (user_id,))
+            if int(cur.fetchone()["n"]) == 0:
+                raise ValueError("That is the last administrator. Promote somebody else first.")
+        cur.execute("DELETE FROM app_users WHERE id=%s", (user_id,))
+        return cur.rowcount > 0
+
+
+def search_events(slug, limit=200):
+    """The per-search audit trail an administrator can read: who ran it, when, and its state."""
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("SELECT s.*, u.email, u.full_name FROM app_saved_searches s "
+                    "JOIN app_users u ON u.id=s.user_id WHERE s.slug=%s "
+                    "ORDER BY s.created_at DESC LIMIT %s", (str(slug), int(limit)))
+        return [dict(r) for r in cur.fetchall()]

@@ -177,3 +177,47 @@ def describe_figures(image_blobs, context: str = "", max_images: int = 4) -> str
         return (resp.text or "").strip()
     except Exception:
         return ""
+
+
+# ---------------------------------------------------------------------------
+# Query improvement: the search is only as good as what it is asked
+# ---------------------------------------------------------------------------
+_IMPROVE_SYS = (
+    "You are improving the DESCRIPTION OF AN INVENTION that will be used as a prior-art search "
+    "query against a semantic patent index. You are given what the user typed. Rewrite it so the "
+    "engine can find the right art: keep every technical feature the user actually stated, add "
+    "the standard terminology and SYNONYMS a patent examiner would use for each component, name "
+    "the structure, the mechanism and the field of use, and spell out anything the user implied "
+    "but left unsaid. "
+    "Do NOT invent features the user did not describe, do not add a different embodiment, and do "
+    "not turn it into claim language. 120-300 words of flowing prose, no headings, no bullets. "
+    "Also list the specific questions that, if answered, would most improve the search — things "
+    "the description leaves genuinely ambiguous. "
+    'Return ONLY JSON: {"improved":"<the rewritten description>",'
+    '"added":["what you added and why", ...],'
+    '"questions":["a question that would sharpen the search", ...]}'
+)
+
+
+def improve_query(text: str) -> dict:
+    """A typed query -> a fuller search description, plus what changed and what is still unclear.
+
+    Retrieval here is semantic, so a three-word query retrieves the FIELD rather than the
+    invention: "vacuum lifter" matches ten thousand documents equally well. Expanding the user's
+    own words into the vocabulary the corpus is written in is the single cheapest improvement
+    available to a search, and showing WHAT was added is what stops it being a black box — the
+    user can reject an expansion that drifted.
+
+    Fail-soft: returns the original text with no additions when the model is unavailable.
+    """
+    text = (text or "").strip()
+    if len(text) < 8:
+        return {"improved": text, "added": [], "questions": [], "changed": False}
+    d = chat_json(_IMPROVE_SYS, text[:16000], max_tokens=1800) or {}
+    improved = (d.get("improved") or "").strip()
+    if not improved:
+        return {"improved": text, "added": [], "questions": [], "changed": False}
+    return {"improved": improved,
+            "added": [str(x)[:300] for x in (d.get("added") or [])][:8],
+            "questions": [str(x)[:300] for x in (d.get("questions") or [])][:6],
+            "changed": improved.strip() != text}

@@ -35,10 +35,48 @@ def _stamp(**values) -> None:
     _STATE.update(values, updated_at=time.time())
 
 
+def _missing_sections(generated) -> list[str]:
+    return [key for key in drafting.SECTION_KEYS
+            if not isinstance((generated or {}).get(key), str)
+            or not str((generated or {}).get(key)).strip()]
+
+
 def _generate(system_prompt: str, user_prompt: str):
+    """One model call, plus ONE corrective call for any section it left out.
+
+    Measured, and it reproduced every time: asked for nine sections with the project title
+    already present in SOURCE_DATA, the model returned eight and silently omitted `title` —
+    apparently treating a title it had been given as one it need not restate. The validator is
+    strict and rightly refuses an incomplete draft, so every attempt failed and the whole
+    generation (a 21,000-character prompt, three times over) was thrown away over one short
+    string.
+
+    The fix is a second, narrow request for exactly the missing keys rather than substituting a
+    value: a draft missing `claims` must NOT be quietly patched from somewhere else, and asking
+    the model to supply what it skipped keeps the validator's contract intact.
+    """
     generated = llm.chat_json(system_prompt, user_prompt, max_tokens=16_000)
     if not generated:
         raise RuntimeError("The drafting model returned no valid JSON.")
+    missing = _missing_sections(generated)
+    if not missing:
+        return generated
+    headings = dict(drafting.SECTION_ORDER)
+    retry = llm.chat_json(
+        system_prompt,
+        user_prompt +
+        "\n\nYou omitted the following required section(s) from your JSON: " +
+        ", ".join(f"{k} ({headings.get(k, k)})" for k in missing) +
+        ". Return ONLY a JSON object containing exactly those keys, drafted to the same "
+        "requirements and guardrails. Do not restate the sections you already produced.",
+        max_tokens=8_000) or {}
+    for key in missing:
+        value = retry.get(key)
+        if isinstance(value, str) and value.strip():
+            generated[key] = value
+    still = _missing_sections(generated)
+    if still:
+        raise RuntimeError("The drafting model omitted required section(s): " + ", ".join(still))
     return generated
 
 

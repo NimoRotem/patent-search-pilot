@@ -61,7 +61,33 @@
       <button type="button" class="qmore" id="qmore" aria-expanded="false" aria-controls="qtext"
               onclick="toggleQuery()">Show full search <span class="qn">{{ '{:,}'.format(v.query|length) }} chars</span></button>
       {% endif %}
+      {#  Re-running the SAME query was the only option here. Most of the time what the results
+          show you is that the query was wrong — a missing feature, the wrong term for a part —
+          and the useful action is to change it and search again. A changed query is a different
+          search, so this starts a new report rather than overwriting this one.  #}
+      {% if current_user and not read_only %}
+      <button type="button" class="qmore" id="qeditbtn" aria-expanded="false" aria-controls="qeditbox">Refine and search again</button>
+      {% endif %}
     </div>
+    {% if current_user and not read_only %}
+    <form class="qedit" id="qeditbox" method="post" action="{{ request.script_root }}/run" hidden>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="mode" value="{{ v.mode }}">
+      <input type="hidden" name="search_focus" value="{{ v.search_focus or 'all_text' }}">
+      <input type="hidden" name="subject" value="{{ v.subject or '' }}">
+      <input type="hidden" name="doc_token" value="{{ v.doc_token or '' }}">
+      <label for="qeditta" class="small muted">Edit the description and run a new search. The
+        mode, focus{% if v.doc_token %}, uploaded document{% endif %}{% if v.subject %} and subject
+        application{% endif %} carry over; this report stays where it is.</label>
+      <textarea id="qeditta" name="query" rows="5" required>{{ v.query[:20000] }}</textarea>
+      <div class="qeditactions">
+        <button class="btn sm" type="submit">Search again</button>
+        <button type="button" class="btn ghost sm" id="qeditimprove">Improve this description</button>
+        <button type="button" class="btn ghost sm" id="qeditcancel">Cancel</button>
+        <span class="small muted" id="qeditstatus" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+    {% endif %}
 
     <div class="facts">
       <span><b>{{ v.cards|length }}</b> ranked references</span>
@@ -90,9 +116,13 @@
     {% endif %}
 
     <div class="actions">
-      {% if current_user %}<a class="btn sm" href="{{ request.script_root }}/drafts/new?search_slug={{ v.slug }}">Draft US application</a>{% endif %}
-      <a class="btn ghost sm" href="{{ request.script_root }}/print/{{ v.slug }}" target="_blank" rel="noopener">Print / PDF view</a>
-      {% if current_user %}
+      {% if current_user and not read_only %}<a class="btn sm" href="{{ request.script_root }}/drafts/new?search_slug={{ v.slug }}">Draft US application</a>
+      {#  The letterhead, client details and narrative that head every export. Kept out of the
+          report page itself so the evidence stays the evidence.  #}
+      <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}/details"
+         title="Letterhead, client and matter details, purpose and key findings — printed at the head of every export">Report details</a>{% endif %}
+      {% if not read_only %}<a class="btn ghost sm" href="{{ request.script_root }}/print/{{ v.slug }}" target="_blank" rel="noopener">Print / PDF view</a>{% endif %}
+      {% if current_user and not read_only %}
       <button type="button" class="btn ghost sm save-report{% if v.account_search and v.account_search.saved %} saved{% endif %}"
               id="saveReportBtn" data-saved="{{ 'true' if v.account_search and v.account_search.saved else 'false' }}">
         {{ '✓ Saved report' if v.account_search and v.account_search.saved else 'Save report' }}
@@ -325,6 +355,13 @@
             <button type="button" class="fp fp-not" data-flag="not" aria-pressed="false"
                     aria-label="Mark {{ c.pub }} not relevant" title="Mark not relevant">✕</button>
           </div>
+          {#  A triage flag belongs to THIS report. Saving keeps the publication in the reader's
+              own library, where it survives the report entirely.  #}
+          {% if current_user and not read_only %}
+          <button type="button" class="libbtn" data-pub="{{ c.pub }}" aria-pressed="false"
+                  title="Keep this publication in your saved patents"
+                  aria-label="Save {{ c.pub }} to your saved patents">☆</button>
+          {% endif %}
         </div>
 
         {#  Direct-first: when build_view already resolved the manifest the figure is a plain <img>
@@ -485,6 +522,32 @@
     {% endfor %}
   </div>
 
+  {#  THE RANKED TAIL.
+
+      Full cards are built for the top {{ v.cards|length }} because each one costs a database
+      resolution, a drawing, a claim match and a grounded explanation. The ranking, though, goes
+      much further down, and "there are {{ '{:,}'.format(v.n_families or 0) }} families and you
+      may see {{ v.cards|length }}" is not something to ask a searcher to take on trust when they
+      are hunting one specific document. These rows are the same ranking, resolved cheaply:
+      bibliographic data and links, explicitly NOT analysed.  #}
+  {% if (v.n_families or 0) > v.cards|length %}
+  <div class="wrap moreref">
+    <button type="button" class="btn ghost sm" id="moreRefBtn"
+            data-offset="{{ v.cards|length }}">Show the next 25 ranked references</button>
+    <span class="small muted" id="moreRefNote">{{ '{:,}'.format(v.n_families or 0) }} families were
+      ranked; the {{ v.cards|length }} above are the ones analysed in full.</span>
+    <div class="tablewrap" id="moreRefWrap" hidden>
+      <table class="admintable morereftable">
+        <thead><tr><th>#</th><th>Publication</th><th>Title</th><th>Dates</th><th></th></tr></thead>
+        <tbody id="moreRefBody"></tbody>
+      </table>
+      <p class="small muted moderefdisc">Ranked but not analysed: no drawing, no claim match and
+        no relevance explanation was computed for these. Open one to judge it, or refine the
+        search so it rises into the analysed set.</p>
+    </div>
+  </div>
+  {% endif %}
+
   {#  Federated hits are no longer a separate block: build_view folds them into the ONE ranked
       list above — a hit already in the corpus becomes extra source chips on its existing card,
       and an external-only hit becomes a full card ranked in by relevance. Provenance stays
@@ -493,6 +556,7 @@
 
 </div>
 
+{% if not read_only %}
 <div class="exportbar" id="exportbar" hidden inert>
   <div class="wrap" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
     <b id="selcount">0 selected</b>
@@ -508,13 +572,19 @@
     <button class="btn sm" onclick="doExport('docx')" title="The same report, editable in Word">Word</button>
     <button class="btn sm" onclick="doExport('xlsx')" title="Spreadsheet — one row per reference with its sketch embedded, sortable and filterable">Excel</button>
     <button class="btn sm ghost" onclick="doExport('md')" title="Plain text, no images or links — but includes every reference's full claims and description">Markdown (full text)</button>
+    {#  The citation listing for a USPTO Information Disclosure Statement, built from the same
+        selection. It is the listing to attach to form SB/08a, not a filled form — the heading
+        on the document says so.  #}
+    <button class="btn sm ghost" onclick="doExport('ids')" title="Citation listing for a USPTO Information Disclosure Statement, ready to attach to form SB/08a">IDS (SB/08a)</button>
   </div>
 </div>
 <form id="exportform" method="post" action="{{ request.script_root }}/export" target="_blank" hidden>
   <input type="hidden" name="slug" value="{{ v.slug }}">
   <input type="hidden" name="pubs" id="exportpubs">
   <input type="hidden" name="format" id="exportfmt">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 </form>
+{% endif %}
 
 <div id="soOverlay" hidden inert aria-hidden="true">
   <aside class="slideover" role="dialog" aria-modal="true" aria-label="Full document">
