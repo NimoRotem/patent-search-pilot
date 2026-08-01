@@ -151,10 +151,12 @@ def process_one() -> dict | None:
 def _worker() -> None:
     while not _STOP.is_set():
         try:
+            # Reconcile before every generation claim so a busy drafting queue cannot starve an
+            # already-published version's promised completion email.
+            if _SERVICE_FACTORY:
+                _reconcile_notifications(_SERVICE_FACTORY())
             worked = process_one()
             if worked is not None:
-                continue
-            if _SERVICE_FACTORY and _reconcile_notifications(_SERVICE_FACTORY()):
                 continue
         except Exception as exc:  # noqa: BLE001 - keep the long-lived worker thread alive
             _stamp(running=False, last_result="worker-error", last_error=str(exc)[:500])

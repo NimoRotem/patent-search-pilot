@@ -404,12 +404,11 @@ def current_user():
             candidate = accounts.get_user(uid)
             current_version = int((candidate or {}).get("session_version") or 1)
             stored_version = session.get("session_version")
-            # Existing sessions created before this migration are adopted once. Password changes
-            # increment the database value, invalidating every other signed session immediately.
-            if candidate and candidate.get("is_active") and (
-                    stored_version is None or int(stored_version) == current_version):
-                if stored_version is None:
-                    session["session_version"] = current_version
+            # Password changes increment the database value. A cookie without a version predates
+            # this revocation mechanism and cannot safely be distinguished from a stolen session,
+            # so it must sign in again once after the migration.
+            if candidate and candidate.get("is_active") and stored_version is not None and (
+                    int(stored_version) == current_version):
                 user = candidate
             elif candidate:
                 session.clear()

@@ -74,6 +74,7 @@ def test_legacy_login_is_an_admin_bootstrap(account_client, monkeypatch):
 def test_saved_report_toggle_requires_csrf(account_client, monkeypatch):
     with account_client.session_transaction() as session:
         session["user_id"] = USER["id"]
+        session["session_version"] = USER["session_version"]
         session["csrf_token"] = "csrf-test"
     monkeypatch.setattr(accounts, "get_search", lambda uid, slug: {"saved": True, "title": None})
     monkeypatch.setattr(accounts, "set_search_saved",
@@ -97,6 +98,7 @@ def test_trusted_loopback_automation_can_open_ad_hoc_reports(monkeypatch):
 def test_running_search_offers_wait_email_or_history(account_client, monkeypatch):
     with account_client.session_transaction() as session:
         session["user_id"] = USER["id"]
+        session["session_version"] = USER["session_version"]
         session["csrf_token"] = "csrf-test"
     row = {"slug": "adhoc-running", "notify_email": False,
            "notification_status": "not_requested", "status": "running"}
@@ -114,6 +116,7 @@ def test_running_search_offers_wait_email_or_history(account_client, monkeypatch
 def test_notification_toggle_does_not_email_a_partial_report(account_client, monkeypatch):
     with account_client.session_transaction() as session:
         session["user_id"] = USER["id"]
+        session["session_version"] = USER["session_version"]
         session["csrf_token"] = "csrf-test"
     row = {"slug": "adhoc-running", "notify_email": True,
            "notification_status": "pending", "status": "running"}
@@ -133,6 +136,7 @@ def test_notification_toggle_does_not_email_a_partial_report(account_client, mon
 def test_notification_toggle_queues_if_report_already_finished(account_client, monkeypatch):
     with account_client.session_transaction() as session:
         session["user_id"] = USER["id"]
+        session["session_version"] = USER["session_version"]
         session["csrf_token"] = "csrf-test"
     before = {"notify_email": False, "notification_status": "not_requested", "status": "running"}
     enabled = {"notify_email": True, "notification_status": "pending", "status": "running"}
@@ -157,6 +161,7 @@ def test_notification_toggle_queues_if_report_already_finished(account_client, m
 def test_batch_reference_preview_is_cache_only_and_scoped(account_client, monkeypatch, tmp_path):
     with account_client.session_transaction() as session:
         session["user_id"] = USER["id"]
+        session["session_version"] = USER["session_version"]
     monkeypatch.setattr(webapp, "REPORTS", tmp_path)
     monkeypatch.setattr(webapp, "_can_access_report", lambda slug: True)
     card = {"pub": "US-123-A", "title": "Fast text", "abstract": "Ready now",
@@ -187,7 +192,11 @@ def test_search_cache_identity_includes_subject_and_uploaded_document():
         "same query", "novelty", wide=True, search_focus="claims", doc_token="document-1")
 
 
-def test_password_session_version_revokes_an_older_signed_session(account_client):
+def test_password_session_version_rejects_unversioned_and_older_signed_sessions(account_client):
+    with account_client.session_transaction() as session:
+        session["user_id"] = USER["id"]
+    missing = account_client.get("/", follow_redirects=False)
+    assert missing.status_code == 302 and "/login" in missing.headers["Location"]
     with account_client.session_transaction() as session:
         session["user_id"] = USER["id"]
         session["session_version"] = USER["session_version"] - 1

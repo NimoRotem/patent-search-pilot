@@ -222,7 +222,10 @@ def change_password(user_id, current_password: str, new_password: str):
             "UPDATE app_users SET password_hash=%s,session_version=session_version+1,"
             "updated_at=now() WHERE id=%s RETURNING *",
             (generate_password_hash(new_password), int(user_id)))
-        return public_user(cur.fetchone())
+        user = public_user(cur.fetchone())
+        cur.execute("UPDATE app_password_reset_tokens SET used_at=now() "
+                    "WHERE user_id=%s AND used_at IS NULL", (int(user_id),))
+        return user
 
 
 def list_users():

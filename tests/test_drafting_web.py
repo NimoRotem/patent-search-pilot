@@ -12,6 +12,7 @@ import webapp
 USER = {
     "id": 91, "email": "drafter@example.test", "full_name": "Dana Drafter",
     "is_admin": False, "is_active": True, "email_on_completion": True,
+    "session_version": 2,
     "default_applicant": "Example Labs", "default_inventors": "Dana Drafter",
 }
 
@@ -114,6 +115,7 @@ def draft_client(monkeypatch):
     client = webapp.app.test_client()
     with client.session_transaction() as session:
         session["user_id"] = USER["id"]
+        session["session_version"] = USER["session_version"]
         session["csrf_token"] = "csrf-draft"
     try:
         yield client, service
