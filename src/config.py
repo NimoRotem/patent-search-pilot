@@ -4,7 +4,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(ROOT / ".env")
+# Parser-only release checks need no credentials and may run as a deployment account that cannot
+# read the application's secret file. Keep normal runtime behavior unchanged while giving those
+# checks an explicit way to prove they are credential-free.
+if os.environ.get("PATENT_SKIP_DOTENV", "").lower() not in ("1", "true", "yes"):
+    load_dotenv(ROOT / ".env")
 
 # Postgres
 PG = dict(

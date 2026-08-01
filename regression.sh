@@ -67,7 +67,7 @@ echo "== edge cases: no 500s =="
 [ "$(code $BASE/pdf/JUNK-9)" = 404 ] && ok "missing pdf -> 404" || bad "missing pdf"
 
 echo "== OPS parser (dry-run, no creds) =="
-( cd src && $PY test_ops.py ) 2>&1 | grep -q 'PASS' && ok "ops parser test PASS" || bad "ops parser"
+( cd src && PATENT_SKIP_DOTENV=1 $PY test_ops.py ) 2>&1 | grep -q 'PASS' && ok "ops parser test PASS" || bad "ops parser"
 
 echo
 echo "RESULT: $pass passed, $fail failed"

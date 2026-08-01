@@ -83,3 +83,11 @@ def test_saved_report_toggle_requires_csrf(account_client, monkeypatch):
     ok = account_client.post("/api/searches/grabo_gripper_novelty", json={"saved": False},
                              headers={"X-CSRF-Token": "csrf-test"})
     assert ok.status_code == 200 and ok.get_json()["saved"] is False
+
+
+def test_trusted_loopback_automation_can_open_ad_hoc_reports(monkeypatch):
+    monkeypatch.setattr(auth, "TRUST_LOOPBACK", True)
+    monkeypatch.setattr(auth, "accounts_enabled", lambda app=None: True)
+    with webapp.app.test_request_context("/report/adhoc-test",
+                                         environ_base={"REMOTE_ADDR": "127.0.0.1"}):
+        assert webapp._can_access_report("adhoc-test") is True

@@ -877,6 +877,11 @@ def _gold_cards():
 
 def _can_access_report(slug):
     """Named users see their own searches; administrators retain operational access to all."""
+    # On-box regression/warmers are already explicitly trusted by the auth gate. Preserve that
+    # contract here too; otherwise named-account isolation authenticates their request and then
+    # paradoxically hides every ad-hoc report because a loopback script has no browser session.
+    if auth.TRUST_LOOPBACK and auth.is_loopback():
+        return True
     if slug in _GOLD or not auth.accounts_enabled(app) or auth.is_admin():
         return True
     user = auth.current_user()
