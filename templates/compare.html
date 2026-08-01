@@ -23,11 +23,11 @@
               which must go through script_root when the app is mounted under a prefix) OR an
               absolute remote Google-CDN URL (a lemad-Mongo figure, used verbatim). Prefix only the
               relative form. data-full is the full-resolution URL the lightbox opens. #}
-          <img class="cmpimg"
+          <button type="button" class="cmpimgbtn" onclick="openLb(this.querySelector('img'))"
+                  aria-label="Open lead drawing of {{ col.biblio.pub }} full size"><img class="cmpimg"
                src="{% if col.img.startswith('/') %}{{ request.script_root }}{% endif %}{{ col.img }}"
                data-full="{% if col.img_full.startswith('/') %}{{ request.script_root }}{% endif %}{{ col.img_full }}"
-               data-pub="{{ col.biblio.pub }}" onclick="openLb(this)"
-               alt="Lead drawing of {{ col.biblio.pub }}">
+               data-pub="{{ col.biblio.pub }}" alt="Lead drawing of {{ col.biblio.pub }}"></button>
           <div class="small muted" style="margin-top:5px">{{ col.n_images }} figure(s)</div>
         {% else %}<div class="nodig">No drawing digitized for this document.</div>{% endif %}
       </div>

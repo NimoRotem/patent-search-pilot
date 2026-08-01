@@ -5,9 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>{% block title %}rotemAI patent search{% endblock %}</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🔎</text></svg>">
-<script>window.APP_BASE = {{ request.script_root|tojson }};</script>
+<script>
+window.APP_BASE = {{ request.script_root|tojson }};
+/* The progress narrative uses the same live/cached corpus fact as the footer.  Never bake a
+   publication count into app.js: ingestion changes it while the UI asset remains cached. */
+window.CORPUS_PUBLICATIONS = {{ (corpus.publications if corpus and corpus.publications else 0)|tojson }};
+window.CSRF_TOKEN = {{ csrf_token()|tojson }};
+window.CURRENT_USER_EMAIL = {{ (current_user.email if current_user else '')|tojson }};
+window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
+</script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to main content</a>
@@ -17,15 +25,26 @@
     <span class="grow"></span>
     <a href="{{ request.script_root }}/">New search</a>
     <a href="{{ request.script_root }}/history">Search history</a>
+    {% if current_user %}<a href="{{ request.script_root }}/drafts">Drafts</a>{% endif %}
     <a href="{{ request.script_root }}/about">About</a>
+    {% if current_is_admin %}<a href="{{ request.script_root }}/admin/users">Admin</a>{% endif %}
+    {% if current_user %}
+      <a class="accountnav" href="{{ request.script_root }}/account" title="{{ current_user.email }}">{{ current_user.full_name }}</a>
+      <a href="{{ request.script_root }}/logout">Sign out</a>
+    {% elif current_is_admin %}
+      <span class="accountnav muted">Administrator</span><a href="{{ request.script_root }}/logout">Sign out</a>
+    {% elif account_mode %}
+      <a href="{{ request.script_root }}/login">Sign in</a>
+      <a href="{{ request.script_root }}/register">Create account</a>
+    {% endif %}
   </div>
 </header>
 <main id="main">{% block body %}{% endblock %}</main>
 <footer>Postgres&nbsp;17 + pgvector ·
   {% if corpus and corpus.publications %}{{ '{:,}'.format(corpus.publications) }} publications{% if corpus.chunks %} / {{ '{:.2f}M'.format(corpus.chunks / 1000000) }} chunks{% endif %}{% else %}local corpus{% endif %} ·
   {{ corpus.cpc_count or 8 }} CPC classes, {{ (corpus.jurisdictions or ['US','EP','WO','DE'])|join('/') }}{% if corpus.max_date_str %} · current to {{ corpus.max_date_str }}{% endif %} ·
-  Vertex embeddings · Gemini agent · bge-reranker · federated fallback to external patent APIs</footer>
-<script src="{{ url_for('static', filename='app.js') }}"></script>
+  768-dimensional semantic embeddings · Gemini agent · bge reranker · external patent API federation</footer>
+<script src="{{ url_for('static', filename='app.js', v=asset_version) }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

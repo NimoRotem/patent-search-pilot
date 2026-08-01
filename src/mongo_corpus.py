@@ -1,5 +1,23 @@
-"""Read-only client for the pre-built lemad patent corpus (39.4M docs), the same source
-iptorch.com serves its detail + drawings from.
+"""Read-only client for the pre-built lemad patent corpus, the same source iptorch.com serves its
+detail + drawings from.
+
+WHAT IS ACTUALLY IN IT — measured 2026-07-29, because "39.4M docs" reads like a complete corpus
+and is not one:
+
+  * 39,428,116 documents, but only **70,085 have `isFinal: true`** — those are the enriched ones
+    that carry figures, description, classifications and a PDF link. The other ~39.36M are stubs:
+    title, abstract, date and a 1536-dim `vector`, nothing else.
+  * `claims` is essentially never populated, even on enriched docs (0-1 entries on the ones spot-
+    checked). Claims are our strongest retrieval signal, so this corpus cannot supply them.
+  * The only usable index is `publicationNumber`. There is NO index on classification or date, and
+    NO vector index on `vector` — so the embeddings cannot be ANN-searched and a subset cannot be
+    selected without a full-collection scan on a box we do not control.
+  * Coverage against OUR corpus is patchy: of 60 random publications sampled from Postgres, 22 were
+    present and 0 of those carried description, claims or figures (our corpus skews DE/EP/old-US;
+    lemad's enriched set skews recent US).
+
+Net: this is a keyed LOOKUP for display — "tell me about US-9108319-B2" — not a searchable corpus
+and not a source we can ingest from. Retrieval is and remains Postgres + pgvector.
 
 WHY
 ---

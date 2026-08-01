@@ -36,6 +36,8 @@ _SRC_LABEL = {
     "uspto": "USPTO",
     "openalex": "OpenAlex",
     "lens": "Lens",
+    "claim_dense": "Claim semantic",
+    "claim_bm25": "Claim keyword",
 }
 
 
@@ -46,8 +48,8 @@ def _src_label(sid):
 # The local pgvector retrieval channels (our own corpus). The two NEW parallel channels —
 # 'docchunks' (multi-chunk semantic) and 'image' — are rendered as their own labelled chips, and
 # every other channel_families key (federated API ids) flows through the per-result API provenance.
-_LOCAL_CHANNELS = {"dense", "bm25", "exact", "cpc", "citation", "qbe", "biblio", "crosslingual",
-                   "seed"}
+_LOCAL_CHANNELS = {"dense", "bm25", "claim_dense", "claim_bm25", "exact", "cpc",
+                   "citation", "qbe", "biblio", "crosslingual", "seed"}
 
 
 # The engine's /api/health source catalogue, cached. Refreshed on a background thread so that
@@ -83,7 +85,7 @@ def _engine_sources():
 
 
 def _source_tags(report, n_local):
-    """-> [{id,label,state,n,note}] where state is used | none | failed | off."""
+    """-> source chips; `degraded` means useful hits plus at least one provider error."""
     tags = [{"id": "local", "label": "Local corpus",
              "state": "used" if n_local else "none", "n": n_local, "note": "", "why": ""}]
 
@@ -120,7 +122,8 @@ def _source_tags(report, n_local):
             if not sid:
                 continue
             n = int(x.get("n") or x.get("n_hits") or 0)
-            st = x.get("state")
+            detail = x.get("state_detail")
+            st = "degraded" if detail == "degraded" else x.get("state")
             if not st:
                 if not x.get("enabled", True):
                     st = "off"
@@ -128,10 +131,14 @@ def _source_tags(report, n_local):
                     st = "failed"
                 else:
                     st = "used" if n else "none"
+            raw_reason = x.get("reason") or x.get("error") or x.get("note") or ""
+            try:
+                from federation import _display_reason
+                reason = _display_reason(detail or st, raw_reason)
+            except Exception:
+                reason = " ".join(str(raw_reason).split())[:160]
             tags.append({"id": sid, "label": x.get("label") or _src_label(sid),
-                         "state": st, "n": n,
-                         "note": str(x.get("note") or "")[:160],
-                         "why": str(x.get("reason") or x.get("error") or "")[:160]})
+                         "state": st, "n": n, "note": reason, "why": reason})
         return tags
 
     # 2. Derive from the hits actually recorded, crossed with the advertised catalogue.
@@ -561,8 +568,8 @@ def ensure_family_timelines(cards):
 def _cached_images(pub):
     """Figure image files already downloaded for this pub (served at /figures/<pub>/<file>)."""
     try:
-        from enrich_display import FIGDIR, _pubkey
-        d = FIGDIR / _pubkey(pub)
+        from enrich_display import FIGDIR, _canonical_pubkey
+        d = FIGDIR / _canonical_pubkey(pub)
     except Exception:
         return []
     if not d.exists():
@@ -571,6 +578,41 @@ def _cached_images(pub):
                     if f.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif", ".tif", ".tiff")])
     from_pdf = any(f.startswith("pdf") for f in files)
     return [{"file": f, "from_pdf": from_pdf} for f in files]
+
+
+def prune_missing_image_files(cards):
+    """Remove stale local figure entries from a cached view.
+
+    View JSON can outlive a recovered image on disk. Rendering that stale manifest causes a 404
+    before the batch thumbnail endpoint gets a chance to recover a remote/cached alternative.
+    Remote images (`file` is null) are left untouched. Returns whether any card changed.
+    """
+    changed = False
+    for card in cards or []:
+        images = card.get("images") or []
+        if not images:
+            continue
+        try:
+            pubdir = enrich_display.FIGDIR / enrich_display._canonical_pubkey(card.get("pub"))
+        except (TypeError, ValueError):
+            pubdir = None
+        kept = []
+        for image in images:
+            filename = image.get("file") if isinstance(image, dict) else None
+            if not filename:
+                kept.append(image)
+                continue
+            # A cached manifest is never allowed to escape its validated publication directory.
+            if pubdir is not None and isinstance(filename, str) and "/" not in filename \
+                    and "\\" not in filename and (pubdir / filename).is_file():
+                kept.append(image)
+        if len(kept) != len(images):
+            card["images"] = kept
+            card["n_images"] = len(kept)
+            if not kept:
+                card["drawings_provenance"] = None
+            changed = True
+    return changed
 
 
 # ---- eager lemad-Mongo enrichment of the DISPLAYED cards (iptorch-style) -------------------
@@ -988,6 +1030,7 @@ def build_view(report, top_n=25):
         "channels_used": report.get("channels_used", []),
         "languages": report.get("languages", []),
         "llm_usage": report.get("llm_usage", {}),
+        "cross_encoder_rerank": report.get("cross_encoder_rerank", {}),
         "elements": report["elements"],
         "element_coverage": report.get("element_coverage", {}),
         "claim_chart": chart,

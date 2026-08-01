@@ -3,7 +3,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <title>{{ v.title }} — {{ disc.DOC_TITLE }}</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
 <style>
 /* The app is dark; a printed report is not. Re-point the SAME tokens at paper rather than
    maintaining a second stylesheet, so this view inherits every component definition. */
@@ -20,8 +20,11 @@
 body{background:#fff}
 .wrap{max-width:900px;padding:24px 22px}
 h1,h2,h3{color:var(--navy)}
-.refblock{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px}
-@media print{ .chartwrap{overflow:visible} .refblock{break-inside:avoid} }
+.refblock{border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px}
+.refgrid{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:14px}.refimg{width:150px;height:140px;object-fit:contain;background:#fff;border:1px solid var(--line)}
+.reftext{font-size:11px;line-height:1.5;margin-top:8px}.reftext h4{font-size:10px;text-transform:uppercase;letter-spacing:.04em;margin:9px 0 3px}.reftext p{margin:0 0 5px;white-space:pre-wrap}
+@media print{ .chartwrap{overflow:visible} .refblock{break-inside:avoid} thead{display:table-header-group} }
+@media (max-width:640px){.refgrid{grid-template-columns:1fr}.refimg{width:100%;height:190px}}
 </style>
 </head><body>
 <div class="wrap">
@@ -31,6 +34,7 @@ h1,h2,h3{color:var(--navy)}
   <p class="q">“{{ v.query }}”</p>
   <p class="small muted">{{ v.n_families }} families surfaced · {{ v.rounds }} rounds ·
     channels {{ v.channels_used|join(', ') }} · languages {{ v.languages|join(', ') }}</p>
+  <p class="small muted">Report {{ v.slug }} · prepared {{ v.printed_at }}{% if current_user %} · owner {{ current_user.full_name }}{% endif %}</p>
 
   {# The printed artefact must stand alone. The web report can link an About page; a sheet of
      paper handed to a client cannot, so the whole scope + reliability disclosure is printed here,
@@ -71,15 +75,37 @@ h1,h2,h3{color:var(--navy)}
     {% for s in cv.secondaries %}<div>+ <code>{{ s.ref }}</code> supplies {{ s.supplies|join(', ') }}</div>{% endfor %}
     {% if cv.uncovered_elements %}<div class="unc">Uncovered: {{ cv.uncovered_elements|join(', ') }}</div>{% endif %}</div>{% endif %}
 
+  {% set qg = v.query_claim_grid_data or {} %}
+  {% if qg.status == 'done' and qg.available %}
+  <h3 style="margin-top:22px">Uploaded Claim × reference grid</h3>
+  <p class="small">{{ qg.n_claims_shown }} claims × {{ qg.n_refs_shown }} ranked references. Each cell is a grounded disclosure assessment, not a legal conclusion.</p>
+  <div class="chartwrap"><table class="chart">
+    <thead><tr><th class="elh" scope="col">Uploaded claim</th>{% for col in qg.columns %}<th scope="col">{{ col.pub }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for row in qg.rows %}<tr><th class="elh" scope="row">Claim {{ row.claim_no }}{% if row.independent %} (ind.){% endif %}<br><span class="small">{{ row.text[:220] }}{% if row.text|length > 220 %}…{% endif %}</span></th>
+      {% for cell in row.cells %}<td class="cell"><b>{{ cell.verdict }}</b>{% if cell.location %}<span class="cc">{{ cell.location }}</span>{% endif %}{% if cell.quote %}<span class="cc">“{{ cell.quote[:180] }}{% if cell.quote|length > 180 %}…{% endif %}”</span>{% endif %}</td>{% endfor %}
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% elif v.query_claim_grid and v.query_claim_grid.available %}<p class="small muted">The uploaded Claim × reference grid is still building and remains available in the live report.</p>{% endif %}
+
   <h3 style="margin-top:22px">Ranked prior art</h3>
+  <p class="small">The complete top-50 patent text and drawing links are available from the downloadable Markdown archive in the live report.</p>
   {% for c in v.cards %}
   <div class="refblock">
-    <b>#{{ c.rank }} {{ c.flag }} {{ c.pub }}</b> — {{ c.title }}
-    <span class="bbadge {% if c.basis=='public_prior_art' %}b-public{% elif c.basis=='secret_prior_art' %}b-secret{% else %}b-interval{% endif %}">{{ c.basis.replace('_',' ') }}</span>
-    <div class="small muted">{{ c.assignees|join('; ') }} · published {{ c.publication_date }} ·
-      priority {{ c.priority_date }} · family {{ c.family_id }} · match {{ '%.3f'|format(c.match_score) }}
-      {% if c.cpc %}· {{ c.cpc|map(attribute='code')|join(', ') }}{% endif %}</div>
-    {% if c.covers_elements %}<div class="small">covers: {{ c.covers_elements|join(' · ') }}</div>{% endif %}
+    <div class="refgrid"><div>
+      <b>#{{ c.rank }} {{ c.flag }} <a href="{{ c.google_patents }}">{{ c.pub }}</a></b> — {{ c.title }}
+      <span class="bbadge {% if c.basis=='public_prior_art' %}b-public{% elif c.basis=='secret_prior_art' %}b-secret{% else %}b-interval{% endif %}">{{ c.basis.replace('_',' ') }}</span>
+      <div class="small muted">{{ c.assignees|join('; ') }} · published {{ c.publication_date }} ·
+        priority {{ c.priority_date }} · family {{ c.family_id }} · relevancy {{ c.get('relevancy_score') if c.get('relevancy_score') is not none else c.relevancy }}/100
+        {% if c.cpc %}· {{ c.cpc|map(attribute='code')|join(', ') }}{% endif %}</div>
+      {% if c.covers_elements %}<div class="small"><b>Reads on:</b> {{ c.covers_elements|join(' · ') }}</div>{% endif %}
+      <div class="reftext">
+        {% if c.get('relevancy_opinion') %}<h4>Why relevant</h4><p>{{ c.get('relevancy_opinion') }}</p>{% endif %}
+        {% if c.abstract %}<h4>Abstract</h4><p>{{ c.abstract }}</p>{% endif %}
+        {% if c.claims %}<h4>Representative claims</h4>{% for claim in c.claims[:2] %}<p><b>{{ claim.claim_no or loop.index }}.</b> {{ claim.resolved_text or claim.text }}</p>{% endfor %}{% endif %}
+        {% if c.description %}<h4>Description excerpt</h4>{% for para in c.description[:2] %}<p>{% if para.para_no %}[{{ para.para_no }}] {% endif %}{{ para.text }}</p>{% endfor %}{% endif %}
+      </div>
+    </div>
+    {% if c.images %}{% set im0 = c.images[0] %}<img class="refimg" src="{% if im0.file %}{{ request.script_root }}/figures/{{ c.pub }}/{{ im0.file }}{% else %}{{ im0.full or im0.thumbnail }}{% endif %}" alt="Lead drawing of {{ c.pub }}">{% endif %}</div>
   </div>
   {% endfor %}
   <p class="small muted" style="margin-top:20px"><b>Absence of results is not evidence of absence of

@@ -87,6 +87,31 @@ def test_chunking_actually_slices(fake_reranker):
     assert fake_reranker == [5, 5, 5, 5, 5]
 
 
+def test_family_rerank_metadata_proves_real_scores(monkeypatch):
+    r = retrieval.Retriever.__new__(retrieval.Retriever)
+    monkeypatch.setattr(r, "best_text", lambda pid, external=None: f"passage {pid}")
+    fam = [("F1", "p1", 0.9, {}), ("F2", "p2", 0.8, {})]
+
+    monkeypatch.setattr(retrieval.rr, "rerank", lambda q, passages: [(1, 0.9), (0, 0.2)])
+    ranked, meta = r.rerank_families("q", fam, return_meta=True)
+    assert [row[0] for row in ranked] == ["F2", "F1"]
+    assert meta == {
+        "attempted": True, "applied": True, "scored": 2, "requested": 2,
+        "model": "BAAI/bge-reranker-v2-m3",
+    }
+
+
+def test_family_rerank_metadata_detects_identity_fallback(monkeypatch):
+    r = retrieval.Retriever.__new__(retrieval.Retriever)
+    monkeypatch.setattr(r, "best_text", lambda pid, external=None: f"passage {pid}")
+    fam = [("F1", "p1", 0.9, {}), ("F2", "p2", 0.8, {})]
+    monkeypatch.setattr(retrieval.rr, "rerank", lambda q, passages: [(0, 0.0), (1, 0.0)])
+
+    ranked, meta = r.rerank_families("q", fam, return_meta=True)
+    assert [row[0] for row in ranked] == ["F1", "F2"]
+    assert meta["attempted"] is True and meta["applied"] is False
+
+
 # ---- the elapsed-time heartbeat --------------------------------------------------------------
 # Slicing the cross-encoder to get per-item counts was measured to double the stage (39.9/43.3 s
 # single vs 76.0/83.2 s in chunks of 5), so the shipped fix is a heartbeat: it costs nothing and
@@ -112,6 +137,15 @@ def test_heartbeat_updates_a_running_rerank_stage(job):
     webapp._stop_stage_heartbeat(job)
     assert "elapsed" in msg, f"heartbeat never updated the message: {msg!r}"
     assert webapp._JOBS[job]["detail"].get("refs") == 25
+
+
+def test_heartbeat_keeps_ticking_after_partial_results_are_visible(job):
+    webapp._set_job(job, status="partial", kind="reranking", msg="Reranking…")
+    webapp._start_stage_heartbeat(job, 25, tick=0.05)
+    time.sleep(0.2)
+    msg = webapp._JOBS[job]["msg"]
+    webapp._stop_stage_heartbeat(job)
+    assert "elapsed" in msg
 
 
 def test_heartbeat_message_actually_changes(job):

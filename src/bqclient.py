@@ -117,8 +117,29 @@ def run_ddl_guarded(sql: str, dest_table: str, ceiling_gb: float, label: str = "
 
 
 def cpc_like_clause(alias: str = "c", col: str = "code") -> str:
-    """OR-of-LIKE fragment matching the seed CPC prefixes on UNNEST(cpc) AS c."""
-    return " OR ".join(f"{alias}.{col} LIKE '{code}%'" for code in SEED_CPC)
+    """OR-of-LIKE fragment matching the INGEST CPC prefixes on UNNEST(cpc) AS c.
+
+    Reads config.INGEST_CPC (which defaults to SEED_CPC), not SEED_CPC directly, so widening what
+    we ingest does not also re-point the domain router — see the note on INGEST_CPC in config.py.
+    Imported inside the function so an env change is picked up without a module reload.
+    """
+    from config import INGEST_CPC
+    return " OR ".join(f"{alias}.{col} LIKE '{code}%'" for code in INGEST_CPC)
+
+
+def juris_predicate(col: str = "country_code") -> str:
+    """SQL predicate restricting the extract to config.INGEST_JURISDICTIONS.
+
+    Returns `TRUE` when the list is empty, i.e. WORLDWIDE — as a predicate rather than as "caller
+    must omit the AND", so every call site stays a plain `WHERE <juris> AND <cpc>` and no site can
+    forget to handle the empty case and silently pull the whole table when it meant four offices
+    (or vice versa).
+    """
+    from config import INGEST_JURISDICTIONS
+    if not INGEST_JURISDICTIONS:
+        return "TRUE"
+    inner = ",".join("'" + c.strip().upper().replace("'", "") + "'" for c in INGEST_JURISDICTIONS)
+    return f"{col} IN ({inner})"
 
 
 def ensure_dataset(dataset: str = "patent_pilot", location: str = "US"):

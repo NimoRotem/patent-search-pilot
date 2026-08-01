@@ -8,15 +8,18 @@ endpoint; the agent report is cached to data/reports/<slug>.json and never block
 Per-card drawings/PDF/sections/rationale are enriched lazily via /api/ref.
 """
 from __future__ import annotations
-import json, os, re, queue, secrets, threading, hashlib, time, traceback
+import difflib, json, os, re, queue, secrets, threading, hashlib, time, traceback
 from pathlib import Path
 from flask import (Flask, Response, render_template, request, jsonify, redirect, url_for,
-                   send_from_directory, abort, stream_with_context)
+                   send_from_directory, send_file, abort, stream_with_context)
 import db, embed, goldset, webview, enrich_display, llm
 import pubnorm  # single link-builder: zero-padded Google/Espacenet URLs (dropped-zero fix)
 import ops_family, prefetch                        # worldwide family timeline + top-N proactive enrich
-import export_data, export_pdf, export_docx
-import auth, rerank_pool
+import query_claim_grid                            # uploaded-claim x ranked-reference background grid
+import report_archive                              # automatic top-50 full-text Markdown ZIP
+import export_data, export_pdf, export_docx, export_xlsx, export_md
+import auth, accounts, notifications, rerank_pool
+import drafting, draft_export, draft_worker
 import claim_chart, translate, drawings          # ported per-card enrichment
 import ingest_input                                # front-door document / patent-link -> search brief
 import grounding                                  # length-stable quote grounding (shared w/ claim_chart)
@@ -34,6 +37,30 @@ import base64, uuid
 import concurrent.futures as _cf
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
+
+
+def _asset_version():
+    """Content-derived cache key for browser assets.
+
+    The public proxy deliberately caches static files.  An unversioned ``style.css`` left an
+    already-open browser on the pre-deploy mobile layout even though the new CSS was live on the
+    server.  Hashing both shared assets once at process start makes every deploy select the exact
+    matching CSS/JS without disabling useful caching.
+    """
+    override = os.environ.get("PATENT_STATIC_VERSION", "").strip()
+    if override:
+        return override
+    digest = hashlib.sha256()
+    for name in ("style.css", "app.js"):
+        path = Path(app.static_folder) / name
+        try:
+            digest.update(path.read_bytes())
+        except OSError:
+            digest.update(name.encode("utf-8"))
+    return digest.hexdigest()[:12]
+
+
+ASSET_VERSION = _asset_version()
 
 # Signed-session key. Persisted next to .env (gitignored) so sessions survive restarts; generated
 # on first boot if absent. NEVER hard-coded and never committed.
@@ -110,6 +137,16 @@ class _PrefixMiddleware:
 app.wsgi_app = _PrefixMiddleware(app.wsgi_app)
 
 
+@app.errorhandler(404)
+def page_not_found(_error):
+    """Keep browser dead ends inside the product while preserving JSON API contracts."""
+    wants_json = (request.path.startswith(("/api/", "/status/", "/events/")) or
+                  "application/json" in request.headers.get("Accept", ""))
+    if wants_json:
+        return jsonify({"error": "not found"}), 404
+    return render_template("error404.html", missing_path=request.path), 404
+
+
 @app.context_processor
 def _inject_corpus_facts():
     """Make `corpus` available to EVERY template.
@@ -122,10 +159,15 @@ def _inject_corpus_facts():
     by forgetting an argument. Explicit corpus= arguments still win; facts() is cached.
     """
     try:
-        return {"corpus": corpus_facts.facts(), "disc": disclosure}
+        f = corpus_facts.facts()
+        # Built once here so the web scope block, /print, /about and the exported PDF/DOCX/XLSX/MD
+        # all state the SAME jurisdiction coverage, derived from the corpus rather than written
+        # into each surface by hand.
+        return {"corpus": f, "disc": disclosure, "asset_version": ASSET_VERSION,
+                "juris_sentence": disclosure._juris_sentence(f)}
     except Exception:
         # The disclosure must never be the reason a page fails to render.
-        return {"corpus": {}}
+        return {"corpus": {}, "asset_version": ASSET_VERSION, "juris_sentence": ""}
 
 REPORTS = DATA / "reports"
 RATIONALE = DATA / "rationale"
@@ -134,6 +176,28 @@ FLAGS = DATA / "reports"
 REPORTS.mkdir(parents=True, exist_ok=True)
 RATIONALE.mkdir(parents=True, exist_ok=True)
 EXPORTS.mkdir(parents=True, exist_ok=True)
+
+#  The four export shapes, in one table so /export, the export bar and the tests cannot disagree
+#  about which formats exist. They differ along exactly two axes:
+#    drawings — resolve one local figure file per reference (PDF/DOCX/XLSX embed it; Markdown is
+#               text-only, and skipping the resolve also skips any CDN fetch, so .md stays fast)
+#    text     — attach every reference's FULL claims + description. Only Markdown wants this: in a
+#               paginated document it is hundreds of pages, and the other three already quote the
+#               single best-matching passage.
+EXPORT_FORMATS = {
+    "pdf":  {"render": lambda m, o: export_pdf.render(m, o),  "drawings": True,  "text": False,
+             "mime": "application/pdf", "label": "PDF"},
+    "docx": {"render": lambda m, o: export_docx.render(m, o), "drawings": True,  "text": False,
+             "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+             "label": "Word"},
+    "xlsx": {"render": lambda m, o: export_xlsx.render(m, o), "drawings": True,  "text": False,
+             "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+             "label": "Excel"},
+    #  Bare "text/markdown": Flask appends the charset itself for text/* types, so spelling it out
+    #  here produced a doubled "charset=utf-8; charset=utf-8" header.
+    "md":   {"render": lambda m, o: export_md.render(m, o),   "drawings": False, "text": True,
+             "mime": "text/markdown", "label": "Markdown"},
+}
 
 _GOLD = {e["id"]: e for e in goldset.load()["entries"]}
 _JOBS = {}          # slug -> {"status": "running|partial|done|error", "msg": ...}
@@ -229,6 +293,14 @@ def slugify(text):
     return "adhoc-" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
 
 
+def search_slug(query, mode, *, wide, search_focus, subject=None, doc_token=None):
+    """Stable cache identity for every input that can change retrieval/report content."""
+    return slugify("|".join((
+        query, mode, "wide" if wide else "narrow", search_focus,
+        f"subject:{subject or '-'}", f"document:{doc_token or '-'}",
+    )))
+
+
 def report_path(slug):
     return REPORTS / f"{slug}.json"
 
@@ -268,7 +340,8 @@ def _start_stage_heartbeat(slug, n_refs, tick=None):
                 job = _JOBS.get(slug)
                 # Only keep ticking while this job is still running; never resurrect a finished
                 # or errored job, and never overwrite a newer stage's message.
-                if not job or job.get("status") != "running" or job.get("kind") != "reranking":
+                if (not job or job.get("status") not in ("running", "partial")
+                        or job.get("kind") != "reranking"):
                     return
             secs = int(time.time() - t0)
             _set_job(slug, kind="reranking",
@@ -309,18 +382,30 @@ def _job_event(slug, job):
 def _write_report(slug, rep):
     report_path(slug).write_text(json.dumps(rep, default=str, indent=1))
     (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)   # force the view to rebuild from this
+    (REPORTS / f"{slug}.detail-preview.json").unlink(missing_ok=True)
+    # A rerun can reuse the same slug with a different uploaded document.  Never let its old
+    # Claim x Reference analysis survive the source report it was built from.
+    try:
+        query_claim_grid.invalidate(slug, REPORTS)
+    except Exception:
+        traceback.print_exc()
 
 
-def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None):
+def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None,
+             search_focus="all_text"):
     """Thread entrypoint: run the generation, then always release the reserved budget slot.
     Kept separate from _generate so _generate's signature stays purely about doing the work."""
     try:
         # Only pass doc_token when there is one, so callers/tests that stub _generate with the
         # pre-existing (slug, query, subject, mode, wide) signature keep working for typed queries.
-        if doc_token is None:
+        if doc_token is None and search_focus == "all_text":
+            # Preserve the historical call shape for adapters/tests that wrap _generate.
             _generate(slug, query, subject, mode, wide=wide)
+        elif doc_token is None:
+            _generate(slug, query, subject, mode, wide=wide, search_focus=search_focus)
         else:
-            _generate(slug, query, subject, mode, wide=wide, doc_token=doc_token)
+            _generate(slug, query, subject, mode, wide=wide, doc_token=doc_token,
+                      search_focus=search_focus)
     finally:
         if gated and auth.run_gate:
             auth.run_gate.end()
@@ -350,7 +435,9 @@ def _chunk_weight(c):
 def _stash_doc(res):
     """Persist the extract result's search materials (chunk vectors + drawing blobs) under a fresh
     token; return the token (or None when there is nothing extra to search). Small JSON on the
-    214 GB-free disk — vectors + base64 drawings only, not the whole extract payload."""
+    214 GB-free disk — vectors + base64 drawings + the uploaded claim rows, not the whole extract
+    payload.  Claims are retained even when embedding failed, because the asynchronous
+    Claim x Reference grid can still compare their text with the ranked references."""
     try:
         chunks = res.get("chunks") or []
         vecs, weights = [], []
@@ -360,12 +447,33 @@ def _stash_doc(res):
                 vecs.append(v)
                 weights.append(_chunk_weight(c))
         figs = [im.get("b64") for im in (res.get("figure_images") or []) if im.get("b64")]
-        if not vecs and not figs:
+        full_text = ""
+        if res.get("source") == "upload":
+            full_text = str(res.get("full_text") or "")[:drafting.MAX_DISCLOSURE_CHARS].strip()
+        claims = []
+        # Claims are stashed whichever way the document arrived. They are a few kilobytes, and
+        # the review panel lets a user hand-correct the claim set of a LINKED publication too —
+        # that correction has to survive the re-stash. Which searches get the report-side claim
+        # grid is decided separately, by _attach_query_document.
+        if True:
+            for i, c in enumerate(chunks):
+                if c.get("kind") != "claim_own" or not (c.get("text") or "").strip():
+                    continue
+                coord = c.get("coord") if isinstance(c.get("coord"), dict) else {}
+                claims.append({
+                    "claim_no": coord.get("claim_no") or i + 1,
+                    "text": str(c.get("text"))[:8000],
+                    "independent": bool(c.get("independent")),
+                })
+        if not vecs and not figs and not claims and not full_text:
             return None
         token = uuid.uuid4().hex
         (DOCSTASH / f"doc-{token}.json").write_text(json.dumps(
             {"chunk_vecs": vecs, "chunk_weights": weights, "figure_b64": figs,
-             "n_chunks": len(vecs), "n_figs": len(figs), "t": time.time()}))
+             "claims": claims, "source": res.get("source"), "label": res.get("label"),
+             "title": res.get("title"), "full_text": full_text,
+             "n_chunks": len(vecs), "n_figs": len(figs), "n_claims": len(claims),
+             "t": time.time()}))
         return token
     except Exception:
         traceback.print_exc()
@@ -373,7 +481,7 @@ def _stash_doc(res):
 
 
 def _load_doc_materials(token):
-    """Load stashed doc materials -> {chunk_vecs, chunk_weights, figure_blobs} or None."""
+    """Load stashed retrieval materials plus uploaded-claim metadata, or return None."""
     if not token:
         return None
     p = DOCSTASH / f"doc-{re.sub(r'[^0-9a-f]', '', str(token))[:64]}.json"
@@ -390,7 +498,29 @@ def _load_doc_materials(token):
         except Exception:
             continue
     return {"chunk_vecs": d.get("chunk_vecs") or [], "chunk_weights": d.get("chunk_weights") or [],
-            "figure_blobs": blobs}
+            "figure_blobs": blobs, "claims": d.get("claims") or [],
+            "source": d.get("source"), "label": d.get("label"), "title": d.get("title"),
+            "full_text": str(d.get("full_text") or "")[:drafting.MAX_DISCLOSURE_CHARS]}
+
+
+def _attach_query_document(report, doc):
+    """Persist only the uploaded claims needed by the second report grid.
+
+    Link-based query-by-example searches deliberately do not get this grid: the requested feature
+    is for a *full uploaded patent document*, where the user supplied the claim set to analyse.
+    """
+    if (not doc or doc.get("source") != "upload" or
+            not (doc.get("claims") or (doc.get("full_text") or "").strip())):
+        return report
+    report["query_document"] = {
+        "source": "upload",
+        "label": doc.get("label") or "uploaded patent",
+        "title": doc.get("title"),
+        "disclosure_text": str(doc.get("full_text") or "")[:drafting.MAX_DISCLOSURE_CHARS],
+        "claims": (doc.get("claims") or [])[:60],
+        "n_claims": len(doc.get("claims") or []),
+    }
+    return report
 
 
 def _image_channel(figure_blobs, k=15):
@@ -481,7 +611,8 @@ def _attach_fed_family_sources(rep):
                 srcs.append(s)
 
 
-def _generate(slug, query, subject, mode, wide=False, doc_token=None):
+def _generate(slug, query, subject, mode, wide=False, doc_token=None,
+              search_focus="all_text"):
     """Run one report. Runs fully concurrently with other generations — the only serialized step is
     the cross-encoder, which lives in its own child process (rerank_pool)."""
     _set_job(slug, status="running", msg="Queued…", t0=time.time())
@@ -511,6 +642,16 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
                 _set_job(slug, kind=stage, status="partial",
                          detail={"families": len(rep.get("ranked_families") or [])},
                          msg="Showing the first matches — refining (more channels, rounds, claim chart)…")
+            elif stage in ("search_progress", "seed_progress", "round_progress"):
+                done, maximum = data["search_done"], data["search_max"]
+                phase = {
+                    "search_progress": "Initial whole-invention search",
+                    "seed_progress": "Element expansion",
+                    "round_progress": f"Refinement round {data.get('round', '')}".strip(),
+                }[stage]
+                _set_job(slug, kind=stage, detail=data,
+                         msg=f"{phase}: {done} of up to {maximum} retrieval passes complete "
+                             f"({data['families']} families; last pass {data['search_seconds']:.1f}s).")
             elif stage == "seeded":
                 _set_job(slug, kind=stage, detail={"families": data["families"]},
                          msg=f"{data['families']} candidate families — expanding via citations, families, cross-lingual…")
@@ -527,7 +668,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
                 # the stage (see RERANK_CHUNK in retrieval.py), so tick elapsed time instead:
                 # it costs nothing and the user can always see the run is alive and roughly how
                 # far along it is.
-                _start_stage_heartbeat(slug, RERANK_TOP)
+                _start_stage_heartbeat(slug, retrieval.RERANK_TOP)
             elif stage == "rerank_progress":
                 # Only fires when RERANK_CHUNK is enabled; real per-item counts beat a heartbeat.
                 done, total = data["done"], data["total"]
@@ -577,7 +718,9 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
             futs = {}
             futs["local"] = ex.submit(
                 _timed, "local", A.run, query, subject=subject, mode=mode,
-                cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True),
+                cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True,
+                                search_config=("claim_agentic" if search_focus == "claims"
+                                               else "agentic")),
                 on_event=on_event)
             if wide:
                 futs["federated"] = ex.submit(_timed, "federated", _federate_block, query, mode)
@@ -589,11 +732,18 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
                 futs["image"] = ex.submit(_timed, "image", _image_channel, doc["figure_blobs"])
 
             rep = futs["local"].result()      # the report backbone (raises if the agent failed)
+            # The cross-encoder is complete once the local future resolves. Stop its heartbeat
+            # immediately; otherwise a slower external API fan-out leaves the page claiming it is
+            # still reranking. Name that wait explicitly so the operator can see the real hold-up.
+            _stop_stage_heartbeat(slug)
+            if "federated" in futs and not futs["federated"].done():
+                _set_job(slug, kind="federating", detail={"local_done": True},
+                         msg="Local ranking is ready — waiting for the wider patent APIs…")
             fed = futs["federated"].result() if "federated" in futs else None
             doc_fams = futs["docchunks"].result() if "docchunks" in futs else []
             img_res = futs["image"].result() if "image" in futs else None
 
-        _stop_stage_heartbeat(slug)      # reranking finished; stop ticking before the next stage
+        _stop_stage_heartbeat(slug)      # idempotent: also covers a no-local-results edge case
         # Log the wall-clock windows so the parallelism is verifiable in the service log.
         t0 = min((v["start"] for v in timing.values()), default=time.time())
         for nm, v in sorted(timing.items(), key=lambda kv: kv[1]["start"]):
@@ -601,6 +751,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
                   f"({v.get('end', v['start'])-v['start']:.2f}s)", flush=True)
 
         rep["partial"] = False
+        rep["search_focus"] = search_focus
         rep["domain"] = verdict.to_dict() if verdict is not None else None
         if wide:
             rep["federation"] = fed
@@ -616,14 +767,27 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
         if img_res:
             rep["image_channel"] = {"state": img_res.get("state"), "note": img_res.get("note"),
                                     "n": len(img_res.get("families") or [])}
+        _attach_query_document(rep, doc)
         _write_report(slug, rep)
         # Warm the view cache HERE (in the background job, where the user is already on the
         # progress page) so the listwise agentic rerank + claim-matrix verification run once and
         # the /report GET is instant instead of blocking ~40 s on first view.
+        view = None
         try:
             _set_job(slug, kind="ranking",
                      msg="Ranking references against each other in context (listwise)…")
             view = _build_view_cached(slug, rep)
+            # Persist tab-ready text and start bounded figure/family/rationale preparation HERE,
+            # inside the durable search job. These must finish even when the user chose email and
+            # closed the browser; client-side warming is only a latency optimization after this.
+            _write_detail_preview(slug, view)
+            final_pubs = [c.get("pub") for c in (view.get("cards") or []) if c.get("pub")]
+            prefetch.prefetch_top(slug, final_pubs, n=len(final_pubs))
+            _schedule_background_report_analysis(slug, final_pubs[:8])
+            # Uploaded patent claims are analysed against the final ranked references on a
+            # separate one-wide worker.  Scheduling is instant, so "Report ready" is never held
+            # behind 8 grounded/refuted claim-chart passes.
+            query_claim_grid.ensure(slug, rep, view, REPORTS)
             # Push the FINAL listwise order to any client still watching the progress stream, so
             # cards that arrived early in fusion order re-sort to the authoritative ranking before
             # (and independently of) the reload. Just the pub ids, in order — the client reorders
@@ -634,9 +798,26 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None):
                      msg="Final ranking ready.")
         except Exception:
             traceback.print_exc()
+        # Build the requested top-50 full-text Markdown archive proactively.  The single-wide
+        # worker resolves text/sketch links while the user reads the report; a download click never
+        # starts this expensive work.
+        if "PYTEST_CURRENT_TEST" not in os.environ:
+            try:
+                report_archive.ensure(slug, rep, view or {}, REPORTS)
+            except Exception:
+                traceback.print_exc()
         _set_job(slug, kind="done", status="done", msg="done")
+        if "PYTEST_CURRENT_TEST" not in os.environ:
+            try:
+                notifications.queue_search_completion(slug)
+            except Exception:
+                traceback.print_exc()
     except Exception as e:
         traceback.print_exc()
+        try:
+            accounts.mark_search_failed(slug)
+        except Exception:
+            pass
         _set_job(slug, kind="error", status="error", msg=str(e)[:300])
     finally:
         # A crash mid-rerank must not leave a thread ticking progress onto a dead job.
@@ -682,7 +863,7 @@ def _espacenet_safe(pub, family_id=None):
 
 
 def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, wide=False,
-                  doc_token=None):
+                  doc_token=None, search_focus="all_text"):
     """Return ('ready'|'running'|'missing'|'busy', report_or_None). Kicks off background
     generation if needed. 'busy' means the concurrency or daily spend cap is exhausted."""
     p = report_path(slug)
@@ -714,8 +895,9 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
         if regen:
             p.unlink(missing_ok=True)
             (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)
+            (REPORTS / f"{slug}.detail-preview.json").unlink(missing_ok=True)
         threading.Thread(target=_run_job,
-                         args=(slug, query, subj_obj, mode, gated, wide, doc_token),
+                         args=(slug, query, subj_obj, mode, gated, wide, doc_token, search_focus),
                          daemon=True).start()
     except Exception:
         # Never leak the reserved slot or leave a phantom "running" claim if we fail to launch.
@@ -755,6 +937,111 @@ def _gold_cards():
              "query": e.get("query_text", ""),
              "cached": report_path(e["id"]).exists()}
             for e in _GOLD.values()]
+
+
+def _detail_preview_item(card):
+    """The text-only subset tabs need, shaped like ``/api/ref`` but with no live lookups.
+
+    ``build_view`` already paid for these claims/paragraphs while assembling the report. Writing
+    the subset once avoids 25 repeat database round trips and means the first tab click can be a
+    memory hit even while the search is still refining.
+    """
+    pub = card.get("pub")
+    cpc = card.get("cpc") or []
+    return {
+        "pub": pub,
+        "display": {
+            "title": card.get("title"), "abstract": card.get("abstract"),
+            "classifications": cpc, "images": card.get("images") or [],
+            "n_images": card.get("n_images") or 0,
+            "google_patents": card.get("google_patents"), "espacenet": card.get("espacenet"),
+            "lang_flags": {"abstract": translate.looks_nonenglish(card.get("abstract") or "")},
+        },
+        "sections": {
+            "claims": card.get("claims") or [],
+            "paragraphs": card.get("description") or [],
+            "figures": card.get("figure_caps") or [],
+            "citations": [],
+        },
+        "matched": {
+            "coord": card.get("match_coord"), "kind": card.get("match_kind"),
+            "score": card.get("match_score") or 0,
+            "coord_raw": card.get("matched_coord_raw"),
+        } if card.get("match_kind") or card.get("match_coord") else None,
+        "rationale": None,
+        "_preview": True,
+    }
+
+
+def _write_detail_preview(slug, view):
+    if not valid_slug(slug):
+        return
+    items = {}
+    for card in (view or {}).get("cards") or []:
+        pub = card.get("pub")
+        if pub and pub not in items:
+            items[pub] = _detail_preview_item(card)
+        if len(items) >= _DISPLAY_TOP:
+            break
+    if not items:
+        return
+    path = REPORTS / f"{slug}.detail-preview.json"
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        tmp.write_text(json.dumps({"version": 1, "partial": bool((view or {}).get("partial")),
+                                   "items": items}, default=str))
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _detail_preview_section(item, section):
+    """Return only the cached fields needed by one result-card tab."""
+    display, sections = item.get("display") or {}, item.get("sections") or {}
+    base_display = {
+        "title": display.get("title"), "google_patents": display.get("google_patents"),
+        "espacenet": display.get("espacenet"),
+    }
+    out = {"pub": item.get("pub"), "display": base_display, "sections": {},
+           "matched": item.get("matched"), "rationale": None, "_preview": True}
+    if section == "abstract":
+        out["display"].update(abstract=display.get("abstract"),
+                              lang_flags=display.get("lang_flags") or {})
+    elif section == "claims":
+        out["sections"]["claims"] = sections.get("claims") or []
+    elif section == "desc":
+        out["sections"]["paragraphs"] = sections.get("paragraphs") or []
+    elif section == "class":
+        out["display"]["classifications"] = display.get("classifications") or []
+    elif section == "figs":
+        out["display"].update(images=display.get("images") or [],
+                              n_images=display.get("n_images") or 0)
+        out["sections"]["figures"] = sections.get("figures") or []
+    elif section == "why":
+        out["display"].update(images=display.get("images") or [],
+                              n_images=display.get("n_images") or 0)
+        out["rationale"] = item.get("rationale")
+    else:
+        return item
+    return out
+
+
+def _can_access_report(slug):
+    """Named users see their own searches; administrators retain operational access to all."""
+    # On-box regression/warmers are already explicitly trusted by the auth gate. Preserve that
+    # contract here too; otherwise named-account isolation authenticates their request and then
+    # paradoxically hides every ad-hoc report because a loopback script has no browser session.
+    if auth.TRUST_LOOPBACK and auth.is_loopback():
+        return True
+    if slug in _GOLD or not auth.accounts_enabled(app) or auth.is_admin():
+        return True
+    user = auth.current_user()
+    if not user:
+        return False
+    try:
+        return accounts.can_access_search(user["id"], slug)
+    except Exception:
+        return False
 
 
 @app.route("/")
@@ -812,6 +1099,22 @@ def _history_entries(limit=200):
     return out
 
 
+def _account_history_entries(user_id, *, saved_only=False, limit=300):
+    out = []
+    for row in accounts.list_searches(user_id, saved_only=saved_only, limit=limit):
+        when = row.get("updated_at")
+        if hasattr(when, "strftime"):
+            when = when.strftime("%Y-%m-%d %H:%M")
+        out.append({"slug": row["slug"], "query": (row.get("query") or "")[:400],
+                    "title": row.get("title"), "mode": row.get("mode") or "novelty",
+                    "search_focus": row.get("search_focus") or "all_text",
+                    "subject": row.get("subject"), "ood": False, "when": when or "",
+                    "status": row.get("status") or "running", "saved": bool(row.get("saved")),
+                    "notify_email": bool(row.get("notify_email")),
+                    "notification_status": row.get("notification_status")})
+    return out
+
+
 @app.route("/history")
 def history():
     """Search history + the frozen gold-set examples, clearly separated.
@@ -820,12 +1123,25 @@ def history():
     (instant)". They are demo fixtures, not the user's work, so they are labelled as examples here
     rather than mixed into the history list.
     """
-    return render_template("history.html", entries=_history_entries(), gold=_gold_cards(),
+    user = auth.current_user()
+    if user:
+        try:
+            entries = _account_history_entries(
+                user["id"], saved_only=request.args.get("saved") == "1")
+        except Exception:
+            entries = []
+    else:
+        entries = _history_entries()
+    return render_template("history.html", entries=entries, gold=_gold_cards(),
+                           named_account=bool(user), saved_only=request.args.get("saved") == "1",
                            corpus=corpus_facts.facts())
 
 
 @app.route("/run", methods=["POST"])
 def run():
+    user = auth.current_user()
+    if user:
+        auth.require_csrf()
     gold_id = request.form.get("gold_id", "").strip()
     if gold_id and gold_id in _GOLD:
         e = _GOLD[gold_id]
@@ -836,6 +1152,11 @@ def run():
                                    f"The server is at capacity — {why}. Please retry shortly.")
         return redirect(url_for("report", slug=gold_id))
     query = request.form.get("query", "").strip()
+    search_focus = request.form.get("search_focus", "all_text").strip()
+    if search_focus not in ("all_text", "claims"):
+        return _error_response({"error": "unknown_search_focus",
+                                "detail": "Search focus must be all_text or claims."}, 400,
+                               "Unknown search focus.")
     # Validate at the API boundary, not the dropdown: the form had no allowlist, so a crafted
     # POST could reach the pipeline with mode=invalidity (returning novelty dates mislabelled as
     # an invalidity opinion) or mode=fto (unhandled 500).
@@ -889,9 +1210,13 @@ def run():
         ood = v.to_dict()
     # `wide` MUST be part of the slug: a wide result and a narrow one are different reports and
     # would otherwise overwrite each other's cache.
-    slug = slugify(query + "|" + mode + ("|wide" if wide else ""))
+    # Every input that changes retrieval or eligibility belongs in the cache identity. Omitting an
+    # anchor publication or uploaded-document token can return another search's report/claim grid
+    # for the same visible query.
+    slug = search_slug(query, mode, wide=wide, search_focus=search_focus,
+                       subject=subject, doc_token=doc_token)
     st, why = ensure_report(slug, query=query, subject=subject, mode=mode, wide=wide,
-                            doc_token=doc_token)
+                            doc_token=doc_token, search_focus=search_focus)
     if st == "busy":
         return _error_response({"error": "server busy", "detail": why}, 429,
                                f"The server is at capacity — {why}. Please retry shortly.")
@@ -899,7 +1224,17 @@ def run():
     # document-chunk + image channels instead of degrading to text-only).
     (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
         {"query": query, "mode": mode, "subject": subject, "wide": wide, "ood": ood,
-         "doc_token": doc_token}))
+         "doc_token": doc_token, "search_focus": search_focus}))
+    if user:
+        notify = request.form.get("notify_email") == "1"
+        try:
+            accounts.record_search(user["id"], slug, query, mode, search_focus, subject,
+                                   notify_email=notify,
+                                   status=("complete" if st == "ready" else "running"), saved=False)
+            if st == "ready" and notify:
+                notifications.queue_search_completion(slug)
+        except Exception:
+            traceback.print_exc()
     return redirect(url_for("report", slug=slug))
 
 
@@ -915,19 +1250,33 @@ def extract():
     Rate-limited (endpoint 'extract' in auth._LIMITERS) and behind the auth gate, like every
     other route that spends on Vertex. Returns JSON; on failure {ok:false,error} with a status.
     """
+    if auth.current_user():
+        auth.require_csrf()
     f = request.files.get("file")
     url = (request.form.get("url") or "").strip()
+    data = None
+    if f is not None and (f.filename or "").strip():
+        data = f.read(ingest_input.MAX_BYTES + 1)
+        if len(data) > ingest_input.MAX_BYTES:
+            return jsonify({"ok": False,
+                            "error": f"file too large (max {ingest_input.MAX_BYTES // (1024*1024)} MB)"}), 413
+    elif not url:
+        return jsonify({"ok": False, "error": "provide a file or a patent URL"}), 400
+
+    # Reading a 64-page grant measures at ~50 s — two model passes over the whole document plus
+    # drawing extraction. Held synchronously that is a blank spinner on the most important
+    # interaction in the app, so the client asks for a job and polls /extract/status for the
+    # phase actually running. The synchronous path is kept for programmatic callers and tests.
+    if request.form.get("async") == "1":
+        job = _start_extract_job(data, (f.filename if f is not None else ""), url)
+        if job is None:
+            return jsonify({"ok": False, "error": "the server is reading other documents right "
+                                                  "now — please try again in a minute"}), 429
+        return jsonify({"ok": True, "job": job, "state": "running"}), 202
+
     try:
-        if f is not None and (f.filename or "").strip():
-            data = f.read(ingest_input.MAX_BYTES + 1)
-            if len(data) > ingest_input.MAX_BYTES:
-                return jsonify({"ok": False,
-                                "error": f"file too large (max {ingest_input.MAX_BYTES // (1024*1024)} MB)"}), 413
-            res = ingest_input.extract_upload(data, f.filename)
-        elif url:
-            res = ingest_input.extract_link(url)
-        else:
-            return jsonify({"ok": False, "error": "provide a file or a patent URL"}), 400
+        res = (ingest_input.extract_upload(data, f.filename) if data is not None
+               else ingest_input.extract_link(url))
     except Exception as e:
         traceback.print_exc()
         return jsonify({"ok": False, "error": f"extraction failed: {str(e)[:200]}"}), 500
@@ -937,17 +1286,198 @@ def extract():
     # round-tripping heavy vectors/base64 through the browser or bloating the page.
     if res.get("ok"):
         res["doc_token"] = _stash_doc(res)
+        # The browser needs the brief, preview thumbnails, counts and token — never the 768-float
+        # vectors, full claim chunks, or full-resolution base64 drawings.  The old response kept
+        # those heavy fields despite the server-side stash and could turn a 30 MB upload into a
+        # much larger JSON response.
+        res.pop("chunks", None)
+        res.pop("figure_images", None)
+        res.pop("full_text", None)
     return jsonify(res), status
+
+
+# ---------------------------------------------------------------------------
+# extraction as a job, so the upload can show real progress instead of a spinner
+# ---------------------------------------------------------------------------
+# Each phase carries the share of the bar it has reached when it BEGINS. The percentages are
+# proportional to measured phase durations on a 67-page scan (read 1 s, drawings 24 s,
+# structure 40 s, brief 10 s, vision 6 s, embed 4 s), so the bar tracks work done rather than a
+# timer. They must be listed in EXECUTION order — extract_upload runs read and figures,
+# patent_doc.analyze runs structure then brief, and _build runs vision then embed — otherwise
+# the phase NAME goes backwards even though the bar does not.
+EXTRACT_STAGES = [
+    ("read", "Reading the document", 5),
+    ("figures", "Extracting the drawings", 12),
+    ("structure", "Separating the claims and the abstract", 40),
+    ("brief", "Writing the search brief from the whole document", 78),
+    ("vision", "Reading the drawings", 88),
+    ("embed", "Preparing the query vectors", 94),
+]
+_EXTRACT_PCT = {k: p for k, _, p in EXTRACT_STAGES}
+_EXTRACT_LABEL = {k: label for k, label, _ in EXTRACT_STAGES}
+EXTRACT_JOB_TTL = 30 * 60
+EXTRACT_JOBS_MAX = 200
+# Running the extraction on a background thread takes it out from under gunicorn's worker pool,
+# which is what used to bound it. One extraction holds its uploaded bytes (up to 30 MB), runs
+# poppler and the drawing extractor, and makes ~11 Vertex calls; unbounded, a handful of
+# simultaneous uploads would take the box down. Saturation is reported as "busy", the same way
+# an over-subscribed search is.
+EXTRACT_MAX_CONCURRENT = int(os.environ.get("EXTRACT_MAX_CONCURRENT", "4"))
+_EXTRACT_SLOTS = threading.BoundedSemaphore(EXTRACT_MAX_CONCURRENT)
+_EXTRACT_JOBS = {}
+_EXTRACT_JOBS_LOCK = threading.Lock()
+
+
+def _extract_job_set(job, **kw):
+    with _EXTRACT_JOBS_LOCK:
+        rec = _EXTRACT_JOBS.get(job)
+        if rec is not None:
+            rec.update(kw)
+            rec["t"] = time.time()
+
+
+def _extract_jobs_sweep():
+    """Drop finished/abandoned jobs. Called on each new job, so nothing accumulates unbounded."""
+    now = time.time()
+    with _EXTRACT_JOBS_LOCK:
+        for k in [k for k, v in _EXTRACT_JOBS.items() if now - v.get("t", 0) > EXTRACT_JOB_TTL]:
+            _EXTRACT_JOBS.pop(k, None)
+        while len(_EXTRACT_JOBS) > EXTRACT_JOBS_MAX:
+            _EXTRACT_JOBS.pop(min(_EXTRACT_JOBS, key=lambda k: _EXTRACT_JOBS[k].get("t", 0)), None)
+
+
+def _start_extract_job(data, filename, url):
+    """Start a background extraction. Returns the job id, or None when the box is at capacity."""
+    _extract_jobs_sweep()
+    if not _EXTRACT_SLOTS.acquire(blocking=False):
+        return None
+    job = uuid.uuid4().hex
+    with _EXTRACT_JOBS_LOCK:
+        _EXTRACT_JOBS[job] = {"state": "running", "stage": "read", "pct": 3,
+                              "msg": "Reading the document", "t": time.time(), "result": None}
+
+    def on_stage(key, msg):
+        _extract_job_set(job, stage=key, pct=_EXTRACT_PCT.get(key, 50),
+                         msg=_EXTRACT_LABEL.get(key, msg))
+
+    def work():
+        try:
+            res = (ingest_input.extract_upload(data, filename, on_stage=on_stage)
+                   if data is not None else ingest_input.extract_link(url, on_stage=on_stage))
+            res.pop("status", None)
+            if res.get("ok"):
+                res["doc_token"] = _stash_doc(res)
+                res.pop("chunks", None)
+                res.pop("figure_images", None)
+                res.pop("full_text", None)
+                _extract_job_set(job, state="done", pct=100, stage="done",
+                                 msg="Ready", result=res)
+            else:
+                _extract_job_set(job, state="error", pct=100,
+                                 msg=res.get("error") or "extraction failed")
+        except Exception as e:
+            traceback.print_exc()
+            _extract_job_set(job, state="error", pct=100,
+                             msg=f"extraction failed: {str(e)[:200]}")
+        finally:
+            _EXTRACT_SLOTS.release()
+
+    threading.Thread(target=work, name=f"extract-{job[:8]}", daemon=True).start()
+    return job
+
+
+@app.route("/extract/status/<job>")
+def extract_status(job):
+    job = re.sub(r"[^0-9a-f]", "", str(job))[:64]
+    with _EXTRACT_JOBS_LOCK:
+        rec = _EXTRACT_JOBS.get(job)
+        snap = dict(rec) if rec else None
+    if snap is None:
+        return jsonify({"ok": False, "state": "unknown",
+                        "error": "that upload is no longer in progress — please try again"}), 404
+    out = {"ok": snap["state"] != "error", "state": snap["state"], "stage": snap.get("stage"),
+           "pct": snap.get("pct"), "msg": snap.get("msg")}
+    if snap["state"] == "done":
+        out["result"] = snap.get("result")
+        with _EXTRACT_JOBS_LOCK:                   # one delivery; the client has the payload now
+            _EXTRACT_JOBS.pop(job, None)
+    elif snap["state"] == "error":
+        out["error"] = snap.get("msg")
+    return jsonify(out)
+
+
+MAX_REVISED_CLAIMS = 200
+MAX_REVISED_CLAIM_CHARS = 12000
+MAX_REVISED_BRIEF_CHARS = 20000
+
+
+@app.route("/extract/revise", methods=["POST"])
+def extract_revise():
+    """Apply the user's corrections to the extracted search material.
+
+    The review panel is only meaningful if a correction actually reaches retrieval. Each claim
+    is its own query vector, so an edited claim has to be re-chunked and re-embedded; otherwise
+    the textarea would show the corrected claim while the search still ran on the text the user
+    had just rejected. Returns a NEW doc_token — the old one is left alone so a stale tab cannot
+    be affected, and the token is part of the report slug, so a corrected search is a different
+    report rather than an overwrite of the uncorrected one.
+    """
+    if auth.current_user():
+        auth.require_csrf()
+    body = request.get_json(silent=True) or {}
+    token = (body.get("doc_token") or "").strip()
+    prior = _load_doc_materials(token) if token else None
+    if token and prior is None:
+        return jsonify({"ok": False, "error": "that upload has expired — please upload it again"}), 410
+
+    claims = []
+    for c in (body.get("claims") or [])[:MAX_REVISED_CLAIMS]:
+        if isinstance(c, str):
+            c = {"text": c}
+        if not isinstance(c, dict):
+            continue
+        t = str(c.get("text") or "").strip()[:MAX_REVISED_CLAIM_CHARS]
+        if t:
+            claims.append({"claim_no": len(claims) + 1, "text": t,
+                           "independent": c.get("independent")})
+    abstract = str(body.get("abstract") or "").strip()[:ingest_input.MAX_QUERY_CHUNKS * 1000]
+    brief = str(body.get("brief") or "").strip()[:MAX_REVISED_BRIEF_CHARS]
+    title = str(body.get("title") or "").strip()[:300]
+    if not (claims or abstract or brief):
+        return jsonify({"ok": False, "error": "nothing to search — provide a brief, an abstract "
+                                              "or at least one claim"}), 400
+    try:
+        rebuilt = ingest_input.rebuild_from_edits(abstract=abstract, claims=claims, brief=brief,
+                                                  title=title)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": f"could not apply the edits: {str(e)[:200]}"}), 500
+
+    # Carry the figures and the verbatim upload across from the original extraction: the user
+    # edited the TEXT, not the drawings, and the drafting workspace still needs the raw document.
+    rebuilt["source"] = (prior or {}).get("source") or "upload"
+    rebuilt["label"] = (prior or {}).get("label") or ""
+    rebuilt["full_text"] = (prior or {}).get("full_text") or ""
+    rebuilt["figure_images"] = [{"mime": "image/png", "b64": base64.b64encode(b).decode("ascii")}
+                                for b in (prior or {}).get("figure_blobs") or []]
+    new_token = _stash_doc(rebuilt)
+    embedded = sum(1 for c in rebuilt["chunks"] if c.get("vector"))
+    return jsonify({"ok": True, "doc_token": new_token, "n_claims": rebuilt["n_claims"],
+                    "n_chunks": rebuilt["n_chunks"], "n_embedded": embedded,
+                    "n_independent": rebuilt["n_independent"]})
 
 
 @app.route("/report/<slug>")
 def report(slug):
+    if not _can_access_report(slug):
+        abort(404)
     regen = request.args.get("rerun") == "1"
     query = subject = None
     mode = "novelty"
     wide = False        # the progress view lists the federation stage only for a wide run
     ood = None          # out-of-domain verdict recorded at search time, shown as a results banner
     doc_token = None     # document-search materials, so a live Re-run keeps the doc channels
+    search_focus = "all_text"
     if slug in _GOLD:
         e = _GOLD[slug]
         query, subject, mode = e["query_text"], e.get("anchor_publication"), e["mode"]
@@ -960,21 +1490,163 @@ def report(slug):
             wide = bool(m.get("wide"))
             ood = m.get("ood")
             doc_token = m.get("doc_token")
+            search_focus = m.get("search_focus") or "all_text"
         title = "Ad-hoc search"
     status, rep = ensure_report(slug, query=query, subject=subject, mode=mode, regen=regen,
-                                wide=wide, doc_token=doc_token)
+                                wide=wide, doc_token=doc_token, search_focus=search_focus)
     if status == "missing":
         return render_template("notfound.html", slug=slug), 404
     if status == "busy":
         return render_template("notfound.html", slug=f"{slug} — {rep}"), 429
     if status != "ready":
+        active_search = None
+        user = auth.current_user()
+        if user:
+            try:
+                active_search = accounts.get_search(user["id"], slug)
+            except Exception:
+                pass
         return render_template("generating.html", slug=slug, title=title,
-                               query=(query or "")[:400], mode=mode, wide=wide)
+                               query=(query or "")[:400], mode=mode, wide=wide,
+                               search_focus=search_focus, active_search=active_search)
     view = _build_view_cached(slug, rep, regen)
     view["slug"] = slug
     view["title"] = title
     view["is_gold"] = slug in _GOLD
+    view["search_focus"] = rep.get("search_focus") or search_focus
+    try:
+        _write_detail_preview(slug, view)
+    except Exception:
+        traceback.print_exc()
+    user = auth.current_user()
+    view["account_search"] = None
+    if user:
+        try:
+            view["account_search"] = accounts.get_search(user["id"], slug)
+            accounts.mark_search_viewed(user["id"], slug)
+        except Exception:
+            pass
+    # Also schedule on report-open.  This covers a process restart between generation and the
+    # worker starting, while ensure() keeps the operation idempotent and cache-backed.
+    try:
+        query_claim_grid.ensure(slug, rep, view, REPORTS)
+    except Exception:
+        traceback.print_exc()
+    if "PYTEST_CURRENT_TEST" not in os.environ:
+        try:
+            report_archive.ensure(slug, rep, view, REPORTS)
+        except Exception:
+            traceback.print_exc()
+    view["archive"] = report_archive.metadata(slug, REPORTS)
     return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
+
+
+@app.route("/api/searches/<slug>", methods=["GET", "POST"])
+def api_saved_search(slug):
+    """Bookmark/unbookmark a report in the signed-in user's account."""
+    if not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
+    user = auth.current_user()
+    if not user:
+        return jsonify({"error": "a named account is required"}), 403
+    if request.method == "GET":
+        row = accounts.get_search(user["id"], slug)
+        return jsonify({"exists": bool(row), "saved": bool(row and row.get("saved")),
+                        "title": row.get("title") if row else None})
+    auth.require_csrf()
+    data = request.get_json(silent=True) or request.form
+    saved = data.get("saved")
+    saved = saved is True or str(saved).lower() in ("1", "true", "yes", "on")
+    row = accounts.get_search(user["id"], slug)
+    if not row:
+        rep = _load_report(slug)
+        if not rep:
+            return jsonify({"error": "report not found"}), 404
+        meta = REPORTS / f"{slug}.meta.json"
+        m = {}
+        if meta.exists():
+            try:
+                m = json.loads(meta.read_text())
+            except Exception:
+                pass
+        row = accounts.record_search(
+            user["id"], slug, m.get("query") or rep.get("query") or "",
+            m.get("mode") or rep.get("mode") or "novelty",
+            m.get("search_focus") or rep.get("search_focus") or "all_text",
+            m.get("subject") or rep.get("subject"), notify_email=False,
+            status="complete", saved=saved)
+    row = accounts.set_search_saved(user["id"], slug, saved, title=data.get("title"))
+    return jsonify({"ok": True, "saved": bool(row.get("saved")), "title": row.get("title")})
+
+
+@app.route("/api/searches/<slug>/notification", methods=["GET", "POST"])
+def api_search_notification(slug):
+    """Let a signed-in user switch from waiting in the tab to a durable email alert."""
+    if not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
+    user = auth.current_user()
+    if not user:
+        return jsonify({"error": "a named account is required"}), 403
+    row = accounts.get_search(user["id"], slug)
+    if not row:
+        return jsonify({"error": "search is not in this account"}), 404
+    if request.method == "GET":
+        return jsonify({"enabled": bool(row.get("notify_email")),
+                        "status": row.get("notification_status") or "not_requested"})
+    auth.require_csrf()
+    data = request.get_json(silent=True) or request.form
+    raw = data.get("enabled", True)
+    enabled = raw is True or str(raw).lower() in ("1", "true", "yes", "on")
+    row = accounts.set_search_notification(user["id"], slug, enabled)
+    # If completion raced this click, queue now instead of waiting for an event that already ran.
+    # The durable outbox key makes the concurrent worker path idempotent.
+    cached_report = _load_report(slug)
+    report_complete = bool(cached_report and not cached_report.get("partial"))
+    if enabled and (row.get("status") == "complete" or report_complete):
+        try:
+            notifications.queue_search_completion(slug)
+            row = accounts.get_search(user["id"], slug) or row
+        except Exception:
+            traceback.print_exc()
+    return jsonify({"enabled": bool(row.get("notify_email")),
+                    "status": row.get("notification_status") or "pending",
+                    "email": user["email"]})
+
+
+@app.route("/api/archive/<slug>", methods=["GET", "POST"])
+def api_archive(slug):
+    if not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
+    if request.method == "GET":
+        return jsonify(report_archive.status(slug, REPORTS))
+    if auth.current_user():
+        auth.require_csrf()
+    rep = _load_report(slug)
+    if not rep:
+        return jsonify({"error": "report not found"}), 404
+    vp = REPORTS / f"{slug}.view.json"
+    view = {}
+    if vp.exists():
+        try:
+            view = json.loads(vp.read_text())
+        except Exception:
+            pass
+    return jsonify(report_archive.ensure(slug, rep, view, REPORTS))
+
+
+@app.route("/archive/<slug>/download")
+def download_archive(slug):
+    if not valid_slug(slug) or not _can_access_report(slug):
+        abort(404)
+    path = report_archive.archive_path(slug, REPORTS)
+    if not path:
+        abort(404)
+    st = report_archive.status(slug, REPORTS)
+    return send_from_directory(path.parent, path.name, as_attachment=True,
+                               download_name=st.get("download_name") or path.name,
+                               mimetype="application/zip")
 
 
 # Cap on the unified (local + federated) ranked list that is rendered/exported. Kept at the
@@ -999,6 +1671,12 @@ def _build_view_cached(slug, rep, regen=False):
             # rebuild (which re-runs the rerank and re-folds the federated hits). A successful
             # cache carries listwise_reranked=True and is returned instantly.
             if view.get("listwise_reranked"):
+                # Query-document metadata is small and can be backfilled onto a cache written by
+                # an older release without rebuilding or reranking the report.
+                qmeta = query_claim_grid.metadata(rep)
+                if view.get("query_claim_grid") != qmeta:
+                    view["query_claim_grid"] = qmeta
+                    vp.write_text(json.dumps(view, default=str))
                 # source_tags is STATUS, not content. The cache exists to skip the query embed,
                 # the DB resolution and the claim-matrix verification -- all immutable for a
                 # finished report. Which APIs are wired up is not: it changes when a key is
@@ -1035,11 +1713,20 @@ def _build_view_cached(slug, rep, regen=False):
                         vp.write_text(json.dumps(view, default=str))
                 except Exception:
                     pass
+                # A view cache can outlive a recovered figure file. Drop stale local entries so
+                # the page renders a settled placeholder (and can backfill from /api/figs) instead
+                # of issuing a guaranteed-broken /figures/... request on every reload.
+                try:
+                    if webview.prune_missing_image_files(view.get("cards") or []):
+                        vp.write_text(json.dumps(view, default=str))
+                except Exception:
+                    pass
                 return view
         except Exception:
             pass
     view = webview.build_view(rep, top_n=25)
     view["partial"] = partial
+    view["query_claim_grid"] = query_claim_grid.metadata(rep)
     if partial:
         # A partial snapshot is never cached and never reranked; keep it light (fusion order,
         # capped) so the first render stays inside the page-weight budget.
@@ -1096,6 +1783,7 @@ def _build_view_cached(slug, rep, regen=False):
             claim_chart.verify_matrix(view.get("claim_chart") or {}, rep)
         except Exception:
             traceback.print_exc()
+        webview.prune_missing_image_files(view.get("cards") or [])
         vp.write_text(json.dumps(view, default=str))
     return view
 
@@ -1104,6 +1792,8 @@ def _build_view_cached(slug, rep, regen=False):
 def status(slug):
     """Polling fallback. Kept as the compatibility path for clients without EventSource (and for
     regression.sh); /events/<slug> is the primary, push-based channel."""
+    if not _can_access_report(slug):
+        abort(404)
     with _JOB_LOCK:
         job = dict(_JOBS.get(slug, {}))
     ev = _job_event(slug, job)
@@ -1123,6 +1813,8 @@ def events(slug):
     1800s); we additionally send X-Accel-Buffering: no so no other proxy re-buffers us, and a
     comment heartbeat every 15 s so idle connections are not reaped.
     """
+    if not _can_access_report(slug):
+        abort(404)
     q = _subscribe(slug)
 
     def gen():
@@ -1169,16 +1861,15 @@ def events(slug):
 # wall-fixing patent, was described as disclosing a "driver pin for mechanical coupling of
 # clamping means" on nothing but a lexical match on "pin" and "clamped". Claims and the
 # description body are where disclosure actually lives.
-_RAT_BIBLIO_CHARS = 900
-_RAT_PASSAGE_CHARS = 700          # per passage
-_RAT_EVIDENCE_CHARS = 4200        # total across all passages
-_RAT_MAX_PASSAGES = 8
-_RAT_SOURCE_CHARS = 8000          # what we persist as _source_text / show the verifier
-# 1100, not the old 500: the evidence block is ~4x larger now, so the model writes more (and
-# longer-quoted) reads_on entries. At 500 the JSON came back truncated mid-object and
-# llm.chat_json returns {} on a parse error — which surfaced as a card with a BLANK
-# "why relevant", strictly worse than a title-level one. Measured at 4 of 40 before this.
-_RAT_MAX_TOKENS = 1100
+_RAT_VERSION = 2                  # invalidates thin, pre-full-text rationale cache entries
+_RAT_BIBLIO_CHARS = 1400
+_RAT_PASSAGE_CHARS = 1100         # enough context to preserve a complete claim relationship
+_RAT_EVIDENCE_CHARS = 9000        # claims + description diversity, not one nearest snippet
+_RAT_MAX_PASSAGES = 12
+_RAT_SOURCE_CHARS = 16000         # exact verifier/audit evidence (still bounded)
+# The richer answer includes the concrete overlap, the material gap, grounded reads_on entries,
+# and citations.  1100 tokens frequently truncated that JSON once 8-12 passages were supplied.
+_RAT_MAX_TOKENS = 1800
 
 _CLAIM_KINDS = ("claim_own", "claim_resolved")
 _BODY_KINDS = ("paragraph", "whole", "figure_caption")
@@ -1248,7 +1939,7 @@ def ref_passages(cur, pid, qvec, secs=None, limit=_RAT_MAX_PASSAGES):
         except Exception:
             claims = []
     indep = [c for c in claims if c.get("independent")] or claims[:1]
-    for c in indep[:2]:
+    for c in indep[:3]:
         add("claim_own", {"claim_no": c.get("claim_no")},
             c.get("resolved_text") or c.get("text"))
 
@@ -1262,7 +1953,7 @@ def ref_passages(cur, pid, qvec, secs=None, limit=_RAT_MAX_PASSAGES):
                 "SELECT kind, coord, 1-(embedding <=> %s::vector) AS score, text "
                 "FROM chunks WHERE publication_id=%s AND embedding IS NOT NULL "
                 "ORDER BY embedding <=> %s::vector LIMIT %s",
-                (webview._vec(qvec), pid, webview._vec(qvec), int(limit)),
+                (webview._vec(qvec), pid, webview._vec(qvec), int(limit * 2)),
             )
             for r in cur.fetchall():
                 coord = r["coord"] if isinstance(r["coord"], dict) else (
@@ -1270,7 +1961,33 @@ def ref_passages(cur, pid, qvec, secs=None, limit=_RAT_MAX_PASSAGES):
                 add(r["kind"], coord, r["text"], float(r["score"] or 0.0))
         except Exception:
             pass
-    return out[:limit + 2]
+
+    # Guarantee a description view when one exists.  Dense similarity can fill its entire head
+    # with near-duplicate claims; that is excellent retrieval but poor explanation context.
+    if not any(p.get("kind") in _BODY_KINDS for p in out):
+        for p in list((secs or {}).get("paragraphs") or [])[:2]:
+            add("paragraph", {"para_no": p.get("para_no")}, p.get("text"))
+
+    # Preserve evidence diversity under the hard cap: independent claims first, then body text,
+    # then an abstract if present, and finally the remaining nearest chunks in their score order.
+    picked = []
+
+    def take(kinds, n):
+        for p in out:
+            if len([x for x in picked if x.get("kind") in kinds]) >= n:
+                break
+            if p.get("kind") in kinds and p not in picked:
+                picked.append(p)
+
+    take(set(_CLAIM_KINDS), 4)
+    take(set(_BODY_KINDS), 4)
+    take({"abstract"}, 1)
+    for p in out:
+        if p not in picked:
+            picked.append(p)
+        if len(picked) >= limit:
+            break
+    return picked[:limit]
 
 
 def _evidence_block(passages):
@@ -1308,11 +2025,24 @@ def _text_basis(shown):
     return "title-only"
 
 
+def _write_rationale_cache(cache, result):
+    """Atomic write: background warming and a user click may finish the same rationale together."""
+    tmp = cache.with_name(
+        f".{cache.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        tmp.write_text(json.dumps(result))
+        os.replace(tmp, cache)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def _rationale(slug, pub, query, elements, biblio_txt, matched_txt=None, passages=None):
     cache = RATIONALE / f"{slug}__{pub}.json"
     if cache.exists():
         try:
-            return json.loads(cache.read_text())
+            cached = json.loads(cache.read_text())
+            if cached.get("_version") == _RAT_VERSION:
+                return cached
         except Exception:
             pass
     # Deterministic guard: with no reference text (title-less junk / un-enriched thin doc) an LLM
@@ -1330,9 +2060,11 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt=None, passage
 
     title_abs = re.sub(r"^\S+\s*", "", (biblio_txt or "").strip()).strip(" .")
     if len(title_abs) < 8 and not evidence.strip():
-        res = {"why": "Reference text was not available to verify relevance; treat as unconfirmed.",
-               "reads_on": []}
-        cache.write_text(json.dumps(res))
+        res = {"_version": _RAT_VERSION,
+               "why": "Reference text was not available to verify relevance; treat as unconfirmed.",
+               "reads_on": [], "citations": [], "text_basis": "title-only", "n_passages": 0,
+               "why_grounding": "no-source", "_source_text": "", "grounding_diag": []}
+        _write_rationale_cache(cache, res)
         return res
     # M9 rationale-accuracy tightening: ground STRICTLY in the provided text and make anti-overclaim
     # DETERMINISTIC — the model must quote the supporting words per element, and code drops any
@@ -1343,11 +2075,16 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt=None, passage
         "(its bibliographic data and the tagged claim / description passages). Do NOT use outside "
         "knowledge and do NOT "
         "assume features not shown in that text. Return JSON with two keys: "
-        '"why" = 1-2 sentences on why the reference is relevant, citing the SPECIFIC overlapping '
-        "wording that actually appears in the reference text (quote or closely paraphrase it), "
-        "HEDGED ('appears to', 'the abstract mentions') on partial matches. Every specific feature "
-        'you name in "why" must be one you can also ground in reads_on — never name a structural '
-        'feature the text does not show. "reads_on" = a list of objects {"element":"<one invention '
+        '"why" = 2-3 concise sentences that (1) identify the SPECIFIC mechanism, component '
+        "relationship, or control behaviour that overlaps the user's disclosure, (2) cite where "
+        "the strongest support appears (claim or paragraph when tagged), and (3) state the most "
+        "important query limitation that the supplied reference text does NOT establish. Use the "
+        "actual technical nouns and relationships, not generic phrases such as 'same field' or "
+        "'similar system'. Cite or closely paraphrase wording that actually appears in the text, "
+        "HEDGED ('appears to', 'the abstract mentions') on partial matches. Every AFFIRMATIVE "
+        'overlap you name in "why" must be one you can also ground in reads_on. You may name an '
+        'unshown query limitation only when explicitly saying the supplied reference text does NOT '
+        'establish it. "reads_on" = a list of objects {"element":"<one invention '
         'element, verbatim from the list>","evidence":"<a short quote copied from the reference text '
         'that discloses that element>"}. Include an element ONLY if you can quote reference text that '
         "explicitly discloses it; if the text is just a title or does not clearly show an element, "
@@ -1362,7 +2099,7 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt=None, passage
                    ". Say so explicitly in \"why\" (e.g. 'based on the abstract alone') and do not "
                    "assert structural detail that only a full text could establish.")
     bib = (biblio_txt or "")[:_RAT_BIBLIO_CHARS]
-    usr = (f"Invention query: {query[:800]}\n\nInvention elements (candidates — include only the "
+    usr = (f"Invention disclosure: {query[:2000]}\n\nInvention elements (candidates — include only the "
            f"ones the reference text actually discloses, with a quote): {json.dumps(elements)}\n\n"
            f"Reference bibliographic data: {bib}\n\n"
            f"Reference text — claims and description passages, each tagged with its location. "
@@ -1405,7 +2142,8 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt=None, passage
             citations.append({"element": el, "label": loc.get("label"),
                               "kind": loc.get("kind"), "coord": loc.get("coord"),
                               "span": round(float(loc.get("span") or 0.0), 3)})
-    res = {"why": why, "reads_on": reads_on, "why_grounding": why_state,
+    res = {"_version": _RAT_VERSION,
+           "why": why, "reads_on": reads_on, "why_grounding": why_state,
            "citations": citations, "text_basis": basis,
            "n_passages": len(shown),
            # The EXACT text the generator was shown. The audit judge previously rebuilt its own
@@ -1414,8 +2152,90 @@ def _rationale(slug, pub, query, elements, biblio_txt, matched_txt=None, passage
            # real input lets audit.judge_rationale grade like-for-like.
            "_source_text": source[:_RAT_SOURCE_CHARS],
            "grounding_diag": diag}
-    cache.write_text(json.dumps(res))
+    _write_rationale_cache(cache, res)
     return res
+
+
+_REPORT_ANALYSIS_POOL = None
+_REPORT_ANALYSIS_LOCK = threading.Lock()
+_REPORT_ANALYSIS_RUNNING = set()
+
+
+def _report_analysis_pool():
+    global _REPORT_ANALYSIS_POOL
+    with _REPORT_ANALYSIS_LOCK:
+        if _REPORT_ANALYSIS_POOL is None:
+            _REPORT_ANALYSIS_POOL = _cf.ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="report-analysis")
+        return _REPORT_ANALYSIS_POOL
+
+
+def _warm_one_rationale(slug, pub, query, elements):
+    """Build the same full-text-grounded cache as /api/ref without a browser request."""
+    cache = RATIONALE / f"{slug}__{pub}.json"
+    if cache.exists():
+        try:
+            if json.loads(cache.read_text()).get("_version") == _RAT_VERSION:
+                return
+        except Exception:
+            pass
+    disp = enrich_display.enrich_for_display(pub)
+    secs, passages = None, []
+    with db.cursor() as cur:
+        cur.execute("SELECT id FROM publications WHERE publication_number=%s LIMIT 1", (pub,))
+        row = cur.fetchone()
+        if row:
+            secs = webview.sections(cur, row["id"])
+            qv = _query_vec(slug, query)
+            passages = ref_passages(cur, row["id"], qv, secs)
+    if secs is None and (disp.get("claims") or disp.get("description")):
+        secs = {
+            "claims": [{"claim_no": i + 1, "text": c} for i, c in
+                       enumerate(disp.get("claims") or []) if c],
+            "paragraphs": [{"para_no": None, "text": p} for p in
+                           (disp.get("description") or []) if p],
+        }
+    if not passages and secs:
+        passages = [
+            {"kind": "claim_own", "coord": {"claim_no": c.get("claim_no")},
+             "text": c.get("resolved_text") or c.get("text")}
+            for c in (secs.get("claims") or [])[:4]
+        ]
+        passages.extend({"kind": "paragraph", "coord": {"para_no": p.get("para_no")},
+                         "text": p.get("text")}
+                        for p in (secs.get("paragraphs") or [])[:4])
+    biblio = f"{pub} {disp.get('title') or ''}. {disp.get('abstract') or ''}"
+    _rationale(slug, pub, query, elements, biblio, passages=passages)
+
+
+def _background_report_analysis(slug, pubs):
+    try:
+        rep = _load_report(slug) or {}
+        query, elements = rep.get("query") or "", rep.get("elements") or []
+        if not query:
+            return
+        for pub in pubs:
+            try:
+                _warm_one_rationale(slug, pub, query, elements)
+            except Exception:
+                traceback.print_exc()
+    finally:
+        with _REPORT_ANALYSIS_LOCK:
+            _REPORT_ANALYSIS_RUNNING.discard(slug)
+
+
+def _schedule_background_report_analysis(slug, pubs):
+    """One bounded server-side task per report; survives a closed browser tab."""
+    pubs = [pub for pub in pubs if _safe_pub(pub)][:8]
+    if not pubs:
+        return False
+    pool = _report_analysis_pool()
+    with _REPORT_ANALYSIS_LOCK:
+        if slug in _REPORT_ANALYSIS_RUNNING:
+            return False
+        _REPORT_ANALYSIS_RUNNING.add(slug)
+    pool.submit(_background_report_analysis, slug, pubs)
+    return True
 
 
 _WORD_RE = re.compile(r"[a-z0-9]+")
@@ -1507,6 +2327,30 @@ def _verify_why(why, source):
             "disclose specific elements of the query; treat as unconfirmed."), "stripped"
 
 
+@app.route("/api/ref-batch/<slug>")
+def api_ref_batch(slug):
+    """Return already-built tab text for the visible result cards in one cheap request."""
+    if not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
+    path = REPORTS / f"{slug}.detail-preview.json"
+    if not path.exists():
+        return jsonify({"items": {}, "ready": False}), 202
+    try:
+        payload = json.loads(path.read_text())
+    except Exception:
+        return jsonify({"items": {}, "ready": False}), 202
+    wanted = [p for p in request.args.get("pubs", "").split(",") if _safe_pub(p)][:_DISPLAY_TOP]
+    items = payload.get("items") or {}
+    if wanted:
+        items = {pub: items[pub] for pub in wanted if pub in items}
+    section = request.args.get("section", "").strip()
+    if section in {"abstract", "claims", "desc", "class", "figs", "why"}:
+        items = {pub: _detail_preview_section(item, section) for pub, item in items.items()}
+    return jsonify({"items": items, "ready": True, "partial": bool(payload.get("partial"))})
+
+
 @app.route("/api/ref/<pub>")
 def api_ref(pub):
     slug = request.args.get("slug", "")
@@ -1514,6 +2358,8 @@ def api_ref(pub):
     # Query strings bypass the route converter, so vet it here.
     if slug and not valid_slug(slug):
         return jsonify({"error": "invalid slug"}), 400
+    if slug and not _can_access_report(slug):
+        abort(404)
     disp = enrich_display.enrich_for_display(pub)
     # DB sections + matched coordinate (for highlighting)
     with db.cursor() as cur:
@@ -1545,22 +2391,30 @@ def api_ref(pub):
             "figures": [],
         }
     rationale = None
-    # `light=1` returns everything EXCEPT the grounded opinion. The results list needs sections
+    # `light=1` normally returns everything EXCEPT the grounded opinion. The results list needs sections
     # (claims / description) to fill a card's expandable panes, and _rationale() runs a Vertex call
     # for any pub that has no cached opinion yet — so without this, merely opening the Claims tab
     # (or lazily hydrating a card) would spend LLM budget the user never asked for. The opinion is
-    # still fetched eagerly by the "Why relevant" pane and the full detail view.
-    if slug and request.args.get("light") != "1":
+    # still fetched eagerly by the "Why relevant" pane and the full detail view. The automatic
+    # background warmer sends `light=1&rationale=1`: it asks for the opinion while keeping the
+    # unrelated worldwide-family lookup cache-only.
+    if slug and (request.args.get("light") != "1" or request.args.get("rationale") == "1"):
         q = _query_for_slug(slug)
         rep = _load_report(slug)
         if q and rep:
             biblio_txt = f"{pub} {disp.get('title') or ''}. {disp.get('abstract') or ''}"
-            # SerpApi-sourced claims when the DB has none, so a BigQuery-thin record still gets
-            # claim text rather than silently degrading to title-level reasoning.
-            if not rat_passages and secs and secs.get("claims"):
-                rat_passages = [{"kind": "claim_own", "coord": {"claim_no": c.get("claim_no")},
-                                 "text": c.get("resolved_text") or c.get("text")}
-                                for c in secs["claims"][:2]]
+            # Federated/Mongo-only references have no vector-ranked local chunks.  Still give the
+            # analyst a balanced full-text slice instead of silently degrading to claims 1-2.
+            if not rat_passages and secs:
+                rat_passages = [
+                    {"kind": "claim_own", "coord": {"claim_no": c.get("claim_no")},
+                     "text": c.get("resolved_text") or c.get("text")}
+                    for c in (secs.get("claims") or [])[:4]
+                ]
+                rat_passages.extend({
+                    "kind": "paragraph", "coord": {"para_no": p.get("para_no")},
+                    "text": p.get("text"),
+                } for p in (secs.get("paragraphs") or [])[:4])
             rationale = _rationale(slug, pub, q, rep.get("elements", []), biblio_txt,
                                    passages=rat_passages)
     # Pure-heuristic language flag: costs nothing, so it is safe on every card. The actual
@@ -1580,14 +2434,18 @@ def api_ref(pub):
             disp["family"] = ops_family.fetch_family(pub, lens_family=disp.get("lens_family"))
     except Exception:
         disp["family"] = None
-    return jsonify({
+    payload = {
         "pub": pub, "display": disp, "sections": secs,
         "matched": {"coord": webview._coord_str((matched or {}).get("coord")),
                     "kind": (matched or {}).get("kind"),
                     "score": round((matched or {}).get("score", 0) or 0, 3),
                     "coord_raw": (matched or {}).get("coord")} if matched else None,
         "rationale": rationale,
-    })
+    }
+    section = request.args.get("section", "").strip()
+    if section in {"abstract", "claims", "desc", "class", "figs", "why"}:
+        payload = _detail_preview_section(payload, section)
+    return jsonify(payload)
 
 
 _QCACHE = {}
@@ -1614,9 +2472,12 @@ def _query_vec(slug, q):
     return _QCACHE[slug]
 
 
-# A publication number is like "US-11207792-B2"; a figure filename like "003.png". Validate both
+# A publication number can be canonical ("US-11207792-B2") or a compact identifier returned by
+# a federated provider ("US20220256273A1"); a figure filename is like "003.png". Validate both
 # BEFORE any path use — defense-in-depth against traversal on top of Flask's safe_join.
-_PUB_RE = re.compile(r"^[A-Za-z]{2}-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$")
+_PUB_RE = re.compile(
+    r"^[A-Za-z]{2}(?:[A-Za-z0-9]{3,38}|-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)$"
+)
 _FNAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
@@ -1628,7 +2489,9 @@ def _safe_pub(pub):
 def figures(pub, fname):
     if not _safe_pub(pub) or not _FNAME_RE.match(fname):   # reject traversal / odd names early
         abort(404)
-    d = enrich_display.FIGDIR / pub
+    # Recovery persists assets under the corpus' hyphenated key even when a federated result is
+    # compact (US20220256273A1). Keep the public URL stable but serve from that shared directory.
+    d = enrich_display.FIGDIR / enrich_display._canonical_pubkey(pub)
     if not (d / fname).exists():
         abort(404)
     return send_from_directory(d, fname)                    # Flask safe_join is the second guard
@@ -1694,6 +2557,8 @@ def api_prefetch(slug):
     """
     if not valid_slug(slug):
         return jsonify({"error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
     if request.method == "GET":
         return jsonify(prefetch.status(slug))
     # POST: derive the top-N from the (already reranked + cached) view, so N tracks the listwise
@@ -1713,13 +2578,39 @@ def api_prefetch(slug):
     return jsonify(prefetch.prefetch_top(slug, pubs, n=len(pubs)))
 
 
+@app.route("/api/query-claim-grid/<slug>", methods=["GET", "POST"])
+def api_query_claim_grid(slug):
+    """Start or poll the uploaded Claim x Reference grid without blocking the report page."""
+    if not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
+    if request.method == "GET":
+        return jsonify(query_claim_grid.status(slug, REPORTS))
+
+    rep = _load_report(slug)
+    if not rep:
+        return jsonify({"error": "report not found"}), 404
+    vp = REPORTS / f"{slug}.view.json"
+    if not vp.exists():
+        return jsonify({"status": "waiting", "available": True,
+                        "reason": "final ranking is not ready"}), 202
+    try:
+        view = json.loads(vp.read_text())
+    except Exception:
+        return jsonify({"status": "waiting", "available": True,
+                        "reason": "final ranking is not ready"}), 202
+    return jsonify(query_claim_grid.ensure(slug, rep, view, REPORTS))
+
+
 def _pdf_available(pub: str) -> bool:
     """Would /pdf/<pub> actually serve something? Same two sources the route itself uses."""
     if not _safe_pub(pub):
         return False
-    if (enrich_display.PDFDIR / f"{pub}.pdf").exists():
+    canon = enrich_display._canonical_pubkey(pub)
+    if (enrich_display.PDFDIR / f"{canon}.pdf").exists():
         return True
-    disp = enrich_display.load_cached(pub)
+    disp = enrich_display.load_cached(canon)
     return bool((disp or {}).get("_display", {}).get("pdf_url")) if disp else False
 
 
@@ -1741,12 +2632,13 @@ def api_pdfs():
 def pdf(pub):
     if not _safe_pub(pub):
         abort(404)
-    f = enrich_display.PDFDIR / f"{pub}.pdf"
+    canon = enrich_display._canonical_pubkey(pub)
+    f = enrich_display.PDFDIR / f"{canon}.pdf"
     if f.exists():
-        return send_from_directory(enrich_display.PDFDIR, f"{pub}.pdf",
+        return send_from_directory(enrich_display.PDFDIR, f"{canon}.pdf",
                                    mimetype="application/pdf")
     # fall back to remote pdf if we have it cached in enriched json
-    disp = enrich_display.load_cached(pub)
+    disp = enrich_display.load_cached(canon)
     url = (disp or {}).get("_display", {}).get("pdf_url") if disp else None
     if url:
         return redirect(url)
@@ -1755,6 +2647,8 @@ def pdf(pub):
 
 @app.route("/print/<slug>")
 def print_view(slug):
+    if not _can_access_report(slug):
+        abort(404)
     rep = _load_report(slug)
     if not rep:
         abort(404)
@@ -1762,7 +2656,12 @@ def print_view(slug):
     #  Calling build_view directly is why the print view rendered cells that nothing had checked.
     view = _build_view_cached(slug, rep)
     view["slug"] = slug
-    view["title"] = slug
+    user = auth.current_user()
+    account_search = accounts.get_search(user["id"], slug) if user else None
+    view["title"] = (account_search or {}).get("title") or slug
+    view["account_search"] = account_search
+    view["query_claim_grid_data"] = query_claim_grid.status(slug, REPORTS)
+    view["printed_at"] = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
     return render_template("print.html", v=view)
 
 
@@ -1787,11 +2686,25 @@ def api_flags(slug):
     # hold it to the same character set as every other filesystem-bound slug.
     if not valid_slug(slug):
         return jsonify({"ok": False, "error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
+    user = auth.current_user()
     if request.method == "POST":
         data = request.get_json(force=True) or {}
         pub = data.get("pub")
         if not pub:
             return jsonify({"ok": False}), 400
+        if user:
+            auth.require_csrf()
+            try:
+                entry = accounts.save_report_flag(
+                    user["id"], slug, pub,
+                    flag=data.get("flag") if "flag" in data else None,
+                    note=data.get("note") if "note" in data else None)
+                return jsonify({"ok": True, "flags": accounts.load_report_flags(user["id"], slug),
+                                "entry": entry})
+            except ValueError as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 400
         flags = load_flags(slug)
         entry = flags.get(pub, {})
         if "flag" in data:
@@ -1801,6 +2714,8 @@ def api_flags(slug):
         flags[pub] = entry
         _flags_path(slug).write_text(json.dumps(flags, indent=1))
         return jsonify({"ok": True, "flags": flags})
+    if user:
+        return jsonify(accounts.load_report_flags(user["id"], slug))
     return jsonify(load_flags(slug))
 
 
@@ -1810,31 +2725,30 @@ def export():
     slug = request.form.get("slug", "").strip()
     fmt = request.form.get("format", "pdf").strip().lower()
     pubs = [p for p in request.form.get("pubs", "").split(",") if p.strip()]
-    if not slug or not pubs or fmt not in ("pdf", "docx"):
-        return jsonify({"error": "need slug, pubs, format(pdf|docx)"}), 400
+    if not slug or not pubs or fmt not in EXPORT_FORMATS:
+        return jsonify({"error": "need slug, pubs, format(%s)" % "|".join(EXPORT_FORMATS)}), 400
     # `slug` arrives in a form field, so no route converter has vetted it, and it is about to become
     # part of a path we WRITE to. Validate before touching the filesystem.
     if not valid_slug(slug):
         return jsonify({"error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
     key = hashlib.sha1((slug + "|" + fmt + "|" + ",".join(sorted(pubs))).encode()).hexdigest()[:12]
     out = EXPORTS / f"{slug}__{key}.{fmt}"
     if not out.exists():
         # An unknown slug used to raise inside assemble() and surface as an unhandled HTML 500.
         if not report_path(slug).exists() and slug not in _GOLD:
             return jsonify({"error": "unknown report", "slug": slug}), 404
+        spec = EXPORT_FORMATS[fmt]
         try:
-            model = export_data.assemble(slug, pubs)
+            model = export_data.assemble(slug, pubs, include_text=spec["text"],
+                                         include_drawings=spec["drawings"])
         except Exception as e:
             return jsonify({"error": "could not assemble export", "detail": str(e)[:200]}), 400
-        if fmt == "pdf":
-            export_pdf.render(model, out)
-        else:
-            export_docx.render(model, out)
+        spec["render"](model, out)
     dl = f"prior-art-{slug}.{fmt}"
-    mime = "application/pdf" if fmt == "pdf" else \
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     return send_from_directory(EXPORTS, out.name, as_attachment=True,
-                               download_name=dl, mimetype=mime)
+                               download_name=dl, mimetype=EXPORT_FORMATS[fmt]["mime"])
 
 
 # ---- citation graph + more-like-this -------------------------------------------------------
@@ -1928,9 +2842,42 @@ def api_morelike(pub):
 
 
 # ---- side-by-side compare ------------------------------------------------------------------
+def _compare_biblio(cur, pid, pub, display):
+    """Return a complete comparison header for local *and* federated-only references.
+
+    The final list can legitimately contain an API-federated publication whose compact number is
+    not an exact ``publications.publication_number`` match.  Its rich metadata has already been
+    cached by the same enrichment path used by the detail drawer, so an ``(untitled)`` comparison
+    header is both slower to understand and inconsistent with the card the user just selected.
+    """
+    if pid:
+        return webview.biblio(cur, pid)
+    d = display or {}
+    country = (d.get("country") or str(pub)[:2]).upper()
+    return {
+        "pid": None,
+        "pub": d.get("pub") or pub,
+        "kind": d.get("type"),
+        "title": d.get("title"),
+        "abstract": d.get("abstract"),
+        "country": country,
+        "flag": webview.FLAG.get(country, "🏳️"),
+        "publication_date": d.get("publication_date"),
+        "filing_date": d.get("filing_date"),
+        "priority_date": d.get("priority_date"),
+        "family_id": d.get("family_id"),
+        "assignees": d.get("assignees") or [],
+        "inventors": d.get("inventors") or [],
+        "cpc": d.get("classifications") or [],
+        "legal_events": d.get("legal_events") or [],
+    }
+
+
 @app.route("/compare")
 def compare():
     slug = request.args.get("slug", "")
+    if slug and not _can_access_report(slug):
+        abort(404)
     pubs = [p for p in request.args.get("pubs", "").split(",") if p.strip()][:3]
     if not valid_slug(slug):
         abort(400)
@@ -1945,8 +2892,8 @@ def compare():
             cur.execute("SELECT id FROM publications WHERE publication_number=%s LIMIT 1", (pub,))
             row = cur.fetchone()
             pid = row["id"] if row else None
-            b = webview.biblio(cur, pid) if pid else {"pub": pub}
             disp = enrich_display.enrich_for_display(pub)
+            b = _compare_biblio(cur, pid, pub, disp)
             matched = webview.match_in_pub(cur, pid, qv) if (pid and qv is not None) else None
             # which elements this family covers (from report evidence)
             fam = b.get("family_id")
@@ -1988,6 +2935,8 @@ def api_chart(pub):
     slug = request.args.get("slug", "")
     if not valid_slug(slug):        # reaches `RATIONALE / f"chart__{slug}__{pub}.json"` below
         return jsonify({"error": "invalid slug"}), 400
+    if not _can_access_report(slug):
+        abort(404)
     rep = _load_report(slug) or {}
     elements = rep.get("elements", [])
     if not elements:
@@ -2015,6 +2964,419 @@ def api_translate(pub):
     return jsonify(translate.translate_publication(pub))
 
 
+# ---- account-owned US application drafting ------------------------------------------------
+_DRAFTING_SERVICE = None
+
+
+def _draft_report_loader(principal, slug, owner_user_id):
+    """Load only an authoritative, final server-side report for the project's owner."""
+    principal.require_active()
+    owner_user_id = int(owner_user_id)
+    if principal.user_id != owner_user_id and not principal.is_admin:
+        raise drafting.DraftingNotFound("Search report was not found.")
+    if slug not in _GOLD:
+        try:
+            owned = accounts.can_access_search(owner_user_id, slug)
+        except Exception:
+            owned = False
+        # An administrator may inspect operational reports, but an ordinary drafting project can
+        # only depend on a report row that belongs to its account.
+        if not owned and not principal.is_admin:
+            raise drafting.DraftingNotFound("Search report was not found in this account.")
+    rep = _load_report(slug)
+    if not rep:
+        raise drafting.DraftingNotFound("Search report was not found.")
+    if rep.get("partial"):
+        raise drafting.DraftingConflict("Wait for the final ranking before starting a draft.")
+    view = _build_view_cached(slug, rep)
+    view["slug"] = slug
+    # The interactive view is deliberately based on the condensed search brief.  Drafting is a
+    # different trust boundary: only the inventor's verbatim uploaded disclosure may supply new
+    # matter, so pass that immutable server-side snapshot separately when the search came from an
+    # upload.  It is never synthesized from prior-art cards.
+    view["query_document"] = dict(rep.get("query_document") or {})
+    return view
+
+
+def _drafting_service():
+    global _DRAFTING_SERVICE
+    if _DRAFTING_SERVICE is None:
+        _DRAFTING_SERVICE = drafting.DraftingService(
+            drafting.DraftingRepository(), _draft_report_loader)
+    return _DRAFTING_SERVICE
+
+
+def _draft_identity():
+    user = auth.current_user()
+    if not user:
+        raise drafting.DraftingPermissionDenied("A named account is required for drafting.")
+    return user, drafting.Principal.from_user(user)
+
+
+def _draft_error_status(exc):
+    if isinstance(exc, drafting.DraftingNotFound):
+        return 404
+    if isinstance(exc, drafting.DraftingPermissionDenied):
+        return 403
+    if isinstance(exc, drafting.DraftingConflict):
+        return 409
+    return 400
+
+
+def _draft_error_redirect(project_id, exc):
+    return redirect(url_for("draft_detail", project_id=project_id, error=str(exc)[:300]))
+
+
+def _draft_report_choices(user, limit=300):
+    choices = []
+    try:
+        rows = accounts.list_searches(user["id"], limit=limit)
+    except Exception:
+        rows = []
+    for row in rows:
+        if row.get("status") != "complete" or not report_path(row["slug"]).exists():
+            continue
+        choices.append({
+            "slug": row["slug"], "title": row.get("title"),
+            "query": row.get("query") or "", "mode": row.get("mode") or "novelty",
+            "search_focus": row.get("search_focus") or "all_text",
+            "updated_at": row.get("updated_at"),
+        })
+    return choices
+
+
+def _draft_new_context(user, principal, slug, selected=None, values=None, error=""):
+    choices = _draft_report_choices(user)
+    report_view = None
+    if slug:
+        try:
+            report_view = _draft_report_loader(principal, slug, user["id"])
+        except drafting.DraftingError as exc:
+            error = error or str(exc)
+    values = dict(values or {})
+    if report_view:
+        account_search = accounts.get_search(user["id"], slug) or {}
+        source_document = report_view.get("query_document") or {}
+        values.setdefault("title", account_search.get("title") or
+                          source_document.get("title") or
+                          (report_view.get("query") or "US patent application")[:180])
+        values.setdefault("disclosure_text", source_document.get("disclosure_text") or
+                          report_view.get("query") or "")
+        defaults = []
+        if user.get("organization"):
+            defaults.append(f"Organization: {user['organization']}")
+        if user.get("default_applicant"):
+            defaults.append(f"Applicant: {user['default_applicant']}")
+        if user.get("default_inventors"):
+            defaults.append(f"Inventors:\n{user['default_inventors']}")
+        values.setdefault("inventor_notes", "\n\n".join(defaults))
+    cards = list((report_view or {}).get("cards") or [])
+    selected = list(selected or [])
+    if cards and not selected:
+        selected = [card.get("pub") for card in cards[:5] if card.get("pub")]
+    source_document = (report_view or {}).get("query_document") or {}
+    return {"choices": choices, "report_view": report_view, "search_slug": slug,
+            "source_document": source_document,
+            "selected": set(selected), "values": values, "error": error}
+
+
+@app.route("/drafts")
+def drafts_list():
+    try:
+        user, principal = _draft_identity()
+        include_all = bool(principal.is_admin and request.args.get("all") == "1")
+        projects = _drafting_service().list_projects(principal, include_all=include_all)
+        return render_template("drafts.html", projects=projects, include_all=include_all,
+                               user=user)
+    except drafting.DraftingError as exc:
+        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
+
+
+@app.route("/drafts/new", methods=["GET", "POST"])
+def draft_new():
+    try:
+        user, principal = _draft_identity()
+    except drafting.DraftingError as exc:
+        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
+    slug = (request.values.get("search_slug") or request.values.get("slug") or "").strip()
+    selected = request.values.getlist("pubs")
+    # Selection-bar GET links encode the publications as one comma-separated value.
+    if len(selected) == 1 and "," in selected[0]:
+        selected = [value for value in selected[0].split(",") if value]
+    if request.method == "POST":
+        auth.require_csrf()
+        values = {"title": request.form.get("title", ""),
+                  "disclosure_text": request.form.get("disclosure_text", ""),
+                  "inventor_notes": request.form.get("inventor_notes", "")}
+        try:
+            service = _drafting_service()
+            project = service.create_project_with_references(
+                principal, search_slug=slug, title=values["title"],
+                disclosure_text=values["disclosure_text"], inventor_notes=values["inventor_notes"],
+                publication_numbers=selected)
+            return redirect(url_for("draft_detail", project_id=project["id"], created="1"))
+        except drafting.DraftingError as exc:
+            ctx = _draft_new_context(user, principal, slug, selected, values, str(exc))
+            return render_template("draft_new.html", **ctx), _draft_error_status(exc)
+    ctx = _draft_new_context(user, principal, slug, selected)
+    return render_template("draft_new.html", **ctx)
+
+
+def _draft_detail_context(principal, project_id):
+    service = _drafting_service()
+    project = service.get_project(principal, project_id, include_versions=True)
+    chosen_no = request.args.get("version", type=int) or int(project.get("latest_version_no") or 0)
+    version = next((v for v in project.get("versions", [])
+                    if int(v.get("version_no") or 0) == chosen_no), None)
+    version_diff = ""
+    if version:
+        previous = next((v for v in project.get("versions", [])
+                         if int(v.get("version_no") or 0) == int(version["version_no"]) - 1), None)
+        if previous:
+            chunks = []
+            for key, heading in drafting.SECTION_ORDER:
+                before = str((previous.get("sections") or {}).get(key) or "").splitlines()
+                after = str((version.get("sections") or {}).get(key) or "").splitlines()
+                if before != after:
+                    chunks.extend(difflib.unified_diff(
+                        before, after, fromfile=f"v{previous['version_no']} {heading}",
+                        tofile=f"v{version['version_no']} {heading}", lineterm=""))
+            version_diff = "\n".join(chunks)[:60_000]
+    try:
+        report_view = _draft_report_loader(principal, project["search_slug"], project["user_id"])
+    except drafting.DraftingError:
+        report_view = {"cards": []}
+    selected_pubs = {r["publication_number"] for r in project.get("references", [])}
+    jobs = project.get("jobs") or []
+    return {"project": project, "version": version,
+            "latest_job": jobs[0] if jobs else None,
+            "report_cards": report_view.get("cards") or [], "selected_pubs": selected_pubs,
+            "section_order": drafting.SECTION_ORDER, "version_diff": version_diff,
+            "generation_key": secrets.token_urlsafe(24),
+            "error": request.args.get("error", ""), "message": request.args.get("message", ""),
+            "created": request.args.get("created") == "1"}
+
+
+@app.route("/drafts/<int:project_id>")
+def draft_detail(project_id):
+    try:
+        _user, principal = _draft_identity()
+        return render_template("draft.html", **_draft_detail_context(principal, project_id))
+    except drafting.DraftingError as exc:
+        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
+
+
+@app.route("/drafts/<int:project_id>/project", methods=["POST"])
+def draft_update_project(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        _drafting_service().update_project(
+            principal, project_id, title=request.form.get("title", ""),
+            disclosure_text=request.form.get("disclosure_text", ""),
+            inventor_notes=request.form.get("inventor_notes", ""),
+            expected_revision=request.form.get("expected_revision", type=int))
+        return redirect(url_for("draft_detail", project_id=project_id,
+                                message="Project inputs saved. Generate a new version when ready."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/references", methods=["POST"])
+def draft_update_references(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        _drafting_service().select_references(
+            principal, project_id, request.form.getlist("pubs"),
+            expected_revision=request.form.get("expected_revision", type=int))
+        return redirect(url_for("draft_detail", project_id=project_id,
+                                message="Prior-art source selection saved."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/generate", methods=["POST"])
+def draft_generate(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        idem = request.form.get("idempotency_key") or secrets.token_urlsafe(18)
+        job = _drafting_service().queue_generation(
+            principal, project_id, instructions=request.form.get("instructions", ""),
+            idempotency_key=idem)
+        draft_worker.kick()
+        state = job.get("status") or "queued"
+        message = ("Draft generation queued. You may leave this page safely."
+                   if state in {"queued", "running"}
+                   else f"That generation request is already {state}. Reload to start another.")
+        return redirect(url_for("draft_detail", project_id=project_id,
+                                message=message))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/retry/<int:job_id>", methods=["POST"])
+def draft_retry(project_id, job_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        job = _drafting_service().get_generation(principal, job_id)
+        if int(job["project_id"]) != project_id:
+            raise drafting.DraftingNotFound("Draft generation was not found.")
+        _drafting_service().retry_generation(
+            principal, job_id, idempotency_key=secrets.token_urlsafe(18))
+        draft_worker.kick()
+        return redirect(url_for("draft_detail", project_id=project_id,
+                                message="Draft generation queued again."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/cancel/<int:job_id>", methods=["POST"])
+def draft_cancel(project_id, job_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        job = _drafting_service().get_generation(principal, job_id)
+        if int(job["project_id"]) != project_id:
+            raise drafting.DraftingNotFound("Draft generation was not found.")
+        _drafting_service().cancel_generation(principal, job_id)
+        return redirect(url_for("draft_detail", project_id=project_id,
+                                message="Draft generation cancelled; your project was preserved."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/versions", methods=["POST"])
+def draft_save_version(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        sections = {key: request.form.get(key, "") for key, _heading in drafting.SECTION_ORDER}
+        version = _drafting_service().save_edited_version(
+            principal, project_id, sections,
+            base_version_no=request.form.get("base_version_no", type=int))
+        return redirect(url_for("draft_detail", project_id=project_id,
+                                version=version["version_no"], message="Edits saved as a new version."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/versions/<int:version_no>/status", methods=["POST"])
+def draft_version_status(project_id, version_no):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        _drafting_service().set_version_status(
+            principal, project_id, version_no, request.form.get("status", "draft"))
+        return redirect(url_for("draft_detail", project_id=project_id, version=version_no,
+                                message="Version review status updated."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/versions/<int:version_no>/restore", methods=["POST"])
+def draft_restore_version(project_id, version_no):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        service = _drafting_service()
+        prior = service.get_version(principal, project_id, version_no)
+        restored = service.save_edited_version(
+            principal, project_id, prior["sections"], base_version_no=version_no)
+        return redirect(url_for(
+            "draft_detail", project_id=project_id, version=restored["version_no"],
+            message=f"Version {version_no} restored as new version {restored['version_no']}."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/drafts/<int:project_id>/archive", methods=["POST"])
+def draft_archive(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        archived = request.form.get("archived", "1") == "1"
+        _drafting_service().archive_project(principal, project_id, archived=archived)
+        if archived:
+            return redirect(url_for("drafts_list"))
+        return redirect(url_for("draft_detail", project_id=project_id,
+                                message="Draft project restored."))
+    except drafting.DraftingError as exc:
+        return _draft_error_redirect(project_id, exc)
+
+
+@app.route("/api/drafts/<int:project_id>/status")
+def api_draft_status(project_id):
+    try:
+        _user, principal = _draft_identity()
+        project = _drafting_service().get_project(principal, project_id, include_versions=True)
+        jobs = project.get("jobs") or []
+        job = jobs[0] if jobs else None
+        return jsonify({
+            "id": project["id"], "status": project["status"],
+            "revision": project["revision"], "latest_version_no": project["latest_version_no"],
+            "reference_count": len(project.get("references") or []),
+            "job": ({key: job.get(key) for key in
+                     ("id", "status", "attempts", "max_attempts", "last_error", "created_at",
+                      "started_at", "completed_at")} if job else None),
+            "ready_url": (url_for("draft_detail", project_id=project_id,
+                                  version=project["latest_version_no"])
+                          if project.get("latest_version_no") and
+                          not (job and job.get("status") in {"queued", "running"}) else None),
+        })
+    except drafting.DraftingError as exc:
+        return jsonify({"error": str(exc)}), _draft_error_status(exc)
+
+
+@app.route("/drafts/<int:project_id>/download/<fmt>")
+def draft_download(project_id, fmt):
+    if fmt not in {"md", "docx", "pdf"}:
+        abort(404)
+    try:
+        _user, principal = _draft_identity()
+        service = _drafting_service()
+        project = service.get_project(principal, project_id, include_versions=False)
+        version_no = request.args.get("version", type=int) or int(project.get("latest_version_no") or 0)
+        if not version_no:
+            raise drafting.DraftingNotFound("No draft version is ready to download.")
+        version = service.get_version(principal, project_id, version_no)
+        refs = project.get("references") or []
+        name = draft_export.download_name(project, version_no, fmt)
+        if fmt == "md":
+            return Response(
+                draft_export.render_markdown(project, version, refs),
+                mimetype="text/markdown",
+                headers={"Content-Disposition": f'attachment; filename="{name}"'})
+        if fmt == "docx":
+            return send_file(
+                draft_export.render_docx(project, version, refs), as_attachment=True,
+                download_name=name,
+                mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        return send_file(draft_export.render_pdf(project, version, refs), as_attachment=True,
+                         download_name=name, mimetype="application/pdf")
+    except drafting.DraftingError as exc:
+        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
+
+
+@app.route("/drafts/<int:project_id>/print")
+def draft_print(project_id):
+    try:
+        _user, principal = _draft_identity()
+        service = _drafting_service()
+        project = service.get_project(principal, project_id, include_versions=False)
+        version_no = request.args.get("version", type=int) or int(project.get("latest_version_no") or 0)
+        if not version_no:
+            raise drafting.DraftingNotFound("No draft version is ready to print.")
+        version = service.get_version(principal, project_id, version_no)
+        return render_template("draft_print.html", project=project, version=version,
+                               section_order=drafting.SECTION_ORDER,
+                               notice=draft_export.WORKING_DRAFT_NOTICE)
+    except drafting.DraftingError as exc:
+        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
+
+
 @app.route("/api/modes")
 def api_modes():
     """Capabilities, so the UI can build its mode picker from truth instead of a hard-coded list.
@@ -2033,11 +3395,75 @@ def healthz():
     h = {"ok": True, "gold": len(_GOLD)}
     if auth.run_gate:
         h["runs"] = auth.run_gate.stats()
+    h["mail"] = notifications.transport_status()
+    h["draft_worker"] = draft_worker.status()
     return jsonify(h)
+
+
+RECOVERY_GRACE_SECONDS = 120
+
+
+def recover_interrupted_searches():
+    """Reconcile searches that were running when the previous process died.
+
+    Completion is recorded in-process: ``_generate`` finishes, marks the saved search complete
+    and queues the email. A deploy, a restart or an OOM in the middle of a multi-minute search
+    therefore leaves the row saying ``running`` for ever, and the user who was told "you can
+    close this tab, we will email you" is never emailed and never sees the search finish.
+
+    At startup nothing is running in THIS process, so every stale ``running`` row belongs to a
+    process that is gone. Each is settled against what is actually on disk:
+
+      * a finished report (``partial`` false) -> the work DID complete and only the bookkeeping
+        was lost: mark it complete and queue the email that was promised;
+      * a partial report or none at all       -> mark it failed, so Search history says so and
+        offers a re-run instead of showing a search that will never end.
+
+    Fail-soft and best-effort: the accounts store may be unavailable, and a search page must
+    still come up if it is.
+    """
+    settled = {"completed": 0, "failed": 0}
+    try:
+        if not auth.accounts_enabled(app):
+            return settled
+        with db.cursor() as cur:
+            cur.execute("SELECT DISTINCT slug FROM app_saved_searches "
+                        "WHERE status='running' AND updated_at < now() - interval '%s seconds'"
+                        % int(RECOVERY_GRACE_SECONDS))
+            slugs = [r["slug"] for r in cur.fetchall()]
+    except Exception:
+        traceback.print_exc()
+        return settled
+
+    for slug in slugs:
+        try:
+            rep = None
+            p = report_path(slug)
+            if p.exists():
+                try:
+                    rep = json.loads(p.read_text())
+                except Exception:
+                    rep = None
+            if rep is not None and not rep.get("partial"):
+                notifications.queue_search_completion(slug)
+                settled["completed"] += 1
+            else:
+                accounts.mark_search_failed(slug)
+                settled["failed"] += 1
+        except Exception:
+            traceback.print_exc()
+    if settled["completed"] or settled["failed"]:
+        print(f"[recovery] settled interrupted searches: {settled['completed']} completed, "
+              f"{settled['failed']} marked failed", flush=True)
+    return settled
 
 
 # ---- auth + rate limiting (registered LAST, after every route exists) ------------------------
 auth.init_app(app, state_path=DATA / "run_budget.json")
+notifications.init_app(app)
+draft_worker.init_app(app, _drafting_service)
+if "PYTEST_CURRENT_TEST" not in os.environ:
+    recover_interrupted_searches()
 
 
 if __name__ == "__main__":

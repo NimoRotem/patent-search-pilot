@@ -84,10 +84,41 @@ def test_delta_sql_applies_the_date_window_and_seed_cpc_filter():
     sql = ingest_bq.delta_extract_sql(dt.date(2026, 1, 15), dt.date(2026, 3, 1))
     assert "publication_date >= 20260115" in sql
     assert "publication_date <= 20260301" in sql
-    assert "country_code IN ('US','EP','WO','DE')" in sql
     assert "UNNEST(cpc)" in sql
     # open-ended window omits the upper bound entirely
     assert "publication_date <=" not in ingest_bq.delta_extract_sql(dt.date(2026, 1, 15))
+
+
+def test_delta_jurisdiction_comes_from_config_not_a_hardcoded_list():
+    """The delta must search the SAME offices the corpus was built from.
+
+    This used to assert the literal `country_code IN ('US','EP','WO','DE')`, hard-coded in five
+    places across ingest_bq. That is now config.INGEST_JURISDICTIONS (empty = worldwide), because
+    BigQuery bills columns referenced rather than rows matched — the four-office filter bought
+    nothing at the source and only shrank the corpus.
+
+    The real risk the test now guards is a SPLIT: if the weekly delta kept a narrower scope than
+    the bootstrap, it would re-narrow the corpus one week at a time, silently, and the only
+    symptom would be slowly worsening recall on non-US art.
+    """
+    import bqclient
+    assert bqclient.juris_predicate() in ingest_bq.delta_extract_sql(dt.date(2026, 1, 15))
+    assert bqclient.juris_predicate() in ingest_bq._CORE_WHERE, \
+        "delta and bootstrap must share one jurisdiction scope"
+
+    # worldwide (the configured default) must be a real predicate, not an omitted clause, so a
+    # call site can never forget to handle the empty case and pull the whole table by accident.
+    assert bqclient.juris_predicate() == "TRUE" or "country_code IN (" in bqclient.juris_predicate()
+
+    import config
+    saved = config.INGEST_JURISDICTIONS
+    try:
+        config.INGEST_JURISDICTIONS = ["US", "EP"]
+        assert bqclient.juris_predicate() == "country_code IN ('US','EP')"
+        config.INGEST_JURISDICTIONS = []
+        assert bqclient.juris_predicate() == "TRUE"
+    finally:
+        config.INGEST_JURISDICTIONS = saved
 
 
 def test_delta_writes_to_its_own_staging_table_not_core():
@@ -116,11 +147,13 @@ def test_loader_conflict_clause_is_idempotent():
 
 
 def test_unchunked_queue_is_empty_on_a_fully_processed_corpus():
-    """The work queue is 'publications with no chunks that DO have text'. On the live,
-    fully-processed corpus it must be empty -- that emptiness is what makes the job
-    resumable: after a crash, whatever is left in this queue is exactly the outstanding
-    work, with no separate bookkeeping table to get out of sync."""
-    assert inc.unchunked_publication_ids(limit=5) == []
+    """The work queue is 'publications with no chunks that DO have text THIS DEPTH will chunk'.
+    On the live, fully-processed corpus it must be empty -- that emptiness is what makes the job
+    resumable: after a crash, whatever is left in this queue is exactly the outstanding work,
+    with no separate bookkeeping table to get out of sync.
+
+    The live corpus is chunked TWO-TIER, so the queue must be asked at that depth."""
+    assert inc.unchunked_publication_ids(limit=5, two_tier=True) == []
 
 
 def test_textless_publications_are_excluded_from_the_queue():
@@ -137,7 +170,7 @@ def test_textless_publications_are_excluded_from_the_queue():
         no_chunks = cur.fetchone()["c"]
     assert no_chunks >= textless
     # ...yet the work queue is empty, i.e. every chunkable publication is chunked
-    assert inc.unchunked_publication_ids() == []
+    assert inc.unchunked_publication_ids(two_tier=True) == []
 
 
 def test_unchunked_query_respects_min_id_and_limit():
@@ -397,3 +430,31 @@ def test_verify_embeddings_passes_on_the_live_corpus():
     assert out["ok"] is True
     assert out["newest"][0]["dims"] == 768
     assert out["drift"] < inc.NORM_DRIFT_TOLERANCE
+
+
+def test_queue_depth_must_match_chunker_depth():
+    """The queue and the chunker have to agree about what counts as chunkable.
+
+    Two-tier depth skips description paragraphs, so a publication whose ONLY text is a
+    description yields zero chunks and — if the queue still counted it as having text — would be
+    re-queued, re-scanned and re-attempted forever, exactly the failure the text predicate exists
+    to prevent. The live corpus contains three such documents (pre-1950 US grants with description
+    text but no title, abstract or claims), which is why the symptom was three ids rather than a
+    flood and could easily have been dismissed as noise.
+
+    Full depth SHOULD still queue them: at that depth their paragraphs do produce chunks.
+    """
+    two = inc.unchunked_publication_ids(two_tier=True)
+    full = inc.unchunked_publication_ids(two_tier=False)
+    assert two == [], f"two-tier queue must be drained, got {two[:5]}"
+    assert set(two) <= set(full), "two-tier queue can only ever be a subset of full-depth"
+    for pid in set(full) - set(two):
+        with db.cursor() as cur:
+            cur.execute("""SELECT coalesce(title,'') t, coalesce(abstract,'') a,
+                             EXISTS (SELECT 1 FROM claims c WHERE c.publication_id=p.id) cl,
+                             EXISTS (SELECT 1 FROM paragraphs g WHERE g.publication_id=p.id) pa
+                           FROM publications p WHERE p.id=%s""", (pid,))
+            r = cur.fetchone()
+        assert not r["t"] and not r["a"] and not r["cl"], \
+            f"pub {pid} has two-tier-chunkable text yet is missing from the two-tier queue"
+        assert r["pa"], f"pub {pid} is queued at full depth but has no paragraphs to chunk"

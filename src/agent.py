@@ -7,14 +7,25 @@ stopping signal — NEW relevant families produced per query. Stop when marginal
 families is consistently low across channels, capped by budget (not loop count).
 """
 from __future__ import annotations
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-import json
+import os
+import time
 import embed, llm
 from retrieval import Retriever
-from search_modes import Mode, Subject, CombinationBuilder, ElementMapping, Basis, classify_basis, usable_for
+from search_modes import Mode, CombinationBuilder, ElementMapping, Basis, classify_basis, usable_for
 from config import SEED_CPC, SEED_CPC_TITLES
 
 FIELD = "vacuum gripping / suction lifting devices"
+
+
+def _default_search_workers():
+    """Two-way overlap by default; AGENT_SEARCH_WORKERS=1 is an instant serial rollback."""
+    try:
+        requested = int(os.environ.get("AGENT_SEARCH_WORKERS", "2"))
+    except (TypeError, ValueError):
+        requested = 2
+    return 1 if requested <= 1 else 2
 
 
 class CoverageLedger:
@@ -106,6 +117,12 @@ class AgentConfig:
     elements_per_round: int = 4
     evidence_per_element: int = 6
     ground: bool = True          # per-evidence coordinate grounding (costly); off for the ablation
+    # "claim_agentic" makes the primary semantic + lexical candidate channels search claim text
+    # only. Citation/family and cross-lingual expansion still run around those claim-level seeds.
+    search_config: str = "agentic"
+    # Bounded independent ANN passes; two UI jobs => at most four. Environment override permits
+    # an operational serial fallback without reverting or changing ranking behavior.
+    search_workers: int = field(default_factory=_default_search_workers)
 
 
 class CoverageAgent:
@@ -136,37 +153,75 @@ class CoverageAgent:
         return out
 
     # ---- one search + ledger update ------------------------------------------------------
-    def _run_search(self, query, subject, mode, ledger, element=None, cpc=None, phrases=None,
-                    assignees=None, alt_vecs=None, cfg="agentic", is_seed=False):
+    def _fetch_search(self, query, subject, mode, element=None, cpc=None, phrases=None,
+                      assignees=None, alt_vecs=None, cfg="agentic", retriever=None):
+        """Execute one retrieval pass without mutating the shared coverage ledger.
+
+        Keeping retrieval and ledger application separate lets independent element queries use
+        separate PostgreSQL connections concurrently. Results are still applied in the original
+        deterministic query order, so ranking, hit counts and stopping behavior stay unchanged.
+        """
+        r = retriever or self.r
+        if cfg == "agentic":
+            cfg = getattr(self, "_search_config", "agentic")
         # sub-searches fuse by RRF only; a single cross-encoder rerank runs at report time
         # (spec §6: rerank the final cascade, not every sub-query — and it bounds CPU cost)
-        res = self.r.search(query, subject=subject, mode=mode, config=cfg, cpc_hints=cpc,
-                            phrases=phrases, assignee_hints=assignees, alt_query_vecs=alt_vecs,
-                            do_rerank=False, topk=200)
+        res = r.search(query, subject=subject, mode=mode, config=cfg, cpc_hints=cpc,
+                       phrases=phrases, assignee_hints=assignees, alt_query_vecs=alt_vecs,
+                       do_rerank=False, topk=200)
         scored = [(fk, pid, float(sc)) for fk, pid, sc, _ in res.family_ranked]
-        n_new = ledger.register_families(scored, bucket=("seed" if is_seed else "element"))
-        for ch, pids in res.channel_hits.items():
-            ledger.channel_families.setdefault(ch, set()).update(self.r.family_key(p) for p in pids[:100])
-        if cpc:
-            ledger.cpc_branches.update(cpc)
+        channel_families = {
+            ch: [r.family_key(p) for p in pids[:100]]
+            for ch, pids in res.channel_hits.items()
+        }
         # map the strongest reranked families to this element as evidence
+        evidence = []
         if element:
             qv = embed.embed_query(query[:2000], 768) if getattr(self, "_ground", True) else None
             for fk, pid, score, prov in res.family_ranked[:5]:
                 if qv is not None:                       # full coordinate grounding (report path)
-                    g = self._ground_vec(pid, qv, subject)
+                    g = self._ground_vec(pid, qv, subject, retriever=r)
                     ev = {"family": fk, "pub": g["pub"], "coord": g["coord"], "kind": g["kind"],
                           "basis": g["basis"], "score": float(score), "channels": list(prov.keys())}
                 else:                                    # light evidence (ablation): family + score
                     ev = {"family": fk, "pub": None, "coord": None, "kind": None,
                           "basis": "n/a", "score": float(score), "channels": list(prov.keys())}
-                ledger.add_evidence(element, ev)
+                evidence.append(ev)
+        return {
+            "result": res,
+            "scored": scored,
+            "channel_families": channel_families,
+            "cpc": list(cpc or []),
+            "element": element,
+            "evidence": evidence,
+        }
+
+    @staticmethod
+    def _apply_search(fetched, ledger, is_seed=False):
+        """Apply a completed retrieval pass to the ledger in deterministic query order."""
+        n_new = ledger.register_families(
+            fetched["scored"], bucket=("seed" if is_seed else "element"))
+        for ch, families in fetched["channel_families"].items():
+            ledger.channel_families.setdefault(ch, set()).update(families)
+        ledger.cpc_branches.update(fetched["cpc"])
+        if fetched["element"]:
+            for ev in fetched["evidence"]:
+                ledger.add_evidence(fetched["element"], ev)
+        return fetched["result"], n_new
+
+    def _run_search(self, query, subject, mode, ledger, element=None, cpc=None, phrases=None,
+                    assignees=None, alt_vecs=None, cfg="agentic", is_seed=False):
+        fetched = self._fetch_search(
+            query, subject, mode, element=element, cpc=cpc, phrases=phrases,
+            assignees=assignees, alt_vecs=alt_vecs, cfg=cfg)
+        res, n_new = self._apply_search(fetched, ledger, is_seed=is_seed)
         return res, n_new
 
-    def _ground_vec(self, pid, qv, subject):
+    def _ground_vec(self, pid, qv, subject, retriever=None):
         """Best chunk of a publication vs a PRE-COMPUTED query vector -> grounded citation."""
+        r = retriever or self.r
         vs = "[" + ",".join(f"{x:.6f}" for x in qv) + "]"
-        with self.r.conn.cursor() as c:
+        with r.conn.cursor() as c:
             c.execute("SELECT p.publication_number, p.publication_date, p.filing_date, "
                       "p.earliest_priority_date, ch.kind, ch.coord "
                       "FROM chunks ch JOIN publications p ON p.id=ch.publication_id "
@@ -185,11 +240,19 @@ class CoverageAgent:
 
     # ---- main loop -----------------------------------------------------------------------
     def run(self, query_text, subject=None, mode="novelty", cfg: AgentConfig = None, on_event=None):
+        """Run one agent job with an isolated per-search LLM budget and usage record."""
+        with llm.usage_session():
+            return self._run(query_text, subject=subject, mode=mode, cfg=cfg,
+                             on_event=on_event)
+
+    def _run(self, query_text, subject=None, mode="novelty", cfg: AgentConfig = None,
+             on_event=None):
         """`on_event(stage, data)` (optional) streams progress to the UI: 'elements' (decomposed),
         'partial' (a fast, un-reranked snapshot after the seed search — the first cards the user
         sees, in ~a few seconds), and 'round' (per refinement round). It must never raise."""
         cfg = cfg or AgentConfig(mode=mode)
         self._ground = cfg.ground
+        self._search_config = cfg.search_config
         m = Mode(mode)
 
         def emit(stage, data):
@@ -204,14 +267,111 @@ class CoverageAgent:
         ledger.languages.add("en")
         emit("elements", {"n": len(elements), "elements": elements})
 
-        # seed round: broad search on the whole invention (the vector-equivalent backbone). This one
-        # search already yields strong results (the eval shows seed/vector ~= agentic at k=100), so
-        # stream it as the first partial render before the slower element+round refinement runs.
-        self._run_search(query_text, subject, m, ledger, element=None, is_seed=True)
-        emit("partial", {"report": self.report(query_text, subject, m, ledger, rounds=0, rerank=False)})
+        # Every retrieval pass can take several seconds against the growing ANN index. Emit a real
+        # counter after each one so the browser does not sit on a single sentence for minutes while
+        # the seed-element and agentic-round searches advance. `search_max` is an honest upper
+        # bound: early stopping or an LLM returning fewer than three queries can finish sooner.
+        search_done = 0
+        split_claim_seed = self._search_config == "claim_agentic"
+        search_max = ((2 if split_claim_seed else 1) + min(6, len(elements))
+                      + cfg.max_rounds * cfg.elements_per_round * 3)
+
+        def searched(progress_stage, query, *args, progress_round=None, **kwargs):
+            nonlocal search_done
+            started = time.monotonic()
+            result = self._run_search(query, *args, **kwargs)
+            search_done += 1
+            detail = {
+                "search_done": search_done,
+                "search_max": search_max,
+                "search_seconds": round(time.monotonic() - started, 1),
+                "families": len(ledger.families_seen),
+            }
+            if progress_round is not None:
+                detail["round"] = progress_round
+            emit(progress_stage, detail)
+            return result
+
+        def searched_batch(progress_stage, specs, progress_round=None):
+            """Run independent passes concurrently, then apply them in their original order.
+
+            A psycopg connection cannot be shared by concurrent queries. Production Retriever
+            supplies ``fork()`` so each worker owns one connection while sharing only the large,
+            read-only family map. Test doubles and adapters without ``fork`` keep the historical
+            serial behavior. Two workers is deliberate: the app allows two simultaneous searches
+            and the database has eight CPUs, so the worst case remains bounded at four ANN passes.
+            """
+            nonlocal search_done
+            specs = list(specs)
+            if not specs:
+                return []
+            fork = getattr(getattr(self, "r", None), "fork", None)
+            workers = min(max(1, int(cfg.search_workers)), len(specs))
+            if workers == 1 or not callable(fork):
+                return [searched(
+                    progress_stage, spec["query"], subject, m, ledger,
+                    progress_round=progress_round,
+                    **{k: v for k, v in spec.items() if k != "query"})
+                    for spec in specs]
+
+            def fetch(spec):
+                worker = fork()
+                started = time.monotonic()
+                try:
+                    kwargs = {k: v for k, v in spec.items()
+                              if k not in ("query", "is_seed")}
+                    result = self._fetch_search(
+                        spec["query"], subject, m, retriever=worker, **kwargs)
+                    return result, round(time.monotonic() - started, 1)
+                finally:
+                    close = getattr(worker, "close", None)
+                    if callable(close):
+                        close()
+
+            out = []
+            with ThreadPoolExecutor(max_workers=workers,
+                                    thread_name_prefix="patent-agent-search") as ex:
+                futures = [ex.submit(fetch, spec) for spec in specs]
+                # Consume in input order. All futures are already running/queued, so this keeps
+                # ledger tie behavior deterministic without forfeiting retrieval concurrency.
+                for spec, future in zip(specs, futures):
+                    fetched, seconds = future.result()
+                    result = self._apply_search(
+                        fetched, ledger, is_seed=bool(spec.get("is_seed")))
+                    search_done += 1
+                    detail = {
+                        "search_done": search_done,
+                        "search_max": search_max,
+                        "search_seconds": seconds,
+                        "families": len(ledger.families_seen),
+                    }
+                    if progress_round is not None:
+                        detail["round"] = progress_round
+                    emit(progress_stage, detail)
+                    out.append(result)
+            return out
+
+        # Seed round: expose the vector-equivalent backbone before slower lexical/graph expansion.
+        # In claims mode the previous combined pass waited for claim_bm25 before emitting anything;
+        # a production 25M-chunk query measured 331.8 s.  Claim-dense already yields the useful
+        # semantic head, so stream it first and continue the precise lexical/CPC/citation channels
+        # as the next counted pass.  The all-text path keeps its established single-pass ranking.
+        if split_claim_seed:
+            searched("search_progress", query_text, subject, m, ledger,
+                     element=None, is_seed=True, cfg=["claim_dense"])
+            emit("partial", {"report": self.report(
+                query_text, subject, m, ledger, rounds=0, rerank=False)})
+            searched("search_progress", query_text, subject, m, ledger, element=None,
+                     is_seed=True, cfg=["claim_bm25", "cpc", "citation", "qbe"])
+        else:
+            searched("search_progress", query_text, subject, m, ledger,
+                     element=None, is_seed=True)
+            emit("partial", {"report": self.report(
+                query_text, subject, m, ledger, rounds=0, rerank=False)})
         # attribute seed hits to elements too (cap the per-element seed searches for runtime)
-        for el in elements[:6]:
-            self._run_search(el, subject, m, ledger, element=el)
+        searched_batch("seed_progress", [
+            {"query": el, "element": el} for el in elements[:6]
+        ])
         ledger.note_round(len(ledger.families_seen))
         emit("seeded", {"families": len(ledger.families_seen)})
 
@@ -221,6 +381,7 @@ class CoverageAgent:
             rnd += 1
             before = len(ledger.families_seen)
             targets = (ledger.undercovered() or elements)[:cfg.elements_per_round]
+            round_specs = []
             for el in targets:
                 if llm.usage()["calls"] >= cfg.llm_call_budget:
                     break
@@ -231,9 +392,15 @@ class CoverageAgent:
                     ledger.languages.add("de")
                     alt_vecs = [embed.embed_query(de, 768)]
                 for q in (plan.get("queries") or [el])[:3]:
-                    self._run_search(q, subject, m, ledger, element=el,
-                                     cpc=plan.get("cpc"), phrases=plan.get("phrases"),
-                                     assignees=plan.get("assignees"), alt_vecs=alt_vecs)
+                    round_specs.append({
+                        "query": q,
+                        "element": el,
+                        "cpc": plan.get("cpc"),
+                        "phrases": plan.get("phrases"),
+                        "assignees": plan.get("assignees"),
+                        "alt_vecs": alt_vecs,
+                    })
+            searched_batch("round_progress", round_specs, progress_round=rnd)
             ledger.note_round(len(ledger.families_seen) - before)
             emit("round", {"round": rnd, "families": len(ledger.families_seen)})
 
@@ -249,25 +416,37 @@ class CoverageAgent:
                            on_progress=_rerank_progress)
 
     # ---- report --------------------------------------------------------------------------
-    def _final_rank(self, query_text, ledger, top=25, rerank=True, on_progress=None):
+    def _final_rank(self, query_text, ledger, top=25, rerank=True, on_progress=None,
+                    return_meta=False):
         """Rank by final_score (seed backbone + centrality/citation promote), then cross-encoder
         rerank the head only (reranking within the head can't change recall@100 — the top-100
         set is fixed). (spec §4 + §6 step 4). `rerank=False` skips the (slow, CPU) cross-encoder —
         used for the fast progressive/partial snapshot that streams to the UI before the full run."""
         ordered = sorted(ledger.family_score, key=ledger.final_score, reverse=True)
         if not rerank:
-            return ordered
+            meta = {"attempted": False, "applied": False, "scored": 0,
+                    "requested": 0, "model": "BAAI/bge-reranker-v2-m3"}
+            return (ordered, meta) if return_meta else ordered
         head = ordered[:top]
         fam = [(fk, ledger.family_pid.get(fk), ledger.final_score(fk), {}) for fk in head]
-        reranked = self.r.rerank_families(query_text, fam, top=min(25, len(fam)),
-                                          on_progress=on_progress)
+        outcome = self.r.rerank_families(query_text, fam, top=min(25, len(fam)),
+                                         on_progress=on_progress, return_meta=return_meta)
+        if (return_meta and isinstance(outcome, tuple) and len(outcome) == 2
+                and isinstance(outcome[1], dict)):
+            reranked, meta = outcome
+        else:
+            # Compatibility for simple Retriever test doubles and third-party adapters which
+            # still implement the historical list-only return contract.
+            reranked = outcome
+            meta = {"attempted": bool(head), "applied": None, "scored": None,
+                    "requested": len(head), "model": "BAAI/bge-reranker-v2-m3"}
         ranked = [fk for fk, _, _, _ in reranked] + ordered[top:]
-        return ranked
+        return (ranked, meta) if return_meta else ranked
 
     def report(self, query_text, subject, mode, ledger: CoverageLedger, rounds, rerank=True,
                on_progress=None):
-        ranked_families = self._final_rank(query_text, ledger, rerank=rerank,
-                                           on_progress=on_progress)
+        ranked_families, cross_encoder_rerank = self._final_rank(
+            query_text, ledger, rerank=rerank, on_progress=on_progress, return_meta=True)
         # combinational (inventive-step) view: which reference supplies which element
         cb = CombinationBuilder(ledger.elements)
         element_report = {}
@@ -282,9 +461,14 @@ class CoverageAgent:
         combination = cb.combination()
         cov = ledger.element_coverage()
         return {
-            "query": query_text[:200],
+            # This report is the durable saved record.  Keeping only 200 characters made a long
+            # disclosure impossible to recover from History/export even though the search itself
+            # used the full text.  Cap only pathological payloads; the UI clamps visually.
+            "query": query_text[:20000],
             "subject": subject.number if subject else None,
             "mode": mode.value,
+            "search_focus": ("claims" if getattr(self, "_search_config", "agentic")
+                             == "claim_agentic" else "all_text"),
             "rounds": rounds,
             "n_families": len(ledger.families_seen),
             "elements": ledger.elements,
@@ -295,6 +479,7 @@ class CoverageAgent:
             "languages": sorted(ledger.languages),
             "cpc_branches": sorted(ledger.cpc_branches),
             "llm_usage": llm.usage(),
+            "cross_encoder_rerank": cross_encoder_rerank,
             "ranked_families": ranked_families,
             "channel_families": {k: sorted(v) for k, v in ledger.channel_families.items()},
             "round_new_families": ledger.round_new,

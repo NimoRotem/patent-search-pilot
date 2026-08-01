@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}User administration — rotemAI patent search{% endblock %}
+{% block body %}
+<div class="wrap adminpage">
+  <div class="pagehead">
+    <div><h1>User administration</h1><p class="muted">Promote administrators or suspend access without deleting reports.</p></div>
+    <a class="btn ghost sm" href="{{ request.script_root }}/admin/searches">All account searches</a>
+  </div>
+  {% if store_error %}<div class="formerror" role="alert">Account store unavailable: {{ store_error }}</div>{% endif %}
+  <section class="adminstats">
+    <div class="statcard"><b>{{ users|length }}</b><span>accounts</span></div>
+    <div class="statcard"><b>{{ mail_stats.get('pending',0) + mail_stats.get('retry',0) }}</b><span>emails queued</span></div>
+    <div class="statcard"><b>{{ mail_stats.get('sent',0) }}</b><span>emails sent</span></div>
+    <div class="statcard"><b class="{{ 'good' if mail_transport.configured else 'bad' }}">{{ 'ready' if mail_transport.configured else 'needs configuration' }}</b><span>{{ mail_transport.transport }} transport · {{ mail_transport.detail }}</span></div>
+  </section>
+  <div class="tablewrap">
+    <table class="admintable">
+      <thead><tr><th>User</th><th>Role</th><th>State</th><th>Searches</th><th>Joined / last login</th><th>Manage</th></tr></thead>
+      <tbody>
+      {% for u in users %}
+      <tr>
+        <td data-label="User"><b>{{ u.full_name }}</b><span>{{ u.email }}</span></td>
+        <td data-label="Role">{{ 'Administrator' if u.is_admin else 'User' }}</td>
+        <td data-label="State"><span class="badge {{ 'b-cached' if u.is_active else 'b-warn' }}">{{ 'active' if u.is_active else 'suspended' }}</span></td>
+        <td data-label="Searches">{{ u.searches }} total · {{ u.saved_searches }} saved</td>
+        <td data-label="Joined / login"><span>{{ u.created_at }}</span><span>{{ u.last_login_at or 'never' }}</span></td>
+        <td data-label="Manage"><div class="adminactions">
+          <form method="post" action="{{ request.script_root }}/admin/users/{{ u.id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="{{ 'demote' if u.is_admin else 'promote' }}">
+            <button class="btn ghost xs" type="submit">{{ 'Remove admin' if u.is_admin else 'Make admin' }}</button>
+          </form>
+          <form method="post" action="{{ request.script_root }}/admin/users/{{ u.id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="{{ 'deactivate' if u.is_active else 'activate' }}">
+            <button class="btn ghost xs" type="submit">{{ 'Suspend' if u.is_active else 'Reactivate' }}</button>
+          </form>
+        </div></td>
+      </tr>
+      {% else %}<tr><td colspan="6" class="muted adminempty">No named accounts yet. The shared administrator login remains active.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

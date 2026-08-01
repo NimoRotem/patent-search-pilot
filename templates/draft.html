@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}{{ project.title }} — US patent draft{% endblock %}
+{% block body %}
+<div class="wrap draftpage" data-draft-id="{{ project.id }}" data-draft-status="{{ project.status }}">
+  <div class="drafthead">
+    <div>
+      <div class="draftcrumb"><a href="{{ request.script_root }}/drafts">Drafts</a> / {{ project.id }}</div>
+      <h1>{{ project.title }}</h1>
+      <div class="draftmeta">
+        <span class="statuspill status-{{ project.status }}" id="draftStatus">{{ project.status }}</span>
+        <span>revision {{ project.revision }}</span><span>{{ project.references|length }} selected sources</span>
+        <a href="{{ request.script_root }}/report/{{ project.search_slug }}">source report ↗</a>
+      </div>
+    </div>
+    {% if version %}<div class="drafthead-actions">
+      <a class="btn ghost sm" href="{{ request.script_root }}/drafts/{{ project.id }}/print?version={{ version.version_no }}" target="_blank" rel="noopener">Print review copy</a>
+      <a class="btn ghost sm" href="{{ request.script_root }}/drafts/{{ project.id }}/download/md?version={{ version.version_no }}">Markdown</a>
+      <a class="btn ghost sm" href="{{ request.script_root }}/drafts/{{ project.id }}/download/pdf?version={{ version.version_no }}">PDF</a>
+      <a class="btn sm" href="{{ request.script_root }}/drafts/{{ project.id }}/download/docx?version={{ version.version_no }}">Download Word</a>
+    </div>{% endif %}
+  </div>
+  {% if created %}<div class="formsuccess" role="status">Draft workspace created. Review the disclosure and sources, then generate the first version.</div>{% endif %}
+  {% if message %}<div class="formsuccess" role="status">{{ message }}</div>{% endif %}
+  {% if error %}<div class="formerror" role="alert">{{ error }}</div>{% endif %}
+
+  {% if project.status in ['queued','generating'] %}
+  <section class="panel draftjob" aria-live="polite" aria-busy="true">
+    <span class="spin" aria-hidden="true"></span>
+    <div><h2>{{ 'Draft generation queued' if project.status == 'queued' else 'Preparing the application sections' }}</h2>
+      <p id="draftJobText">The durable worker is assembling a grounded draft. You may keep this page open or leave safely.</p>
+      {% if current_user.email_on_completion %}<p class="small good">Email notification is on for {{ current_user.email }}.</p>
+      {% else %}<p class="small muted">Draft email is off in your <a href="{{ request.script_root }}/account">profile</a>; progress remains in this library.</p>{% endif %}
+    </div>
+    {% if latest_job and latest_job.status in ['queued','running'] %}
+    <form method="post" action="{{ request.script_root }}/drafts/{{ project.id }}/cancel/{{ latest_job.id }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm" type="submit">Cancel generation</button>
+    </form>{% endif %}
+  </section>
+  {% elif latest_job and latest_job.status == 'failed' %}
+  <section class="panel draftjob failed">
+    <div><h2>Generation needs another attempt</h2><p>{{ latest_job.last_error or 'The drafting worker could not complete this version.' }}</p></div>
+    <form method="post" action="{{ request.script_root }}/drafts/{{ project.id }}/retry/{{ latest_job.id }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn" type="submit">Retry generation</button>
+    </form>
+  </section>
+  {% endif %}
+
+  <div class="draftworkspace">
+    <aside class="draftside" aria-label="Draft workspace navigation">
+      <a href="#application">Application</a><a href="#inputs">Invention inputs</a><a href="#sources">Prior-art sources</a><a href="#versions">Version history</a>
+      <div class="draftreview">
+        <b>Before filing</b>
+        <span>Resolve every drafting note.</span><span>Verify claim support and antecedent basis.</span><span>Confirm inventors, priority, drawings and formalities.</span><span>Have US patent counsel review.</span>
+      </div>
+    </aside>
+
+    <div class="draftmain">
+      <section class="panel draftpanel" id="application">
+        <div class="draftpanel-head">
+          <div><h2>Application working draft</h2>
+            <p class="small muted">{{ 'Version ' ~ version.version_no ~ ' · ' ~ version.status if version else 'No generated version yet' }}</p></div>
+          {% if version %}
+          <form method="post" action="{{ request.script_root }}/drafts/{{ project.id }}/versions/{{ version.version_no }}/status" class="inlineform">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select name="status" aria-label="Version review status"><option value="draft"{% if version.status == 'draft' %} selected{% endif %}>Draft</option><option value="approved"{% if version.status == 'approved' %} selected{% endif %}>Review approved</option><option value="archived"{% if version.status == 'archived' %} selected{% endif %}>Archived version</option></select>
+            <button class="btn ghost sm" type="submit">Update</button>
+          </form>
+          <form method="post" action="{{ request.script_root }}/drafts/{{ project.id }}/versions/{{ version.version_no }}/restore" class="inlineform">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn ghost sm" type="submit">Restore as new version</button>
+          </form>{% endif %}
+        </div>
+        <div class="draftwarning"><b>Working material, not a legal opinion.</b> Prior art may be characterized only in Background with <code>[REF:publication]</code> source tags. All invention matter and claim limitations must come from the inventor disclosure.</div>
+        {% if version %}
+        <form method="post" action="{{ request.script_root }}/drafts/{{ project.id }}/versions" class="drafteditor">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="base_version_no" value="{{ version.version_no }}">
+          {% for key, heading in section_order %}
+          <label for="section-{{ key }}">{{ heading }}</label>
+          <textarea id="section-{{ key }}" name="{{ key }}" rows="{{ 4 if key in ['title','cross_reference','field','abstract'] else (10 if key in ['background','summary','drawing_descriptions','claims'] else 18) }}" required>{{ version.sections[key] }}</textarea>
+          {% endfor %}
+          <div class="draftcreate-actions"><span class="small muted">Saving creates a new immutable version; this version remains in history.</span><button class="btn" type="submit">Save as new version</button></div>
+        </form>
+        {% if version_diff %}<details class="versiondiff"><summary>Changes from the previous version</summary><pre>{{ version_diff }}</pre></details>{% endif %}
+        {% else %}
+        <div class="draftempty"><p>Review the inputs and selected sources below, then generate a structured application.</p></div>
+        {% endif %}
+      </section>
+
+      <details class="panel draftpanel" id="inputs"{% if not version %} open{% endif %}>
+        <summary><span><b>Invention inputs</b><small>Revision {{ project.revision }} · source of truth for the draft</small></span></summary>
+        <form method="post" action="{{ request.script_root }}/drafts/{{ project.id }}/project" class="draftinputs">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="expected_revision" value="{{ project.revision }}">
+          <label for="project-title">Working title</label><input id="project-title" type="text" name="title" maxlength="240" value="{{ project.title }}" required>
+          <label for="project-disclosure">Inventor disclosure</label><textarea id="project-disclosure" name="disclosure_text" rows="14" maxlength="240000" required>{{ project.disclosure_text }}</textarea>
+          <label for="project-notes">Inventor and filing notes</label><textarea id="project-notes" name="inventor_notes" rows="6" maxlength="40000">{{ project.inventor_notes }}</textarea>
+          <button class="btn ghost" type="submit">Save inputs</button>
+        </form>
+      </details>
+
+      <details class="panel draftpanel" id="sources"{% if not version %} open{% endif %}>
+        <summary><span><b>Prior-art sources</b><small>{{ project.references|length }} selected from the ranked report</small></span></summary>
+        <form method="post" action="{{ request.script_root }}/drafts/{{ project.id }}/references">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="expected_revision" value="{{ project.revision }}">
+          <div class="draftrefs compact">
+          {% for card in report_cards %}<label class="draftref">
+            <input type="checkbox" name="pubs" value="{{ card.pub }}"{% if card.pub in selected_pubs %} checked{% endif %}>
+            <span class="draftref-rank">#{{ card.rank }}</span><span><b>{{ card.pub }}</b> · {{ card.title or '(untitled)' }}<small>{{ card.get('relevancy_opinion') or (card.abstract or '')[:160] }}</small></span>
+          </label>{% endfor %}
+          </div>
+          <button class="btn ghost" type="submit">Save source selection</button>
+        </form>
+      </details>
+
+      {% if project.status not in ['queued','generating','archived'] %}
+      <section class="panel draftpanel generatepanel">
+        <h2>{{ 'Generate a new version' if version else 'Generate the first application draft' }}</h2>
+        <p class="small muted">Runs in the background with durable retries. Editing inputs or sources while queued safely supersedes stale work.</p>
+        <form method="post" action="{{ request.script_root }}/drafts/{{ project.id }}/generate">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="idempotency_key" value="{{ generation_key }}">
+          <label for="draft-instructions">Optional claim/drafting instructions</label>
+          <textarea id="draft-instructions" name="instructions" rows="4" maxlength="12000" placeholder="For example: include independent apparatus and method claims; emphasize the disclosed interchangeable-interface mechanism."></textarea>
+          <button class="btn" type="submit">{{ 'Generate revised draft' if version else 'Generate US application draft' }}</button>
+        </form>
+      </section>{% endif %}
+
+      <section class="panel draftpanel" id="versions">
+        <h2>Version history</h2>
+        {% if project.versions %}<div class="versionlist">
+          {% for item in project.versions %}<a class="versionrow{% if version and item.version_no == version.version_no %} current{% endif %}" href="{{ request.script_root }}/drafts/{{ project.id }}?version={{ item.version_no }}">
+            <b>Version {{ item.version_no }}</b><span>{{ item.status }} · {{ item.model_name or 'manual edit' }}</span><span>{{ item.created_at }}</span>
+          </a>{% endfor %}
+        </div>{% else %}<p class="muted">No versions yet.</p>{% endif %}
+      </section>
+
+      <form method="post" action="{{ request.script_root }}/drafts/{{ project.id }}/archive" class="archiveproject">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="archived" value="{{ '0' if project.status == 'archived' else '1' }}">
+        <button class="btn ghost sm" type="submit">{{ 'Restore project' if project.status == 'archived' else 'Archive project' }}</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+{% if project.status in ['queued','generating'] %}<script>
+(function(){
+  const base = window.APP_BASE || '', id = {{ project.id|tojson }};
+  async function poll(){
+    try{
+      const response = await fetch(base + '/api/drafts/' + id + '/status', {headers:{'Accept':'application/json'}});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Status unavailable');
+      const state = data.job && data.job.status || data.status;
+      document.getElementById('draftStatus').textContent = state;
+      document.getElementById('draftJobText').textContent = state === 'running'
+        ? 'Reading the disclosure, selected references and claim strategy; preparing all application sections…'
+        : 'Queued durably. It is safe to close this page; the worker will continue.';
+      if (data.ready_url || ['failed','cancelled','superseded'].includes(state)) location.reload();
+      else setTimeout(poll, 3000);
+    }catch(error){
+      document.getElementById('draftJobText').textContent = 'Reconnecting to the durable job. The draft continues on the server.';
+      setTimeout(poll, 6000);
+    }
+  }
+  setTimeout(poll, 1200);
+})();
+</script>{% endif %}
+{% endblock %}

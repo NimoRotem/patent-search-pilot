@@ -1,6 +1,5 @@
 """Retrieval fusion tests — LOCK IN the M3 weighted-RRF + dense-floor fix as a regression.
 Pure logic (no DB/embed): synthetic per-channel rankings fed straight into Retriever.rrf()."""
-import pytest
 from retrieval import Retriever, CHANNEL_WEIGHTS, RRF_K, DENSE_FLOOR
 
 
@@ -75,3 +74,51 @@ def test_family_dedup_keeps_best_per_family():
     fams = [fk for fk, _pid, _s, _pr in out]
     assert fams == ["famA", "famB"], "one row per family, best-first"
     assert out[0][1] == 1, "kept the higher-scored member of famA"
+
+
+def test_fork_gets_own_connection_without_reloading_family_map(monkeypatch):
+    """Concurrent agent workers share only immutable map data, never a psycopg connection."""
+    import retrieval
+
+    made = []
+
+    class FakeConnection:
+        def __init__(self):
+            self.autocommit = False
+            self.statements = []
+            self.closed = False
+
+        def cursor(self):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, sql, params=None):
+            self.statements.append(sql)
+
+        def fetchall(self):
+            return []
+
+        def close(self):
+            self.closed = True
+
+    def connect():
+        conn = FakeConnection()
+        made.append(conn)
+        return conn
+
+    monkeypatch.setattr(retrieval.db, "connect", connect)
+    parent = Retriever.__new__(Retriever)
+    parent._fam = {1: "family-one"}
+    child = parent.fork()
+
+    assert len(made) == 1
+    assert child.conn is made[0]
+    assert child._fam is parent._fam
+    assert not any("SELECT id" in sql for sql in child.conn.statements)
+    child.close()
+    assert child.conn.closed is True

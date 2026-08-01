@@ -197,7 +197,11 @@ def _claim_chart(doc, model):
 
 
 def _reference(doc, r, n):
-    doc.add_heading(f"{n}. {r['pub']} — {r['title'] or '(untitled)'}", level=2)
+    #  The heading carries the same two things the card's top line does: the rank the search gave
+    #  it and its relevancy. An export that drops them silently re-orders the reader's sense of
+    #  which reference mattered.
+    rel = f"  [relevancy {r['relevancy']}/100]" if r.get("relevancy") is not None else ""
+    doc.add_heading(f"{n}. {r['pub']} — {r['title'] or '(untitled)'}{rel}", level=2)
     # biblio + drawing side by side via a 2-col table
     tbl = doc.add_table(rows=1, cols=2)
     tbl.columns[0].width = Inches(4.4); tbl.columns[1].width = Inches(2.2)
@@ -207,8 +211,16 @@ def _reference(doc, r, n):
     line("Assignee", "; ".join(r["assignees"]))
     line("Inventors", ", ".join(r["inventors"]))
     line("Priority / Filing / Published", f"{r['priority_date'] or '—'} / {r['filing_date'] or '—'} / {r['publication_date'] or '—'}")
-    line("Family", r["family_id"]); line("CPC", ", ".join(r["cpc"]))
-    line("Legal status", r["legal_status"])
+    #  Family: the card's worldwide "Family of N in M jurisdictions" summary is what a reader can
+    #  act on; the bare DOCDB family id is an internal key and means nothing on paper. Keep the id
+    #  only as a fallback for a reference whose family we could not resolve.
+    line("Family", r.get("family_summary") or r.get("family_id"))
+    line("CPC", ", ".join(r["cpc"]))
+    line("Legal status", r.get("status_label") or r.get("legal_status"))
+    if r.get("legal_status") and r.get("status_label"):
+        line("Legal events", r["legal_status"])
+    if r.get("found_via"):
+        line("Found via", ", ".join(r["found_via"]))
     bp = left.add_paragraph(); _run(bp, "Prior-art basis: ", bold=True)
     _run(bp, _basis_label(r["basis"]), color=(GOOD if r["basis"] == "public_prior_art" else SECRET if r["basis"] == "secret_prior_art" else MUTED))
     _run(bp, f"     Match: {r['match_score']}")
@@ -225,8 +237,15 @@ def _reference(doc, r, n):
             _run(right.paragraphs[0], "[facsimile not digitized]", size=8, color=WARN)
     else:
         _run(right.paragraphs[0], "[facsimile not digitized]", size=8, color=WARN)
-    if r.get("why"):
-        p = doc.add_paragraph(); _run(p, "Why relevant: ", bold=True); _run(p, r["why"])
+    #  Two different sentences, and the difference matters: `relevancy_opinion` is the reranker's
+    #  own written take (what the card shows under "Why relevant"), `why` is the separately
+    #  grounded rationale whose element claims were checked against the shown text. Print both
+    #  when they differ rather than silently picking one.
+    if r.get("relevancy_opinion"):
+        p = doc.add_paragraph(); _run(p, "Why relevant: ", bold=True); _run(p, r["relevancy_opinion"])
+    if r.get("why") and r["why"] != r.get("relevancy_opinion"):
+        p = doc.add_paragraph()
+        _run(p, "Grounded rationale: ", bold=True); _run(p, r["why"])
     if r.get("quoted"):
         q = r["quoted"]
         p = doc.add_paragraph(); _run(p, f"Relevant passage ({q['kind']} {q['coord']}, similarity {q['score']}):", bold=True, size=9)

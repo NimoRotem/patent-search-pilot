@@ -87,8 +87,8 @@ MODE_STATUS = {
         summary="Which in-force claims in chosen jurisdictions a product might infringe.",
         reason=("Freedom-to-operate is not implemented. It is not a prior-art search: it needs "
                 "the legal status of every candidate — in force, lapsed, term, SPC extension, "
-                "per jurisdiction. This corpus has legal-status data for about 1.5% of its "
-                "publications, so an FTO answer would be unsound rather than merely "
+                "per jurisdiction. Legal-status coverage in this corpus is sparse and is not "
+                "normalized for enforceability, so an FTO answer would be unsound rather than merely "
                 "incomplete. No date window can substitute for it."),
         missing=("normalized legal_events coverage", "patent term + lapse/annuity data",
                  "SPC / term-extension data", "per-jurisdiction claim scope")),

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Drafts — rotemAI patent search{% endblock %}
+{% block body %}
+<div class="wrap draftpage">
+  <div class="pagehead draftlibrary-head">
+    <div>
+      <h1>US patent drafts</h1>
+      <p class="muted">Editable, versioned working applications grounded in your own disclosure and selected search references.</p>
+    </div>
+    <a class="btn" href="{{ request.script_root }}/drafts/new">Start from a report</a>
+  </div>
+
+  {% if current_is_admin %}
+  <nav class="historytabs" aria-label="Draft library scope">
+    <a class="{% if not include_all %}active{% endif %}" href="{{ request.script_root }}/drafts">My drafts</a>
+    <a class="{% if include_all %}active{% endif %}" href="{{ request.script_root }}/drafts?all=1">All account drafts</a>
+  </nav>
+  {% endif %}
+
+  {% if projects %}
+  <div class="draftlist">
+    {% for d in projects %}
+    <article class="panel draftrow">
+      <div class="draftrow-main">
+        <div class="draftrow-top">
+          <span class="statuspill status-{{ d.status }}">{{ d.status }}</span>
+          <span class="small muted">version {{ d.latest_version_no or 0 }} · {{ d.reference_count or 0 }} sources</span>
+        </div>
+        <h2><a href="{{ request.script_root }}/drafts/{{ d.id }}">{{ d.title }}</a></h2>
+        <p class="small muted">From report <a href="{{ request.script_root }}/report/{{ d.search_slug }}">{{ d.search_slug }}</a>{% if include_all %} · {{ d.full_name }} · {{ d.email }}{% endif %}</p>
+      </div>
+      <a class="btn ghost sm" href="{{ request.script_root }}/drafts/{{ d.id }}">{{ 'Review draft' if d.latest_version_no else 'Continue setup' }}</a>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <section class="panel emptystate">
+    <div class="emptyicon" aria-hidden="true">¶</div>
+    <h2>{{ 'No account drafts yet' if include_all else 'Turn a completed search into an application' }}</h2>
+    <p class="muted">Choose a search report, confirm the inventor disclosure, select the most useful references, then generate a structured US utility application working draft.</p>
+    <a class="btn" href="{{ request.script_root }}/drafts/new">Choose a search report</a>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

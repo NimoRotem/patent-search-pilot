@@ -28,6 +28,12 @@ export DELTA_EMBED_THROTTLE_S="${DELTA_EMBED_THROTTLE_S:-2.0}"
 # directly -- otherwise every line is duplicated. This way the log captures the logger,
 # embed.py's progress output and any traceback, each exactly once.
 export DELTA_LOG_TO_FILE=0
+# Ingest scope, PINNED. Empty = worldwide (no country filter). The weekly delta shares
+# ingest_bq's jurisdiction predicate with the bootstrap, so if this ever disagreed with the
+# scope the corpus was built at, the cron would slowly re-narrow it one week at a time.
+# BigQuery bills columns referenced, not rows matched, so worldwide costs the same as four
+# offices at the source.
+export INGEST_JURISDICTIONS="${INGEST_JURISDICTIONS:-}"
 
 {
   echo "=============================================================================="

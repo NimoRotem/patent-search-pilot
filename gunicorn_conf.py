@@ -77,10 +77,29 @@ def on_starting(server):
 
 
 def worker_exit(server, worker):
-    """Tear the rerank child down with its parent so a recycled worker cannot orphan a ~700 MB
-    process."""
+    """Tear background resources down with the worker.
+
+    Besides the rerank child, named-account mode owns a mail thread and report archives own a
+    bounded executor. Explicit shutdown keeps graceful deploys from leaving old workers or tasks
+    behind after gunicorn has stopped accepting requests.
+    """
     try:
         import rerank_pool
         rerank_pool.shutdown()
+    except Exception:
+        pass
+    try:
+        import notifications
+        notifications.stop_worker()
+    except Exception:
+        pass
+    try:
+        import draft_worker
+        draft_worker.stop_worker()
+    except Exception:
+        pass
+    try:
+        import report_archive
+        report_archive.shutdown(wait=False)
     except Exception:
         pass

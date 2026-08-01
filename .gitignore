@@ -41,3 +41,4 @@ data/ops_budget.json
 data/translations/
 data/finish_embed.*
 *.bak-uiredesign-*
+.env.bak-*

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Page not found — rotemAI patent search{% endblock %}
+{% block body %}
+<div class="wrap">
+  <section class="panel gen" aria-labelledby="missingTitle">
+    <div class="eyebrow">404 · page not found</div>
+    <h1 id="missingTitle" style="margin-top:8px">That page is not available</h1>
+    <p class="muted" style="margin-top:10px;max-width:620px">The address may be outdated, or the
+      report may belong to another account. Your searches and drafts have not been changed.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:20px">
+      <a class="btn" href="{{ request.script_root }}/">Start a new search</a>
+      {% if current_user %}<a class="btn ghost" href="{{ request.script_root }}/history">Search history</a>{% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}

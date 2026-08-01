@@ -14,7 +14,7 @@ import os
 import re
 from dataclasses import dataclass, field
 import db, embed, rerank as rr
-from search_modes import Mode, Subject, citable_where
+from search_modes import Mode, citable_where
 from config import SEED_CPC
 
 RRF_K = 40             # smaller K sharpens the rank-1 advantage of a strong channel
@@ -44,6 +44,13 @@ RERANK_CHUNK = int(os.environ.get("RERANK_CHUNK", "0"))
 # multi-strong-channel agreement can still rank ABOVE pure dense (the agent's unique-find lift).
 CHANNEL_WEIGHTS = {
     "dense": 1.00,
+    # Explicit claim search.  This is intentionally its own channel rather than a client-side
+    # label: both semantic and lexical candidates are restricted to claim chunks, then the normal
+    # citation/family/QBE expansion recovers related filings around those claim-level seeds.
+    # Keep the global invariant that dense semantic retrieval is the strongest individual
+    # signal. In the claim-search preset the general dense channel is absent, so claim_dense
+    # still leads that mode without silently changing the normal-search fusion hierarchy.
+    "claim_dense": 1.00,
     # results streamed back from the sibling federated app (federation.py). Ranked below local
     # dense (which is tuned on an in-domain corpus) but above every lexical/classification
     # channel, because federated hits arrive already multi-source-fused, reranked and
@@ -55,6 +62,7 @@ CHANNEL_WEIGHTS = {
     "qbe": 0.50,            # query-by-example (dense from a strong hit)
     "biblio": 0.30,         # assignee/inventor prior
     "bm25": 0.25,           # broad lexical
+    "claim_bm25": 0.35,     # lexical match inside claims only
     "cpc": 0.15,            # very broad classification prior
 }
 DENSE_FLOOR = 30           # the top-N dense hits are guaranteed a floor so weak channels can
@@ -184,7 +192,7 @@ class Result:
 
 
 class Retriever:
-    def __init__(self):
+    def __init__(self, family_map=None):
         self.conn = db.connect()
         self.conn.autocommit = True
         with self.conn.cursor() as c:
@@ -196,11 +204,25 @@ class Retriever:
             c.execute("SET hnsw.max_scan_tuples = 12000")
         # pre-load pid -> family map once (one query) — per-pub lookups during dedup were the
         # dominant hidden cost (~1000 queries/search).
-        self._fam = {}
-        with self.conn.cursor() as c:
-            c.execute("SELECT id, COALESCE(NULLIF(simple_family_id,''), publication_number) k FROM publications")
-            for r in c.fetchall():
-                self._fam[r["id"]] = r["k"]
+        if family_map is None:
+            self._fam = {}
+            with self.conn.cursor() as c:
+                c.execute("SELECT id, COALESCE(NULLIF(simple_family_id,''), publication_number) k FROM publications")
+                for r in c.fetchall():
+                    self._fam[r["id"]] = r["k"]
+        else:
+            # Agent element searches run concurrently on independent PostgreSQL connections. The
+            # publication->family map is several million rows and immutable during a search, so
+            # share it instead of re-reading and duplicating it for every short-lived worker.
+            self._fam = family_map
+
+    def fork(self):
+        """Return a search worker with its own DB connection and the shared read-only family map."""
+        return Retriever(family_map=self._fam)
+
+    def close(self):
+        """Release this retriever's connection (used by bounded agent search workers)."""
+        self.conn.close()
 
     # ---- helpers -------------------------------------------------------------------------
     def family_key(self, pid):
@@ -229,6 +251,16 @@ class Retriever:
         v = _vec(qvec)
         return self._pubs_from_chunks(sql, [v, *dp, v, CHUNK_FETCH])
 
+    def channel_claim_dense(self, qvec, subject=None, mode=None):
+        """Semantic search restricted to patent claims (the claim-search product mode)."""
+        dc, dp = _date_clause(subject, mode)
+        sql = (f"SELECT c.publication_id, 1-(c.embedding <=> %s::vector) AS score "
+               f"FROM chunks c JOIN publications p ON p.id=c.publication_id "
+               f"WHERE c.embedding IS NOT NULL AND c.kind IN ('claim_own','claim_resolved') {dc} "
+               f"ORDER BY c.embedding <=> %s::vector LIMIT %s")
+        v = _vec(qvec)
+        return self._pubs_from_chunks(sql, [v, *dp, v, CHUNK_FETCH])
+
     def channel_bm25(self, q, subject=None, mode=None):
         # OR the query's lexemes (websearch/plainto AND every term -> a long query-by-example
         # text would match nothing). ts_rank_cd still ranks by term density. GIN-indexed.
@@ -249,6 +281,28 @@ class Retriever:
                f"FROM chunks c JOIN publications p ON p.id=c.publication_id, tq "
                f"WHERE tq.q IS NOT NULL AND c.kind <> 'paragraph' AND c.tsv @@ tq.q {dc} "
                f"GROUP BY c.publication_id ORDER BY score DESC LIMIT %s")
+        return self._pubs_from_chunks(sql, [q, *dp, PUB_CAP])
+
+    def channel_claim_bm25(self, q, subject=None, mode=None):
+        """Precise lexical search restricted to claims, fused with claim_dense by weighted RRF.
+
+        Claim mode used to OR as many as 18 terms and then group every matching claim chunk.  On
+        the 25M-chunk corpus, a short element such as ``base plate controller`` matched millions of
+        rows and one pass took more than five minutes in production.  Claim-dense already supplies
+        the broad-recall channel, so this complementary lexical channel deliberately requires the
+        four most specific (longest) stemmed terms.  The GIN index can intersect those postings
+        directly, keeping the pass bounded while still surfacing literal claim-language matches.
+        """
+        if not q or not q.strip():
+            return []
+        dc, dp = _date_clause(subject, mode)
+        sql = (f"WITH tq AS (SELECT to_tsquery('english', NULLIF(array_to_string(ARRAY("
+               f"  SELECT w FROM unnest(tsvector_to_array(to_tsvector('english', %s))) w "
+               f"  ORDER BY length(w) DESC LIMIT 4), ' & '), '')) q) "
+               f"SELECT c.publication_id, max(ts_rank_cd(c.tsv, tq.q)) AS score "
+               f"FROM chunks c JOIN publications p ON p.id=c.publication_id, tq "
+               f"WHERE tq.q IS NOT NULL AND c.kind IN ('claim_own','claim_resolved') "
+               f"AND c.tsv @@ tq.q {dc} GROUP BY c.publication_id ORDER BY score DESC LIMIT %s")
         return self._pubs_from_chunks(sql, [q, *dp, PUB_CAP])
 
     def channel_exact(self, phrases, subject=None, mode=None):
@@ -389,9 +443,10 @@ class Retriever:
                 prov.setdefault(pid, {})[name] = rank + 1
         # dense floor: the top-DENSE_FLOOR dense hits can't score below the DENSE_FLOOR-th
         # pure-dense contribution — protects strong semantic hits from weak-channel dilution.
-        dense = channel_results.get("dense")
+        dense_name = "claim_dense" if channel_results.get("claim_dense") else "dense"
+        dense = channel_results.get(dense_name)
         if weighted and dense_floor and dense:
-            floor = CHANNEL_WEIGHTS["dense"] / (RRF_K + DENSE_FLOOR)
+            floor = CHANNEL_WEIGHTS[dense_name] / (RRF_K + DENSE_FLOOR)
             for rank, (pid, _s) in enumerate(dense[:DENSE_FLOOR]):
                 if fused.get(pid, 0.0) < floor:
                     fused[pid] = floor
@@ -447,13 +502,23 @@ class Retriever:
             return Result(ranked_pubs=[], family_ranked=[], channel_hits={}, query=query or "")
         qvec = embed.embed_query(query[:8000], 768)
         ch = {}
-        preset = {
+        presets = {
             "keyword": ["exact", "bm25"],
             "vector": ["dense"],
             "hybrid": ["exact", "bm25", "dense", "cpc"],
             "hybrid_rerank": ["exact", "bm25", "dense", "cpc"],
             "agentic": ["dense", "cpc", "citation", "qbe", "biblio", "crosslingual"],
-        }.get(config, config if isinstance(config, list) else ["bm25", "dense"])
+            "claim_agentic": ["claim_dense", "claim_bm25", "cpc", "citation", "qbe",
+                              "biblio", "crosslingual"],
+        }
+        # Callers may pass an explicit bounded channel sequence.  Resolve that before a mapping
+        # lookup: ``dict.get(config, ...)`` still hashes ``config`` before evaluating its fallback,
+        # so a list raises ``TypeError: unhashable type: 'list'`` even though it is otherwise a
+        # valid explicit preset.
+        if isinstance(config, (list, tuple)):
+            preset = list(config)
+        else:
+            preset = presets.get(config, ["bm25", "dense"])
         # Cross-lingual query translation is available (query_translations) and used by the agent,
         # but M5 diagnosis showed it does NOT help the DE gap and even hurts (the corpus is
         # English-dominant, so translating a German query to English promotes English distractors).
@@ -461,13 +526,18 @@ class Retriever:
         # per-request via alt_query_vecs / xlingual=True when a caller wants it.
         if getattr(self, "_force_xlingual", False) and "crosslingual" not in preset:
             preset = preset + ["crosslingual"]
-        if "crosslingual" in preset and not alt_query_vecs and config != "agentic":
+        if ("crosslingual" in preset and not alt_query_vecs
+                and config not in ("agentic", "claim_agentic")):
             alt_query_vecs = self.query_translations(query)
 
         if "dense" in preset:
             ch["dense"] = self.channel_dense(qvec, subject, mode)
+        if "claim_dense" in preset:
+            ch["claim_dense"] = self.channel_claim_dense(qvec, subject, mode)
         if "bm25" in preset:
             ch["bm25"] = self.channel_bm25(query, subject, mode)
+        if "claim_bm25" in preset:
+            ch["claim_bm25"] = self.channel_claim_bm25(query, subject, mode)
         if "exact" in preset and phrases:
             ch["exact"] = self.channel_exact(phrases, subject, mode)
         if "cpc" in preset:
@@ -513,7 +583,8 @@ class Retriever:
             r = c.fetchone()
             return r["text"] if r else ""
 
-    def rerank_families(self, query, fam, top=RERANK_TOP, external=None, on_progress=None):
+    def rerank_families(self, query, fam, top=RERANK_TOP, external=None, on_progress=None,
+                        return_meta=False):
         """`on_progress(done, total)` is called as scoring advances, if given.
 
         The cross-encoder is by far the longest single step in a run -- measured at ~2.4-3.1 s per
@@ -527,8 +598,27 @@ class Retriever:
         passages = [self.best_text(pid, external=external) for _, pid, _, _ in head]
         order = _rerank_progressive(query, passages, on_progress=on_progress)
         reordered = [head[i] for i, _ in order]
+        # Both reranker implementations deliberately return identity order with exact 0.0 scores
+        # when the model is unavailable, times out, or raises. Preserve that graceful fallback,
+        # but expose whether a real model result was obtained so the end-to-end acceptance gate
+        # can distinguish "the reranking stage ran" from "the reranker actually scored it".
+        # Keep this metadata local to the call: reports are generated concurrently, so a module-
+        # level "last status" would race and could attribute another request's outcome.
+        try:
+            scores = [float(score) for _, score in order]
+        except (TypeError, ValueError):
+            scores = []
+        meta = {
+            "attempted": bool(head),
+            "applied": bool(head) and len(order) == len(head) and len(scores) == len(order)
+                       and any(abs(score) > 1e-12 for score in scores),
+            "scored": len(order),
+            "requested": len(head),
+            "model": "BAAI/bge-reranker-v2-m3",
+        }
         # blend reranker score into tuple position; keep tail after
-        return reordered + tail
+        result = reordered + tail
+        return (result, meta) if return_meta else result
 
 
 # ---- document-chunk multi-vector search (parallel channel 'docchunks', spec item 3b) --------

@@ -205,34 +205,56 @@ def bq_delta_count(since, until=None, log=print):
 # asserts this against publications that the original chunker already processed -- if the
 # two ever drift, that test fails.
 
-# Publications that have no chunks AND have some text to chunk. The second condition is not
-# cosmetic: 210 publications in the live corpus (old DE-*-C documents) carry bibliographic
-# data only -- BigQuery has no title, abstract, claims or description for them, so they are
-# permanently unchunkable. Without the text predicate they would be re-queued, re-scanned and
-# re-attempted on every weekly run forever, and the "N publications need chunking" log line
-# would never reach zero, masking real backlog.
-_UNCHUNKED_SQL = """
-SELECT p.id FROM publications p
-WHERE p.id > %s
-  AND NOT EXISTS (SELECT 1 FROM chunks c WHERE c.publication_id = p.id)
-  AND (coalesce(p.title,'') <> ''
+# Publications that have no chunks AND have text THIS DEPTH SETTING WILL ACTUALLY CHUNK. The
+# second condition is not cosmetic: 210 publications in the live corpus (old DE-*-C documents)
+# carry bibliographic data only -- BigQuery has no title, abstract, claims or description for
+# them, so they are permanently unchunkable. Without the text predicate they would be re-queued,
+# re-scanned and re-attempted on every weekly run forever, and the "N publications need chunking"
+# log line would never reach zero, masking real backlog.
+#
+# TWO-TIER MADE THAT PREDICATE WRONG. Under two_tier=True the chunker skips paragraphs and figure
+# captions, so a publication whose ONLY text is a description produces zero chunks and then
+# re-queues forever -- precisely the failure the paragraph above exists to prevent. The live
+# corpus has exactly three (US-1303033-A, US-1705145-A, US-2511795-A: pre-1950 US grants with
+# description text but no title, abstract or claims), which is why the symptom was three ids and
+# not a flood. The queue therefore has to ask the same question the chunker will answer.
+_UNCHUNKED_TEXT_ANY = """(coalesce(p.title,'') <> ''
        OR coalesce(p.abstract,'') <> ''
        OR EXISTS (SELECT 1 FROM claims cl WHERE cl.publication_id = p.id)
        OR EXISTS (SELECT 1 FROM paragraphs pa WHERE pa.publication_id = p.id)
        OR EXISTS (SELECT 1 FROM figures fg WHERE fg.publication_id = p.id
-                                             AND coalesce(fg.caption,'') <> ''))
+                                             AND coalesce(fg.caption,'') <> ''))"""
+
+# Two-tier indexes whole + abstract + claims only, so only those may qualify a publication.
+_UNCHUNKED_TEXT_TWO_TIER = """(coalesce(p.title,'') <> ''
+       OR coalesce(p.abstract,'') <> ''
+       OR EXISTS (SELECT 1 FROM claims cl WHERE cl.publication_id = p.id))"""
+
+_UNCHUNKED_SQL = """
+SELECT p.id FROM publications p
+WHERE p.id > %s
+  AND NOT EXISTS (SELECT 1 FROM chunks c WHERE c.publication_id = p.id)
+  AND {text_pred}
 ORDER BY p.id
 """
 
 
-def unchunked_publication_ids(min_pub_id=0, limit=None):
+def unchunked_publication_ids(min_pub_id=0, limit=None, two_tier=None):
     """The resumable/idempotent work queue: publications that still need chunking.
 
     If the job dies after loading but before chunking, the next run picks up exactly the
     publications that still need work -- no bookkeeping table required, the absence of
     chunks IS the state.
+
+    two_tier must match the depth the chunker will run at, or the queue and the chunker disagree
+    about what counts as chunkable and the difference re-queues forever. Defaults to the
+    TWO_TIER_DEFAULT env flag so a box configured for two-tier ingest cannot get this wrong by
+    omission.
     """
-    q = _UNCHUNKED_SQL
+    if two_tier is None:
+        two_tier = os.environ.get("TWO_TIER_DEFAULT", "").strip() not in ("", "0", "false", "False")
+    q = _UNCHUNKED_SQL.format(
+        text_pred=_UNCHUNKED_TEXT_TWO_TIER if two_tier else _UNCHUNKED_TEXT_ANY)
     params = [min_pub_id]
     if limit:
         q += " LIMIT %s"
@@ -268,8 +290,26 @@ def _orig_abstracts_from_staging(staging_tbl, log=print):
     return out
 
 
-def build_chunk_rows(cur, pub_ids, orig=None):
+#  Chunk kinds omitted under two-tier depth. Description paragraphs are 62% of all chunks and
+#  figure captions ride with them, so skipping both is a ~71% cut in chunk count, embedding spend
+#  and index RAM.
+#
+#  MEASURED COST OF DOING THIS (frozen 11-query gold set, dense channel, everything else
+#  identical): recall@100 0.1658 full depth -> 0.1619 without paragraphs -> 0.1619 without
+#  paragraphs and captions. So 71% of the corpus budget buys 2.4% of relative recall.
+#
+#  What it DOES cost is evidence, not retrieval. Paragraphs are what the claim chart quotes and
+#  what a reader checks a rationale against — the OPS backfill moved recall by zero but did raise
+#  lenient p@10 0.54 -> 0.594 and cut whole-document-only chart cells. So the design is: index
+#  shallow, and fetch description on demand for the documents that actually surface (the display
+#  path already does exactly this via lemad-Mongo / EPO OPS).
+TWO_TIER_SKIP_KINDS = ("paragraph", "figure_caption")
+
+
+def build_chunk_rows(cur, pub_ids, orig=None, two_tier=False):
     """Assemble chunk rows for `pub_ids`. Mirrors chunker.run()'s per-publication logic.
+
+    two_tier=True indexes abstract + claims + whole only (see TWO_TIER_SKIP_KINDS).
 
     Returns list of (publication_id, kind, ref_id, coord_json, lang, text, token_count).
     """
@@ -289,16 +329,19 @@ def build_chunk_rows(cur, pub_ids, orig=None):
     claims_by = {}
     for c in cur.fetchall():
         claims_by.setdefault(c["publication_id"], []).append(c)
-    cur.execute(f"SELECT id, publication_id, para_no, heading, page_no, lang, text "
-                f"FROM paragraphs WHERE publication_id IN {inlist}", pub_ids)
-    paras_by = {}
-    for p in cur.fetchall():
-        paras_by.setdefault(p["publication_id"], []).append(p)
-    cur.execute(f"SELECT id, publication_id, figure_no, caption FROM figures "
-                f"WHERE publication_id IN {inlist}", pub_ids)
-    figs_by = {}
-    for f in cur.fetchall():
-        figs_by.setdefault(f["publication_id"], []).append(f)
+    paras_by, figs_by = {}, {}
+    #  Under two-tier the paragraph/figure rows are not even SELECTed. Skipping them here rather
+    #  than filtering the assembled rows later is what keeps the ingest fast on a wide corpus:
+    #  description is by far the largest table to read.
+    if not two_tier:
+        cur.execute(f"SELECT id, publication_id, para_no, heading, page_no, lang, text "
+                    f"FROM paragraphs WHERE publication_id IN {inlist}", pub_ids)
+        for p in cur.fetchall():
+            paras_by.setdefault(p["publication_id"], []).append(p)
+        cur.execute(f"SELECT id, publication_id, figure_no, caption FROM figures "
+                    f"WHERE publication_id IN {inlist}", pub_ids)
+        for f in cur.fetchall():
+            figs_by.setdefault(f["publication_id"], []).append(f)
 
     _clip, _tok = chunker._clip, chunker._tok
     rows = []
@@ -338,7 +381,7 @@ def build_chunk_rows(cur, pub_ids, orig=None):
     return rows
 
 
-def chunk_publications(pub_ids, orig=None, log=print, batch=CHUNK_BATCH):
+def chunk_publications(pub_ids, orig=None, log=print, batch=CHUNK_BATCH, two_tier=False):
     """COPY chunk rows for the given publications, in bounded batches.
 
     Chunks are inserted with embedding NULL. That is deliberate and is what keeps this safe
@@ -354,7 +397,7 @@ def chunk_publications(pub_ids, orig=None, log=print, batch=CHUNK_BATCH):
     try:
         for i in range(0, len(pub_ids), batch):
             sub = pub_ids[i:i + batch]
-            rows = build_chunk_rows(cur, sub, orig)
+            rows = build_chunk_rows(cur, sub, orig, two_tier=two_tier)
             if rows:
                 with cur.copy("COPY chunks (publication_id, kind, ref_id, coord, lang, text, "
                               "token_count) FROM STDIN") as cp:

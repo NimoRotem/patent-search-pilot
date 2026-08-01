@@ -70,6 +70,8 @@ function fmtDur(ms){
    user back in WITHOUT navigating: a redirect to /login would discard the open report, the
    scroll position and any in-flight run. */
 let _authPrompted = false;
+let _authRestorePromise = null;
+let _authRestoreResolve = null;
 
 function _authBar(){
   let el = document.getElementById('authexpired');
@@ -77,6 +79,7 @@ function _authBar(){
   el = document.createElement('div');
   el.id = 'authexpired';
   el.setAttribute('role', 'alertdialog');
+  el.setAttribute('aria-modal', 'true');
   el.setAttribute('aria-labelledby', 'authexpiredmsg');
   el.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:10000;background:#171a21;' +
     'border-top:1px solid #2d3341;color:#e6e8ee;padding:12px 16px;display:flex;gap:10px;' +
@@ -84,6 +87,10 @@ function _authBar(){
   el.innerHTML =
     '<span id="authexpiredmsg">Your session expired. Sign in again to continue — ' +
     'this page and any run in progress are kept.</span>' +
+    (window.NAMED_ACCOUNT_SESSION ?
+      '<input id="authexpiredemail" type="email" autocomplete="username" placeholder="Email" ' +
+      'aria-label="Account email" style="padding:7px 10px;border-radius:7px;border:1px solid #2d3341;' +
+      'background:#0f1115;color:#e6e8ee;font-size:14px">' : '') +
     '<input id="authexpiredpw" type="password" autocomplete="current-password" placeholder="Password" ' +
     'aria-label="Access password" style="padding:7px 10px;border-radius:7px;border:1px solid #2d3341;' +
     'background:#0f1115;color:#e6e8ee;font-size:14px">' +
@@ -91,23 +98,34 @@ function _authBar(){
     'background:#3b82f6;color:#fff;font-weight:600;cursor:pointer">Sign in</button>' +
     '<span id="authexpirederr" role="alert" style="color:#f87171"></span>';
   document.body.appendChild(el);
+  const emailInput = document.getElementById('authexpiredemail');
+  if (emailInput) emailInput.value = window.CURRENT_USER_EMAIL || '';
 
   const submit = async () => {
     const pw = document.getElementById('authexpiredpw').value;
+    const email = emailInput ? emailInput.value : '';
     const err = document.getElementById('authexpirederr');
     err.textContent = '';
     try{
-      const body = new URLSearchParams({ password: pw });
-      // redirect:'manual' so a 302 (success) is reported as an opaque response rather than
-      // being followed and replacing the page we are trying to preserve.
+      const body = new URLSearchParams({ password: pw, email });
       const r = await window.__rawFetch(B + '/login', {
-        method: 'POST', body, redirect: 'manual',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        method: 'POST', body,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json', 'X-Reauth': '1' }
       });
-      if (r.status === 401){ err.textContent = 'Incorrect password.'; return; }
+      if (r.status === 401){ err.textContent = 'Email or password is incorrect.'; return; }
       if (r.status === 429){ err.textContent = 'Too many attempts — wait a few minutes.'; return; }
+      const data = await r.json();
+      if (!r.ok || !data.csrf_token){ err.textContent = data.error || 'Sign-in failed.'; return; }
+      window.CSRF_TOKEN = data.csrf_token;
+      document.querySelectorAll('input[name="csrf_token"]').forEach(input => {
+        input.value = data.csrf_token;
+      });
       el.remove();
       _authPrompted = false;
+      const resolve = _authRestoreResolve;
+      _authRestorePromise = null; _authRestoreResolve = null;
+      if (resolve) resolve();
       document.dispatchEvent(new CustomEvent('auth:restored'));
     }catch(e){ err.textContent = 'Network error.'; }
   };
@@ -115,24 +133,53 @@ function _authBar(){
   document.getElementById('authexpiredpw').addEventListener('keydown', e => {
     if (e.key === 'Enter') submit();
   });
+  el.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const focusable = [...el.querySelectorAll('input,button')].filter(node => !node.disabled);
+    if (!focusable.length) return;
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+  });
   return el;
 }
 
 function onAuthExpired(){
-  if (_authPrompted) return;
-  _authPrompted = true;
-  _authBar();
-  const pw = document.getElementById('authexpiredpw');
-  if (pw) pw.focus();
+  if (!_authRestorePromise)
+    _authRestorePromise = new Promise(resolve => { _authRestoreResolve = resolve; });
+  if (!_authPrompted){
+    _authPrompted = true;
+    _authBar();
+    const pw = document.getElementById('authexpiredpw');
+    if (pw) pw.focus();
+  }
+  return _authRestorePromise;
 }
 
 if (typeof window !== 'undefined' && window.fetch && !window.__rawFetch){
   window.__rawFetch = window.fetch.bind(window);
   window.fetch = async function(...args){
+    // Snapshot the request before the first fetch can consume its body.  On retry we construct a
+    // fresh Request and replace an existing CSRF header with the token minted by inline login.
+    // This is what lets the *interrupted mutation itself* finish, instead of merely making the
+    // next button click work.
+    let retryRequest = null;
+    try{
+      retryRequest = (typeof Request !== 'undefined' && args[0] instanceof Request)
+        ? new Request(args[0].clone(), args[1]) : new Request(args[0], args[1]);
+    }catch(e){}
     const r = await window.__rawFetch(...args);
     // The login POST itself legitimately answers 401 for a wrong password; don't recurse on it.
     const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
-    if (r.status === 401 && !url.endsWith('/login')) onAuthExpired();
+    if (r.status === 401 && !url.endsWith('/login')){
+      await onAuthExpired();
+      if (retryRequest){
+        const headers = new Headers(retryRequest.headers);
+        if (headers.has('X-CSRF-Token')) headers.set('X-CSRF-Token', window.CSRF_TOKEN || '');
+        return window.__rawFetch(new Request(retryRequest, {headers}));
+      }
+      return window.__rawFetch(...args);
+    }
     return r;
   };
 }
@@ -142,20 +189,95 @@ if (typeof window !== 'undefined' && window.fetch && !window.__rawFetch){
    cached yet. Panes that only need text ask for light; the opinion and the full detail view ask
    for the real thing. A light response is upgraded in place once a full one arrives. */
 const REFCACHE = {};
-async function fetchRef(pub, light){
+const REFPENDING = {};
+const PREVIEWPENDING = {};
+const SECTIONCACHE = {};
+
+async function fetchTimed(url, timeoutMs = 12000){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try { return await fetch(url, {signal: controller.signal}); }
+  finally { clearTimeout(timer); }
+}
+
+async function fetchSection(pub, section){
+  const key = pub + ':' + section;
+  if (SECTIONCACHE[key]) return SECTIONCACHE[key];
+  const url = B + '/api/ref-batch/' + encodeURIComponent(window.SLUG || '') +
+    '?pubs=' + encodeURIComponent(pub) + '&section=' + encodeURIComponent(section);
+  try{
+    const r = await fetchTimed(url, 5000);
+    if (!r.ok) throw new Error('preview ' + r.status);
+    const data = await r.json(), item = data.items && data.items[pub];
+    if (!item) throw new Error('preview unavailable');
+    SECTIONCACHE[key] = item;
+    return item;
+  }catch(e){}
+  // Cache generation may still be finishing. The live fallback is still section-shaped on the
+  // wire and has its own hard deadline; it never silently turns one click into a full document.
+  const live = B + '/api/ref/' + encodeURIComponent(pub) + '?slug=' +
+    encodeURIComponent(window.SLUG || '') + '&light=1&section=' + encodeURIComponent(section);
+  const r = await fetchTimed(live, 12000);
+  if (!r.ok) throw new Error('section ' + r.status);
+  SECTIONCACHE[key] = await r.json();
+  return SECTIONCACHE[key];
+}
+
+async function fetchWhy(pub){
+  const key = pub + ':why';
+  if (SECTIONCACHE[key] && SECTIONCACHE[key].rationale) return SECTIONCACHE[key];
+  const url = B + '/api/ref/' + encodeURIComponent(pub) + '?slug=' +
+    encodeURIComponent(window.SLUG || '') + '&light=1&rationale=1&section=why';
+  const r = await fetchTimed(url, 20000);
+  if (!r.ok) throw new Error('rationale ' + r.status);
+  SECTIONCACHE[key] = await r.json();
+  return SECTIONCACHE[key];
+}
+async function fetchPreview(pub){
+  if (REFCACHE[pub]) return REFCACHE[pub];
+  if (PREVIEWPENDING[pub]) return PREVIEWPENDING[pub];
+  PREVIEWPENDING[pub] = (async () => {
+    const r = await fetch(B + '/api/ref-batch/' + encodeURIComponent(window.SLUG || '') +
+                          '?pubs=' + encodeURIComponent(pub));
+    if (!r.ok) return null;
+    const data = await r.json(), item = data.items && data.items[pub];
+    if (!item) return null;
+    item._full = false; item._rationale = false; item._preview = true;
+    if (!REFCACHE[pub]) REFCACHE[pub] = item;
+    return REFCACHE[pub];
+  })();
+  try { return await PREVIEWPENDING[pub]; }
+  finally { delete PREVIEWPENDING[pub]; }
+}
+async function fetchRef(pub, light, rationaleOnly){
   const hit = REFCACHE[pub];
-  if (hit && (!light ? hit._full : true)) return hit;
-  const url = B + '/api/ref/' + encodeURIComponent(pub) +
-              '?slug=' + encodeURIComponent(window.SLUG || '') + (light ? '&light=1' : '');
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('ref ' + r.status);
-  const j = await r.json();
-  j._full = !light;
-  if (!hit || j._full) REFCACHE[pub] = j;
-  // Every card-open path returns the worldwide family — upgrade the card's timeline strip in
-  // place (this is also what makes a lazily-opened TAIL card resolve its authoritative family).
-  try { if (j.display && j.display.family) upgradeFamily(pub, j.display.family); } catch (e) {}
-  return REFCACHE[pub];
+  if (hit && (rationaleOnly ? hit._rationale : (!light ? hit._full : true))) return hit;
+  if (light && !rationaleOnly){
+    try { const preview = await fetchPreview(pub); if (preview) return preview; } catch (e) {}
+  }
+  const key = pub + (rationaleOnly ? ':rationale' : (light ? ':light' : ':full'));
+  if (REFPENDING[key]) return REFPENDING[key];
+  REFPENDING[key] = (async () => {
+    const url = B + '/api/ref/' + encodeURIComponent(pub) +
+                '?slug=' + encodeURIComponent(window.SLUG || '') + (light ? '&light=1' : '') +
+                (rationaleOnly ? '&rationale=1' : '');
+    const r = await fetchTimed(url, light ? 15000 : 25000);
+    if (!r.ok) throw new Error('ref ' + r.status);
+    const j = await r.json();
+    j._full = !light;
+    j._rationale = !!j.rationale;
+    const current = REFCACHE[pub];
+    // Information order is full > rationale-only > light. A late, cheaper reply never downgrades
+    // a richer cached response.
+    if (!current || j._full || (!current._full && j._rationale) ||
+        (!current._full && !current._rationale)) REFCACHE[pub] = j;
+    // Every card-open path returns the worldwide family — upgrade the card's timeline strip in
+    // place (this is also what makes a lazily-opened TAIL card resolve its authoritative family).
+    try { if (j.display && j.display.family) upgradeFamily(pub, j.display.family); } catch (e) {}
+    return REFCACHE[pub];
+  })();
+  try { return await REFPENDING[key]; }
+  finally { delete REFPENDING[key]; }
 }
 
 /* ── semantic search: no query-term highlighting ─────────────────────────────────────────────
@@ -212,25 +334,51 @@ function loadThumb(thumb){
   const pub = thumb.dataset.pub, images = thumb._figs || [];
   if (!images.length){ thumbNone(thumb); return; }
   thumb.dataset.state = 'fetching';
-  const img = new Image();
-  img.decoding = 'async';
-  img.alt = (images[0].from_pdf ? 'Page' : 'Figure') + ' 1 of ' + pub;
-  // Commit the <img> only once the bytes actually decode, so a 404 or a corrupt file becomes an
-  // explicit error state instead of a broken-image icon or a blank box.
-  img.onload = () => {
+  let i = 0;
+  const attempt = () => {
     if (thumb.dataset.state !== 'fetching' || thumb.dataset.pub !== pub) return;
-    thumb.dataset.state = 'ok';
-    thumb.textContent = '';
-    thumb.appendChild(img);
-    thumb.insertAdjacentHTML('beforeend',
-      '<span class="figbadge">' + images.length + ' fig' + (images.length !== 1 ? 's' : '') + '</span>' +
-      '<span class="zoomhint" aria-hidden="true">🔍</span>');
+    if (i >= images.length){ thumbFail(thumb); return; }
+    const n = i++, im = images[n], src = figThumb(pub, im);
+    if (!src){ attempt(); return; }
+    const img = new Image();
+    img.decoding = 'async';
+    img.alt = (im.from_pdf ? 'Page' : 'Figure') + ' ' + (n + 1) + ' of ' + pub;
+    // A manifest can contain one stale CDN URL followed by valid drawings. Try every candidate;
+    // only show "unavailable" once the whole manifest has failed.
+    img.onload = () => {
+      if (thumb.dataset.state !== 'fetching' || thumb.dataset.pub !== pub) return;
+      thumb.dataset.state = 'ok';
+      thumb.textContent = '';
+      thumb.appendChild(img);
+      thumb.insertAdjacentHTML('beforeend',
+        '<span class="figbadge">' + images.length + ' fig' + (images.length !== 1 ? 's' : '') + '</span>' +
+        '<span class="zoomhint" aria-hidden="true">🔍</span>');
+    };
+    img.onerror = attempt;
+    img.src = src;
   };
-  img.onerror = () => {
-    if (thumb.dataset.state !== 'fetching' || thumb.dataset.pub !== pub) return;
-    thumbFail(thumb);
-  };
-  img.src = figThumb(pub, images[0]);
+  attempt();
+}
+
+/* Server-rendered thumbnails arrive before this script. If their first CDN image already failed,
+   detect it (including an error that fired before DOMContentLoaded), fetch the cached detail
+   manifest, and let loadThumb try its remaining figures. */
+function recoverBrokenInitialThumbs(){
+  document.querySelectorAll('.rthumb[data-state="ok"]').forEach(thumb => {
+    const img = thumb.querySelector('img');
+    if (!img) return;
+    const recover = () => {
+      if (thumb.dataset.state !== 'ok') return;
+      thumb.dataset.state = 'error';
+      thumbFail(thumb);
+      const pub = thumb.dataset.pub;
+      fetchRef(pub, true).then(j => {
+        if (j && j.display && j.display.images) backfillThumb(pub, j.display.images);
+      }).catch(() => {});
+    };
+    if (img.complete && !img.naturalWidth) recover();
+    else img.addEventListener('error', recover, {once:true});
+  });
 }
 
 /* PDF links are rendered inert; one batched manifest promotes the ones that actually resolve.
@@ -298,7 +446,7 @@ async function resolveThumbs(){
    stays lazy. A genuinely drawing-less publication still resolves to an honest "no drawing available"
    (it just resolves proactively). Kicked off AFTER the list is shown, so it never delays render. */
 async function prefetchTopN(){
-  if (!window.SLUG) return;
+  if (!window.SLUG || window.PARTIAL) return;
   let sched;
   try {
     sched = await (await fetch(B + '/api/prefetch/' + encodeURIComponent(window.SLUG),
@@ -339,12 +487,30 @@ async function prefetchTopN(){
    Kicked off after the list is interactive so it never delays first paint; concurrency-limited so
    it can never swamp the RAM-tight server. */
 async function warmDetails(){
-  const pubs = [...document.querySelectorAll('.refcard')].map(c => c.dataset.pub).filter(Boolean);
+  const all = [...document.querySelectorAll('.refcard')].map(c => c.dataset.pub).filter(Boolean);
+  // Partial results are provisional, so warm four; final reports warm six. The server separately
+  // prepares the top eight grounded rationales and all cached tab previews after ranking.
+  const pubs = all.slice(0, window.PARTIAL ? 4 : 6);
   if (!pubs.length) return;
+  try {
+    const q = pubs.map(encodeURIComponent).join(',');
+    const r = await fetch(B + '/api/ref-batch/' + encodeURIComponent(window.SLUG) + '?pubs=' + q);
+    if (r.ok){
+      const data = await r.json();
+      Object.entries(data.items || {}).forEach(([pub, item]) => {
+        if (!REFCACHE[pub]){
+          item._full = false; item._rationale = false; item._preview = true;
+          REFCACHE[pub] = item;
+          if (item.display && item.display.images) backfillThumb(pub, item.display.images);
+        }
+      });
+    }
+  } catch (e) {}
+  const missing = pubs.filter(pub => !REFCACHE[pub]);
   let i = 0;
   const worker = async () => {
-    while (i < pubs.length){
-      const pub = pubs[i++];
+    while (i < missing.length){
+      const pub = missing[i++];
       try {
         const j = await fetchRef(pub, true);
         if (j && j.display && j.display.images) backfillThumb(pub, j.display.images);
@@ -352,6 +518,187 @@ async function warmDetails(){
     }
   };
   await Promise.all([worker(), worker(), worker()]);   // 3-wide: instant tabs, gentle on the box
+}
+
+/* A partial card can initially have no drawing because /api/figs is intentionally disk-only.
+   Previously only the first four cards were warmed, so a later card could say "no drawing" while
+   opening its full view immediately recovered several real figures.  Resolve those missing partial
+   thumbnails in the background with the section-only endpoint: two workers, a 12 s hard deadline,
+   and no full-document payload.  Final reports are handled durably by the server prefetch worker,
+   including when the browser has already been closed. */
+async function warmMissingThumbs(){
+  if (!window.PARTIAL || !window.SLUG) return;
+  const pubs = [...document.querySelectorAll('.refcard')].filter(card => {
+    const thumb = card.querySelector('.rthumb');
+    return thumb && ['none','error'].includes(thumb.dataset.state);
+  }).map(card => card.dataset.pub).filter(Boolean);
+  let i = 0;
+  const worker = async () => {
+    while (i < pubs.length){
+      const pub = pubs[i++];
+      try {
+        const url = B + '/api/ref/' + encodeURIComponent(pub) + '?slug=' +
+          encodeURIComponent(window.SLUG) + '&light=1&section=figs';
+        const r = await fetchTimed(url, 12000);
+        if (!r.ok) continue;
+        const item = await r.json();
+        if (item.display && item.display.images && item.display.images.length){
+          SECTIONCACHE[pub + ':figs'] = item;
+          backfillThumb(pub, item.display.images);
+        }
+      } catch (e) {}
+    }
+  };
+  await Promise.all([worker(), worker()]);
+}
+
+/* Generate the expensive, full-text-grounded explanation for the highest-ranked cards in the
+   background. Previously that deeper read happened only after a user clicked "Why relevant",
+   leaving the list itself with a short batch-reranker opinion. Two workers and eight cards bound
+   both spend and pressure; fetchRef's pending map also makes a simultaneous click share the call. */
+async function warmRationales(){
+  if (window.PARTIAL || !window.SLUG) return;
+  const pubs = [...document.querySelectorAll('.refcard')]
+    .slice(0, 8).map(c => c.dataset.pub).filter(Boolean);
+  let i = 0;
+  const worker = async () => {
+    while (i < pubs.length){
+      const pub = pubs[i++];
+      try {
+        // light=1 keeps worldwide-family lookup cache-only; rationale=1 still performs the deep
+        // text analysis. This avoids racing the drawing/family prefetch for the same OPS budget.
+        const j = await fetchRef(pub, true, true);
+        if (j && j.display && j.display.images) backfillThumb(pub, j.display.images);
+        if (j && j.rationale) applyCardRationale(pub, j.rationale);
+      } catch (e) {}
+    }
+  };
+  await Promise.all([worker(), worker()]);
+}
+
+function rationaleBasis(r){
+  const labels = { 'claims+description':'claims + description', claims:'claims',
+                   description:'description', 'abstract-only':'abstract only',
+                   'title-only':'title only' };
+  return labels[(r && r.text_basis) || ''] || ((r && r.text_basis) || 'reference text');
+}
+
+function rationaleMeta(r){
+  if (!r) return '';
+  const bits = [];
+  if (r.n_passages) bits.push(r.n_passages + ' passages');
+  if (r.text_basis) bits.push(rationaleBasis(r));
+  const locs = [...new Set((r.citations || []).map(c => c.label).filter(Boolean))].slice(0, 4);
+  if (locs.length) bits.push(locs.join(', '));
+  return bits.length ? '<div class="why-meta">Grounded in ' + esc(bits.join(' · ')) + '</div>' : '';
+}
+
+function applyCardRationale(pub, r){
+  if (!r || !r.why) return;
+  const card = document.querySelector('.refcard[data-pub="' + CSS.escape(pub) + '"]');
+  if (!card) return;
+  const main = card.querySelector('.rmain');
+  if (!main) return;
+  let p = main.querySelector('.relop');
+  if (!p){
+    p = document.createElement('p');
+    p.className = 'relop';
+    const before = main.querySelector('.rcovers');
+    if (before) main.insertBefore(p, before); else main.appendChild(p);
+  }
+  p.dataset.rationaleState = 'full';
+  p.innerHTML = '<span class="relop-l">Why relevant</span>' + esc(r.why) + rationaleMeta(r);
+}
+
+/* Uploaded-patent Claim x Reference grid. The server starts this analysis as soon as the final
+   ranking exists; the page merely polls and paints it. No button click is required. */
+function renderQueryClaimGrid(d){
+  const body = document.getElementById('queryClaimGridBody');
+  const summary = document.getElementById('queryClaimGridSummary');
+  if (!body || !summary || !d) return;
+  if (d.status === 'error'){
+    summary.textContent = 'Background analysis failed';
+    body.innerHTML = '<div class="pempty">The claim-level grid could not be completed. The element grid and ranked results are unaffected.</div>';
+    return;
+  }
+  if (d.status === 'unavailable'){
+    summary.textContent = 'Not available';
+    body.innerHTML = '<div class="pempty">' + esc(d.reason || 'No uploaded claims were available.') + '</div>';
+    return;
+  }
+  if (d.status !== 'done'){
+    const nc = d.n_claims || '', nr = d.n_refs || '';
+    summary.textContent = 'Building ' + (nc ? nc + ' claims' : 'uploaded claims') +
+      (nr ? ' × ' + nr + ' references' : '') + ' in the background…';
+    return;
+  }
+  if (!d.available){
+    summary.textContent = 'Not available';
+    body.innerHTML = '<div class="pempty">' + esc(d.reason || 'No uploaded claims were available.') + '</div>';
+    return;
+  }
+  const counts = d.counts || {};
+  summary.textContent = d.n_claims_shown + ' claims × ' + d.n_refs_shown + ' references · ' +
+    (counts.disclosed || 0) + ' disclosed · ' + (d.seconds || 0) + 's background analysis';
+  const marks = {disclosed:'✓', partial:'~', uncertain:'?', absent:'—'};
+  const cls = {disclosed:'discloses', partial:'weak', uncertain:'unchecked', absent:'unrelated'};
+  let h = '<p class="gridline">Each row keeps an uploaded claim intact. A green cell has a grounded quotation and survived a separate refutation pass; it is not a legal claim-construction conclusion. ' +
+    '<span class="lgi"><span class="lg lg-ok"></span>✓ disclosed</span>' +
+    '<span class="lgi"><span class="lg lg-weak"></span>~ partial</span>' +
+    '<span class="lgi"><span class="lg lg-unk"></span>? uncertain</span>' +
+    '<span class="lgi"><span class="lg lg-bad"></span>— absent</span></p>';
+  if (d.truncated_claims || d.truncated_refs){
+    const notes = [];
+    if (d.truncated_claims) notes.push('showing ' + d.n_claims_shown + ' of ' + d.n_claims_total + ' claims (independent claims first)');
+    if (d.truncated_refs) notes.push('top ' + d.n_refs_shown + ' of ' + d.n_refs_total + ' ranked references');
+    h += '<p class="claimgrid-bound">Bounded background analysis: ' + esc(notes.join(' · ')) + '.</p>';
+  }
+  h += '<div class="chartwrap"><table class="chart query-claim-chart"><caption class="vh">Which ranked references disclose each uploaded patent claim</caption><thead><tr>' +
+    '<th class="elh" scope="col">Uploaded claim</th>' +
+    (d.columns || []).map(c => '<th scope="col"><button type="button" class="pnlink" data-pub="' + esc(c.pub) +
+      '" onclick="jumpRef(this.dataset.pub)">' + esc(c.pub) + '</button><span class="colcount">rank ' + esc(c.rank || '') + '</span></th>').join('') +
+    '</tr></thead><tbody>';
+  (d.rows || []).forEach(row => {
+    const txt = row.text || '', short = txt.length > 210 ? txt.slice(0, 210) + '…' : txt;
+    const claimText = txt.length > 210
+      ? '<details class="qclaim"><summary>' + esc(short) + '</summary><p>' + esc(txt) + '</p></details>'
+      : '<div class="qclaim-short">' + esc(short) + '</div>';
+    h += '<tr><th class="elh" scope="row"><span class="qclaim-no">Claim ' + esc(row.claim_no) +
+      (row.independent ? ' · independent' : '') + '</span>' + claimText + '</th>';
+    (row.cells || []).forEach(cell => {
+      const v = marks[cell.verdict] ? cell.verdict : 'uncertain';
+      const tip = [v, cell.location, cell.quote].filter(Boolean).join(' · ').slice(0, 600);
+      h += '<td class="cell cell-' + cls[v] + '"><button type="button" data-pub="' + esc(cell.pub) +
+        '" onclick="jumpRef(this.dataset.pub)" title="' + esc(tip) + '"><span class="cmark">' +
+        marks[v] + '</span><span class="cs">' + esc(v) + '</span>' +
+        (cell.location ? '<span class="cc">' + esc(cell.location) + '</span>' : '') + '</button></td>';
+    });
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>';
+  body.innerHTML = h;
+}
+
+async function warmQueryClaimGrid(){
+  if (window.PARTIAL || !window.SLUG || !document.getElementById('queryClaimGrid')) return;
+  let d = null;
+  try {
+    const r = await fetch(B + '/api/query-claim-grid/' + encodeURIComponent(window.SLUG), {method:'POST'});
+    d = await r.json();
+    renderQueryClaimGrid(d);
+  } catch (e) { return; }
+  if (d && (d.status === 'done' || d.status === 'error' || d.status === 'unavailable')) return;
+  let tries = 0;
+  const poll = async () => {
+    tries++;
+    try {
+      d = await (await fetch(B + '/api/query-claim-grid/' + encodeURIComponent(window.SLUG))).json();
+      renderQueryClaimGrid(d);
+    } catch (e) {}
+    if (d && (d.status === 'done' || d.status === 'error' || d.status === 'unavailable')) return;
+    if (tries < 240) setTimeout(poll, 2500); // bounded ten-minute observer; server work continues
+  };
+  setTimeout(poll, 1500);
 }
 
 /* Back-fill: /api/ref sometimes downloads figures that were not on disk when the page rendered.
@@ -435,6 +782,22 @@ document.addEventListener('click', function(ev){
   else if (b.dataset.a === 'similar') openSimilar(pub);
 });
 
+// Pointer/keyboard intent gets priority over the background queue. On a slow connection this
+// usually completes while the user is moving from the tab label to the content pane.
+function warmIntendedTab(ev){
+  const b = ev.target.closest && ev.target.closest('.rtabs button[data-t]');
+  if (!b) return;
+  const card = b.closest('.refcard');
+  if (card && card.dataset.pub){
+    if (b.dataset.t === 'why') fetchWhy(card.dataset.pub).catch(() => {});
+    else if (['abstract','claims','desc','class','figs'].includes(b.dataset.t))
+      fetchSection(card.dataset.pub, b.dataset.t).catch(() => {});
+    else if (!REFCACHE[card.dataset.pub]) fetchRef(card.dataset.pub, true).catch(() => {});
+  }
+}
+document.addEventListener('pointerover', warmIntendedTab, {passive:true});
+document.addEventListener('focusin', warmIntendedTab);
+
 async function rtab(btn){
   const card = btn.closest('.refcard'), t = btn.dataset.t, p = paneOf(card);
   const wasOpen = btn.getAttribute('aria-expanded') === 'true';
@@ -442,6 +805,7 @@ async function rtab(btn){
   if (wasOpen){ p.classList.remove('open'); p.hidden = true; return; }
   btn.setAttribute('aria-expanded', 'true');
   p.classList.add('open'); p.hidden = false;
+  p.setAttribute('aria-busy', 'true');
   p.innerHTML = '<span class="ploading"><span class="spin sm" aria-hidden="true"></span> loading…</span>';
   try{
     const fn = RPANES[t];
@@ -451,9 +815,18 @@ async function rtab(btn){
     hlNode(p);
   }catch(e){
     p.innerHTML = '<div class="pempty">Couldn\'t load this section. ' +
-      '<a href="' + gp(card.dataset.pub) + '" target="_blank" rel="noopener">Open on Google Patents</a>.</div>';
-  }
+      '<button type="button" class="linkish pane-retry" data-tab="' + esc(t) + '">Retry</button> or ' +
+      '<a href="' + gp(card.dataset.pub) + '" target="_blank" rel="noopener">open on Google Patents</a>.</div>';
+  }finally{ p.removeAttribute('aria-busy'); }
 }
+
+document.addEventListener('click', function(ev){
+  const retry = ev.target.closest && ev.target.closest('.pane-retry');
+  if (!retry) return;
+  const card = retry.closest('.refcard');
+  const tab = card && card.querySelector('.rtab[data-t="' + retry.dataset.tab + '"]');
+  if (tab){ tab.setAttribute('aria-expanded', 'false'); rtab(tab); }
+});
 
 /* The "this section does not exist" line. One sentence, plus the two office links that WILL
    have it — the useful thing to offer when the local corpus is thin on a document. */
@@ -467,7 +840,7 @@ function paneMissing(pub, what, d){
 
 async function paneAbstract(card){
   const pub = card.dataset.pub;
-  const j = await fetchRef(pub, true);
+  const j = await fetchSection(pub, 'abstract');
   const d = j.display || {};
   if (!d.abstract) return paneMissing(pub, 'abstract', d);
   let h = '<h4>Abstract</h4><div class="abstract">' + esc(d.abstract) + '</div>';
@@ -479,7 +852,7 @@ async function paneAbstract(card){
 
 async function paneClaims(card){
   const pub = card.dataset.pub;
-  const j = await fetchRef(pub, true);
+  const j = await fetchSection(pub, 'claims');
   const s = j.sections || {};
   if (!s.claims || !s.claims.length) return paneMissing(pub, 'claims', j.display);
   return '<h4>Claims (' + s.claims.length + ')</h4>' +
@@ -488,7 +861,7 @@ async function paneClaims(card){
 
 async function paneDesc(card){
   const pub = card.dataset.pub;
-  const j = await fetchRef(pub, true);
+  const j = await fetchSection(pub, 'desc');
   const s = j.sections || {};
   if (!s.paragraphs || !s.paragraphs.length) return paneMissing(pub, 'description text', j.display);
   return '<h4>Description (' + s.paragraphs.length + ' paragraphs)</h4>' +
@@ -497,7 +870,7 @@ async function paneDesc(card){
 
 async function paneClass(card){
   const pub = card.dataset.pub;
-  const j = await fetchRef(pub, true);
+  const j = await fetchSection(pub, 'class');
   const d = j.display || {};
   const cls = d.classifications || [];
   if (!cls.length) return paneMissing(pub, 'classification data', d);
@@ -542,7 +915,7 @@ async function paneCites(card, p){
 }
 
 async function paneWhy(card){
-  const j = await fetchRef(card.dataset.pub);           // full: the opinion IS the point here
+  const j = await fetchWhy(card.dataset.pub);
   if (j.display && j.display.images) backfillThumb(card.dataset.pub, j.display.images);
   let h = '<h4>Why this reference is relevant <span class="muted" style="text-transform:none;letter-spacing:0">— grounded AI opinion</span></h4>' +
           renderWhy(j.rationale);
@@ -555,16 +928,16 @@ async function paneWhy(card){
 }
 function renderWhy(r){
   if (!r || !r.why) return '<div class="pempty">No AI opinion was generated for this reference.</div>';
-  let h = '<div class="why">' + esc(r.why) + '</div>';
+  let h = '<div class="why">' + esc(r.why) + '</div>' + rationaleMeta(r);
   if (r.reads_on && r.reads_on.length)
     h += '<div class="readson"><span class="lbl2">reads on</span>' +
-      r.reads_on.map(x => '<span class="chip el">' + esc(x) + '</span>').join('') + '</div>';
+      r.reads_on.map(x => '<span class="chip">' + esc(x) + '</span>').join('') + '</div>';
   return h;
 }
 
 async function paneFigs(card){
   const pub = card.dataset.pub;
-  const j = await fetchRef(pub, true);
+  const j = await fetchSection(pub, 'figs');
   const d = j.display || {};
   const imgs = d.images || [];
   backfillThumb(pub, imgs);
@@ -576,9 +949,10 @@ async function paneFigs(card){
   return '<h4>Drawings (' + imgs.length + ')</h4>' +
     (d.figs_from_pdf ? '<p class="small muted" style="margin:-4px 0 9px">Extracted from the PDF facsimile.</p>' : '') +
     '<div class="g">' + imgs.map((im, i) =>
-      '<figure><img loading="lazy" decoding="async" src="' + esc(figThumb(pub, im)) + '" ' +
+      '<figure><button type="button" class="figbutton" onclick="openLb(this.querySelector(\'img\'))" ' +
+      'aria-label="Open ' + esc(kind + (i + 1) + ' of ' + pub) + '"><img loading="lazy" decoding="async" src="' + esc(figThumb(pub, im)) + '" ' +
       'data-full="' + esc(figFull(pub, im)) + '" ' +
-      'alt="' + esc(kind + (i + 1) + ' of ' + pub) + '" data-pub="' + esc(pub) + '" onclick="openLb(this)">' +
+      'alt="' + esc(kind + (i + 1) + ' of ' + pub) + '" data-pub="' + esc(pub) + '"></button>' +
       '<figcaption>' + (d.figs_from_pdf ? 'p. ' : 'fig ') + (i + 1) + '</figcaption></figure>').join('') +
     '</div>';
 }
@@ -655,6 +1029,20 @@ function graphHTML(g){
     col('Forward — cited by', g.forward || []) + col('Similar', g.similar || []) + '</div>';
 }
 
+/* ── the searched text ───────────────────────────────────────────────────────────────────── */
+// The header holds the WHOLE query string; `.clamped` only hides the overflow behind a three-line
+// -webkit-line-clamp. So this lifts a CSS class — it never fetches, and there is nothing to
+// truncate on the way back. Collapsing scrolls the header back into view, because a 40-line brief
+// collapsing to three lines otherwise leaves the viewport parked far below where it started.
+function toggleQuery(){
+  const w = document.getElementById('qwrap'), b = document.getElementById('qmore');
+  if (!w || !b) return;
+  const open = w.classList.toggle('open');
+  b.setAttribute('aria-expanded', open ? 'true' : 'false');
+  b.firstChild.nodeValue = open ? 'Show less ' : 'Show full search ';
+  if (!open) w.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 /* ── jump / element filter ───────────────────────────────────────────────────────────────── */
 function jumpRef(pub){
   const el = document.querySelector('.refcard[data-pub="' + CSS.escape(pub) + '"]');
@@ -692,6 +1080,7 @@ function _lbFromNodes(nodes){
 }
 
 function openLb(img){
+  if (!img) return;
   lbOpener = document.activeElement && document.activeElement !== document.body
     ? document.activeElement : img;
   const gallery = img.closest('.gallery');
@@ -892,7 +1281,10 @@ const selectedPubs = () => [...document.querySelectorAll('.selbox:checked')].map
 function updateBar(){
   const n = selectedPubs().length;
   document.getElementById('selcount').textContent = n + ' selected';
-  document.getElementById('exportbar').classList.toggle('show', n > 0);
+  const bar = document.getElementById('exportbar');
+  bar.hidden = n === 0;
+  bar.inert = n === 0;
+  bar.classList.toggle('show', n > 0);
 }
 function clearSel(){ document.querySelectorAll('.selbox:checked').forEach(b => (b.checked = false)); updateBar(); }
 function doExport(fmt){
@@ -900,12 +1292,28 @@ function doExport(fmt){
   if (!sel.length){ alert('Select at least one reference first (the checkbox on the left of a card).'); return; }
   document.getElementById('exportpubs').value = sel.join(',');
   document.getElementById('exportfmt').value = fmt;
+  // The form posts into a new tab, so this side of the connection never learns when the file is
+  // ready. Building one is not instant either — the first PDF/DOCX/XLSX for a report may pull a
+  // figure per reference off the CDN — so say so on the button rather than looking dead. The
+  // label restores on a timer because there is no completion event to hang it off.
+  const btn = (typeof event !== 'undefined' && event && event.currentTarget) || null;
+  if (btn){
+    const was = btn.textContent;
+    btn.textContent = 'building…'; btn.disabled = true;
+    setTimeout(() => { btn.textContent = was; btn.disabled = false; }, 6000);
+  }
   document.getElementById('exportform').submit();
 }
 function openCompare(){
   const sel = selectedPubs();
   if (sel.length < 2 || sel.length > 3){ alert('Select 2 or 3 references to compare side by side.'); return; }
   window.open(B + '/compare?slug=' + encodeURIComponent(window.SLUG) + '&pubs=' + encodeURIComponent(sel.join(',')), '_blank');
+}
+function startDraft(){
+  const sel = selectedPubs();
+  if (!sel.length){ alert('Select at least one ranked reference for the drafting source set.'); return; }
+  const query = new URLSearchParams({search_slug: window.SLUG, pubs: sel.join(',')});
+  location.href = B + '/drafts/new?' + query.toString();
 }
 
 /* ── triage flags ────────────────────────────────────────────────────────────────────────── */
@@ -929,7 +1337,8 @@ async function setFlag(btn){
   else card.removeAttribute('data-flag');
   try{
     await fetch(B + '/api/flags/' + encodeURIComponent(window.SLUG), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json',
+        'X-CSRF-Token': window.CSRF_TOKEN || '' },
       body: JSON.stringify({ pub, flag: next })
     });
   }catch(e){}
@@ -969,6 +1378,9 @@ async function openDetail(pn, push = true){
   document.getElementById('soBack').hidden = detailStack.length <= 1;
   document.getElementById('soBreadcrumb').textContent = detailStack.join('  ›  ');
   setHash(pn);
+  overlay().hidden = false;
+  overlay().inert = false;
+  overlay().setAttribute('aria-hidden', 'false');
   overlay().classList.add('open');
   soSetBackgroundInert(true);
   document.body.style.overflow = 'hidden';
@@ -976,14 +1388,25 @@ async function openDetail(pn, push = true){
   const body = document.getElementById('soBody');
   body.innerHTML = '<div class="so-loading"><span class="spin" aria-hidden="true"></span>' +
     '<div>Loading ' + esc(pn) + ' — drawings, claims, citations…</div></div>';
-  try{ renderDetail(pn, await fetchRef(pn)); }
+  let shown = false;
+  try{
+    const preview = REFCACHE[pn] || await fetchPreview(pn);
+    if (preview){ renderDetail(pn, preview); shown = true; }
+    const full = await fetchRef(pn);
+    if ((detailStack[detailStack.length - 1] || '').replace(/ · similar$/, '') === pn)
+      renderDetail(pn, full);
+  }
   catch(e){
+    if (shown) return;
     body.innerHTML = '<div class="so-loading"><div>Couldn\'t load ' + esc(pn) + '.</div>' +
       '<a class="btn ghost sm" href="' + gp(pn) + '" target="_blank" rel="noopener">Open on Google Patents</a></div>';
   }
 }
 function closeDetail(){
   overlay().classList.remove('open');
+  overlay().inert = true;
+  overlay().setAttribute('aria-hidden', 'true');
+  overlay().hidden = true;
   soSetBackgroundInert(false);
   detailStack.length = 0;
   document.body.style.overflow = '';
@@ -1031,14 +1454,16 @@ function renderDetail(pn, j){
     h += '<h2>Drawings — ' + imgs.length + (d.figs_from_pdf ? ', from the PDF facsimile' : '') + '</h2>';
     h += '<div class="gallery"><div class="gmain">' +
       (imgs.length > 1 ? '<button class="gnav l" onclick="galPrev()" aria-label="Previous figure">‹</button>' : '') +
-      '<img id="gMain" src="' + imgs[0] + '" data-pub="' + esc(pn) + '" onclick="openLb(this)" ' +
-      'alt="' + esc(kind + '1 of ' + pn) + '">' +
+      '<button type="button" class="gzoom" onclick="openLb(this.querySelector(\'img\'))" aria-label="Open current drawing full size">' +
+      '<img id="gMain" src="' + imgs[0] + '" data-pub="' + esc(pn) + '" ' +
+      'alt="' + esc(kind + '1 of ' + pn) + '"></button>' +
       (imgs.length > 1 ? '<button class="gnav r" onclick="galNext()" aria-label="Next figure">›</button>' : '') +
       '<span class="gcount" id="gCount">1 / ' + imgs.length + '</span></div>';
     if (imgs.length > 1)
       h += '<div class="gthumbs">' + imgs.map((u, i) =>
+        '<button type="button" onclick="galSet(' + i + ')" aria-label="Show ' + esc(kind + (i + 1)) + '">' +
         '<img src="' + u + '" alt="' + esc(kind + (i + 1) + ' of ' + pn) + '" class="' + (i === 0 ? 'sel' : '') +
-        '" onclick="galSet(' + i + ')" loading="lazy">').join('') + '</div>';
+        '" loading="lazy"></button>').join('') + '</div>';
     h += '</div>';
   }
 
@@ -1168,27 +1593,34 @@ async function openSimilar(pn){
 /* ══════════════════════════════════════════════════════════════════════════════════════════
    PROGRESS NARRATIVE — shared by the generating page and the in-place "refining" banner
    ══════════════════════════════════════════════════════════════════════════════════════════
-   The agent emits elements / partial / seeded / round / reranking / federating / done. Between
-   'partial' and 'reranking' there can be minutes where only SSE keep-alives arrive, and the old
-   UI simply froze on one sentence. So the stage list is a state machine that never moves
+   The agent emits elements / per-search progress / partial / seeded / round / reranking /
+   federating / done. The stage list is a state machine that never moves
    backwards, each stage keeps the numbers it learned, and the active stage shows how long it has
    been running — a silent server still reads as visible, honest progress. */
+const LIVE_CORPUS_N = Number((typeof window !== 'undefined' && window.CORPUS_PUBLICATIONS) || 0);
+const LIVE_CORPUS_NOTE = LIVE_CORPUS_N
+  ? 'Searching ' + LIVE_CORPUS_N.toLocaleString() + ' publications in the latest measured corpus snapshot through dense, sparse, CPC, citation and cross-lingual retrieval channels.'
+  : 'Searching the live indexed corpus through dense, sparse, CPC, citation and cross-lingual retrieval channels.';
 const STAGES = [
   { key: 'decompose', rank: 0, name: 'Reading the disclosure',
     note: 'Decomposing the invention into independent technical elements.' },
   { key: 'search',    rank: 1, name: 'Searching the corpus',
-    note: 'Eight retrieval channels across 107,795 publications — dense, sparse, CPC, citation, cross-lingual.' },
+    note: LIVE_CORPUS_NOTE },
   { key: 'expand',    rank: 2, name: 'Expanding the candidate set',
     note: 'Following citations, patent families and EN/DE equivalents outward from the seed hits.' },
   { key: 'rounds',    rank: 3, name: 'Refinement rounds',
     note: 'Re-querying on the elements that are still uncovered, until new families stop appearing.' },
   { key: 'rerank',    rank: 4, name: 'Reranking and grounding',
-    note: 'A bge-reranker cross-encoder rescores every candidate, then each claim-chart cell is grounded in real text. This is the slowest step.' },
+    note: 'A bge-reranker cross-encoder rescores the closest 25 references, then each claim-chart cell is grounded in real text.' },
   { key: 'federate',  rank: 5, name: 'Wider search — external APIs',
-    note: 'Querying SerpApi, BigQuery, PQAI and OpenAlex, then fusing by reciprocal rank.' },
+    note: 'Querying every configured external source in parallel, then fusing the results by reciprocal rank.' },
   { key: 'done',      rank: 6, name: 'Report ready', note: '' }
 ];
-const KIND_RANK = { elements: 1, seeded: 2, partial: 2, round: 3, reranking: 4, federating: 5, done: 6 };
+const KIND_RANK = {
+  elements: 1, search_progress: 1, seeded: 2, seed_progress: 2, partial: 2,
+  round: 3, round_progress: 3, reranking: 4, rerank_progress: 4,
+  federating: 5, done: 6
+};
 
 function createProgress(mount, opts){
   opts = opts || {};
@@ -1205,6 +1637,10 @@ function createProgress(mount, opts){
     if (d.elements) out.push(d.elements + ' element' + (d.elements !== 1 ? 's' : '') + ' identified');
     if (d.families) out.push(d.families.toLocaleString() + ' candidate families');
     if (d.round) out.push('round ' + d.round);
+    if (state.rank <= 3 && d.search_done) {
+      out.push(d.search_done + ' of up to ' + d.search_max + ' retrieval passes');
+      if (d.search_seconds != null) out.push('last pass ' + Number(d.search_seconds).toFixed(1) + 's');
+    }
     return out;
   }
   function paint(){
@@ -1302,7 +1738,8 @@ function guardStaticFigures(){
       const box = document.createElement('div');
       box.className = 'nodig';
       box.textContent = 'Drawing unavailable.';
-      img.replaceWith(box);
+      const button = img.closest('.cmpimgbtn');
+      if (button) button.replaceWith(box); else img.replaceWith(box);
     };
     if (img.complete && img.naturalWidth === 0) fail(); else img.addEventListener('error', fail);
   });
@@ -1311,6 +1748,8 @@ function guardStaticFigures(){
 /* ── init ────────────────────────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   guardStaticFigures();
+  const compactReport = window.matchMedia && window.matchMedia('(max-width:640px)').matches;
+  document.querySelectorAll('.reportoverview,.resultfilters').forEach(d => { d.open = !compactReport; });
   const lb = document.getElementById('lb');
   if (lb){
     document.addEventListener('keydown', e => {
@@ -1350,10 +1789,19 @@ document.addEventListener('DOMContentLoaded', () => {
   loadFlags();
   document.querySelectorAll('.refcard .rsnip').forEach(hlNode);
   applyControls();
+  recoverBrokenInitialThumbs();
   resolveThumbs();
   resolvePdfLinks();
-  prefetchTopN();          // proactively resolve drawings + worldwide family for every shown card
-  setTimeout(warmDetails, 1200);   // eager-warm each card's detail so its tabs open instantly
+  // Text tabs are a first-result feature, not a final-report feature. Warm a bounded partial head
+  // immediately; the final reload replaces it with one batched cache fill for all visible cards.
+  setTimeout(warmDetails, window.PARTIAL ? 250 : 700);
+  if (!window.PARTIAL){
+    prefetchTopN();        // proactively resolve drawings + worldwide family for shown final cards
+    setTimeout(warmRationales, 2600); // deeper top-card explanations, no click required
+    warmQueryClaimGrid();  // uploaded claims x references; server already runs it in background
+  } else {
+    setTimeout(warmMissingThumbs, 1200);
+  }
 
   const m = (location.hash || '').match(/patent=([^&]+)/);
   if (m){ try{ openDetail(decodeURIComponent(m[1])); }catch(e){} }

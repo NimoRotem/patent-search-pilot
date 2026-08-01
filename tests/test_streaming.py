@@ -32,10 +32,21 @@ def test_final_rank_skips_reranker_when_not_reranking():
 
 def test_run_emits_partial_before_finishing(monkeypatch):
     """The agent must emit a 'partial' event (renderable snapshot) before 'reranking'/return, so the
-    UI can show the seed cards immediately. Uses the conftest-mocked embed/LLM (no network)."""
-    A = agent.CoverageAgent(webapp.retriever())
-    # keep the run short + never touch the real cross-encoder
-    monkeypatch.setattr(A.r, "rerank_families", lambda q, fam, top=25, **kw: fam[:top])
+    UI can show seed cards immediately. The Retriever/report seams are fully hermetic here."""
+    A = agent.CoverageAgent.__new__(agent.CoverageAgent)
+    monkeypatch.setattr(A, "decompose", lambda text, subject: ["seal", "pump"])
+
+    def _search(query, subject, mode, ledger, element=None, **kwargs):
+        n = len(ledger.families_seen) + 1
+        ledger.register_families([(f"F{n}", f"p{n}", 0.8)],
+                                 bucket="seed" if kwargs.get("is_seed") else "element")
+        return types.SimpleNamespace(), 1
+
+    def _report(query, subject, mode, ledger, rounds, **kwargs):
+        return {"ranked_families": ledger.ranked_families(), "elements": ledger.elements}
+
+    monkeypatch.setattr(A, "_run_search", _search)
+    monkeypatch.setattr(A, "report", _report)
     events = []
     from agent import AgentConfig
     A.run("a vacuum gripper with a seal and a pump", mode="novelty",
@@ -43,11 +54,16 @@ def test_run_emits_partial_before_finishing(monkeypatch):
           on_event=lambda stage, data: events.append((stage, data)))
     stages = [s for s, _ in events]
     assert "elements" in stages
+    assert "search_progress" in stages
+    assert "seed_progress" in stages
     assert "partial" in stages
     assert stages.index("partial") < len(stages)          # fired during the run
     partial_rep = next(d["report"] for s, d in events if s == "partial")
     assert partial_rep["ranked_families"]                 # the snapshot has cards to show
     assert "elements" in partial_rep
+    progress = [d for s, d in events if s in ("search_progress", "seed_progress")]
+    assert [d["search_done"] for d in progress] == list(range(1, len(progress) + 1))
+    assert all(d["search_done"] <= d["search_max"] for d in progress)
 
 
 def test_partial_view_is_not_cached(gold_slug, monkeypatch, tmp_path):

@@ -121,6 +121,38 @@ def verification_summary(chart: dict) -> str:
     return s
 
 
+#  The major patent-issuing offices a reader would expect a "worldwide" search to have covered.
+#  Whichever of these the corpus does NOT hold get named explicitly, because a reader discounts a
+#  named gap and glosses over an unnamed one.
+_MAJOR_OFFICES = ["US", "EP", "WO", "DE", "CN", "JP", "KR", "GB", "FR", "CA", "AU", "IN", "RU", "BR"]
+
+
+def _juris_sentence(f) -> str:
+    """One sentence stating which offices are in and, by name, which major ones are not.
+
+    Built from the live corpus (corpus_facts reads distinct countries from the table) rather than
+    from a constant. The previous wording was the literal string "US, EP, WO, DE only — no JP, CN,
+    KR, GB, FR or other national collections", which silently became false the moment the corpus
+    was widened past those four.
+    """
+    have = [c for c in (f.get("jurisdictions") or []) if c]
+    if not have:
+        return "The indexed jurisdictions could not be read from the database; treat coverage as unknown."
+    missing = [c for c in _MAJOR_OFFICES if c not in have]
+    s = ", ".join(have) + " only."
+    if missing:
+        s += (f" No {', '.join(missing)} or other national collections — a search here cannot "
+              f"see art published only in those offices.")
+    else:
+        s += (" Coverage spans the major offices, but national collections outside them are still "
+              "absent.")
+    trace = [c for c in (f.get("jurisdictions_trace") or []) if c]
+    if trace:
+        s += (f" ({len(trace)} further offices appear in trace amounts via family and citation "
+              f"expansion and are not indexed coverage.)")
+    return s
+
+
 def scope_paragraphs(f=None):
     """[(heading, body)] — the full scope + measured-reliability disclosure, in the order it
     should be printed. Mirrors templates/_scope.html; both read the same facts()."""
@@ -137,8 +169,7 @@ def scope_paragraphs(f=None):
          "it is relied on."),
         ("Corpus",
          f"{pubs} publications, limited to {f.get('cpc_count')} CPC classes covering "
-         f"{f.get('field_summary')}. {juris} only — no JP, CN, KR, GB, FR or other national "
-         f"collections, and no non-patent literature."),
+         f"{f.get('field_summary')}. {_juris_sentence(f)} No non-patent literature."),
         ("Current to",
          (f"{date_s}. Nothing published after this date was searched. For a novelty or validity "
           f"question this is a live gap, and it widens every day until the next ingest."

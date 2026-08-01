@@ -242,7 +242,12 @@ def _claim_chart_table(model, S):
 
 def _reference_block(r, n, S):
     flow = []
-    title = f"{n}. {_esc(r['pub'])} — {_esc(r['title'] or '(untitled)')}"
+    #  Rank + relevancy in the heading, and the card's own family / status / provenance lines in
+    #  the biblio, so the printed reference says what the on-screen card said. The bare DOCDB
+    #  family id is an internal key: prefer the readable "Family of N in M jurisdictions".
+    rel = (f" &nbsp;<font size=8 color='#5b6b82'>[relevancy {r['relevancy']}/100]</font>"
+           if r.get("relevancy") is not None else "")
+    title = f"{n}. {_esc(r['pub'])} — {_esc(r['title'] or '(untitled)')}{rel}"
     flow.append(Paragraph(title, S["h3"]))
     basis = _basis_label(r["basis"])
     biblio = (f"<b>Assignee:</b> {_esc('; '.join(r['assignees']) or '—')} &nbsp; "
@@ -250,18 +255,25 @@ def _reference_block(r, n, S):
               f"<b>Priority:</b> {_esc(r['priority_date'] or '—')} &nbsp; "
               f"<b>Filing:</b> {_esc(r['filing_date'] or '—')} &nbsp; "
               f"<b>Published:</b> {_esc(r['publication_date'] or '—')} &nbsp; "
-              f"<b>Family:</b> {_esc(r['family_id'] or '—')}<br/>"
+              f"<b>Family:</b> {_esc(r.get('family_summary') or r.get('family_id') or '—')}<br/>"
               f"<b>CPC:</b> {_esc(', '.join(r['cpc']) or '—')}<br/>"
-              f"<b>Legal status:</b> {_esc(r['legal_status'] or '—')} &nbsp; "
+              f"<b>Legal status:</b> {_esc(r.get('status_label') or r.get('legal_status') or '—')} &nbsp; "
               f"<b>Prior-art basis:</b> <font color='#{_basis_color(r['basis']).hexval()[2:]}'>{basis}</font> &nbsp; "
               f"<b>Match:</b> {r['match_score']}")
+    if r.get("found_via"):
+        biblio += f"<br/><b>Found via:</b> {_esc(', '.join(r['found_via']))}"
     left = [Paragraph(biblio, S["body"])]
     if r.get("covers_elements"):
         left.append(Spacer(1, 3))
         left.append(Paragraph(f"<b>Reads on:</b> {_esc(', '.join(r['covers_elements']))}", S["small"]))
-    if r.get("why"):
+    #  The reranker's written take and the separately grounded rationale are different sentences
+    #  produced by different prompts; print both when they differ instead of picking one.
+    if r.get("relevancy_opinion"):
         left.append(Spacer(1, 3))
-        left.append(Paragraph(f"<b>Why relevant:</b> {_esc(r['why'])}", S["body"]))
+        left.append(Paragraph(f"<b>Why relevant:</b> {_esc(r['relevancy_opinion'])}", S["body"]))
+    if r.get("why") and r["why"] != r.get("relevancy_opinion"):
+        left.append(Spacer(1, 3))
+        left.append(Paragraph(f"<b>Grounded rationale:</b> {_esc(r['why'])}", S["body"]))
     # drawing on the right
     img = _scaled_image(r["drawing_path"], 2.0 * inch, 2.0 * inch) if r.get("drawing_path") else None
     if img:
