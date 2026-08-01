@@ -69,3 +69,12 @@ def test_build_writes_one_markdown_per_ranked_patent(tmp_path, monkeypatch):
         assert len([n for n in names if n.endswith(".md") and n != "README.md"]) == 2
         manifest = json.loads(zf.read("manifest.json"))
         assert [p["publication"] for p in manifest["patents"]] == ["US-1234567-A", "EP-7654321-A1"]
+
+
+def test_shutdown_state_does_not_accept_new_archive_work(tmp_path):
+    report_archive._STOP.set()
+    try:
+        state = report_archive.ensure("stopping", {"query": "x"}, {}, tmp_path)
+        assert state["status"] == "interrupted" and state["ready"] is False
+    finally:
+        report_archive._STOP.clear()

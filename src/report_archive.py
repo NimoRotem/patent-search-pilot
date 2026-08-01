@@ -42,6 +42,11 @@ _POOL = ThreadPoolExecutor(max_workers=max(1, int(os.environ.get("ARCHIVE_WORKER
 _LOCK = threading.Lock()
 _FUTURES = {}
 _STATE = {}
+_STOP = threading.Event()
+
+
+class _ArchiveInterrupted(RuntimeError):
+    """A graceful web-worker shutdown interrupted an archive between patent files."""
 
 
 def _signature(report):
@@ -107,6 +112,9 @@ def metadata(slug, reports_dir):
 
 def ensure(slug, report, final_view, reports_dir):
     """Schedule the archive if the current report signature is not already ready/running."""
+    if _STOP.is_set():
+        return {"slug": slug, "status": "interrupted", "ready": False, "top_n": TOP_N,
+                "message": "Archive will resume after the service restart."}
     if not report or report.get("partial"):
         return {"status": "waiting", "ready": False, "top_n": TOP_N}
     sig = _signature(report)
@@ -513,6 +521,8 @@ def _build(slug, report, final_view, reports_dir, sig):
                 with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED,
                                      compresslevel=6) as zf:
                     for idx, card in enumerate(cards, 1):
+                        if _STOP.is_set():
+                            raise _ArchiveInterrupted()
                         card["archive_rank"] = idx
                         _set_state(slug, reports_dir, status="building", ready=False,
                                    signature=sig, n_done=idx - 1, n_patents=len(cards),
@@ -557,6 +567,9 @@ def _build(slug, report, final_view, reports_dir, sig):
             download_name=f"prior-art-{slug}-top-{TOP_N}-full-text.zip",
             generated_at=datetime.now(timezone.utc).isoformat(), message="Archive ready")
         return state
+    except _ArchiveInterrupted:
+        return _set_state(slug, reports_dir, status="interrupted", ready=False, signature=sig,
+                          message="Archive interrupted by a service restart; it will resume automatically.")
     except Exception as exc:
         traceback.print_exc()
         return _set_state(slug, reports_dir, status="error", ready=False, signature=sig,
@@ -564,4 +577,5 @@ def _build(slug, report, final_view, reports_dir, sig):
 
 
 def shutdown(wait=False):
-    _POOL.shutdown(wait=wait, cancel_futures=False)
+    _STOP.set()
+    _POOL.shutdown(wait=wait, cancel_futures=True)
