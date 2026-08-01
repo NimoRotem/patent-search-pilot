@@ -107,6 +107,7 @@
         <span id="archiveStatus">
           {% if v.archive.ready %}Ready — {{ v.archive.n_patents }} Markdown files; {{ v.archive.n_full_text }} include both claims and full description.
           {% elif v.archive.status == 'error' %}Archive generation needs a retry.
+          {% elif v.partial %}Starts automatically as soon as the final ranking is ready.
           {% else %}Building automatically in the background: one Markdown file per ranked patent, with full text and sketch links.{% endif %}
         </span>
       </div>
@@ -565,6 +566,11 @@ window.REPORT_SAVED = {{ (v.account_search and v.account_search.saved)|default(f
   const download = document.getElementById('archiveDownload');
   const retry = document.getElementById('archiveRetry');
   if(!card) return;
+  if(window.PARTIAL){
+    download.hidden = true; retry.hidden = true;
+    status.textContent = 'Starts automatically as soon as the final ranking is ready.';
+    return;
+  }
   let timer = null;
   function renderArchive(d){
     card.dataset.status = d.status || 'building';
