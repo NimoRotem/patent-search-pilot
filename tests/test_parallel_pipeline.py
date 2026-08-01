@@ -83,6 +83,8 @@ def test_stash_and_load_doc_roundtrip():
         "ok": True,
         "source": "upload",
         "label": "claims.pdf",
+        "title": "RFID lifter",
+        "full_text": "Complete inventor disclosure with handle, RFID reader and swappable plate.",
         "chunks": [
             {"kind": "claim_own", "independent": True, "text": "a vacuum gripper claim",
              "coord": {"claim_no": 1}, "vector": _vec(3)},
@@ -102,6 +104,8 @@ def test_stash_and_load_doc_roundtrip():
         assert loaded["claims"] == [{"claim_no": 1, "text": "a vacuum gripper claim",
                                       "independent": True}]
         assert loaded["source"] == "upload"
+        assert loaded["title"] == "RFID lifter"
+        assert loaded["full_text"].startswith("Complete inventor disclosure")
     finally:
         (webapp.DOCSTASH / f"doc-{token}.json").unlink(missing_ok=True)
 
@@ -131,11 +135,14 @@ def test_load_doc_materials_missing_token_is_none():
 
 def test_attach_query_document_is_upload_only():
     rep = {}
-    webapp._attach_query_document(rep, {"source": "upload", "label": "claims.pdf", "claims": [
+    webapp._attach_query_document(rep, {"source": "upload", "label": "claims.pdf",
+                                  "title": "RFID lifter", "full_text": "Verbatim disclosure",
+                                  "claims": [
         {"claim_no": 1, "text": "a vacuum lifter", "independent": True},
     ]})
     assert rep["query_document"]["label"] == "claims.pdf"
     assert rep["query_document"]["n_claims"] == 1
+    assert rep["query_document"]["disclosure_text"] == "Verbatim disclosure"
     untouched = {}
     webapp._attach_query_document(untouched, {"source": "link", "claims": rep["query_document"]["claims"]})
     assert "query_document" not in untouched

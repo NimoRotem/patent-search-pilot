@@ -110,6 +110,12 @@ def draft_client(monkeypatch):
     monkeypatch.setattr(webapp, "_drafting_service", lambda: service)
     monkeypatch.setattr(webapp, "_draft_report_loader",
                         lambda principal, slug, owner: {"query": "Detailed RFID lifter disclosure",
+                                                       "query_document": {
+                                                           "source": "upload",
+                                                           "label": "rfid-lifter.txt",
+                                                           "disclosure_text": "Verbatim full uploaded disclosure with all four claims.",
+                                                           "n_claims": 4,
+                                                       },
                                                        "cards": [dict(CARD)]})
     auth.reset_limits()
     client = webapp.app.test_client()
@@ -135,6 +141,8 @@ def test_draft_library_and_intake_render(draft_client):
     body = intake.get_data(as_text=True)
     assert "inventor disclosure is the source of truth" in body.lower()
     assert "US-11223344-B2" in body
+    assert "Verbatim full uploaded disclosure with all four claims." in body
+    assert "Full uploaded disclosure loaded" in body
 
 
 def test_create_draft_uses_server_report_and_selected_publications(draft_client):

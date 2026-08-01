@@ -43,6 +43,7 @@
         <label for="draft-title">Working title</label>
         <input id="draft-title" type="text" name="title" maxlength="240" required value="{{ values.title or '' }}">
         <label for="draft-disclosure">Invention disclosure</label>
+        {% if source_document.disclosure_text %}<div class="fieldhint sourceproof" role="status">Full uploaded disclosure loaded from <b>{{ source_document.label or 'the source document' }}</b> · {{ '{:,}'.format(source_document.disclosure_text|length) }} characters · {{ source_document.n_claims or 0 }} claims retained for the claim grid.</div>{% endif %}
         <textarea id="draft-disclosure" name="disclosure_text" rows="14" maxlength="240000" required>{{ values.disclosure_text or '' }}</textarea>
         <div class="fieldhint">Include how it works, required relationships, alternatives, materials, dimensions when material, and figure descriptions. Minimum 40 characters.</div>
         <label for="draft-notes">Inventor, applicant and filing notes <span class="muted">(optional)</span></label>

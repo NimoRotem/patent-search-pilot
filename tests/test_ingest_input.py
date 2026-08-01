@@ -141,9 +141,11 @@ def test_build_text_only(monkeypatch):
     monkeypatch.setattr(llm, "condense_for_search",
                         lambda t: {"disclosure": "a compact search brief about vacuum grippers",
                                    "title": "Vacuum gripper"})
-    r = ii._build(text="some long extracted patent text " * 5, figures=[], source="upload",
+    text = "some long extracted patent text " * 5
+    r = ii._build(text=text, figures=[], source="upload",
                   label="doc.pdf", notes=[])
     assert r["ok"] is True
+    assert r["full_text"] == text.strip()
     assert "vacuum grippers" in r["brief"]
     assert r["figures_present"] is False and r["text_present"] is True
     assert r["vision"] == ""
@@ -202,6 +204,7 @@ def test_route_stashes_claims_but_does_not_return_vectors_or_full_images(
     extracted = {
         "ok": True, "status": 200, "source": "upload", "label": "claims.txt",
         "brief": "a vacuum lifter", "summary_brief": "a vacuum lifter",
+        "full_text": "The complete inventor-supplied patent disclosure.",
         "text_present": True, "text_chars": 80, "text_snippet": "claim text",
         "figures_present": True, "n_figures": 1, "thumbs": [], "notes": [],
         "n_chunks": 1, "n_claims": 1,
@@ -218,9 +221,10 @@ def test_route_stashes_claims_but_does_not_return_vectors_or_full_images(
     assert r.status_code == 200
     body = r.get_json()
     assert body["doc_token"] and body["n_claims"] == 1
-    assert "chunks" not in body and "figure_images" not in body
+    assert "chunks" not in body and "figure_images" not in body and "full_text" not in body
     loaded = webapp._load_doc_materials(body["doc_token"])
     assert loaded["claims"][0]["claim_no"] == 1
+    assert loaded["full_text"] == "The complete inventor-supplied patent disclosure."
     assert loaded["figure_blobs"] == [b"PNGDATA"]
 
 
@@ -332,6 +336,7 @@ def test_build_returns_chunks_and_images_contract(monkeypatch):
             "2. The gripper of claim 1, further comprising a sensor.\n")
     r = ii._build(text=text, figures=[b"png1", b"png2"], source="upload", label="d.pdf", notes=[])
     assert r["ok"] is True
+    assert r["full_text"] == text.strip()
     # summary kept
     assert r["summary_brief"] == "a compact brief about vacuum grippers"
     # chunks present, each embedded at 768d, kinds valid

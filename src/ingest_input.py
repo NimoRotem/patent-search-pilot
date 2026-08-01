@@ -466,6 +466,10 @@ def _build(text: str, figures: list[bytes], source: str, label: str, notes: list
 
     return {
         "ok": True, "source": source, "label": label, "pub": pub, "title": title,
+        # Kept server-side by webapp._stash_doc and removed before /extract responds.  The search
+        # intentionally runs on the condensed brief + bounded vectors, but a later drafting
+        # workspace must receive the inventor's verbatim upload rather than that lossy summary.
+        "full_text": text[:240_000],
         # legacy single-string query material (current text pipeline consumes this):
         "brief": brief, "text_chars": len(text), "text_snippet": text[:600],
         "text_present": have_text, "vision": vision, "figures_present": bool(figures),

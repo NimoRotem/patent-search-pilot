@@ -423,6 +423,9 @@ def _stash_doc(res):
                 vecs.append(v)
                 weights.append(_chunk_weight(c))
         figs = [im.get("b64") for im in (res.get("figure_images") or []) if im.get("b64")]
+        full_text = ""
+        if res.get("source") == "upload":
+            full_text = str(res.get("full_text") or "")[:drafting.MAX_DISCLOSURE_CHARS].strip()
         claims = []
         if res.get("source") == "upload":
             for i, c in enumerate(chunks):
@@ -434,12 +437,13 @@ def _stash_doc(res):
                     "text": str(c.get("text"))[:8000],
                     "independent": bool(c.get("independent")),
                 })
-        if not vecs and not figs and not claims:
+        if not vecs and not figs and not claims and not full_text:
             return None
         token = uuid.uuid4().hex
         (DOCSTASH / f"doc-{token}.json").write_text(json.dumps(
             {"chunk_vecs": vecs, "chunk_weights": weights, "figure_b64": figs,
              "claims": claims, "source": res.get("source"), "label": res.get("label"),
+             "title": res.get("title"), "full_text": full_text,
              "n_chunks": len(vecs), "n_figs": len(figs), "n_claims": len(claims),
              "t": time.time()}))
         return token
@@ -467,7 +471,8 @@ def _load_doc_materials(token):
             continue
     return {"chunk_vecs": d.get("chunk_vecs") or [], "chunk_weights": d.get("chunk_weights") or [],
             "figure_blobs": blobs, "claims": d.get("claims") or [],
-            "source": d.get("source"), "label": d.get("label")}
+            "source": d.get("source"), "label": d.get("label"), "title": d.get("title"),
+            "full_text": str(d.get("full_text") or "")[:drafting.MAX_DISCLOSURE_CHARS]}
 
 
 def _attach_query_document(report, doc):
@@ -476,12 +481,15 @@ def _attach_query_document(report, doc):
     Link-based query-by-example searches deliberately do not get this grid: the requested feature
     is for a *full uploaded patent document*, where the user supplied the claim set to analyse.
     """
-    if not doc or doc.get("source") != "upload" or not doc.get("claims"):
+    if (not doc or doc.get("source") != "upload" or
+            not (doc.get("claims") or (doc.get("full_text") or "").strip())):
         return report
     report["query_document"] = {
         "source": "upload",
         "label": doc.get("label") or "uploaded patent",
-        "claims": doc.get("claims")[:60],
+        "title": doc.get("title"),
+        "disclosure_text": str(doc.get("full_text") or "")[:drafting.MAX_DISCLOSURE_CHARS],
+        "claims": (doc.get("claims") or [])[:60],
         "n_claims": len(doc.get("claims") or []),
     }
     return report
@@ -1244,6 +1252,7 @@ def extract():
         # much larger JSON response.
         res.pop("chunks", None)
         res.pop("figure_images", None)
+        res.pop("full_text", None)
     return jsonify(res), status
 
 
@@ -2770,6 +2779,11 @@ def _draft_report_loader(principal, slug, owner_user_id):
         raise drafting.DraftingConflict("Wait for the final ranking before starting a draft.")
     view = _build_view_cached(slug, rep)
     view["slug"] = slug
+    # The interactive view is deliberately based on the condensed search brief.  Drafting is a
+    # different trust boundary: only the inventor's verbatim uploaded disclosure may supply new
+    # matter, so pass that immutable server-side snapshot separately when the search came from an
+    # upload.  It is never synthesized from prior-art cards.
+    view["query_document"] = dict(rep.get("query_document") or {})
     return view
 
 
@@ -2831,9 +2845,12 @@ def _draft_new_context(user, principal, slug, selected=None, values=None, error=
     values = dict(values or {})
     if report_view:
         account_search = accounts.get_search(user["id"], slug) or {}
+        source_document = report_view.get("query_document") or {}
         values.setdefault("title", account_search.get("title") or
+                          source_document.get("title") or
                           (report_view.get("query") or "US patent application")[:180])
-        values.setdefault("disclosure_text", report_view.get("query") or "")
+        values.setdefault("disclosure_text", source_document.get("disclosure_text") or
+                          report_view.get("query") or "")
         defaults = []
         if user.get("organization"):
             defaults.append(f"Organization: {user['organization']}")
@@ -2846,7 +2863,9 @@ def _draft_new_context(user, principal, slug, selected=None, values=None, error=
     selected = list(selected or [])
     if cards and not selected:
         selected = [card.get("pub") for card in cards[:5] if card.get("pub")]
+    source_document = (report_view or {}).get("query_document") or {}
     return {"choices": choices, "report_view": report_view, "search_slug": slug,
+            "source_document": source_document,
             "selected": set(selected), "values": values, "error": error}
 
 
