@@ -451,7 +451,11 @@ def _stash_doc(res):
         if res.get("source") == "upload":
             full_text = str(res.get("full_text") or "")[:drafting.MAX_DISCLOSURE_CHARS].strip()
         claims = []
-        if res.get("source") == "upload":
+        # Claims are stashed whichever way the document arrived. They are a few kilobytes, and
+        # the review panel lets a user hand-correct the claim set of a LINKED publication too —
+        # that correction has to survive the re-stash. Which searches get the report-side claim
+        # grid is decided separately, by _attach_query_document.
+        if True:
             for i, c in enumerate(chunks):
                 if c.get("kind") != "claim_own" or not (c.get("text") or "").strip():
                     continue
@@ -1250,17 +1254,26 @@ def extract():
         auth.require_csrf()
     f = request.files.get("file")
     url = (request.form.get("url") or "").strip()
+    data = None
+    if f is not None and (f.filename or "").strip():
+        data = f.read(ingest_input.MAX_BYTES + 1)
+        if len(data) > ingest_input.MAX_BYTES:
+            return jsonify({"ok": False,
+                            "error": f"file too large (max {ingest_input.MAX_BYTES // (1024*1024)} MB)"}), 413
+    elif not url:
+        return jsonify({"ok": False, "error": "provide a file or a patent URL"}), 400
+
+    # Reading a 64-page grant measures at ~50 s — two model passes over the whole document plus
+    # drawing extraction. Held synchronously that is a blank spinner on the most important
+    # interaction in the app, so the client asks for a job and polls /extract/status for the
+    # phase actually running. The synchronous path is kept for programmatic callers and tests.
+    if request.form.get("async") == "1":
+        job = _start_extract_job(data, (f.filename if f is not None else ""), url)
+        return jsonify({"ok": True, "job": job, "state": "running"}), 202
+
     try:
-        if f is not None and (f.filename or "").strip():
-            data = f.read(ingest_input.MAX_BYTES + 1)
-            if len(data) > ingest_input.MAX_BYTES:
-                return jsonify({"ok": False,
-                                "error": f"file too large (max {ingest_input.MAX_BYTES // (1024*1024)} MB)"}), 413
-            res = ingest_input.extract_upload(data, f.filename)
-        elif url:
-            res = ingest_input.extract_link(url)
-        else:
-            return jsonify({"ok": False, "error": "provide a file or a patent URL"}), 400
+        res = (ingest_input.extract_upload(data, f.filename) if data is not None
+               else ingest_input.extract_link(url))
     except Exception as e:
         traceback.print_exc()
         return jsonify({"ok": False, "error": f"extraction failed: {str(e)[:200]}"}), 500
@@ -1278,6 +1291,165 @@ def extract():
         res.pop("figure_images", None)
         res.pop("full_text", None)
     return jsonify(res), status
+
+
+# ---------------------------------------------------------------------------
+# extraction as a job, so the upload can show real progress instead of a spinner
+# ---------------------------------------------------------------------------
+# Each phase carries the share of the bar it has reached when it BEGINS. The percentages are
+# proportional to measured phase durations on a 67-page scan (read 1 s, drawings 24 s,
+# structure 40 s, brief 10 s, vision 6 s, embed 4 s), so the bar tracks work done rather than a
+# timer. They must be listed in EXECUTION order — extract_upload runs read and figures,
+# patent_doc.analyze runs structure then brief, and _build runs vision then embed — otherwise
+# the phase NAME goes backwards even though the bar does not.
+EXTRACT_STAGES = [
+    ("read", "Reading the document", 5),
+    ("figures", "Extracting the drawings", 12),
+    ("structure", "Separating the claims and the abstract", 40),
+    ("brief", "Writing the search brief from the whole document", 78),
+    ("vision", "Reading the drawings", 88),
+    ("embed", "Preparing the query vectors", 94),
+]
+_EXTRACT_PCT = {k: p for k, _, p in EXTRACT_STAGES}
+_EXTRACT_LABEL = {k: label for k, label, _ in EXTRACT_STAGES}
+EXTRACT_JOB_TTL = 30 * 60
+EXTRACT_JOBS_MAX = 200
+_EXTRACT_JOBS = {}
+_EXTRACT_JOBS_LOCK = threading.Lock()
+
+
+def _extract_job_set(job, **kw):
+    with _EXTRACT_JOBS_LOCK:
+        rec = _EXTRACT_JOBS.get(job)
+        if rec is not None:
+            rec.update(kw)
+            rec["t"] = time.time()
+
+
+def _extract_jobs_sweep():
+    """Drop finished/abandoned jobs. Called on each new job, so nothing accumulates unbounded."""
+    now = time.time()
+    with _EXTRACT_JOBS_LOCK:
+        for k in [k for k, v in _EXTRACT_JOBS.items() if now - v.get("t", 0) > EXTRACT_JOB_TTL]:
+            _EXTRACT_JOBS.pop(k, None)
+        while len(_EXTRACT_JOBS) > EXTRACT_JOBS_MAX:
+            _EXTRACT_JOBS.pop(min(_EXTRACT_JOBS, key=lambda k: _EXTRACT_JOBS[k].get("t", 0)), None)
+
+
+def _start_extract_job(data, filename, url):
+    _extract_jobs_sweep()
+    job = uuid.uuid4().hex
+    with _EXTRACT_JOBS_LOCK:
+        _EXTRACT_JOBS[job] = {"state": "running", "stage": "read", "pct": 3,
+                              "msg": "Reading the document", "t": time.time(), "result": None}
+
+    def on_stage(key, msg):
+        _extract_job_set(job, stage=key, pct=_EXTRACT_PCT.get(key, 50),
+                         msg=_EXTRACT_LABEL.get(key, msg))
+
+    def work():
+        try:
+            res = (ingest_input.extract_upload(data, filename, on_stage=on_stage)
+                   if data is not None else ingest_input.extract_link(url, on_stage=on_stage))
+            res.pop("status", None)
+            if res.get("ok"):
+                res["doc_token"] = _stash_doc(res)
+                res.pop("chunks", None)
+                res.pop("figure_images", None)
+                res.pop("full_text", None)
+                _extract_job_set(job, state="done", pct=100, stage="done",
+                                 msg="Ready", result=res)
+            else:
+                _extract_job_set(job, state="error", pct=100,
+                                 msg=res.get("error") or "extraction failed")
+        except Exception as e:
+            traceback.print_exc()
+            _extract_job_set(job, state="error", pct=100,
+                             msg=f"extraction failed: {str(e)[:200]}")
+
+    threading.Thread(target=work, name=f"extract-{job[:8]}", daemon=True).start()
+    return job
+
+
+@app.route("/extract/status/<job>")
+def extract_status(job):
+    job = re.sub(r"[^0-9a-f]", "", str(job))[:64]
+    with _EXTRACT_JOBS_LOCK:
+        rec = _EXTRACT_JOBS.get(job)
+        snap = dict(rec) if rec else None
+    if snap is None:
+        return jsonify({"ok": False, "state": "unknown",
+                        "error": "that upload is no longer in progress — please try again"}), 404
+    out = {"ok": snap["state"] != "error", "state": snap["state"], "stage": snap.get("stage"),
+           "pct": snap.get("pct"), "msg": snap.get("msg")}
+    if snap["state"] == "done":
+        out["result"] = snap.get("result")
+        with _EXTRACT_JOBS_LOCK:                   # one delivery; the client has the payload now
+            _EXTRACT_JOBS.pop(job, None)
+    elif snap["state"] == "error":
+        out["error"] = snap.get("msg")
+    return jsonify(out)
+
+
+MAX_REVISED_CLAIMS = 200
+MAX_REVISED_CLAIM_CHARS = 12000
+MAX_REVISED_BRIEF_CHARS = 20000
+
+
+@app.route("/extract/revise", methods=["POST"])
+def extract_revise():
+    """Apply the user's corrections to the extracted search material.
+
+    The review panel is only meaningful if a correction actually reaches retrieval. Each claim
+    is its own query vector, so an edited claim has to be re-chunked and re-embedded; otherwise
+    the textarea would show the corrected claim while the search still ran on the text the user
+    had just rejected. Returns a NEW doc_token — the old one is left alone so a stale tab cannot
+    be affected, and the token is part of the report slug, so a corrected search is a different
+    report rather than an overwrite of the uncorrected one.
+    """
+    if auth.current_user():
+        auth.require_csrf()
+    body = request.get_json(silent=True) or {}
+    token = (body.get("doc_token") or "").strip()
+    prior = _load_doc_materials(token) if token else None
+    if token and prior is None:
+        return jsonify({"ok": False, "error": "that upload has expired — please upload it again"}), 410
+
+    claims = []
+    for c in (body.get("claims") or [])[:MAX_REVISED_CLAIMS]:
+        if isinstance(c, str):
+            c = {"text": c}
+        if not isinstance(c, dict):
+            continue
+        t = str(c.get("text") or "").strip()[:MAX_REVISED_CLAIM_CHARS]
+        if t:
+            claims.append({"claim_no": len(claims) + 1, "text": t,
+                           "independent": c.get("independent")})
+    abstract = str(body.get("abstract") or "").strip()[:ingest_input.MAX_QUERY_CHUNKS * 1000]
+    brief = str(body.get("brief") or "").strip()[:MAX_REVISED_BRIEF_CHARS]
+    title = str(body.get("title") or "").strip()[:300]
+    if not (claims or abstract or brief):
+        return jsonify({"ok": False, "error": "nothing to search — provide a brief, an abstract "
+                                              "or at least one claim"}), 400
+    try:
+        rebuilt = ingest_input.rebuild_from_edits(abstract=abstract, claims=claims, brief=brief,
+                                                  title=title)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": f"could not apply the edits: {str(e)[:200]}"}), 500
+
+    # Carry the figures and the verbatim upload across from the original extraction: the user
+    # edited the TEXT, not the drawings, and the drafting workspace still needs the raw document.
+    rebuilt["source"] = (prior or {}).get("source") or "upload"
+    rebuilt["label"] = (prior or {}).get("label") or ""
+    rebuilt["full_text"] = (prior or {}).get("full_text") or ""
+    rebuilt["figure_images"] = [{"mime": "image/png", "b64": base64.b64encode(b).decode("ascii")}
+                                for b in (prior or {}).get("figure_blobs") or []]
+    new_token = _stash_doc(rebuilt)
+    embedded = sum(1 for c in rebuilt["chunks"] if c.get("vector"))
+    return jsonify({"ok": True, "doc_token": new_token, "n_claims": rebuilt["n_claims"],
+                    "n_chunks": rebuilt["n_chunks"], "n_embedded": embedded,
+                    "n_independent": rebuilt["n_independent"]})
 
 
 @app.route("/report/<slug>")
@@ -3213,10 +3385,70 @@ def healthz():
     return jsonify(h)
 
 
+RECOVERY_GRACE_SECONDS = 120
+
+
+def recover_interrupted_searches():
+    """Reconcile searches that were running when the previous process died.
+
+    Completion is recorded in-process: ``_generate`` finishes, marks the saved search complete
+    and queues the email. A deploy, a restart or an OOM in the middle of a multi-minute search
+    therefore leaves the row saying ``running`` for ever, and the user who was told "you can
+    close this tab, we will email you" is never emailed and never sees the search finish.
+
+    At startup nothing is running in THIS process, so every stale ``running`` row belongs to a
+    process that is gone. Each is settled against what is actually on disk:
+
+      * a finished report (``partial`` false) -> the work DID complete and only the bookkeeping
+        was lost: mark it complete and queue the email that was promised;
+      * a partial report or none at all       -> mark it failed, so Search history says so and
+        offers a re-run instead of showing a search that will never end.
+
+    Fail-soft and best-effort: the accounts store may be unavailable, and a search page must
+    still come up if it is.
+    """
+    settled = {"completed": 0, "failed": 0}
+    try:
+        if not auth.accounts_enabled(app):
+            return settled
+        with db.cursor() as cur:
+            cur.execute("SELECT DISTINCT slug FROM app_saved_searches "
+                        "WHERE status='running' AND updated_at < now() - interval '%s seconds'"
+                        % int(RECOVERY_GRACE_SECONDS))
+            slugs = [r["slug"] for r in cur.fetchall()]
+    except Exception:
+        traceback.print_exc()
+        return settled
+
+    for slug in slugs:
+        try:
+            rep = None
+            p = report_path(slug)
+            if p.exists():
+                try:
+                    rep = json.loads(p.read_text())
+                except Exception:
+                    rep = None
+            if rep is not None and not rep.get("partial"):
+                notifications.queue_search_completion(slug)
+                settled["completed"] += 1
+            else:
+                accounts.mark_search_failed(slug)
+                settled["failed"] += 1
+        except Exception:
+            traceback.print_exc()
+    if settled["completed"] or settled["failed"]:
+        print(f"[recovery] settled interrupted searches: {settled['completed']} completed, "
+              f"{settled['failed']} marked failed", flush=True)
+    return settled
+
+
 # ---- auth + rate limiting (registered LAST, after every route exists) ------------------------
 auth.init_app(app, state_path=DATA / "run_budget.json")
 notifications.init_app(app)
 draft_worker.init_app(app, _drafting_service)
+if "PYTEST_CURRENT_TEST" not in os.environ:
+    recover_interrupted_searches()
 
 
 if __name__ == "__main__":

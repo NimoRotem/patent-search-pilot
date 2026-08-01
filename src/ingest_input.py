@@ -132,15 +132,31 @@ def safe_label(filename: str) -> str:
 
 
 def _pdf_text(data: bytes) -> str:
-    with tempfile.NamedTemporaryFile(suffix=".pdf") as tf:
-        tf.write(data)
-        tf.flush()
+    """Legacy plain extraction, kept for callers that only want a string."""
+    return _pdf_read(data).get("text", "")
+
+
+def _pdf_read(data: bytes) -> dict:
+    """Layout-aware read of an uploaded PDF -> patent_pdf.extract()'s dict.
+
+    Column reconstruction matters more here than anywhere else in the app: this is the text the
+    claims are split out of and the brief is written from, and poppler's reading order splices
+    the two columns of a granted patent together mid-sentence.
+    """
+    fd, path = tempfile.mkstemp(suffix=".pdf")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        import patent_pdf
+        return patent_pdf.extract(path)
+    except Exception:
+        return {"text": "", "pages": [], "n_pages": 0, "text_layer": False,
+                "empty_pages": 0, "method": "none", "notes": ["could not read this PDF"]}
+    finally:
         try:
-            r = subprocess.run(["pdftotext", "-q", "-nopgbrk", tf.name, "-"],
-                               capture_output=True, timeout=90)
-            return (r.stdout or b"").decode("utf-8", "ignore")
+            os.unlink(path)
         except Exception:
-            return ""
+            pass
 
 
 def _pdf_figures(data: bytes) -> list[bytes]:
@@ -239,62 +255,30 @@ except Exception:                       # identical fallback if chunker's heavy 
         return max(1, len(s) // 4)
 
 
-_CLAIMS_HDR = re.compile(
-    r"(?im)^\s*(?:what\s+is\s+claimed(?:\s+is)?|we\s+claim|i\s+claim|"
-    r"the\s+invention\s+claimed\s+is|claims?)\s*[:.]?\s*$")
-_CLAIM_SPLIT = re.compile(r"(?m)^\s*(\d{1,3})\s*[.)]\s+")
 _ABSTRACT_HDR = re.compile(r"(?im)^\s*abstract\b.*$")
 
 
 def _is_independent_claim(txt: str) -> bool:
     """A claim is dependent if it references another claim ('according to claim 3', 'of claim 1').
     Used only to PRIORITISE which claims survive the chunk cap — independent claims first."""
-    return re.search(r"(?i)\bclaims?\s+\d+", txt or "") is None
+    import patent_doc
+    return patent_doc.is_independent(txt)
 
 
 def _segment_text(text: str):
-    """Best-effort structure recovery from free document text (uploaded PDF/DOCX/TXT).
+    """Structure recovery from free document text -> (title, abstract, claims, paragraphs).
 
-    Returns (title, abstract, claims:list[str], paragraphs:list[str]). Heuristic — a patent PDF
-    has no machine-readable structure the way the corpus staging tables do, so we detect the
-    claims header, an Abstract heading, and blank-line paragraph breaks. Honest about limits: if
-    nothing is detected we still return the body as paragraphs, so a document always chunks."""
-    text = text or ""
-    # title: first short non-empty line that is not the word 'Abstract'
-    title = ""
-    for ln in text.splitlines():
-        s = ln.strip()
-        if s:
-            if len(s) <= 200 and not _ABSTRACT_HDR.match(s):
-                title = s
-            break
-
-    body = text
-    claims: list[str] = []
-    m = _CLAIMS_HDR.search(text)
-    if m:
-        blob = text[m.end():]
-        body = text[:m.start()]
-        parts = _CLAIM_SPLIT.split(blob)      # [pre, num, text, num, text, ...]
-        if len(parts) >= 3:
-            it = iter(parts[1:])
-            for num, ctext in zip(it, it):
-                c = (ctext or "").strip()
-                if len(c) >= 15:
-                    claims.append(f"{num}. {c}")
-        else:
-            cb = blob.strip()
-            if len(cb) >= 15:
-                claims.append(cb)
-
-    abstract = ""
-    am = _ABSTRACT_HDR.search(body)
-    if am:
-        after = body[am.end():].strip()
-        abstract = re.split(r"\n\s*\n", after, 1)[0].strip()[:4000]
-
-    paras = [p.strip() for p in re.split(r"\n\s*\n", body) if len(p.strip()) >= MIN_PARA_CHARS]
-    return title, abstract, claims, paras
+    Delegates to :func:`patent_doc.segment`, which handles what the original inline heuristic
+    here did not: a claims section that runs into "1." on the same line, claim numbers that must
+    appear IN SEQUENCE (so "the system of claim 10" cannot start a new claim), CN and EP
+    publications that print the claims BEFORE the description, and the spacing an OCR text layer
+    inserts around punctuation. Claims come back as "N. <text>" strings, the shape this module's
+    callers expect.
+    """
+    import patent_doc
+    s = patent_doc.segment(text or "")
+    claims = ["%s. %s" % (c["claim_no"], c["text"]) for c in (s.get("claims") or [])]
+    return s.get("title", ""), s.get("abstract", ""), claims, s.get("paragraphs", [])
 
 
 def build_query_chunks(title: str = "", abstract: str = "", claims=None, paragraphs=None,
@@ -382,24 +366,42 @@ def embed_query_chunks(chunks: list[dict], dim: int = EMBED_DIM) -> list[dict]:
 # ---------------------------------------------------------------------------
 def _build(text: str, figures: list[bytes], source: str, label: str, notes: list[str],
            pub: str | None = None, drawings_source: str | None = None,
-           struct: dict | None = None, embed_chunks: bool = True) -> dict:
+           struct: dict | None = None, embed_chunks: bool = True,
+           analysis: dict | None = None, on_stage=None) -> dict:
     """Assemble the search object from a document's text + figures.
 
-    Produces THREE search materials from the one document (the user's requirement):
-      - summary_brief : the condensed full-document disclosure (llm.condense_for_search)
+    Produces, from the one document, the material the search runs on AND the material the review
+    panel shows the user for correction:
+      - abstract      : the applicant's abstract, on its own
+      - claims        : each claim on its own, numbered, independent ones marked
+      - brief         : a search brief condensed from the WHOLE file
       - chunks        : corpus-parity full-text chunks, each embedded (RETRIEVAL_QUERY)
       - figure_images : the drawing PNGs (base64) for the image-search channel
-    plus the legacy `brief` (disclosure + vision folded into one query string) for the current
-    text pipeline, and the vision `figure_descriptions`.
 
-    `struct` (link mode) carries {title, abstract, claims, figure_captions} straight from the
-    detail path; without it the free text is segmented. `embed_chunks=False` skips the Vertex
-    call (used by hermetic unit tests)."""
+    `analysis` is a :func:`patent_doc.analyze` result and is the preferred input — it carries a
+    verified structure and a whole-document brief. Without it the older path runs
+    (``llm.condense_for_search`` over the head of the document), which is what the link mode and
+    the hermetic unit tests use. `struct` (link mode) carries {title, abstract, claims,
+    figure_captions} straight from the detail path. `embed_chunks=False` skips the Vertex call.
+    """
     import llm
+
+    def stage(key, msg):
+        if on_stage:
+            try:
+                on_stage(key, msg)
+            except Exception:
+                pass
+
     text = re.sub(r"[ \t]+", " ", text or "").strip()
     have_text = len(text) >= 40
     disclosure = title = ""
-    if have_text:
+    if analysis:
+        disclosure = analysis.get("brief") or ""
+        title = analysis.get("title") or ""
+        if have_text:
+            notes.append(f"extracted {len(text):,} chars of text" + (f" from {label}" if label else ""))
+    elif have_text:
         cond = llm.condense_for_search(text)
         disclosure = cond.get("disclosure", "")
         title = cond.get("title", "")
@@ -414,6 +416,7 @@ def _build(text: str, figures: list[bytes], source: str, label: str, notes: list
     thumbs: list[str] = []
     if figures:
         notes.append(f"{len(figures)} figure(s) extracted")
+        stage("vision", f"reading the {len(figures)} extracted drawing(s)")
         try:
             vision = llm.describe_figures(figures[:VISION_MAX], context=title or disclosure[:300])
         except Exception:
@@ -443,17 +446,42 @@ def _build(text: str, figures: list[bytes], source: str, label: str, notes: list
                 "status": 422}
 
     # --- FULL-TEXT QUERY CHUNKS: chunk the SAME way the corpus is chunked --------------------
-    if struct is not None:
+    abstract = ""
+    claim_records: list[dict] = []
+    if analysis:
+        abstract = analysis.get("abstract") or ""
+        claim_records = list(analysis.get("claims") or [])
+        chunks = build_query_chunks(
+            title=title, abstract=abstract,
+            claims=[c.get("text", "") for c in claim_records],
+            paragraphs=analysis.get("paragraphs") or [],
+            figure_captions=analysis.get("figure_captions") or [])
+        # keep the analysed independence flag rather than re-deriving it per chunk
+        for c in chunks:
+            if c["kind"] == "claim_own":
+                i = (c.get("coord") or {}).get("claim_no")
+                if i and 1 <= i <= len(claim_records):
+                    c["independent"] = bool(claim_records[i - 1].get("independent"))
+    elif struct is not None:
+        abstract = struct.get("abstract") or ""
         chunks = build_query_chunks(
             title=struct.get("title") or title,
-            abstract=struct.get("abstract") or "",
+            abstract=abstract,
             claims=struct.get("claims") or [],
             paragraphs=[],                       # SerpApi detail path has no description paragraphs
             figure_captions=struct.get("figure_captions") or [])
+        claim_records = [{"claim_no": i + 1, "text": str(c),
+                          "independent": _is_independent_claim(str(c))}
+                         for i, c in enumerate(struct.get("claims") or [])]
     else:
         st, sa, sc, sp = _segment_text(text)
+        abstract = sa
         chunks = build_query_chunks(title=title or st, abstract=sa, claims=sc, paragraphs=sp)
+        claim_records = [{"claim_no": i + 1, "text": str(c),
+                          "independent": _is_independent_claim(str(c))}
+                         for i, c in enumerate(sc)]
     if chunks and embed_chunks:
+        stage("embed", f"preparing {len(chunks)} query vectors")
         embed_query_chunks(chunks)
         embedded = sum(1 for c in chunks if c.get("vector"))
         notes.append(f"{len(chunks)} query chunk(s); {embedded} embedded (RETRIEVAL_QUERY @{EMBED_DIM}d)")
@@ -482,15 +510,37 @@ def _build(text: str, figures: list[bytes], source: str, label: str, notes: list
         "figure_descriptions": vision,             # vision text (alias of `vision`)
         "figure_images": figure_images,            # [{mime,b64}] full-res drawings for image search
         "notes": notes,
+        # --- the REVIEW material: what the user is shown and can correct before searching ----
+        "abstract": abstract,
+        "claims": claim_records,                   # [{claim_no,text,independent}]
+        "n_independent": sum(1 for c in claim_records if c.get("independent")),
+        "publication_number": (analysis or {}).get("publication_number", "") or (pub or ""),
+        "language": (analysis or {}).get("language", ""),
+        "abstract_source": (analysis or {}).get("abstract_source", "" if analysis else "layout"),
+        "claims_source": (analysis or {}).get("claims_source", "layout"),
+        "keywords": (analysis or {}).get("keywords", []),
+        # False when the document had no text layer and was read by vision, so nothing could be
+        # checked against a source. The UI says so and asks the user to read the claims.
+        "verified": bool((analysis or {}).get("verified", True)),
     }
 
 
 # ---------------------------------------------------------------------------
 # public entrypoints
 # ---------------------------------------------------------------------------
-def extract_upload(data: bytes, filename: str) -> dict:
-    """File upload / drag-drop -> {ok, summary_brief, chunks, figure_images, ...} or
-    {ok:False, error, status}."""
+def extract_upload(data: bytes, filename: str, on_stage=None) -> dict:
+    """File upload / drag-drop -> the search + review material, or {ok:False, error, status}.
+
+    ``on_stage(key, message)`` reports each phase so the caller can drive a progress bar; a
+    64-page grant takes the better part of a minute and most of it is model time."""
+
+    def stage(key, msg):
+        if on_stage:
+            try:
+                on_stage(key, msg)
+            except Exception:
+                pass
+
     if not data:
         return {"ok": False, "error": "empty file", "status": 400}
     if len(data) > MAX_BYTES:
@@ -507,18 +557,73 @@ def extract_upload(data: bytes, filename: str) -> dict:
         return {"ok": False,
                 "error": "unsupported file — upload a PDF, .txt or .docx", "status": 415}
 
+    import patent_doc
+    notes: list[str] = []
     figures: list[bytes] = []
+    pdf_for_vision = None
     if kind == "pdf":
-        text = _pdf_text(data)
+        stage("read", "reading the PDF and reconstructing its columns")
+        read = _pdf_read(data)
+        text = read.get("text", "")
+        notes.extend(read.get("notes") or [])
+        if read.get("n_pages"):
+            notes.append(f"{read['n_pages']} page(s) read")
+        if not read.get("text_layer"):
+            # A scanned facsimile: there is no text to segment, so hand the PDF itself to the
+            # transcription pass rather than searching on an empty string.
+            pdf_for_vision = data
+        stage("figures", "extracting the drawings")
         figures = _pdf_figures(data)
     elif kind == "docx":
         text = _docx_text(data)
     else:
         text = data.decode("utf-8", "ignore")
-    return _build(text=text, figures=figures, source="upload", label=label, notes=[])
+
+    analysis = patent_doc.analyze(text=text, pdf_bytes=pdf_for_vision, on_stage=on_stage)
+    notes.extend(analysis.get("notes") or [])
+    if analysis.get("n_claims"):
+        notes.append("%d claim(s) extracted, %d independent"
+                     % (analysis["n_claims"], analysis.get("n_independent", 0)))
+    return _build(text=text, figures=figures, source="upload", label=label, notes=notes,
+                  analysis=analysis, on_stage=on_stage)
 
 
-def extract_link(raw: str) -> dict:
+def rebuild_from_edits(abstract: str = "", claims=None, brief: str = "", title: str = "",
+                       paragraphs=None, figure_captions=None, embed_chunks: bool = True) -> dict:
+    """Re-chunk and re-embed after the user corrects the extracted material.
+
+    The review panel exists so a wrong abstract or a mangled claim can be fixed BEFORE the
+    search spends on it. That correction has to reach the retrieval side, not just the textarea:
+    every claim is its own query vector, so an edited claim must be re-embedded or the search
+    still runs on the text the user rejected. Returns the same chunk contract ``_build``
+    produces, ready to be re-stashed under a new token.
+    """
+    claims = [c for c in (claims or []) if str(c.get("text") or "").strip()]
+    chunks = build_query_chunks(title=title, abstract=abstract,
+                                claims=[str(c.get("text")) for c in claims],
+                                paragraphs=list(paragraphs or []),
+                                figure_captions=list(figure_captions or []))
+    for c in chunks:
+        if c["kind"] == "claim_own":
+            i = (c.get("coord") or {}).get("claim_no")
+            if i and 1 <= i <= len(claims):
+                c["independent"] = bool(claims[i - 1].get("independent",
+                                                          _is_independent_claim(str(claims[i - 1].get("text")))))
+    if chunks and embed_chunks:
+        embed_query_chunks(chunks)
+    else:
+        for c in chunks:
+            c.setdefault("vector", None)
+    records = [{"claim_no": i + 1, "text": str(c.get("text")),
+                "independent": bool(c.get("independent",
+                                          _is_independent_claim(str(c.get("text")))))}
+               for i, c in enumerate(claims)]
+    return {"ok": True, "chunks": chunks, "n_chunks": len(chunks), "claims": records,
+            "n_claims": len(records), "abstract": abstract, "brief": brief, "title": title,
+            "n_independent": sum(1 for c in records if c["independent"])}
+
+
+def extract_link(raw: str, on_stage=None) -> dict:
     """Google Patents / Espacenet URL or bare pub number -> search object built from the patent's
     text + its drawings (with multi-source OPS/Espacenet recovery). The abstract + each claim are
     chunked for full-text query-by-example, in addition to the summary brief."""
@@ -527,6 +632,11 @@ def extract_link(raw: str) -> dict:
         return {"ok": False,
                 "error": "could not find a valid patent number in that input", "status": 400}
     import enrich_display
+    if on_stage:
+        try:
+            on_stage("read", f"looking up publication {pub}")
+        except Exception:
+            pass
     try:
         disp = enrich_display.enrich_for_display(pub) or {}
     except Exception:
@@ -556,9 +666,36 @@ def extract_link(raw: str) -> dict:
     notes = [f"resolved publication {pub}"]
     if ds:
         notes.append(f"drawings source: {ds}")
+
+    # Same three materials as the upload path, so the review panel behaves identically whichever
+    # way the document arrived. The claims here come from the publication record rather than a
+    # PDF, so they need no repair pass — only the brief has to be written.
+    import patent_doc
+    analysis = None
+    if abstract or claims_list:
+        records = [{"claim_no": i + 1, "text": str(c),
+                    "independent": patent_doc.is_independent(str(c))}
+                   for i, c in enumerate(claims_list)]
+        analysis = {"title": title, "abstract": abstract, "claims": records,
+                    "paragraphs": [], "figure_captions": [],
+                    "publication_number": pub, "verified": True,
+                    "abstract_source": "publication record" if abstract else "none",
+                    "claims_source": "publication record" if records else "none",
+                    "n_claims": len(records),
+                    "n_independent": sum(1 for r in records if r["independent"])}
+        if on_stage:
+            try:
+                on_stage("brief", "condensing a search brief")
+            except Exception:
+                pass
+        brief = patent_doc.search_brief(text, analysis, notes)
+        analysis["brief"] = brief.get("disclosure", "")
+        analysis["keywords"] = brief.get("keywords") or []
+        if brief.get("title"):
+            analysis["title"] = analysis["title"] or brief["title"]
     struct = {"title": title, "abstract": abstract, "claims": claims_list, "figure_captions": []}
     res = _build(text=text, figures=figblobs, source="link", label=pub, notes=notes,
-                 pub=pub, drawings_source=ds, struct=struct)
+                 pub=pub, drawings_source=ds, struct=struct, analysis=analysis, on_stage=on_stage)
     if res.get("ok"):
         res["google_patents"] = disp.get("google_patents")
         res["espacenet"] = disp.get("espacenet")

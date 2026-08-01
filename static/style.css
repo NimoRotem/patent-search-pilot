@@ -784,7 +784,7 @@ details.tail.pending>summary::before{visibility:hidden}
 .ex-tag.good{color:var(--good);border-color:rgba(63,185,80,.32);background:var(--good-soft)}
 .ex-tag.warn{color:var(--warn);border-color:rgba(210,153,34,.32);background:var(--warn-soft)}
 .ex-figs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-.ex-figs img{height:96px;width:auto;max-width:150px;object-fit:contain;background:#fff;
+.ex-figs img{height:96px;width:74px;flex:0 0 auto;object-fit:contain;background:#fff;
   border:1px solid var(--line2);border-radius:6px;padding:3px}
 .ex-block{margin-top:10px}
 .ex-k{display:block;font-size:11.5px;color:var(--muted);font-weight:600;margin-bottom:4px}
@@ -792,6 +792,53 @@ details.tail.pending>summary::before{visibility:hidden}
   max-height:160px;overflow:auto;background:var(--s1);border:1px solid var(--line);
   border-radius:6px;padding:9px 11px}
 .ex-snip.ex-brief{color:var(--ink)}
+
+/* ── upload progress: the real phase the server is in, never a timer ─────────────────────── */
+.exprog{margin-top:11px}
+.exprogbar{height:5px;border-radius:var(--r-pill);background:var(--s2);overflow:hidden}
+.exprogfill{height:100%;width:0;border-radius:var(--r-pill);
+  background:linear-gradient(90deg,var(--accent),#7fb0ff);transition:width .35s ease}
+.exprogrow{display:flex;align-items:baseline;gap:8px;margin-top:6px;font-size:12.5px;
+  color:var(--muted)}
+
+/* ── review panel: the extracted claims / abstract, editable before the search runs ──────── */
+.exwarn{border:1px solid rgba(210,153,34,.42);background:var(--warn-soft);color:var(--ink);
+  border-radius:var(--r-sm);padding:9px 12px;font-size:12.5px;line-height:1.5;margin-bottom:11px}
+.exsec{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s1);
+  margin-top:9px;overflow:hidden}
+.exsec>summary{cursor:pointer;padding:9px 12px;display:flex;align-items:baseline;gap:9px;
+  list-style:none;user-select:none}
+.exsec>summary::-webkit-details-marker{display:none}
+.exsec>summary::before{content:"▸";color:var(--faint);font-size:11px;line-height:1.6}
+.exsec[open]>summary::before{content:"▾"}
+.exsec>summary:hover{background:var(--s2)}
+.exsum{font-weight:600;font-size:13px}
+.exmeta{font-size:11.5px;color:var(--muted)}
+.exhint{margin:0 12px 8px}
+.exsec>.exta,.exsec>.ex-snip{margin:0 12px 12px;width:calc(100% - 24px)}
+.exta{background:var(--s0);border:1px solid var(--line2);border-radius:6px;color:var(--ink);
+  font:12.5px/1.55 inherit;padding:8px 10px;resize:vertical;display:block}
+.exta:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.exclaims{display:flex;flex-direction:column;gap:7px;padding:0 12px 10px}
+.exclaim{display:grid;grid-template-columns:44px 1fr 26px;gap:8px;align-items:start}
+.exclaim.indep .exno{background:var(--accent-soft);border-color:rgba(76,141,255,.4);color:var(--ink)}
+.exclaimno{display:flex;flex-direction:column;align-items:center;gap:3px;padding-top:6px}
+.exno{font-size:11.5px;font-weight:650;min-width:24px;text-align:center;padding:1px 5px;
+  border:1px solid var(--line2);border-radius:var(--r-pill);color:var(--muted);background:var(--s2)}
+.extag-ind{font-size:9.5px;letter-spacing:.03em;color:var(--faint);text-transform:uppercase}
+.exclaim.indep .extag-ind{color:var(--accent)}
+.exclaimta{min-height:58px}
+.exdel{background:none;border:1px solid transparent;color:var(--faint);cursor:pointer;
+  font-size:16px;line-height:1;border-radius:6px;padding:4px 6px;margin-top:4px}
+.exdel:hover{color:var(--bad);border-color:rgba(248,81,73,.4);background:var(--bad-soft)}
+#exAddClaim{margin:0 12px 12px}
+.exnotes{margin:0 12px 12px;padding-left:18px;font-size:12px;color:var(--muted);line-height:1.6}
+.exfoot{margin:10px 2px 0}
+@media (max-width:640px){
+  .exclaim{grid-template-columns:38px 1fr 24px;gap:6px}
+  .exsec>.exta,.exsec>.ex-snip{margin:0 9px 10px;width:calc(100% - 18px)}
+  .exclaims{padding:0 9px 10px}
+}
 
 /* ── named accounts, saved reports and administration ───────────────────── */
 .accountnav{max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

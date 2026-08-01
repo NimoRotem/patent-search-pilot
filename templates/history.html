@@ -43,7 +43,13 @@
           {% if e.search_focus == 'claims' %}<span class="badge">claim search</span>{% endif %}
           {% if e.subject %}<span class="badge">subject {{ e.subject }}</span>{% endif %}
           {% if e.ood %}<span class="badge b-warn" title="The detector judged this query to be outside the indexed field">outside indexed field</span>{% endif %}
-          {% if e.status %}<span class="badge {{ 'b-cached' if e.status == 'complete' else ('b-warn' if e.status == 'failed' else '') }}">{{ e.status }}</span>{% endif %}
+          {#  'failed' is almost always a search that was still running when the server restarted:
+              the work stops, the promised email never goes out, and the row would otherwise sit
+              at "running" for ever. Say what happened and offer the one useful action. #}
+          {% if e.status == 'failed' %}<span class="badge b-warn"
+            title="This search did not finish — usually because the server restarted while it was running. No email was sent.">did not finish</span>
+            <a class="pnlink" href="{{ request.script_root }}/report/{{ e.slug }}?rerun=1">run it again</a>
+          {% elif e.status %}<span class="badge {{ 'b-cached' if e.status == 'complete' else '' }}">{{ e.status }}</span>{% endif %}
           {% if e.saved %}<span class="badge">saved</span>{% endif %}
           {% if e.notify_email and e.notification_status == 'pending' %}<span class="badge">email requested</span>{% endif %}
           {% if e.notification_status in ('queued','sent') %}<span class="badge">email {{ e.notification_status }}</span>{% endif %}
