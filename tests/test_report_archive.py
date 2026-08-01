@@ -98,6 +98,23 @@ def test_build_writes_one_markdown_per_ranked_patent(tmp_path, monkeypatch):
         assert [p["publication"] for p in manifest["patents"]] == ["US-1234567-A", "EP-7654321-A1"]
 
 
+def test_candidate_cards_replace_non_publication_api_identifiers(monkeypatch):
+    monkeypatch.setattr(report_archive, "TOP_N", 3)
+    monkeypatch.setattr(report_archive.webview, "build_view", lambda report, top_n: {"cards": [
+        {"pub": "USPCTUS2020057079", "relevancy_score": 1.0},
+        {"pub": "US63176890", "relevancy_score": .99},
+        {"pub": "US-2222222-B2", "relevancy_score": .9},
+        {"pub": "EP-3333333-A1", "relevancy_score": .8},
+    ]})
+    monkeypatch.setattr(report_archive.webview, "mongo_enrich_cards", lambda cards: None)
+    cards = report_archive._candidate_cards({}, {"cards": [
+        {"pub": "USPCTUS2020057079", "relevancy_score": 1.0},
+        {"pub": "US-1111111-A1", "relevancy_score": .95},
+    ]})
+    assert [card["pub"] for card in cards] == [
+        "US-1111111-A1", "US-2222222-B2", "EP-3333333-A1"]
+
+
 def test_shutdown_state_does_not_accept_new_archive_work(tmp_path):
     report_archive._STOP.set()
     try:

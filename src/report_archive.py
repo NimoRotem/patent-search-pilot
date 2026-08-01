@@ -37,7 +37,7 @@ ARCHIVE_DIR = DATA / "reports" / "archives"
 TEXT_CACHE = DATA / "archive_text_cache"
 PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or "https://rotem.ai/patents").rstrip("/")
 TOP_N = max(1, min(int(os.environ.get("ARCHIVE_TOP_N", "50")), 50))
-ARCHIVE_FORMAT_VERSION = 2
+ARCHIVE_FORMAT_VERSION = 3
 _POOL = ThreadPoolExecutor(max_workers=max(1, int(os.environ.get("ARCHIVE_WORKERS", "1"))),
                            thread_name_prefix="patent-archive")
 _LOCK = threading.Lock()
@@ -153,6 +153,13 @@ def _candidate_cards(report, final_view):
     def add(source):
         for card in source or []:
             pub = card.get("pub")
+            parsed = pubnorm.parse(pub)
+            # Federated APIs occasionally label an application identifier as a publication
+            # number (for example USPCTUS2020057079 or a bare US provisional serial).  Those
+            # records have no publication specification to archive.  Skip them and continue down
+            # the ranked tail so the promised top 50 contains fifty actual publications.
+            if not parsed or not parsed[2]:
+                continue
             key = _join_key(pub) if pub else ""
             if not pub or not key or key in seen:
                 continue
@@ -164,7 +171,9 @@ def _candidate_cards(report, final_view):
 
     if add((final_view or {}).get("cards")):
         return cards
-    wide = webview.build_view(report, top_n=TOP_N)
+    # Ask for a modest reserve because invalid/non-publication identifiers are filtered above;
+    # otherwise three bad API identifiers in a 50-row view would silently produce only 47 files.
+    wide = webview.build_view(report, top_n=max(TOP_N + 25, 75))
     try:
         webview.mongo_enrich_cards(wide.get("cards") or [])
     except Exception:
