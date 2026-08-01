@@ -838,6 +838,7 @@ details.tail.pending>summary::before{visibility:hidden}
 .admintable th,.admintable td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
 .admintable th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;background:var(--s2)}
 .admintable td>span{display:block;color:var(--faint);font-size:11.5px;margin-top:2px}
+.adminsearch-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden;overflow-wrap:anywhere}
 .adminactions{display:flex;gap:6px;flex-wrap:wrap}.adminactions form{margin:0}
 .good{color:var(--good)!important}.bad{color:var(--bad)!important}
 

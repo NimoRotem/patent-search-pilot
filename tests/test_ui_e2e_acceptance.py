@@ -42,6 +42,7 @@ def test_ui_uses_live_corpus_count_and_background_enrichment_contracts():
     assert '.admintable td[data-label]::before' in css
     assert 'data-label="Manage"' in admin_users
     assert 'data-label="Notification"' in admin_searches
+    assert 'class="adminsearch-title"' in admin_searches and "-webkit-line-clamp:4" in css
     assert "filename='style.css', v=asset_version" in base
     assert "filename='app.js', v=asset_version" in base
     assert "filename='style.css', v=asset_version" in print_template
