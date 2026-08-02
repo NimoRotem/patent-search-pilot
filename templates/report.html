@@ -159,6 +159,41 @@
     <summary>Report overview <span>grids, coverage and search scope</span></summary>
   <div class="tailwrap">
 
+    {#  BEST REFERENCE PER FEATURE. A reference is not only a novelty candidate: a document that
+        discloses ONE rare feature and nothing else is the one an inventive-step attack is built
+        on, and the old report had nowhere to put it. Rarity (df) is measured over the references
+        actually read in full, so it is evidence rather than assertion. #}
+    {% if v.deep_rank and v.deep_rank.by_feature %}
+    <details class="tail" open>
+      <summary><span class="th">Best reference for each feature</span>
+        <span class="ts">{{ v.deep_rank.read_in_full }} references read in full · {{ '{:,}'.format(v.deep_rank.chars_read or 0) }} characters · rarest feature first</span></summary>
+      <div class="tailin">
+        <p class="gridline">One row per feature of the invention, rarest first. <b>Disclosed by</b> counts how many of
+          the {{ v.deep_rank.charted }} references read in full actually teach it, with a verbatim quote that passed the
+          grounding check. A feature almost nothing discloses is the one a novelty argument turns on.</p>
+        <div class="chartwrap">
+          <table class="chart featbest">
+            <caption class="vh">The best disclosure found for each feature of the invention</caption>
+            <thead><tr><th scope="col">Invention feature</th><th scope="col">Disclosed by</th><th scope="col">Best evidence</th></tr></thead>
+            <tbody>
+              {% for row in v.deep_rank.by_feature %}
+              <tr>
+                <th class="elh" scope="row">{{ row.feature }}
+                  <span class="elcov">{{ row.df }} of {{ v.deep_rank.charted }} references</span></th>
+                <td class="fbrefs">
+                  {% for r in row.references[:4] %}<button type="button" class="pnlink" onclick="jumpRef('{{ r.pub }}')" title="{{ r.title[:120] }}">{{ r.pub }}</button><span class="fbv fbv-{{ r.verdict }}">{{ r.verdict }}</span>
+                  {% else %}<span class="muted">nothing read in full discloses this</span>{% endfor %}
+                </td>
+                <td class="fbq">{% if row.references %}<q>{{ row.references[0].quote[:220] }}</q><span class="fbloc">{{ row.references[0].location }} · {{ row.references[0].pub }}</span>{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+    {% endif %}
+
     <details class="tail{% if v.partial %} pending{% endif %}">
       <summary><span class="th">Element × reference grid</span>
         <span class="ts">{% if v.partial %}available when final ranking completes{% else %}{{ v.elements|length }} elements × {{ v.claim_chart.columns|length }} references{% if v.claim_chart.verification and v.claim_chart.verification.covered %} · {{ v.claim_chart.verification.discloses }} verified{% endif %}{% endif %}</span></summary>
@@ -464,9 +499,14 @@
               scoring was off. The hover carries the grounded one-line reason. #}
           {% set relscore = c.get('relevancy_score') if c.get('relevancy_score') is not none else c.relevancy %}
           <div class="relbox r{{ (relscore // 20) }}"
-               title="{% if c.get('relevancy_source') %}AI relevancy {{ c.get('relevancy_score') }}/100{% if c.get('relevancy_opinion') %} — {{ c.get('relevancy_opinion')[:200] }}{% endif %}{% else %}Best-passage semantic match: {{ '%.3f'|format(c.match_score) }} cosine{% if c.match_coord %} at {{ c.match_kind }} {{ c.match_coord }}{% endif %}{% endif %}">
+               title="{% if c.get('deep_read') %}Read in full: {{ '{:,}'.format(c.get('deep_chars') or 0) }} characters. Grounds {{ c.get('deep_disclosed', 0) }} disclosed and {{ c.get('deep_partial', 0) }} partial of {{ c.get('deep_features', 0) }} features, weighted by how rare each disclosure is across the references read.{% elif c.get('relevancy_source') in ('deep_rank_screen', 'unread') %}Screened but NOT read in full, so it is held below every reference whose full text was quoted.{% elif c.get('relevancy_source') %}AI relevancy {{ c.get('relevancy_score') }}/100{% if c.get('relevancy_opinion') %} — {{ c.get('relevancy_opinion')[:200] }}{% endif %}{% else %}Best-passage semantic match: {{ '%.3f'|format(c.match_score) }} cosine{% if c.match_coord %} at {{ c.match_kind }} {{ c.match_coord }}{% endif %}{% endif %}">
             <div class="relnum">{{ relscore }}</div>
             <div class="rellab">relevancy</div>
+            {% if c.get('deep_read') %}
+            <div class="relsub relsub-read">{{ c.get('deep_disclosed', 0) }}/{{ c.get('deep_features', 0) }} read in full</div>
+            {% elif c.get('relevancy_source') in ('deep_rank_screen', 'unread') %}
+            <div class="relsub relsub-unread">not read in full</div>
+            {% endif %}
           </div>
         </div>
       </div>

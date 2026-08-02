@@ -20,6 +20,25 @@ from config import SEED_CPC
 RRF_K = 40             # smaller K sharpens the rank-1 advantage of a strong channel
 CHUNK_FETCH = 4000     # chunks pulled before aggregating to publications
 PUB_CAP = 1000         # per-channel publication cap (the spec's ~1000 width)
+
+# ---- funnel width -------------------------------------------------------------------------
+# MEASURED (RECALL_STUDY_2026-08-02.md): CHUNK_FETCH=4000 aggregates to **893 distinct
+# publications** on today's corpus, i.e. 0.018% of 4.95M, and PUB_CAP never binds. The note that
+# "CHUNK_FETCH 4000 -> 12000 moves recall@100 by exactly 0.0000" was measured at 107k publications
+# and 2.7M chunks; the corpus is 46x larger now and that conclusion has expired.
+#
+# But width is NOT free and NOT uniformly worth paying for: with the live query, going from 4,000
+# to 60,000 chunks (123 s) did not move the target reference at all. So the width goes where it
+# pays: the SEED passes, which describe the whole invention and are the ranking backbone, run wide;
+# the per-element sub-searches (there are ~20 of them) keep the cheap profile. A seed pass at these
+# settings measures ~20-25 s against ~13 s at the narrow profile.
+SEED_CHUNK_FETCH = int(os.environ.get("SEED_CHUNK_FETCH", "9000"))
+SEED_PUB_CAP = int(os.environ.get("SEED_PUB_CAP", "2500"))
+# pgvector caps hnsw.ef_search at 1000 in this build; 400 is the measured knee for a LIMIT of ~9k.
+EF_SEARCH = int(os.environ.get("HNSW_EF_SEARCH", "200"))
+SEED_EF_SEARCH = int(os.environ.get("SEED_EF_SEARCH", "400"))
+MAX_SCAN_TUPLES = int(os.environ.get("HNSW_MAX_SCAN_TUPLES", "12000"))
+SEED_MAX_SCAN_TUPLES = int(os.environ.get("SEED_MAX_SCAN_TUPLES", "60000"))
 # Cross-encoder rerank depth. Raised 25 -> 50 because the deep full-text analysis reads the top
 # 50 references, and reading a reference the cross-encoder never scored means charting whatever
 # RRF happened to leave at rank 40. Measured ~40 s for 25 passages on this box, so 50 roughly
@@ -52,8 +71,9 @@ CHANNEL_WEIGHTS = {
     # label: both semantic and lexical candidates are restricted to claim chunks, then the normal
     # citation/family/QBE expansion recovers related filings around those claim-level seeds.
     # Keep the global invariant that dense semantic retrieval is the strongest individual
-    # signal. In the claim-search preset the general dense channel is absent, so claim_dense
-    # still leads that mode without silently changing the normal-search fusion hierarchy.
+    # signal. Claim focus is a BOOST, not a filter: the claim-search preset now runs the general
+    # dense channel too (see `presets`), and claim_dense carries the same weight so claim-level
+    # matches lead without the description text becoming unsearchable.
     "claim_dense": 1.00,
     # results streamed back from the sibling federated app (federation.py). Ranked below local
     # dense (which is tuned on an in-domain corpus) but above every lexical/classification
@@ -199,13 +219,8 @@ class Retriever:
     def __init__(self, family_map=None):
         self.conn = db.connect()
         self.conn.autocommit = True
-        with self.conn.cursor() as c:
-            c.execute("SET hnsw.ef_search = 200")
-            # iterative scan (pgvector 0.8): keep scanning past ef_search until enough rows pass
-            # the date/status WHERE filter -> fixes the "few results under a restrictive filter"
-            # problem that otherwise starves the dense channel.
-            c.execute("SET hnsw.iterative_scan = relaxed_order")
-            c.execute("SET hnsw.max_scan_tuples = 12000")
+        self._wide = False
+        self.scan_profile(wide=False)
         # pre-load pid -> family map once (one query) — per-pub lookups during dedup were the
         # dominant hidden cost (~1000 queries/search).
         if family_map is None:
@@ -219,6 +234,27 @@ class Retriever:
             # publication->family map is several million rows and immutable during a search, so
             # share it instead of re-reading and duplicating it for every short-lived worker.
             self._fam = family_map
+
+    def scan_profile(self, wide=False):
+        """Set this connection's ANN search width. `wide` is for whole-invention seed passes.
+
+        `hnsw.iterative_scan = relaxed_order` (pgvector 0.8) keeps scanning past ef_search until
+        enough rows pass the date/status WHERE filter, which is what stops a restrictive novelty
+        filter from starving the dense channel. `max_scan_tuples` bounds that, so it has to move
+        with ef_search or the wider fetch is silently truncated to the narrow profile's budget.
+        """
+        self._wide = bool(wide)
+        with self.conn.cursor() as c:
+            c.execute("SET hnsw.ef_search = %d" % (SEED_EF_SEARCH if wide else EF_SEARCH))
+            c.execute("SET hnsw.iterative_scan = relaxed_order")
+            c.execute("SET hnsw.max_scan_tuples = %d"
+                      % (SEED_MAX_SCAN_TUPLES if wide else MAX_SCAN_TUPLES))
+
+    def _fetch(self):
+        return SEED_CHUNK_FETCH if getattr(self, "_wide", False) else CHUNK_FETCH
+
+    def _cap(self):
+        return SEED_PUB_CAP if getattr(self, "_wide", False) else PUB_CAP
 
     def fork(self):
         """Return a search worker with its own DB connection and the shared read-only family map."""
@@ -253,7 +289,7 @@ class Retriever:
                f"WHERE c.embedding IS NOT NULL {dc} "
                f"ORDER BY c.embedding <=> %s::vector LIMIT %s")
         v = _vec(qvec)
-        return self._pubs_from_chunks(sql, [v, *dp, v, CHUNK_FETCH])
+        return self._pubs_from_chunks(sql, [v, *dp, v, self._fetch()], cap=self._cap())
 
     def channel_claim_dense(self, qvec, subject=None, mode=None):
         """Semantic search restricted to patent claims (the claim-search product mode)."""
@@ -263,7 +299,7 @@ class Retriever:
                f"WHERE c.embedding IS NOT NULL AND c.kind IN ('claim_own','claim_resolved') {dc} "
                f"ORDER BY c.embedding <=> %s::vector LIMIT %s")
         v = _vec(qvec)
-        return self._pubs_from_chunks(sql, [v, *dp, v, CHUNK_FETCH])
+        return self._pubs_from_chunks(sql, [v, *dp, v, self._fetch()], cap=self._cap())
 
     def channel_bm25(self, q, subject=None, mode=None):
         # OR the query's lexemes (websearch/plainto AND every term -> a long query-by-example
@@ -285,7 +321,7 @@ class Retriever:
                f"FROM chunks c JOIN publications p ON p.id=c.publication_id, tq "
                f"WHERE tq.q IS NOT NULL AND c.kind <> 'paragraph' AND c.tsv @@ tq.q {dc} "
                f"GROUP BY c.publication_id ORDER BY score DESC LIMIT %s")
-        return self._pubs_from_chunks(sql, [q, *dp, PUB_CAP])
+        return self._pubs_from_chunks(sql, [q, *dp, self._cap()], cap=self._cap())
 
     def channel_claim_bm25(self, q, subject=None, mode=None):
         """Precise lexical search restricted to claims, fused with claim_dense by weighted RRF.
@@ -307,7 +343,7 @@ class Retriever:
                f"FROM chunks c JOIN publications p ON p.id=c.publication_id, tq "
                f"WHERE tq.q IS NOT NULL AND c.kind IN ('claim_own','claim_resolved') "
                f"AND c.tsv @@ tq.q {dc} GROUP BY c.publication_id ORDER BY score DESC LIMIT %s")
-        return self._pubs_from_chunks(sql, [q, *dp, PUB_CAP])
+        return self._pubs_from_chunks(sql, [q, *dp, self._cap()], cap=self._cap())
 
     def channel_exact(self, phrases, subject=None, mode=None):
         """Exact phrase / proximity via phraseto_tsquery (ordered adjacency)."""
@@ -333,7 +369,7 @@ class Retriever:
                f"FROM classifications cl JOIN publications p ON p.id=cl.publication_id "
                f"WHERE ({like}) {dc} GROUP BY p.id ORDER BY score DESC LIMIT %s")
         with self.conn.cursor() as c:
-            c.execute(sql, params + [PUB_CAP])
+            c.execute(sql, params + [self._cap()])
             return [(r["publication_id"], r["score"]) for r in c.fetchall()]
 
     def channel_citation_family(self, seed_pids, subject=None, mode=None):
@@ -356,7 +392,7 @@ class Retriever:
             f"SELECT u.id AS publication_id, u.score FROM u JOIN publications p ON p.id=u.id "
             f"WHERE true {dc} ORDER BY u.score DESC LIMIT %s")
         with self.conn.cursor() as c:
-            c.execute(sql, list(seeds) + list(dp) + [PUB_CAP])
+            c.execute(sql, list(seeds) + list(dp) + [self._cap()])
             return [(r["publication_id"], float(r["score"])) for r in c.fetchall()]
 
     def channel_qbe(self, seed_pids, subject=None, mode=None, per=1):
@@ -374,12 +410,13 @@ class Retriever:
                 agg[pid] = max(agg.get(pid, 0), sc)
         return sorted(agg.items(), key=lambda t: t[1], reverse=True)
 
-    def channel_dense_raw(self, vecstr, subject=None, mode=None, limit=CHUNK_FETCH):
+    def channel_dense_raw(self, vecstr, subject=None, mode=None, limit=None):
+        limit = self._fetch() if limit is None else limit
         dc, dp = _date_clause(subject, mode)
         sql = (f"SELECT c.publication_id, 1-(c.embedding <=> %s::vector) AS score FROM chunks c "
                f"JOIN publications p ON p.id=c.publication_id WHERE c.embedding IS NOT NULL {dc} "
                f"ORDER BY c.embedding <=> %s::vector LIMIT %s")
-        return self._pubs_from_chunks(sql, [vecstr, *dp, vecstr, limit])
+        return self._pubs_from_chunks(sql, [vecstr, *dp, vecstr, limit], cap=self._cap())
 
     def channel_biblio(self, assignee_hints, subject=None, mode=None):
         if not assignee_hints:
@@ -391,7 +428,7 @@ class Retriever:
                f"JOIN publications p ON p.id=pa.publication_id WHERE ({like}) {dc} "
                f"GROUP BY p.id ORDER BY score DESC LIMIT %s")
         with self.conn.cursor() as c:
-            c.execute(sql, params + [PUB_CAP])
+            c.execute(sql, params + [self._cap()])
             return [(r["publication_id"], r["score"]) for r in c.fetchall()]
 
     def channel_crosslingual(self, alt_query_vecs, subject=None, mode=None):
@@ -500,10 +537,14 @@ class Retriever:
     # ---- top-level search ----------------------------------------------------------------
     def search(self, query, subject=None, mode=None, config="hybrid",
                cpc_hints=None, assignee_hints=None, phrases=None, alt_query_vecs=None,
-               do_rerank=None, topk=1000):
+               do_rerank=None, topk=1000, wide=False):
+        """`wide=True` runs the funnel at the seed profile (see SEED_CHUNK_FETCH). Reserved for
+        whole-invention passes: it roughly doubles the pass and there are ~20 element passes."""
         mode = Mode(mode) if isinstance(mode, str) else mode
         if not query or not query.strip():          # degenerate: an empty query has no signal
             return Result(ranked_pubs=[], family_ranked=[], channel_hits={}, query=query or "")
+        if bool(wide) != getattr(self, "_wide", False):
+            self.scan_profile(wide=bool(wide))
         qvec = embed.embed_query(query[:8000], 768)
         ch = {}
         presets = {
@@ -512,7 +553,13 @@ class Retriever:
             "hybrid": ["exact", "bm25", "dense", "cpc"],
             "hybrid_rerank": ["exact", "bm25", "dense", "cpc"],
             "agentic": ["dense", "cpc", "citation", "qbe", "biblio", "crosslingual"],
-            "claim_agentic": ["claim_dense", "claim_bm25", "cpc", "citation", "qbe",
+            #  Claim focus BOOSTS claim text, it does not delete the rest of the patent.
+            #  MEASURED (RECALL_STUDY_2026-08-02.md): this preset used to omit `dense`, so
+            #  description paragraphs were unsearchable. On the case that prompted the rebuild the
+            #  best passage of the #1 result was a description paragraph, the best passage of the
+            #  reference the searcher named was a description paragraph, and only 10 of the 25
+            #  displayed cards matched on a claim at all.
+            "claim_agentic": ["claim_dense", "dense", "claim_bm25", "cpc", "citation", "qbe",
                               "biblio", "crosslingual"],
         }
         # Callers may pass an explicit bounded channel sequence.  Resolve that before a mapping

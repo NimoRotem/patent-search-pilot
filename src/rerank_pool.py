@@ -129,7 +129,11 @@ def rerank(query, passages, top_k=None):
         # worker, so it already serializes execution; holding a Python lock here as well would
         # block unrelated web threads for no benefit.
         fut = pool.submit(_child_rerank, query, list(passages), top_k)
-        out = fut.result(timeout=RERANK_TIMEOUT)
+        #  RERANK_TOP is now really 50 (it was silently 25), and this box measures ~2.4-3.1 s per
+        #  passage, so a flat 240 s timed out and fell back to identity order. Scale the budget
+        #  with the work, plus a fixed allowance for the first call's model load.
+        budget = max(RERANK_TIMEOUT, 60.0 + 6.0 * len(passages))
+        out = fut.result(timeout=budget)
         if not isinstance(out, list) or len(out) > len(passages):
             return identity[:top_k] if top_k else identity
         return out

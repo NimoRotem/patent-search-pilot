@@ -42,3 +42,6 @@ data/translations/
 data/finish_embed.*
 *.bak-uiredesign-*
 .env.bak-*
+
+# public scope statement: last successful corpus scan, re-read at start-up (regenerable)
+data/corpus_facts.json

@@ -17,6 +17,8 @@ import pubnorm  # single link-builder: zero-padded Google/Espacenet URLs (droppe
 import ops_family, prefetch                        # worldwide family timeline + top-N proactive enrich
 import query_claim_grid                            # uploaded-claim x ranked-reference background grid
 import deep_analysis                               # full-text agentic reading of the top references
+import deep_rank                                   # screen wide, read deep, rank on the evidence
+import query_set                                   # many short queries instead of one long brief
 import report_archive                              # automatic top-50 full-text Markdown ZIP
 import export_data, export_pdf, export_docx, export_xlsx, export_md, export_ids
 import deliverables                                # letterhead / matter / narrative + share links
@@ -596,13 +598,42 @@ def _dedup_preserve(seq):
     return out
 
 
-def _merge_channel(rep, name, scored, head_keep=12, take=8):
+#  How many UNIQUE finds a parallel channel may splice into the ranking. This was 8, which threw
+#  away 192 of the 200 families the document-chunk channel found and 6 of the 14 the image channel
+#  found; on the case that prompted the rebuild the image channel was the ONLY channel that
+#  surfaced a reference the searcher named. There is no reason to cap tightly now that every
+#  spliced candidate is screened and, if it survives, read in full (deep_rank).
+MERGE_TAKE = int(os.environ.get("MERGE_TAKE", "60"))
+
+
+def order_cards_by_evidence(cards):
+    """The authoritative report order once the references have been read (deep_rank).
+
+    Primary key is whether the reference was READ IN FULL, not the number. A candidate judged from
+    an abstract cannot be compared like-for-like with one whose full text was quoted, and capping
+    its score is not enough: measured on a live run, three federated-only hits sitting at the cap
+    took the top three slots ahead of a reference that grounded 9 of 12 features with verbatim,
+    located quotes. Evidence outranks a guess.
+
+    Ties fall back to the incoming order, so this is a deterministic permutation of the input and
+    nothing is dropped. Ranks are renumbered 1..N.
+    """
+    incoming = {id(c): i for i, c in enumerate(cards)}
+    out = sorted(cards, key=lambda c: (0 if c.get("deep_read") else 1,
+                                       -(c.get("deep_score") or 0), incoming[id(c)]))
+    for i, c in enumerate(out, 1):
+        c["rank"] = i
+    return out
+
+
+def _merge_channel(rep, name, scored, head_keep=12, take=None):
     """Record a NEW parallel channel's families on the report and splice its best UNIQUE finds into
     the ranked list just below the established local head, so a document-chunk-only or image-only
     match enters the display window and is judged by the listwise reranker alongside everything
     else. Does NOT reorder the local ranking; the listwise pass does the final ordering."""
     if not scored:
         return
+    take = MERGE_TAKE if take is None else take
     fams = [fk for fk, _, _ in scored]
     rep.setdefault("channel_families", {})[name] = sorted(set(fams))
     ranked = list(rep.get("ranked_families") or [])
@@ -751,7 +782,8 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 _timed, "local", A.run, query, subject=subject, mode=mode,
                 cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True,
                                 search_config=("claim_agentic" if search_focus == "claims"
-                                               else "agentic")),
+                                               else "agentic"),
+                                input_claims=list((doc or {}).get("claims") or [])),
                 on_event=on_event)
             if wide:
                 futs["federated"] = ex.submit(_timed, "federated", _federate_block, query, mode)
@@ -799,6 +831,40 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             rep["image_channel"] = {"state": img_res.get("state"), "note": img_res.get("note"),
                                     "n": len(img_res.get("families") or [])}
         _attach_query_document(rep, doc)
+
+        # ---- SCREEN WIDE, READ DEEP, RANK ON THE EVIDENCE (deep_rank) ----------------------
+        # This is the stage that decides the order of the report. Retrieval hands over a couple of
+        # thousand ranked families; this screens the head of that list cheaply, reads the survivors
+        # IN FULL, and ranks by what each one was measured to disclose with a grounded, located,
+        # refuter-survived quote. It replaces an LLM score computed from a 900-character snippet,
+        # which is what put a reference disclosing 10 of 12 features at rank 11 with a 45.
+        # Never fatal: a failure here leaves the fusion order and the old listwise path in place.
+        def _deep_event(stage, data):
+            if stage == "screen_start":
+                _set_job(slug, kind="screening", detail=data,
+                         msg=f"Screening {data.get('n', 0)} candidate references against your "
+                             f"invention…")
+            elif stage == "screen_progress":
+                _set_job(slug, kind="screening", detail=data,
+                         msg=f"Screening candidates: batch {data.get('done')} of "
+                             f"{data.get('total')}…")
+            elif stage == "chart_start":
+                _set_job(slug, kind="reading", detail=data,
+                         msg=f"Reading the {data.get('n', 0)} strongest references IN FULL and "
+                             f"charting what each one discloses…")
+            elif stage == "chart_progress":
+                _set_job(slug, kind="reading", detail=data,
+                         msg=f"Read {data.get('done')} of {data.get('total')} references in "
+                             f"full…")
+        try:
+            dr = deep_rank.run(rep, reports_dir=REPORTS, slug=slug, on_progress=_deep_event)
+            if dr:
+                print(f"[deep_rank {slug}] screened {dr['screened']}/{dr['candidates']} in "
+                      f"{dr['screen_seconds']}s, read {dr['read_in_full']} in full "
+                      f"({dr['chars_read']:,} chars) in {dr['chart_seconds']}s", flush=True)
+        except Exception:
+            traceback.print_exc()
+
         _write_report(slug, rep)
         # Warm the view cache HERE (in the background job, where the user is already on the
         # progress page) so the listwise agentic rerank + claim-matrix verification run once and
@@ -1075,6 +1141,16 @@ def _can_access_report(slug):
         return False
 
 
+@app.context_processor
+def _corpus_context():
+    """`corpus` on every template, so the footer and the public pages do not depend on each route
+    remembering to pass it. Cached in corpus_facts and never raises."""
+    try:
+        return {"corpus": corpus_facts.facts()}
+    except Exception:
+        return {"corpus": {}}
+
+
 @app.route("/")
 def index():
     """The search page is now ONLY the search.
@@ -1086,13 +1162,30 @@ def index():
     keeps one factual line linking there. The equivalent disclosure on the RESULTS page and in
     every exported document is untouched: that is the point of decision, and it stays.
     """
-    return render_template("index.html", corpus=corpus_facts.facts())
+    facts = corpus_facts.facts()
+    #  A SIGNED-OUT visitor gets the landing page instead of the search box. Sending them straight
+    #  to a login form with no explanation was the biggest gap against a finished product:
+    #  somebody deciding whether to upload an unpublished invention to a service has to be able to
+    #  read what that service does, and what it indexes, first.
+    try:
+        signed_out = auth.accounts_enabled(app) and not auth.current_user() and not auth.is_admin()
+    except Exception:
+        signed_out = False
+    if signed_out:
+        return render_template("landing.html", corpus=facts)
+    return render_template("index.html", corpus=facts)
 
 
 @app.route("/about")
 def about():
-    """Everything that used to sit above the search box, in full."""
+    """What the system is, plus the same scope disclosure the report and the exports carry."""
     return render_template("about.html", corpus=corpus_facts.facts())
+
+
+@app.route("/how-it-works")
+def how_it_works():
+    """The pipeline in plain language. Public, for the same reason /about is."""
+    return render_template("how_it_works.html", corpus=corpus_facts.facts())
 
 
 def _history_entries(limit=200):
@@ -1571,10 +1664,18 @@ def report(slug):
             report_archive.ensure(slug, rep, view, REPORTS)
         except Exception:
             traceback.print_exc()
-        #  Read the top references in full and chart each against the search input. Minutes of
-        #  model time, so it starts here and the page polls; the report is fully usable meanwhile.
+        #  Read the top references in full and chart each against the search input. Normally
+        #  already done: deep_rank reads them DURING generation and publishes the charts here, so
+        #  this is a cache hit. It still runs for a report generated before that stage existed.
+        #
+        #  NEVER start it from a PARTIAL report. `ensure_report` returns "ready" as soon as the
+        #  partial snapshot is on disk, so opening the page mid-run used to start the reading
+        #  against an ordering that the final report then replaced, and the result was cached for
+        #  ever (`deep_analysis.invalidate` was never called). That is why a card at rank 11 could
+        #  say "not among the ones read in full".
         try:
-            deep_analysis.ensure(slug, rep, view, REPORTS)
+            if not rep.get("partial"):
+                deep_analysis.ensure(slug, rep, view, REPORTS)
         except Exception:
             traceback.print_exc()
     view["deep_analysis"] = deep_analysis.metadata(rep, view)
@@ -1693,7 +1794,10 @@ def download_archive(slug):
 # Cap on the unified (local + federated) ranked list that is rendered/exported. Kept at the
 # previous local-only top-N so folding in external hits does not regress the page-weight budget:
 # federated-only cards compete for these slots by relevance instead of extending the list.
-_DISPLAY_TOP = 25
+#  50, not 25: the reading stage (deep_rank) reads far more than that in full, and a reference
+#  it grounded should be on the page rather than behind a 'more references' pager that shows
+#  bibliography only.
+_DISPLAY_TOP = int(os.environ.get('DISPLAY_TOP', '50'))
 
 
 def _build_view_cached(slug, rep, regen=False):
@@ -1765,7 +1869,7 @@ def _build_view_cached(slug, rep, regen=False):
                 return view
         except Exception:
             pass
-    view = webview.build_view(rep, top_n=25)
+    view = webview.build_view(rep, top_n=_DISPLAY_TOP)
     view["partial"] = partial
     view["query_claim_grid"] = query_claim_grid.metadata(rep)
     if partial:
@@ -1787,11 +1891,20 @@ def _build_view_cached(slug, rep, regen=False):
         # view build treats the cache as stale and retries rather than freezing a fusion order.
         try:
             cards = view.get("cards") or []
-            if len(cards) > 1:
-                q = {"brief": rep.get("query") or "",
+            if rep.get("deep_rank"):
+                #  The order is already decided by what the references disclose, read in full
+                #  (deep_rank). Running the listwise/snippet pass on top of it would re-judge a
+                #  full-text result from 900 characters, which is the exact defect this rebuild
+                #  removed. Sort is by the evidence score, ties broken by the incoming order, so
+                #  it stays a permutation and stays deterministic.
+                cards = order_cards_by_evidence(cards)
+                view["ranked_by"] = "deep_rank"
+            elif len(cards) > 1:
+                q = {"brief": query_set.retrieval_text(rep.get("query") or ""),
                      "elements": rep.get("elements") or [],
                      "domain": rep.get("domain")}  # task C: OOD de-dilution reads the verdict here
                 cards = rerank_listwise.rerank_report_cards(q, cards)
+                view["ranked_by"] = "listwise"
             # Cap the unified list AFTER ranking, so federated-only cards compete for the visible
             # slots by relevance rather than being appended below the corpus, and the page stays
             # inside its node budget. rerank_report_cards renumbers rank 1..N over the full pool;
@@ -1802,6 +1915,7 @@ def _build_view_cached(slug, rep, regen=False):
             traceback.print_exc()
             view["cards"] = (view.get("cards") or [])[:_DISPLAY_TOP]
             view["listwise_reranked"] = False
+            view["ranked_by"] = "fusion"
         # EAGER MONGO DETAIL + FIGURES (iptorch-style, item 1/2). For every displayed card, pull
         # the pre-built lemad corpus doc (figures as Google-CDN URLs + full claims/description/CPC)
         # in ONE cheap call each — no download, no OPS, no PDF raster — and fill any gap the local

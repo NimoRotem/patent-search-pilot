@@ -11,12 +11,22 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import os
 import time
-import embed, llm
+import embed, llm, query_set
+import retrieval
 from retrieval import Retriever
 from search_modes import Mode, CombinationBuilder, ElementMapping, Basis, classify_basis, usable_for
 from config import SEED_CPC, SEED_CPC_TITLES
 
 FIELD = "vacuum gripping / suction lifting devices"
+
+#  How many families each retrieval pass hands to the coverage ledger. A whole-invention (seed)
+#  pass is the ranking backbone and now also feeds a wide LLM screen (deep_rank), so it contributes
+#  far more than the historic flat 200; an element pass is attribution, not ranking, and stays
+#  cheap. MEASURED (RECALL_STUDY_2026-08-02.md): the reference the searcher named sat at fusion
+#  rank 244 of 2,402 and only 25 were ever analysed, so depth of the ranked list is what the new
+#  screen consumes.
+SEED_TOPK = int(os.environ.get("AGENT_SEED_TOPK", "800"))
+ELEMENT_TOPK = int(os.environ.get("AGENT_ELEMENT_TOPK", "200"))
 
 
 def _default_search_workers():
@@ -37,6 +47,7 @@ class CoverageLedger:
         self.languages = set()
         self.citation_branches = set()
         self.families_seen = set()
+        self.query_set = []                             # the short queries the search actually ran
         self.family_score = {}                          # family -> best fused score (any search)
         self.family_seed = {}                           # family -> fused score from the whole-query seed search
         self.family_elem = {}                           # family -> best fused score from an element search
@@ -117,12 +128,17 @@ class AgentConfig:
     elements_per_round: int = 4
     evidence_per_element: int = 6
     ground: bool = True          # per-evidence coordinate grounding (costly); off for the ablation
-    # "claim_agentic" makes the primary semantic + lexical candidate channels search claim text
-    # only. Citation/family and cross-lingual expansion still run around those claim-level seeds.
+    # "claim_agentic" BOOSTS claim text: it adds claim-restricted semantic + lexical channels on
+    # top of the normal all-text dense channel. It used to REPLACE the all-text channel, which made
+    # description paragraphs unsearchable (see retrieval.presets and RECALL_STUDY_2026-08-02.md).
     search_config: str = "agentic"
     # Bounded independent ANN passes; two UI jobs => at most four. Environment override permits
     # an operational serial fallback without reverting or changing ranking behavior.
     search_workers: int = field(default_factory=_default_search_workers)
+    #  The uploaded patent's own claims, when the search started from a document. Each independent
+    #  claim becomes its own query vector in the query set (query_set.build): a claim is the right
+    #  query for a claim-level match even though, measured, it is a poor query on its own.
+    input_claims: list = field(default_factory=list)
 
 
 class CoverageAgent:
@@ -154,7 +170,8 @@ class CoverageAgent:
 
     # ---- one search + ledger update ------------------------------------------------------
     def _fetch_search(self, query, subject, mode, element=None, cpc=None, phrases=None,
-                      assignees=None, alt_vecs=None, cfg="agentic", retriever=None):
+                      assignees=None, alt_vecs=None, cfg="agentic", retriever=None,
+                      wide=False, topk=None):
         """Execute one retrieval pass without mutating the shared coverage ledger.
 
         Keeping retrieval and ledger application separate lets independent element queries use
@@ -166,9 +183,13 @@ class CoverageAgent:
             cfg = getattr(self, "_search_config", "agentic")
         # sub-searches fuse by RRF only; a single cross-encoder rerank runs at report time
         # (spec §6: rerank the final cascade, not every sub-query — and it bounds CPU cost)
+        #  `topk` is how many families this pass contributes to the ledger. It used to be 200
+        #  for every pass, which put a hard floor under how deep the wide screen (deep_rank) can
+        #  ever see; a whole-invention pass now contributes SEED_TOPK.
         res = r.search(query, subject=subject, mode=mode, config=cfg, cpc_hints=cpc,
                        phrases=phrases, assignee_hints=assignees, alt_query_vecs=alt_vecs,
-                       do_rerank=False, topk=200)
+                       do_rerank=False, wide=wide,
+                       topk=topk or (SEED_TOPK if wide else ELEMENT_TOPK))
         scored = [(fk, pid, float(sc)) for fk, pid, sc, _ in res.family_ranked]
         channel_families = {
             ch: [r.family_key(p) for p in pids[:100]]
@@ -210,10 +231,11 @@ class CoverageAgent:
         return fetched["result"], n_new
 
     def _run_search(self, query, subject, mode, ledger, element=None, cpc=None, phrases=None,
-                    assignees=None, alt_vecs=None, cfg="agentic", is_seed=False):
+                    assignees=None, alt_vecs=None, cfg="agentic", is_seed=False, wide=False,
+                    topk=None):
         fetched = self._fetch_search(
             query, subject, mode, element=element, cpc=cpc, phrases=phrases,
-            assignees=assignees, alt_vecs=alt_vecs, cfg=cfg)
+            assignees=assignees, alt_vecs=alt_vecs, cfg=cfg, wide=wide, topk=topk)
         res, n_new = self._apply_search(fetched, ledger, is_seed=is_seed)
         return res, n_new
 
@@ -262,7 +284,14 @@ class CoverageAgent:
                 except Exception:
                     pass
 
-        elements = self.decompose(query_text, subject)
+        #  Everything that gets EMBEDDED uses the de-figured text. `query_text` itself is kept
+        #  intact for the saved report and the page, because the searcher wrote it and the figure
+        #  description is real information for a reader; it is only a poison for a query vector.
+        #  MEASURED (RECALL_STUDY_2026-08-02.md): deleting the folded-in figure prose moved a named
+        #  reference from dense rank #528 to #35, with nothing else changed.
+        rank_text = query_set.retrieval_text(query_text) or query_text
+        self._rank_text = rank_text
+        elements = self.decompose(rank_text, subject)
         ledger = CoverageLedger(elements)
         ledger.languages.add("en")
         emit("elements", {"n": len(elements), "elements": elements})
@@ -273,7 +302,9 @@ class CoverageAgent:
         # bound: early stopping or an LLM returning fewer than three queries can finish sooner.
         search_done = 0
         split_claim_seed = self._search_config == "claim_agentic"
-        search_max = ((2 if split_claim_seed else 1) + min(6, len(elements))
+        #  Honest upper bound: seed pass(es) + the query set + per-element seed passes + rounds.
+        search_max = ((2 if split_claim_seed else 1)
+                      + 6 + query_set.MAX_CLAIMS + min(8, len(elements))
                       + cfg.max_rounds * cfg.elements_per_round * 3)
 
         def searched(progress_stage, query, *args, progress_round=None, **kwargs):
@@ -357,20 +388,41 @@ class CoverageAgent:
         # semantic head, so stream it first and continue the precise lexical/CPC/citation channels
         # as the next counted pass.  The all-text path keeps its established single-pass ranking.
         if split_claim_seed:
-            searched("search_progress", query_text, subject, m, ledger,
-                     element=None, is_seed=True, cfg=["claim_dense"])
+            searched("search_progress", rank_text, subject, m, ledger,
+                     element=None, is_seed=True, cfg=["claim_dense"], wide=True)
             emit("partial", {"report": self.report(
                 query_text, subject, m, ledger, rounds=0, rerank=False)})
-            searched("search_progress", query_text, subject, m, ledger, element=None,
-                     is_seed=True, cfg=["claim_bm25", "cpc", "citation", "qbe"])
+            searched("search_progress", rank_text, subject, m, ledger, element=None,
+                     is_seed=True, wide=True,
+                     cfg=["dense", "claim_bm25", "cpc", "citation", "qbe"])
         else:
-            searched("search_progress", query_text, subject, m, ledger,
-                     element=None, is_seed=True)
+            searched("search_progress", rank_text, subject, m, ledger,
+                     element=None, is_seed=True, wide=True)
             emit("partial", {"report": self.report(
                 query_text, subject, m, ledger, rounds=0, rerank=False)})
+
+        #  THE QUERY SET. One long brief is one blurred vector; a set of short, individually
+        #  coherent whole-invention queries each retrieves its own neighbourhood and fusion
+        #  recovers the intersection. MEASURED: the live brief put a named reference at dense rank
+        #  #528, a 30-word essence sentence put it at #2, and fusing 14 short queries put it at
+        #  #37 while finding it in 9 of the 14. These are SEED-bucket passes: they describe the
+        #  whole invention, so they belong in the ranking backbone, not in element attribution.
+        try:
+            specs = query_set.build(query_text, elements=elements, claims=(cfg.input_claims or []))
+        except Exception:
+            specs = []
+        extra = [s for s in query_set.seed_specs(specs)
+                 if s.kind != "brief" and s.text.strip() != rank_text.strip()]
+        if extra:
+            emit("query_set", {"n": len(extra),
+                               "queries": [s.as_dict() for s in extra]})
+            ledger.query_set = [s.as_dict() for s in extra]
+            searched_batch("seed_progress", [
+                {"query": s.text, "is_seed": True, "wide": True} for s in extra
+            ])
         # attribute seed hits to elements too (cap the per-element seed searches for runtime)
         searched_batch("seed_progress", [
-            {"query": el, "element": el} for el in elements[:6]
+            {"query": el, "element": el} for el in elements[:8]
         ])
         ledger.note_round(len(ledger.families_seen))
         emit("seeded", {"families": len(ledger.families_seen)})
@@ -416,12 +468,17 @@ class CoverageAgent:
                            on_progress=_rerank_progress)
 
     # ---- report --------------------------------------------------------------------------
-    def _final_rank(self, query_text, ledger, top=25, rerank=True, on_progress=None,
+    def _final_rank(self, query_text, ledger, top=None, rerank=True, on_progress=None,
                     return_meta=False):
         """Rank by final_score (seed backbone + centrality/citation promote), then cross-encoder
         rerank the head only (reranking within the head can't change recall@100 — the top-100
         set is fixed). (spec §4 + §6 step 4). `rerank=False` skips the (slow, CPU) cross-encoder —
-        used for the fast progressive/partial snapshot that streams to the UI before the full run."""
+        used for the fast progressive/partial snapshot that streams to the UI before the full run.
+
+        `top` defaults to retrieval.RERANK_TOP. It used to be hard-coded to 25 in TWO places here
+        while retrieval.RERANK_TOP said 50 and carried a comment explaining the raise, so the raise
+        never reached the live path and the progress bar reported a depth that was never scored."""
+        top = retrieval.RERANK_TOP if top is None else top
         ordered = sorted(ledger.family_score, key=ledger.final_score, reverse=True)
         if not rerank:
             meta = {"attempted": False, "applied": False, "scored": 0,
@@ -429,7 +486,8 @@ class CoverageAgent:
             return (ordered, meta) if return_meta else ordered
         head = ordered[:top]
         fam = [(fk, ledger.family_pid.get(fk), ledger.final_score(fk), {}) for fk in head]
-        outcome = self.r.rerank_families(query_text, fam, top=min(25, len(fam)),
+        outcome = self.r.rerank_families(getattr(self, "_rank_text", query_text), fam,
+                                         top=min(retrieval.RERANK_TOP, len(fam)),
                                          on_progress=on_progress, return_meta=return_meta)
         if (return_meta and isinstance(outcome, tuple) and len(outcome) == 2
                 and isinstance(outcome[1], dict)):
@@ -476,6 +534,7 @@ class CoverageAgent:
             "element_evidence": element_report,
             "combination_view": combination,
             "channels_used": sorted(ledger.channel_families.keys()),
+            "query_set": list(getattr(ledger, "query_set", []) or []),
             "languages": sorted(ledger.languages),
             "cpc_branches": sorted(ledger.cpc_branches),
             "llm_usage": llm.usage(),

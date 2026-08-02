@@ -463,10 +463,14 @@ def _thin_ids(cur, ids):
     return {r["id"] for r in cur.fetchall()}
 
 
-def substance_order(cur, families, reps, keep):
+def substance_order(cur, families, reps, keep, protect=()):
     """Drop design-patent families and demote title-only families below substantive ones, then
     trim to `keep`. Stable within each group (preserves the retrieval ranking). Returns
-    (ordered_families, stats)."""
+    (ordered_families, stats).
+
+    `protect` is a set of publication numbers that must NOT be demoted whatever the heuristic
+    thinks: a reference whose full text was read and quoted (deep_rank) has been shown to be
+    substantive by evidence, and a text-shape guess must not override that."""
     ids = [reps[f]["id"] for f in families if f in reps]
     titleonly = _titleonly_ids(cur, ids)
     thin = _thin_ids(cur, ids) | titleonly       # no-text refs also sink below substantive ones
@@ -477,6 +481,9 @@ def substance_order(cur, families, reps, keep):
             continue
         if _is_design(r["publication_number"], r["kind_code"]):
             dropped += 1
+            continue
+        if r["publication_number"] in protect:
+            kept.append(f)
             continue
         (demoted if r["id"] in thin else kept).append(f)
     ordered = kept + demoted          # refs with real text first (in-rank), thin/title-only after
@@ -781,17 +788,37 @@ def _card_content(cur, pid, pub, matched, family_id=None):
 # into a full card from the hit's own fields and ranked alongside everything else by the listwise
 # reranker downstream. Provenance stays visible per card, not in a separate block.
 def _resolve_fed_pubs(cur, join_keys):
-    """{normalised_pub -> (publication_id, family_key)} for those present in the local corpus."""
+    """{normalised_pub -> (publication_id, family_key)} for those present in the local corpus.
+
+    Every spelling of each number is tried, not just the one the external API happened to use.
+    US pre-grant numbers are the reason: Google/PQAI return ``US20190375604A1`` (11 digits) while
+    the corpus stores ``US-2019375604-A1`` (the leading zero of the serial dropped), so an exact
+    join silently failed and the SAME invention was rendered twice, once as a corpus card and
+    once as a federated-only card five places higher. pubnorm already computes the variants.
+    """
     keys = [k for k in dict.fromkeys(join_keys) if k]
     if not keys:
         return {}
+    #  variant -> the caller's key, so the answer is keyed the way the caller asked.
+    alias = {}
+    for k in keys:
+        alias.setdefault(k, k)
+        try:
+            for v in pubnorm.variants(k):
+                alias.setdefault(re.sub(r"[^A-Za-z0-9]", "", v).upper(), k)
+        except Exception:
+            pass
+    keys = list(alias)
     cur.execute(
         "SELECT id, upper(regexp_replace(publication_number, '[^A-Za-z0-9]', '', 'g')) AS k, "
         "COALESCE(NULLIF(simple_family_id,''), publication_number) AS fam "
         "FROM publications "
         "WHERE upper(regexp_replace(publication_number, '[^A-Za-z0-9]', '', 'g')) = ANY(%s)",
         (keys,))
-    return {r["k"]: (r["id"], r["fam"]) for r in cur.fetchall()}
+    out = {}
+    for r in cur.fetchall():
+        out.setdefault(alias.get(r["k"], r["k"]), (r["id"], r["fam"]))
+    return out
 
 
 def _add_api_prov(card, api):
@@ -911,6 +938,58 @@ def merge_federated_cards(cur, cards, fed_hits, qvec):
 
 
 # ---- full view -----------------------------------------------------------------------------
+def _attach_deep_rank(report, card):
+    """Put the EVIDENCE ranking on a card, and make it the displayed relevancy.
+
+    The card's 0-100 used to come from an LLM reading 900 characters. It now comes from what the
+    reference was measured to disclose, read in full, quote by quote (see deep_rank). A card the
+    reading never reached keeps the cosine-derived fallback, capped, so an unread candidate can
+    never outrank a reference whose full text was quoted.
+    """
+    import deep_rank
+    pub = card.get("pub")
+    fields = deep_rank.card_fields(report, pub) if pub else None
+    if fields:
+        card.update(fields)
+        card["relevancy_score"] = fields["deep_score"]
+        card["relevancy_opinion"] = fields["deep_why"]
+        card["relevancy_source"] = "deep_rank" if fields.get("deep_read") else "deep_rank_screen"
+        return card
+    if (report or {}).get("deep_rank"):
+        #  Federated-only hits have no local text, so they cannot be read. Rank them on the cosine
+        #  signal they do have, under the same cap as any other unread candidate.
+        base = card.get("relevancy")
+        try:
+            base = int(base)
+        except (TypeError, ValueError):
+            base = 0
+        card["deep_score"] = min(base, deep_rank.UNREAD_SCORE_CAP)
+        card["deep_read"] = False
+        card["deep_covered"] = []
+        card["relevancy_score"] = card["deep_score"]
+        card["relevancy_source"] = "unread"
+        card["relevancy_opinion"] = card.get("relevancy_opinion") or (
+            "Not in the local corpus, so it could not be read in full. Ranked on its semantic "
+            "match alone and held below every reference whose full text was quoted.")
+    return card
+
+
+def _deep_rank_summary(report):
+    """The part of deep_rank the page renders: counts, the rarity table and the per-feature list."""
+    dr = (report or {}).get("deep_rank") or {}
+    if not dr:
+        return None
+    return {
+        "candidates": dr.get("candidates"), "screened": dr.get("screened"),
+        "charted": dr.get("charted"), "read_in_full": dr.get("read_in_full"),
+        "no_text": dr.get("no_text"), "chars_read": dr.get("chars_read"),
+        "screen_seconds": dr.get("screen_seconds"), "chart_seconds": dr.get("chart_seconds"),
+        "seconds": dr.get("seconds"),
+        "feature_df": dr.get("feature_df", {}), "feature_idf": dr.get("feature_idf", {}),
+        "by_feature": dr.get("by_feature", []),
+    }
+
+
 def build_view(report, top_n=25):
     """Assemble the whole page view model. Reference text (claims/description/figure captions) and
     any already-downloaded drawings are attached PER CARD from Postgres here, so the results render
@@ -939,7 +1018,11 @@ def build_view(report, top_n=25):
     # substantive family rather than leaving a hole. report["ranked_families"] itself is untouched.
     window = report.get("ranked_families", [])[:max(top_n * 3, 60)]
     reps = resolve_family_reps(cur, window)
-    ranked, subs_stats = substance_order(cur, window, reps, top_n)
+    #  A reference deep_rank read in full and grounded is substantive by evidence; the text-shape
+    #  demotion heuristic must not sink it.
+    _dr = report.get("deep_rank") or {}
+    _protected = {p for p, v in (_dr.get("by_pub") or {}).items() if v.get("read_in_full")}
+    ranked, subs_stats = substance_order(cur, window, reps, top_n, protect=_protected)
 
     # which elements each family covers (from evidence)
     fam_elements = {}
@@ -1003,6 +1086,7 @@ def build_view(report, top_n=25):
             "has_local_claims": rep["n_claims"] > 0,
             **content,                                    # claims/description/figures/images (from DB+cache)
         })
+        _attach_deep_rank(report, cards[-1])
 
     # How many of the cards are local-corpus rows — computed BEFORE federated-only cards are
     # folded in, so the "Local corpus" source tag keeps counting the corpus, not the merged total.
@@ -1018,6 +1102,9 @@ def build_view(report, top_n=25):
             import traceback
             traceback.print_exc()          # never let provenance-merge failure 500 the page
 
+    for c in cards:
+        if c.get("relevancy_score") is None:
+            _attach_deep_rank(report, c)
     _attach_family_members(cur, cards)
     chart = build_claim_chart(report)
     cur.close(); conn.close()
@@ -1041,6 +1128,8 @@ def build_view(report, top_n=25):
         "federation": report.get("federation"),
         "source_tags": _source_tags(report, n_local),
         "federation_offered": bool(report.get("federation_offered")),
+        "deep_rank": _deep_rank_summary(report),
+        "query_set": report.get("query_set", []),
         "coverage_ledger": {
             "cpc_branches": report.get("cpc_branches", []),
             "round_new_families": report.get("round_new_families", []),

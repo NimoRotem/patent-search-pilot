@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}How it works — rotemAI patent search{% endblock %}
+{% block body %}
+{#  The short, plain explanation of the pipeline. PUBLIC: somebody deciding whether to sign up has
+    to be able to read what the tool actually does first. Every number here comes from
+    corpus_facts (live from the database) or from a measured run recorded in
+    RECALL_STUDY_2026-08-02.md, so this page cannot drift away from the product.  #}
+<div class="hero">
+  <div class="wrap">
+    <h1>How it works</h1>
+    <p class="lede">We retrieve a few thousand candidate patents for your invention, then read the
+      strongest ones in full and rank them by what they actually disclose, quote by quote.</p>
+  </div>
+</div>
+
+<div class="wrap steps">
+
+  <section class="step">
+    <div class="stepno">1</div>
+    <div class="stepbody">
+      <h2>Tell it what the invention is</h2>
+      <p>Type a description, drop a PDF, or paste a patent link. From a document we pull out the
+        text and the drawings, rebuild the claim set, and show you an editable summary before
+        anything is searched. Correct a claim and the search re-embeds your correction, so it
+        never searches text you have just rejected.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="stepno">2</div>
+    <div class="stepbody">
+      <h2>It searches with many queries, not one</h2>
+      <p>A long description makes one blurry query. We turn your invention into a set: a
+        one-sentence essence, five alternative phrasings a different inventor would have used,
+        every technical element, and every independent claim. Each searches on its own and the
+        results are fused.</p>
+      <p class="note">Measured: on a real search, the same reference sat at position 528 when the
+        full description was used as one query and at position 2 when a single 30-word essence
+        sentence was used instead.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="stepno">3</div>
+    <div class="stepbody">
+      <h2>Eleven channels run in parallel</h2>
+      <p>Semantic search over {% if corpus.chunks %}{{ '{:.0f} million'.format(corpus.chunks / 1000000) }}{% else %}millions of{% endif %}
+        text passages, claim-only semantic search, keyword and exact-phrase search, CPC
+        classification, the citation and patent-family graph, query-by-example, cross-lingual
+        English and German, your document's own passages, your drawings against our figure index,
+        and a live fan-out to eight external patent APIs.</p>
+      <p>Channels are fused by <b>rank</b>, never by raw score: a cosine, a keyword rank and a
+        classification count are not comparable numbers, and fusing them as if they were is how a
+        broad, noisy channel ends up outvoting a strong match.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="stepno">4</div>
+    <div class="stepbody">
+      <h2>Prior art is filtered by law, not by feel</h2>
+      <p>Give it a subject patent and a mode and only citable art comes back. <b>Novelty</b>
+        includes secret prior art that was filed before your priority date and published after it
+        (EPC Art. 54(3)); <b>inventive step</b> is public art only. The dates are computed by
+        code, never by a model. Results collapse to one card per patent family, so the same
+        invention filed in six countries is one result and not six.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="stepno">5</div>
+    <div class="stepbody">
+      <h2>The strongest candidates are read in full</h2>
+      <p>Around 600 candidates get a fast screen. The best of those, roughly 180, are then read
+        end to end: every claim and every description paragraph, hundreds of thousands of
+        characters each. For each reference, every feature of your invention gets a verdict, a
+        <b>verbatim quote</b>, and its exact location, resolved by code rather than written by a
+        model. A quote that is not really in the document is thrown away. Every "discloses" is
+        then handed to a second pass whose only job is to refute it.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="stepno">6</div>
+    <div class="stepbody">
+      <h2>The reading is the ranking</h2>
+      <p>The score on each card is what that reference was <i>measured</i> to disclose, weighted by
+        how rare the disclosure is. A feature that 150 of 180 references share counts for little;
+        one that only 18 share is what a novelty argument turns on. A reference we could not read
+        can never outrank one we quoted.</p>
+      <p class="note">This is the part most tools skip. A similarity score tells you a document
+        looks close. It cannot tell you which of your claim features it teaches, or where.</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="wrap">
+  <div class="twocol">
+    <section class="panel">
+      <h2>What you get</h2>
+      <ul class="ticks">
+        <li><b>50 ranked references</b>, every one read in full, with drawings, claims,
+          description, PDF and worldwide family</li>
+        <li>An <b>element by reference chart</b> where every filled cell carries a quote and a
+          location, not a similarity score</li>
+        <li><b>The best reference for each feature</b>, rarest feature first, which is what an
+          inventive-step attack is built from</li>
+        <li>The ranked tail beyond the 50, so nothing is hidden behind a cut-off</li>
+        <li>Export to <b>PDF, DOCX, XLSX, Markdown</b> and an IDS-style citation listing</li>
+        <li>Saved searches, a saved-patent library, shareable report links, and an email when a
+          long search finishes</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>What it does not do</h2>
+      <p>This is a prior-art retrieval and drafting aid. It is not a search opinion, a freedom-to-operate
+        clearance or legal advice, and it does not state a conclusion about patentability.</p>
+      <p>Every report and every export carries the same scope statement: which offices are
+        indexed, how deep the text goes, what is missing, and the measured reliability of the
+        chart. Those numbers are not adjusted to look good; they are the reason the statement
+        exists.</p>
+      <p><a href="{{ request.script_root }}/about">Read the full scope and the measured numbers</a></p>
+    </section>
+  </div>
+
+  <div class="ctarow">
+    {% if current_user %}
+    <a class="btn" href="{{ request.script_root }}/">Start a search</a>
+    {% else %}
+    <a class="btn" href="{{ request.script_root }}/register">Create a free account</a>
+    <a class="btn ghost" href="{{ request.script_root }}/login">Sign in</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

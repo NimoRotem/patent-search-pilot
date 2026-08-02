@@ -23,11 +23,20 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
   <div class="wrap">
     <a class="brand" href="{{ request.script_root }}/">rotem<span>AI</span> patent search</a>
     <span class="grow"></span>
+    {#  Two navigations. A signed-out visitor is being asked to decide whether to trust the
+        product with an unpublished invention, so their nav is the explanation; a signed-in user's
+        nav is the work.  #}
+    {% if current_user or current_is_admin or not account_mode %}
     <a href="{{ request.script_root }}/">New search</a>
     <a href="{{ request.script_root }}/history">Search history</a>
     {% if current_user %}<a href="{{ request.script_root }}/library">Saved patents</a>
     <a href="{{ request.script_root }}/drafts">Drafts</a>{% endif %}
+    <a href="{{ request.script_root }}/how-it-works">How it works</a>
     <a href="{{ request.script_root }}/about">About</a>
+    {% else %}
+    <a href="{{ request.script_root }}/how-it-works">How it works</a>
+    <a href="{{ request.script_root }}/about">About</a>
+    {% endif %}
     {% if current_is_admin %}<a href="{{ request.script_root }}/admin/users">Admin</a>{% endif %}
     {% if current_user %}
       <a class="accountnav" href="{{ request.script_root }}/account" title="{{ current_user.email }}">{{ current_user.full_name }}</a>
@@ -36,12 +45,20 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
       <span class="accountnav muted">Administrator</span><a href="{{ request.script_root }}/logout">Sign out</a>
     {% elif account_mode %}
       <a href="{{ request.script_root }}/login">Sign in</a>
-      <a href="{{ request.script_root }}/register">Create account</a>
+      <a class="navcta" href="{{ request.script_root }}/register">Create account</a>
     {% endif %}
   </div>
 </header>
 <main id="main">{% block body %}{% endblock %}</main>
-<footer>Postgres&nbsp;17 + pgvector ·
+<footer>
+  <div class="wrap footlinks">
+    <a href="{{ request.script_root }}/how-it-works">How it works</a>
+    <a href="{{ request.script_root }}/about">About &amp; scope</a>
+    {% if current_user %}<a href="{{ request.script_root }}/account">Account</a>{% elif account_mode %}<a href="{{ request.script_root }}/register">Create account</a>{% endif %}
+    <span class="grow"></span>
+    <span class="muted">A retrieval and drafting aid. Not a search opinion or legal advice.</span>
+  </div>
+  Postgres&nbsp;17 + pgvector ·
   {% if corpus and corpus.publications %}{{ '{:,}'.format(corpus.publications) }} publications{% if corpus.chunks %} / {{ '{:.2f}M'.format(corpus.chunks / 1000000) }} chunks{% endif %}{% else %}local corpus{% endif %} ·
   {{ corpus.cpc_count or 8 }} CPC classes, {{ (corpus.jurisdictions or ['US','EP','WO','DE'])|join('/') }}{% if corpus.max_date_str %} · current to {{ corpus.max_date_str }}{% endif %} ·
   768-dimensional semantic embeddings · Gemini agent · bge reranker · external patent API federation</footer>

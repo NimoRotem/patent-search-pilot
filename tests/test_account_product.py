@@ -216,12 +216,15 @@ def test_search_cache_identity_includes_subject_and_uploaded_document():
 def test_password_session_version_rejects_unversioned_and_older_signed_sessions(account_client):
     with account_client.session_transaction() as session:
         session["user_id"] = USER["id"]
-    missing = account_client.get("/", follow_redirects=False)
+#  "/" is a PUBLIC landing page now (see tests/test_public_shell.py): a visitor has to be
+#  able to read what the product does before being asked to sign in. The canary for "am I
+#  authenticated" therefore has to be a route that is still gated.
+    missing = account_client.get("/history", follow_redirects=False)
     assert missing.status_code == 302 and "/login" in missing.headers["Location"]
     with account_client.session_transaction() as session:
         session["user_id"] = USER["id"]
         session["session_version"] = USER["session_version"] - 1
-    response = account_client.get("/", follow_redirects=False)
+    response = account_client.get("/history", follow_redirects=False)
     assert response.status_code == 302 and "/login" in response.headers["Location"]
 
 

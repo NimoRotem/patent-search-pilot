@@ -38,8 +38,14 @@ def test_healthz_stays_open(secured):
     assert r.get_json()["ok"] is True
 
 
+#  "/" is a PUBLIC landing page now (see tests/test_public_shell.py): a visitor has to be
+#  able to read what the product does before being asked to sign in. The canary for "am I
+#  authenticated" therefore has to be a route that is still gated.
+GATED = "/history"
+
+
 def test_html_route_redirects_to_login(secured):
-    r = secured.get("/")
+    r = secured.get(GATED)
     assert r.status_code == 302
     assert "/login" in r.headers["Location"]
 
@@ -65,20 +71,20 @@ def test_sse_endpoint_returns_401_when_anonymous(secured):
 
 def test_login_then_access_granted(secured):
     assert secured.post("/login", data={"password": PASSWORD}).status_code == 302
-    assert secured.get("/").status_code == 200          # session cookie now carried
+    assert secured.get(GATED).status_code == 200        # session cookie now carried
 
 
 def test_wrong_password_is_401_and_grants_nothing(secured):
     r = secured.post("/login", data={"password": "wrong"})
     assert r.status_code == 401
-    assert secured.get("/").status_code == 302
+    assert secured.get(GATED).status_code == 302
 
 
 def test_logout_revokes_session(secured):
     secured.post("/login", data={"password": PASSWORD})
-    assert secured.get("/").status_code == 200
+    assert secured.get(GATED).status_code == 200
     secured.get("/logout")
-    assert secured.get("/").status_code == 302
+    assert secured.get(GATED).status_code == 302
 
 
 def test_api_token_header_works(secured, monkeypatch):
@@ -92,7 +98,7 @@ def test_api_token_header_works(secured, monkeypatch):
 def test_loopback_exemption_when_enabled(secured, monkeypatch):
     """regression.sh / cron hit 127.0.0.1 directly; port 8631 is VPC-only so this is safe."""
     monkeypatch.setattr(auth, "TRUST_LOOPBACK", True)
-    assert secured.get("/").status_code == 200
+    assert secured.get(GATED).status_code == 200
 
 
 # ---- open-redirect + prefix safety ----------------------------------------------------------
@@ -112,7 +118,7 @@ def test_login_redirect_keeps_proxy_prefix(secured):
 
 
 def test_anonymous_redirect_targets_prefixed_login(secured):
-    r = secured.get("/", headers={"X-Forwarded-Prefix": "/patents-data"})
+    r = secured.get(GATED, headers={"X-Forwarded-Prefix": "/patents-data"})
     assert r.status_code == 302
     assert "/patents-data/login" in r.headers["Location"]
 

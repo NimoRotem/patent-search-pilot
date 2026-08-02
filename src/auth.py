@@ -66,7 +66,12 @@ TRUSTED_PROXY_HOPS = max(1, int(_num("TRUSTED_PROXY_HOPS", 1)))
 # link: a client with no account opens one report. The capability is the token itself, which is
 # stored hashed, resolves to exactly ONE slug, is revocable, and grants nothing else — every
 # route that writes, exports, re-runs or reaches another report stays gated below.
-_OPEN_ENDPOINTS = {"healthz", "auth.login", "auth.logout", "auth.register",
+#  PUBLIC pages. Before these were open, an anonymous visitor to the site was redirected straight
+#  to a login box with no way to find out what the product was, what it indexes, or what it does
+#  with a document they would be uploading. The SEARCH itself is still gated: `index` renders a
+#  landing page for a signed-out visitor and the search form only for a signed-in one.
+_OPEN_ENDPOINTS = {"healthz", "index", "about", "how_it_works",
+                   "auth.login", "auth.logout", "auth.register",
                    "auth.forgot_password", "auth.reset_password", "static",
                    "shared_report", "shared_report_logo",
                    # An invitee has no account yet; a verification link may be opened from a mail
