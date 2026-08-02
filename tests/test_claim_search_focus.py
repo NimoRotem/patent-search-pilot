@@ -74,5 +74,7 @@ def test_claim_search_emits_dense_partial_before_lexical_expansion(monkeypatch):
                                 search_config="claim_agentic"),
           on_event=lambda stage, data: events.append(stage))
     assert calls[0] == ["claim_dense"]
-    assert calls[1] == ["claim_bm25", "cpc", "citation", "qbe"]
+    #  `dense` is in the second pass, not the first: the first pass exists to emit a fast
+    #  partial, and claim focus must still search the description (RECALL_STUDY_2026-08-02).
+    assert calls[1] == ["dense", "claim_bm25", "cpc", "citation", "qbe"]
     assert events.index("partial") < events.index("search_progress", 2)

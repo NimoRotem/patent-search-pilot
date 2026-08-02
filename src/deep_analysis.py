@@ -51,7 +51,10 @@ import db
 import grounding
 import llm
 
-VERSION = 2
+#  3: caches written by the pre-deep_rank path were built against a PARTIAL, pre-listwise
+#  ordering and were never invalidated, so they charted a list the page no longer showed.
+#  Bumping the version makes every one of them a miss.
+VERSION = 3
 
 #  How deep to read. The retrieval side ranks thousands; these are the ones a human would
 #  actually open. 50 is the number of references an attorney reads before deciding, and it is
@@ -177,8 +180,15 @@ _SYS = (
     '{"features":[{"item":"<the feature, verbatim as given>","verdict":"...","quote":"...",'
     '"note":"...","confidence":0.0}],'
     '"claims":[{"item":"<the claim number as given, e.g. \\"claim 3\\">","verdict":"...",'
-    '"quote":"...","note":"...","confidence":0.0}]}\n'
-    "Include every feature and every claim you were given, in the order given."
+    '"quote":"...","note":"...","confidence":0.0}],'
+    '"overall":{"score":0,"why":"one sentence"}}\n'
+    "Include every feature and every claim you were given, in the order given.\n"
+    "\n"
+    '"overall" is your judgement of how relevant THIS REFERENCE AS A WHOLE is to the subject '
+    "invention, on the evidence of the text you were given: 90-100 = discloses essentially the "
+    "same invention; 70-89 = strongly relevant, discloses most core elements; 40-69 = related "
+    "field, some overlapping features; 1-39 = same broad area but a different problem or "
+    "solution; 0 = unrelated. Judge the document, not the table you just filled in."
 )
 
 
@@ -306,13 +316,37 @@ def analyse_reference(pub, features, input_claims, title=""):
         return result
 
     shown = _rendered(ref)
-    payload = {"reference": pub,
-               "subject_features": feature_items,
-               "subject_claims": [{"item": c["label"], "text": c["text"]} for c in input_claims
-                                  ][:MAX_INPUT_CLAIMS],
-               "reference_text": shown}
-    #  The prompt is dominated by the reference itself; leave the model room for a full chart.
-    out = llm.chat_json(_SYS, json.dumps(payload, ensure_ascii=False), max_tokens=12000) or {}
+    claim_payload = [{"item": c["label"], "text": c["text"]} for c in input_claims
+                     ][:MAX_INPUT_CLAIMS]
+
+    def _ask(features_now, claims_now):
+        payload = {"reference": pub, "subject_features": features_now,
+                   "subject_claims": claims_now, "reference_text": shown}
+        #  The prompt is dominated by the reference itself; leave room for a full chart.
+        return llm.chat_json(_SYS, json.dumps(payload, ensure_ascii=False),
+                             max_tokens=12000) or {}
+
+    #  TWO FOCUSED READS, not one combined one, whenever there are both features and claims.
+    #  MEASURED: asking for 12 feature rows AND 13 claim rows in a single answer, each with a
+    #  verbatim quote and a note, made the model economise: the same reference that grounded 10 of
+    #  12 features when asked about features alone grounded 2 when the claims were asked for in
+    #  the same breath. The reference text is re-sent, which costs input tokens and buys back the
+    #  chart. Sequential on purpose: this already runs inside a wide worker pool (deep_rank), and
+    #  a nested pool would multiply the concurrent Vertex calls by two.
+    if feature_items and claim_payload:
+        out_f = _ask(feature_items, [])
+        out_c = _ask([], claim_payload)
+        out = {}
+        if out_f.get("features"):
+            out["features"] = out_f["features"]
+        if out_c.get("claims"):
+            out["claims"] = out_c["claims"]
+        #  Take the holistic judgement from the FEATURE read: that is the pass that saw the
+        #  invention's features, and asking twice would only give two numbers to reconcile.
+        if isinstance(out_f.get("overall"), dict):
+            out["overall"] = out_f["overall"]
+    else:
+        out = _ask(feature_items, claim_payload)
     if not out:
         result["method"] = "unavailable"
         result["features"] = [_row(f, None, ref, shown, "feature") for f in feature_items]
@@ -324,6 +358,15 @@ def analyse_reference(pub, features, input_claims, title=""):
                           for item, raw in zip(feature_items, _align(out.get("features"), feature_items))]
     result["claims"] = [_row(item, raw, ref, shown, "claim")
                         for item, raw in zip(claim_items, _align(out.get("claims"), claim_items))]
+    #  The reader's holistic verdict on the document as a whole. Kept SEPARATE from the chart: the
+    #  chart is the legal artefact and every cell in it is gated, whereas this is one number, used
+    #  only to rank and only ever alongside grounded evidence (see deep_rank.score_reference).
+    ov = out.get("overall") if isinstance(out.get("overall"), dict) else {}
+    try:
+        ov_score = max(0, min(100, int(ov.get("score"))))
+    except (TypeError, ValueError):
+        ov_score = None
+    result["overall"] = {"score": ov_score, "why": str(ov.get("why") or "")[:300]}
     try:
         claim_texts = {c["label"]: c["text"] for c in input_claims}
         result["refuted"] = (_refute(result["features"], pub) +
@@ -365,17 +408,23 @@ def subject_material(report, view):
 def _extend_to(cards, report, top_n):
     """Top up the reading list from the ranked families beyond the cards the page renders.
 
-    The page builds 25 full cards on purpose — a card costs a drawing, a claim match and an
-    explanation. The READING should not inherit that limit: the whole point is to open the top 50
-    and see what they say. Ranks 26-50 are resolved to their representative publication with the
-    same batched query the ranked tail uses, and carry no card data because none is needed here.
+    The page builds a bounded number of full cards on purpose — a card costs a drawing, a claim
+    match and an explanation. The READING should not inherit that limit.
+
+    The tail is taken from the families the cards do NOT already cover, NOT from
+    ``ranked_families[len(cards):]``. That old slice assumed the cards were exactly the first N
+    ranked families, which stopped being true the moment a listwise rerank and a federated merge
+    ran between them: ranks 26-50 of the reading list were then an arbitrary offset into a list
+    the page was no longer ordered by.
     """
     have = {c["pub"] for c in cards}
     need = top_n - len(cards)
     if need <= 0:
         return cards
     ranked = (report or {}).get("ranked_families") or []
-    tail = ranked[len(cards):len(cards) + need * 3]      # over-fetch: some resolve to nothing
+    covered = {c.get("family") for c in cards if c.get("family")}
+    rest = [f for f in ranked if f not in covered]
+    tail = rest[:need * 3]                              # over-fetch: some resolve to nothing
     if not tail:
         return cards
     try:
@@ -529,8 +578,14 @@ def metadata(report, view):
     """What the report page can say before the analysis has run."""
     features, claims, qd = subject_material(report, view)
     cards = [c for c in ((view or {}).get("cards") or []) if c.get("pub")]
-    #  What will actually be READ, which is more than the page renders as cards.
-    reachable = min(TOP_N, max(len(cards), len((report or {}).get("ranked_families") or [])))
+    #  What will actually be READ, which is more than the page renders as cards. When deep_rank
+    #  ran during generation it already read a known number in full, so say that number rather
+    #  than this module's own default.
+    dr = (report or {}).get("deep_rank") or {}
+    if dr.get("charted"):
+        reachable = int(dr["charted"])
+    else:
+        reachable = min(TOP_N, max(len(cards), len((report or {}).get("ranked_families") or [])))
     return {"available": bool(cards and (features or claims)),
             "n_features": len(features), "n_subject_claims": len(claims),
             "n_references": reachable,

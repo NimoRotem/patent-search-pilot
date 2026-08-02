@@ -1,10 +1,19 @@
+import pathlib
+import tempfile
 import threading
 import time
 
 import corpus_facts
 
 
-def _reset_cache(monkeypatch, *, value=None, timestamp=0.0):
+def _reset_cache(monkeypatch, *, value=None, timestamp=0.0, snapshot=None):
+    #  Point the on-disk snapshot into a FRESH temporary directory unless a test supplies its own,
+    #  so "cold cache" here means genuinely cold. A fixed path under data/ does not work: any test
+    #  that forces a refresh writes it, and the next test then starts warm. In production the
+    #  snapshot is what stops a restart rendering the public scope statement from the fallback.
+    monkeypatch.setattr(
+        corpus_facts, "_SNAPSHOT",
+        snapshot or pathlib.Path(tempfile.mkdtemp(prefix="corpus-facts-")) / "snapshot.json")
     monkeypatch.setattr(
         corpus_facts,
         "_CACHE",
@@ -84,3 +93,25 @@ def test_force_refresh_remains_synchronous(monkeypatch):
 
     assert corpus_facts.facts(force=True)["publications"] == 321
     assert corpus_facts._CACHE["v"]["publications"] == 321
+
+
+def test_the_last_good_answer_survives_a_restart(monkeypatch, tmp_path):
+    """A cold cache used to render the PUBLIC scope statement from the config fallback: "millions
+    of publications" and the four originally-configured offices, for the first minutes after every
+    restart. The exact scans take about a minute, so the last successful answer is persisted."""
+    snap = tmp_path / "corpus_facts.json"
+    _reset_cache(monkeypatch, snapshot=snap)
+    monkeypatch.setattr(corpus_facts, "_query_db", lambda: _live(4_954_362))
+    warm = corpus_facts.facts(force=True)
+    assert warm["publications"] == 4_954_362
+    assert snap.exists(), "a forced refresh must persist what it learned"
+
+    #  restart: cache empty, database slow or unreachable
+    _reset_cache(monkeypatch, snapshot=snap)
+
+    def unavailable():
+        raise RuntimeError("database is busy")
+
+    monkeypatch.setattr(corpus_facts, "_query_db", unavailable)
+    cold = corpus_facts.facts()
+    assert cold["publications"] == 4_954_362, "the restart must not fall back to the constant"

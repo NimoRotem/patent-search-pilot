@@ -18,11 +18,14 @@ Two different kinds of fact, deliberately sourced differently:
 """
 from __future__ import annotations
 
+import datetime
+import json
+import os
 import threading
 import time
 
 import db
-from config import SEED_CPC, SEED_CPC_TITLES, JURISDICTIONS
+from config import SEED_CPC, SEED_CPC_TITLES, JURISDICTIONS, DATA
 
 _CACHE = {"t": 0.0, "v": None, "refreshing": False, "last_attempt": 0.0}
 _LOCK = threading.Lock()
@@ -151,6 +154,46 @@ def _empty_live():
     return {"publications": None, "max_date": None, "min_date": None, "chunks": None}
 
 
+#  The exact scans run over 4.8M publications and 26M chunks and, while a bulk embed is running,
+#  have taken minutes. The refresh is already off the request path, but that left a COLD-START
+#  HOLE: for the first minutes after a restart every page rendered the fallback, so the public
+#  landing page said "millions of publications" and listed the four configured offices instead of
+#  the ten the corpus actually holds. A wrong scope statement is precisely what this module exists
+#  to prevent, so the last successful answer is persisted and re-read at start-up. It is labelled
+#  with the time it was taken; it is not invented.
+_SNAPSHOT = DATA / "corpus_facts.json"
+
+
+def _save_snapshot(live):
+    try:
+        _SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
+        payload = dict(live)
+        for k in ("max_date", "min_date"):
+            if payload.get(k) is not None:
+                payload[k] = payload[k].isoformat()
+        payload["_taken"] = time.time()
+        tmp = _SNAPSHOT.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, default=str))
+        os.replace(tmp, _SNAPSHOT)
+    except Exception:
+        pass
+
+
+def _load_snapshot():
+    try:
+        d = json.loads(_SNAPSHOT.read_text())
+    except Exception:
+        return None
+    for k in ("max_date", "min_date"):
+        v = d.get(k)
+        if isinstance(v, str) and v:
+            try:
+                d[k] = datetime.date.fromisoformat(v[:10])
+            except ValueError:
+                d[k] = None
+    return d
+
+
 def _refresh_cache():
     """Refresh exact facts without occupying a request or holding the cache lock."""
     try:
@@ -158,6 +201,8 @@ def _refresh_cache():
     except Exception:
         live = None
     now = time.time()
+    if live is not None:
+        _save_snapshot(live)
     with _LOCK:
         if live is not None:
             _CACHE["v"], _CACHE["t"] = live, now
@@ -177,6 +222,7 @@ def _live_facts(force: bool):
         except Exception:
             with _LOCK:
                 return _CACHE["v"] or _empty_live()
+        _save_snapshot(live)          # a forced refresh is the one most likely to be a warm-up
         with _LOCK:
             _CACHE["v"], _CACHE["t"] = live, time.time()
         return live
@@ -184,6 +230,12 @@ def _live_facts(force: bool):
     now = time.time()
     start_refresh = False
     with _LOCK:
+        if _CACHE["v"] is None:
+            #  Serve the last successful answer immediately after a restart, and still refresh.
+            snap = _load_snapshot()
+            if snap:
+                _CACHE["v"] = snap
+                _CACHE["t"] = 0.0        # zero, not the snapshot time: force a refresh anyway
         live = _CACHE["v"]
         stale = live is None or now - _CACHE["t"] >= _TTL
         retry_ready = now - _CACHE["last_attempt"] >= _RETRY_TTL
