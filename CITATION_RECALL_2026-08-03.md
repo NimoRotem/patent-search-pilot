@@ -132,3 +132,84 @@ that; a v3-to-v4 comparison of any single document is not.
 
 The run is ~18 minutes: retrieval ~11, screening 2,500 ~30 s, reading ~330 references in full
 ~5 minutes (12.7M characters).
+
+---
+
+# Round two: on-demand text, and four things that did not work
+
+The first round left 12 of 13 remaining families abstract-only, and named text as the next lever.
+Five more runs, same blind procedure.
+
+## Final result
+
+| | ranked top 50 | surfaced on the page |
+|---|---|---|
+| **v1** baseline | **4 of 22** | 4 |
+| v4 two-tier ordering | 7 | 9 |
+| v5 + on-demand text | 7 | 9 |
+| v6 + wider funnel | 4 | 7 |
+| v7 + interleaved screen batches | 5 | 7 |
+| v8 + narrower read set | 5 | 7 |
+| **v9** funnel reverted | **7 of 22** | **9 of 22** |
+
+v9 displays ten cited publications at ranked positions 6, 6, 14, 17, 18, 18, 22, 23, 23 and 35.
+
+## What worked: fetch the text, before reading
+
+Measured per source on the 15 cited documents this corpus held no claims for:
+
+| source | supplied full text |
+|---|---|
+| SerpApi Google Patents | **10 of 15**, about a second each, including every DE, FR, CN and JP one |
+| lemad Mongo | 1 of 15 |
+| EPO OPS | 0 of 15, because its full text is EP and WO only and none of these were |
+
+So the pipeline now fetches the missing text for the references it has just decided to read, and
+persists it. `enrich.enrich_publication` already did exactly this and stores the claims **without
+embedding them**, which is the right shape: the reading stage needs text, not vectors, and the
+vectors follow on the next ordinary embed pass. Measured live: 49 of 80 references gained full
+text in 19 seconds.
+
+Two more that cost nothing:
+
+- **The screener was reading nothing at all for old US patents.** They have no abstract row and no
+  claims table here; their whole disclosure is in paragraph chunks, which the screen never looked
+  at. It scored two genuinely relevant vacuum lifters 0 and 10 on an empty string. With a
+  description fallback, one of them came back at rank 49.
+- **A low score from a screener shown nothing is not evidence of irrelevance.** Candidates the
+  screen could not see text for are now read anyway if the retrieval ranked them well.
+
+## What did not work, and is recorded so it is not retried
+
+**Widening the funnel lowered recall, three runs running.** Screen 2,500 to 5,000 and retrieval
+publication cap 2,500 to 6,000: 7 families became 4, then 5, then 5, while the two narrower runs
+had scored 7 twice and a third narrow run scored 7 again. The reasoning for widening was sound and
+the effect on retrieval was real, cited references moved from fusion rank 3,000-4,000 to 141-191.
+It still lost, because every stage below is a fixed size and a wider pool is more competition at
+each of them. **Widening a funnel only helps if the stage below it widens too, and the page does
+not.** The same shape killed a larger read set: charting 504 references instead of 344 pushed
+cited art from ranks 30-47 down to 54-184.
+
+**Cutting the screen's text budget to afford a deeper screen.** Tried, and the A/B that settled it
+is worth keeping: re-screening identical batches at 950 and 1,600 characters moved the cited
+references by +1.9 and the other 237 candidates in those batches by -0.1. The budget explains
+almost nothing. That measurement cost three minutes and saved a thirty-minute run on a wrong fix.
+
+**But it exposed a real defect.** The same publication scored 85 in one run, 60 in the next and 75
+on an isolated re-screen. The screener judges 25 candidates in one call and calibrates within it,
+and the batches were contiguous slices of a rank-ordered list: the first batch was all excellent
+documents spread over 60-95, the two-hundredth all mediocre ones spread over 20-60. Those numbers
+were never comparable, and they are used both as the threshold for what gets read and as a term in
+the final score. Batches are now interleaved round-robin so every batch spans the whole ranking.
+
+## The remaining ceiling is the corpus, and it is not a per-search problem
+
+Of the 13 families still outside the ranked list: 3 are never retrieved, 6 sit beyond the screened
+2,500, and 5 are screened at 50 to 70 and not read. Almost all are abstract-only.
+
+Per-search enrichment is bounded by quota and by time: 80 documents per search is already 80
+SerpApi calls. The fix that would actually move this is a **batch enrichment of the field**: about
+50,000 abstract-only publications sit in the 8 seed CPC branches, and at roughly a second each
+that is a background job measured in days and a SerpApi tier, not a search-time cost. It would
+also feed retrieval, because the new text gets embedded on the next pass, which per-search
+enrichment deliberately does not.

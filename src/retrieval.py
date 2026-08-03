@@ -33,6 +33,11 @@ PUB_CAP = 1000         # per-channel publication cap (the spec's ~1000 width)
 # the per-element sub-searches (there are ~20 of them) keep the cheap profile. A seed pass at these
 # settings measures ~20-25 s against ~13 s at the narrow profile.
 SEED_CHUNK_FETCH = int(os.environ.get("SEED_CHUNK_FETCH", "9000"))
+#  Raising this to 6,000 was tried and REVERTED. The reasoning was sound (it truncates
+#  brief_dense, whose pool is ~6,100 publications) and the effect on retrieval was real: cited
+#  references moved from fusion rank 3,000-4,000 to 141-191. But top-50 recall FELL, because every
+#  downstream stage has a fixed size and a wider pool is more competition at each of them. Widening
+#  a funnel only helps if the stage below it widens too, and the page does not.
 SEED_PUB_CAP = int(os.environ.get("SEED_PUB_CAP", "2500"))
 # pgvector caps hnsw.ef_search at 1000 in this build; 400 is the measured knee for a LIMIT of ~9k.
 EF_SEARCH = int(os.environ.get("HNSW_EF_SEARCH", "200"))
