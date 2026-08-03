@@ -67,7 +67,18 @@ VERSION = 1
 #  read the first 600 of 7,328. The screen is the cheapest stage in the pipeline by a wide margin
 #  (600 candidates measured at 11 s and 24 model calls), so a depth that leaves most of the ranked
 #  list unexamined is the wrong economy. 2,500 is ~100 calls and ~45 s.
+#  2,500, NOT more, and this was measured the hard way over eight runs of the same search.
+#  Widening the screen to 5,000 and the retrieval publication cap to 6,000 lowered top-50 recall
+#  on a real examiner citation list from 7 families to 4-5, three runs in a row, while the two
+#  narrower runs scored 7 twice. Every downstream cut is a fixed size, so a wider pool is more
+#  competition at each of them; depth past this point buys reading nobody sees.
 SCREEN_TOP = int(os.environ.get("DEEP_RANK_SCREEN_TOP", "2500"))
+#  Characters of candidate text per screened candidate. This is the lever that keeps a deep screen
+#  affordable: adding the CPC symbol and a description fallback pushed a 2,500-candidate screen
+#  from 32 s to 163 s purely on prompt size. The screen is deciding ONE thing, whether the document
+#  is worth reading, and a thousand characters of abstract or first claims settles that; the
+#  reading stage is where the whole document gets read.
+SCREEN_CHARS = int(os.environ.get("DEEP_RANK_SCREEN_CHARS", "1600"))
 SCREEN_BATCH = int(os.environ.get("DEEP_RANK_SCREEN_BATCH", "25"))
 SCREEN_WORKERS = int(os.environ.get("DEEP_RANK_SCREEN_WORKERS", "6"))
 
@@ -76,7 +87,18 @@ SCREEN_WORKERS = int(os.environ.get("DEEP_RANK_SCREEN_WORKERS", "6"))
 #  real examiner citation list, seven cited families were screened at 60-80 and then never read,
 #  because the top-150 cut landed in the high 80s.
 CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "300"))
-CHART_WORKERS = int(os.environ.get("DEEP_RANK_CHART_WORKERS", "14"))
+#  A THRESHOLD, not only a slice. "Worth reading" is a judgement the screen already made on a
+#  0-100 scale, so a fixed top-N throws away its answer and substitutes an arbitrary cut: measured,
+#  the top-300 cut landed at a screen score of 75-80, and cited references the screen had rated 70
+#  were never read. Everything at or above this is read, up to the hard ceiling.
+#  MEASURED, and it is not the obvious direction: reading MORE lowered recall at the top 50.
+#  Charting 504 references instead of 344 did not improve the order within the read set, it only
+#  made the 50-card cut harder, and cited references that had been on the page at chart rank 30-47
+#  fell to 54-184. The read set is a shortlist for a fixed-size page, so widening it past what the
+#  page can show trades visible recall for invisible reading.
+CHART_MIN_SCREEN = int(os.environ.get("DEEP_RANK_CHART_MIN_SCREEN", "75"))
+CHART_TOP_MAX = int(os.environ.get("DEEP_RANK_CHART_TOP_MAX", "350"))
+CHART_WORKERS = int(os.environ.get("DEEP_RANK_CHART_WORKERS", "18"))
 
 #  Always read the head of the RETRIEVAL order regardless of what the screen thought, so a screen
 #  miss can never cost a reference the old pipeline would have shown. This is not paranoia: the
@@ -84,6 +106,9 @@ CHART_WORKERS = int(os.environ.get("DEEP_RANK_CHART_WORKERS", "14"))
 #  corpus is a different patent's abstract (upstream: patents.google.com shows the same wrong
 #  abstract). A reference the retrieval ranked 15th must not be lost to a bad abstract.
 ALWAYS_CHART_RETRIEVAL_HEAD = int(os.environ.get("DEEP_RANK_HEAD", "60"))
+#  How far down the retrieval order to rescue candidates the screener was shown no text for.
+BLIND_RESCUE = int(os.environ.get("DEEP_RANK_BLIND_RESCUE", "400"))
+BLIND_RESCUE_MAX = int(os.environ.get("DEEP_RANK_BLIND_RESCUE_MAX", "60"))
 
 #  Evidence weights. "disclosed" survived the refuter; "partial" is the model's own hedge;
 #  "uncertain" is a "disclosed" that an independent refuter would not confirm.
@@ -148,6 +173,25 @@ _CLAIM_WEIGHT = 0.75
 #  survives only as the ceiling on what a card may DISPLAY, so a screen score is never presented
 #  as if it were evidence.
 UNREAD_SCORE_CAP = int(os.environ.get("DEEP_RANK_UNREAD_CAP", "70"))
+
+#  ON-DEMAND TEXT, fetched for the references we are ABOUT TO READ and persisted to the corpus.
+#
+#  84% of this corpus is abstract-only, and a reference with no text cannot be ranked on evidence
+#  however relevant it is: it can only be listed. Measured against a real examiner citation list,
+#  twelve of the thirteen families that never reached the ranked list were abstract-only here.
+#
+#  Measured per source on those documents: SerpApi Google Patents returned claims for 10 of 15 in
+#  about a second each, including every DE, FR, CN and JP one; the lemad Mongo lookup covered 1;
+#  EPO OPS covered 0, because its full text is EP and WO only and none of them were. So SerpApi is
+#  the path, and `enrich.enrich_publication` already persists the claims WITHOUT embedding them,
+#  which is exactly right here: the reading stage needs text, not vectors, and the vectors follow
+#  on the next ordinary embed pass.
+#
+#  Bounded because SerpApi is quota'd: only references already selected for reading, only when the
+#  corpus has nothing to read, and only ENRICH_TOP of them. It is a ONE-TIME cost per publication
+#  that every later search in the field inherits.
+ENRICH_TOP = int(os.environ.get("DEEP_RANK_ENRICH_TOP", "80"))
+ENRICH_WORKERS = int(os.environ.get("DEEP_RANK_ENRICH_WORKERS", "8"))
 
 _STOP = set((
     "a an the of and or to for with in on at by is are be as from that this it its which such "
@@ -227,6 +271,18 @@ def _candidate_rows(cur, families, reps, limit):
                 "AND claim_no <= 3 ORDER BY publication_id, claim_no", (pids,))
     for c in cur.fetchall():
         claims.setdefault(c["publication_id"], []).append(c["text"] or "")
+    #  DESCRIPTION FALLBACK. Old US patents in this corpus have no abstract row and no claims
+    #  table: their entire disclosure is in paragraph chunks. The screener was therefore shown an
+    #  empty string for them and scored them 0 and 10, and two genuinely relevant vacuum lifters
+    #  from a real examiner citation list were dropped on that basis. This is the same defect a
+    #  previous audit found in the relevance judge, in a different stage.
+    paras = {}
+    cur.execute("SELECT publication_id, text FROM chunks WHERE publication_id = ANY(%s) "
+                "AND kind='paragraph' AND text IS NOT NULL ORDER BY publication_id, id", (pids,))
+    for c in cur.fetchall():
+        got = paras.setdefault(c["publication_id"], [])
+        if len(got) < 4:
+            got.append(c["text"] or "")
     abstracts, dates = {}, {}
     cur.execute("SELECT id, abstract, publication_date FROM publications WHERE id = ANY(%s)",
                 (pids,))
@@ -249,7 +305,10 @@ def _candidate_rows(cur, families, reps, limit):
         ab = abstracts.get(row["pid"], "")
         if not abstract_is_trustworthy(ab, row["title"], cl):
             ab = ""
-        body = (ab + "  " + cl).strip()[:1600]
+        body = (ab + "  " + cl).strip()[:SCREEN_CHARS]
+        if not body:
+            body = " ".join(paras.get(row["pid"], []))[:SCREEN_CHARS].strip()
+        row["has_text"] = bool(body)
         meta = []
         d = dates.get(row["pid"])
         if d:
@@ -258,6 +317,8 @@ def _candidate_rows(cur, families, reps, limit):
             meta.append("CPC " + ", ".join(cpcs[row["pid"]]))
         if not body:
             meta.append("no text beyond the title in this corpus")
+        elif not cl and not ab:
+            meta.append("description text only, no abstract or claims in this corpus")
         elif not cl:
             meta.append("abstract only, no claim text in this corpus")
         row["text"] = ((" | ".join(meta) + "\n  " if meta else "") + body).strip()
@@ -269,7 +330,27 @@ def screen(rows, brief, on_progress=None):
     has no screen score and falls back to its retrieval rank."""
     if not rows:
         return {}
-    batches = [rows[i:i + SCREEN_BATCH] for i in range(0, len(rows), SCREEN_BATCH)]
+    #  BATCHES ARE INTERLEAVED, NOT CONTIGUOUS SLICES OF THE RANKING.
+    #
+    #  The screener scores 25 candidates in one call and calibrates WITHIN that call. Cutting a
+    #  rank-ordered list into contiguous batches therefore made the first batch all excellent
+    #  documents, which the model spread across 60-95, and the two-hundredth batch all mediocre
+    #  ones, which it spread across 20-60. The absolute numbers were not comparable between
+    #  batches, and they are used as a threshold for what gets read and as a term in the final
+    #  ranking.
+    #
+    #  Measured: the same publication scored 85 in one run and 60 in the next, and 75 on an
+    #  isolated re-screen. An A/B on identical batches showed the per-candidate text budget
+    #  explains almost none of that (+1.9 on cited references, -0.1 on everything else), so batch
+    #  composition was what moved.
+    #
+    #  Round-robin by rank gives every batch the same spread of quality, so the model has the full
+    #  range to calibrate against every time. Deterministic, so a report is still reproducible.
+    n_batches = max(1, (len(rows) + SCREEN_BATCH - 1) // SCREEN_BATCH)
+    buckets = [[] for _ in range(n_batches)]
+    for i, r in enumerate(rows):
+        buckets[i % n_batches].append(r)
+    batches = [b for b in buckets if b]
     done = [0]
     lock = threading.Lock()
 
@@ -303,6 +384,78 @@ def screen(rows, brief, on_progress=None):
         for g in ex.map(one, batches):
             scores.update(g)
     return scores
+
+
+def _enrich_missing_text(chosen, on_progress=None):
+    """Fetch and persist full text for the chosen references the corpus holds nothing readable for.
+
+    Returns the number of references that gained text. Never fatal: a quota-exhausted or
+    unreachable source leaves the reference exactly as it was, to be listed rather than read.
+    """
+    if ENRICH_TOP <= 0 or not chosen:
+        return 0
+    try:
+        import enrich
+    except Exception:
+        return 0
+    if not getattr(enrich, "SERP_KEY", ""):
+        return 0
+    pubs = [r["pub"] for r in chosen]
+    thin = []
+    try:
+        conn = db.connect()
+        conn.autocommit = True
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT p.publication_number pub,
+                              (SELECT count(*) FROM claims c WHERE c.publication_id=p.id) cl,
+                              (SELECT count(*) FROM chunks ch WHERE ch.publication_id=p.id
+                                 AND ch.kind='paragraph') pa
+                       FROM publications p WHERE p.publication_number = ANY(%s)""", (pubs,))
+                have = {r["pub"]: (r["cl"], r["pa"]) for r in cur.fetchall()}
+        finally:
+            conn.close()
+    except Exception:
+        return 0
+    order = {r["pub"]: i for i, r in enumerate(chosen)}
+    for pub in pubs:
+        cl, pa = have.get(pub, (0, 0))
+        if cl == 0 and pa == 0:
+            thin.append(pub)
+    thin.sort(key=lambda p: order.get(p, 10 ** 6))
+    thin = thin[:ENRICH_TOP]
+    if not thin:
+        return 0
+    if on_progress:
+        try:
+            on_progress("enrich_start", n=len(thin))
+        except Exception:
+            pass
+    done = [0]
+    lock = threading.Lock()
+
+    def one(pub):
+        try:
+            r = enrich.enrich_publication(pub, reembed=False)
+            ok = bool(r and r.get("ok") and r.get("added_claims"))
+        except Exception:
+            ok = False
+        with lock:
+            done[0] += 1
+            if on_progress and (done[0] % 10 == 0 or done[0] == len(thin)):
+                try:
+                    on_progress("enrich_progress", done=done[0], total=len(thin))
+                except Exception:
+                    pass
+        return ok
+
+    t0 = time.time()
+    with ThreadPoolExecutor(max_workers=min(ENRICH_WORKERS, len(thin))) as ex:
+        got = sum(1 for ok in ex.map(one, thin) if ok)
+    print(f"[deep_rank] fetched full text for {got}/{len(thin)} references that had none "
+          f"({time.time() - t0:.0f}s)", flush=True)
+    return got
 
 
 def _grounded_rows(ref, kind):
@@ -547,13 +700,34 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     #  what the screen said (see ALWAYS_CHART_RETRIEVAL_HEAD).
     by_screen = sorted(rows, key=lambda r: (-(scores.get(r["pub"], -1)), r["rank"]))
     chosen, seen = [], set()
-    for r in by_screen[:CHART_TOP]:
+    for i, r in enumerate(by_screen):
+        if len(chosen) >= CHART_TOP_MAX:
+            break
+        if i >= CHART_TOP and scores.get(r["pub"], -1) < CHART_MIN_SCREEN:
+            break
         chosen.append(r)
         seen.add(r["pub"])
     for r in rows[:ALWAYS_CHART_RETRIEVAL_HEAD]:
         if r["pub"] not in seen:
             chosen.append(r)
             seen.add(r["pub"])
+    #  A low score from a screener that was shown NOTHING is not evidence of irrelevance, it is
+    #  the absence of evidence, and it must not be the reason a reference is never read. Any
+    #  candidate the screen could not see text for is read anyway if the retrieval ranked it
+    #  inside BLIND_RESCUE. Bounded, and it is exactly the set that on-demand text can rescue.
+    rescued = 0
+    for r in rows[:BLIND_RESCUE]:
+        if rescued >= BLIND_RESCUE_MAX:
+            break
+        if r["pub"] not in seen and not r.get("has_text"):
+            chosen.append(r)
+            seen.add(r["pub"])
+            rescued += 1
+    if rescued:
+        print(f"[deep_rank] reading {rescued} references the screen could not see any text for",
+              flush=True)
+    #  Fetch the missing text BEFORE reading, for the references we have just chosen to read.
+    enriched = _enrich_missing_text(chosen, on_progress=emit)
     emit("chart_start", n=len(chosen))
 
     done = [0]
@@ -656,6 +830,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         "candidate_families": [r["fam"] for r in rows],
         "screen_scores": {p: int(v) for p, v in scores.items()},
         "screened": len(scores),
+        "enriched": enriched,
         "n_candidates": len(rows),
         "charted": len(charts),
         "read_in_full": sum(1 for c in charts if c.get("method") == "llm"),

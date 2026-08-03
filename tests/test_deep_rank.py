@@ -600,3 +600,136 @@ def test_chart_depth_tracks_the_screen_depth():
     screened at 60-80 were never read."""
     assert deep_rank.CHART_TOP >= 250
     assert deep_rank.CHART_TOP < deep_rank.SCREEN_TOP
+
+
+# ---------------------------------------------------------------------------------------------
+# on-demand text: a reference with nothing to read cannot be ranked on evidence
+# ---------------------------------------------------------------------------------------------
+def test_only_references_with_nothing_readable_are_fetched(monkeypatch):
+    """Bounded on purpose: SerpApi is quota'd. Only references already chosen for reading, only
+    when the corpus holds nothing readable, and only ENRICH_TOP of them."""
+    fetched = []
+
+    class FakeEnrich:
+        SERP_KEY = "x"
+
+        @staticmethod
+        def enrich_publication(pub, reembed=False):
+            fetched.append((pub, reembed))
+            return {"ok": True, "added_claims": 7}
+
+    class Cur:
+        def execute(self, sql, params=None):
+            self.rows = [{"pub": "US-THIN-A", "cl": 0, "pa": 0},
+                         {"pub": "US-FULL-B", "cl": 12, "pa": 40},
+                         {"pub": "US-PARAS-C", "cl": 0, "pa": 16}]
+
+        def fetchall(self):
+            return self.rows
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    class Conn:
+        autocommit = True
+
+        def cursor(self):
+            return Cur()
+
+        def close(self):
+            pass
+
+    monkeypatch.setitem(__import__("sys").modules, "enrich", FakeEnrich)
+    monkeypatch.setattr(deep_rank.db, "connect", lambda *a, **k: Conn())
+    chosen = [{"pub": "US-THIN-A"}, {"pub": "US-FULL-B"}, {"pub": "US-PARAS-C"}]
+    got = deep_rank._enrich_missing_text(chosen)
+    assert got == 1
+    #  only the one with neither claims nor paragraphs, and never re-embedded: the reading stage
+    #  needs text, not vectors, and the vectors follow on the next ordinary embed pass
+    assert fetched == [("US-THIN-A", False)]
+
+
+def test_enrichment_is_skipped_without_a_key(monkeypatch):
+    class NoKey:
+        SERP_KEY = ""
+    monkeypatch.setitem(__import__("sys").modules, "enrich", NoKey)
+    assert deep_rank._enrich_missing_text([{"pub": "US-1-A"}]) == 0
+
+
+def test_a_screen_score_from_no_text_does_not_exclude_a_reference():
+    """A low score from a screener shown NOTHING is the absence of evidence, not evidence of
+    irrelevance. Two genuinely relevant vacuum lifters were dropped at 0 and 10 on that basis."""
+    assert deep_rank.BLIND_RESCUE >= 200
+    assert deep_rank.BLIND_RESCUE_MAX >= 20
+
+
+def test_the_read_set_is_a_threshold_not_only_a_slice():
+    """"Worth reading" is a judgement the screen already made on a 0-100 scale. A fixed top-N
+    substitutes an arbitrary cut for it: measured, the top-300 cut landed at 75-80 and cited
+    references the screen had rated 70 were never read."""
+    assert deep_rank.CHART_MIN_SCREEN <= 75
+    assert deep_rank.CHART_TOP_MAX > deep_rank.CHART_TOP
+
+
+def test_uncapping_the_short_document_channel_was_tried_and_reverted():
+    """brief_dense returns ~6,100 distinct publications from 9,000 abstract chunks, so a 2,500 cap
+    does truncate it, and lifting the cap DID move cited references from fusion rank 3,000-4,000
+    to 141-191. Top-50 recall still fell, because the stages below are fixed-size. Kept as a test
+    so the next person to spot the truncation finds out it was measured rather than missed."""
+    assert retrieval.SEED_PUB_CAP <= 3000
+
+
+def test_the_screen_is_deep_and_its_text_budget_is_not_the_lever():
+    """Cutting the per-candidate text budget to afford a deeper screen was tried and REVERTED: an
+    A/B on identical batches moved the cited references by +1.9 and everything else by -0.1, so
+    the budget explains almost nothing, while the deeper screen cost real recall through a
+    different mechanism (batch composition). Depth comes from concurrency, not from starving the
+    prompt."""
+    assert deep_rank.SCREEN_TOP >= 2500
+    assert deep_rank.SCREEN_CHARS >= 1400
+
+
+def test_screen_batches_span_the_ranking_rather_than_slicing_it(monkeypatch):
+    """The screener calibrates WITHIN a call. Contiguous batches of a rank-ordered list made the
+    first batch all excellent documents and the last all mediocre ones, so the absolute scores
+    were not comparable between batches, and they are used both as a read threshold and as a term
+    in the final ranking. Measured: the same publication scored 85, then 60, then 75."""
+    seen = []
+
+    def fake_chat(system, user, **kw):
+        ids = [ln for ln in user.split("\n") if ln.startswith("[")]
+        seen.append([int(ln[1:ln.index("]")]) for ln in ids])
+        return {"results": []}
+
+    monkeypatch.setattr(deep_rank.llm, "chat_json", fake_chat)
+    rows = [{"pub": f"P{i:04d}", "title": f"t{i}", "text": "x"} for i in range(100)]
+    deep_rank.screen(rows, "an invention")
+    #  4 batches of 25 drawn round-robin: the first batch must NOT be the first 25 by rank
+    assert len(seen) == 4
+    #  reconstruct which publications landed in the first batch
+    n_batches = 4
+    first = [rows[i]["pub"] for i in range(len(rows)) if i % n_batches == 0]
+    assert first[:3] == ["P0000", "P0004", "P0008"], first[:3]
+    #  every batch spans the whole ranking
+    for b in range(n_batches):
+        members = [i for i in range(len(rows)) if i % n_batches == b]
+        assert min(members) < 10 and max(members) > 90
+
+
+def test_the_read_set_is_not_widened_past_what_the_page_can_show():
+    """Counter-intuitive and measured: charting 504 references instead of 344 LOWERED recall in the
+    top 50, because it made the cut harder without improving the order within the read set. The
+    read set is a shortlist for a fixed-size page."""
+    import webapp
+    assert deep_rank.CHART_TOP_MAX <= 8 * webapp._DISPLAY_TOP
+
+
+def test_the_funnel_is_not_widened_past_what_the_stages_below_it_can_absorb():
+    """Measured over eight runs of one search: screen 5,000 + publication cap 6,000 scored 4-5
+    cited families in the top 50, three runs running; screen 2,500 + cap 2,500 scored 7, twice.
+    Widening a funnel only helps if the stage below widens too, and the page is a fixed size."""
+    assert deep_rank.SCREEN_TOP <= 3000
+    assert retrieval.SEED_PUB_CAP <= 3000

@@ -894,6 +894,14 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 _set_job(slug, kind="screening", detail=data,
                          msg=f"Screening candidates: batch {data.get('done')} of "
                              f"{data.get('total')}…")
+            elif stage == "enrich_start":
+                _set_job(slug, kind="enriching", detail=data,
+                         msg=f"Fetching the full text of {data.get('n', 0)} references this "
+                             f"corpus holds only an abstract for…")
+            elif stage == "enrich_progress":
+                _set_job(slug, kind="enriching", detail=data,
+                         msg=f"Fetching missing full text: {data.get('done')} of "
+                             f"{data.get('total')}…")
             elif stage == "chart_start":
                 _set_job(slug, kind="reading", detail=data,
                          msg=f"Reading the {data.get('n', 0)} strongest references IN FULL and "
