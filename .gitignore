@@ -45,3 +45,7 @@ data/finish_embed.*
 
 # public scope statement: last successful corpus scan, re-read at start-up (regenerable)
 data/corpus_facts.json
+
+# field text backfill progress (regenerable runtime state)
+data/enrich_field_state.json
+data/logs/

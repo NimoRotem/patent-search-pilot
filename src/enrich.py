@@ -18,13 +18,31 @@ import os, re, json, sys, time
 import requests
 import db, patent_text as pt
 from config import DATA
+import pubnorm  # zero-padded Google Patents ids (dropped-zero fix)
 
 SERP_KEY = os.environ.get("SERPAPI_API_KEY", "")
 SB_KEY = os.environ.get("SCRAPINGBEE_API_KEY", "")
 
 
 def gp_id(pubnum: str) -> str:
-    """US-11999030-B2 -> patent/US11999030B2/en"""
+    """US-11999030-B2 -> patent/US11999030B2/en, and US-2015032252-A1 -> US20150032252A1.
+
+    THE SECOND CASE IS THE POINT. Stripping the hyphens is right for a granted patent and wrong for
+    a US pre-grant publication: the corpus stores US-2015032252-A1 with the leading zero of the
+    serial dropped, and Google Patents only resolves the zero-PADDED US20150032252A1. Every
+    pre-grant lookup was therefore requesting a document that does not exist, returning nothing,
+    and still spending a SerpApi call. Measured on the field backfill: the hit rate was 27% until
+    this was fixed, and US pre-grant applications are a large share of the most-cited targets.
+
+    pubnorm already computes the padded, kind-bearing form and is the same helper that fixed this
+    class of bug for the outbound office links and the Mongo lookup.
+    """
+    try:
+        cands = pubnorm.mongo_candidates(pubnum)
+        if cands:
+            return "patent/" + cands[0] + "/en"
+    except Exception:
+        pass
     return "patent/" + pubnum.replace("-", "") + "/en"
 
 
