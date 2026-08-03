@@ -52,6 +52,9 @@ STATE = DATA / "enrich_field_state.json"
 RATE_PER_HOUR = int(os.environ.get("ENRICH_RATE_PER_HOUR", "2400"))
 #  Never spend the last of the monthly allowance: live searches enrich on demand too.
 RESERVE = int(os.environ.get("ENRICH_RESERVE", "1200"))
+#  Concurrent embedding batches. The Vertex quota is account-wide, so this is what has to stay
+#  under it together with anything else embedding at the time.
+EMBED_WORKERS = int(os.environ.get("ENRICH_EMBED_WORKERS", "10"))
 
 
 def account():
@@ -138,19 +141,44 @@ def chunk_and_embed(pids, log=print):
     pass has no such excuse, and without it the new text helps only the documents a search already
     decided to read.
     """
-    total = 0
-    for i in range(0, len(pids), 200):
-        batch = pids[i:i + 200]
-        n = 0
-        for pid in batch:
-            try:
-                n += enrich._reembed_pub(pid) or 0
-            except Exception:
-                continue
-        total += n
-        log(f"[enrich-field] embedded {total:,} new claim chunks "
-            f"({min(i + 200, len(pids)):,}/{len(pids):,} publications)")
-    return total
+    #  PHASE A: create every chunk first. Pure database work, no model calls.
+    ids = []
+    t0 = time.time()
+    for i, pid in enumerate(pids, 1):
+        try:
+            ids.extend(enrich.chunk_pub_claims(pid) or [])
+        except Exception:
+            continue
+        if i % 1000 == 0:
+            log(f"[enrich-field] chunked {i:,}/{len(pids):,} publications, {len(ids):,} chunks "
+                f"({time.time() - t0:.0f}s)")
+    log(f"[enrich-field] {len(ids):,} chunks to embed")
+    if not ids:
+        return 0
+
+    #  PHASE B: embed them in parallel batches. One round-trip per publication measured out at a
+    #  chunk a second, because a publication is only ~20 chunks and the call is latency-bound;
+    #  batches of 200 across several workers is what the corpus embedder itself does.
+    done = [0]
+    lock = threading.Lock()
+    batches = [ids[i:i + 200] for i in range(0, len(ids), 200)]
+
+    def one(batch):
+        try:
+            n = enrich._embed_chunk_ids(batch)
+        except Exception:
+            n = 0
+        with lock:
+            done[0] += n
+            if done[0] % 5000 < 200:
+                log(f"[enrich-field] embedded {done[0]:,}/{len(ids):,} chunks "
+                    f"({done[0] / max(time.time() - t0, 1):.0f}/sec)")
+        return n
+
+    with ThreadPoolExecutor(max_workers=EMBED_WORKERS) as ex:
+        list(ex.map(one, batches))
+    log(f"[enrich-field] embedded {done[0]:,} chunks in {(time.time() - t0) / 60:.0f} min")
+    return done[0]
 
 
 def load_state():
