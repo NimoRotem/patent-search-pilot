@@ -159,6 +159,41 @@
     <summary>Report overview <span>grids, coverage and search scope</span></summary>
   <div class="tailwrap">
 
+    {#  IDENTIFIED BUT NOT READABLE. The search found these and screened them as worth reading,
+        and this corpus holds only a title and an abstract for each. They are NOT mixed into the
+        ranked list: a reference whose full text was quoted and a reference we hold forty words of
+        are not comparable, and sorting them into one list by one number produced a page of fifty
+        on which forty-four were records nobody had read. Shown here, named, with the office copy
+        one click away, because an examiner cites exactly these documents. #}
+    {% if v.deep_rank and v.deep_rank.not_readable %}
+    <details class="tail">
+      <summary><span class="th">Identified but not readable here</span>
+        <span class="ts">{{ v.deep_rank.not_readable|length }} references · this corpus holds only a title and an abstract</span></summary>
+      <div class="tailin">
+        <p class="gridline">The search found these and judged them worth reading, but the text is
+          not in this corpus, so they are not ranked against the references above and nothing is
+          claimed about what they disclose. The office copy usually says considerably more. The
+          score is the screen's judgement of whether reading it would be worth your time.</p>
+        <div class="chartwrap">
+          <table class="chart nrtable">
+            <caption class="vh">References identified but not readable in this corpus</caption>
+            <thead><tr><th scope="col">Publication</th><th scope="col">Title</th>
+              <th scope="col">Worth reading</th></tr></thead>
+            <tbody>
+              {% for r in v.deep_rank.not_readable %}
+              <tr>
+                <td>{% if r.google_patents %}<a href="{{ r.google_patents }}" target="_blank" rel="noopener">{{ r.pub }}</a>{% else %}{{ r.pub }}{% endif %}</td>
+                <td>{{ r.title[:90] }}</td>
+                <td class="nrscore">{{ r.screen if r.screen is not none else '-' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+    {% endif %}
+
     {#  BEST REFERENCE PER FEATURE. A reference is not only a novelty candidate: a document that
         discloses ONE rare feature and nothing else is the one an inventive-step attack is built
         on, and the old report had nowhere to put it. Rarity (df) is measured over the references

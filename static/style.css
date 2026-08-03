@@ -1225,3 +1225,6 @@ details.draftpanel>summary{list-style:none;cursor:pointer;margin:-19px;padding:1
 .deeprefhead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 @media print{.deepstrip,.pagehead .btn,header.top,footer{display:none}
   .deepref{break-inside:avoid;border:1px solid #ccc}}
+/* Identified-but-not-readable tier: named, not hidden, and visibly not part of the ranking. */
+.nrtable td{vertical-align:top;font-size:13px}
+.nrtable .nrscore{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}

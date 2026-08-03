@@ -394,7 +394,7 @@ class CoverageAgent:
                 query_text, subject, m, ledger, rounds=0, rerank=False)})
             searched("search_progress", rank_text, subject, m, ledger, element=None,
                      is_seed=True, wide=True,
-                     cfg=["dense", "claim_bm25", "cpc", "citation", "qbe"])
+                     cfg=["dense", "brief_dense", "claim_bm25", "cpc", "citation", "qbe"])
         else:
             searched("search_progress", rank_text, subject, m, ledger,
                      element=None, is_seed=True, wide=True)

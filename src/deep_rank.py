@@ -60,16 +60,22 @@ import llm
 
 VERSION = 1
 
-#  How many of the retrieval's ranked families get a cheap screen. The retrieval produced 2,402
-#  families on the case that prompted this; screening 300 already recovered every reference the
-#  searcher named. 600 is the same shape with headroom, and it is ~24 LLM calls.
-SCREEN_TOP = int(os.environ.get("DEEP_RANK_SCREEN_TOP", "600"))
+#  How many of the retrieval's ranked families get a cheap screen.
+#
+#  MEASURED: on a real examiner citation list, ELEVEN of twenty-three cited families were retrieved
+#  and then never looked at, because they sat at fusion positions 625 to 5,731 and the screen only
+#  read the first 600 of 7,328. The screen is the cheapest stage in the pipeline by a wide margin
+#  (600 candidates measured at 11 s and 24 model calls), so a depth that leaves most of the ranked
+#  list unexamined is the wrong economy. 2,500 is ~100 calls and ~45 s.
+SCREEN_TOP = int(os.environ.get("DEEP_RANK_SCREEN_TOP", "2500"))
 SCREEN_BATCH = int(os.environ.get("DEEP_RANK_SCREEN_BATCH", "25"))
 SCREEN_WORKERS = int(os.environ.get("DEEP_RANK_SCREEN_WORKERS", "6"))
 
-#  How many get read IN FULL. Measured 50 refs / 3.8M chars in 45 s at 8 workers, so 150 at 14
-#  workers is ~2 minutes, which is the budget this stage is worth.
-CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "150"))
+#  How many get read IN FULL. Measured ~1.15 references/second at 14 workers, so 300 is ~4-5
+#  minutes. Raised from 150 because the screen now looks at 2,500 rather than 600 candidates: on a
+#  real examiner citation list, seven cited families were screened at 60-80 and then never read,
+#  because the top-150 cut landed in the high 80s.
+CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "300"))
 CHART_WORKERS = int(os.environ.get("DEEP_RANK_CHART_WORKERS", "14"))
 
 #  Always read the head of the RETRIEVAL order regardless of what the screen thought, so a screen
@@ -106,15 +112,41 @@ LEAD_DEPTH = int(os.environ.get("DEEP_RANK_LEAD_DEPTH", "3"))
 #  85 to records with ZERO characters of text. So the holistic number is GATED on the reference
 #  having been read AND having grounded at least one quote, and then blended.
 OVERALL_WEIGHT = float(os.environ.get("DEEP_RANK_OVERALL_WEIGHT", "0.45"))
+#  How much text a reference had to have for a grounded-coverage figure to mean what it says.
+#
+#  MEASURED, and this is the same length bias that had to be removed from retrieval: coverage is a
+#  proportion whose denominator assumes the document had a CHANCE to disclose every feature. A
+#  9,160-character document physically cannot ground twelve features, so coverage is partly a
+#  measure of length. On a real examiner citation list the document with the HIGHEST screen score
+#  of 2,500 candidates (95) came 67th on coverage, behind long documents its own reader had scored
+#  lower, purely because there was less of it to quote.
+#
+#  So the coverage term is weighted by how much text there actually was to ground in, and what it
+#  gives up goes to the two judgements that do not depend on length: the reader's holistic verdict
+#  on the text that exists, and the screen's independent read of the bibliographic core. All three
+#  are still gated on the reference having been read at all.
+DEPTH_FULL_CHARS = int(os.environ.get("DEEP_RANK_DEPTH_FULL", "60000"))
+COVERAGE_WEIGHT = float(os.environ.get("DEEP_RANK_COVERAGE_WEIGHT", "0.55"))
+#  How the weight coverage gives up is split between the reader's verdict and the screen.
+OVERALL_SHARE = float(os.environ.get("DEEP_RANK_OVERALL_SHARE", "0.60"))
 #  A reference charted against the uploaded patent's own claims gets that counted too, at a
 #  discount: a claim is a conjunction of limitations, so a "partial" there is weaker evidence
 #  about the whole reference than a "partial" on a single feature.
 _CLAIM_WEIGHT = 0.75
 
-#  A federated-only hit has no text in this corpus, so it CANNOT be read in full. It is ranked on
-#  its screen score alone and capped, because an abstract-deep judgement must not outrank a
-#  reference whose full text was read and quoted. The cap is a statement about evidence, not about
-#  the source: the same cap applies to any candidate we could not read.
+#  A reference we could not read is ranked in its OWN TIER, after every reference whose full text
+#  was quoted, and shown in its own labelled section.
+#
+#  This started as a score cap, and the cap was a mistake that only a live run exposed: a ceiling
+#  is a MAGNET. Every abstract-only record whose screen score cleared the cap scored exactly the
+#  cap, so they formed a plateau, and because that plateau sat above the natural range of
+#  genuinely-read documents it evicted them. Measured on a real run: 44 of the 50 displayed
+#  references were abstract-only records sitting at exactly 70, and four cited references that had
+#  been read in full with grounded quotes were pushed off the page by documents nobody could read.
+#
+#  Two incomparable things were being sorted into one list. They are now two lists. The cap
+#  survives only as the ceiling on what a card may DISPLAY, so a screen score is never presented
+#  as if it were evidence.
 UNREAD_SCORE_CAP = int(os.environ.get("DEEP_RANK_UNREAD_CAP", "70"))
 
 _STOP = set((
@@ -125,14 +157,26 @@ _STOP = set((
 ).split())
 
 _SCREEN_SYS = (
-    "You are a patent examiner SCREENING candidate references against a target invention, to "
-    "decide which ones are worth reading in full. For EACH numbered candidate give an integer "
-    "0-100 relevance score: 90-100 = discloses essentially the same invention; 70-89 = strongly "
-    "relevant, discloses most core elements; 40-69 = related field, some overlapping features; "
-    "1-39 = same broad area but a different problem or solution; 0 = unrelated. Judge ONLY on the "
-    "technical substance of the text shown, NEVER on the title alone and never on shared words. "
-    "When the text shown is too thin to judge, score it on what it does show rather than "
-    "guessing high or low. "
+    "You are a patent examiner SCREENING candidate references against a target invention. You are "
+    "deciding ONE thing: how likely is it that reading this document IN FULL would turn up "
+    "material prior art for the invention. You are not deciding whether it anticipates anything.\n"
+    "\n"
+    "Score each candidate 0-100 on that question: 90-100 = almost certainly material, it looks "
+    "like the same device or mechanism; 70-89 = very likely worth reading, the same problem solved "
+    "a similar way; 40-69 = plausibly worth reading, same field and some overlap; 1-39 = same "
+    "broad area but a different problem or solution; 0 = unrelated.\n"
+    "\n"
+    "IMPORTANT, and this is where a screener usually goes wrong. The amount of text you are shown "
+    "varies enormously and carries NO information about relevance. Many of these records are old, "
+    "foreign, or utility models, and all that exists for them here is a title, a classification "
+    "and one short abstract. A forty-word abstract CANNOT demonstrate several elements, so scoring "
+    "it low for that reason is scoring it for being old rather than for being irrelevant, and "
+    "examiners cite exactly those documents. Judge what the document plainly IS, on the evidence "
+    "you have: if a two-line abstract and a classification say it is a suction lifting device and "
+    "the invention is a suction lifting device, that is worth reading in full. Reserve the low "
+    "bands for candidates that are about something else.\n"
+    "\n"
+    "Never score on the title alone or on shared words, and never reward length.\n"
     'Return ONLY JSON {"results":[{"id":<batch number>,"score":<0-100>}]} with one entry per '
     "candidate and every batch id exactly once."
 )
@@ -183,16 +227,40 @@ def _candidate_rows(cur, families, reps, limit):
                 "AND claim_no <= 3 ORDER BY publication_id, claim_no", (pids,))
     for c in cur.fetchall():
         claims.setdefault(c["publication_id"], []).append(c["text"] or "")
-    abstracts = {}
-    cur.execute("SELECT id, abstract FROM publications WHERE id = ANY(%s)", (pids,))
+    abstracts, dates = {}, {}
+    cur.execute("SELECT id, abstract, publication_date FROM publications WHERE id = ANY(%s)",
+                (pids,))
     for p in cur.fetchall():
         abstracts[p["id"]] = p["abstract"] or ""
+        dates[p["id"]] = p["publication_date"]
+    #  The CLASSIFICATION, which the screener never used to see. For an abstract-only 1923 filing
+    #  it is often the strongest evidence available: a human examiner reaches for the CPC symbol
+    #  precisely when the text is thin, and withholding it forced the model to score those
+    #  documents on forty words or on nothing.
+    cpcs = {}
+    cur.execute("SELECT publication_id, symbol FROM classifications "
+                "WHERE publication_id = ANY(%s) AND is_first IS NOT FALSE", (pids,))
+    for c in cur.fetchall():
+        cpcs.setdefault(c["publication_id"], [])
+        if len(cpcs[c["publication_id"]]) < 6 and c["symbol"] not in cpcs[c["publication_id"]]:
+            cpcs[c["publication_id"]].append(c["symbol"])
     for row in rows:
         cl = " ".join(claims.get(row["pid"], []))[:1400]
         ab = abstracts.get(row["pid"], "")
         if not abstract_is_trustworthy(ab, row["title"], cl):
             ab = ""
-        row["text"] = (ab + "  " + cl).strip()[:1600] or "(no text in the corpus)"
+        body = (ab + "  " + cl).strip()[:1600]
+        meta = []
+        d = dates.get(row["pid"])
+        if d:
+            meta.append(str(d)[:4])
+        if cpcs.get(row["pid"]):
+            meta.append("CPC " + ", ".join(cpcs[row["pid"]]))
+        if not body:
+            meta.append("no text beyond the title in this corpus")
+        elif not cl:
+            meta.append("abstract only, no claim text in this corpus")
+        row["text"] = ((" | ".join(meta) + "\n  " if meta else "") + body).strip()
     return rows
 
 
@@ -324,17 +392,47 @@ def score_reference(ref, rar, lead=()):
     #  grounded at least one quote. An ungrounded or text-less document scores on coverage alone,
     #  which is 0 — that is the gate that keeps a title-only record out of the head.
     overall = (ref.get("overall") or {}).get("score")
-    if overall is not None and ref.get("method") == "llm" and covered:
-        score = (1.0 - OVERALL_WEIGHT) * coverage + OVERALL_WEIGHT * float(overall)
+    #  "Read in full" has to mean the corpus HELD more than an abstract. 84% of this corpus is
+    #  abstract-only, and charting twelve features against forty words is not a reading: it
+    #  grounds almost nothing, so grounded coverage drives the document to the floor and it is
+    #  ranked last for being old rather than for being irrelevant. Those are exactly the documents
+    #  examiners cite.
+    read_in_full = ref.get("method") == "llm" and int(ref.get("n_paragraphs_read") or 0) + \
+        int(ref.get("n_claims_read") or 0) > 0
+    chars = int(ref.get("chars_read") or ref.get("chars") or 0)
+    screen = ref.get("screen")
+    if overall is not None and read_in_full and covered:
+        #  Weight what we PROVED by how much we had a chance to prove it from (see
+        #  DEPTH_FULL_CHARS), and give the remainder to the two length-independent judgements.
+        depth = max(0.0, min(1.0, chars / float(DEPTH_FULL_CHARS))) if DEPTH_FULL_CHARS else 1.0
+        w_cov = COVERAGE_WEIGHT * depth
+        rest = max(0.0, 1.0 - w_cov)
+        if screen is None:
+            w_ovr, w_scr = rest, 0.0
+        else:
+            w_ovr, w_scr = rest * OVERALL_SHARE, rest * (1.0 - OVERALL_SHARE)
+        score = (w_cov * coverage + w_ovr * float(overall)
+                 + w_scr * float(screen if screen is not None else 0))
     else:
         score = coverage
         overall = None
+    #  A document we could NOT properly read is ranked on the best evidence that does exist for it
+    #  (its screen score, capped), or on whatever it did manage to ground, whichever is higher. The
+    #  cap is what keeps it below every reference whose full text was quoted; the floor is what
+    #  stops "we have no text" being reported as "it discloses nothing".
+    if not read_in_full:
+        #  Ranked WITHIN ITS OWN TIER on the best evidence that exists for it. No cap here: a
+        #  ceiling flattens the tier into a plateau, and the tier is already held behind every
+        #  read reference by the ordering. `UNREAD_SCORE_CAP` bounds what is DISPLAYED, so a
+        #  screen score is never shown as if it were a reading.
+        if screen is not None:
+            score = max(score, float(screen))
     return int(round(max(0.0, min(100.0, score)))), {
-        "coverage": int(round(coverage)), "overall": overall,
+        "coverage": int(round(coverage)), "overall": overall, "screen": screen,
         "n_disclosed": n_disc, "n_partial": n_part, "n_uncertain": n_unc,
         "n_features": len(rar["feature_df"]), "covered": covered,
         "leads": [f for f, _idf in lead],
-        "read_in_full": ref.get("method") == "llm",
+        "read_in_full": read_in_full,
         "chars_read": int(ref.get("chars") or 0),
     }
 
@@ -348,8 +446,9 @@ def _why(ref, detail):
     This one can only say what a grounded, located, refuter-survived quote supports.
     """
     if not detail["read_in_full"]:
-        return "Not read in full: this reference has no text in the corpus, so it is ranked on " \
-               "its bibliographic record only."
+        return ("Not read in full: this corpus holds only a title and an abstract for this "
+                "reference, so it is ranked on that and held below every reference whose full "
+                "text was quoted. The office copy may say considerably more.")
     leads = detail.get("leads") or []
     lead_note = (" Best disclosure found for: " + "; ".join(leads[:2]) + ".") if leads else ""
     n = detail["n_disclosed"] + detail["n_partial"] + detail["n_uncertain"]
@@ -487,14 +586,19 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         sc, detail = score_reference(ref, rar, lead=lead_map.get(ref["pub"], ()))
         by_pub[ref["pub"]] = {
             "score": sc, "screen": ref.get("screen"), "family": ref.get("family"),
+            "title": ref.get("title") or "",
             "retrieval_rank": ref.get("retrieval_rank"), "why": _why(ref, detail),
             **{k: v for k, v in detail.items() if k != "covered"},
             "covered": detail["covered"][:8],
         }
         order.append(ref["pub"])
-    #  Ordering: evidence first, then the cheap screen, then the retrieval's own opinion. Every
-    #  key is deterministic, so the same report always renders in the same order.
-    order.sort(key=lambda p: (-by_pub[p]["score"],
+    #  Ordering: READ-IN-FULL FIRST, then evidence score, then the screen, then the retrieval's
+    #  own opinion. The first key is the one that matters: a reference whose full text was quoted
+    #  and a reference we hold forty words of are not comparable quantities, and sorting them into
+    #  one list by a single number is what produced a page of 50 on which 44 were records nobody
+    #  had read. Every key is deterministic, so the same report always renders the same way.
+    order.sort(key=lambda p: (0 if by_pub[p].get("read_in_full") else 1,
+                              -by_pub[p]["score"],
                               -(by_pub[p]["screen"] if by_pub[p]["screen"] is not None else -1),
                               by_pub[p]["retrieval_rank"] or 10**6))
 
@@ -533,8 +637,26 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         "order": order,
         "by_pub": by_pub,
         "unread": {r["pub"]: s for r, s in unread},
+        #  WHAT EACH STAGE SAW, recorded so the pipeline can be audited after the fact instead of
+        #  only re-run. Without this, "was this reference retrieved and then dropped, or never
+        #  retrieved at all?" cannot be answered from a finished report, and that is the first
+        #  question anyone asks when a known citation is missing. Publication numbers only, in the
+        #  order the retrieval produced them, plus every screen score.
+        #  The second tier, as its own list: everything the search identified and screened as
+        #  worth reading but could not read, because this corpus holds only a title and an
+        #  abstract for it. Hiding these behind an unlabelled tail is how a searcher concludes the
+        #  art does not exist; the office copy frequently says a great deal more.
+        "not_readable": [
+            {"pub": p, "title": (by_pub[p].get("title") or ""),
+             "screen": by_pub[p].get("screen"),
+             "retrieval_rank": by_pub[p].get("retrieval_rank")}
+            for p in order if not by_pub[p].get("read_in_full")
+        ][:120],
+        "candidates": [r["pub"] for r in rows],
+        "candidate_families": [r["fam"] for r in rows],
+        "screen_scores": {p: int(v) for p, v in scores.items()},
         "screened": len(scores),
-        "candidates": len(rows),
+        "n_candidates": len(rows),
         "charted": len(charts),
         "read_in_full": sum(1 for c in charts if c.get("method") == "llm"),
         "no_text": sum(1 for c in charts if c.get("method") == "no-text"),
