@@ -163,17 +163,39 @@ def _embed_chunk_ids(chunk_ids):
 def _reembed_pub(pid):
     """Chunk + embed a publication's not-yet-chunked claims (keeps the index current).
 
-    Returns the number of chunks embedded. Only touches chunks it created.
+    Returns the number of chunks embedded. Only touches chunks it created. Fine for one
+    publication inside a search; a BULK caller should use chunk_pub_claims() and then embed the
+    collected ids in batches, because one Vertex round-trip per publication is about twenty chunks
+    and measured out at one publication per second.
+    """
+    return _embed_chunk_ids(chunk_pub_claims(pid))
+
+
+def chunk_pub_claims(pid):
+    """Insert claim chunks for a publication's not-yet-chunked claims. Returns the new chunk ids.
+
+    Pure database work, no embedding: separated so a backfill can create every chunk first and
+    then embed them in properly sized, parallel batches.
     """
     import json as _j
     new_ids = []
     with db.cursor() as cur:
+        #  Which of this publication's claims are already chunked, looked up BY PUBLICATION.
+        #
+        #  This used to be `id NOT IN (SELECT ref_id FROM chunks WHERE ... kind LIKE 'claim%')`,
+        #  an uncorrelated subquery over the WHOLE chunks table: 16 million claim chunks scanned
+        #  once per publication. Invisible when a search chunks one publication, and fatal in a
+        #  backfill, where it did fewer than a thousand publications in twenty minutes. The
+        #  publication-scoped lookup uses ix_chunks_pub.
+        cur.execute("SELECT ref_id FROM chunks WHERE publication_id=%s AND ref_id IS NOT NULL "
+                    "AND kind LIKE 'claim%%'", (pid,))
+        already = {r["ref_id"] for r in cur.fetchall()}
         cur.execute("SELECT id, claim_no, is_independent, lang, text, resolved_text FROM claims "
-                    "WHERE publication_id=%s AND id NOT IN "
-                    "(SELECT ref_id FROM chunks WHERE ref_id IS NOT NULL AND kind LIKE 'claim%%')",
-                    (pid,))
+                    "WHERE publication_id=%s", (pid,))
         rows = []
         for c in cur.fetchall():
+            if c["id"] in already:
+                continue
             coord = _j.dumps({"claim_no": c["claim_no"]})
             own = (c["text"] or "")[:8000]
             if own:
@@ -187,7 +209,7 @@ def _reembed_pub(pid):
             cur.execute("INSERT INTO chunks(publication_id,kind,ref_id,coord,lang,text,token_count) "
                         "VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id", r)
             new_ids.append(cur.fetchone()["id"])
-    return _embed_chunk_ids(new_ids)
+    return new_ids
 
 
 def enrich_final_set(pubnums, reembed=False):

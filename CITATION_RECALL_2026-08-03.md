@@ -213,3 +213,75 @@ SerpApi calls. The fix that would actually move this is a **batch enrichment of 
 that is a background job measured in days and a SerpApi tier, not a search-time cost. It would
 also feed retrieval, because the new text gets embedded on the next pass, which per-search
 enrichment deliberately does not.
+
+---
+
+# Round three: the field text backfill
+
+## What was done
+
+9,000 SerpApi calls against the field, ordered by in-corpus citation in-degree, then chunked and
+embedded.
+
+| | before | after |
+|---|---|---|
+| field publications with claims | 16,614 of 81,890 (20%) | **23,629 of 81,890 (29%)** |
+| new claim chunks, embedded | | **145,102** |
+| SerpApi hit rate | | 77.5% (6,972 of 9,000) |
+| cost | | 9,000 of a 15,000/month allowance already paid for |
+
+Two real bugs surfaced doing it, both invisible at single-document scale:
+
+**`enrich.gp_id` never resolved a US pre-grant publication.** It stripped hyphens, so
+`US-2015032252-A1` became `US2015032252A1`, and Google Patents only answers to the zero-padded
+`US20150032252A1`. Every pre-grant lookup asked for a document that does not exist, got nothing,
+and still spent a call. Measured on five: "no claims" before, 22 to 39 claims after. **The backfill
+hit rate went from 27% to 77.5%**, so roughly two thirds of the allowance was being burned on
+nothing, and the on-demand path inside every search had the same defect.
+
+**Chunking a publication scanned the whole chunks table.** `id NOT IN (SELECT ref_id FROM chunks
+...)` is an uncorrelated subquery over 16 million claim chunks, run once per publication. Invisible
+when a search chunks one document; in a backfill it managed fewer than a thousand publications in
+twenty minutes. Publication-scoped, it does ten a second.
+
+## What it bought, and what it did not
+
+It did **not** move the headline: 6 families ranked and 7 surfaced, against 7 and 9 the run before,
+which is inside the ±2 run-to-run variance. Saying it improved recall on this search would not be
+supportable.
+
+What it did buy is real and permanent:
+
+- **Four cited documents changed state from abstract-only to having claims**, so they can be read
+  and ranked on evidence instead of only listed. Two of them now display at ranks 13 and 25.
+- The whole field is 42% better covered, for every future search, not just this one.
+- On-demand fetching during a search dropped from 80 references to 54, because the corpus already
+  holds what it used to go and get.
+
+**Why the metric did not move.** Only 7 of the ~20 cited documents were inside the 9,000-target
+window; six had already been enriched by the per-search path in earlier runs; and the remaining
+misses do not fail for want of text. Four are never retrieved at all and six sit beyond the 2,500
+screened, at fusion ranks 2,500 to 5,400. Text does not fix reach.
+
+And reach is the lever that was already measured to backfire: widening the screen and the
+retrieval cap lowered top-50 recall three runs running, because every stage below is fixed-size.
+
+## Where this actually stands
+
+Top-50 recall on this citation list has gone from 4 of 22 to 6-7 of 22 and plateaued. Six separate
+levers have been tried: the query set, funnel width, screen depth, read depth, the scoring
+function, and now corpus text. The first and the last are permanent improvements; funnel width was
+measured to hurt.
+
+The honest next levers, in the order I would try them:
+
+1. **Three of the cited documents have no CPC rows at all** in this corpus, so every
+   classification-scoped operation is blind to them, including the field definition this backfill
+   used. That is a data gap in the BigQuery ingest, not a ranking problem.
+2. **Three others sit in `B25B11/007`**, a sibling of the seed `B25B11/005`. The field is defined
+   by 8 CPC subgroups and the art an examiner cites does not respect that boundary. Widening
+   `SEED_CPC` is a one-line change with a real consequence: it recalibrates `domain_detect`, so it
+   needs its own measurement rather than being slipped in.
+3. **Finish the backfill.** 41,000 field publications still have no claims, and the remaining
+   allowance is 1,587 this month. At 15,000 a month that is roughly three more months, or one
+   month on a larger tier.
