@@ -980,13 +980,15 @@ def _deep_rank_summary(report):
     if not dr:
         return None
     return {
-        "candidates": dr.get("candidates"), "screened": dr.get("screened"),
+        "candidates": dr.get("n_candidates"), "screened": dr.get("screened"),
         "charted": dr.get("charted"), "read_in_full": dr.get("read_in_full"),
         "no_text": dr.get("no_text"), "chars_read": dr.get("chars_read"),
         "screen_seconds": dr.get("screen_seconds"), "chart_seconds": dr.get("chart_seconds"),
         "seconds": dr.get("seconds"),
         "feature_df": dr.get("feature_df", {}), "feature_idf": dr.get("feature_idf", {}),
         "by_feature": dr.get("by_feature", []),
+        "not_readable": [dict(r, google_patents=pubnorm.google_url(r.get("pub")))
+                         for r in (dr.get("not_readable") or [])],
     }
 
 

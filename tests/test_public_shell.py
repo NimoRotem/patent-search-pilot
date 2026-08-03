@@ -97,3 +97,41 @@ def test_a_signed_in_user_gets_the_search_box_at_the_root(monkeypatch):
     body = webapp.app.test_client().get("/").get_data(as_text=True)
     assert 'id="searchform"' in body
     assert "What is the invention?" in body
+
+
+# ---------------------------------------------------------------------------------------------
+# never return the searcher's own patent family as prior art against itself
+# ---------------------------------------------------------------------------------------------
+def test_the_subject_family_is_dropped_from_the_results(monkeypatch):
+    """A DOCDB simple family routinely runs to thirty members across a dozen offices. Excluding
+    only the exact publication number let the same invention come back as its own closest prior
+    art under a different number: on a real search the #1 result was the US member of the uploaded
+    EP patent's family, on every run."""
+    import contextlib
+    import webapp
+
+    class Cur:
+        def execute(self, *a, **k):
+            pass
+
+        def fetchone(self):
+            return {"fam": "66624664"}
+
+    @contextlib.contextmanager
+    def cursor():
+        yield Cur()
+
+    monkeypatch.setattr(webapp.db, "cursor", cursor)
+    rep = {"query_document": {"publication_number": "EP3707092B1"},
+           "ranked_families": ["111", "66624664", "222", "333"]}
+    webapp._drop_self_family(rep)
+    assert rep["ranked_families"] == ["111", "222", "333"]
+    assert rep["self_family_excluded"]["family"] == "66624664"
+
+
+def test_a_search_with_no_identified_subject_is_untouched(monkeypatch):
+    import webapp
+    rep = {"ranked_families": ["111", "222"]}
+    webapp._drop_self_family(rep)
+    assert rep["ranked_families"] == ["111", "222"]
+    assert "self_family_excluded" not in rep

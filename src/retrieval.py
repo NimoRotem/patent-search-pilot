@@ -79,6 +79,10 @@ CHANNEL_WEIGHTS = {
     # dense (which is tuned on an in-domain corpus) but above every lexical/classification
     # channel, because federated hits arrive already multi-source-fused, reranked and
     # LLM-scored upstream — their rank order carries real information.
+    # Abstract/whole-only semantic search: the pool where a document whose entire indexed text is
+    # an abstract can compete. Below dense because a summary match is weaker than a passage match,
+    # above the lexical channels because it is still semantic.
+    "brief_dense": 0.80,
     "federated": 0.90,
     "crosslingual": 0.70,   # dense over a translated query
     "exact": 0.60,          # ordered phrase match — precise
@@ -297,6 +301,33 @@ class Retriever:
         sql = (f"SELECT c.publication_id, 1-(c.embedding <=> %s::vector) AS score "
                f"FROM chunks c JOIN publications p ON p.id=c.publication_id "
                f"WHERE c.embedding IS NOT NULL AND c.kind IN ('claim_own','claim_resolved') {dc} "
+               f"ORDER BY c.embedding <=> %s::vector LIMIT %s")
+        v = _vec(qvec)
+        return self._pubs_from_chunks(sql, [v, *dp, v, self._fetch()], cap=self._cap())
+
+    def channel_brief_dense(self, qvec, subject=None, mode=None):
+        """Semantic search restricted to the ABSTRACT and WHOLE-document chunks.
+
+        MEASURED STRUCTURAL BIAS this exists to correct: the general dense channel takes the best
+        chunk per publication out of a global top-K. A long modern patent contributes a hundred
+        paragraph chunks and gets a hundred chances to be in that top-K; a document whose entire
+        text in this corpus is a forty-word abstract gets one. 84% of the corpus is abstract-only,
+        and the documents an examiner actually cites skew old, foreign and thin, so the bias runs
+        directly against the art that matters.
+
+        Same query, same K=9,000 chunks, measured: the all-kinds pool yields 2,330 distinct
+        publications and the abstract/whole pool yields 6,109. NINE publications from a real
+        examiner citation list that the all-kinds channel never returns at all appear in the
+        abstract/whole pool, several inside its first 3,000.
+
+        Weighted BELOW dense and claim_dense on purpose: a match against a whole-document summary
+        is weaker evidence than a match against a specific passage. It is there to give short
+        documents a pool they can compete in, not to outrank a real passage match.
+        """
+        dc, dp = _date_clause(subject, mode)
+        sql = (f"SELECT c.publication_id, 1-(c.embedding <=> %s::vector) AS score "
+               f"FROM chunks c JOIN publications p ON p.id=c.publication_id "
+               f"WHERE c.embedding IS NOT NULL AND c.kind IN ('abstract','whole') {dc} "
                f"ORDER BY c.embedding <=> %s::vector LIMIT %s")
         v = _vec(qvec)
         return self._pubs_from_chunks(sql, [v, *dp, v, self._fetch()], cap=self._cap())
@@ -552,15 +583,16 @@ class Retriever:
             "vector": ["dense"],
             "hybrid": ["exact", "bm25", "dense", "cpc"],
             "hybrid_rerank": ["exact", "bm25", "dense", "cpc"],
-            "agentic": ["dense", "cpc", "citation", "qbe", "biblio", "crosslingual"],
+            "agentic": ["dense", "brief_dense", "cpc", "citation", "qbe", "biblio",
+                        "crosslingual"],
             #  Claim focus BOOSTS claim text, it does not delete the rest of the patent.
             #  MEASURED (RECALL_STUDY_2026-08-02.md): this preset used to omit `dense`, so
             #  description paragraphs were unsearchable. On the case that prompted the rebuild the
             #  best passage of the #1 result was a description paragraph, the best passage of the
             #  reference the searcher named was a description paragraph, and only 10 of the 25
             #  displayed cards matched on a claim at all.
-            "claim_agentic": ["claim_dense", "dense", "claim_bm25", "cpc", "citation", "qbe",
-                              "biblio", "crosslingual"],
+            "claim_agentic": ["claim_dense", "dense", "brief_dense", "claim_bm25", "cpc",
+                              "citation", "qbe", "biblio", "crosslingual"],
         }
         # Callers may pass an explicit bounded channel sequence.  Resolve that before a mapping
         # lookup: ``dict.get(config, ...)`` still hashes ``config`` before evaluating its fallback,
@@ -585,6 +617,8 @@ class Retriever:
             ch["dense"] = self.channel_dense(qvec, subject, mode)
         if "claim_dense" in preset:
             ch["claim_dense"] = self.channel_claim_dense(qvec, subject, mode)
+        if "brief_dense" in preset:
+            ch["brief_dense"] = self.channel_brief_dense(qvec, subject, mode)
         if "bm25" in preset:
             ch["bm25"] = self.channel_bm25(query, subject, mode)
         if "claim_bm25" in preset:

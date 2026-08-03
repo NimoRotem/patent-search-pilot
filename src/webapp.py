@@ -673,6 +673,51 @@ def _attach_fed_family_sources(rep):
                 srcs.append(s)
 
 
+def _drop_self_family(rep):
+    """Remove the searcher's OWN patent family from the results.
+
+    Charting a patent against itself is meaningless, and the existing guard only excluded the
+    exact publication number. A DOCDB simple family routinely runs to thirty members across a
+    dozen offices, so the same invention came back as its own closest prior art under a different
+    number: on a real search the #1 result was the US member of the uploaded EP patent's family,
+    and it had been the #1 result on every previous run of that search too.
+
+    The date filter already does this when the searcher types a subject publication number. This
+    covers the case that matters more in practice: a document was uploaded and identified itself,
+    so we know the family without being told.
+    """
+    qd = (rep or {}).get("query_document") or {}
+    self_pub = qd.get("publication_number") or rep.get("subject")
+    if not self_pub:
+        return rep
+    key = deep_analysis._norm_pub(self_pub)
+    if not key:
+        return rep
+    try:
+        with db.cursor() as cur:
+            cur.execute(
+                """SELECT COALESCE(NULLIF(simple_family_id,''), publication_number) fam
+                   FROM publications
+                   WHERE upper(regexp_replace(publication_number,'[^A-Za-z0-9]','','g')) = ANY(%s)
+                   LIMIT 1""",
+                (sorted({key} | {re.sub(r"[^A-Z0-9]", "", v.upper())
+                                 for v in pubnorm.variants(self_pub)}),))
+            row = cur.fetchone()
+    except Exception:
+        traceback.print_exc()
+        return rep
+    if not row or not row["fam"]:
+        return rep
+    fam = row["fam"]
+    before = rep.get("ranked_families") or []
+    rep["ranked_families"] = [f for f in before if f != fam]
+    dropped = len(before) - len(rep["ranked_families"])
+    if dropped:
+        rep["self_family_excluded"] = {"publication": self_pub, "family": fam}
+        print(f"[self-family] excluded {self_pub} family {fam} from the results", flush=True)
+    return rep
+
+
 def _generate(slug, query, subject, mode, wide=False, doc_token=None,
               search_focus="all_text"):
     """Run one report. Runs fully concurrently with other generations — the only serialized step is
@@ -831,6 +876,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             rep["image_channel"] = {"state": img_res.get("state"), "note": img_res.get("note"),
                                     "n": len(img_res.get("families") or [])}
         _attach_query_document(rep, doc)
+        _drop_self_family(rep)
 
         # ---- SCREEN WIDE, READ DEEP, RANK ON THE EVIDENCE (deep_rank) ----------------------
         # This is the stage that decides the order of the report. Retrieval hands over a couple of
@@ -859,7 +905,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
         try:
             dr = deep_rank.run(rep, reports_dir=REPORTS, slug=slug, on_progress=_deep_event)
             if dr:
-                print(f"[deep_rank {slug}] screened {dr['screened']}/{dr['candidates']} in "
+                print(f"[deep_rank {slug}] screened {dr['screened']}/{dr['n_candidates']} in "
                       f"{dr['screen_seconds']}s, read {dr['read_in_full']} in full "
                       f"({dr['chars_read']:,} chars) in {dr['chart_seconds']}s", flush=True)
         except Exception:

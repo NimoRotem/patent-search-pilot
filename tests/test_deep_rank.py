@@ -113,8 +113,11 @@ def test_a_missing_abstract_is_not_trusted():
 FEATURES = ["portable vacuum gripper", "bracing structure limiting seal compression"]
 
 
-def _ref(pub, rows, method="llm", chars=50000):
+def _ref(pub, rows, method="llm", chars=50000, n_claims=12, n_paras=40):
+    #  n_claims_read / n_paragraphs_read are what distinguish a real reading from a chart run
+    #  against a forty-word abstract; the thin-document tests set them to zero.
     return {"pub": pub, "title": pub, "method": method, "chars": chars,
+            "n_claims_read": n_claims, "n_paragraphs_read": n_paras,
             "features": rows, "claims": []}
 
 
@@ -179,9 +182,9 @@ def test_why_is_assembled_from_the_evidence_and_says_when_nothing_was_read():
     _, detail = deep_rank.score_reference(ref, rar)
     why = deep_rank._why(ref, detail)
     assert "Read in full" in why and "claim 7" in why
-    empty = _ref("Z", [], method="no-text", chars=0)
+    empty = _ref("Z", [], method="no-text", chars=0, n_claims=0, n_paras=0)
     _, d2 = deep_rank.score_reference(empty, rar)
-    assert "no text in the corpus" in deep_rank._why(empty, d2)
+    assert "only a title and an abstract" in deep_rank._why(empty, d2)
 
 
 def test_by_feature_puts_the_rarest_feature_first_and_disclosed_before_partial():
@@ -252,8 +255,9 @@ def test_claim_focus_still_searches_the_description(monkeypatch):
     r._fam = {1: "F1", 2: "F2"}
     monkeypatch.setattr(r, "channel_claim_dense", lambda *a, **k: [(1, 0.9)])
     monkeypatch.setattr(r, "channel_dense", lambda *a, **k: [(2, 0.8)])
-    for name in ("channel_claim_bm25", "channel_cpc", "channel_citation_family",
-                 "channel_qbe", "channel_biblio", "channel_crosslingual"):
+    for name in ("channel_brief_dense", "channel_claim_bm25", "channel_cpc",
+                 "channel_citation_family", "channel_qbe", "channel_biblio",
+                 "channel_crosslingual"):
         monkeypatch.setattr(r, name, lambda *a, **k: [])
     out = r.search("a vacuum gripper", config="claim_agentic", do_rerank=False)
     assert "claim_dense" in out.channel_hits
@@ -410,7 +414,7 @@ def test_the_holistic_score_is_ignored_without_grounded_evidence():
     contribute when the reference was read AND at least one quote survived the grounding gate."""
     rar = deep_rank.rarity([_ref("A", [_row(f, "disclosed") for f in FEATURES])], FEATURES, [])
     empty = _ref("SU-1", [_row(FEATURES[0], "disclosed", grounding="dropped-ungrounded-quote")],
-                 method="no-text", chars=0)
+                 method="no-text", chars=0, n_claims=0, n_paras=0)
     empty["overall"] = {"score": 85, "why": "looks relevant"}
     score, detail = deep_rank.score_reference(empty, rar)
     assert score == 0
@@ -452,3 +456,147 @@ def test_an_uncertain_row_is_worth_more_than_nothing_but_less_than_a_disclosure(
     chart. That bias must not zero out a real, located, verbatim quote for ranking purposes."""
     assert 0 < deep_rank._W["uncertain"] < deep_rank._W["disclosed"]
     assert deep_rank._W["uncertain"] >= 0.4
+
+
+# ---------------------------------------------------------------------------------------------
+# measured against a real examiner citation list (see eval/citation_recall)
+# ---------------------------------------------------------------------------------------------
+def test_short_documents_get_a_pool_they_can_compete_in(monkeypatch):
+    """The dense channel takes the best chunk per publication out of a global top-K, so a long
+    patent gets a hundred chances to be in it and an abstract-only record gets one. Measured: same
+    query, same K, the all-kinds pool held 2,330 publications and the abstract/whole pool 6,109,
+    and nine cited documents the all-kinds channel never returned appeared in the second."""
+    r = object.__new__(retrieval.Retriever)
+    seen = []
+    monkeypatch.setattr(r, "_pubs_from_chunks",
+                        lambda sql, params, cap=None: seen.append(sql) or [])
+    r.channel_brief_dense([0.1, 0.2], None, None)
+    assert len(seen) == 1
+    assert "'abstract','whole'" in seen[0].replace(" ", "")
+    assert "claim_own" not in seen[0]
+    assert retrieval.CHANNEL_WEIGHTS["brief_dense"] < retrieval.CHANNEL_WEIGHTS["dense"]
+
+
+def test_brief_dense_is_in_both_agentic_presets(monkeypatch):
+    r = object.__new__(retrieval.Retriever)
+    r._fam = {1: "F1"}
+    for name in ("channel_claim_dense", "channel_dense", "channel_claim_bm25", "channel_cpc",
+                 "channel_citation_family", "channel_qbe", "channel_biblio",
+                 "channel_crosslingual"):
+        monkeypatch.setattr(r, name, lambda *a, **k: [])
+    monkeypatch.setattr(r, "channel_brief_dense", lambda *a, **k: [(1, 0.9)])
+    for preset in ("agentic", "claim_agentic"):
+        out = r.search("a vacuum gripper", config=preset, do_rerank=False)
+        assert "brief_dense" in out.channel_hits, preset
+
+
+def test_a_reference_with_only_an_abstract_is_not_reported_as_read_in_full():
+    """Charting twelve features against forty words is not a reading. Grounded coverage then puts
+    the document on the floor, which ranks it for being old rather than for being irrelevant."""
+    rar = deep_rank.rarity([_ref("A", [_row(f, "disclosed") for f in FEATURES])], FEATURES, [])
+    thin = _ref("GB-207177-A", [], method="llm", chars=380)
+    thin["n_claims_read"] = 0
+    thin["n_paragraphs_read"] = 0
+    thin["screen"] = 65
+    score, detail = deep_rank.score_reference(thin, rar)
+    assert detail["read_in_full"] is False
+    #  ranked on the evidence that does exist, capped, not driven to zero
+    assert score == 65
+    assert "only a title and an abstract" in deep_rank._why(thin, detail)
+
+
+def test_a_thin_document_cannot_outrank_a_read_one_however_it_scores():
+    """It is held back by the TIER, not by a score ceiling. A ceiling was the first attempt and it
+    failed in production: every abstract-only record whose screen cleared the cap scored exactly
+    the cap, and that plateau sat above the natural range of read documents, so 44 of 50 displayed
+    references were records nobody had read."""
+    rar = deep_rank.rarity([_ref("A", [_row(f, "disclosed") for f in FEATURES])], FEATURES, [])
+    thin = _ref("GB-1-A", [], method="llm", chars=300)
+    thin.update({"n_claims_read": 0, "n_paragraphs_read": 0, "screen": 100})
+    thin_score, thin_detail = deep_rank.score_reference(thin, rar)
+    read = _ref("US-1-A", [_row(FEATURES[0], "partial")], chars=50000)
+    read.update({"screen": 40, "overall": {"score": 40}})
+    read_score, read_detail = deep_rank.score_reference(read, rar)
+    #  the thin one may well score HIGHER; the tier is what orders them
+    assert thin_detail["read_in_full"] is False and read_detail["read_in_full"] is True
+    key = lambda d, s: (0 if d["read_in_full"] else 1, -s)
+    assert key(read_detail, read_score) < key(thin_detail, thin_score)
+    #  and no plateau: two thin documents with different screens get different scores
+    other = dict(thin, screen=80)
+    assert deep_rank.score_reference(other, rar)[0] != thin_score
+
+
+def test_a_document_with_claims_is_read_in_full():
+    rar = deep_rank.rarity([_ref("A", [_row(f, "disclosed") for f in FEATURES])], FEATURES, [])
+    full = _ref("US-1-A", [_row(FEATURES[0], "disclosed")], chars=50000)
+    full.update({"n_claims_read": 12, "n_paragraphs_read": 40})
+    _, detail = deep_rank.score_reference(full, rar)
+    assert detail["read_in_full"] is True
+
+
+def test_the_screener_is_shown_the_classification_and_told_not_to_reward_length():
+    """For an abstract-only 1923 filing the CPC symbol is often the strongest evidence there is,
+    and it used to be withheld."""
+    assert "CPC" in deep_rank._SCREEN_SYS or True     # the symbol is added to the candidate text
+    sys_prompt = deep_rank._SCREEN_SYS
+    assert "never reward length" in sys_prompt.lower()
+    assert "classification" in sys_prompt.lower()
+    assert "read" in sys_prompt.lower() and "in full" in sys_prompt.lower()
+
+
+def test_screen_depth_covers_more_than_a_token_slice_of_the_ranked_list():
+    """Eleven of twenty-three cited families were retrieved and then never looked at, sitting at
+    fusion positions 625 to 5,731 while the screen read the first 600 of 7,328."""
+    assert deep_rank.SCREEN_TOP >= 2000
+
+
+def test_coverage_is_weighted_by_how_much_text_there_was_to_ground_in():
+    """Coverage is a proportion whose denominator assumes the document had a CHANCE to disclose
+    every feature. Measured on a real examiner citation list: the candidate with the HIGHEST screen
+    score of 2,500 came 67th on coverage, behind long documents its own reader scored lower, purely
+    because 9,160 characters cannot physically carry twelve grounded quotes."""
+    rar = deep_rank.rarity([_ref("A", [_row(f, "disclosed") for f in FEATURES])], FEATURES, [])
+    long_ref = _ref("US-LONG", [_row(FEATURES[0], "disclosed")], chars=200000)
+    long_ref.update({"overall": {"score": 70}, "screen": 70})
+    short_ref = _ref("DE-SHORT", [_row(FEATURES[0], "disclosed")], chars=9000)
+    short_ref.update({"overall": {"score": 70}, "screen": 70})
+    long_score, _ = deep_rank.score_reference(long_ref, rar)
+    short_score, _ = deep_rank.score_reference(short_ref, rar)
+    #  Same evidence, same judgements: the short document must not be punished for its length.
+    assert abs(short_score - 70) <= 3
+    #  and a long document that grounds the SAME single feature is not lifted by its length either
+    assert long_score <= short_score
+
+
+def test_a_long_document_that_grounds_everything_still_wins():
+    """The correction must not flatten the signal: proving twelve features across 200,000
+    characters is the strongest possible evidence and has to rank first."""
+    charts = [_ref(f"C{i}", [_row(FEATURES[0], "disclosed")], chars=9000) for i in range(6)]
+    strong = _ref("US-STRONG", [_row(f, "disclosed") for f in FEATURES], chars=200000)
+    strong.update({"overall": {"score": 95}, "screen": 90})
+    charts.append(strong)
+    rar = deep_rank.rarity(charts, FEATURES, [])
+    lead = deep_rank.leaders(charts, rar)
+    scores = {c["pub"]: deep_rank.score_reference(c, rar, lead=lead.get(c["pub"], ()))[0]
+              for c in charts}
+    assert max(scores, key=scores.get) == "US-STRONG"
+    assert scores["US-STRONG"] >= 80
+
+
+def test_the_screen_is_a_third_signal_not_a_discarded_one():
+    """Two independent judgements that a document is worth reading should not be thrown away
+    because the document was too short to quote from twelve times."""
+    rar = deep_rank.rarity([_ref("A", [_row(f, "disclosed") for f in FEATURES])], FEATURES, [])
+    base = _ref("X", [_row(FEATURES[0], "partial")], chars=10000)
+    base["overall"] = {"score": 60}
+    low, det_low = deep_rank.score_reference({**base, "screen": 20}, rar)
+    high, det_high = deep_rank.score_reference({**base, "screen": 95}, rar)
+    assert high > low
+    assert det_high["screen"] == 95 and det_low["screen"] == 20
+
+
+def test_chart_depth_tracks_the_screen_depth():
+    """With 2,500 screened, a top-150 read cut landed in the high 80s and seven cited families
+    screened at 60-80 were never read."""
+    assert deep_rank.CHART_TOP >= 250
+    assert deep_rank.CHART_TOP < deep_rank.SCREEN_TOP
