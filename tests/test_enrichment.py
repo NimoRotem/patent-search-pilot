@@ -87,3 +87,25 @@ def test_extract_pdf_drawings_from_a_real_pdf(tmp_path, monkeypatch):
     if imgs:                                            # a text-only PDF could yield none — that's OK
         assert all(i["file"].endswith(".png") and i.get("from_pdf") for i in imgs)
         assert (tmp_path / "TEST-0001-A1" / imgs[0]["file"]).exists()
+
+
+def test_google_patents_id_zero_pads_us_pregrant_publications():
+    """Stripping hyphens is right for a granted patent and WRONG for a US pre-grant publication.
+    The corpus stores US-2015032252-A1 with the leading zero of the serial dropped, and Google
+    Patents only resolves the padded US20150032252A1, so every pre-grant lookup asked for a
+    document that does not exist, got nothing back, and still spent a SerpApi call.
+
+    Measured live on five of them: 'no claims' at the old id, 22 to 39 claims at the new one. The
+    field backfill's hit rate was 27% until this was fixed."""
+    import enrich
+    assert enrich.gp_id("US-2015032252-A1") == "patent/US20150032252A1/en"
+    assert enrich.gp_id("US-2004094979-A1") == "patent/US20040094979A1/en"
+    #  granted patents and non-US numbers are unchanged
+    assert enrich.gp_id("US-11999030-B2") == "patent/US11999030B2/en"
+    assert enrich.gp_id("DE-102010002317-A1") == "patent/DE102010002317A1/en"
+    assert enrich.gp_id("US-5795001-A") == "patent/US5795001A/en"
+
+
+def test_google_patents_id_survives_an_unparseable_number():
+    import enrich
+    assert enrich.gp_id("not-a-patent") == "patent/notapatent/en"
