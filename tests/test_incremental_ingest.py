@@ -152,8 +152,15 @@ def test_unchunked_queue_is_empty_on_a_fully_processed_corpus():
     resumable: after a crash, whatever is left in this queue is exactly the outstanding work,
     with no separate bookkeeping table to get out of sync.
 
-    The live corpus is chunked TWO-TIER, so the queue must be asked at that depth."""
-    assert inc.unchunked_publication_ids(limit=5, two_tier=True) == []
+    The live corpus is chunked TWO-TIER, so the queue must be asked at that depth.
+
+    Scoped to the ETL tiers. A third tier now exists -- `external`, publications a live search
+    discovered through the patent APIs and inserted -- and those legitimately sit in the queue
+    with a title, an abstract and no chunks until the next chunking pass. That is the feature,
+    not a backlog: it is how art found once becomes retrievable by vector next time. So the
+    invariant is about what the ETL loaded, which is what resumability was ever about."""
+    assert inc.unchunked_publication_ids(limit=5, two_tier=True,
+                                         tiers=("core", "expanded")) == []
 
 
 def test_textless_publications_are_excluded_from_the_queue():
@@ -169,8 +176,8 @@ def test_textless_publications_are_excluded_from_the_queue():
                        WHERE NOT EXISTS (SELECT 1 FROM chunks ch WHERE ch.publication_id=p.id)""")
         no_chunks = cur.fetchone()["c"]
     assert no_chunks >= textless
-    # ...yet the work queue is empty, i.e. every chunkable publication is chunked
-    assert inc.unchunked_publication_ids(two_tier=True) == []
+    # ...yet the ETL work queue is empty, i.e. every chunkable loaded publication is chunked
+    assert inc.unchunked_publication_ids(two_tier=True, tiers=("core", "expanded")) == []
 
 
 def test_unchunked_query_respects_min_id_and_limit():
@@ -444,8 +451,9 @@ def test_queue_depth_must_match_chunker_depth():
 
     Full depth SHOULD still queue them: at that depth their paragraphs do produce chunks.
     """
-    two = inc.unchunked_publication_ids(two_tier=True)
-    full = inc.unchunked_publication_ids(two_tier=False)
+    ETL = ("core", "expanded")     # `external` rows are outstanding by design, see above
+    two = inc.unchunked_publication_ids(two_tier=True, tiers=ETL)
+    full = inc.unchunked_publication_ids(two_tier=False, tiers=ETL)
     assert two == [], f"two-tier queue must be drained, got {two[:5]}"
     assert set(two) <= set(full), "two-tier queue can only ever be a subset of full-depth"
     for pid in set(full) - set(two):
@@ -458,3 +466,28 @@ def test_queue_depth_must_match_chunker_depth():
         assert not r["t"] and not r["a"] and not r["cl"], \
             f"pub {pid} has two-tier-chunkable text yet is missing from the two-tier queue"
         assert r["pa"], f"pub {pid} is queued at full depth but has no paragraphs to chunk"
+
+
+def test_externally_discovered_publications_enter_the_work_queue():
+    """Art a search FOUND must become art the next search can retrieve by vector.
+
+    external.materialise inserts a publication with a title and an abstract and no chunks, so it
+    is chunkable work the ordinary weekly pass will pick up. If the queue excluded tier
+    'external', the corpus would accumulate rows that no dense channel could ever reach and the
+    only way to find them again would be to run the same external query again.
+    """
+    with db.cursor() as cur:
+        cur.execute("SELECT count(*) c FROM publications WHERE tier='external'")
+        n_external = cur.fetchone()["c"]
+    if not n_external:
+        pytest.skip("no externally-discovered publications on this box yet")
+    all_tiers = set(inc.unchunked_publication_ids(two_tier=True))
+    etl_only = set(inc.unchunked_publication_ids(two_tier=True, tiers=("core", "expanded")))
+    assert etl_only <= all_tiers
+    with db.cursor() as cur:
+        cur.execute("SELECT count(*) c FROM publications WHERE tier='external' "
+                    "AND coalesce(abstract,'') <> '' "
+                    "AND NOT EXISTS (SELECT 1 FROM chunks ch WHERE ch.publication_id=id)")
+        chunkable = cur.fetchone()["c"]
+    if chunkable:
+        assert all_tiers - etl_only, "external rows with text must be queued for chunking"

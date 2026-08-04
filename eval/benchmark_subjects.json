@@ -1,0 +1,44 @@
+{
+  "_README": [
+    "The standing prior-art recall benchmark. Two subjects, on purpose: they fail for OPPOSITE",
+    "reasons, so a change that helps one and hurts the other is visible instead of averaging out.",
+    "",
+    "  ep3707092    22 cited families, most of them IN this corpus. Tests RANKING: the art is",
+    "               there, the question is whether the pipeline puts it in the top 50.",
+    "  schmalz      10 cited documents, four of them classified in acoustics, exhaust silencers,",
+    "               vacuum cleaners and power tools -- outside the eight CPC branches this corpus",
+    "               indexes. Tests REACH: no ranking change can produce a document that was never",
+    "               retrieved from anywhere.",
+    "",
+    "Citations are the real examiner/third-party lists filed against each subject. Add subjects",
+    "here; nothing in the harness is specific to either of these."
+  ],
+  "subjects": [
+    {
+      "id": "ep3707092",
+      "name": "EP 3 707 092 B1 (GRABO, vacuum lifter)",
+      "url": "https://patents.google.com/patent/EP3707092B1/en",
+      "mode": "novelty",
+      "note": "22 cited families; the search-report and opposition citations.",
+      "citations": [
+        "US10625955B2", "DE3724659A1", "US4653794A", "US4770456A", "US5344202A",
+        "US6015175A", "US6318779B1", "US7137792B2", "US7677622B2", "US8267386B2",
+        "US2009/0058112A1", "US2011/0140461A1", "US2015/0028614A1", "US2016/0332312A1",
+        "DE102010063214A1", "DE202013105503U1", "EP0995706A1", "EP1745877A1",
+        "EP2172410A1", "WO2009/025557A1", "WO2015/121448A1", "JP2008/074577A",
+        "GB2160496A", "CN101804903A", "CN203006464U", "FR2588528A1", "US3423119A"
+      ]
+    },
+    {
+      "id": "schmalz",
+      "name": "US 2026/0109053 A1 (J. Schmalz, grip unit and vacuum handling apparatus)",
+      "url": "https://patents.google.com/patent/US20260109053A1/en",
+      "mode": "novelty",
+      "note": "10 documents, preissuance submission filed 2026-08-02.",
+      "citations": [
+        "US11413727B2", "US10794526B2", "US9107549B2", "US11206961B2", "US5269665A",
+        "US4453755A", "US5807034A", "US7207874B2", "US2966138A", "US20140008929A1"
+      ]
+    }
+  ]
+}

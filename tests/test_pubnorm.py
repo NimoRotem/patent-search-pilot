@@ -119,3 +119,27 @@ def test_espacenet_url_family_scoped():
 def test_link_builders_none_on_junk():
     assert pubnorm.google_url("") is None
     assert pubnorm.espacenet_url(None) is None
+
+
+def test_two_dropped_zeros_reaches_the_corpus_form():
+    """The corpus drops SOME leading zeros, not all of them.
+
+    US 2014/0008929 A1 has serial 0008929. Google keys it US20140008929A1 and this corpus stores
+    it as US-2014008929-A1 -- one zero gone, not three. The two-value version emitted the padded
+    form and the fully-stripped US20148929A1 and never the form actually on disk, so a document we
+    hold looked absent: it was re-inserted from an external source, then ranked and displayed as a
+    second copy of itself.
+    """
+    cands = pubnorm.mongo_candidates("US20140008929A1")
+    assert cands[0] == "US20140008929A1"          # padded first: Google and Espacenet need it
+    assert "US2014008929A1" in cands              # the corpus form -- the whole point
+    assert "US20148929A1" in cands                # fully stripped, still covered
+    # and it works from the corpus spelling back to Google's
+    assert "US20140008929A1" in pubnorm.mongo_candidates("US-2014008929-A1")
+
+
+def test_zero_ladder_does_not_touch_grants():
+    """A US grant number must not acquire pre-grant padding variants."""
+    for pub in ("US11413727B2", "US2966138A", "US10625955B2"):
+        assert pubnorm.mongo_candidates(pub)[0] == pub.replace("-", "")
+        assert not any(len(c) > len(pub) + 2 for c in pubnorm.mongo_candidates(pub))

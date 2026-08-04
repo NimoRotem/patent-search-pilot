@@ -550,11 +550,26 @@ def test_screen_depth_covers_more_than_a_token_slice_of_the_ranked_list():
     assert deep_rank.SCREEN_TOP >= 2000
 
 
-def test_coverage_is_weighted_by_how_much_text_there_was_to_ground_in():
+def test_a_short_document_is_not_driven_to_the_floor_for_being_short():
     """Coverage is a proportion whose denominator assumes the document had a CHANCE to disclose
     every feature. Measured on a real examiner citation list: the candidate with the HIGHEST screen
     score of 2,500 came 67th on coverage, behind long documents its own reader scored lower, purely
-    because 9,160 characters cannot physically carry twelve grounded quotes."""
+    because 9,160 characters cannot physically carry twelve grounded quotes.
+
+    SUPERSEDED IN PART, 2026-08-04. This used to assert the short document scored its judgement
+    almost exactly (|score - 70| <= 3) and that a long document grounding the same single feature
+    could not outrank it. The fix that produced those numbers gave the coverage weight it freed up
+    to `overall` and `screen` -- so it did not merely stop punishing short documents, it started
+    REWARDING them, and the reward grew the less there was to read. On both benchmark subjects
+    that put thin records across the whole displayed page: the median text behind a displayed card
+    was 15,432 characters, and every cited reference that got read in full sat at rank 57-290
+    behind them. Ranking by sum-of-cited-ranks over both subjects: 836 before, 576 after.
+
+    So the surviving property is the one this test was really protecting -- a short document is
+    still judged on what it says and is nowhere near the floor -- while the stronger claim is
+    gone, because a document we looked hard at and a document we barely opened are not equally
+    well known and should not score equally. See DEPTH_CONFIDENCE_FLOOR.
+    """
     rar = deep_rank.rarity([_ref("A", [_row(f, "disclosed") for f in FEATURES])], FEATURES, [])
     long_ref = _ref("US-LONG", [_row(FEATURES[0], "disclosed")], chars=200000)
     long_ref.update({"overall": {"score": 70}, "screen": 70})
@@ -562,10 +577,11 @@ def test_coverage_is_weighted_by_how_much_text_there_was_to_ground_in():
     short_ref.update({"overall": {"score": 70}, "screen": 70})
     long_score, _ = deep_rank.score_reference(long_ref, rar)
     short_score, _ = deep_rank.score_reference(short_ref, rar)
-    #  Same evidence, same judgements: the short document must not be punished for its length.
-    assert abs(short_score - 70) <= 3
-    #  and a long document that grounds the SAME single feature is not lifted by its length either
-    assert long_score <= short_score
+    #  not floored, and not far off its own judgement
+    assert short_score >= deep_rank.DEPTH_CONFIDENCE_FLOOR * (long_score - 1)
+    assert short_score > 40
+    #  the long one is ahead now, but only by the confidence gap -- not by a landslide
+    assert long_score - short_score <= (1 - deep_rank.DEPTH_CONFIDENCE_FLOOR) * 100
 
 
 def test_a_long_document_that_grounds_everything_still_wins():
@@ -733,3 +749,41 @@ def test_the_funnel_is_not_widened_past_what_the_stages_below_it_can_absorb():
     Widening a funnel only helps if the stage below widens too, and the page is a fixed size."""
     assert deep_rank.SCREEN_TOP <= 3000
     assert retrieval.SEED_PUB_CAP <= 3000
+
+
+# --- depth must not be able to RAISE a score -------------------------------------------------
+def _depth_ref(pub, n_disclosed, overall, screen, chars):
+    """A charted reference grounding `n_disclosed` of the two features, read to `chars`."""
+    rows = [_row(FEATURES[i], "disclosed" if i < n_disclosed else "absent") for i in range(2)]
+    r = _ref(pub, rows, chars=chars)
+    r["overall"], r["screen"] = {"score": overall}, screen
+    return r
+
+
+def test_reading_less_of_a_document_cannot_raise_its_rank():
+    """The old formula scaled the COVERAGE weight by how much text was read and handed the weight
+    it gave up to `overall` and `screen` -- judgements made from a snippet. So the less of a
+    document we read, the more its score came from a guess, and the guess is optimistic.
+
+    Measured on a finished report: a reference grounding 7 of 100 features from 8k characters
+    scored 77 and was displayed at rank 10, while one grounding 52 from 142k scored 63 and was
+    not displayed at all. Both benchmark subjects failed this way -- every cited reference that
+    got read sat at rank 57-290 behind a wall of thin records.
+    """
+    thin = _depth_ref("THIN-1", 0, overall=75, screen=95, chars=8_000)
+    deep = _depth_ref("DEEP-1", 2, overall=75, screen=80, chars=142_000)
+    rar = deep_rank.rarity([thin, deep], FEATURES, [])
+    thin_s, _ = deep_rank.score_reference(thin, rar)
+    deep_s, _ = deep_rank.score_reference(deep, rar)
+    assert deep_s > thin_s, (deep_s, thin_s)
+
+
+def test_depth_discount_is_bounded_by_the_floor():
+    """An abstract-only record still competes on what it does say. A large share of the art
+    examiners cite is abstract-only in this corpus, so the discount is gentle, not annihilating."""
+    shallow = _depth_ref("A-1", 2, overall=80, screen=80, chars=1)
+    full = _depth_ref("B-1", 2, overall=80, screen=80, chars=10 * deep_rank.DEPTH_FULL_CHARS)
+    rar = deep_rank.rarity([shallow, full], FEATURES, [])
+    a, _ = deep_rank.score_reference(shallow, rar)
+    b, _ = deep_rank.score_reference(full, rar)
+    assert a == pytest.approx(b * deep_rank.DEPTH_CONFIDENCE_FLOOR, abs=1.5)

@@ -154,6 +154,12 @@ DEPTH_FULL_CHARS = int(os.environ.get("DEEP_RANK_DEPTH_FULL", "60000"))
 COVERAGE_WEIGHT = float(os.environ.get("DEEP_RANK_COVERAGE_WEIGHT", "0.55"))
 #  How the weight coverage gives up is split between the reader's verdict and the screen.
 OVERALL_SHARE = float(os.environ.get("DEEP_RANK_OVERALL_SHARE", "0.60"))
+#  How much of its score a reference keeps when nothing could be read of it. 1.0 would ignore
+#  depth entirely; 0 would rank an abstract-only record at zero however apt it is. Swept over both
+#  benchmark subjects at 0.30 / 0.45 / 0.60 / 0.75 against the sum of the cited references' ranks:
+#  0.75 was best (576, against 836 for the old depth-reweighting), and it is also the gentlest,
+#  which matters because a large share of the art examiners cite is abstract-only here.
+DEPTH_CONFIDENCE_FLOOR = float(os.environ.get("DEEP_RANK_DEPTH_FLOOR", "0.75"))
 #  A reference charted against the uploaded patent's own claims gets that counted too, at a
 #  discount: a claim is a conjunction of limitations, so a "partial" there is weaker evidence
 #  about the whole reference than a "partial" on a single feature.
@@ -555,17 +561,35 @@ def score_reference(ref, rar, lead=()):
     chars = int(ref.get("chars_read") or ref.get("chars") or 0)
     screen = ref.get("screen")
     if overall is not None and read_in_full and covered:
-        #  Weight what we PROVED by how much we had a chance to prove it from (see
-        #  DEPTH_FULL_CHARS), and give the remainder to the two length-independent judgements.
+        #  WEIGHTS ARE FIXED; DEPTH DISCOUNTS THE RESULT.
+        #
+        #  This used to scale the coverage weight by depth and hand the weight it gave up to
+        #  `overall` and `screen` -- two judgements made from a snippet. The effect was that the
+        #  LESS of a document we managed to read, the MORE the score came from a guess about it,
+        #  and the guess is systematically optimistic. Measured on two finished reports:
+        #
+        #      WO-2017215163  coverage  7, read   8k chars -> 77, displayed at rank 10
+        #      US-10625955    coverage 52, read 142k chars -> 63, NOT displayed, rank 53
+        #
+        #  A reference measured to disclose half the invention from its full text lost to one
+        #  measured to disclose almost nothing, because the second had been read too thinly to be
+        #  measured and inherited its screener's optimism. Both subjects of the benchmark failed
+        #  this way: every cited reference that got read sat at rank 57-290 behind a wall of
+        #  thin records, and the median text behind a displayed card was 15,432 characters.
+        #
+        #  So: weight coverage the same however much was read, and let a shallow reading discount
+        #  the whole score instead of redistributing it. Not reading a document can no longer
+        #  raise its rank. The floor keeps the discount modest -- an abstract-only record still
+        #  competes on what it does say, which matters because examiners cite plenty of them.
         depth = max(0.0, min(1.0, chars / float(DEPTH_FULL_CHARS))) if DEPTH_FULL_CHARS else 1.0
-        w_cov = COVERAGE_WEIGHT * depth
-        rest = max(0.0, 1.0 - w_cov)
+        rest = max(0.0, 1.0 - COVERAGE_WEIGHT)
         if screen is None:
             w_ovr, w_scr = rest, 0.0
         else:
             w_ovr, w_scr = rest * OVERALL_SHARE, rest * (1.0 - OVERALL_SHARE)
-        score = (w_cov * coverage + w_ovr * float(overall)
-                 + w_scr * float(screen if screen is not None else 0))
+        raw = (COVERAGE_WEIGHT * coverage + w_ovr * float(overall)
+               + w_scr * float(screen if screen is not None else 0))
+        score = raw * (DEPTH_CONFIDENCE_FLOOR + (1.0 - DEPTH_CONFIDENCE_FLOOR) * depth)
     else:
         score = coverage
         overall = None

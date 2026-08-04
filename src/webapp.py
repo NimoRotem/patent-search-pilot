@@ -36,6 +36,7 @@ import grounding                                  # length-stable quote groundin
 import corpus_facts                               # live corpus scope/currency for the disclosures
 import disclosure                                 # shared disclosure wording (web + print + PDF + DOCX)
 import federation, domain_detect                 # two-tier search + out-of-domain guard
+import external                                    # parallel keyword+semantic fan-out, raw hits
 import retrieval                                  # search_doc_chunks (parallel doc-chunk channel)
 import img_search                                 # patent-drawing image-similarity channel
 import rerank_listwise                            # listwise agentic reranker (in-context, several at a time)
@@ -797,7 +798,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
         #   (d) image: the query document's drawings matched against the corpus figure index.
         # A typed (no-document) query simply has no (c)/(d); (a) and (b) still run in parallel.
         doc = _load_doc_materials(doc_token)
-        parallel = ["local"] + (["federated"] if wide else [])
+        parallel = ["local"] + (["federated", "external"] if wide else [])
         if doc and doc.get("chunk_vecs"):
             parallel.append("docchunks")
         if doc and doc.get("figure_blobs"):
@@ -832,6 +833,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 on_event=on_event)
             if wide:
                 futs["federated"] = ex.submit(_timed, "federated", _federate_block, query, mode)
+                futs["external"] = ex.submit(_timed, "external", _external_block, query, doc)
             if "docchunks" in parallel:
                 futs["docchunks"] = ex.submit(
                     _timed, "docchunks", retrieval.search_doc_chunks,
@@ -848,6 +850,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 _set_job(slug, kind="federating", detail={"local_done": True},
                          msg="Local ranking is ready — waiting for the wider patent APIs…")
             fed = futs["federated"].result() if "federated" in futs else None
+            ext = futs["external"].result() if "external" in futs else None
             doc_fams = futs["docchunks"].result() if "docchunks" in futs else []
             img_res = futs["image"].result() if "image" in futs else None
 
@@ -868,6 +871,33 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             rep["federation_offered"] = bool(verdict is not None and verdict.should_federate)
         # Merge the new parallel channels: record their families and splice their best UNIQUE
         # finds into the display+rerank window (dedup by family reuses the shared family map).
+        #  EXTERNAL ART, spliced into the ranked list rather than parked beside it. This is the
+        #  difference between "an API mentioned it" and "the pipeline read it": ranked_families is
+        #  what the screen, the reader and the claim charter consume, so a reference that is not in
+        #  it cannot be judged, only listed. Quota'd, because every stage below is a fixed size.
+        if ext and ext.get("families"):
+            #  A link/upload search names no subject, so nothing has bounded these by date. The
+            #  local channels are unaffected either way (they filter in their own SQL); this only
+            #  stops the new fan-out, which skews recent, from injecting art that POSTDATES the
+            #  invention it is supposed to be prior art for.
+            ext_subject = subject or external.subject_from_doc(
+                (doc or {}).get("publication_number") or "")
+            if ext_subject is not None and subject is None:
+                rep["external_date_cutoff"] = str(getattr(ext_subject, "efd", "") or "")
+            keep = external.citable(ext["families"], ext_subject, mode)
+            if len(keep) != len(ext["families"]):
+                print(f"[external] {len(ext['families']) - len(keep)} families dropped as not "
+                      f"citable prior art under {mode}", flush=True)
+            ext["families"], ext["n_families"] = keep, len(keep)
+            #  Splice BELOW the retrieval head deep_rank always reads in full. Inserting at the
+            #  usual position 12 would have handed 48 of those 60 guaranteed slots to candidates
+            #  judged on a title and an abstract, displacing local references the corpus holds the
+            #  full text for. External art has to earn its place through the screen like anything
+            #  else; it does not get to walk into the read set.
+            _merge_channel(rep, "external", keep, take=external.MERGE_FAMILIES,
+                           head_keep=deep_rank.ALWAYS_CHART_RETRIEVAL_HEAD)
+        if ext:
+            rep["external"] = external.summary(ext)
         if doc_fams:
             _merge_channel(rep, "docchunks", doc_fams)
         if img_res and img_res.get("families"):
@@ -1004,6 +1034,29 @@ def _federate_block(query, mode):
                   "sources": h.sources, "rank": h.rank}
                  for h in (fed.hits or [])[:40]]
     return d
+
+
+def _external_block(query, doc):
+    """Run the parallel keyword + semantic fan-out against the external APIs.
+
+    Separate from `_federate_block` on purpose, and both run. They answer different questions:
+    the federation returns App A's own LLM-ranked shortlist of ~45 families, which is a good
+    second opinion and carries per-source provenance; this returns the RAW candidates of several
+    dozen problem-shaped queries, which is where art from OUTSIDE the indexed CPC branches comes
+    from. Never raises."""
+    try:
+        brief = query_set.retrieval_text(query or "")
+        claims = list((doc or {}).get("claims") or [])
+        specs = query_set.build(query, claims=claims)
+        ext = external.run(specs, brief=brief, claims=claims)
+        print(f"[external] {len(ext.get('aspects') or [])} aspects, "
+              f"{len(ext.get('queries') or [])} queries -> {ext.get('n_candidates', 0)} candidates, "
+              f"{ext.get('n_families', 0)} families in {ext.get('elapsed', 0)}s "
+              f"{ext.get('stats')}", flush=True)
+        return ext
+    except Exception:
+        traceback.print_exc()
+        return None
 
 
 def _espacenet_safe(pub, family_id=None):
