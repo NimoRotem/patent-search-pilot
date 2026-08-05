@@ -14,7 +14,7 @@ EP/WO/DE description+claims+drawings+legal hole. Until then `ops.py` runs in moc
 without credentials. One-command backfill: see README.
 """
 from __future__ import annotations
-import os, re, json, sys, time
+import os, re, json, sys, threading, time
 import requests
 import db, patent_text as pt
 from config import DATA
@@ -46,16 +46,78 @@ def gp_id(pubnum: str) -> str:
     return "patent/" + pubnum.replace("-", "") + "/en"
 
 
+#  Live searches and the background field backfill share ONE monthly SerpApi allowance.
+#  ops/enrich_field.py refuses to start without leaving a reserve; the live path had no such
+#  guard, so the batch job stopped politely while searches kept spending until the allowance hit
+#  zero mid-run. Both ends need a floor, and the live path's should be the higher one: a search a
+#  user is waiting on matters more than a backfill that can resume next month.
+LIVE_RESERVE = int(os.environ.get("SERPAPI_LIVE_RESERVE", "200"))
+_QUOTA_TTL = float(os.environ.get("SERPAPI_QUOTA_TTL", "600"))
+_quota = {"left": None, "at": 0.0}
+_quota_lock = threading.Lock()
+
+
+def searches_left(force: bool = False):
+    """SerpApi searches remaining this month, or None if it cannot be read. Cached 10 minutes.
+
+    Never raises and never blocks a search on its own failure: an unreadable account reads as
+    'unknown', which is treated as 'allowed', because refusing to search because we could not
+    check a quota would be a worse failure than overspending slightly.
+    """
+    if not SERP_KEY:
+        return None
+    now = time.time()
+    with _quota_lock:
+        #  Freshness is decided by the TIMESTAMP alone, so an UNREADABLE account is cached too.
+        #  Keying on the value meant a failing account endpoint was re-tried on every reference,
+        #  putting a network round-trip and its timeout on each one.
+        if not force and _quota["at"] and now - _quota["at"] < _QUOTA_TTL:
+            return _quota["left"]
+    try:
+        r = requests.get("https://serpapi.com/account", params={"api_key": SERP_KEY}, timeout=15)
+        left = int((r.json() or {}).get("total_searches_left") or 0) if r.status_code == 200 \
+            else None
+    except Exception:
+        left = None
+    with _quota_lock:
+        _quota["left"], _quota["at"] = left, now
+    return left
+
+
+def may_spend() -> bool:
+    """Is a live SerpApi call allowed right now?
+
+    Separate from fetch_details so the POLICY is testable on its own: the hermetic test suite
+    stubs fetch_details out entirely (conftest.no_paid_apis), so a test that drove the guard
+    through it would pass whether the guard existed or not.
+    """
+    if not SERP_KEY:
+        return False
+    left = searches_left()
+    if left is not None and left <= LIVE_RESERVE:
+        print(f"[enrich] SerpApi allowance down to {left}; holding the last {LIVE_RESERVE} "
+              f"back. Full-text enrichment is off until it renews.", flush=True)
+        return False
+    return True
+
+
 def fetch_details(pubnum: str, retries=3):
     """SerpApi Google Patents details -> dict, or None."""
-    if not SERP_KEY:
+    if not may_spend():
         return None
     params = {"engine": "google_patents_details", "patent_id": gp_id(pubnum), "api_key": SERP_KEY}
     for i in range(retries):
         try:
             r = requests.get("https://serpapi.com/search", params=params, timeout=40)
             if r.status_code == 200:
+                with _quota_lock:            # one spent, without re-reading the account
+                    if _quota["left"]:
+                        _quota["left"] -= 1
                 return r.json()
+            if r.status_code == 429:
+                with _quota_lock:            # exhausted or throttled: re-check before the next
+                    _quota["at"] = 0.0
+                return None
         except requests.RequestException:
             time.sleep(2 * (i + 1))
     return None

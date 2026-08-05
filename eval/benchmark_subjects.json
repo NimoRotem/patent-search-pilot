@@ -1,17 +1,25 @@
 {
   "_README": [
-    "The standing prior-art recall benchmark. Two subjects, on purpose: they fail for OPPOSITE",
-    "reasons, so a change that helps one and hurts the other is visible instead of averaging out.",
+    "The standing prior-art recall benchmark. Six subjects, on purpose.",
     "",
-    "  ep3707092    22 cited families, most of them IN this corpus. Tests RANKING: the art is",
-    "               there, the question is whether the pipeline puts it in the top 50.",
-    "  schmalz      10 cited documents, four of them classified in acoustics, exhaust silencers,",
-    "               vacuum cleaners and power tools -- outside the eight CPC branches this corpus",
-    "               indexes. Tests REACH: no ranking change can produce a document that was never",
-    "               retrieved from anywhere.",
+    "WHY MORE THAN ONE. Run-to-run variance is +/-2 families, so a '+1' on a single subject is",
+    "noise, and changes have been adopted and rejected on differences that size. Subjects also fail",
+    "for OPPOSITE reasons, and a change that trades one for another looks neutral on either alone:",
     "",
-    "Citations are the real examiner/third-party lists filed against each subject. Add subjects",
-    "here; nothing in the harness is specific to either of these."
+    "  ep3707092   22 cited families, most of them IN this corpus. Tests RANKING.",
+    "  schmalz     10 cited documents, four classified in acoustics, exhaust silencers, vacuum",
+    "              cleaners and power tools, outside the eight CPC branches indexed here. Tests",
+    "              REACH: no ranking change can produce a document never retrieved from anywhere.",
+    "  the other four   X/Y-coded search-report citations, all in corpus. Pure RANKING tests, and",
+    "              they carry the spread of sub-topic and decade the first two lack.",
+    "",
+    "WHAT COUNTS AS GOLD. citations.origin carries the search-report relevance code: X is",
+    "particularly relevant on its own, Y is relevant in combination, A is background. X and Y are",
+    "what threatens novelty and inventive step. The applicant's IDS (category APP) is NOT gold: one",
+    "US patent here carries 5,771 of those against 11 from the search report, and an IDS is a dump",
+    "of everything the applicant knew, not the result of a search. See eval/collect_subject.py.",
+    "",
+    "Add subjects with collect_subject.py; nothing in the harness is specific to any of them."
   ],
   "subjects": [
     {
@@ -21,12 +29,33 @@
       "mode": "novelty",
       "note": "22 cited families; the search-report and opposition citations.",
       "citations": [
-        "US10625955B2", "DE3724659A1", "US4653794A", "US4770456A", "US5344202A",
-        "US6015175A", "US6318779B1", "US7137792B2", "US7677622B2", "US8267386B2",
-        "US2009/0058112A1", "US2011/0140461A1", "US2015/0028614A1", "US2016/0332312A1",
-        "DE102010063214A1", "DE202013105503U1", "EP0995706A1", "EP1745877A1",
-        "EP2172410A1", "WO2009/025557A1", "WO2015/121448A1", "JP2008/074577A",
-        "GB2160496A", "CN101804903A", "CN203006464U", "FR2588528A1", "US3423119A"
+        "US10625955B2",
+        "DE3724659A1",
+        "US4653794A",
+        "US4770456A",
+        "US5344202A",
+        "US6015175A",
+        "US6318779B1",
+        "US7137792B2",
+        "US7677622B2",
+        "US8267386B2",
+        "US2009/0058112A1",
+        "US2011/0140461A1",
+        "US2015/0028614A1",
+        "US2016/0332312A1",
+        "DE102010063214A1",
+        "DE202013105503U1",
+        "EP0995706A1",
+        "EP1745877A1",
+        "EP2172410A1",
+        "WO2009/025557A1",
+        "WO2015/121448A1",
+        "JP2008/074577A",
+        "GB2160496A",
+        "CN101804903A",
+        "CN203006464U",
+        "FR2588528A1",
+        "US3423119A"
       ]
     },
     {
@@ -36,8 +65,98 @@
       "mode": "novelty",
       "note": "10 documents, preissuance submission filed 2026-08-02.",
       "citations": [
-        "US11413727B2", "US10794526B2", "US9107549B2", "US11206961B2", "US5269665A",
-        "US4453755A", "US5807034A", "US7207874B2", "US2966138A", "US20140008929A1"
+        "US11413727B2",
+        "US10794526B2",
+        "US9107549B2",
+        "US11206961B2",
+        "US5269665A",
+        "US4453755A",
+        "US5807034A",
+        "US7207874B2",
+        "US2966138A",
+        "US20140008929A1"
+      ]
+    },
+    {
+      "id": "suction_chuck",
+      "name": "WO-2012144120-A1 (Suction chuck, and transfer device of workpiece includin)",
+      "url": "https://patents.google.com/patent/WO2012144120A1/en",
+      "mode": "novelty",
+      "note": "13 X/Y-coded search-report citations / 13 families, pulled from the corpus citations table. 13 in corpus, 0 not. Subject is in the corpus, so its family is excluded from retrieval by the recovered Subject.",
+      "citations": [
+        "JP-2000511354-A",
+        "JP-2003048620-A",
+        "JP-2003118859-A",
+        "JP-2005340521-A",
+        "JP-2005340522-A",
+        "JP-2006156692-A",
+        "JP-2007324442-A",
+        "JP-2010067689-A",
+        "JP-2010253596-A",
+        "JP-2010258292-A",
+        "JP-2011057314-A",
+        "JP-2011060849-A",
+        "JP-S58143989-A"
+      ]
+    },
+    {
+      "id": "suction_unit",
+      "name": "WO-2021048069-A1 (Suction unit and suction device)",
+      "url": "https://patents.google.com/patent/WO2021048069A1/en",
+      "mode": "novelty",
+      "note": "12 X/Y-coded search-report citations / 12 families, pulled from the corpus citations table. 12 in corpus, 0 not. Subject is in the corpus, so its family is excluded from retrieval by the recovered Subject.",
+      "citations": [
+        "DE-102008023907-A1",
+        "DE-3516941-A1",
+        "DE-9208417-U1",
+        "FR-1391432-A",
+        "JP-2010114108-A",
+        "JP-2015179741-A",
+        "JP-2019055439-A",
+        "JP-S50118147-A",
+        "JP-S58141536-A",
+        "US-2007131660-A1",
+        "WO-2010094343-A1",
+        "WO-2019049890-A1"
+      ]
+    },
+    {
+      "id": "suction_display",
+      "name": "EP-2386771-A3 (Suction cup with suction strength display)",
+      "url": "https://patents.google.com/patent/EP2386771A3/en",
+      "mode": "novelty",
+      "note": "11 X/Y-coded search-report citations / 11 families, pulled from the corpus citations table. 11 in corpus, 0 not. Subject is in the corpus, so its family is excluded from retrieval by the recovered Subject.",
+      "citations": [
+        "AU-2006209367-B2",
+        "DE-102005045681-A1",
+        "DE-102007002756-A1",
+        "DE-202004003324-U1",
+        "DE-202008013507-U1",
+        "KR-20090004993-U",
+        "US-2004240972-A1",
+        "US-2004246314-A1",
+        "US-2008011918-A1",
+        "US-6437560-B1",
+        "US-7455269-B1"
+      ]
+    },
+    {
+      "id": "robot_gripper",
+      "name": "WO-2020229522-A1 (Robot gripper, industrial robot, handling system, and me)",
+      "url": "https://patents.google.com/patent/WO2020229522A1/en",
+      "mode": "novelty",
+      "note": "10 X/Y-coded search-report citations / 10 families, pulled from the corpus citations table. 10 in corpus, 0 not. Subject is in the corpus, so its family is excluded from retrieval by the recovered Subject.",
+      "citations": [
+        "EP-3292962-A1",
+        "JP-2011003701-A",
+        "JP-H05139554-A",
+        "JP-S5359592-A",
+        "US-2007200378-A1",
+        "US-2014277711-A1",
+        "US-2015209964-A1",
+        "US-2017129109-A1",
+        "US-2018215540-A1",
+        "WO-2018063100-A2"
       ]
     }
   ]

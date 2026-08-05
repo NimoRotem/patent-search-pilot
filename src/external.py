@@ -673,10 +673,15 @@ def subject_from_doc(pub) -> object:
     from datetime import date as _date_t
     from search_modes import Subject
 
-    def _mk(efd, filing=None, pubd=None, cc=None):
+    def _mk(efd, filing=None, pubd=None, cc=None, number=None):
         if not efd:
             return None
-        return Subject(number=None, efd=efd, filing_date=filing, publication_date=pubd,
+        #  `number` matters as much as the date: retrieval._date_clause uses it to exclude the
+        #  subject's OWN family from every channel. Without it the search returns the invention
+        #  as its own closest prior art (measured: rank 1 of its own results) and, worse, the
+        #  citation-expansion channel expands that family's backward citations into the candidate
+        #  pool, which is the answer key.
+        return Subject(number=number, efd=efd, filing_date=filing, publication_date=pubd,
                        jurisdiction=cc)
 
     def _parse(v):
@@ -700,7 +705,8 @@ def subject_from_doc(pub) -> object:
             r = cur.fetchone()
         if r:
             s = _mk(r["earliest_priority_date"] or r["filing_date"] or r["publication_date"],
-                    r["filing_date"], r["publication_date"], r["country"])
+                    r["filing_date"], r["publication_date"], r["country"],
+                    number=r["publication_number"])
             if s:
                 return s
     except Exception:

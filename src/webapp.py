@@ -798,6 +798,25 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
         #   (d) image: the query document's drawings matched against the corpus figure index.
         # A typed (no-document) query simply has no (c)/(d); (a) and (b) still run in parallel.
         doc = _load_doc_materials(doc_token)
+        #  A LINK OR UPLOAD SEARCH NAMES NO SUBJECT, so until now it ran with no date cutoff and
+        #  no self-exclusion at all. Both are wrong, and measurably so: on the EP 3 707 092
+        #  benchmark the subject's OWN family came back at rank 1 of its own results, and because
+        #  retrieval.channel_citation_family expands the backward citations of whatever it
+        #  retrieves, that family's citation list -- the examiner's answer key -- was expanded
+        #  straight into the candidate pool. The document also has a priority date, so without it
+        #  art published AFTER the invention was eligible to be returned as prior art against it.
+        #
+        #  Recovering the subject from the ingested document fixes all three at once, because
+        #  retrieval._date_clause consumes both the date and the number.
+        if subject is None and (doc or {}).get("publication_number"):
+            try:
+                subject = external.subject_from_doc(doc["publication_number"])
+                if subject is not None:
+                    print(f"[subject] recovered from the ingested document: "
+                          f"{subject.number or doc['publication_number']} efd={subject.efd}",
+                          flush=True)
+            except Exception:
+                traceback.print_exc()
         parallel = ["local"] + (["federated", "external"] if wide else [])
         if doc and doc.get("chunk_vecs"):
             parallel.append("docchunks")
@@ -880,11 +899,9 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             #  local channels are unaffected either way (they filter in their own SQL); this only
             #  stops the new fan-out, which skews recent, from injecting art that POSTDATES the
             #  invention it is supposed to be prior art for.
-            ext_subject = subject or external.subject_from_doc(
-                (doc or {}).get("publication_number") or "")
-            if ext_subject is not None and subject is None:
-                rep["external_date_cutoff"] = str(getattr(ext_subject, "efd", "") or "")
-            keep = external.citable(ext["families"], ext_subject, mode)
+            if subject is not None:
+                rep["date_cutoff"] = str(getattr(subject, "efd", "") or "")
+            keep = external.citable(ext["families"], subject, mode)
             if len(keep) != len(ext["families"]):
                 print(f"[external] {len(ext['families']) - len(keep)} families dropped as not "
                       f"citable prior art under {mode}", flush=True)

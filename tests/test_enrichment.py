@@ -109,3 +109,55 @@ def test_google_patents_id_zero_pads_us_pregrant_publications():
 def test_google_patents_id_survives_an_unparseable_number():
     import enrich
     assert enrich.gp_id("not-a-patent") == "patent/notapatent/en"
+
+
+# --- the live path must leave a reserve too ---------------------------------------------------
+def test_live_path_stops_at_the_reserve(monkeypatch):
+    """Live searches and the background field backfill share ONE monthly SerpApi allowance.
+
+    ops/enrich_field.py refuses to start without leaving a reserve; the live path had none, so the
+    batch job stopped politely while searches kept spending until the allowance hit zero mid-run
+    and on-demand full-text enrichment silently went dark.
+
+    Driven through `may_spend` rather than `fetch_details`, because conftest.no_paid_apis stubs
+    fetch_details out for every test -- a test that went through it would pass whether the guard
+    existed or not.
+    """
+    import enrich
+    monkeypatch.setattr(enrich, "SERP_KEY", "x")
+    monkeypatch.setattr(enrich, "LIVE_RESERVE", 200)
+    monkeypatch.setattr(enrich, "searches_left", lambda force=False: 150)
+    assert enrich.may_spend() is False
+    monkeypatch.setattr(enrich, "searches_left", lambda force=False: 201)
+    assert enrich.may_spend() is True
+
+
+def test_unreadable_quota_never_blocks_a_search(monkeypatch):
+    """Refusing to search because we could not CHECK a quota is worse than overspending."""
+    import enrich
+    monkeypatch.setattr(enrich, "SERP_KEY", "x")
+    monkeypatch.setattr(enrich, "searches_left", lambda force=False: None)
+    assert enrich.may_spend() is True
+
+
+def test_no_key_means_no_spend(monkeypatch):
+    import enrich
+    monkeypatch.setattr(enrich, "SERP_KEY", "")
+    assert enrich.may_spend() is False
+
+
+def test_searches_left_is_cached_and_fail_soft(monkeypatch):
+    """The account read must never raise into a search, and must not be re-read per reference."""
+    import enrich
+    calls = []
+
+    def boom(*a, **k):
+        calls.append(1)
+        raise RuntimeError("serpapi down")
+
+    monkeypatch.setattr(enrich, "SERP_KEY", "x")
+    monkeypatch.setattr(enrich.requests, "get", boom)
+    monkeypatch.setattr(enrich, "_quota", {"left": None, "at": 0.0})
+    assert enrich.searches_left() is None
+    assert enrich.searches_left() is None
+    assert len(calls) == 1, "the second call must come from the cache"
