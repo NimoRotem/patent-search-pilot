@@ -1,0 +1,347 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "ep3707092",
+ "subject_pub": "EP-3707092-B1",
+ "n_claims_source": 13,
+ "claims_source": "corpus_claims",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 53,
+  "by_kind": {
+   "independent_limitation": 25,
+   "combination": 1,
+   "dependent_limitation": 27
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A vacuum gripper is portable or hand-held.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A rigid base element has a first side and a second side.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The second side of the base element has a central area and a periphery.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A loop-shaped vacuum seal element has an attachment surface.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The vacuum seal element is mounted to the periphery of the second side of the base element.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The vacuum seal element has a protruding portion free of contact with the rigid base element.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The protruding portion extends along the entire attachment surface.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The protruding portion extends away from the first side of the base element.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A contact surface is part of the protruding portion.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The contact surface is configured for at least partial contact with an object surface.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The vacuum seal element is elastically deformable at the contact surface.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The elastic deformation enables the contact surface to conform to the object surface.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The vacuum seal element has an inner encircling surface facing the central area.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The vacuum seal element has an outer encircling surface facing away from the inner encircling surface.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Both encircling surfaces extend between the contact and attachment surfaces.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A chamber is defined by the protruding portion and the central area of the base element.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "An air extraction means is mounted to the first side of the base element.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The air extraction means is in fluid communication with the chamber through the base element.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The air extraction means continuously extracts air from the chamber.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Air extraction causes the contact surface to grip the object surface.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "At least one bracing structure protrudes from the second side of the base element.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The bracing structure protrudes less than the vacuum seal element.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The bracing structure is made of a material more rigid than the vacuum seal element.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The bracing structure extends along a part of the periphery free of contact with the vacuum seal element.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The bracing structure material is less rigid than the base element material.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A portable or hand-held vacuum gripper comprises a rigid base element with a central area and periphery, a loop-shaped vacuum seal element with an attachment surface, protruding portion, and contact surface, defining a chamber, an air extra",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "The periphery of the second side of the base element is bounded by a peripheral rim.",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The periphery comprises a peripheral support area for the vacuum seal element attachment surface.",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The peripheral support area constitutes a majority of the periphery.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "A majority of the protruding portion is within a lateral boundary defined by the peripheral rim.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The vacuum seal element is mounted via a channel.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The channel receives an attachment portion of the vacuum seal element.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The protruding portion protrudes from the channel along the entire attachment portion.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The channel width corresponds to the thickness of the attachment portion.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The channel depth corresponds to the height of the attachment portion.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The protruding portion protrudes from the channel along its entire width.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The channel width does not exceed the thickness of the protruding portion.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The contact surface is co-extensive with the channel along its entire width.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The peripheral rim constitutes one wall of the channel.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "A handle for holding the vacuum gripper is connected to the first side of the base element.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The handle is connected at at least two spaced apart locations.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The handle comprises two handle mounting sections.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The handle mounting sections are integrally connected to the first side of the base element.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "A graspable handle section extends between the mounting sections.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The air extraction means comprises a power source.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The power source is mounted at least partially within one handle mounting section.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The air extraction means comprises an air extraction mechanism.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The air extraction mechanism is an impeller or a pump.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The air extraction mechanism is mounted within the handle.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The air extraction mechanism is mounted within one of the handle mounting sections.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Both the power source and the air extraction mechanism are at least partially housed in the two handle mounting portions.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The power source and air extraction mechanism are housed in two different handle mounting portions.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The bracing structure has a loop shape.",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "2cb7e61219b027fb"
+}

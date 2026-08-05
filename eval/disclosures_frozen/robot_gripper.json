@@ -1,0 +1,654 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "robot_gripper",
+ "subject_pub": "WO-2020229522-A1",
+ "n_claims_source": 21,
+ "claims_source": "corpus_claims",
+ "description_chars": 37645,
+ "description_source": "display_record",
+ "summary": {
+  "n": 104,
+  "by_kind": {
+   "independent_limitation": 22,
+   "combination": 2,
+   "dependent_limitation": 54,
+   "potential_claim": 26
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "Robot gripper with a receptacle for connection to an industrial robot",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Robot gripper with at least one suction unit for connection to a vacuum source",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Suction unit has a suction surface",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Suction surface holds plate-shaped workpieces by negative pressure",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Workpiece made of wood, wood-based materials, plastic, or aluminum",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Robot gripper has a substantially straight pressing edge in an edge section",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Robot gripper has an actuator",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Actuator tilts the suction unit relative to the receptacle",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Tilting occurs about a first tilting axis",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Method for removing plate-shaped workpieces from a stack",
+   "kind": "independent_limitation",
+   "source": "claim 15",
+   "weight": 1.0
+  },
+  {
+   "text": "Workpieces are made of wood, wood-based materials, plastic, or aluminum",
+   "kind": "independent_limitation",
+   "source": "claim 15",
+   "weight": 1.0
+  },
+  {
+   "text": "Move robot gripper near a workpiece to be removed",
+   "kind": "independent_limitation",
+   "source": "claim 15",
+   "weight": 1.0
+  },
+  {
+   "text": "Workpiece to be removed is between other workpieces",
+   "kind": "independent_limitation",
+   "source": "claim 15",
+   "weight": 1.0
+  },
+  {
+   "text": "Tilt suction unit so suction surface forms an angle with workpiece",
+   "kind": "independent_limitation",
+   "source": "claim 15",
+   "weight": 1.0
+  },
+  {
+   "text": "Angle is between 0.1\u00b0 and 35\u00b0",
+   "kind": "independent_limitation",
+   "source": "claim 15",
+   "weight": 1.0
+  },
+  {
+   "text": "Angle is between 0.5\u00b0 and 10\u00b0",
+   "kind": "independent_limitation",
+   "source": "claim 15",
+   "weight": 1.0
+  },
+  {
+   "text": "Angle is between 1\u00b0 and 2\u00b0",
+   "kind": "independent_limitation",
+   "source": "claim 15",
+   "weight": 1.0
+  },
+  {
+   "text": "Move robot gripper so pressing edge lies on an edge of the workpiece",
+   "kind": "independent_limitation",
+   "source": "claim 15",
+   "weight": 1.0
+  },
+  {
+   "text": "Apply negative pressure to suction unit to pull workpiece to suction surface",
+   "kind": "independent_limitation",
+   "source": "claim 15",
+   "weight": 1.0
+  },
+  {
+   "text": "Lift robot gripper with workpiece held on suction surface",
+   "kind": "independent_limitation",
+   "source": "claim 15",
+   "weight": 1.0
+  },
+  {
+   "text": "Handling system with an industrial robot and a measuring means",
+   "kind": "independent_limitation",
+   "source": "claim 21",
+   "weight": 1.0
+  },
+  {
+   "text": "Handling system recognizes if multiple workpieces are held on a suction unit",
+   "kind": "independent_limitation",
+   "source": "claim 21",
+   "weight": 1.0
+  },
+  {
+   "text": "Robot gripper with receptacle, suction unit, suction surface for holding workpieces by negative pressure, a straight pressing edge, and an actuator to tilt the suction unit about a first axis",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "Method for removing plate-shaped workpieces by moving a gripper near a workpiece, tilting the suction unit to an angle, positioning the pressing edge on the workpiece edge, applying negative pressure, and lifting the gripper with the workpi",
+   "kind": "combination",
+   "source": "claim 15",
+   "weight": 0.9
+  },
+  {
+   "text": "Robot gripper has at least two suction units",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "A first suction unit is longer than a second suction unit in a first direction",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction surfaces of first and second suction units lie in the same plane",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second suction units are arranged side by side in the first direction",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "First and second suction units define a suction unit group",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Robot gripper has a plurality of suction unit groups",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Robot gripper has two suction unit groups",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction surfaces of multiple suction unit groups lie in the same plane",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction unit groups are arranged side by side in a second direction",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Second direction is different from the first direction",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Second direction is perpendicular to the first direction",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Each suction unit can be selectively supplied with negative pressure",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction unit tilts between 0.1\u00b0 and 35\u00b0",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction unit tilts between 0.5\u00b0 and 10\u00b0",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction unit tilts between 1\u00b0 and 2\u00b0",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Pressing edge is between the suction surface and a lateral surface of the suction unit",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Pressing edge runs parallel to the first tilting axis",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Pressing edge has a radius less than or equal to 10 mm",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Pressing edge has a radius less than or equal to 1 mm",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Robot gripper has an identification system",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Identification system reads data from a workpiece identification means",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Robot gripper has a detection system",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Detection system recognizes size and/or position of workpieces and/or workpiece edges",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Robot gripper recognizes if the pressing edge is in contact with an object",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Robot gripper obtains information about contact pressure from the contact",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Actuator is biased into a first zero position with a spring element",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Actuator performs a discrete stroke opposite to the preload when pressurized",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Robot gripper has at least two serially connected actuators",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Each serially connected actuator performs a discrete stroke opposite to preload when pressurized",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Each serially connected actuator can be selectively pressurized",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Robot gripper has at least two parallel arranged actuators",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Each parallel actuator performs a discrete stroke opposite to preload when pressurized",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Each parallel actuator can be selectively pressurized",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction unit is tiltable about a second axis",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction unit is biased into a second zero position with respect to the second axis",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Second axis is different from the first axis",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Industrial robot is a linear robot",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Industrial robot has at least two purely translational degrees of freedom",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Industrial robot has three purely translational degrees of freedom",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Industrial robot has no more than two rotational degrees of freedom",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Industrial robot is provided with a robot gripper according to claims 1-13",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Tilt suction unit back with the workpiece",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "Applying negative pressure occurs after tilting the suction unit",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "Detect workpiece size with a detection system",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "Detection system detects position of workpiece edges",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "Detect workpiece size with an identification system",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "Identification system reads workpiece size from an identification means",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "Identification means is a barcode, QR code, or comparable code",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "Determine workpiece edge position based on identification means position",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "Select a suitable suction unit for workpiece size",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "Select a combination of suitable suction units for workpiece size",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "Selectively supply negative pressure to selected suction unit(s)",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "Unselected suction units are not supplied with negative pressure",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "Measuring means is an area scanner",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "Suction unit designed as a suction box or multiple suction cups",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction box has a substantially cuboid shape",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction surface is a surface of a suction box with openings",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction surface is a virtual surface defined by multiple suction cups",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Actuator is a linear motor, spindle drive, hydraulic/pneumatic cylinder, or magnetic actuator",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Pressing edge has a radius between 0.2mm and 1mm",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Pressing edge is an element not directly connected to the suction surface",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Pressing edge is attached to the receptacle or another structural element",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Robot gripper has multiple pressing edges",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Identification means is an RFID tag",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Detection system uses an optical image recognition system",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Detection system uses data from a central facility",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Spring element is a torsion spring, spiral spring, or gas pressure spring",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction surface can be tilted in a first and/or second direction",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "First and second tilting directions are opposite",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Second tilting axis is perpendicular to the first axis",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Second tilting axis is parallel to the first direction",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Industrial robot is a six-axis robot, portal robot, or robot with parallel kinematics",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Workpiece to be removed is in the topmost layer of a chaotic stack",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Workpiece to be removed is in a central section of the chaotic stack",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Workpiece describes a tilting movement towards the suction surface during pulling",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Pressing edge acts as a tilting axis for the workpiece",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Method carried out by an industrial robot according to claim 14",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Handling system recognizes two plate-shaped workpieces adhering due to adhesion or suction",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Handling system stops or unwinds removal process if multiple workpieces are held",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Handling system calls a machine operator to correct error if multiple workpieces are held",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  }
+ ],
+ "content_hash": "50552ce1593c0186"
+}

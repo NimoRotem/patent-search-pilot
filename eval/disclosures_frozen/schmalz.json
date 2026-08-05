@@ -1,0 +1,155 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "schmalz",
+ "subject_pub": "US-20260109053-A1",
+ "n_claims_source": 11,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 21,
+  "by_kind": {
+   "independent_limitation": 7,
+   "combination": 2,
+   "dependent_limitation": 12
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "grip unit for a vacuum hand-operated laying device",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "grip unit for use with a suction plate",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "housing with a grip portion for gripping",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "housing with an electrically operated vacuum generating device",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "grip portion designed as a hollow body",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "exhaust air from vacuum device guided through grip portion to air outlet",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "sound-damping device arranged in the grip portion",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A grip unit for a vacuum hand-operated laying device and for use with a suction plate, the grip unit comprising: a housing which has a grip portion for gripping the grip unit, and an, electrically operated, vacuum generating device, wherein",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "vacuum handling apparatus comprising a suction plate with a carrier plate and a seal fastened to and extending around the carrier plate, and a grip unit according to claim 1",
+   "kind": "combination",
+   "source": "claim 9",
+   "weight": 0.9
+  },
+  {
+   "text": "grip portion is at least partially lined with sound-damping material",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "vacuum generating device arranged completely in a first housing portion",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "sound-reducing device arranged in the first housing portion",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "first housing portion lined with sound-reducing material",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "grip portion elongated between first and second housing portions",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "air outlet arranged on the second housing portion",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "air collection device, an air collection screw, arranged upstream of grip portion in first housing portion",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "one or more bent or curved air baffles arranged downstream of grip portion in or on second housing portion for guiding exhaust air to air outlet",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "battery coupling point for electrical energy storage or rechargeable battery on second housing portion",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "one or more air baffles for directing exhaust air away from battery coupling point",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "grip unit and suction plate releasably connected via a coupling device",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "grip unit has a suction opening fluidically connected to a suction chamber",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "89ac8158337c2e03"
+}

@@ -48,7 +48,10 @@ KIND_WEIGHT = {
     "dependent_limitation": 0.70,
     "potential_claim": 0.55,
 }
-MAX_DISCLOSURES = int(os.environ.get("DISCLOSURES_MAX", "90"))
+#  Raised from 90 after three of the six benchmark subjects hit it exactly, which means the list
+#  was a prefix rather than the subject's disclosures. validate() now reports truncation instead
+#  of letting a truncated denominator pass silently.
+MAX_DISCLOSURES = int(os.environ.get("DISCLOSURES_MAX", "160"))
 #  Chars of source given to the extractor. Claims first, then description.
 MAX_CLAIMS_CHARS = int(os.environ.get("DISCLOSURES_CLAIM_CHARS", "22000"))
 MAX_DESC_CHARS = int(os.environ.get("DISCLOSURES_DESC_CHARS", "26000"))
@@ -101,20 +104,78 @@ def _claims_text(claims) -> str:
     return "\n".join(out)
 
 
-def extract(claims=None, description: str = "", title: str = "",
-            max_disclosures: int = None) -> list:
-    """-> [{text, kind, source, weight}] . Fail-soft: [] when nothing usable comes back.
+def validate(items, had_claims: bool, had_description: bool) -> list:
+    """Structural problems that make a disclosure list unusable as a metric denominator.
 
-    Callers must treat [] as "fall back to the old element list", never as "this patent discloses
+    -> [] when the list is sound, else a list of reasons.
+
+    Measured on the first freeze of six benchmark subjects, all three of these fired:
+        suction_chuck     0 disclosures returned despite 17,682 characters of description
+        suction_display   90 disclosures, every one a potential_claim, no claim limitations
+        three subjects    exactly MAX_DISCLOSURES, i.e. silently truncated
+
+    A denominator that is empty, structurally impossible, or truncated is worse than no metric,
+    because it still produces a number.
+    """
+    problems = []
+    if not items:
+        problems.append("EMPTY: the extractor returned nothing usable")
+        return problems
+    kinds = {}
+    for d in items:
+        kinds[d["kind"]] = kinds.get(d["kind"], 0) + 1
+    if had_claims and not kinds.get("independent_limitation"):
+        problems.append(
+            f"NO_INDEPENDENT_LIMITATIONS: claims were supplied but none were decomposed "
+            f"(kinds present: {sorted(kinds)})")
+    if had_claims and not kinds.get("combination"):
+        problems.append("NO_COMBINATION: no independent claim was stated as a whole")
+    if had_description and not kinds.get("potential_claim"):
+        problems.append("NO_POTENTIAL_CLAIMS: a description was supplied but nothing was found "
+                        "in it that the claims do not cover")
+    if len(items) >= MAX_DISCLOSURES:
+        problems.append(f"TRUNCATED: hit the cap of {MAX_DISCLOSURES}, so the list is a prefix "
+                        f"rather than the subject's disclosures")
+    return problems
+
+
+def extract(claims=None, description: str = "", title: str = "",
+            max_disclosures: int = None, retries: int = 1, strict: bool = False) -> list:
+    """-> [{text, kind, source, weight}] .
+
+    `strict=True` RAISES on a structurally invalid list instead of returning it. Benchmark and
+    freezing paths must use it: a denominator that is empty or has no claim limitations still
+    produces a number, and a number from a broken checklist is worse than no metric at all.
+
+    Fail-soft otherwise: [] means "fall back to the element list", never "this patent discloses
     nothing".
     """
     cap = max_disclosures or MAX_DISCLOSURES
     ctext = _claims_text(claims)[:MAX_CLAIMS_CHARS]
     desc = " ".join(str(description or "").split())[:MAX_DESC_CHARS]
     if not ctext and not desc:
+        if strict:
+            raise ValueError("no claims and no description supplied")
         return []
     user = (f"TITLE\n{_clean(title, 200)}\n\nCLAIMS\n{ctext or '(none supplied)'}\n\n"
             f"DESCRIPTION (extract)\n{desc or '(none supplied)'}")
+
+    best, best_problems = [], ["never ran"]
+    for _ in range(max(1, retries + 1)):
+        items = _extract_once(user, cap)
+        problems = validate(items, bool(ctext), bool(desc))
+        if not problems:
+            return items
+        if len(items) > len(best):
+            best, best_problems = items, problems
+    if strict:
+        raise ValueError("; ".join(best_problems))
+    print(f"[disclosures] returning a list with known problems: {'; '.join(best_problems)}",
+          flush=True)
+    return best
+
+
+def _extract_once(user: str, cap: int) -> list:
     try:
         out = llm.chat_json(_SYS, user, max_tokens=6000) or {}
     except Exception:

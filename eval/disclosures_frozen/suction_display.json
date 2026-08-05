@@ -1,0 +1,318 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "suction_display",
+ "subject_pub": "EP-2386771-A3",
+ "n_claims_source": 12,
+ "claims_source": "corpus_claims",
+ "description_chars": 16871,
+ "description_source": "corpus_paragraphs",
+ "summary": {
+  "n": 48,
+  "by_kind": {
+   "independent_limitation": 2,
+   "combination": 1,
+   "dependent_limitation": 11,
+   "potential_claim": 34
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A device for attachment to a surface with a suction cup.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The device includes a measuring device for measuring the suction force.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A device for attachment to a surface with a suction cup, comprising a measuring device for measuring the suction force.",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "The device includes a display for indicating the suction force.",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The measuring device and/or the display is electronic.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The device includes a power supply and/or is connectable to a power supply.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The device includes a housing, wherein the housing is smaller than the suction cup.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The device includes an actuating device for increasing the suction force.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The device includes a resilient element.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The resilient element is exchangeable.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The resilient element is a conical spring.",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The resilient element presses against the actuating device, stored in a sleeve, counter to the suction force of the suction cup.",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "A coil is arranged in both the actuating device and the sleeve holding it, allowing measurement of the displacement of the actuating device relative to the sleeve.",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The device includes a pretensioning lever that fixes the actuating device against the force of the resilient element.",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The measuring device operates mechanically.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The position of the suction plate relative to other fixed components is determined by markings.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The measuring device uses a system of coils or other electronic elements.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The measuring device measures a change in the electric field between moving and stationary parts.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The display is mechanical-optical.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The display uses position markings to indicate the working position of the suction plate.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The display includes warning markings indicating a change in suction force.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The device has an acoustic and/or optical display.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The device has a transmission function to send the holding force signal to a receiver.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The receiver for the holding force signal is the attached device.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Measured suction force values are converted into a stepless display by an electronic evaluation unit.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The display shows suction force in percentage or as a green-red bar.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The device generates changing acoustic signals.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The power supply is a battery or rechargeable battery housed in the device.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The device is equipped with a solar module for power supply.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The power supply is an external power source.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The power supply is the device attached to the holder.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The suction cup has a tab to facilitate removal from the surface.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The actuating device is an actuating button.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The resilient element is a coil spring.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The effective portion of the spring is adjustable to set spring strength and suction force.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The actuating button also serves as the measuring device.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Position markings are applied to the actuating button.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The actuating button is also the holding element for the compression spring.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The actuating button is mounted in a precise guide within the suction cup housing.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Microswitches query the position of the actuating button.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The actuating button has rings, recesses, or elevations of varying depths.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The pretensioning lever holds the actuating device completely within its sleeve.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The position of the actuating button corresponds to the rest position of the suction cup.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The suction cup membrane is in a fully extended state when the pretensioning lever is engaged.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "The total travel of the actuating button in the sleeve is approximately 2 mm to 2.5 mm.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "A light-emitting diode (LED) indicates green for 0 mm to 0.6 mm travel.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "A light-emitting diode (LED) indicates yellow for 0.6 mm to 1.1 mm travel.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "A light-emitting diode (LED) indicates red for travel beyond 1.1 mm.",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  }
+ ],
+ "content_hash": "ecbb61a89c3f70e7"
+}
