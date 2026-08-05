@@ -49,3 +49,6 @@ data/corpus_facts.json
 # field text backfill progress (regenerable runtime state)
 data/enrich_field_state.json
 data/logs/
+
+# benchmark runs are regenerable artefacts (eval/benchmark.py --run --tag N)
+eval/benchmark_results/
