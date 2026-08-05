@@ -55,6 +55,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import db
+import coverage_rank
 import deep_analysis
 import llm
 
@@ -178,6 +179,13 @@ _CLAIM_WEIGHT = 0.75
 #  Two incomparable things were being sorted into one list. They are now two lists. The cap
 #  survives only as the ceiling on what a card may DISPLAY, so a screen score is never presented
 #  as if it were evidence.
+#  Disclosures charted per reference. The old cap was deep_analysis.MAX_FEATURES=20, sized for
+#  a 12-item element summary; a real disclosure list runs to 60+ and the checklist is the
+#  point, so this is its own number. Each one lengthens every chart prompt, so it is a real
+#  cost and not free to raise.
+DISCLOSURE_CAP = int(os.environ.get("DEEP_RANK_DISCLOSURE_CAP", "40"))
+#  Order by marginal contribution to disclosure coverage rather than by score alone.
+COVERAGE_ORDER = os.environ.get("DEEP_RANK_COVERAGE_ORDER", "1") != "0"
 UNREAD_SCORE_CAP = int(os.environ.get("DEEP_RANK_UNREAD_CAP", "70"))
 
 #  ON-DEMAND TEXT, fetched for the references we are ABOUT TO READ and persisted to the corpus.
@@ -677,8 +685,23 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     ``/analysis/<slug>`` render from THIS reading instead of starting a second, separate one.
     """
     started = time.time()
-    features = [str(e).strip() for e in (report.get("elements") or []) if str(e).strip()]
-    features = features[:deep_analysis.MAX_FEATURES]
+    #  THE CHECKLIST THE SEARCH IS ARGUED AGAINST. `elements` is a 11-12 item summary of the
+    #  invention; `disclosures` is its claim limitations, its whole independent claims, what each
+    #  dependent claim adds, and the teachings the description supports but the claims do not
+    #  cover. Measured on real subjects: 63 disclosures against 12 elements.
+    #
+    #  This is not cosmetic. With 12 disclosures the top 50 saturates by document nine -- 42 of
+    #  the 50 slots were measured to add NOTHING to coverage -- so ranking by what a reference
+    #  CONTRIBUTES has nothing to work with, and the report is structurally blind to the document
+    #  that answers only claim 10. See coverage_rank.
+    disc = report.get("disclosures") or []
+    if disc:
+        features = [d["text"] for d in disc][:DISCLOSURE_CAP]
+        disc_weight = {d["text"]: d.get("weight", 1.0) for d in disc}
+    else:
+        features = [str(e).strip() for e in (report.get("elements") or []) if str(e).strip()]
+        features = features[:deep_analysis.MAX_FEATURES]
+        disc_weight = {}
     qd = report.get("query_document") or {}
     claim_items = []
     for c in (qd.get("claims") or [])[:deep_analysis.MAX_INPUT_CLAIMS]:
@@ -799,6 +822,31 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
                               -by_pub[p]["score"],
                               -(by_pub[p]["screen"] if by_pub[p]["screen"] is not None else -1),
                               by_pub[p]["retrieval_rank"] or 10**6))
+
+    #  RANK BY WHAT EACH REFERENCE ADDS, not by how much it resembles the invention.
+    #
+    #  The sort above is pointwise: every reference scored alone, then ordered. That is the wrong
+    #  objective for a search whose whole purpose is a legal argument. If ten disclosures exist and
+    #  fifty documents each cover the same nine, all fifty outrank the one document covering the
+    #  tenth, so the report shows the fifty most similar results and stays permanently blind to the
+    #  only reference that speaks to disclosure ten. Measured on a finished report: 42 of 50
+    #  displayed documents added nothing at all to coverage.
+    #
+    #  Greedy maximum-coverage fixes the objective. The first pick is unchanged (nothing is covered
+    #  yet, so it is still the strongest reference); what changes is every slot after it.
+    if COVERAGE_ORDER and len(order) > 1:
+        try:
+            idf = dict(rar["feature_idf"])
+            if disc_weight:                    # rarity x how much the disclosure carries legally
+                idf = {k: v * disc_weight.get(k, 1.0) for k, v in idf.items()}
+            reordered, gains = coverage_rank.rank(
+                order, by_pub, idf, score_of=lambda p: by_pub[p]["score"])
+            if len(reordered) == len(order):
+                for p, g in zip(reordered, gains):
+                    by_pub[p]["marginal_gain"] = g
+                order = reordered
+        except Exception:
+            traceback.print_exc()
 
     #  Candidates that were screened but not read keep their screen score, capped, so they stay
     #  visible without ever outranking a reference whose full text was quoted.

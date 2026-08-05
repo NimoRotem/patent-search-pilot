@@ -17,6 +17,7 @@ import pubnorm  # single link-builder: zero-padded Google/Espacenet URLs (droppe
 import ops_family, prefetch                        # worldwide family timeline + top-N proactive enrich
 import query_claim_grid                            # uploaded-claim x ranked-reference background grid
 import deep_analysis                               # full-text agentic reading of the top references
+import disclosures                                # the checklist a search is argued against
 import deep_rank                                   # screen wide, read deep, rank on the evidence
 import query_set                                   # many short queries instead of one long brief
 import report_archive                              # automatic top-50 full-text Markdown ZIP
@@ -923,6 +924,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             rep["image_channel"] = {"state": img_res.get("state"), "note": img_res.get("note"),
                                     "n": len(img_res.get("families") or [])}
         _attach_query_document(rep, doc)
+        _attach_disclosures(rep, doc, subject)
         _drop_self_family(rep)
 
         # ---- SCREEN WIDE, READ DEEP, RANK ON THE EVIDENCE (deep_rank) ----------------------
@@ -1051,6 +1053,54 @@ def _federate_block(query, mode):
                   "sources": h.sources, "rank": h.rank}
                  for h in (fed.hits or [])[:40]]
     return d
+
+
+def _subject_description(subject, doc):
+    """Description text for the subject: the uploaded document, else the corpus paragraphs.
+
+    The claims say what was CLAIMED; the description says what was DISCLOSED, and the gap between
+    them is where the potential claims live -- the ones a drafter could have written and did not,
+    which is exactly the art a search goes blind to the moment the claims are amended."""
+    full = str((doc or {}).get("full_text") or "").strip()
+    if len(full) > 400:
+        return full
+    num = getattr(subject, "number", None) if subject is not None else None
+    if not num:
+        return ""
+    try:
+        with db.cursor() as cur:
+            cur.execute("""SELECT ch.text FROM chunks ch JOIN publications p
+                             ON p.id = ch.publication_id
+                           WHERE p.publication_number = %s AND ch.kind = 'paragraph'
+                             AND ch.text IS NOT NULL ORDER BY ch.id LIMIT 150""", (num,))
+            return "\n".join(r["text"] for r in cur.fetchall())
+    except Exception:
+        traceback.print_exc()
+        return ""
+
+
+def _attach_disclosures(rep, doc, subject):
+    """Build the checklist the search is argued against, and record it on the report.
+
+    Never fatal: with no disclosures deep_rank falls back to the element summary, which is what it
+    always used. See src/disclosures.py for why 12 elements is too coarse to rank against.
+    """
+    try:
+        claims = list((doc or {}).get("claims") or [])
+        desc = _subject_description(subject, doc)
+        if not claims and len(desc) < 400:
+            return
+        ds = disclosures.extract(claims=claims, description=desc,
+                                 title=(doc or {}).get("title") or "")
+        if not ds:
+            return
+        rep["disclosures"] = ds
+        rep["disclosures_summary"] = disclosures.summary(ds)
+        print(f"[disclosures] {disclosures.summary(ds)} from {len(claims)} claims and "
+              f"{len(desc):,} chars of description (elements list was "
+              f"{len(rep.get('elements') or [])})", flush=True)
+    except Exception:
+        traceback.print_exc()
 
 
 def _external_block(query, doc):
