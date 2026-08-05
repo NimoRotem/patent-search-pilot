@@ -207,6 +207,36 @@ def _extract_once(user: str, cap: int) -> list:
     return disclosures
 
 
+#  Where eval/freeze_disclosures.py writes the frozen lists. Read from src/ so the pipeline can
+#  load one without importing the eval harness.
+FROZEN_DIR = os.environ.get(
+    "DISCLOSURES_FROZEN_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                 "eval", "disclosures_frozen"))
+
+
+def load_frozen(subject_id: str):
+    """The frozen disclosure list for a benchmark subject, or None.
+
+    A benchmark run must be scored against a denominator fixed BEFORE it ran. Generating the list
+    during the run means two runs of one subject are measured against two different checklists,
+    and a retrieval change moves the denominator underneath the numerator. Callers on the
+    benchmark path must fail rather than fall back to generating.
+    """
+    if not subject_id:
+        return None
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "", str(subject_id))[:64]
+    p = os.path.join(FROZEN_DIR, f"{safe}.json")
+    if not os.path.exists(p):
+        return None
+    try:
+        rec = json.load(open(p))
+    except Exception:
+        traceback.print_exc()
+        return None
+    return rec if (rec.get("usable") and rec.get("disclosures")) else None
+
+
 def summary(disclosures) -> dict:
     by = {}
     for d in disclosures or []:

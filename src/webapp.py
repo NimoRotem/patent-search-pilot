@@ -18,6 +18,8 @@ import ops_family, prefetch                        # worldwide family timeline +
 import query_claim_grid                            # uploaded-claim x ranked-reference background grid
 import deep_analysis                               # full-text agentic reading of the top references
 import disclosures                                # the checklist a search is argued against
+import manifest                                    # immutable record of what produced a run
+import trace                                       # one row per candidate, one terminal stage
 import deep_rank                                   # screen wide, read deep, rank on the evidence
 import query_set                                   # many short queries instead of one long brief
 import report_archive                              # automatic top-50 full-text Markdown ZIP
@@ -725,6 +727,20 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
     """Run one report. Runs fully concurrently with other generations — the only serialized step is
     the cross-encoder, which lives in its own child process (rerank_pool)."""
     _set_job(slug, status="running", msg="Queued…", t0=time.time())
+    #  IMMUTABLE RUN MANIFEST, written BEFORE anything happens. No comparison between two runs is
+    #  valid unless they shared a corpus snapshot, a commit, the same prompts and the same budgets,
+    #  and nothing recorded that: runs taken hours apart, with the corpus being written to and
+    #  constants being edited between them, were compared as though only the treatment had moved.
+    #  Written first so a run that dies stays "running" and can never be reported as complete.
+    run_id = f"{slug}-{int(time.time())}"
+    run_manifest = None
+    try:
+        run_manifest = manifest.start(
+            run_id, slug=slug, subject_id=benchmark_subject_id(slug) or "",
+            mode=mode, wide=bool(wide), search_focus=search_focus,
+            doc_token=bool(doc_token))
+    except Exception:
+        traceback.print_exc()
     try:
         _set_job(slug, msg="Decomposing the invention into technical elements…")
         A = CoverageAgent(retriever())
@@ -924,7 +940,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             rep["image_channel"] = {"state": img_res.get("state"), "note": img_res.get("note"),
                                     "n": len(img_res.get("families") or [])}
         _attach_query_document(rep, doc)
-        _attach_disclosures(rep, doc, subject)
+        _attach_disclosures(rep, doc, subject, slug=slug)
         _drop_self_family(rep)
 
         # ---- SCREEN WIDE, READ DEEP, RANK ON THE EVIDENCE (deep_rank) ----------------------
@@ -968,6 +984,11 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
         except Exception:
             traceback.print_exc()
 
+        rep["run_id"] = run_id
+        rep["manifest"] = {"run_id": run_id,
+                           "git_commit": (run_manifest or {}).get("git_commit"),
+                           "disclosure_list_version": rep.get("disclosure_list_version"),
+                           "disclosure_list_hash": rep.get("disclosure_list_hash")}
         _write_report(slug, rep)
         # Warm the view cache HERE (in the background job, where the user is already on the
         # progress page) so the listwise agentic rerank + claim-matrix verification run once and
@@ -1006,7 +1027,24 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 report_archive.ensure(slug, rep, view or {}, REPORTS)
             except Exception:
                 traceback.print_exc()
+        #  CANDIDATE-STAGE TRACE. One row per candidate family with exactly one terminal stage, so
+        #  "was this retrieved and dropped, or never retrieved?" is answerable from a finished run
+        #  instead of by guesswork. Guesswork attributed the EP 3 707 092 failure to reach when the
+        #  six-subject data later showed more was being lost to ranking.
+        try:
+            tracer = trace.from_report(rep, subject_id=benchmark_subject_id(slug) or "",
+                                       slug=slug, view=view or {})
+            path = tracer.write(str(REPORTS / f"{slug}.trace.jsonl"))
+            unknown = tracer.unknown()
+            print(f"[trace {slug}] {len(tracer.rows())} candidates -> {tracer.counts()}"
+                  + (f"  UNKNOWN={len(unknown)} (pipeline defect)" if unknown else "")
+                  + (f"  {path}" if path else ""), flush=True)
+        except Exception:
+            traceback.print_exc()
         _set_job(slug, kind="done", status="done", msg="done")
+        manifest.finish(run_manifest, status="completed",
+                        n_ranked_families=len(rep.get("ranked_families") or []),
+                        n_displayed=len((view or {}).get("cards") or []))
         if "PYTEST_CURRENT_TEST" not in os.environ:
             try:
                 notifications.queue_search_completion(slug)
@@ -1014,6 +1052,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 traceback.print_exc()
     except Exception as e:
         traceback.print_exc()
+        manifest.finish(run_manifest, status="failed", failure_reason=f"{type(e).__name__}: {e}")
         try:
             accounts.mark_search_failed(slug)
         except Exception:
@@ -1079,12 +1118,49 @@ def _subject_description(subject, doc):
         return ""
 
 
-def _attach_disclosures(rep, doc, subject):
+_BENCH_SLUG = re.compile(r"^bench-(.+)-[^-]+$")
+
+
+def benchmark_subject_id(slug):
+    """The benchmark subject a slug belongs to, or None for an ordinary search.
+
+    Benchmark reports are named `bench-<subject_id>-<tag>`. Deriving the id from the slug keeps
+    the benchmark path from needing its own plumbing through _run_job and _generate, and means a
+    benchmark run cannot forget to declare itself.
+    """
+    m = _BENCH_SLUG.match(str(slug or ""))
+    return m.group(1) if m else None
+
+
+def _attach_disclosures(rep, doc, subject, slug=None):
     """Build the checklist the search is argued against, and record it on the report.
 
-    Never fatal: with no disclosures deep_rank falls back to the element summary, which is what it
-    always used. See src/disclosures.py for why 12 elements is too coarse to rank against.
+    BENCHMARK RUNS LOAD A FROZEN LIST AND FAIL IF THERE IS NONE. The metric's denominator has to
+    be fixed before the run: generating it during the run scores two runs of the same subject
+    against two different checklists, and a retrieval change then moves the denominator underneath
+    the numerator. Falling back to generation here would restore exactly that, silently, and the
+    run would still produce a number.
+
+    An ordinary search generates its list and is never fatal: with none, deep_rank falls back to
+    the element summary, which is what it always used.
     """
+    bench = benchmark_subject_id(slug)
+    if bench:
+        frozen = disclosures.load_frozen(bench)
+        if not frozen:
+            raise RuntimeError(
+                f"benchmark run {slug}: no usable frozen disclosure list for subject "
+                f"'{bench}'. Run eval/freeze_disclosures.py. Refusing to generate one, because "
+                f"a denominator built during the run cannot be compared against any other run.")
+        rep["disclosures"] = frozen["disclosures"]
+        rep["disclosures_summary"] = frozen["summary"]
+        rep["disclosure_list_version"] = frozen.get("disclosure_list_version")
+        rep["disclosure_list_hash"] = frozen.get("content_hash")
+        rep["disclosure_list_source"] = "frozen"
+        print(f"[disclosures] FROZEN list for {bench}: {frozen['summary']} "
+              f"v{frozen.get('disclosure_list_version')} {frozen.get('content_hash')}",
+              flush=True)
+        return
     try:
         claims = list((doc or {}).get("claims") or [])
         desc = _subject_description(subject, doc)
@@ -1096,6 +1172,7 @@ def _attach_disclosures(rep, doc, subject):
             return
         rep["disclosures"] = ds
         rep["disclosures_summary"] = disclosures.summary(ds)
+        rep["disclosure_list_source"] = "generated"
         print(f"[disclosures] {disclosures.summary(ds)} from {len(claims)} claims and "
               f"{len(desc):,} chars of description (elements list was "
               f"{len(rep.get('elements') or [])})", flush=True)
