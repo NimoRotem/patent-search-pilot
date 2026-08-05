@@ -251,6 +251,42 @@ def plan(query_specs, brief: str = "", claims=None) -> dict:
     return {"aspects": aspects, "queries": queries}
 
 
+#  A canary that every source can answer, used to prove a source is ALIVE rather than merely
+#  reachable. Deliberately generic and in-scope for a mechanical corpus.
+HEALTH_QUERY = "suction cup gripper vacuum"
+HEALTH_CPC = ["B25J"]
+
+
+def probe_sources(timeout: float = 45.0) -> dict:
+    """Ask every source a REAL question. -> {source: {"ok", "hits", "error"}}.
+
+    An HTTP health endpoint proves the service is up, not that a source works. Lens returned 401
+    on every single search for the whole of this project while reporting healthy in /api/health,
+    so one entire source contributed nothing and nothing noticed. A health check that does not
+    execute a query cannot detect that.
+    """
+    qs = [{"source": s, "q": HEALTH_QUERY, "element": "health",
+           "cpc": HEALTH_CPC if s == "bigquery_gpatents" else []}
+          for s in ("pqai", "bigquery_gpatents", "serpapi_gpatents", "uspto",
+                    "epo_ops", "lens", "openalex", "ipaustralia")]
+    res = bulk(qs, timeout=timeout)
+    stats = res.get("stats") or {}
+    errs = {}
+    for e in (res.get("errors") or []):
+        errs.setdefault(e.get("source"), e.get("error"))
+    out = {}
+    for q in qs:
+        s = q["source"]
+        st = stats.get(s) or {}
+        skipped = next((x for x in (res.get("skipped") or []) if x.get("source") == s), None)
+        out[s] = {"ok": bool(st.get("hits")) and not st.get("errors") and not skipped,
+                  "hits": st.get("hits", 0),
+                  "error": errs.get(s) or (skipped or {}).get("why") or
+                           ("no error, zero hits" if st.get("queries") and not st.get("hits")
+                            else "")}
+    return out
+
+
 def bulk(queries, timeout: float = TIMEOUT) -> dict:
     """POST /api/bulk_search. Never raises: a failure returns an empty candidate list."""
     if not ENABLED or not queries:
@@ -271,6 +307,11 @@ def bulk(queries, timeout: float = TIMEOUT) -> dict:
             return d
         except Exception as e:
             last = f"{type(e).__name__}: {str(e)[:160]}"
+    #  A source that could not be REACHED is not a source that found nothing. Both used to come
+    #  back as an empty candidate list, so a benchmark run scored an unreachable fan-out exactly
+    #  as it scored a fan-out that ran and returned no art.
+    import failclosed
+    failclosed.source_failed("bulk_search", last or "unreachable")
     return {"ok": False, "candidates": [], "stats": {}, "error": last or "unreachable"}
 
 
@@ -782,6 +823,15 @@ def run(query_specs, brief: str = "", claims=None, on_event=None) -> dict:
 
     res = bulk(p["queries"])
     cands = res.get("candidates") or []
+    #  Per-source outcome, recorded so "zero hits" and "the adapter 401d" are never the same fact.
+    import failclosed
+    for src, st in (res.get("stats") or {}).items():
+        if st.get("errors"):
+            failclosed.source_failed(src, f"{st['errors']} of {st.get('queries')} queries failed")
+        elif not st.get("hits"):
+            failclosed.empty_result(src)
+    for e in (res.get("errors") or []):
+        failclosed.source_failed(e.get("source") or "?", e.get("error") or "")
     if on_event:
         try:
             on_event("fanout", {"candidates": len(cands), "stats": res.get("stats") or {}})

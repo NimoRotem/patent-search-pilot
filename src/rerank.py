@@ -37,10 +37,15 @@ def rerank(query: str, passages: list[str], top_k=None):
     back to identity order rather than crashing the caller (a report generation)."""
     if not passages:                              # nothing to rerank
         return []
+    import failclosed
     m = _load()
     identity = [(i, 0.0) for i in range(len(passages))]
     if m is None:
-        out = identity
+        #  IDENTITY ORDER IS NOT A RANKING. It is "we did not rank", and it is indistinguishable
+        #  downstream from "the cross-encoder agreed with the incoming order", which is a real and
+        #  very different statement. A benchmark run must not be scored on an unranked list.
+        out = failclosed.fallback("rerank.rerank", "reranker model unavailable", identity,
+                                  kind="rerank_identity")
     else:
         try:
             # cap length -> bge-reranker cost scales with sequence length; 256 tokens is plenty.
@@ -49,9 +54,14 @@ def rerank(query: str, passages: list[str], top_k=None):
             if not isinstance(scores, list):
                 scores = [scores]
             if len(scores) != len(passages):      # defensive: never trust the shape
+                failclosed.fallback(
+                    "rerank.rerank",
+                    f"model returned {len(scores)} scores for {len(passages)} passages",
+                    None, kind="rerank_bad_shape")
                 return identity[:top_k] if top_k else identity
             out = sorted(enumerate(scores), key=lambda t: t[1], reverse=True)
         except Exception as e:                    # noqa — reranking is non-fatal
-            print(f"[rerank] failed ({type(e).__name__}: {str(e)[:60]}); identity order")
-            out = identity
+            out = failclosed.fallback(
+                "rerank.rerank", f"{type(e).__name__}: {str(e)[:120]}", identity,
+                kind="rerank_identity")
     return out[:top_k] if top_k else out

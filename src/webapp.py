@@ -18,6 +18,7 @@ import ops_family, prefetch                        # worldwide family timeline +
 import query_claim_grid                            # uploaded-claim x ranked-reference background grid
 import deep_analysis                               # full-text agentic reading of the top references
 import disclosures                                # the checklist a search is argued against
+import failclosed                                  # degrade loudly, or not at all
 import manifest                                    # immutable record of what produced a run
 import trace                                       # one row per candidate, one terminal stage
 import deep_rank                                   # screen wide, read deep, rank on the evidence
@@ -733,6 +734,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
     #  constants being edited between them, were compared as though only the treatment had moved.
     #  Written first so a run that dies stays "running" and can never be reported as complete.
     run_id = f"{slug}-{int(time.time())}"
+    failclosed.reset()
     run_manifest = None
     try:
         run_manifest = manifest.start(
@@ -1042,9 +1044,16 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
         except Exception:
             traceback.print_exc()
         _set_job(slug, kind="done", status="done", msg="done")
+        #  Every degraded path taken during this run, on the manifest AND on the report, so a
+        #  report produced with a source down or the reranker unavailable can be recognised as
+        #  degraded afterwards instead of being read as a clean result.
+        degraded = failclosed.summary()
+        rep["degraded"] = degraded
+        _write_report(slug, rep)
         manifest.finish(run_manifest, status="completed",
                         n_ranked_families=len(rep.get("ranked_families") or []),
-                        n_displayed=len((view or {}).get("cards") or []))
+                        n_displayed=len((view or {}).get("cards") or []),
+                        degraded=degraded)
         if "PYTEST_CURRENT_TEST" not in os.environ:
             try:
                 notifications.queue_search_completion(slug)
@@ -1052,7 +1061,8 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 traceback.print_exc()
     except Exception as e:
         traceback.print_exc()
-        manifest.finish(run_manifest, status="failed", failure_reason=f"{type(e).__name__}: {e}")
+        manifest.finish(run_manifest, status="failed", failure_reason=f"{type(e).__name__}: {e}",
+                        degraded=failclosed.summary())
         try:
             accounts.mark_search_failed(slug)
         except Exception:

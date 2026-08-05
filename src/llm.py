@@ -77,19 +77,41 @@ def _call(system, user, max_tokens):
 
 
 def chat_json(system, user, max_tokens=1200):
+    """-> parsed JSON, or {} .
+
+    {} IS AMBIGUOUS AND THAT AMBIGUITY HAS COST REAL EXPERIMENTS. Every caller reads it as "the
+    model had nothing to say", and it is also what a 503, a quota refusal and a truncated response
+    return. The tournament comparisons failed this way for a whole A/B: the JSON was truncated at
+    max_tokens, every group returned {}, and the run reported a 40% ranking regression that was
+    entirely a broken call.
+
+    So the two cases are now separated. A transport or parse FAILURE goes through failclosed, which
+    raises in benchmark mode and records the degradation in production. A model that genuinely
+    returned empty JSON still returns {} and is not an error.
+    """
+    import failclosed
     try:
         resp = _call(system, user, max_tokens)
-    except Exception:
-        return {}
+    except Exception as e:
+        return failclosed.fallback("llm.chat_json", f"{type(e).__name__}: {str(e)[:160]}",
+                                   {}, kind="llm_call_failed")
     um = getattr(resp, "usage_metadata", None)
     _record_usage(
         getattr(um, "prompt_token_count", 0) if um else 0,
         getattr(um, "candidates_token_count", 0) if um else 0,
     )
+    text = getattr(resp, "text", None)
+    if not text:
+        return failclosed.fallback("llm.chat_json", "empty response body", {},
+                                   kind="llm_empty_response")
     try:
-        return json.loads(resp.text)
-    except Exception:
-        return {}
+        return json.loads(text)
+    except Exception as e:
+        #  Truncation is the common case and it looks exactly like an empty answer downstream.
+        return failclosed.fallback(
+            "llm.chat_json",
+            f"unparseable JSON ({type(e).__name__}); {len(text)} chars, "
+            f"ends {text[-40:]!r}", {}, kind="llm_bad_json")
 
 
 # ---------------------------------------------------------------------------
