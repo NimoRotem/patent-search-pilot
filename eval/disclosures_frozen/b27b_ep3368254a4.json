@@ -1,17 +1,18 @@
 {
  "disclosure_list_version": "2026-08-05.1",
- "subject_id": "suction_unit",
- "subject_pub": "WO-2021048069-A1",
- "n_claims_source": 15,
- "claims_source": "corpus_claims",
- "description_chars": 83639,
- "description_source": "family_paragraphs:US-12441555-B2",
+ "subject_id": "b27b_ep3368254a4",
+ "subject_pub": "EP-3368254-A4",
+ "n_claims_source": 0,
+ "claims_source": "none",
+ "description_chars": 0,
+ "description_source": "none",
  "summary": {
   "n": 0,
   "by_kind": {}
  },
  "problems": [
-  "never ran"
+  "no claims and no description supplied",
+  "NO_CLAIMS_AVAILABLE: every source returned zero claims for a published patent; this is a source failure"
  ],
  "usable": false,
  "weights_are": "fixed_by_kind",

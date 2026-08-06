@@ -1,0 +1,323 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b65g_ep3647241a1",
+ "subject_pub": "EP-3647241-A1",
+ "n_claims_source": 15,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 49,
+  "by_kind": {
+   "independent_limitation": 13,
+   "combination": 1,
+   "dependent_limitation": 35
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "Spray mist device for depositing dust on falling material flows",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Spray mist device for use with belt discharges or chutes",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Spray mist device has at least one spray mist unit",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Spray mist unit has at least one pressure line connection for a pressure line",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Pressure line connects to a fluid supply device",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Spray mist unit has at least one nozzle with a nozzle head",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Nozzle head has a nozzle outlet",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Liquid and/or gaseous fluid is supplied to the nozzle via the pressure line connection",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Spray mist device has a frame",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Protective curtain is suspended from the frame",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Protective curtain is oriented substantially in the direction of falling bulk material",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Protective curtain surrounds falling bulk material completely or partially in its circumferential direction",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Spray mist unit is built into the protective curtain",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Spray mist device for depositing dust on falling material flows, with a spray mist unit having a pressure line connection and a nozzle, and a frame with a suspended protective curtain oriented towards falling bulk material, where the curtai",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "Protective curtain is made of a flexible, pliable material",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Protective curtain forms at least one channel on its outer surface",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Channel contains at least one pressure line for fluid supply to the nozzle",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Spray mist unit is solely supported by the protective curtain",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Undercut is incorporated into the spray mist unit",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Nozzle is angled less than 90\u00b0 to the curtain's orientation",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Falling bulk material is sprayable obliquely from above by the nozzle",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Nozzle is arranged essentially outside the volume encompassed by the protective curtain",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Nozzle head with outlet is within the volume encompassed by the protective curtain",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Nozzle outlet is flush with the inner surface of the protective curtain",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Nozzle is a mixing nozzle for liquid and gaseous fluid",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Spray mist unit has a plurality of nozzles",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Nozzles are spaced apart transverse to the curtain's orientation",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Nozzles are spaced apart partially along the curtain's longitudinal direction",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Frame is a substantially rectangular metal frame",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Protective curtain completely surrounds falling bulk material in its circumferential direction",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Protective curtain is in the form of a cuboid jacket with four rectangular sides",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Spray mist unit has multiple nozzles spaced regularly along one rectangular side of the curtain",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Protective curtain comprises multiple lamellar strips",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Lamellar strips are suspended lengthwise side-by-side",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Lamellar strips are not or not firmly connected to each other",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Lamellar strips are oriented in their longitudinal direction towards falling bulk material",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Spray mist unit is built into one lamellar strip",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Lamellar strips are arranged in first and second rows with a distance between them",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Spray mist unit is arranged in the distance between the first and second rows of strips",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Spray mist unit is connected to an end of each lamellar strip",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "Lamellar strips have an outer surface facing away from falling bulk material",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Each lamellar strip forms or has at least one channel on its outer surface",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "Lamellar strips each have a power cable",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Power cable is integrated into the lamellar strips",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Nozzle has a protective cover for at least partial covering",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Protective cover is thermally insulating",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "Protective curtain has a length of at least 100 cm in the direction of falling bulk material",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Lamellar strips each have a length of at least 30 cm",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "Lamellar strips each have a width of at least 20 cm",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "c0f55dd8122bfae9"
+}

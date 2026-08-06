@@ -1,11 +1,11 @@
 {
  "disclosure_list_version": "2026-08-05.1",
- "subject_id": "suction_unit",
- "subject_pub": "WO-2021048069-A1",
- "n_claims_source": 15,
- "claims_source": "corpus_claims",
- "description_chars": 83639,
- "description_source": "family_paragraphs:US-12441555-B2",
+ "subject_id": "b65g_ep1795464a3",
+ "subject_pub": "EP-1795464-A3",
+ "n_claims_source": 67,
+ "claims_source": "family_claims:US-2007125727-A1",
+ "description_chars": 0,
+ "description_source": "none",
  "summary": {
   "n": 0,
   "by_kind": {}

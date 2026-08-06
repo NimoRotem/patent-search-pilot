@@ -45,6 +45,7 @@ sys.path.insert(0, HERE)
 
 import db  # noqa: E402
 import disclosures  # noqa: E402
+import enrich  # noqa: E402
 import enrich_display  # noqa: E402
 import pubnorm  # noqa: E402
 
@@ -61,52 +62,104 @@ def subject_pub(url):
     return pubnorm.canonical(m.group(1)) if m else ""
 
 
-def description_for(pub):
-    """Description text: corpus paragraphs first, then the display record.
+def family_members(pub):
+    """Publications in the subject's DOCDB family, richest in text first.
 
-    A subject the corpus holds claims-only yields no potential claims, which silently changes the
-    SHAPE of its disclosure list. That is recorded per subject rather than hidden.
+    An EP A3 or A4 is a SEARCH REPORT publication and carries no claims of its own; the claims sit
+    on the A1/A2 or on a family member in another office. Measured on the fifty-subject freeze,
+    seventeen subjects failed with NO_CLAIMS_AVAILABLE for exactly this reason while their
+    families held claims: EP-2133469-A3 has none, its family member US-8006624-B2 has six. Reading
+    the family is not a fudge, it is the same invention.
     """
     try:
         with db.cursor() as cur:
-            cur.execute("""SELECT ch.text FROM chunks ch JOIN publications p
-                             ON p.id = ch.publication_id
-                           WHERE p.publication_number = %s AND ch.kind = 'paragraph'
-                             AND ch.text IS NOT NULL ORDER BY ch.id LIMIT 150""", (pub,))
-            got = "\n".join(r["text"] for r in cur.fetchall())
-        if len(got) > 400:
-            return got, "corpus_paragraphs"
+            cur.execute("""
+                WITH me AS (SELECT COALESCE(NULLIF(simple_family_id,''), publication_number) fam
+                            FROM publications WHERE publication_number = %s LIMIT 1)
+                SELECT p.publication_number pn,
+                       (SELECT count(*) FROM claims c WHERE c.publication_id=p.id) ncl,
+                       (SELECT count(*) FROM chunks ch WHERE ch.publication_id=p.id
+                          AND ch.kind='paragraph') npar
+                FROM publications p, me
+                WHERE COALESCE(NULLIF(p.simple_family_id,''), p.publication_number) = me.fam
+                ORDER BY ncl DESC, npar DESC LIMIT 8""", (pub,))
+            return [dict(r) for r in cur.fetchall()]
     except Exception:
-        pass
-    d = enrich_display.enrich_for_display(pub) or {}
-    desc = d.get("description") or ""
-    if isinstance(desc, list):
-        desc = "\n".join(str(x) for x in desc)
-    return (desc, "display_record") if len(desc) > 400 else ("", "none")
+        return []
+
+
+def _corpus_paragraphs(pub, limit=150):
+    with db.cursor() as cur:
+        cur.execute("""SELECT ch.text FROM chunks ch JOIN publications p
+                         ON p.id = ch.publication_id
+                       WHERE p.publication_number = %s AND ch.kind = 'paragraph'
+                         AND ch.text IS NOT NULL ORDER BY ch.id LIMIT %s""", (pub, limit))
+        return "\n".join(r["text"] for r in cur.fetchall())
+
+
+def description_for(pub):
+    """Description text: this publication, then its family, then the patent API.
+
+    enrich_display does NOT return a description at all -- it has no such key -- which is why the
+    first fifty-subject freeze produced zero potential claims for every single subject and nobody
+    noticed until the counts were printed side by side. The description is what potential claims
+    are made of, so without it a third of the disclosure list silently does not exist.
+    """
+    for src, p in [("corpus_paragraphs", pub)] + \
+                  [("family_paragraphs", m["pn"]) for m in family_members(pub) if m["npar"]]:
+        try:
+            got = _corpus_paragraphs(p)
+            if len(got) > 400:
+                return got, f"{src}:{p}" if p != pub else src
+        except Exception:
+            continue
+    #  The API path. enrich.fetch_details DOES carry description text.
+    for p in [pub] + [m["pn"] for m in family_members(pub)[:3]]:
+        try:
+            d = enrich.fetch_details(p) or {}
+        except Exception:
+            continue
+        desc = d.get("description") or ""
+        if isinstance(desc, list):
+            desc = "\n".join(str(x) for x in desc)
+        if len(desc) > 400:
+            return desc, f"api:{p}"
+    return "", "none"
+
+
+def _corpus_claims(pub):
+    with db.cursor() as cur:
+        cur.execute("""SELECT c.claim_no, c.text FROM claims c
+                       JOIN publications p ON p.id = c.publication_id
+                       WHERE p.publication_number = %s AND c.text IS NOT NULL
+                       ORDER BY c.claim_no""", (pub,))
+        return [{"claim_no": r["claim_no"], "text": r["text"]} for r in cur.fetchall()]
 
 
 def claims_for(pub):
-    """Claims: the corpus first, then the display record.
+    """Claims: this publication, then its FAMILY, then the display record.
 
-    Measured: enrich_display returned ZERO claims for EP-2386771-A3 while the corpus holds 12.
-    Freezing from the weaker source produced a disclosure list with no claim limitations at all,
-    87 potential claims and nothing to measure novelty against -- and, because no claims had been
-    supplied, validate() saw a structurally consistent list and passed it.
+    enrich_display returned ZERO claims for EP-2386771-A3 while the corpus held 12, and freezing
+    from that weaker source produced a list with no claim limitations at all, 87 potential claims,
+    and nothing to measure novelty against.
+
+    The family fallback matters more: an EP A3/A4 is a search-report publication with no claims of
+    its own. Seventeen of fifty subjects failed on that alone.
     """
-    try:
-        with db.cursor() as cur:
-            cur.execute("""SELECT c.claim_no, c.text FROM claims c
-                           JOIN publications p ON p.id = c.publication_id
-                           WHERE p.publication_number = %s AND c.text IS NOT NULL
-                           ORDER BY c.claim_no""", (pub,))
-            got = [{"claim_no": r["claim_no"], "text": r["text"]} for r in cur.fetchall()]
-        if got:
-            return got, "corpus_claims"
-    except Exception:
-        pass
-    d = enrich_display.enrich_for_display(pub) or {}
-    cl = d.get("claims") or []
-    return (cl, "display_record") if cl else ([], "none")
+    for src, p in [("corpus_claims", pub)] + \
+                  [("family_claims", m["pn"]) for m in family_members(pub) if m["ncl"]]:
+        try:
+            got = _corpus_claims(p)
+            if got:
+                return got, f"{src}:{p}" if p != pub else src
+        except Exception:
+            continue
+    for p in [pub] + [m["pn"] for m in family_members(pub)[:3]]:
+        d = enrich_display.enrich_for_display(p) or {}
+        cl = d.get("claims") or []
+        if cl:
+            return cl, f"display_record:{p}" if p != pub else "display_record"
+    return [], "none"
 
 
 def path_for(subject_id):

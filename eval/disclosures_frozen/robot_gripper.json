@@ -4,14 +4,14 @@
  "subject_pub": "WO-2020229522-A1",
  "n_claims_source": 21,
  "claims_source": "corpus_claims",
- "description_chars": 37645,
- "description_source": "display_record",
+ "description_chars": 37832,
+ "description_source": "family_paragraphs:US-2022226878-A1",
  "summary": {
-  "n": 104,
+  "n": 87,
   "by_kind": {
-   "independent_limitation": 22,
-   "combination": 2,
-   "dependent_limitation": 54,
+   "independent_limitation": 16,
+   "combination": 3,
+   "dependent_limitation": 42,
    "potential_claim": 26
   }
  },
@@ -32,7 +32,7 @@
    "weight": 1.0
   },
   {
-   "text": "Robot gripper with at least one suction unit for connection to a vacuum source",
+   "text": "At least one suction unit for connection to a vacuum source",
    "kind": "independent_limitation",
    "source": "claim 1",
    "weight": 1.0
@@ -44,13 +44,7 @@
    "weight": 1.0
   },
   {
-   "text": "Suction surface holds plate-shaped workpieces by negative pressure",
-   "kind": "independent_limitation",
-   "source": "claim 1",
-   "weight": 1.0
-  },
-  {
-   "text": "Workpiece made of wood, wood-based materials, plastic, or aluminum",
+   "text": "Workpiece held by negative pressure on the suction surface",
    "kind": "independent_limitation",
    "source": "claim 1",
    "weight": 1.0
@@ -80,73 +74,37 @@
    "weight": 1.0
   },
   {
-   "text": "Method for removing plate-shaped workpieces from a stack",
+   "text": "Moving a robot gripper near a workpiece to be removed",
    "kind": "independent_limitation",
    "source": "claim 15",
    "weight": 1.0
   },
   {
-   "text": "Workpieces are made of wood, wood-based materials, plastic, or aluminum",
+   "text": "Tilting the suction unit so the suction surface forms an angle with the workpiece",
    "kind": "independent_limitation",
    "source": "claim 15",
    "weight": 1.0
   },
   {
-   "text": "Move robot gripper near a workpiece to be removed",
+   "text": "Moving the robot gripper so the pressing edge lies on an edge of the workpiece",
    "kind": "independent_limitation",
    "source": "claim 15",
    "weight": 1.0
   },
   {
-   "text": "Workpiece to be removed is between other workpieces",
+   "text": "Applying negative pressure to the suction unit to pull the workpiece",
    "kind": "independent_limitation",
    "source": "claim 15",
    "weight": 1.0
   },
   {
-   "text": "Tilt suction unit so suction surface forms an angle with workpiece",
+   "text": "Lifting the robot gripper with the held workpiece",
    "kind": "independent_limitation",
    "source": "claim 15",
    "weight": 1.0
   },
   {
-   "text": "Angle is between 0.1\u00b0 and 35\u00b0",
-   "kind": "independent_limitation",
-   "source": "claim 15",
-   "weight": 1.0
-  },
-  {
-   "text": "Angle is between 0.5\u00b0 and 10\u00b0",
-   "kind": "independent_limitation",
-   "source": "claim 15",
-   "weight": 1.0
-  },
-  {
-   "text": "Angle is between 1\u00b0 and 2\u00b0",
-   "kind": "independent_limitation",
-   "source": "claim 15",
-   "weight": 1.0
-  },
-  {
-   "text": "Move robot gripper so pressing edge lies on an edge of the workpiece",
-   "kind": "independent_limitation",
-   "source": "claim 15",
-   "weight": 1.0
-  },
-  {
-   "text": "Apply negative pressure to suction unit to pull workpiece to suction surface",
-   "kind": "independent_limitation",
-   "source": "claim 15",
-   "weight": 1.0
-  },
-  {
-   "text": "Lift robot gripper with workpiece held on suction surface",
-   "kind": "independent_limitation",
-   "source": "claim 15",
-   "weight": 1.0
-  },
-  {
-   "text": "Handling system with an industrial robot and a measuring means",
+   "text": "Handling system comprises an industrial robot and a measurement means",
    "kind": "independent_limitation",
    "source": "claim 21",
    "weight": 1.0
@@ -158,15 +116,27 @@
    "weight": 1.0
   },
   {
-   "text": "Robot gripper with receptacle, suction unit, suction surface for holding workpieces by negative pressure, a straight pressing edge, and an actuator to tilt the suction unit about a first axis",
+   "text": "Measurement means is an area scanner",
+   "kind": "independent_limitation",
+   "source": "claim 21",
+   "weight": 1.0
+  },
+  {
+   "text": "A robot gripper with a receptacle connected to an industrial robot, at least one suction unit connected to a vacuum source, the suction unit having a suction surface for holding a workpiece by negative pressure, the gripper having a straigh",
    "kind": "combination",
    "source": "claim 1",
    "weight": 0.9
   },
   {
-   "text": "Method for removing plate-shaped workpieces by moving a gripper near a workpiece, tilting the suction unit to an angle, positioning the pressing edge on the workpiece edge, applying negative pressure, and lifting the gripper with the workpi",
+   "text": "A method for removing plate-shaped workpieces from a stack, comprising: moving a robot gripper near a workpiece, tilting the suction unit to form an angle with the workpiece, moving the gripper so its pressing edge lies on the workpiece edg",
    "kind": "combination",
    "source": "claim 15",
+   "weight": 0.9
+  },
+  {
+   "text": "A handling system comprising an industrial robot and a measurement means, configured to recognize if multiple workpieces are held on a suction unit of the robot gripper, where the measurement means is an area scanner.",
+   "kind": "combination",
+   "source": "claim 21",
    "weight": 0.9
   },
   {
@@ -182,7 +152,7 @@
    "weight": 0.7
   },
   {
-   "text": "Suction surfaces of first and second suction units lie in the same plane",
+   "text": "Suction surfaces of the first and second suction units are in the same plane",
    "kind": "dependent_limitation",
    "source": "claim 2",
    "weight": 0.7
@@ -200,19 +170,13 @@
    "weight": 0.7
   },
   {
-   "text": "Robot gripper has a plurality of suction unit groups",
+   "text": "Robot gripper has a plurality of suction unit groups, preferably two",
    "kind": "dependent_limitation",
    "source": "claim 3",
    "weight": 0.7
   },
   {
-   "text": "Robot gripper has two suction unit groups",
-   "kind": "dependent_limitation",
-   "source": "claim 3",
-   "weight": 0.7
-  },
-  {
-   "text": "Suction surfaces of multiple suction unit groups lie in the same plane",
+   "text": "Suction surfaces of all suction units are in the same plane",
    "kind": "dependent_limitation",
    "source": "claim 3",
    "weight": 0.7
@@ -224,13 +188,7 @@
    "weight": 0.7
   },
   {
-   "text": "Second direction is different from the first direction",
-   "kind": "dependent_limitation",
-   "source": "claim 3",
-   "weight": 0.7
-  },
-  {
-   "text": "Second direction is perpendicular to the first direction",
+   "text": "Second direction is different from the first direction, preferably perpendicular",
    "kind": "dependent_limitation",
    "source": "claim 3",
    "weight": 0.7
@@ -242,19 +200,7 @@
    "weight": 0.7
   },
   {
-   "text": "Suction unit tilts between 0.1\u00b0 and 35\u00b0",
-   "kind": "dependent_limitation",
-   "source": "claim 5",
-   "weight": 0.7
-  },
-  {
-   "text": "Suction unit tilts between 0.5\u00b0 and 10\u00b0",
-   "kind": "dependent_limitation",
-   "source": "claim 5",
-   "weight": 0.7
-  },
-  {
-   "text": "Suction unit tilts between 1\u00b0 and 2\u00b0",
+   "text": "Suction unit tilts between 0.1\u00b0 and 35\u00b0 relative to the receptacle",
    "kind": "dependent_limitation",
    "source": "claim 5",
    "weight": 0.7
@@ -266,19 +212,13 @@
    "weight": 0.7
   },
   {
-   "text": "Pressing edge runs parallel to the first tilting axis",
+   "text": "Pressing edge runs substantially parallel to the first tilting axis",
    "kind": "dependent_limitation",
    "source": "claim 6",
    "weight": 0.7
   },
   {
    "text": "Pressing edge has a radius less than or equal to 10 mm",
-   "kind": "dependent_limitation",
-   "source": "claim 6",
-   "weight": 0.7
-  },
-  {
-   "text": "Pressing edge has a radius less than or equal to 1 mm",
    "kind": "dependent_limitation",
    "source": "claim 6",
    "weight": 0.7
@@ -296,13 +236,13 @@
    "weight": 0.7
   },
   {
-   "text": "Robot gripper has a detection system",
+   "text": "Robot gripper has a recognition system",
    "kind": "dependent_limitation",
    "source": "claim 8",
    "weight": 0.7
   },
   {
-   "text": "Detection system recognizes size and/or position of workpieces and/or workpiece edges",
+   "text": "Recognition system detects size and/or position of workpieces and/or workpiece edges",
    "kind": "dependent_limitation",
    "source": "claim 8",
    "weight": 0.7
@@ -314,7 +254,7 @@
    "weight": 0.7
   },
   {
-   "text": "Robot gripper obtains information about contact pressure from the contact",
+   "text": "Robot gripper obtains information about the resulting pressing force",
    "kind": "dependent_limitation",
    "source": "claim 9",
    "weight": 0.7
@@ -326,7 +266,7 @@
    "weight": 0.7
   },
   {
-   "text": "Actuator performs a discrete stroke opposite to the preload when pressurized",
+   "text": "Actuator performs a discrete stroke opposite to the bias when pressurized",
    "kind": "dependent_limitation",
    "source": "claim 10",
    "weight": 0.7
@@ -338,7 +278,7 @@
    "weight": 0.7
   },
   {
-   "text": "Each serially connected actuator performs a discrete stroke opposite to preload when pressurized",
+   "text": "Each serially connected actuator performs a discrete stroke when pressurized",
    "kind": "dependent_limitation",
    "source": "claim 11",
    "weight": 0.7
@@ -356,7 +296,7 @@
    "weight": 0.7
   },
   {
-   "text": "Each parallel actuator performs a discrete stroke opposite to preload when pressurized",
+   "text": "Each parallel actuator performs a discrete stroke when pressurized",
    "kind": "dependent_limitation",
    "source": "claim 12",
    "weight": 0.7
@@ -374,7 +314,7 @@
    "weight": 0.7
   },
   {
-   "text": "Suction unit is biased into a second zero position with respect to the second axis",
+   "text": "Suction unit is biased to a second zero position with respect to the second axis",
    "kind": "dependent_limitation",
    "source": "claim 13",
    "weight": 0.7
@@ -392,19 +332,13 @@
    "weight": 0.7
   },
   {
-   "text": "Industrial robot has at least two purely translational degrees of freedom",
+   "text": "Industrial robot has at least two, preferably three, purely translatory degrees of freedom",
    "kind": "dependent_limitation",
    "source": "claim 14",
    "weight": 0.7
   },
   {
-   "text": "Industrial robot has three purely translational degrees of freedom",
-   "kind": "dependent_limitation",
-   "source": "claim 14",
-   "weight": 0.7
-  },
-  {
-   "text": "Industrial robot has no more than two rotational degrees of freedom",
+   "text": "Industrial robot has no more than two rotatory degrees of freedom",
    "kind": "dependent_limitation",
    "source": "claim 14",
    "weight": 0.7
@@ -416,7 +350,7 @@
    "weight": 0.7
   },
   {
-   "text": "Tilt suction unit back with the workpiece",
+   "text": "Tilting back the suction unit with the workpiece",
    "kind": "dependent_limitation",
    "source": "claim 16",
    "weight": 0.7
@@ -428,79 +362,49 @@
    "weight": 0.7
   },
   {
-   "text": "Detect workpiece size with a detection system",
+   "text": "Detecting workpiece size with a recognition system or identification system",
    "kind": "dependent_limitation",
    "source": "claim 18",
    "weight": 0.7
   },
   {
-   "text": "Detection system detects position of workpiece edges",
+   "text": "Identification means is a barcode, QR code, or similar",
    "kind": "dependent_limitation",
    "source": "claim 18",
    "weight": 0.7
   },
   {
-   "text": "Detect workpiece size with an identification system",
-   "kind": "dependent_limitation",
-   "source": "claim 18",
-   "weight": 0.7
-  },
-  {
-   "text": "Identification system reads workpiece size from an identification means",
-   "kind": "dependent_limitation",
-   "source": "claim 18",
-   "weight": 0.7
-  },
-  {
-   "text": "Identification means is a barcode, QR code, or comparable code",
-   "kind": "dependent_limitation",
-   "source": "claim 18",
-   "weight": 0.7
-  },
-  {
-   "text": "Determine workpiece edge position based on identification means position",
+   "text": "Determining workpiece edge position based on identification means position",
    "kind": "dependent_limitation",
    "source": "claim 19",
    "weight": 0.7
   },
   {
-   "text": "Select a suitable suction unit for workpiece size",
+   "text": "Selecting a suitable suction unit or combination of units for workpiece size",
    "kind": "dependent_limitation",
    "source": "claim 20",
    "weight": 0.7
   },
   {
-   "text": "Select a combination of suitable suction units for workpiece size",
+   "text": "Selectively supplying negative pressure to selected suction units only",
    "kind": "dependent_limitation",
    "source": "claim 20",
    "weight": 0.7
   },
   {
-   "text": "Selectively supply negative pressure to selected suction unit(s)",
-   "kind": "dependent_limitation",
-   "source": "claim 20",
-   "weight": 0.7
-  },
-  {
-   "text": "Unselected suction units are not supplied with negative pressure",
-   "kind": "dependent_limitation",
-   "source": "claim 20",
-   "weight": 0.7
-  },
-  {
-   "text": "Measuring means is an area scanner",
-   "kind": "dependent_limitation",
-   "source": "claim 21",
-   "weight": 0.7
-  },
-  {
-   "text": "Suction unit designed as a suction box or multiple suction cups",
+   "text": "Plate-shaped workpiece made of wood, wood-based materials, plastic, or aluminum",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Suction box has a substantially cuboid shape",
+   "text": "Suction unit configured as a suction box or a plurality of suction cups",
+   "kind": "potential_claim",
+   "source": "description",
+   "weight": 0.55
+  },
+  {
+   "text": "Suction box is substantially cuboid in shape",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
@@ -524,7 +428,7 @@
    "weight": 0.55
   },
   {
-   "text": "Pressing edge has a radius between 0.2mm and 1mm",
+   "text": "Pressing edge radius is between 0.2 mm and 1 mm",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
@@ -536,13 +440,13 @@
    "weight": 0.55
   },
   {
-   "text": "Pressing edge is attached to the receptacle or another structural element",
+   "text": "Pressing edge is attached to the receiving area or another structural element",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Robot gripper has multiple pressing edges",
+   "text": "Robot gripper has a plurality of pressing edges",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
@@ -554,101 +458,95 @@
    "weight": 0.55
   },
   {
-   "text": "Detection system uses an optical image recognition system",
+   "text": "Recognition system uses an optical image recognition system",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Detection system uses data from a central facility",
+   "text": "Recognition system determines size/position from data provided by a central device",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Spring element is a torsion spring, spiral spring, or gas pressure spring",
+   "text": "Spring element is a torsion spring, coil spring, bending spring, or gas pressure spring",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Suction surface can be tilted in a first and/or second direction",
+   "text": "Second axis is perpendicular to the first axis",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "First and second tilting directions are opposite",
+   "text": "Second axis is parallel to the first direction",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Second tilting axis is perpendicular to the first axis",
+   "text": "Industrial robot is a six-axis robot, gantry robot, or robot with parallel kinematics",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Second tilting axis is parallel to the first direction",
+   "text": "Workpiece to be removed lies between other workpieces",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Industrial robot is a six-axis robot, portal robot, or robot with parallel kinematics",
+   "text": "Suction unit tilts between 0.5\u00b0 and 10\u00b0 relative to the workpiece",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Workpiece to be removed is in the topmost layer of a chaotic stack",
+   "text": "Suction unit tilts between 1\u00b0 and 2\u00b0 relative to the workpiece",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Workpiece to be removed is in a central section of the chaotic stack",
+   "text": "Handling system stops or reverses removal process if multiple workpieces are held",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Workpiece describes a tilting movement towards the suction surface during pulling",
+   "text": "Handling system calls a machine operator if multiple workpieces are held",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Pressing edge acts as a tilting axis for the workpiece",
+   "text": "Chaotic stack comprises workpieces of non-constant thickness",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Method carried out by an industrial robot according to claim 14",
+   "text": "Chaotic stack comprises wedge-shaped workpieces",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Handling system recognizes two plate-shaped workpieces adhering due to adhesion or suction",
+   "text": "Chaotic stack comprises workpieces of any shape",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   },
   {
-   "text": "Handling system stops or unwinds removal process if multiple workpieces are held",
-   "kind": "potential_claim",
-   "source": "description",
-   "weight": 0.55
-  },
-  {
-   "text": "Handling system calls a machine operator to correct error if multiple workpieces are held",
+   "text": "Storage device is a pallet or parts carrier for an automated guided vehicle",
    "kind": "potential_claim",
    "source": "description",
    "weight": 0.55
   }
  ],
- "content_hash": "50552ce1593c0186"
+ "content_hash": "4dd11eab8bfb11c6"
 }

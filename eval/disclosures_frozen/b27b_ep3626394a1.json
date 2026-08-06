@@ -1,0 +1,167 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b27b_ep3626394a1",
+ "subject_pub": "EP-3626394-A1",
+ "n_claims_source": 11,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 23,
+  "by_kind": {
+   "independent_limitation": 7,
+   "combination": 1,
+   "dependent_limitation": 15
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "Cutting tool for arrangement on a cylindrical drive shaft",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Cutting tool has a continuous receiving opening for the drive shaft",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A central axis runs through the receiving opening",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Central axis corresponds to the tool's rotation axis when mounted",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Receiving opening is delimited by a peripheral wall",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Peripheral wall has at least three contact projections for partial contact with the drive shaft",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "At least one contact projection has different distances to its two circumferentially adjacent contact projections",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A cutting tool for a cylindrical drive shaft with a continuous receiving opening, a central axis corresponding to the rotation axis, a peripheral wall with at least three contact projections, where at least one projection has unequal distan",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "All distances between adjacent contact projections are of different sizes",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Each distance from a first contact projection to any other contact projection is unequal to any distance from a second contact projection to any other contact projection",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "Largest distance between adjacent contact projections is at least 102% of the smallest distance",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "Largest distance between adjacent contact projections is at most 170% of the smallest distance",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "At least three contact projections touch an imaginary circle in the plane of rotation, centered on the central axis",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one contact projection touches the circle along a circumferential angle range of less than 20\u00b0",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "All contact projections touch an imaginary circle in the plane of rotation, centered on the central axis",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "Peripheral wall between two adjacent contact projections has a maximum distance to the central axis",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "At least two maximum distances between adjacent contact projections and the central axis are of different sizes",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "Center of mass of the cutting tool lies on the central axis",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Pockets are formed between the contact projections",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Pockets remain free when the cutting tool is mounted",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Contact projections and pockets are designed so the center of mass lies on the central axis",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Peripheral wall has at most fourteen contact projections",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Peripheral wall has at most seven contact projections",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "d8b99806a78fcde2"
+}

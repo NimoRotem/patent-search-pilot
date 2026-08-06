@@ -107,3 +107,18 @@ def test_extract_returns_empty_rather_than_guessing(monkeypatch):
     monkeypatch.setattr(disclosures.llm, "chat_json", lambda *a, **k: {})
     assert disclosures.extract(claims=["1. a claim"], description="x" * 500) == []
     assert disclosures.extract(claims=[], description="") == []
+
+
+def test_a_total_extraction_failure_reports_why(monkeypatch):
+    """When EVERY attempt returns nothing, the reported reason must be the real one.
+
+    `if len(items) > len(best)` is `0 > 0` in that case, so the placeholder survived and two
+    subjects in the fifty-subject freeze reported "never ran" instead of EMPTY. A wrong reason on
+    a failure is worse than none: it sends the next person looking in the wrong place.
+    """
+    monkeypatch.setattr(disclosures.llm, "chat_json", lambda *a, **k: {})
+    try:
+        disclosures.extract(claims=["1. a claim"], description="x" * 500, strict=True)
+        assert False, "strict must raise"
+    except ValueError as e:
+        assert "EMPTY" in str(e) and "never ran" not in str(e), str(e)

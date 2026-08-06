@@ -160,13 +160,15 @@ def extract(claims=None, description: str = "", title: str = "",
     user = (f"TITLE\n{_clean(title, 200)}\n\nCLAIMS\n{ctext or '(none supplied)'}\n\n"
             f"DESCRIPTION (extract)\n{desc or '(none supplied)'}")
 
-    best, best_problems = [], ["never ran"]
-    for _ in range(max(1, retries + 1)):
+    best, best_problems = [], []
+    for attempt in range(max(1, retries + 1)):
         items = _extract_once(user, cap)
         problems = validate(items, bool(ctext), bool(desc))
         if not problems:
             return items
-        if len(items) > len(best):
+        #  `>` alone never fires when EVERY attempt returns zero items, so the placeholder reason
+        #  survived and two subjects reported "never ran" instead of why they actually failed.
+        if attempt == 0 or len(items) > len(best):
             best, best_problems = items, problems
     if strict:
         raise ValueError("; ".join(best_problems))
