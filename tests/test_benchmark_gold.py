@@ -71,12 +71,21 @@ def test_gold_source_states_whether_an_xy_filter_could_be_applied(rows):
     The label must say which regime each subject is under rather than implying one rule."""
     for r in rows:
         assert r["gold_source"] in {"corpus_citations_xy", "corpus_citations_uncoded",
-                                    "transcribed_from_document"}
+                                    "transcribed_from_document",
+                                    "bigquery_search_report_xy"}
     by = {r["subject_id"]: r["gold_source"] for r in rows}
     coded = {s for s, g in by.items() if g == "corpus_citations_xy"}
     for r in rows:
         if r["subject_id"] in coded and r["eligible"] == "true":
-            assert BG.is_xy(r["citation_code"]) is not False
+            assert BG.is_xy(r["citation_code"], r["gold_source"]) is not False
+
+
+def test_a_source_filtered_list_is_not_reported_as_uncoded():
+    """BigQuery-sourced subjects were filtered to X/Y in the WHERE clause, so the per-citation
+    code is not stored. Treating that as uncoded reports '0 coded' beside a gold_source claiming
+    an X/Y filter: true, and unreadable."""
+    assert BG.is_xy("", "bigquery_search_report_xy") is True
+    assert BG.is_xy("", "corpus_citations_uncoded") is None
 
 
 def test_is_xy_distinguishes_absent_from_negative():

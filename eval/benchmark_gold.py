@@ -110,8 +110,21 @@ def codes_for(cur, subject_pub):
     return out
 
 
-def is_xy(code):
-    """True when a relevance code exists AND marks X or Y. Unknown codes are not judged here."""
+#  Subjects whose citation list was ALREADY filtered to X/Y at source. For those the per-citation
+#  code is not stored (BigQuery's citation.type was applied in the WHERE clause, not carried
+#  through), and treating them as uncoded would report "0 coded" beside a gold_source claiming an
+#  X/Y filter -- true but unreadable.
+XY_FILTERED_AT_SOURCE = {"bigquery_search_report_xy"}
+
+
+def is_xy(code, gold_source=""):
+    """True when the citation is known X/Y, False when known and neither, None when unknown.
+
+    None is deliberately distinct from False: an ABSENT relevance code must never be mistaken for
+    a negative one, or the X/Y rule silently excludes every subject that has no codes.
+    """
+    if gold_source in XY_FILTERED_AT_SOURCE:
+        return True
     c = (code or "").upper()
     if not c or c.startswith("CAT:"):
         return None            # no relevance code available: cannot apply the rule
@@ -157,7 +170,7 @@ def build():
                 reason = "SUBJECT_FAMILY"
             elif pdate and sefd and pdate >= str(sefd)[:10]:
                 reason = "PUBLISHED_AFTER_EFD"
-            elif is_xy(code) is False:
+            elif is_xy(code, gold_source) is False:
                 reason = "NOT_X_OR_Y"
             elif fam and fam in seen_fams:
                 reason = "DUPLICATE_FAMILY"
@@ -215,7 +228,8 @@ def report(rows):
     for sid in sorted({r["subject_id"] for r in rows}):
         rs = [r for r in rows if r["subject_id"] == sid]
         e = [r for r in rs if r["eligible"] == "true"]
-        coded = sum(1 for r in rs if is_xy(r["citation_code"]) is not None)
+        coded = sum(1 for r in rs
+                    if is_xy(r["citation_code"], r["gold_source"]) is not None)
         print(f"{sid:16s} {len(rs):>7d} {len(e):>9d} "
               f"{sum(1 for r in e if r['in_corpus'] == 'true'):>10d} {coded:>6d}  "
               f"{rs[0]['gold_source']}")
