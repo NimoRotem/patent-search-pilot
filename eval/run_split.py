@@ -23,12 +23,17 @@ print(f"[batch] {len(todo)} subjects to run at tag {TAG}", flush=True)
 for i,s in enumerate(todo,1):
     t0=time.time()
     print(f"[batch] {i}/{len(todo)} {s['id']}", flush=True)
-    r=subprocess.run([HERE+"/.venv/bin/python", "eval/benchmark.py", "--run",
-                      "--tag", TAG, "--only", s["id"]],
-                     capture_output=True, text=True, timeout=3600)
+    #  KEEP THE OUTPUT. Discarding it on success hid a real failure: the first run produced a
+    #  report and a trace but NO VIEW, because _build_view_cached raised inside a caught except
+    #  and its traceback went to a pipe nobody read. A run that "succeeded" is exactly when a
+    #  swallowed error is most expensive, because nothing prompts anyone to look for it.
+    logdir=os.path.join(HERE,"data","logs","runs"); os.makedirs(logdir, exist_ok=True)
+    with open(os.path.join(logdir, f"{s['id']}-{TAG}.log"), "w") as fh:
+        r=subprocess.run([HERE+"/.venv/bin/python", "eval/benchmark.py", "--run",
+                          "--tag", TAG, "--only", s["id"]],
+                         stdout=fh, stderr=subprocess.STDOUT, text=True, timeout=3600)
     ok=os.path.exists(f"data/reports/bench-{s['id']}-{TAG}.json")
-    print(f"[batch] {i}/{len(todo)} {s['id']} {'ok' if ok else 'FAILED'} "
-          f"{time.time()-t0:.0f}s rc={r.returncode}", flush=True)
-    if not ok:
-        print((r.stderr or r.stdout or "")[-600:], flush=True)
+    view_ok=os.path.exists(f"data/reports/bench-{s['id']}-{TAG}.view.json")
+    print(f"[batch] {i}/{len(todo)} {s['id']} {'ok' if ok else 'FAILED'}"
+          f"{'' if view_ok else ' NO-VIEW'} {time.time()-t0:.0f}s rc={r.returncode}", flush=True)
 print("[batch] complete", flush=True)

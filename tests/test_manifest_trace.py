@@ -128,3 +128,18 @@ def test_snapshots_are_cheap_enough_for_the_request_path(monkeypatch):
     t0 = _t.time()
     manifest.corpus_snapshot()
     assert _t.time() - t0 < 0.05, "the second call must come from the cache"
+
+
+def test_a_report_written_mid_run_is_not_a_finished_run(tmp_path, monkeypatch):
+    """_write_report persists DURING a run, so the file existing does not mean the run finished.
+
+    Scoring one mid-flight counts everything the later stages have not reached as NOT_RETRIEVED.
+    Measured: reading suction_chuck while it was still running turned 3 delivered references into
+    11 missing ones and looked exactly like a regression, which is the most expensive kind of
+    false signal because it prompts a hunt for a bug that is not there.
+    """
+    monkeypatch.setattr(manifest, "MANIFEST_DIR", str(tmp_path))
+    m = manifest.start("bench-x-v1-123")
+    assert manifest.load("bench-x-v1-123")["completion_status"] == "running"
+    manifest.finish(m, status="completed")
+    assert manifest.load("bench-x-v1-123")["completion_status"] == "completed"

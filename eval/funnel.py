@@ -25,6 +25,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, HERE)
 
+import manifest  # noqa: E402
 import oracle  # noqa: E402
 import trace as tr  # noqa: E402
 
@@ -66,7 +67,7 @@ def main():
     subs = {s["id"]: s for s in
             json.load(open(os.path.join(HERE, "benchmark_subjects.json")))["subjects"]}
     gold = gold_by_subject()
-    rows, grand, missing_reports, injected = [], {}, [], []
+    rows, grand, missing_reports, injected, incomplete = [], {}, [], [], []
 
     for sid, cits in sorted(gold.items()):
         sub = subs.get(sid) or {}
@@ -77,13 +78,39 @@ def main():
             missing_reports.append(sid)
             continue
         rep = json.load(open(path))
+        #  REFUSE AN IN-FLIGHT RUN. _write_report persists the report DURING a run, so a report
+        #  file existing does not mean the run finished. Scoring one mid-flight counts everything
+        #  the later stages have not reached yet as NOT_RETRIEVED: measured, reading
+        #  suction_chuck while it was still running turned 3 delivered references into 11 missing
+        #  ones and looked exactly like a regression. This is what completion_status is for.
+        m = manifest.load(rep.get("run_id") or "") if rep.get("run_id") else None
+        finished = (m or {}).get("completion_status")
+        if not (rep.get("deep_rank") or {}).get("order") or finished == "running":
+            incomplete.append(f"{sid}({finished or 'no deep_rank'})")
+            continue
         if oracle.is_injected(rep):
             #  An injected run has seen the answer key. Counting it here would report the upper
             #  bound as the result, which is the single most misleading thing this tool could do.
             injected.append(sid)
             continue
+        #  The view decides which families were DELIVERED, so without it every reference reads as
+        #  PORTFOLIO_EXCLUDED and the headline number is silently zero. The file is only a cache:
+        #  build it on demand when it is missing rather than depend on a run having written it.
+        #  Measured: the first batch run produced a report and a trace but no view, because
+        #  _build_view_cached raised and the runner discarded its stdout.
         vp = path.replace(".json", ".view.json")
-        view = json.load(open(vp)) if os.path.exists(vp) else {}
+        if os.path.exists(vp):
+            view = json.load(open(vp))
+        else:
+            try:
+                import webapp
+                view = webapp._build_view_cached(f"bench-{sid}-{args.tag}", rep) or {}
+                print(f"  [{sid}] view was missing; rebuilt "
+                      f"({len(view.get('cards') or [])} cards)")
+            except Exception as e:
+                view = {}
+                print(f"  [{sid}] view missing AND could not be rebuilt "
+                      f"({type(e).__name__}); TOP_50 cannot be attributed for this subject")
         t = tr.from_report(rep, subject_id=sid, slug=f"bench-{sid}-{args.tag}", view=view)
         by, tally = tr.attribute(t, [c["gold_family_id"] for c in cits])
         for c in cits:
@@ -111,6 +138,9 @@ def main():
         print(f"  no report for {len(missing_reports)} subject(s): "
               f"{', '.join(missing_reports[:6])}"
               + (" ..." if len(missing_reports) > 6 else ""))
+    if incomplete:
+        print(f"  EXCLUDED {len(incomplete)} unfinished run(s): {', '.join(incomplete[:6])}"
+              + (" ..." if len(incomplete) > 6 else ""))
     if injected:
         print(f"  EXCLUDED {len(injected)} oracle-injected run(s): {', '.join(injected[:6])}")
     print(f"\n{'stage':28s} {'n':>5s} {'share':>7s}  next action (plan section 14)")
