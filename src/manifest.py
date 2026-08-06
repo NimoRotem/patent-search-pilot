@@ -209,6 +209,7 @@ def start(run_id, **fields):
         "failure_reason": "",
         "host": platform.node(),
         **git_state(),
+        "src_tree_hash": src_tree_hash(),
         "corpus_snapshot": corpus_snapshot(),
         "index_snapshot": index_snapshot(),
         "model_versions": model_versions(),
@@ -251,6 +252,31 @@ def load(run_id):
     return json.load(open(p)) if os.path.exists(p) else None
 
 
+def src_tree_hash():
+    """A hash of every source file the pipeline actually imports.
+
+    git_commit and git_dirty are not enough when the checkout is SHARED. Measured on 2026-08-06: a
+    second agent was working in this same working tree on its own feature branch, switched the
+    branch underneath a running experiment, and its edit silently reverted a line in webapp.py
+    that the comparison depended on. git_dirty was true for reasons that had nothing to do with
+    the experiment, so it could not be used to tell whether the CODE had moved between two arms.
+    This can: it is the content of the files, not the state of the index.
+    """
+    import hashlib
+    h = hashlib.sha256()
+    root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
+    try:
+        for name in sorted(os.listdir(root)):
+            if not name.endswith(".py"):
+                continue
+            with open(os.path.join(root, name), "rb") as fh:
+                h.update(name.encode())
+                h.update(hashlib.sha256(fh.read()).digest())
+    except Exception:
+        return ""
+    return h.hexdigest()
+
+
 def comparable(a, b):
     """Fields that MUST match for a control/treatment comparison to mean anything.
 
@@ -280,6 +306,12 @@ def comparable(a, b):
     if ra.get("mode") in (None, "off") or rb.get("mode") in (None, "off"):
         diffs.append("replay was off for at least one arm, so the external world was not held "
                      "constant between them")
-    if a.get("git_dirty") or b.get("git_dirty"):
-        diffs.append("one or both runs had uncommitted changes")
+    #  The checkout is shared with another agent, so git_dirty is noisy for reasons unrelated to
+    #  the experiment. The source CONTENT is what actually has to match.
+    if a.get("src_tree_hash") and b.get("src_tree_hash"):
+        if a["src_tree_hash"] != b["src_tree_hash"]:
+            diffs.append(f"src_tree_hash differs: the pipeline source changed between the two "
+                         f"arms ({a['src_tree_hash'][:12]} vs {b['src_tree_hash'][:12]})")
+    elif a.get("git_dirty") or b.get("git_dirty"):
+        diffs.append("one or both runs had uncommitted changes and no src_tree_hash to check")
     return diffs
