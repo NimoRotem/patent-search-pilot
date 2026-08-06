@@ -435,6 +435,18 @@ actually held.
   mostly_out       3    6%    8   17%   36   77%
 ```
 
+By publication authority, which matters because it decides how hard the fix is:
+
+```
+absent entirely (73)   WO 24   US 15   DE 8   EP 8   GB 4   other 14
+stub, under 3k (147)   DE 38   EP 37   JP 31   US 21   WO 7   other 13
+```
+
+The two buckets have different causes and different remedies. The art we hold **nothing** for is
+dominated by WO and US, which are among the easiest full texts to obtain in bulk. The art we hold a
+**stub** of is dominated by DE, EP and JP, where the obstacle is full-text description in the
+original language rather than availability of a record.
+
 ---
 
 ## 5. The finding
@@ -543,10 +555,12 @@ not merely to pass with it.
 
 ## 8. Questions for the reviewer
 
-1. **Acquisition at scale.** Bibliographic data and abstracts are widely reachable. Full
-   description text for arbitrary DE, GB and JP publications is the bottleneck. 73 of 326
-   development gold references are absent entirely and most are DE and GB. What do practitioners
-   actually use, and is there a legitimate bulk route we are missing?
+1. **Acquisition at scale.** Two distinct problems. 73 of 326 development gold references are
+   absent entirely, and that set is dominated by WO (24) and US (15), both of which should be
+   straightforwardly obtainable in bulk, which suggests our pipeline is at fault rather than the
+   sources. Separately, 147 are stubs and that set is dominated by DE (38), EP (37) and JP (31),
+   where the obstacle is full description text in the original language. What do practitioners
+   actually use for the second case, and is there a legitimate bulk route we are missing?
 2. **Variance control.** Is there a cheaper standard than N-fold repetition for calibrating
    run-to-run variance in an LLM-in-the-loop retrieval pipeline?
 3. **Is the gold standard right?** See threat 5. If examiner citations are systematically narrow,
