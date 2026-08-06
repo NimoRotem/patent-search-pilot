@@ -58,6 +58,7 @@ import db
 import coverage_rank
 import deep_analysis
 import llm
+import oracle
 
 VERSION = 1
 
@@ -711,6 +712,19 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
                                 "claim_no": c.get("claim_no") or len(claim_items) + 1,
                                 "text": text})
     ranked = list(report.get("ranked_families") or [])
+    #  ORACLE INJECTION, diagnostic only. Hands a stage the gold it never received so the stages
+    #  BELOW it can be measured in isolation. Disarmed unless a flag, a valid stage and a non-empty
+    #  gold list are all present, and every report it touches is stamped so no metric can score it
+    #  as a real run. See src/oracle.py.
+    _orc = report.get("_oracle") or {}
+    orc = oracle.Oracle(stage=_orc.get("stage", ""), gold_families=_orc.get("gold") or [])
+    if orc:
+        before = len(ranked)
+        ranked = orc.inject(ranked, "before_screen")
+        report[oracle.REPORT_KEY] = orc.stamp()
+        if len(ranked) != before:
+            print(f"[oracle] injected {len(ranked) - before} gold families before the screen",
+                  flush=True)
     if not ranked or not (features or claim_items):
         return None
 
@@ -758,6 +772,19 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         if r["pub"] not in seen:
             chosen.append(r)
             seen.add(r["pub"])
+    #  before_read: everything the screen saw whose family is gold gets read, whatever it scored.
+    #  This isolates reading and below from any screening error.
+    if orc.at("before_read") or orc.at("before_charting"):
+        goldset = set(orc.gold)
+        added = 0
+        for r in rows:
+            if r["pub"] in seen or r.get("fam") not in goldset:
+                continue
+            chosen.append(r)
+            seen.add(r["pub"])
+            added += 1
+        report[oracle.REPORT_KEY] = orc.stamp()
+        print(f"[oracle] forced {added} gold references into the read set", flush=True)
     #  A low score from a screener that was shown NOTHING is not evidence of irrelevance, it is
     #  the absence of evidence, and it must not be the reason a reference is never read. Any
     #  candidate the screen could not see text for is read anyway if the retrieval ranked it
@@ -834,6 +861,12 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     #
     #  Greedy maximum-coverage fixes the objective. The first pick is unchanged (nothing is covered
     #  yet, so it is still the strongest reference); what changes is every slot after it.
+    if orc.at("before_portfolio"):
+        goldset = set(orc.gold)
+        head = [p for p in order if (by_pub.get(p) or {}).get("family") in goldset]
+        order = head + [p for p in order if p not in set(head)]
+        report[oracle.REPORT_KEY] = orc.stamp()
+        print(f"[oracle] moved {len(head)} charted gold references to the front", flush=True)
     if COVERAGE_ORDER and len(order) > 1:
         try:
             idf = dict(rar["feature_idf"])

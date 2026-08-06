@@ -943,6 +943,8 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                                     "n": len(img_res.get("families") or [])}
         _attach_query_document(rep, doc)
         _attach_disclosures(rep, doc, subject, slug=slug)
+        if _ORACLE_PLAN:
+            rep["_oracle"] = dict(_ORACLE_PLAN)
         _drop_self_family(rep)
 
         # ---- SCREEN WIDE, READ DEEP, RANK ON THE EVIDENCE (deep_rank) ----------------------
@@ -1128,7 +1130,12 @@ def _subject_description(subject, doc):
         return ""
 
 
-_BENCH_SLUG = re.compile(r"^bench-(.+)-[^-]+$")
+#  Set by eval/run_one_oracle.py only. None in every other path, including production, so an
+#  injected run cannot happen by accident: oracle.Oracle also requires its own flag and a
+#  non-empty gold list before it will arm.
+_ORACLE_PLAN = None
+
+_BENCH_SLUG = re.compile(r"^bench-(.+?)-[^-]+(?:-(?:before_\w+|control))?$")
 
 
 def benchmark_subject_id(slug):

@@ -44,3 +44,27 @@ def test_the_stamp_says_the_numbers_are_an_upper_bound():
     o = oracle.Oracle(stage="before_portfolio", gold_families=GOLD, enabled=True)
     o.inject([], "before_portfolio")
     assert "upper bound" in o.stamp()["WARNING"]
+
+
+def test_benchmark_subject_id_survives_the_oracle_slug_suffix():
+    """Oracle runs are named bench-<id>-<tag>-<stage>. If the subject cannot be parsed out, the
+    run loads the WRONG frozen disclosure list, or none, and the arm is silently not comparable
+    with its own control."""
+    import webapp
+    cases = {
+        "bench-ep3707092-v13": "ep3707092",
+        "bench-suction_chuck-v15": "suction_chuck",
+        "bench-ep3707092-ob1-before_screen": "ep3707092",
+        "bench-ep3707092-ob1-control": "ep3707092",
+        "bench-a47l_ep2674093a1-v15": "a47l_ep2674093a1",
+    }
+    for slug, want in cases.items():
+        assert webapp.benchmark_subject_id(slug) == want, slug
+    assert webapp.benchmark_subject_id("adhoc-something") is None
+
+
+def test_production_never_arms_the_oracle():
+    """Three locks: the module-level plan is None outside the oracle runner, Oracle needs its own
+    flag, and it needs a non-empty gold list."""
+    import webapp
+    assert webapp._ORACLE_PLAN is None
