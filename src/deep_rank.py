@@ -549,7 +549,15 @@ def score_reference(ref, rar, lead=()):
         n_unc += r["verdict"] == "uncertain"
         covered.append({"item": r["item"], "verdict": r["verdict"],
                         "idf": round(fidf.get(r["item"], 0.0), 3),
-                        "location": r.get("location") or "", "quote": r.get("quote") or ""})
+                        "location": r.get("location") or "", "quote": r.get("quote") or "",
+                        #  WHICH PUBLICATION THIS QUOTE CAME FROM. Today it is always the charted
+                        #  reference itself, so the field is redundant and that is the point of
+                        #  adding it now: the family-member substitution planned next will let a
+                        #  sibling's text stand in for a reference we cannot read, and claims are
+                        #  amended between offices. A quote taken from a US sibling does not
+                        #  prove what the cited DE publication disclosed. Recording the source
+                        #  publication per cell is what makes that checkable rather than assumed.
+                        "evidence_pub": r.get("evidence_pub") or ref.get("pub") or ""})
     for r in _grounded_rows(ref, "claims"):
         got += _CLAIM_WEIGHT * _W[r["verdict"]] * cidf.get(r["item"], 0.0)
     got += LEAD_WEIGHT * sum(idf for _f, idf in lead)
@@ -620,6 +628,13 @@ def score_reference(ref, rar, lead=()):
         "leads": [f for f, _idf in lead],
         "read_in_full": read_in_full,
         "chars_read": int(ref.get("chars") or 0),
+        #  The publication whose TEXT was read. Equal to the reference itself unless a family
+        #  member stood in for it. `evidence_publication_id` is the identifier any displayed
+        #  evidence must be attributed to, and `is_proxy_text` says whether that attribution
+        #  differs from the reference being cited.
+        "evidence_publication_id": ref.get("text_source_pub") or ref.get("pub") or "",
+        "is_proxy_text": bool(ref.get("text_source_pub")
+                              and ref.get("text_source_pub") != ref.get("pub")),
     }
 
 

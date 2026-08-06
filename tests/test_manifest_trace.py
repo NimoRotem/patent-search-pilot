@@ -215,3 +215,59 @@ def test_eval_entrypoints_guard_their_module_level_work():
         assert re.search(r'if\s+__name__\s*==\s*.__main__.', src), (
             f"eval/{name} has no __main__ guard; multiprocessing spawn will re-run its "
             f"module-level work in every child")
+
+
+def test_gold_matches_when_the_two_sides_spell_the_family_key_differently():
+    """A reference the pipeline DID find must not be reported as never retrieved.
+
+    eval/benchmark_gold.py names a familyless reference `ext:US-3429508-A`; src/external.py names
+    the same thing `US-3429508-A`. Measured on the v15 dev split, all 57 references carrying the
+    placeholder were attributed to NOT_RETRIEVED, which is what a structural non-match looks like.
+    It inflated NOT_RETRIEVED from 29% to 44% and would have made the acquisition experiment
+    unable to show a gain at all.
+    """
+    import trace as tr
+    rep = {
+        "channel_families": {"pqai": ["US-3429508-A"]},
+        "ranked_families": ["US-3429508-A", "12345678"],
+        "deep_rank": {"n_candidates": 2, "by_pub": {}, "candidate_families": [],
+                      "screen_scores": {}, "order": [], "unread": {}},
+    }
+    t = tr.from_report(rep, subject_id="s", slug="s")
+    by, _ = tr.attribute(t, ["ext:US-3429508-A", "12345678"])
+    assert by["ext:US-3429508-A"] != tr.NOT_RETRIEVED, (
+        "the pipeline ranked this reference; attribution must not call it never retrieved")
+    assert by["12345678"] != tr.NOT_RETRIEVED
+    #  and a family genuinely absent from the run is still NOT_RETRIEVED
+    by2, _ = tr.attribute(t, ["ext:DE-9999999-A1"])
+    assert by2["ext:DE-9999999-A1"] == tr.NOT_RETRIEVED
+
+
+def test_every_charted_cell_records_which_publication_its_quote_came_from():
+    """Evidence must be attributable to a specific publication, not to a family.
+
+    A DOCDB family is the same invention filed in several offices, but the CLAIMS are amended
+    between them. Once a readable sibling can stand in for a reference we hold no text for, a
+    quote taken from the US member does not prove what the cited DE publication disclosed. The
+    field is added before the substitution exists precisely so the substitution cannot ship
+    without it.
+    """
+    import deep_rank
+    ref = {"pub": "DE-102011089343-A1", "chars": 5602,
+           "features": [{"item": "a sealing lip deflects inward", "verdict": "disclosed",
+                         "grounding": "verified", "quote": "the lip deflects inward",
+                         "location": "[0031]"}]}
+    rar = {"feature_idf": {"a sealing lip deflects inward": 2.0}, "claim_idf": {},
+           "feature_df": {"a sealing lip deflects inward": 1}}
+    _score, detail = deep_rank.score_reference(ref, rar)
+    assert detail["evidence_publication_id"] == "DE-102011089343-A1"
+    assert detail["is_proxy_text"] is False
+    assert detail["covered"], "expected at least one grounded cell"
+    for cell in detail["covered"]:
+        assert cell.get("evidence_pub"), f"cell has no evidence_pub: {cell}"
+
+    #  and when a sibling's text stood in, both the id and the proxy flag must say so
+    ref["text_source_pub"] = "US-2014008929-A1"
+    _score2, detail2 = deep_rank.score_reference(ref, rar)
+    assert detail2["evidence_publication_id"] == "US-2014008929-A1"
+    assert detail2["is_proxy_text"] is True

@@ -228,15 +228,57 @@ def from_report(rep, subject_id="", slug="", view=None):
     return t
 
 
+def match_keys(fam):
+    """Every spelling of one family key, so two subsystems that name it differently still meet.
+
+    THE DEFECT THIS EXISTS TO PREVENT. When a cited reference is not in the corpus there is no
+    DOCDB family to key it by, and the two sides of the benchmark invented DIFFERENT placeholders
+    for that case. eval/benchmark_gold.py wrote `ext:US-3429508-A`; src/external.py wrote the bare
+    canonical number `US-3429508-A`. Those never compare equal, so every such reference was
+    recorded as NOT_RETRIEVED whatever the pipeline actually did with it.
+
+    Measured on the v15 dev split: 57 of 266 gold references carried the placeholder and 57 of 57
+    were attributed to NOT_RETRIEVED. A hundred percent of anything is the signature of a
+    structural non-match, not a result. It also inflated NOT_RETRIEVED from 29% to 44% and, worse,
+    it would have made an acquisition experiment incapable of showing a gain: fetching the missing
+    document does not help if the reference still cannot be matched once retrieved.
+    """
+    f = str(fam or "").strip()
+    if not f:
+        return set()
+    bare = f[4:] if f[:4].lower() == "ext:" else f
+    out = {f, bare, "ext:" + bare}
+    try:
+        import pubnorm
+        c = pubnorm.canonical(bare)
+        if c:
+            out |= {c, "ext:" + c, "".join(ch for ch in c.upper() if ch.isalnum())}
+    except Exception:
+        pass
+    return {k for k in out if k}
+
+
 def attribute(trace, gold_family_ids):
     """Where each gold family died. -> {family_id: stage} plus a per-stage tally.
 
     This is the whole point of the trace: a miss becomes a cause instead of a description.
+
+    Matching goes through match_keys on BOTH sides, so a reference is credited when the pipeline
+    found it under any spelling of its identifier. Without that, a miss and an unmeasurable
+    reference are indistinguishable, and they mean opposite things.
     """
-    by = {r["family_id"]: r for r in trace.rows()}
+    index = {}
+    for r in trace.rows():
+        for k in match_keys(r["family_id"]):
+            index.setdefault(k, r)
     out, tally = {}, {}
     for fam in gold_family_ids or ():
-        stage = (by.get(fam) or {}).get("exclusion_stage") or NOT_RETRIEVED
+        row = None
+        for k in match_keys(fam):
+            row = index.get(k)
+            if row is not None:
+                break
+        stage = (row or {}).get("exclusion_stage") or NOT_RETRIEVED
         out[fam] = stage
         tally[stage] = tally.get(stage, 0) + 1
     return out, tally
