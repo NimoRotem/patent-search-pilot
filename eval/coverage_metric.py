@@ -120,6 +120,29 @@ def main():
     if args.subject != "all":
         subs = [s for s in subs if s["id"] == args.subject]
 
+    #  ONE BUDGET OR NO AVERAGE. The denominator is only comparable across subjects if every
+    #  frozen list was extracted under the same limits. Measured: raising the output budget from
+    #  6,000 to 24,000 tokens took two subjects from 0 disclosures to 195, against a median of 39
+    #  for lists frozen under the old budget. Averaging a 195-item denominator against a 39-item
+    #  one produces a number that looks like coverage and is really a mixture of two rulers, and
+    #  nothing about the output would show it. Refuse instead of reporting it.
+    _budgets = {}
+    for sub in subs:
+        fz = FZ.load(sub["id"])
+        if fz and fz.get("disclosures"):
+            _budgets.setdefault(
+                json.dumps(fz.get("extraction_budget") or {}, sort_keys=True), []
+            ).append(sub["id"])
+    if len(_budgets) > 1 and args.subject == "all":
+        print("REFUSING TO AVERAGE: the frozen lists were extracted under different budgets, so "
+              "their denominators are not comparable.")
+        for b, ids in sorted(_budgets.items(), key=lambda kv: -len(kv[1])):
+            print(f"  {len(ids):>3d} subject(s) at {b}")
+            print(f"      e.g. {', '.join(ids[:6])}")
+        print("Re-freeze every subject under one budget "
+              "(python eval/freeze_disclosures.py --force) and run this again.")
+        raise SystemExit(2)
+
     tot = {k: [0.0, 0.0] for k in ks}
     print(f"{'subject':16s} {'n':>4s} " + " ".join(f"{'@' + str(k):>7s}" for k in ks)
           + f" {'ind@50':>7s} {'crit unans':>11s}")

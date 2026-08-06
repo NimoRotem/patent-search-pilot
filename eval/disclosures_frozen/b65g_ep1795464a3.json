@@ -7,13 +7,15 @@
  "description_chars": 0,
  "description_source": "none",
  "summary": {
-  "n": 0,
-  "by_kind": {}
+  "n": 195,
+  "by_kind": {
+   "independent_limitation": 44,
+   "combination": 4,
+   "dependent_limitation": 147
+  }
  },
- "problems": [
-  "never ran"
- ],
- "usable": false,
+ "problems": [],
+ "usable": true,
  "weights_are": "fixed_by_kind",
  "kind_weights": {
   "independent_limitation": 1.0,
@@ -21,6 +23,1183 @@
   "dependent_limitation": 0.7,
   "potential_claim": 0.55
  },
- "disclosures": [],
- "content_hash": "4f53cda18c2baa0c"
+ "extraction_budget": {
+  "max_output_tokens": 24000,
+  "max_disclosures": 250,
+  "max_claim_chars": 22000,
+  "max_desc_chars": 26000
+ },
+ "disclosures": [
+  {
+   "text": "A display shelf for storage and presentation of goods for sale",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The display shelf comprises a frame",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The display shelf comprises at least one shelf board stored in the frame",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "An upper side of the shelf board has a storage space for receiving goods",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The display shelf has a display side at one end face of the shelf board",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Customers can remove goods for sale at the display side",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The shelf board has at least one conveyor belt",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The conveyor belt is provided above a storage surface on the upper side of the shelf board",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The conveyor belt is transported in an endless loop via the end face and an underside of the shelf board",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A shelf-stocking vehicle for transporting goods to a shelf",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "The vehicle comprises a transport surface for receiving goods",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "The vehicle comprises a movement element for moving the vehicle",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "The vehicle comprises a drive for driving the movement element",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "The vehicle is equipped to automatically move along a predetermined route",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "The transport surface can be aligned two-dimensionally along two directions of spatial coordinates relative to the shelf",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "A handling mechanism is assigned to the transport surface for goods",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "Goods can be propelled parallel to the transport surface towards the shelf using the handling mechanism",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "Goods can be propelled parallel to the transport surface away from the shelf using the handling mechanism",
+   "kind": "independent_limitation",
+   "source": "claim 23",
+   "weight": 1.0
+  },
+  {
+   "text": "A method for transporting goods for sale into a display shelf",
+   "kind": "independent_limitation",
+   "source": "claim 37",
+   "weight": 1.0
+  },
+  {
+   "text": "A method for transporting goods for sale in a display shelf",
+   "kind": "independent_limitation",
+   "source": "claim 37",
+   "weight": 1.0
+  },
+  {
+   "text": "Moving goods along a transport route from a delivery area to the display shelf",
+   "kind": "independent_limitation",
+   "source": "claim 37",
+   "weight": 1.0
+  },
+  {
+   "text": "Moving goods along a transport route from an automated small parts store to the display shelf",
+   "kind": "independent_limitation",
+   "source": "claim 37",
+   "weight": 1.0
+  },
+  {
+   "text": "Moving a shelf-stocking vehicle along the transport route",
+   "kind": "independent_limitation",
+   "source": "claim 37",
+   "weight": 1.0
+  },
+  {
+   "text": "Receiving goods with the shelf-stocking vehicle",
+   "kind": "independent_limitation",
+   "source": "claim 37",
+   "weight": 1.0
+  },
+  {
+   "text": "Transferring goods automatically to the display shelf",
+   "kind": "independent_limitation",
+   "source": "claim 37",
+   "weight": 1.0
+  },
+  {
+   "text": "Pushing goods with the shelf-stocking device",
+   "kind": "independent_limitation",
+   "source": "claim 37",
+   "weight": 1.0
+  },
+  {
+   "text": "A repacking station for repacking goods from transport into presentation containers",
+   "kind": "independent_limitation",
+   "source": "claim 55",
+   "weight": 1.0
+  },
+  {
+   "text": "The repacking station comprises a turning module",
+   "kind": "independent_limitation",
+   "source": "claim 55",
+   "weight": 1.0
+  },
+  {
+   "text": "The turning module comprises at least one opposing receptacle for transport containers",
+   "kind": "independent_limitation",
+   "source": "claim 55",
+   "weight": 1.0
+  },
+  {
+   "text": "The turning module comprises at least one opposing receptacle for presentation containers",
+   "kind": "independent_limitation",
+   "source": "claim 55",
+   "weight": 1.0
+  },
+  {
+   "text": "A rotary axis is arranged at one side of the receptacle",
+   "kind": "independent_limitation",
+   "source": "claim 55",
+   "weight": 1.0
+  },
+  {
+   "text": "The receptacle can be turned upside down",
+   "kind": "independent_limitation",
+   "source": "claim 55",
+   "weight": 1.0
+  },
+  {
+   "text": "An adjustable support is provided in each receptacle",
+   "kind": "independent_limitation",
+   "source": "claim 55",
+   "weight": 1.0
+  },
+  {
+   "text": "The adjustable support secures goods against rotating at an upper side",
+   "kind": "independent_limitation",
+   "source": "claim 55",
+   "weight": 1.0
+  },
+  {
+   "text": "The adjustable support forms a support for goods after rotation",
+   "kind": "independent_limitation",
+   "source": "claim 55",
+   "weight": 1.0
+  },
+  {
+   "text": "A transfer system for the transfer of loose goods or objects from a transport container to a placement surface",
+   "kind": "independent_limitation",
+   "source": "claim 59",
+   "weight": 1.0
+  },
+  {
+   "text": "The transport container has a double floor",
+   "kind": "independent_limitation",
+   "source": "claim 59",
+   "weight": 1.0
+  },
+  {
+   "text": "An upper part of the floor is freely movable",
+   "kind": "independent_limitation",
+   "source": "claim 59",
+   "weight": 1.0
+  },
+  {
+   "text": "An upper part of the floor is inserted loosely into the container",
+   "kind": "independent_limitation",
+   "source": "claim 59",
+   "weight": 1.0
+  },
+  {
+   "text": "A lifting device is arranged to raise the upper floor part",
+   "kind": "independent_limitation",
+   "source": "claim 59",
+   "weight": 1.0
+  },
+  {
+   "text": "A pushing arrangement is assigned to the lifting device",
+   "kind": "independent_limitation",
+   "source": "claim 59",
+   "weight": 1.0
+  },
+  {
+   "text": "The pushing arrangement has a pusher for moving objects on the upper floor part",
+   "kind": "independent_limitation",
+   "source": "claim 59",
+   "weight": 1.0
+  },
+  {
+   "text": "The container has guide elements for the objects to be pushed",
+   "kind": "independent_limitation",
+   "source": "claim 59",
+   "weight": 1.0
+  },
+  {
+   "text": "The pushing arrangement has guide elements for the objects to be pushed",
+   "kind": "independent_limitation",
+   "source": "claim 59",
+   "weight": 1.0
+  },
+  {
+   "text": "A display shelf for storage and presentation of goods for sale, comprising a frame and at least one shelf board stored therein, with a storage space on an upper side for receiving goods, having a display side at one end face where customers",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "A shelf-stocking vehicle for transporting goods to a shelf, comprising a transport surface for receiving goods, a movement element, and a drive for the movement element, equipped to automatically move along a predetermined route, with the t",
+   "kind": "combination",
+   "source": "claim 23",
+   "weight": 0.9
+  },
+  {
+   "text": "A method for transporting goods for sale into and/or in a display shelf, comprising moving goods along a transport route from a delivery area and/or an automated small parts store to the display shelf, moving a shelf-stocking vehicle along ",
+   "kind": "combination",
+   "source": "claim 37",
+   "weight": 0.9
+  },
+  {
+   "text": "A transfer system for loose goods or objects from a transport container to a placement surface, comprising a transport container with a double floor where an upper part is freely movable and/or loosely inserted, a lifting device to raise th",
+   "kind": "combination",
+   "source": "claim 59",
+   "weight": 0.9
+  },
+  {
+   "text": "The at least one shelf board comprises a plurality of shelf boards",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Shelf boards are provided alongside each other in the frame",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "Shelf boards are provided above each other in the frame",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "One or more conveyor belts are assigned to each shelf board",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The display shelf is open at least at one end face of the shelf board",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The open end face forms the display side",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "A stop bar is provided at the display side of the display shelf",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The stop bar is spaced apart from the shelf board",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The stop bar defines a gap between it and the shelf board",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt is transported through the gap",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The display shelf has a removable fall-off guard for goods at a side opposite the display side",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The fall-off guard at least partly closes or blocks a shelf opening",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The fall-off guard has the form of a foldable bar",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The fall-off guard has the form of a rotatable bar",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The fall-off guard has the form of a rollershutter",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The display shelf is subdivided by lateral dividers into compartments",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "Guide elements for the conveyor belt are included at the shelf board at one end face",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt is mounted to be driven manually",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Manual driving is by pushing the conveyor belt with a flat hand on an underside of the shelf board",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt is provided with a drive",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive drives the conveyor belt centrally",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive comprises rollers",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The rollers are driven centrally for the conveyor belt",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The rollers are driven locally for the conveyor belt",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive comprises motors movable towards the conveyor belt",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Motors can be coupled to the conveyor belt via coupling devices",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "Motors can be coupled to the drive assigned to them via coupling devices",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive includes a motor",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The motor drives an endlessly circulating drive chain",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The motor drives a drive belt",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt comprises fabric",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt comprises plastic",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt comprises plastic fabric",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt comprises flexible fabric",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt has surfaces that facilitate simple gliding on the shelf board at a first side facing the shelf board",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt has surfaces that facilitate taking along of goods at a second side facing the goods",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt has surfaces that facilitate simultaneous gliding of goods on the shelf board at a second side facing the goods",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt has a transition mechanism for driving one or more adjacent conveyor belts",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "The transition mechanism comprises wheels",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "The transition mechanism comprises continuously circulating chains",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "The transition mechanism comprises continuously circulating belts",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt is guided around two rollers arranged in parallel",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "A first roller is arranged at the display side of the shelf",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "A second roller is arranged at a rear or interior side opposite the display side",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "A drive occurs at the second roller at the rear or interior side",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "The transition mechanism for driving adjacent conveyor belts is provided at the second roller",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "The display shelf is formed so as to be movable",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "The display shelf is formed of at least two parts",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "Each part is formed as a separate display shelf and has a display side",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "The two parts are arranged with display sides facing away from each other",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "The two parts are arranged with rear sides facing each other",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one of the parts is movable",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "A supply aisle can be formed between the parts",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "Goods can be delivered into the shelf boards along the supply aisle",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "Both or all shelf parts are formed so as to be movable",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one drive device for moving the movable part is included",
+   "kind": "dependent_limitation",
+   "source": "claim 22",
+   "weight": 0.7
+  },
+  {
+   "text": "The handling mechanism comprises a pusher for pushing goods over the transport surface",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "The handling mechanism comprises a pusher for pushing goods in the shelf",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "The handling mechanism comprises at least one conveyor belt",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt is provided on an upper side of the transport surface",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt is guided in an endless loop over end faces of the transport surface",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "The conveyor belt is guided in an endless loop at an underside of the transport surface",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "The handling mechanism comprises gliding elements for the at least one conveyor belt",
+   "kind": "dependent_limitation",
+   "source": "claim 25",
+   "weight": 0.7
+  },
+  {
+   "text": "The handling mechanism comprises guide elements for the at least one conveyor belt",
+   "kind": "dependent_limitation",
+   "source": "claim 25",
+   "weight": 0.7
+  },
+  {
+   "text": "Several conveyor belts are provided parallel to each other",
+   "kind": "dependent_limitation",
+   "source": "claim 26",
+   "weight": 0.7
+  },
+  {
+   "text": "The parallel conveyor belts may be driven independently of each other",
+   "kind": "dependent_limitation",
+   "source": "claim 26",
+   "weight": 0.7
+  },
+  {
+   "text": "The handling mechanism has at least one drive roll for the conveyor belt",
+   "kind": "dependent_limitation",
+   "source": "claim 27",
+   "weight": 0.7
+  },
+  {
+   "text": "At least two transition elements opposite each other are provided in an extension of the transport surface",
+   "kind": "dependent_limitation",
+   "source": "claim 28",
+   "weight": 0.7
+  },
+  {
+   "text": "The transition elements are provided towards a pushing direction of the handling mechanism",
+   "kind": "dependent_limitation",
+   "source": "claim 28",
+   "weight": 0.7
+  },
+  {
+   "text": "The transition elements form a pushing surface",
+   "kind": "dependent_limitation",
+   "source": "claim 28",
+   "weight": 0.7
+  },
+  {
+   "text": "The movement element has running wheels for interaction with a running rail",
+   "kind": "dependent_limitation",
+   "source": "claim 29",
+   "weight": 0.7
+  },
+  {
+   "text": "The movement element has carrying wheels for interaction with a running rail",
+   "kind": "dependent_limitation",
+   "source": "claim 29",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive has a drive belt disk for interaction with a toothed belt",
+   "kind": "dependent_limitation",
+   "source": "claim 30",
+   "weight": 0.7
+  },
+  {
+   "text": "The vehicle comprises a frame formed into parts",
+   "kind": "dependent_limitation",
+   "source": "claim 31",
+   "weight": 0.7
+  },
+  {
+   "text": "The frame comprises an upper part and a lower part",
+   "kind": "dependent_limitation",
+   "source": "claim 31",
+   "weight": 0.7
+  },
+  {
+   "text": "The upper part comprises the movement element and drive",
+   "kind": "dependent_limitation",
+   "source": "claim 31",
+   "weight": 0.7
+  },
+  {
+   "text": "The lower part has the transport surface and the handling mechanism",
+   "kind": "dependent_limitation",
+   "source": "claim 31",
+   "weight": 0.7
+  },
+  {
+   "text": "The upper and lower parts are arranged so as to be movable relative to each other",
+   "kind": "dependent_limitation",
+   "source": "claim 31",
+   "weight": 0.7
+  },
+  {
+   "text": "The handling mechanism comprises an electric motor",
+   "kind": "dependent_limitation",
+   "source": "claim 32",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive comprises an electric motor",
+   "kind": "dependent_limitation",
+   "source": "claim 32",
+   "weight": 0.7
+  },
+  {
+   "text": "Sidewalls are provided peripherally around the transport surface to protect goods",
+   "kind": "dependent_limitation",
+   "source": "claim 33",
+   "weight": 0.7
+  },
+  {
+   "text": "The sidewalls extend at right angles to the transport surface",
+   "kind": "dependent_limitation",
+   "source": "claim 33",
+   "weight": 0.7
+  },
+  {
+   "text": "The sidewalls have opposing, closable openings for receiving goods",
+   "kind": "dependent_limitation",
+   "source": "claim 33",
+   "weight": 0.7
+  },
+  {
+   "text": "The sidewalls have opposing, closable openings for dispensing goods",
+   "kind": "dependent_limitation",
+   "source": "claim 33",
+   "weight": 0.7
+  },
+  {
+   "text": "A gap between the transport surface and the sidewalls is provided",
+   "kind": "dependent_limitation",
+   "source": "claim 33",
+   "weight": 0.7
+  },
+  {
+   "text": "A conveyor belt is transported through the gap",
+   "kind": "dependent_limitation",
+   "source": "claim 33",
+   "weight": 0.7
+  },
+  {
+   "text": "A goods protection cover is provided opposite the transport surface",
+   "kind": "dependent_limitation",
+   "source": "claim 34",
+   "weight": 0.7
+  },
+  {
+   "text": "The cover protects goods by wedging when upper and lower parts close together",
+   "kind": "dependent_limitation",
+   "source": "claim 34",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one movable bracing element is provided for lateral bracing against walls during goods transfer",
+   "kind": "dependent_limitation",
+   "source": "claim 35",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one movable bracing element is provided for wedging the shelf-stocking vehicle between two opposing shelves",
+   "kind": "dependent_limitation",
+   "source": "claim 35",
+   "weight": 0.7
+  },
+  {
+   "text": "The transport surface may be moved relative to a frame of the shelf-stocking vehicle",
+   "kind": "dependent_limitation",
+   "source": "claim 36",
+   "weight": 0.7
+  },
+  {
+   "text": "The transport surface may be moved relative to the movement element",
+   "kind": "dependent_limitation",
+   "source": "claim 36",
+   "weight": 0.7
+  },
+  {
+   "text": "The handling mechanism may be moved relative to a frame of the shelf-stocking vehicle",
+   "kind": "dependent_limitation",
+   "source": "claim 36",
+   "weight": 0.7
+  },
+  {
+   "text": "The handling mechanism may be moved relative to the movement element",
+   "kind": "dependent_limitation",
+   "source": "claim 36",
+   "weight": 0.7
+  },
+  {
+   "text": "The transport route is in the form of one or more loops",
+   "kind": "dependent_limitation",
+   "source": "claim 38",
+   "weight": 0.7
+  },
+  {
+   "text": "The loops are connected to each other by transfer points for goods",
+   "kind": "dependent_limitation",
+   "source": "claim 38",
+   "weight": 0.7
+  },
+  {
+   "text": "Each loop comprises one or more permanently assigned transport vehicles",
+   "kind": "dependent_limitation",
+   "source": "claim 39",
+   "weight": 0.7
+  },
+  {
+   "text": "The transport route comprises a primary-supply loop",
+   "kind": "dependent_limitation",
+   "source": "claim 40",
+   "weight": 0.7
+  },
+  {
+   "text": "The transport route comprises one or more shelf-stocking loops",
+   "kind": "dependent_limitation",
+   "source": "claim 40",
+   "weight": 0.7
+  },
+  {
+   "text": "The transport route comprises a temporary storage area",
+   "kind": "dependent_limitation",
+   "source": "claim 41",
+   "weight": 0.7
+  },
+  {
+   "text": "The transport route is at least partially located between two display shelf units",
+   "kind": "dependent_limitation",
+   "source": "claim 42",
+   "weight": 0.7
+  },
+  {
+   "text": "The display shelf can be stocked from the transport route",
+   "kind": "dependent_limitation",
+   "source": "claim 42",
+   "weight": 0.7
+  },
+  {
+   "text": "The shelf-stocking vehicle and the shelf are matched for automatic loading of the shelf",
+   "kind": "dependent_limitation",
+   "source": "claim 43",
+   "weight": 0.7
+  },
+  {
+   "text": "The shelf-stocking vehicle and the shelf are matched for automatic tracking of goods in the shelf by the shelf-stocking vehicle",
+   "kind": "dependent_limitation",
+   "source": "claim 44",
+   "weight": 0.7
+  },
+  {
+   "text": "The shelf-stocking vehicle is fitted with a drive",
+   "kind": "dependent_limitation",
+   "source": "claim 45",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive can drive a conveyor belt of a shelf board of the display shelf",
+   "kind": "dependent_limitation",
+   "source": "claim 45",
+   "weight": 0.7
+  },
+  {
+   "text": "The display shelf has a temporary store in an upper part",
+   "kind": "dependent_limitation",
+   "source": "claim 46",
+   "weight": 0.7
+  },
+  {
+   "text": "The display shelf has movable transition elements for bridging a gap between a shelf board and the shelf-stocking vehicle",
+   "kind": "dependent_limitation",
+   "source": "claim 47",
+   "weight": 0.7
+  },
+  {
+   "text": "The transition elements are actuated by the shelf-stocking vehicle",
+   "kind": "dependent_limitation",
+   "source": "claim 47",
+   "weight": 0.7
+  },
+  {
+   "text": "The transition elements simultaneously form a fall-off guard for goods in the display shelf",
+   "kind": "dependent_limitation",
+   "source": "claim 47",
+   "weight": 0.7
+  },
+  {
+   "text": "Distribution shelves are provided in addition to the display shelf",
+   "kind": "dependent_limitation",
+   "source": "claim 48",
+   "weight": 0.7
+  },
+  {
+   "text": "Goods are provided in transport containers in the shelf",
+   "kind": "dependent_limitation",
+   "source": "claim 49",
+   "weight": 0.7
+  },
+  {
+   "text": "Goods are provided in presentation containers in the shelf",
+   "kind": "dependent_limitation",
+   "source": "claim 49",
+   "weight": 0.7
+  },
+  {
+   "text": "Goods are transported at least partially in transport and/or presentation containers",
+   "kind": "dependent_limitation",
+   "source": "claim 49",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one control unit is provided",
+   "kind": "dependent_limitation",
+   "source": "claim 50",
+   "weight": 0.7
+  },
+  {
+   "text": "The control unit controls the vehicle",
+   "kind": "dependent_limitation",
+   "source": "claim 50",
+   "weight": 0.7
+  },
+  {
+   "text": "The control unit controls loading of the shelf-stocking vehicle",
+   "kind": "dependent_limitation",
+   "source": "claim 50",
+   "weight": 0.7
+  },
+  {
+   "text": "The control unit controls movement of the shelf-stocking vehicle",
+   "kind": "dependent_limitation",
+   "source": "claim 50",
+   "weight": 0.7
+  },
+  {
+   "text": "The control unit controls unloading of the shelf-stocking vehicle",
+   "kind": "dependent_limitation",
+   "source": "claim 50",
+   "weight": 0.7
+  },
+  {
+   "text": "The control unit controls loading of the shelf",
+   "kind": "dependent_limitation",
+   "source": "claim 50",
+   "weight": 0.7
+  },
+  {
+   "text": "The control unit controls tracking of goods in the shelf",
+   "kind": "dependent_limitation",
+   "source": "claim 50",
+   "weight": 0.7
+  },
+  {
+   "text": "One or more capturing devices are provided",
+   "kind": "dependent_limitation",
+   "source": "claim 51",
+   "weight": 0.7
+  },
+  {
+   "text": "Capturing devices capture the type of goods in the shelf for pushing or tracking",
+   "kind": "dependent_limitation",
+   "source": "claim 51",
+   "weight": 0.7
+  },
+  {
+   "text": "Capturing devices capture the quantity of goods in the shelf for pushing or tracking",
+   "kind": "dependent_limitation",
+   "source": "claim 51",
+   "weight": 0.7
+  },
+  {
+   "text": "Capturing devices capture the position of goods in the shelf for pushing or tracking",
+   "kind": "dependent_limitation",
+   "source": "claim 51",
+   "weight": 0.7
+  },
+  {
+   "text": "Capturing devices transfer captured data to the control unit",
+   "kind": "dependent_limitation",
+   "source": "claim 51",
+   "weight": 0.7
+  },
+  {
+   "text": "Repacking stations are present for delivered goods",
+   "kind": "dependent_limitation",
+   "source": "claim 52",
+   "weight": 0.7
+  },
+  {
+   "text": "Unpacking stations are present for delivered goods",
+   "kind": "dependent_limitation",
+   "source": "claim 52",
+   "weight": 0.7
+  },
+  {
+   "text": "One or more passageways for purchasers are provided between shelves",
+   "kind": "dependent_limitation",
+   "source": "claim 53",
+   "weight": 0.7
+  },
+  {
+   "text": "The transport route is provided above the passageway",
+   "kind": "dependent_limitation",
+   "source": "claim 53",
+   "weight": 0.7
+  },
+  {
+   "text": "The transport route is provided between two movable shelf parts",
+   "kind": "dependent_limitation",
+   "source": "claim 54",
+   "weight": 0.7
+  },
+  {
+   "text": "The receptacle is formed by a quadratic housing",
+   "kind": "dependent_limitation",
+   "source": "claim 56",
+   "weight": 0.7
+  },
+  {
+   "text": "The receptacle comprises a container retaining system",
+   "kind": "dependent_limitation",
+   "source": "claim 57",
+   "weight": 0.7
+  },
+  {
+   "text": "The receptacle comprises at least one telescopic support",
+   "kind": "dependent_limitation",
+   "source": "claim 58",
+   "weight": 0.7
+  },
+  {
+   "text": "The guide elements are designed as movable sidewalls projecting over an edge of the containers",
+   "kind": "dependent_limitation",
+   "source": "claim 60",
+   "weight": 0.7
+  },
+  {
+   "text": "The guide elements are designed as movable bars on the upper floor part",
+   "kind": "dependent_limitation",
+   "source": "claim 60",
+   "weight": 0.7
+  },
+  {
+   "text": "The guide elements are provided as pushing fingers on the pushing arrangement",
+   "kind": "dependent_limitation",
+   "source": "claim 61",
+   "weight": 0.7
+  },
+  {
+   "text": "Pushing fingers are guided with the pushing arrangement between and around objects",
+   "kind": "dependent_limitation",
+   "source": "claim 61",
+   "weight": 0.7
+  },
+  {
+   "text": "Pushing fingers are guided in front of the pushing arrangement between and around objects",
+   "kind": "dependent_limitation",
+   "source": "claim 61",
+   "weight": 0.7
+  },
+  {
+   "text": "Goods are automatically tracked in the display shelf",
+   "kind": "dependent_limitation",
+   "source": "claim 62",
+   "weight": 0.7
+  },
+  {
+   "text": "Goods are automatically replenished in the shelf once the sale of a certain quantity has been exceeded",
+   "kind": "dependent_limitation",
+   "source": "claim 63",
+   "weight": 0.7
+  },
+  {
+   "text": "The certain quantity is determined by registered data collected at cash desks",
+   "kind": "dependent_limitation",
+   "source": "claim 64",
+   "weight": 0.7
+  },
+  {
+   "text": "The certain quantity is determined by capturing devices",
+   "kind": "dependent_limitation",
+   "source": "claim 64",
+   "weight": 0.7
+  },
+  {
+   "text": "Goods in the display shelf are tracked by drive of the conveyor belt",
+   "kind": "dependent_limitation",
+   "source": "claim 65",
+   "weight": 0.7
+  },
+  {
+   "text": "Goods are automatically delivered into the shelf outside business hours",
+   "kind": "dependent_limitation",
+   "source": "claim 66",
+   "weight": 0.7
+  },
+  {
+   "text": "Goods are automatically delivered into the shelf in low-business times",
+   "kind": "dependent_limitation",
+   "source": "claim 66",
+   "weight": 0.7
+  },
+  {
+   "text": "The shelf is moved to form a transport route",
+   "kind": "dependent_limitation",
+   "source": "claim 67",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "14887c4137bf82c8"
 }

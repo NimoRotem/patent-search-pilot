@@ -143,3 +143,28 @@ def test_a_report_written_mid_run_is_not_a_finished_run(tmp_path, monkeypatch):
     assert manifest.load("bench-x-v1-123")["completion_status"] == "running"
     manifest.finish(m, status="completed")
     assert manifest.load("bench-x-v1-123")["completion_status"] == "completed"
+
+
+def test_channel_hit_that_fusion_never_ranked_is_not_unknown():
+    """A family a channel retrieved and fusion never carried in must name its stage.
+
+    Measured on the v15 dev split: four gold families rested at UNKNOWN and every one of them had
+    been retrieved -- by the citation graph, by CPC, by query-by-example -- and was then absent
+    from ranked_families entirely. UNKNOWN is defined in this module as a defect rather than a
+    category, so a resting UNKNOWN is a bug in the instrument, and an instrument that cannot say
+    where a reference died is the one thing this whole funnel exists to prevent.
+    """
+    import trace as tr
+    rep = {
+        #  retrieved by two channels; fusion ranked only the second one
+        "channel_families": {"citation": ["FAM_DROPPED"], "cpc": ["FAM_RANKED"]},
+        "ranked_families": ["FAM_RANKED"],
+        "deep_rank": {"n_candidates": 1, "by_pub": {}, "candidate_families": ["FAM_RANKED"],
+                      "screen_scores": {}, "order": [], "unread": {}},
+    }
+    t = tr.from_report(rep, subject_id="s", slug="s")
+    by, _ = tr.attribute(t, ["FAM_DROPPED", "FAM_RANKED"])
+    assert by["FAM_DROPPED"] == tr.CHANNEL_TRUNCATED, by
+    #  and the family fusion DID rank keeps the stage the ranked pass gave it
+    assert by["FAM_RANKED"] != tr.CHANNEL_TRUNCATED, by
+    assert tr.UNKNOWN not in by.values(), by

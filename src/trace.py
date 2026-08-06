@@ -171,6 +171,19 @@ def from_report(rep, subject_id="", slug="", view=None):
                 f"ranked {i}, below the screen cutoff") if i > (dr.get("n_candidates") or 0) \
             else t.stage(f, NOT_SELECTED_FOR_READING, "screened, not read")
 
+    #  A CHANNEL FOUND IT AND FUSION NEVER RANKED IT. Measured on the v15 dev split: four gold
+    #  families rested at UNKNOWN, and all four were retrieved (by `citation`, `cpc` and `qbe`)
+    #  and then absent from ranked_families entirely -- not ranked low, not carried in at all.
+    #  That is a different failure from FUSION_TRUNCATED, which means ranked but below the
+    #  cutoff, and it has a different fix. Staged here, before the stages below, so anything that
+    #  did progress overwrites it.
+    ranked_set = set(ranked)
+    for chan, fams in ((rep or {}).get("channel_families") or {}).items():
+        for f in fams or ():
+            if f not in ranked_set:
+                t.stage(f, CHANNEL_TRUNCATED,
+                        f"retrieved by {chan}, never carried into the fused ranking")
+
     #  screened: candidates carries the publications the screen actually saw
     screen = dr.get("screen_scores") or {}
     cand_fams = set(dr.get("candidate_families") or [])

@@ -71,8 +71,25 @@ def score(slug, gold_families):
     if not os.path.exists(path):
         return None
     rep = json.load(open(path))
+    #  The view decides which families were DELIVERED. _generate does not write it: it is a
+    #  render-time cache built on first page load, so a report produced headlessly has no view and
+    #  every arm would score delivered=0. That failure is silent and it would look exactly like
+    #  "injection buys nothing", which is the conclusion this whole experiment exists to test.
+    #  Build it on demand, and say so loudly if it cannot be built.
     vp = path.replace(".json", ".view.json")
-    view = json.load(open(vp)) if os.path.exists(vp) else {}
+    if os.path.exists(vp):
+        view = json.load(open(vp))
+    else:
+        try:
+            import webapp
+            view = webapp._build_view_cached(slug, rep) or {}
+        except Exception as e:
+            view = {}
+            print(f"    VIEW BUILD FAILED ({type(e).__name__}: {e}); "
+                  f"delivered is NOT measurable for this arm", flush=True)
+    if not (view.get("cards") or []):
+        print("    WARNING: view has no cards; delivered will read 0 for a reason that is not "
+              "the pipeline", flush=True)
     t = tr.from_report(rep, subject_id="", slug=slug, view=view)
     by, tally = tr.attribute(t, gold_families)
     return {"delivered": tally.get(tr.TOP_50, 0),

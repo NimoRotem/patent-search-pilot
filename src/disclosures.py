@@ -48,13 +48,24 @@ KIND_WEIGHT = {
     "dependent_limitation": 0.70,
     "potential_claim": 0.55,
 }
-#  Raised from 90 after three of the six benchmark subjects hit it exactly, which means the list
-#  was a prefix rather than the subject's disclosures. validate() now reports truncation instead
-#  of letting a truncated denominator pass silently.
-MAX_DISCLOSURES = int(os.environ.get("DISCLOSURES_MAX", "160"))
+#  Raised from 90, then from 160, each time after subjects hit it EXACTLY, which means the list
+#  was a prefix rather than the subject's disclosures. validate() reports truncation instead of
+#  letting a truncated denominator pass silently.
+#  160 never bound while the output budget was 6,000 tokens, because the model ran out of room
+#  before it ran out of disclosures: across 43 usable frozen lists the largest was 111. Once the
+#  budget was raised to fit the answer, two claim-rich subjects hit 160 immediately. A cap that
+#  binds on some subjects and not others makes their denominators incomparable, so it is set well
+#  clear of anything observed rather than near it.
+MAX_DISCLOSURES = int(os.environ.get("DISCLOSURES_MAX", "250"))
 #  Chars of source given to the extractor. Claims first, then description.
 MAX_CLAIMS_CHARS = int(os.environ.get("DISCLOSURES_CLAIM_CHARS", "22000"))
 MAX_DESC_CHARS = int(os.environ.get("DISCLOSURES_DESC_CHARS", "26000"))
+#  OUTPUT budget. 6000 was not enough to hold the answer and the failure was silent: the model
+#  emitted 21,364 characters for a 67-claim subject, ran out mid-object, the JSON would not parse
+#  and the subject was recorded as disclosing NOTHING. 160 disclosures at roughly 45 tokens each
+#  needs 7,200 before JSON overhead, so the old cap could not have fitted a full list even in
+#  principle. gemini-2.5-flash allows 65,536.
+MAX_OUTPUT_TOKENS = int(os.environ.get("DISCLOSURES_MAX_TOKENS", "24000"))
 
 _SYS = (
     "You are a patent attorney building the checklist a prior-art search will be run against.\n\n"
@@ -104,7 +115,7 @@ def _claims_text(claims) -> str:
     return "\n".join(out)
 
 
-def validate(items, had_claims: bool, had_description: bool) -> list:
+def validate(items, had_claims: bool, had_description: bool, truncated: bool = False) -> list:
     """Structural problems that make a disclosure list unusable as a metric denominator.
 
     -> [] when the list is sound, else a list of reasons.
@@ -121,6 +132,12 @@ def validate(items, had_claims: bool, had_description: bool) -> list:
     if not items:
         problems.append("EMPTY: the extractor returned nothing usable")
         return problems
+    if truncated:
+        #  The model ran out of output tokens. llm.chat_json salvages the complete prefix so the
+        #  work is not lost, but a prefix is not the subject's disclosures and must never become a
+        #  metric denominator without saying so.
+        problems.append("RESPONSE_TRUNCATED: the model hit its output limit; this list is the "
+                        "complete prefix of an answer, not the whole answer")
     kinds = {}
     for d in items:
         kinds[d["kind"]] = kinds.get(d["kind"], 0) + 1
@@ -162,8 +179,8 @@ def extract(claims=None, description: str = "", title: str = "",
 
     best, best_problems = [], []
     for attempt in range(max(1, retries + 1)):
-        items = _extract_once(user, cap)
-        problems = validate(items, bool(ctext), bool(desc))
+        items, truncated = _extract_once(user, cap)
+        problems = validate(items, bool(ctext), bool(desc), truncated=truncated)
         if not problems:
             return items
         #  `>` alone never fires when EVERY attempt returns zero items, so the placeholder reason
@@ -177,12 +194,14 @@ def extract(claims=None, description: str = "", title: str = "",
     return best
 
 
-def _extract_once(user: str, cap: int) -> list:
+def _extract_once(user: str, cap: int):
+    """-> ([{text, kind, source, weight}], truncated) ."""
     try:
-        out = llm.chat_json(_SYS, user, max_tokens=6000) or {}
+        out = llm.chat_json(_SYS, user, max_tokens=MAX_OUTPUT_TOKENS) or {}
     except Exception:
         traceback.print_exc()
-        return []
+        return [], False
+    truncated = bool(out.get("_truncated"))
 
     seen, disclosures = set(), []
     for d in (out.get("disclosures") or []):
@@ -206,7 +225,7 @@ def _extract_once(user: str, cap: int) -> list:
     #  Independent-claim material first: it is what the report is fundamentally arguing about, and
     #  if anything downstream truncates the list that is what must survive.
     disclosures.sort(key=lambda d: -d["weight"])
-    return disclosures
+    return disclosures, truncated
 
 
 #  Where eval/freeze_disclosures.py writes the frozen lists. Read from src/ so the pipeline can

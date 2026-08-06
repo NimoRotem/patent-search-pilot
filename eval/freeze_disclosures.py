@@ -208,6 +208,15 @@ def freeze(sub, force=False):
         #  The EVALUATION weight. Fixed by kind, never by how much art the search found.
         "weights_are": "fixed_by_kind",
         "kind_weights": dict(disclosures.KIND_WEIGHT),
+        #  THE BUDGET THE LIST WAS MADE UNDER. Two lists produced with different extraction
+        #  budgets are not comparable denominators: raising the output limit from 6,000 to 24,000
+        #  tokens took one subject from 0 disclosures to over 160, because the old limit cut the
+        #  model off mid-JSON. Recording it means a later comparison can see the difference
+        #  instead of averaging across it.
+        "extraction_budget": {"max_output_tokens": disclosures.MAX_OUTPUT_TOKENS,
+                              "max_disclosures": disclosures.MAX_DISCLOSURES,
+                              "max_claim_chars": disclosures.MAX_CLAIMS_CHARS,
+                              "max_desc_chars": disclosures.MAX_DESC_CHARS},
         "disclosures": items,
         "content_hash": digest(items),
     }
