@@ -1,0 +1,759 @@
+"""The drafting conversation: the checks, the workspace, the validator and the filing package.
+
+Every test here is anchored on a defect that a machine-written patent application actually
+produces — a numeral used and never defined, a claim depending on a claim that does not exist, a
+citation to a publication that resolves to nothing, an abstract over the 150-word cap.  A check
+that has never been shown to bite on a real failure is a check nobody should trust, so each one is
+defect-injected: the good draft passes, and the same draft with one thing broken fails on exactly
+that thing and nothing else.
+"""
+import json
+import re
+from pathlib import Path
+
+import pytest
+
+import draft_agent
+import draft_cite
+import draft_qa
+import draft_studio
+import draft_uspto
+import draft_workspace
+
+
+# =============================================================================================
+# A small, internally consistent application to break in one place at a time
+# =============================================================================================
+GOOD = {
+    "title": "Vacuum Lifting Tool With Interchangeable Sealing Ring",
+    "cross_reference": "This application claims no priority.",
+    "field": "The disclosure relates to portable vacuum lifting tools.",
+    "background": "Handheld vacuum lifters are known [REF:US-11223344-B2]. Such tools use a "
+                  "single fixed seal, which limits the surfaces they can grip.",
+    "summary": "A vacuum lifting tool has a body carrying a pump and a sealing ring that is "
+               "removable from the body without a tool.",
+    "drawing_descriptions": "FIG. 1 is a side elevation of the vacuum lifting tool.\n\n"
+                            "FIG. 2 is an exploded view of the sealing ring and the body.",
+    "detailed_description": "Referring to FIG. 1, a vacuum lifting tool 10 has a body 12 that "
+                            "carries a pump 14. A sealing ring 16 is received in a groove 18 in "
+                            "the body 12. As shown in FIG. 2, the sealing ring 16 is removable "
+                            "from the groove 18 by hand, so that a ring suited to a rough "
+                            "surface may replace one suited to glass. The pump 14 draws air "
+                            "through a passage 20 in the body 12.",
+    "claims": "1. A vacuum lifting tool comprising a body, a pump carried by the body, a groove "
+              "in the body, and a sealing ring received in the groove and removable from the "
+              "groove without a tool.\n\n"
+              "2. The vacuum lifting tool of claim 1, wherein the body defines a passage between "
+              "the pump and the groove.\n\n"
+              "3. The vacuum lifting tool of claim 2, wherein the pump is battery powered.",
+    "abstract": "A vacuum lifting tool has a body carrying a pump and a sealing ring received in "
+                "a groove in the body. The sealing ring is removable by hand so a ring suited to "
+                "one surface can replace a ring suited to another.",
+}
+NUMERALS = [
+    {"numeral": "10", "part": "vacuum lifting tool"}, {"numeral": "12", "part": "body"},
+    {"numeral": "14", "part": "pump"}, {"numeral": "16", "part": "sealing ring"},
+    {"numeral": "18", "part": "groove"}, {"numeral": "20", "part": "passage"},
+]
+FIGURES = [
+    {"label": "FIG. 1", "caption": "side elevation", "numerals": ["10 vacuum lifting tool",
+                                                                  "12 body", "14 pump"]},
+    {"label": "FIG. 2", "caption": "exploded view", "numerals": ["16 sealing ring", "18 groove"]},
+]
+ALLOWED = ["US-11223344-B2"]
+
+
+@pytest.fixture(autouse=True)
+def no_corpus(monkeypatch):
+    """Citations resolve against a stub, so these tests never touch Postgres or a paid API."""
+    known = {"US-11223344-B2": {"found": True, "publication_number": "US-11223344-B2",
+                                "title": "Handheld vacuum lifter", "source": "corpus",
+                                "publication_date": "2021-01-05", "kind_code": "B2",
+                                "assignee": "Example Co", "url": "https://example.test/1"}}
+    monkeypatch.setattr(draft_cite, "resolve",
+                        lambda pub, **k: dict(known.get(draft_cite.normalize(pub) or "",
+                                                        {"found": False,
+                                                         "publication_number": str(pub),
+                                                         "reason": "not in the local corpus"})))
+
+
+def checks_for(sections=None, numerals=None, figures=None, allowed=ALLOWED):
+    return {c["name"]: c for c in draft_qa.run_checks(
+        sections=sections or GOOD, numerals=NUMERALS if numerals is None else numerals,
+        figures=FIGURES if figures is None else figures, allowed_references=allowed,
+        allow_remote=False)}
+
+
+# =============================================================================================
+# The clean draft passes
+# =============================================================================================
+def test_a_consistent_draft_passes_every_mechanical_check():
+    checks = checks_for()
+    failed = [name for name, check in checks.items() if check["status"] == "fail"]
+    assert failed == [], f"a consistent draft should not fail anything: {failed}"
+    assert draft_qa.verdict_for(list(checks.values()), []) in ("pass", "warn")
+
+
+def test_verdict_never_fails_on_an_advisory_check_alone():
+    """A heuristic must not be able to condemn a draft — see the calibration note in draft_qa."""
+    advisory = [{"name": "Antecedent basis", "status": "fail", "severity": "advisory",
+                 "detail": "", "items": []}]
+    assert draft_qa.verdict_for(advisory, []) == "warn"
+    proven = [{"name": "Numerals", "status": "fail", "severity": "error", "detail": "",
+               "items": []}]
+    assert draft_qa.verdict_for(proven, []) == "fail"
+
+
+# =============================================================================================
+# Reference numerals
+# =============================================================================================
+def test_a_numeral_used_but_never_defined_is_caught():
+    broken = dict(GOOD)
+    broken["detailed_description"] += " A trigger 22 is mounted on the body 12."
+    check = checks_for(broken)["Every numeral in the text is defined"]
+    assert check["status"] == "fail"
+    assert any(item.startswith("22") for item in check["items"])
+
+
+def test_two_numerals_for_the_same_part_are_caught():
+    numerals = NUMERALS + [{"numeral": "24", "part": "sealing ring"}]
+    broken = dict(GOOD)
+    broken["detailed_description"] += " A second sealing ring 24 may be fitted."
+    check = checks_for(broken, numerals=numerals)["One numeral per part"]
+    assert check["status"] == "fail" and "sealing ring" in check["items"][0]
+
+
+def test_a_numeral_on_a_drawing_that_the_table_does_not_define_is_caught():
+    figures = [dict(FIGURES[0]), {"label": "FIG. 2", "caption": "exploded",
+                                  "numerals": ["44 mystery bracket"]}]
+    check = checks_for(figures=figures)["Numerals on the drawings are defined"]
+    assert check["status"] == "fail" and "44" in check["items"]
+
+
+def test_measurements_and_years_are_not_read_as_reference_numerals():
+    """The generous failure here would report every dimension as an undefined part."""
+    text = ("The body 12 is 45 mm long, weighs 2.5 kg, holds 90 percent vacuum at 25 degrees, "
+            "and was first described in 2019. See FIG. 3 and claim 7.")
+    assert set(draft_qa.numerals_used(text)) == {"12"}
+
+
+# =============================================================================================
+# Figures
+# =============================================================================================
+def test_a_figure_used_in_the_description_but_never_described_is_caught():
+    broken = dict(GOOD)
+    broken["detailed_description"] += " FIG. 4 shows an alternative pump."
+    check = checks_for(broken)["Every figure used is described"]
+    assert check["status"] == "fail" and "FIG. 4" in check["items"]
+
+
+def test_a_figure_range_counts_every_figure_in_it():
+    assert draft_qa.figures_mentioned("As shown in FIGS. 1-3 and FIG. 7") == {"1", "2", "3", "7"}
+
+
+# =============================================================================================
+# Claims
+# =============================================================================================
+def test_a_claim_depending_on_a_claim_that_does_not_exist_is_caught():
+    broken = dict(GOOD)
+    broken["claims"] += "\n\n4. The vacuum lifting tool of claim 9, wherein the body is aluminium."
+    check = checks_for(broken)["Claim dependencies are valid"]
+    assert check["status"] == "fail" and "claim 9" in " ".join(check["items"])
+
+
+def test_a_claim_depending_on_a_later_claim_is_caught():
+    broken = dict(GOOD)
+    broken["claims"] = broken["claims"].replace(
+        "2. The vacuum lifting tool of claim 1,", "2. The vacuum lifting tool of claim 3,")
+    assert checks_for(broken)["Claim dependencies are valid"]["status"] == "fail"
+
+
+def test_claims_must_be_numbered_consecutively_from_one():
+    broken = dict(GOOD)
+    broken["claims"] = broken["claims"].replace("3. The vacuum", "5. The vacuum")
+    assert checks_for(broken)["Claims are numbered consecutively"]["status"] == "fail"
+
+
+def test_a_multiple_dependent_claim_on_another_is_a_rule_violation():
+    broken = dict(GOOD)
+    broken["claims"] += ("\n\n4. The vacuum lifting tool of any one of claims 1 or 2, wherein the "
+                         "groove is annular."
+                         "\n\n5. The vacuum lifting tool of any one of claims 3 or 4, wherein the "
+                         "body is aluminium.")
+    checks = checks_for(broken)
+    assert checks["No multiple dependent claim depends on another"]["status"] == "fail"
+
+
+def test_claim_dependency_parsing_handles_the_forms_attorneys_write():
+    assert draft_qa.claim_dependencies("The tool of claim 1, wherein") == [1]
+    assert draft_qa.claim_dependencies("The tool according to claim 2") == [2]
+    assert draft_qa.claim_dependencies("The tool as set forth in claim 3") == [3]
+    assert draft_qa.claim_dependencies("The tool of any one of claims 1 to 3") == [1, 2, 3]
+    assert draft_qa.claim_dependencies("The tool of claims 1 or 4") == [1, 4]
+    assert draft_qa.claim_dependencies("A tool comprising a body") == []
+
+
+def test_antecedent_basis_is_advisory_and_finds_a_real_miss():
+    broken = dict(GOOD)
+    broken["claims"] = ("1. A vacuum lifting tool comprising a body and a pump carried by the "
+                        "body, wherein the sealing ring is received in the body.")
+    check = checks_for(broken)["Antecedent basis in the claims"]
+    assert check["severity"] == "advisory"
+    assert check["status"] == "warn" and any("sealing ring" in i for i in check["items"])
+
+
+def test_a_claim_term_absent_from_the_description_is_flagged_but_cannot_fail_the_draft():
+    broken = dict(GOOD)
+    broken["claims"] += "\n\n4. The vacuum lifting tool of claim 1, wherein the body is titanium."
+    check = checks_for(broken)["Claim terms appear in the description"]
+    assert check["severity"] == "advisory" and check["status"] == "warn"
+    assert any("titanium" in item for item in check["items"])
+
+
+# =============================================================================================
+# Citations
+# =============================================================================================
+def test_a_citation_that_resolves_to_nothing_is_caught():
+    broken = dict(GOOD)
+    broken["background"] += " A second lifter is described in [REF:US-9999999-B9]."
+    check = checks_for(broken, allowed=ALLOWED + ["US-9999999-B9"])[
+        "Every citation resolves to a real publication"]
+    assert check["status"] == "fail" and "US-9999999-B9" in check["items"][0]
+
+
+def test_a_citation_to_a_reference_the_project_was_never_given_is_caught():
+    broken = dict(GOOD)
+    broken["background"] += " See [REF:US-11223344-B2] and [REF:EP-1234567-A1]."
+    check = checks_for(broken)["Citations are to supplied references"]
+    assert check["status"] == "fail" and "EP-1234567-A1" in check["items"]
+
+
+def test_a_citation_in_the_claims_is_a_drafting_error():
+    broken = dict(GOOD)
+    broken["claims"] = broken["claims"].replace(
+        "1. A vacuum", "1. A vacuum lifter improving on [REF:US-11223344-B2]. A vacuum")
+    check = checks_for(broken)["Citations sit where they belong"]
+    assert check["status"] == "fail" and "Claims" in check["items"][0]
+
+
+def test_a_malformed_citation_token_is_caught_rather_than_normalised():
+    broken = dict(GOOD)
+    broken["background"] += " See [REF:the Smith patent]."
+    assert checks_for(broken)["Citation tokens are well formed"]["status"] == "fail"
+
+
+def test_a_publication_number_written_without_a_token_is_surfaced():
+    broken = dict(GOOD)
+    broken["background"] += " US 7,654,321 B1 describes a related tool."
+    check = checks_for(broken)["Publication numbers use citation tokens"]
+    assert check["status"] == "warn" and "US-7654321-B1" in check["items"][0]
+
+
+def test_supplied_art_that_is_never_cited_is_reported_without_failing():
+    check = checks_for(allowed=ALLOWED + ["US-8888888-B2"])["Supplied art is addressed"]
+    assert check["status"] == "warn" and "US-8888888-B2" in check["items"]
+
+
+def test_citation_token_extraction():
+    assert draft_cite.citations_in("a [REF:US-1-A] b [REF:EP-2222222-A1]") == ["US-1-A",
+                                                                              "EP-2222222-A1"]
+    assert draft_cite.malformed_citations_in("see [REF:the thing]") == ["the thing"]
+
+
+# =============================================================================================
+# Formalities
+# =============================================================================================
+def test_an_abstract_over_the_word_cap_fails():
+    broken = dict(GOOD)
+    broken["abstract"] = " ".join(["word"] * 200)
+    check = checks_for(broken)["Abstract is in filing form"]
+    assert check["status"] == "fail" and "200 words" in check["detail"]
+
+
+def test_an_abstract_in_two_paragraphs_is_a_warning_not_a_failure():
+    broken = dict(GOOD)
+    broken["abstract"] = "First paragraph of the abstract.\n\nSecond paragraph."
+    check = checks_for(broken)["Abstract is in filing form"]
+    assert check["status"] == "warn" and "single paragraph" in check["detail"]
+
+
+def test_a_puffed_title_is_objected_to():
+    broken = dict(GOOD)
+    broken["title"] = "New and Improved Vacuum Lifting Tool"
+    assert checks_for(broken)["Title is in filing form"]["status"] == "warn"
+
+
+def test_an_empty_section_fails():
+    broken = dict(GOOD)
+    broken["summary"] = ""
+    assert checks_for(broken)["Every section is written"]["status"] == "fail"
+
+
+def test_open_drafting_notes_are_reported():
+    broken = dict(GOOD)
+    broken["detailed_description"] += " [DRAFTING NOTE: confirm the ring material.]"
+    check = checks_for(broken)["No unresolved drafting notes"]
+    assert check["status"] == "warn" and "ring material" in check["items"][0]
+
+
+# =============================================================================================
+# Workspace
+# =============================================================================================
+def test_sections_survive_a_write_and_read_round_trip(tmp_path):
+    draft_workspace.write_sections(tmp_path, GOOD)
+    assert draft_workspace.read_sections(tmp_path) == GOOD
+
+
+def test_a_heading_the_agent_added_back_is_dropped_but_real_headings_survive(tmp_path):
+    draft_workspace.write_sections(tmp_path, GOOD)
+    path = tmp_path / "draft" / "04-background.md"
+    path.write_text("## Background\n\nHandheld vacuum lifters are known.\n", encoding="utf-8")
+    detail = tmp_path / "draft" / "07-detailed-description.md"
+    detail.write_text("## The pump\n\nThe pump 14 draws air.\n", encoding="utf-8")
+    out = draft_workspace.read_sections(tmp_path)
+    assert out["background"] == "Handheld vacuum lifters are known."
+    assert out["detailed_description"].startswith("## The pump")
+
+
+def test_the_numeral_table_round_trips(tmp_path):
+    draft_workspace.write_numerals(tmp_path, NUMERALS)
+    assert draft_workspace.read_numerals(tmp_path) == NUMERALS
+
+
+def test_figures_round_trip(tmp_path):
+    draft_workspace.write_figures(tmp_path, FIGURES)
+    out = draft_workspace.read_figures(tmp_path)
+    assert [f["label"] for f in out] == ["FIG. 1", "FIG. 2"]
+    assert out[1]["numerals"] == ["16 sealing ring", "18 groove"]
+
+
+def test_an_existing_draft_is_split_on_its_headings():
+    document = ("Vacuum Lifting Tool\n\nBACKGROUND OF THE INVENTION\n\nLifters are known.\n\n"
+                "SUMMARY OF THE INVENTION\n\nA better lifter.\n\n"
+                "DETAILED DESCRIPTION\n\nThe tool 10 has a body 12.\n\n"
+                "WHAT IS CLAIMED IS:\n\n1. A tool.\n\nABSTRACT\n\nA tool.")
+    out = draft_workspace.seed_sections_from_document(document)
+    assert out["title"] == "Vacuum Lifting Tool"
+    assert out["background"] == "Lifters are known."
+    assert out["claims"] == "1. A tool."
+    assert "body 12" in out["detailed_description"]
+
+
+def test_a_document_with_no_recognisable_headings_is_kept_whole_not_dropped():
+    out = draft_workspace.seed_sections_from_document("Just a paragraph about a tool.")
+    assert out == {"detailed_description": "Just a paragraph about a tool."}
+
+
+def test_numerals_are_harvested_from_an_existing_draft():
+    found = {item["numeral"]: item["part"]
+             for item in draft_workspace.numerals_from_sections(
+                 {"detailed_description": "The vacuum lifting tool 10 has a body 12."})}
+    assert found["10"].endswith("tool") and found["12"] == "body"
+
+
+def test_the_workspace_lives_outside_the_home_directory_or_says_why():
+    #  Claude Code collects CLAUDE.md files walking up from its working directory; a workspace
+    #  under the operator's home would inherit that box's own operating instructions.
+    assert draft_workspace.DEFAULT_ROOT.startswith("/srv") or \
+        "DRAFT_WORKSPACE_ROOT" in Path(draft_workspace.__file__).read_text()
+
+
+def test_the_lookup_tool_is_written_with_a_resolvable_source_path(tmp_path):
+    draft_workspace.install_tools(tmp_path, src_dir="/opt/app/src")
+    body = (tmp_path / "tools" / "patent_lookup.py").read_text()
+    assert '"/opt/app/src"' in body and "draft_cite" in body
+    compile(body, "patent_lookup.py", "exec")
+
+
+# =============================================================================================
+# The validator that decides whether a turn becomes a version
+# =============================================================================================
+def test_a_good_draft_validates():
+    assert draft_studio.validate_sections(GOOD, ALLOWED)["title"] == GOOD["title"]
+
+
+def test_an_empty_section_is_refused():
+    with pytest.raises(Exception) as caught:
+        draft_studio.validate_sections({**GOOD, "claims": ""}, ALLOWED)
+    assert "Claims" in str(caught.value)
+
+
+def test_a_citation_to_an_unsupplied_reference_is_refused():
+    broken = {**GOOD, "background": GOOD["background"] + " [REF:US-4444444-A]"}
+    with pytest.raises(Exception) as caught:
+        draft_studio.validate_sections(broken, ALLOWED)
+    assert "US-4444444-A" in str(caught.value)
+
+
+def test_a_legal_conclusion_is_refused():
+    broken = {**GOOD, "summary": GOOD["summary"] + " The claimed tool is clearly non-obvious."}
+    with pytest.raises(Exception) as caught:
+        draft_studio.validate_sections(broken, ALLOWED)
+    assert "legal conclusion" in str(caught.value)
+
+
+def test_a_citation_in_the_detailed_description_is_allowed_here():
+    """Incorporation by reference is real practice; the reviewer judges it, the validator does not
+    throw fifteen minutes of drafting away over it."""
+    ok = {**GOOD, "detailed_description":
+          GOOD["detailed_description"] + " US-11223344-B2 is incorporated by reference "
+          "[REF:US-11223344-B2]."}
+    assert draft_studio.validate_sections(ok, ALLOWED)
+
+
+def test_citations_are_collected_in_first_use_order():
+    sections = {**GOOD, "detailed_description":
+                GOOD["detailed_description"] + " [REF:US-11223344-B2]"}
+    assert draft_studio.citations_of(sections) == ["US-11223344-B2"]
+
+
+def test_the_rendered_markdown_keeps_the_application_order():
+    rendered = draft_studio.render_markdown(GOOD)
+    positions = [rendered.index(heading) for _k, _n, heading in draft_workspace.SECTION_FILES]
+    assert positions == sorted(positions)
+
+
+# =============================================================================================
+# Filing
+# =============================================================================================
+def test_the_fee_profile_counts_a_multiple_dependent_claim_as_several():
+    profile = draft_uspto.fee_profile(
+        GOOD["claims"] + "\n\n4. The tool of any one of claims 1 to 3, wherein it is red.")
+    assert profile["total"] == 4 and profile["independent"] == 1
+    assert profile["multiple_dependent"] == 1 and profile["billable"] == 6
+    assert any("multiple dependent" in s for s in profile["surcharges"])
+
+
+def test_more_than_three_independent_claims_triggers_a_surcharge():
+    claims = "\n\n".join(f"{n}. An apparatus comprising a part {n}." for n in range(1, 6))
+    assert any("independent" in s for s in draft_uspto.fee_profile(claims)["surcharges"])
+
+
+def test_readiness_blocks_on_an_open_drafting_note_and_on_a_failed_check():
+    version = {"version_no": 1, "sections": {**GOOD, "summary":
+                                             GOOD["summary"] + " [DRAFTING NOTE: get the ring "
+                                             "material.]"}, "citations": ["US-11223344-B2"]}
+    qa = {"verdict": "fail", "checks": [{"name": "Every numeral in the text is defined",
+                                         "status": "fail", "severity": "error",
+                                         "detail": "22 is undefined", "items": ["22"]}],
+          "findings": []}
+    report = draft_uspto.readiness(project={"inventors": "Dana Drafter", "applicant": "Example"},
+                                   version=version, qa=qa, figures=[{"id": 1}])
+    titles = [b["title"] for b in report["blockers"]]
+    assert not report["ready"]
+    assert any("drafting note" in t for t in titles)
+    assert "Every numeral in the text is defined" in titles
+
+
+def test_readiness_blocks_when_no_inventor_is_named():
+    report = draft_uspto.readiness(project={"inventors": "", "applicant": ""},
+                                   version={"version_no": 1, "sections": GOOD, "citations": []},
+                                   qa={"verdict": "pass", "checks": [], "findings": []},
+                                   figures=[{"id": 1}])
+    assert any("inventor" in b["title"].lower() for b in report["blockers"])
+
+
+def test_an_unreviewed_draft_is_never_reported_as_ready():
+    report = draft_uspto.readiness(project={"inventors": "Dana", "applicant": "Example"},
+                                   version={"version_no": 1, "sections": GOOD, "citations": []},
+                                   qa=None, figures=[{"id": 1}])
+    assert not report["ready"]
+
+
+def test_a_clean_draft_reports_no_blockers_but_still_lists_what_a_person_must_do():
+    report = draft_uspto.readiness(project={"inventors": "Dana", "applicant": "Example"},
+                                   version={"version_no": 1, "sections": GOOD,
+                                            "citations": ["US-11223344-B2"]},
+                                   qa={"verdict": "pass", "checks": [], "findings": []},
+                                   figures=[{"id": 1}])
+    assert report["ready"] and len(report["remaining"]) >= 5
+    assert any("oath or declaration" in item for item in report["remaining"])
+
+
+def test_the_filing_text_numbers_its_paragraphs_and_orders_the_parts():
+    text = draft_uspto.filing_text({"title": "x"}, {"sections": GOOD})
+    assert "[0001]" in text
+    assert text.index("BACKGROUND OF THE INVENTION") < text.index("CLAIMS")
+    assert text.index("CLAIMS") < text.index("ABSTRACT OF THE DISCLOSURE")
+
+
+def test_paragraph_numbering_is_continuous_across_sections():
+    first, cursor = draft_uspto.numbered_paragraphs("one\n\ntwo", 1)
+    second, _ = draft_uspto.numbered_paragraphs("three", cursor)
+    assert first[0].startswith("[0001]") and second[0].startswith("[0003]")
+
+
+def test_no_dollar_amount_is_printed_anywhere_in_the_filing_module():
+    """Fee amounts change by rulemaking; a number baked in here would be quietly wrong."""
+    body = Path(draft_uspto.__file__).read_text()
+    body = re.sub(r'""".*?"""', "", body, flags=re.S)          # docstrings may discuss the policy
+    assert not re.search(r"\$\s?\d", body)
+
+
+def test_the_ads_fields_never_invent_a_value():
+    fields = draft_uspto.ads_fields({"inventors": "", "applicant": ""},
+                                    {"sections": GOOD})
+    inventor = next(f for f in fields if f["field"] == "Inventor(s)")
+    assert inventor["value"] == "(not supplied)"
+
+
+# =============================================================================================
+# The agent bridge
+# =============================================================================================
+def test_a_structured_result_is_parsed_from_the_json_string_the_cli_returns():
+    parsed = draft_agent._parse_result('{"action":"revised","summary":"did a thing"}')
+    assert parsed["action"] == "revised"
+
+
+def test_a_fenced_result_is_repaired_rather_than_thrown_away():
+    assert draft_agent._parse_result('```json\n{"a":1}\n```')["a"] == 1
+
+
+def test_a_result_that_is_not_an_object_is_a_failure_not_an_empty_dict():
+    assert draft_agent._parse_result("no json here") is None
+    assert draft_agent._parse_result("") is None
+
+
+def test_tool_calls_are_summarised_to_workspace_relative_paths():
+    steps = []
+    draft_agent._summarize_event({
+        "type": "assistant",
+        "message": {"content": [
+            {"type": "tool_use", "name": "Edit",
+             "input": {"file_path": "/srv/patent-drafts/p7/draft/08-claims.md"}},
+            {"type": "text", "text": "narrowed claim 1"},
+            {"type": "tool_use", "name": "StructuredOutput", "input": {"summary": "x"}}]}}, steps)
+    assert steps[0] == {"kind": "tool", "tool": "Edit", "detail": "draft/08-claims.md"}
+    assert steps[1]["kind"] == "say"
+    assert len(steps) == 2, "the structured answer is the result, not a step"
+
+
+def test_availability_reports_the_reason_it_cannot_run(monkeypatch):
+    monkeypatch.setattr(draft_agent, "binary", lambda: "")
+    state = draft_agent.availability()
+    assert state["ok"] is False and "not installed" in state["reason"]
+
+
+def test_strings_bounds_and_cleans_a_model_list():
+    assert draft_agent.strings(["a", "", "b"]) == ["a", "b"]
+    assert draft_agent.strings("single") == ["single"]
+    assert len(draft_agent.strings(["x"] * 100)) == 40
+
+
+# =============================================================================================
+# The reviewer's own output contract
+# =============================================================================================
+def test_a_finding_without_evidence_is_dropped():
+    """An unfalsifiable warning in a review panel is the one users learn to scroll past."""
+    findings = draft_qa.normalize_findings([
+        {"severity": "critical", "title": "Claim 1 unsupported", "evidence": "", "detail": "d",
+         "where": "claims", "category": "claim_support", "fix": ""},
+        {"severity": "major", "title": "Numeral 16 drifts", "evidence": "the ring 16 …",
+         "detail": "d", "where": "detailed description", "category": "figures_and_numerals",
+         "fix": "f"}])
+    assert [f["title"] for f in findings] == ["Numeral 16 drifts"]
+
+
+def test_findings_are_ordered_by_severity():
+    findings = draft_qa.normalize_findings([
+        {"severity": "minor", "title": "m", "evidence": "e", "detail": "", "where": "",
+         "category": "terminology", "fix": ""},
+        {"severity": "critical", "title": "c", "evidence": "e", "detail": "", "where": "",
+         "category": "citations", "fix": ""}])
+    assert [f["severity"] for f in findings] == ["critical", "minor"]
+
+
+def test_the_review_schema_is_valid_json_schema_the_cli_will_accept():
+    encoded = json.dumps(draft_qa.REVIEW_SCHEMA)
+    assert '"additionalProperties": false' in encoded
+    assert draft_qa.REVIEW_SCHEMA["required"] == ["summary", "findings"]
+    assert json.dumps(draft_studio.TURN_SCHEMA)
+
+
+def test_the_reviewer_never_resumes_the_drafting_session(monkeypatch):
+    """The whole value of the second pass is that it has not heard the drafter's argument."""
+    seen = {}
+
+    def fake_run(**kwargs):
+        seen.update(kwargs)
+        return draft_agent.AgentRun(ok=True, result={"summary": "s", "findings": []})
+
+    monkeypatch.setattr(draft_agent, "run", fake_run)
+    draft_qa.review(Path("/tmp"), checks=[])
+    assert seen["resume"] is False
+    assert "Bash" in seen["tools"] and "Write" not in seen["tools"]
+
+
+def test_the_reviewer_is_told_which_checks_already_ran(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(draft_agent, "run", lambda **k: seen.update(k) or draft_agent.AgentRun(
+        ok=True, result={"summary": "", "findings": []}))
+    draft_qa.review(Path("/tmp"), checks=[
+        {"name": "Numerals", "status": "fail", "detail": "22 undefined", "items": ["22"]},
+        {"name": "Claims", "status": "pass", "detail": "fine", "items": []}])
+    assert "22 undefined" in seen["prompt"] and "Claims" not in seen["prompt"]
+
+
+def test_a_broken_reviewer_is_a_finding_not_an_exception(monkeypatch):
+    def explode(**_kwargs):
+        raise draft_agent.AgentUnavailable("no CLI here")
+    monkeypatch.setattr(draft_agent, "run", explode)
+    out = draft_qa.review(Path("/tmp"), checks=[])
+    assert out["ok"] is False and "no CLI" in out["error"]
+
+
+def test_the_drafting_prompt_states_the_rules_it_must_not_break():
+    system = draft_studio.DRAFT_SYSTEM
+    for phrase in ("[DRAFTING NOTE", "prior_art/INDEX.md", "[REF:KEY]", "numerals.md",
+                   "never state or imply", "Never invent"):
+        assert phrase in system, f"the drafting prompt no longer says: {phrase}"
+    assert "broadest statement of the invention that the description fully supports" in system
+
+
+# =============================================================================================
+# The workspace is a cache, not the record
+# =============================================================================================
+def test_the_figure_directory_mirrors_the_stored_version(tmp_path, monkeypatch):
+    """A drawing removed from the draft must not survive on disk and reappear in the next review."""
+    monkeypatch.setattr(draft_workspace, "root", lambda: tmp_path)
+    project = {"id": 1, "title": "t", "disclosure_text": "d" * 60, "input_kind": "description"}
+    draft_workspace.build(project=project, figures=FIGURES)
+    assert len(draft_workspace.read_figures(draft_workspace.for_project(1))) == 2
+    draft_workspace.build(project=project, figures=[FIGURES[0]])
+    assert [f["label"] for f in draft_workspace.read_figures(draft_workspace.for_project(1))] == \
+        ["FIG. 1"]
+
+
+def test_prior_art_files_and_the_index_carry_the_citation_keys(tmp_path, monkeypatch):
+    monkeypatch.setattr(draft_workspace, "root", lambda: tmp_path)
+    workspace = draft_workspace.build(
+        project={"id": 2, "title": "t", "disclosure_text": "d" * 60},
+        references=[{"publication_number": "US-11223344-B2", "title": "Handheld lifter",
+                     "origin": "report", "relevance_summary": "close art",
+                     "snapshot": {"abstract": "A lifter.", "claims": "1. A lifter."}}],
+        documents=[{"kind": "prior_art", "filename": "brochure.pdf", "title": "A brochure",
+                    "body": "Some product text.", "note": "found at a trade show"}])
+    index = (workspace / "prior_art" / "INDEX.md").read_text()
+    assert "[REF:PUBLICATION]" in index and "US-11223344-B2" in index and "UPLOAD-01" in index
+    reference = (workspace / "prior_art" / "US-11223344-B2.md").read_text()
+    assert "`[REF:US-11223344-B2]`" in reference and "1. A lifter." in reference
+    upload = (workspace / "prior_art" / "UPLOAD-01.md").read_text()
+    assert "has NOT been ranked" in upload and "trade show" in upload
+
+
+def test_a_project_with_no_prior_art_is_told_so_rather_than_left_to_guess(tmp_path, monkeypatch):
+    monkeypatch.setattr(draft_workspace, "root", lambda: tmp_path)
+    workspace = draft_workspace.build(
+        project={"id": 3, "title": "t", "disclosure_text": "d" * 60, "search_slug": ""})
+    brief = (workspace / "input" / "brief.md").read_text()
+    assert "no search was run" in brief.lower() or "none was run" in brief.lower()
+    assert "may be incomplete" in brief
+
+
+def test_the_previous_review_reaches_the_next_iteration(tmp_path, monkeypatch):
+    monkeypatch.setattr(draft_workspace, "root", lambda: tmp_path)
+    workspace = draft_workspace.build(
+        project={"id": 5, "title": "t", "disclosure_text": "d" * 60},
+        qa_report={"verdict": "fail", "summary": "numeral 22 is undefined",
+                   "checks": [{"name": "Every numeral in the text is defined", "status": "fail",
+                               "detail": "22 is not in the table", "items": ["22"]}],
+                   "findings": [{"severity": "critical", "title": "Claim 1 unsupported",
+                                 "where": "claims", "detail": "no support", "fix": "add support"}]})
+    review = (workspace / "review" / "previous-qa.md").read_text()
+    assert "numeral 22 is undefined" in review and "Claim 1 unsupported" in review
+    assert "add support" in review
+
+
+def test_figure_labels_match_across_spellings():
+    import draft_studio_service
+    assert draft_studio_service._figure_key("FIG. 1") == draft_studio_service._figure_key("Fig 1")
+    assert draft_studio_service._figure_key("FIGURE 2") == draft_studio_service._figure_key("FIG.2")
+    assert draft_studio_service._figure_key("FIG. 1") != draft_studio_service._figure_key("FIG. 2")
+
+
+# =============================================================================================
+# False positives, each measured on a real 20-claim draft before it was fixed
+# =============================================================================================
+def test_a_claims_own_number_is_not_a_reference_numeral():
+    """Before this, every claim in a 20-claim set was reported as an undefined part."""
+    check = checks_for()["Numerals in the claims are defined"] if \
+        "Numerals in the claims are defined" in checks_for() else None
+    assert check is None, "a clean claim set must raise nothing about numerals in the claims"
+
+
+def test_a_numeral_genuinely_recited_in_a_claim_is_still_caught():
+    broken = dict(GOOD)
+    broken["claims"] += ("\n\n4. The vacuum lifting tool of claim 1, wherein the retaining "
+                         "shoulder 44 is annular.")
+    check = checks_for(broken)["Numerals in the claims are defined"]
+    assert check["status"] == "warn" and "44" in check["items"]
+
+
+def test_a_figure_caption_that_cross_references_another_figure_still_matches_its_sheet():
+    """"FIG. 3 — Enlarged detail III of FIG. 2" is figure 3, not figure 32."""
+    assert draft_qa.figure_number("FIG. 3 — Enlarged detail III of FIG. 2") == "3"
+    assert draft_qa.figure_number("FIG. 1 — Perspective view") == "1"
+    figures = [{"label": "FIG. 1 — Perspective view", "caption": "", "numerals": []},
+               {"label": "FIG. 2 — Section on 2—2 of FIG. 1", "caption": "", "numerals": []}]
+    checks = checks_for(figures=figures)
+    assert "Each described figure has a drawing sheet" not in checks
+
+
+def test_a_participle_after_the_noun_does_not_break_antecedent_basis():
+    """"an evacuable chamber" … "the evacuable chamber displaces" is the same chamber."""
+    broken = dict(GOOD)
+    broken["claims"] = ("1. A tool comprising a body, a pump, and an evacuable chamber bounded by "
+                        "the body, wherein the evacuable chamber displaces a sealing ring, and "
+                        "wherein the body carries the pump.")
+    check = checks_for(broken)["Antecedent basis in the claims"]
+    assert check["status"] == "pass", check["items"]
+
+
+def test_antecedent_basis_still_catches_a_term_that_was_never_introduced():
+    broken = dict(GOOD)
+    broken["claims"] = "1. A tool comprising a body, wherein the retaining shoulder is annular."
+    check = checks_for(broken)["Antecedent basis in the claims"]
+    assert check["status"] == "warn" and any("retaining shoulder" in i for i in check["items"])
+
+
+def test_morphological_variants_are_not_reported_as_unsupported_claim_terms():
+    broken = dict(GOOD)
+    broken["detailed_description"] += (" A controller energises the pump 14 and connects it to a "
+                                       "battery, driving the diaphragm, and each ring is fitted "
+                                       "and received in the groove 18 through a cycle.")
+    broken["claims"] += ("\n\n4. The tool of claim 1, wherein a controller energising the pump "
+                         "is connecting a battery, driving the diaphragm, the ring being fittable "
+                         "and receivable, cycles being repeated.")
+    check = checks_for(broken)["Claim terms appear in the description"]
+    reported = " ".join(check.get("items") or [])
+    for variant in ("energising", "connecting", "driving", "fittable", "receivable", "cycles"):
+        assert variant not in reported, f"{variant} is the same word as one in the description"
+
+
+def test_a_genuinely_different_word_is_still_reported():
+    broken = dict(GOOD)
+    broken["claims"] += "\n\n4. The tool of claim 1, wherein the housing is titanium."
+    check = checks_for(broken)["Claim terms appear in the description"]
+    reported = " ".join(check.get("items") or [])
+    assert "housing" in reported and "titanium" in reported
+
+
+def test_the_stemmer_is_consistent_across_the_forms_that_bit():
+    pairs = [("energising", "energises"), ("driving", "drive"), ("connecting", "connect"),
+             ("fittable", "fitted"), ("receivable", "received"), ("cycles", "cycle")]
+    for left, right in pairs:
+        assert draft_qa._stem(left) == draft_qa._stem(right), (left, right)
+    assert draft_qa._stem("housing") != draft_qa._stem("body")
+
+
+def test_the_first_version_names_the_project():
+    """Until a draft exists the title is a placeholder — usually the first line of a paste."""
+    assert draft_studio.project_title_from(1, GOOD) == GOOD["title"]
+    assert draft_studio.project_title_from(1, {"title": "A Title\nand a stray line"}) == "A Title"
+    assert draft_studio.project_title_from(1, {"title": "   "}) == ""
+
+
+def test_a_later_version_never_renames_the_project():
+    """A user who renamed the project must not have it overwritten by the next iteration."""
+    assert draft_studio.project_title_from(2, GOOD) == ""
+    assert draft_studio.project_title_from(7, GOOD) == ""

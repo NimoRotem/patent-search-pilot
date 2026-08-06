@@ -39,10 +39,22 @@ def test_prompt_edits_are_visible(tmp_path, monkeypatch):
 
 
 def test_comparable_refuses_runs_that_moved_underneath_each_other():
+    #  Replay state is part of the contract now. Two arms that saw different external results are
+    #  not comparable however identical the code, and two arms that BOTH ran live are not
+    #  comparable either: one subject delivered 3 of 11 gold references in one run and 0 of 11 in
+    #  another hours later with nothing changed between them.
+    frozen = {"mode": "replay", "adapter_version": "1", "normalization_version": "1"}
     a = {"git_commit": "aaa", "corpus_snapshot": {"publications": 1}, "git_dirty": False,
-         "disclosure_list_version": "1"}
+         "disclosure_list_version": "1", "replay": frozen}
     b = dict(a)
     assert manifest.comparable(a, b) == []
+    #  live on either side is not a comparison
+    assert any("replay" in d for d in
+               manifest.comparable(a, dict(a, replay={"mode": "off"})))
+    assert any("replay" in d for d in manifest.comparable({**a, "replay": {}}, b))
+    #  and a recording made under a different adapter version is a different external world
+    assert any("adapter_version" in d for d in manifest.comparable(
+        a, dict(a, replay=dict(frozen, adapter_version="2"))))
     b2 = dict(a, corpus_snapshot={"publications": 2})
     assert any("corpus_snapshot" in d for d in manifest.comparable(a, b2))
     b3 = dict(a, disclosure_list_version="2")

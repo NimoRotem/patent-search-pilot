@@ -168,6 +168,23 @@ def _slug(value: Any) -> str:
     return out
 
 
+def _optional_slug(value: Any) -> str:
+    """A search report, or none.
+
+    Drafting began as something you could only reach from a finished report, and the column was
+    NOT NULL to say so.  A user who has an invention and no search yet is the ordinary case, and
+    one who brings a draft they already wrote may never run a search at all — so an empty slug is
+    a legitimate state, not a validation failure.  Anything non-empty is still validated exactly
+    as before, because a malformed slug would reach the report loader.
+    """
+    out = _text(value, field="Search report", max_chars=128)
+    if not out:
+        return ""
+    if not _SLUG_RE.fullmatch(out):
+        raise DraftingValidationError("Search report identifier is invalid.")
+    return out
+
+
 def _publication_number(value: Any) -> str:
     out = re.sub(r"\s+", "", str(value or "")).upper()
     if not _PUB_RE.fullmatch(out):
@@ -565,7 +582,7 @@ class DraftingRepository:
                 "INSERT INTO app_drafting_projects "
                 "(user_id,search_slug,title,disclosure_text,inventor_notes) "
                 "VALUES (%s,%s,%s,%s,%s) RETURNING *",
-                (owner, _slug(search_slug), title, disclosure_text, inventor_notes))
+                (owner, _optional_slug(search_slug), title, disclosure_text, inventor_notes))
             return dict(cur.fetchone())
 
     def create_project_with_references(
@@ -593,7 +610,7 @@ class DraftingRepository:
                 "INSERT INTO app_drafting_projects "
                 "(user_id,search_slug,title,disclosure_text,inventor_notes) "
                 "VALUES (%s,%s,%s,%s,%s) RETURNING *",
-                (owner, _slug(search_slug), title, disclosure_text, inventor_notes))
+                (owner, _optional_slug(search_slug), title, disclosure_text, inventor_notes))
             project = dict(cur.fetchone())
             for reference in normalized:
                 cur.execute(

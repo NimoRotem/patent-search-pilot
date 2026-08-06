@@ -268,6 +268,18 @@ def comparable(a, b):
     for key in ("corpus_snapshot", "index_snapshot", "model_versions", "prompt_versions"):
         if a.get(key) != b.get(key):
             diffs.append(f"{key} differs")
+    #  REPLAY STATE IS A COMPARABILITY VARIABLE. Two arms that saw different external results are
+    #  not comparable however identical the code: measured, one subject delivered 3 of 11 gold
+    #  references in one run and 0 of 11 in another hours earlier with no change between them, and
+    #  the fan-out is the largest exogenous source of that. An arm recorded live and an arm served
+    #  from cache are also not comparable, so the MODE has to match, not merely the versions.
+    ra, rb = (a.get("replay") or {}), (b.get("replay") or {})
+    for key in ("mode", "adapter_version", "normalization_version"):
+        if ra.get(key) != rb.get(key):
+            diffs.append(f"replay.{key}: {ra.get(key)!r} vs {rb.get(key)!r}")
+    if ra.get("mode") in (None, "off") or rb.get("mode") in (None, "off"):
+        diffs.append("replay was off for at least one arm, so the external world was not held "
+                     "constant between them")
     if a.get("git_dirty") or b.get("git_dirty"):
         diffs.append("one or both runs had uncommitted changes")
     return diffs

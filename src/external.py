@@ -291,9 +291,25 @@ def bulk(queries, timeout: float = TIMEOUT) -> dict:
     """POST /api/bulk_search. Never raises: a failure returns an empty candidate list."""
     if not ENABLED or not queries:
         return {"ok": False, "candidates": [], "stats": {}, "error": "disabled or no queries"}
+    import replay
     import requests
     headers = {"X-Patents-Key": FED_KEY} if FED_KEY else {}
     body = {"queries": queries[:MAX_QUERIES], "timeout": timeout}
+
+    #  THE EXPERIMENT'S CONSTANT. Seven APIs whose rankings drift, whose quotas bite at different
+    #  times of day, and one that has been 401ing for weeks. Two runs of one subject have differed
+    #  by as much as any experimental effect we have produced, so a control-versus-treatment
+    #  comparison is not interpretable until this is frozen. See src/replay.py.
+    cached = replay.get("bulk_search", body)
+    if cached is not None:
+        cached = dict(cached)
+        cached["replayed"] = True
+        return cached
+    if replay.mode() == replay.REPLAY:
+        #  Raises in benchmark mode. A live call here would let one arm see a different outside
+        #  world from the other while the report claims the corpus was the only change.
+        replay.miss("bulk_search", body)
+
     last = ""
     for base in [b for b in (INTERNAL_URL, BASE_URL) if b]:
         try:
@@ -304,6 +320,7 @@ def bulk(queries, timeout: float = TIMEOUT) -> dict:
                 continue
             d = r.json()
             d["base_url"] = base
+            replay.put("bulk_search", body, d, raw=r.text)
             return d
         except Exception as e:
             last = f"{type(e).__name__}: {str(e)[:160]}"
