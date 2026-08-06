@@ -210,14 +210,23 @@ def read_figures(workspace: Path) -> list[dict[str, Any]]:
             lines = lines[1:]
         caption_lines, numerals, in_numerals = [], [], False
         for line in lines:
-            if line.strip().startswith("##"):
+            if line.strip().startswith("#"):
                 in_numerals = "numeral" in line.lower()
                 continue
-            if in_numerals and line.strip().startswith("-"):
-                numerals.append(line.strip().lstrip("-").strip())
+            if in_numerals and line.strip().lstrip("*").startswith(("-", "|")):
+                numerals.append(line.strip().lstrip("-|").strip())
             elif not in_numerals:
                 caption_lines.append(line)
-        out.append({"label": label or path.stem, "caption": "\n".join(caption_lines).strip(),
+        body = "\n".join(caption_lines).strip()
+        if not numerals:
+            #  A drawing brief written as prose rather than as a bullet list is the normal case, not
+            #  a malformed one: the agent describes the view and names the parts inline. The check
+            #  that matters — "is every numeral on this sheet defined in the table" — needs the
+            #  numerals wherever they are, so they are read out of the whole file when no explicit
+            #  list was given.
+            import draft_qa
+            numerals = sorted(draft_qa.numerals_used(raw), key=lambda n: int(re.sub(r"\D", "", n) or 0))
+        out.append({"label": label or path.stem, "caption": body,
                     "numerals": numerals, "file": path.name})
     return out
 

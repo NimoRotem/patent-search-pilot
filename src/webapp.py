@@ -740,14 +740,10 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
     failclosed.reset()
     run_manifest = None
     try:
-        import replay as _replay
         run_manifest = manifest.start(
             run_id, slug=slug, subject_id=benchmark_subject_id(slug) or "",
             mode=mode, wide=bool(wide), search_focus=search_focus,
-            doc_token=bool(doc_token),
-            #  Which external world this run saw. manifest.comparable() refuses to compare two
-            #  arms whose replay state differs, or either of which ran with it off.
-            replay=_replay.stats("bulk_search"))
+            doc_token=bool(doc_token))
     except Exception:
         traceback.print_exc()
     try:

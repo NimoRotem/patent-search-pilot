@@ -757,3 +757,64 @@ def test_a_later_version_never_renames_the_project():
     """A user who renamed the project must not have it overwritten by the next iteration."""
     assert draft_studio.project_title_from(2, GOOD) == ""
     assert draft_studio.project_title_from(7, GOOD) == ""
+
+
+def test_recovery_leaves_a_turn_whose_worker_is_still_alive():
+    """Expiring a live lease would put two agents on one workspace, not just two rows."""
+    import os
+    import draft_studio_service as service
+    assert service._worker_is_alive(f"draft-turn-{os.getpid()}-140234") is True
+    assert service._worker_is_alive("draft-turn-999999-1") is False
+    assert service._worker_is_alive("") is False
+    assert service._worker_is_alive(None) is False
+
+
+def test_a_publication_number_in_prose_is_not_three_reference_numerals():
+    """Measured live: the turn that finally cited a reference properly FAILED the numeral check,
+    because "US 9,108,319 B2" beside its token read as numerals 9, 108 and 319."""
+    text = ("US 9,108,319 B2 [REF:US-9108319-B2] describes a suction cup assembly having a "
+            "housing 12. The tool 10 lifts 60 kg with a 200 mm ring.")
+    assert sorted(draft_qa.numerals_used(text), key=int) == ["10", "12"]
+
+
+def test_a_cited_reference_does_not_fail_the_numeral_check():
+    broken = dict(GOOD)
+    broken["background"] += (" US 9,108,319 B2 [REF:US-11223344-B2] describes a suction cup "
+                             "assembly.")
+    check = checks_for(broken)["Every numeral in the text is defined"]
+    assert check["status"] == "pass", check["items"]
+
+
+def test_a_figure_written_as_prose_still_yields_its_numerals(tmp_path):
+    """The agent writes a drawing brief, not a bullet list; the numerals must be found anyway."""
+    directory = tmp_path / "figures"
+    directory.mkdir()
+    (directory / "fig-01.md").write_text(
+        "# FIG. 1 — Perspective view\n\n**View type:** isometric.\n\n"
+        "The body 12 carries the handle 14; the sealing ring 16 is visible at the underside.\n",
+        encoding="utf-8")
+    figure = draft_workspace.read_figures(tmp_path)[0]
+    assert figure["label"].startswith("FIG. 1")
+    assert set(figure["numerals"]) == {"12", "14", "16"}
+
+
+def test_an_explicit_numeral_list_still_wins_over_the_prose_scan(tmp_path):
+    directory = tmp_path / "figures"
+    directory.mkdir()
+    (directory / "fig-02.md").write_text(
+        "# FIG. 2\n\nSection through the body 12.\n\n## Numerals shown on this figure\n\n"
+        "- 12 body\n- 14 handle\n", encoding="utf-8")
+    figure = draft_workspace.read_figures(tmp_path)[0]
+    assert figure["numerals"] == ["12 body", "14 handle"]
+
+
+def test_a_numbered_list_is_not_a_set_of_reference_numerals():
+    """Measured: an ordered list inside a drawing brief reported 1, 2 and 3 as undefined parts."""
+    text = ("**What is shown**\n\n1. The heel portion 38 is deformed.\n"
+            "2. The lip portion 40 rolls.\n\nThe body 12 is unchanged.")
+    assert sorted(draft_qa.numerals_used(text), key=int) == ["12", "38", "40"]
+
+
+def test_a_numeral_at_the_end_of_a_sentence_still_counts():
+    """The list-marker rule must not swallow a real numeral; one never OPENS a sentence."""
+    assert sorted(draft_qa.numerals_used("The tool comprises a body 12."), key=int) == ["12"]

@@ -197,6 +197,18 @@ def numerals_used(text: str) -> Counter:
                      " ", text or "", flags=re.IGNORECASE)
     cleaned = re.sub(r"\bclaims?\s+[0-9,\s\-–and or]+", " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\[REF:[^\]]*\]", " ", cleaned)
+    #  A publication number written into the prose beside its citation token — "US 9,108,319 B2" —
+    #  otherwise reads as three reference numerals (9, 108 and 319) that no numeral table defines,
+    #  and FAILS the draft. Measured on a real second iteration: the moment the agent cited a
+    #  reference properly, the citation check passed and the numeral check failed on the same
+    #  sentence. Publication numbers and comma-grouped figures go first, before anything else.
+    cleaned = re.sub(r"\b[A-Z]{2}\s?[0-9][0-9,\s]{3,16}[0-9]\s?(?:[A-Z][0-9]?)?\b", " ", cleaned)
+    cleaned = re.sub(r"\b[0-9]{1,3}(?:,[0-9]{3})+\b", " ", cleaned)
+    #  A number that OPENS a line, followed by a full stop or bracket, is a list marker. A reference
+    #  numeral never starts a sentence — it always trails the part it labels ("a suction cup 10") —
+    #  so this cannot swallow a real one. Measured: an ordered list inside a drawing brief ("1. The
+    #  heel portion is deformed…") reported numerals 1, 2 and 3 as undefined and failed the draft.
+    cleaned = re.sub(r"(?m)^\s{0,8}[0-9]{1,3}\s*[.)]\s+", " ", cleaned)
     # Numbers carrying units, decimals, ranges or percent signs are measurements.
     cleaned = re.sub(r"\b\d+(?:\.\d+)?\s*(?:%|percent|mm|cm|m\b|in\.|inch(?:es)?|ft|kg|g\b|lb|"
                      r"psi|kpa|mpa|bar|deg|degrees?|°|hz|khz|mhz|v\b|volts?|a\b|amps?|w\b|watts?|"

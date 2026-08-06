@@ -197,11 +197,26 @@ def plan(query_specs, brief: str = "", claims=None) -> dict:
     brief = str(brief or "")
 
     claims_text = "\n".join(str(c.get("text") or "") for c in (claims or [])[:3])
-    try:
-        aspects = _plan_llm(brief, claims_text)
-    except Exception:
-        traceback.print_exc()
-        aspects = []
+
+    #  THE QUERY PLAN HAS TO BE FROZEN TOO, OR THE EXTERNAL CACHE CANNOT HIT.
+    #  The bulk_search cache is keyed on the request payload, and the payload IS these queries.
+    #  Decomposition is an LLM call, so two arms of one experiment would generate slightly
+    #  different wording, miss the cache, and either fail the run (replay mode) or quietly fetch a
+    #  different external world (record mode). Freezing the aspects makes the corpus the only
+    #  thing that differs between arms, which is the entire point of cloning the database.
+    import replay as _replay
+    _pkey = {"brief": brief[:4000], "claims": claims_text[:4000],
+             "max_aspects": MAX_ASPECTS, "cpc_per_aspect": CPC_PER_ASPECT}
+    aspects = _replay.get("plan", _pkey)
+    if aspects is None:
+        if _replay.mode() == _replay.REPLAY:
+            _replay.miss("plan", _pkey)
+        try:
+            aspects = _plan_llm(brief, claims_text)
+        except Exception:
+            traceback.print_exc()
+            aspects = []
+        _replay.put("plan", _pkey, aspects)
 
     queries: list[dict] = []
 

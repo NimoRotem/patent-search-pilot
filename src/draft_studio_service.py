@@ -588,6 +588,24 @@ def status() -> dict[str, Any]:
             "configured": _RUNNER_FACTORY is not None, "agent": draft_agent.availability()}
 
 
+def _worker_is_alive(claimed_by: Any) -> bool:
+    """Is the process that claimed this turn still running on THIS host?
+
+    ``claimed_by`` is ``draft-turn-<pid>-<thread>``.  A live pid means the run is still in flight
+    and its lease must be left alone.
+    """
+    match = re.match(r"^draft-turn-(\d+)-", str(claimed_by or ""))
+    if not match:
+        return False
+    try:
+        os.kill(int(match.group(1)), 0)
+        return True
+    except (ProcessLookupError, ValueError):
+        return False
+    except PermissionError:
+        return True                      # exists, owned by someone else: assume alive
+
+
 def recover_interrupted_turns() -> int:
     """At startup, hand back turns whose worker died mid-run.
 
@@ -596,22 +614,33 @@ def recover_interrupted_turns() -> int:
     says "drafting…" for ever and the user waits for a process that no longer exists.  The lease
     is simply expired here so the ordinary claim path picks it up on the next poll — which also
     means a turn that has already exhausted its attempts fails honestly instead of looping.
+
+    A turn whose claiming PROCESS IS STILL ALIVE is left alone.  Expiring its lease would let a
+    second worker claim a turn that is genuinely still running, and the cost of that is not a
+    duplicate row: it is a second fifteen-minute model run against the same workspace, with two
+    agents editing the same files.
     """
+    released = 0
     try:
         import db
         with db.cursor() as cur:
-            cur.execute("UPDATE app_draft_turns SET lease_expires_at=now()-interval '1 second',"
-                        "stage='resuming after a restart',updated_at=now() "
-                        "WHERE status='running' AND (lease_expires_at IS NULL "
-                        "OR lease_expires_at>now()) RETURNING id")
-            rows = cur.fetchall()
+            cur.execute("SELECT id,claimed_by FROM app_draft_turns WHERE status='running' "
+                        "AND (lease_expires_at IS NULL OR lease_expires_at>now()) FOR UPDATE")
+            stale = [row["id"] for row in cur.fetchall()
+                     if not _worker_is_alive(row.get("claimed_by"))]
+            if stale:
+                cur.execute(
+                    "UPDATE app_draft_turns SET lease_expires_at=now()-interval '1 second',"
+                    "stage='resuming after a restart',updated_at=now() WHERE id = ANY(%s)",
+                    (stale,))
+                released = len(stale)
     except Exception:                                          # noqa: BLE001 - never block boot
         traceback.print_exc()
         return 0
-    if rows:
-        print(f"[recovery] {len(rows)} drafting turn(s) released for another attempt", flush=True)
+    if released:
+        print(f"[recovery] {released} drafting turn(s) released for another attempt", flush=True)
         kick()
-    return len(rows)
+    return released
 
 
 def init_app(app, runner_factory: Callable[[], draft_studio.TurnRunner]):
