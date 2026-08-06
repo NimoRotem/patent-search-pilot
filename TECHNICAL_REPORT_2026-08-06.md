@@ -33,8 +33,15 @@ weight vector fixed before the run.
 
 ### 2.1 Data layer
 
-PostgreSQL 17 with pgvector on a single 4 vCPU / 16 GB VM, shared with roughly a dozen other
-services.
+PostgreSQL 17.10 with pgvector (`pgvector/pgvector:pg17`, in Docker) on **patents-pilot-db**, a
+dedicated e2-highmem-8: 8 vCPU, 62 GB RAM, a 600 GB pd-balanced disk in us-central1-b. The data
+directory is a bind mount at `/srv/patents/pgdata` and occupies 295 GB, leaving 267 GB free.
+
+The pipeline itself does NOT run there. Compute runs on **instance-3** (4 vCPU, 16 GB, shared with
+knowva.ai and roughly a dozen supervised services), which is what makes the pipeline host, not the
+database host, the resource constraint: the spawn recursion described in section 7 exhausted
+instance-3 while patents-pilot-db was untouched. A third host, **builder**, serves the patents
+engine that the `federated` retrieval channel streams from.
 
 | table | rows |
 |---|---|
