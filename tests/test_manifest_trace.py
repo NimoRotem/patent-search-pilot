@@ -168,3 +168,50 @@ def test_channel_hit_that_fusion_never_ranked_is_not_unknown():
     #  and the family fusion DID rank keeps the stage the ranked pass gave it
     assert by["FAM_RANKED"] != tr.CHANNEL_TRUNCATED, by
     assert tr.UNKNOWN not in by.values(), by
+
+
+def test_rerank_pool_refuses_to_spawn_from_inside_a_spawned_child(monkeypatch):
+    """A child must not build its own pool, however careless the script that started it.
+
+    multiprocessing "spawn" re-imports the parent's __main__. A script with its work at module
+    level therefore re-runs that work in every child, and the work spawns again. Measured: a
+    four-deep tree of interpreters holding a reranker each, roughly 1.3 GB apiece, exhausted 16 GB
+    of RAM and 16 GB of swap and froze the host, while several recursive copies wrote the same
+    report file. The `if __name__ == "__main__":` guard is the real fix; this is the backstop for
+    the next script that forgets it.
+    """
+    import multiprocessing
+    import rerank_pool
+
+    class _FakeParent:
+        pid = 4242
+
+    monkeypatch.setattr(multiprocessing, "parent_process", lambda: _FakeParent(), raising=False)
+    assert rerank_pool.in_spawned_child() is True
+    try:
+        rerank_pool._get_pool_locked()
+    except RuntimeError as e:
+        assert "__main__" in str(e)
+    else:
+        raise AssertionError("a spawned child was allowed to create a rerank pool")
+
+    #  and the normal case still works: a real parent process is not a child
+    monkeypatch.setattr(multiprocessing, "parent_process", lambda: None, raising=False)
+    assert rerank_pool.in_spawned_child() is False
+
+
+def test_eval_entrypoints_guard_their_module_level_work():
+    """Every eval script that drives the pipeline must guard its work.
+
+    This is the defect itself, asserted directly: eval/run_one_oracle.py ran ingest and report
+    generation at module level while the pipeline spawns a reranker child, so each child re-ran
+    the entire arm.
+    """
+    import os
+    import re
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for name in ("run_one_oracle.py", "run_split.py", "benchmark.py"):
+        src = open(os.path.join(here, "eval", name)).read()
+        assert re.search(r'if\s+__name__\s*==\s*.__main__.', src), (
+            f"eval/{name} has no __main__ guard; multiprocessing spawn will re-run its "
+            f"module-level work in every child")
