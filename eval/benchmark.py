@@ -75,10 +75,43 @@ def ingest(url):
 
 
 def generate(sub, tag, wide=True):
-    """Run one full search and return the slug."""
+    """Run one full search and return the slug.
+
+    REUSE_META_FROM_TAG makes this arm reuse another arm's INGESTED SUBJECT verbatim instead of
+    re-ingesting.
+
+    WHY. ingest() condenses the patent with an LLM, so it produces different prose every run. The
+    external query plan is keyed on that brief and the external replay cache is keyed on the
+    resulting queries, so an uncached step at the very TOP of the funnel defeats the caching of
+    everything below it. Measured on the first treatment attempt: the same subject produced a
+    1,951-character brief in the control and a 2,304-character brief in the treatment, jaccard
+    0.41, so every subject missed the cache and fetched a different external world. The corpus was
+    then not the only thing that differed between the arms, which is the whole reason the database
+    was cloned.
+
+    Reusing the control's brief and document token makes the two arms byte-identical upstream of
+    retrieval. This lives in eval/ rather than src/ on purpose: src_tree_hash stays unchanged, so
+    the already-completed control arm remains comparable.
+    """
     import webapp
     slug = f"bench-{sub['id']}-{tag}"
-    query, token = ingest(sub["url"])
+    reuse = os.environ.get("REUSE_META_FROM_TAG", "").strip()
+    if reuse:
+        src_meta = webapp.REPORTS / f"bench-{sub['id']}-{reuse}.meta.json"
+        if not src_meta.exists():
+            raise RuntimeError(f"REUSE_META_FROM_TAG={reuse} but {src_meta.name} does not exist; "
+                               f"refusing to silently re-ingest and break the comparison")
+        m = json.loads(src_meta.read_text())
+        query, token = m.get("query") or "", m.get("doc_token")
+        if not query.strip():
+            raise RuntimeError(f"{src_meta.name} has no query to reuse")
+        if not webapp._load_doc_materials(token):
+            raise RuntimeError(f"the stashed document for {src_meta.name} is gone "
+                               f"(token {token}); the arms would not share a subject")
+        print(f"[reuse] subject taken verbatim from {reuse}: "
+              f"{len(query):,} char brief, token {str(token)[:12]}")
+    else:
+        query, token = ingest(sub["url"])
     R = webapp.REPORTS
     for suf in ("", ".view", ".meta", ".deep", ".detail-preview", ".claim-grid", ".archive"):
         p = R / f"{slug}{suf}.json"
