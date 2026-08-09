@@ -21,6 +21,7 @@
   let pending = [];
   let reviewing = false;
   let drawingEditor = null;
+  let refreshSerial = Promise.resolve();
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s)
@@ -48,6 +49,7 @@
   async function api(path, options) {
     const response = await fetch(BASE + path, Object.assign({
       credentials: 'same-origin',
+      cache: 'no-store',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.CSRF_TOKEN || '' },
     }, options || {}));
     const data = await response.json().catch(() => ({}));
@@ -1149,10 +1151,16 @@
     renderBusy();
   }
 
-  async function refresh() {
-    S = await api(`/api/drafts/${PID}/studio`);
-    renderAll();
-    routeFromHash();
+  function refresh() {
+    // Figure generation and polling can finish almost together. Serialising state reads prevents
+    // an older in-flight response from repainting the studio after a newer immutable version.
+    const job = refreshSerial.catch(() => {}).then(async () => {
+      S = await api(`/api/drafts/${PID}/studio`);
+      renderAll();
+      routeFromHash();
+    });
+    refreshSerial = job;
+    return job;
   }
 
   /* Poll while a turn is in flight, and for a short while after the page loads so a turn started

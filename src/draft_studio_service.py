@@ -496,6 +496,11 @@ class StudioService:
                         if int(item.get("version_no") or 0) == version_no), {}) or {}
         sections = version.get("sections") or {}
         expected = _expected_numerals(version, label)
+        # An uploaded or legacy drawing with no current figure specification is intentionally
+        # label-free. Passing None would make render_figure infer every numeral in the entire
+        # application, so an AI edit could introduce labels the drawing was never assigned.
+        if expected is None:
+            expected = []
         try:
             return draft_figures.render_figure(
                 project_id, project["user_id"], label=str(label or "")[:80],

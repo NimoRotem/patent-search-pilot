@@ -299,10 +299,14 @@ def test_figure_version_actions_cannot_cross_between_the_users_projects(
 def test_studio_ui_exposes_sketch_tools_and_reload_safe_navigation():
     root = Path(__file__).resolve().parents[1]
     script = (root / "static" / "draft_studio.js").read_text()
+    css = (root / "static" / "style.css").read_text()
     assert "Select and move" in script and "Delete selected area" in script
     assert "AI fix selected area" in script and "photo-to-sketch" in script
     assert "Search current draft" in script and "importsearch" in script
     assert "hashchange" in script and "#/figures/" in script
+    assert "cache: 'no-store'" in script
+    assert "refreshSerial" in script
+    assert ".chatstatus[hidden]{display:none!important}" in css
 
 
 def test_report_draft_action_is_a_csrf_protected_direct_post():

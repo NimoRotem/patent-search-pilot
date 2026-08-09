@@ -782,6 +782,35 @@ def test_a_drawing_prompt_gets_only_the_numerals_for_that_figure():
     assert "20 = passage" in draft_studio_service._expected_numerals(version, "FIG. 2")
 
 
+def test_an_orphan_drawing_edit_explicitly_forbids_all_numerals(monkeypatch):
+    """An unmatched photo must not inherit every numeral in the whole application."""
+    import draft_figures
+    import draft_studio_service
+
+    class DraftingService:
+        def get_project(self, _principal, project_id, include_versions=True):
+            assert project_id == 7 and include_versions is True
+            return {
+                "id": 7, "user_id": 91, "latest_version_no": 1,
+                "disclosure_text": GOOD["detailed_description"],
+                "versions": [{"version_no": 1, "sections": GOOD,
+                              "numerals": NUMERALS, "figure_specs": FIGURES}],
+            }
+
+    captured = {}
+
+    def render(*_args, **kwargs):
+        captured.update(kwargs)
+        return {"figure_id": 9, "version_no": 2}
+
+    monkeypatch.setattr(draft_figures, "render_figure", render)
+    service = draft_studio_service.StudioService(DraftingService(), repository=object())
+    service.draw_figure(object(), 7, label="FIG. 3", caption="photo-derived view",
+                        instruction="simplify this area", figure_id=9,
+                        region=[10, 10, 80, 80])
+    assert captured["numerals"] == []
+
+
 # =============================================================================================
 # False positives, each measured on a real 20-claim draft before it was fixed
 # =============================================================================================
