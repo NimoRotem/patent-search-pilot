@@ -204,6 +204,64 @@ def test_prompt_forbids_numerals_when_the_draft_establishes_none():
     assert "WITHOUT any reference numerals" in p
 
 
+def test_figure_numeral_audit_compares_both_directions_and_duplicates():
+    audit = draft_figures.numeral_audit(["10 = body", "12 = pump"], ["10", "10", "14"])
+    assert audit["missing"] == ["12"]
+    assert audit["unexpected"] == ["14"]
+    assert audit["duplicates"] == ["10"]
+    assert audit["ok"] is False
+
+
+def test_figure_image_model_is_configurable_by_role(monkeypatch):
+    monkeypatch.setenv("PATENT_FIGURE_IMAGE_MODEL", "test-image-model")
+    assert draft_figures.image_model() == "test-image-model"
+
+
+def test_picture_upload_is_normalized_and_non_images_are_refused():
+    from PIL import Image
+
+    stream = io.BytesIO()
+    Image.new("RGB", (80, 60), "white").save(stream, format="JPEG")
+    normalized = draft_figures.normalize_source_image(stream.getvalue(), "image/jpeg")
+    assert normalized.startswith(b"\x89PNG")
+    with pytest.raises(draft_figures.FigureError):
+        draft_figures.normalize_source_image(b"not an image", "image/png")
+    unsupported = io.BytesIO()
+    Image.new("RGB", (80, 60), "white").save(unsupported, format="TIFF")
+    with pytest.raises(draft_figures.FigureError):
+        draft_figures.normalize_source_image(unsupported.getvalue(), "image/png")
+
+
+def test_selected_area_edit_composites_only_inside_the_requested_rectangle(monkeypatch):
+    from PIL import Image
+
+    source = io.BytesIO()
+    Image.new("RGB", (100, 100), "white").save(source, format="PNG")
+    replacement = io.BytesIO()
+    Image.new("RGB", (30, 40), "black").save(replacement, format="PNG")
+    monkeypatch.setattr(draft_figures, "generate_png", lambda prompt, previous_png=None:
+                        replacement.getvalue())
+    edited = draft_figures.edit_region_png(source.getvalue(), "repair this", (10, 20, 40, 60))
+    image = Image.open(io.BytesIO(edited)).convert("RGB")
+    assert image.getpixel((0, 0)) == (255, 255, 255)
+    assert image.getpixel((20, 30)) == (0, 0, 0)
+    assert image.getpixel((60, 60)) == (255, 255, 255)
+
+    with pytest.raises(draft_figures.FigureError, match="larger area"):
+        draft_figures.edit_region_png(
+            source.getvalue(), "repair this", (9_999, 9_999, 20_000, 20_000))
+
+
+def test_a_figure_cannot_be_edited_through_another_owned_project(monkeypatch):
+    monkeypatch.setattr(draft_figures, "get_figure", lambda figure_id, user_id: {
+        "id": figure_id, "user_id": user_id, "project_id": 88,
+        "figure_label": "FIG. 1", "caption": "another draft",
+    })
+    with pytest.raises(draft_figures.FigureError, match="no such figure"):
+        draft_figures.render_figure(
+            77, 91, label="FIG. 1", caption="target draft", figure_id=4, numerals=[])
+
+
 def test_figure_module_is_not_named_after_an_existing_route_function():
     """`import figures` was shadowed by the `figures` route (the reference-drawing file server),
     and the app booted straight into "'function' object has no attribute 'ensure_schema'"."""

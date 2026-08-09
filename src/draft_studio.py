@@ -218,6 +218,57 @@ def build_prompt(kind: str, *, seeded: bool = False) -> str:
     return REVISE_PROMPT
 
 
+def figures_for_qa(project_id: int, user_id: int,
+                   figure_specs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Replace requested numerals with vision-detected pixels for every drawn sheet."""
+    try:
+        import draft_figures
+        drawn = draft_figures.listing(project_id, user_id)
+    except Exception:
+        # Never substitute the intended labels for pixels that could not be loaded. The review may
+        # continue, but it must carry a blocking, visible inspection result rather than a false pass.
+        return [{**dict(item), "numerals": [], "drawn": False,
+                 "numeral_audit": {"inspected": False,
+                                     "error": "The drawing store could not be read."}}
+                for item in figure_specs]
+
+    def key(value):
+        return re.sub(r"[^0-9a-z]", "", str(value or "").lower()).replace("figure", "fig")
+
+    by_label = {key(item.get("figure_label")): item for item in drawn}
+    out = []
+    for spec in figure_specs:
+        item = dict(spec)
+        image = by_label.pop(key(spec.get("label")), None)
+        item["drawn"] = False
+        # A figure specification is not a drawing. Until an active image exists it contributes no
+        # visible numerals to the bidirectional QA check.
+        item["numerals"] = []
+        if image:
+            active = next((version for version in image.get("versions") or []
+                           if int(version.get("version_no") or 0) ==
+                           int(image.get("active_version") or 0)), None) or {}
+            audit = active.get("numeral_audit") or {}
+            item["drawn"] = bool(active)
+            if audit.get("inspected"):
+                item["numerals"] = list(active.get("detected_numerals") or [])
+            item["numeral_audit"] = dict(audit)
+        out.append(item)
+    # Stored sheets whose figure specification disappeared are still real pixels. Include them so
+    # an unexpected numeral or obsolete drawing cannot vanish from QA merely because the text side
+    # was edited first.
+    for image in by_label.values():
+        active = next((version for version in image.get("versions") or []
+                       if int(version.get("version_no") or 0) ==
+                       int(image.get("active_version") or 0)), None) or {}
+        audit = active.get("numeral_audit") or {}
+        out.append({"label": image.get("figure_label"), "caption": image.get("caption") or "",
+                    "numerals": (list(active.get("detected_numerals") or [])
+                                 if audit.get("inspected") else []),
+                    "drawn": bool(active), "orphan": True, "numeral_audit": dict(audit)})
+    return out
+
+
 # =============================================================================================
 # Validation
 # =============================================================================================
@@ -430,6 +481,50 @@ class StudioRepository:
         with self._cursor() as cur:
             cur.execute("DELETE FROM app_draft_documents WHERE project_id=%s AND id=%s",
                         (int(project_id), int(document_id)))
+
+    # -- searches launched without leaving the studio ----------------------------------------
+    def add_search(self, project_id: int, user_id: int, slug: str, query: str,
+                   status: str = "running") -> dict[str, Any]:
+        self._ready()
+        if status not in ("running", "complete", "error"):
+            status = "running"
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO app_draft_searches "
+                "(project_id,requested_by_user_id,slug,query,status,completed_at) "
+                "VALUES (%s,%s,%s,%s,%s,CASE WHEN %s='complete' THEN now() ELSE NULL END) "
+                "ON CONFLICT (project_id,slug) DO UPDATE SET status=EXCLUDED.status,"
+                "query=EXCLUDED.query,completed_at=EXCLUDED.completed_at RETURNING *",
+                (int(project_id), int(user_id), str(slug)[:64], str(query)[:60_000], status, status))
+            return dict(cur.fetchone())
+
+    def searches(self, project_id: int, limit: int = 20) -> list[dict[str, Any]]:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("SELECT * FROM app_draft_searches WHERE project_id=%s "
+                        "ORDER BY id DESC LIMIT %s", (int(project_id), int(limit)))
+            return [dict(row) for row in cur.fetchall()]
+
+    def search(self, project_id: int, slug: str) -> dict[str, Any] | None:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("SELECT * FROM app_draft_searches WHERE project_id=%s AND slug=%s",
+                        (int(project_id), str(slug)))
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def update_search(self, project_id: int, slug: str, *, status: str,
+                      imported_count: int | None = None) -> None:
+        self._ready()
+        if status not in ("running", "complete", "error"):
+            raise drafting.DraftingValidationError("Unknown search status.")
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE app_draft_searches SET status=%s,"
+                "completed_at=CASE WHEN %s='complete' THEN coalesce(completed_at,now()) "
+                "ELSE completed_at END, imported_count=coalesce(%s,imported_count) "
+                "WHERE project_id=%s AND slug=%s",
+                (status, status, imported_count, int(project_id), str(slug)))
 
     # -- references (prior art added outside a search report) ---------------------------------
     def add_reference(self, project_id: int, *, publication_number: str, title: str,
@@ -914,8 +1009,15 @@ class TurnRunner:
                figures: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         """The automatic post-iteration review. Never raises: a broken reviewer is a finding."""
         started = time.time()
+        qa_figures = list(figures)
         try:
-            checks = self.qa.run_checks(sections=sections, numerals=numerals, figures=figures,
+            loaded = self._load(project_id)
+            qa_figures = figures_for_qa(
+                project_id, int(loaded["project"]["user_id"]), figures)
+        except Exception:
+            pass
+        try:
+            checks = self.qa.run_checks(sections=sections, numerals=numerals, figures=qa_figures,
                                         allowed_references=allowed)
         except Exception as exc:                                # noqa: BLE001
             traceback.print_exc()

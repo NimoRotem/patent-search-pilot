@@ -134,7 +134,12 @@
     </details>
 
     <div class="actions">
-      {% if current_user and not read_only %}<a class="btn sm" href="{{ request.script_root }}/drafts/start?search_slug={{ v.slug }}">Draft US application</a>
+      {% if current_user and not read_only %}<form method="post" action="{{ request.script_root }}/drafts/start" class="inlineform directdraft">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="direct" value="1">
+        <input type="hidden" name="search_slug" value="{{ v.slug }}">
+        <button class="btn sm" type="submit">Draft US application</button>
+      </form>
       {#  The letterhead, client details and narrative that head every export. Kept out of the
           report page itself so the evidence stays the evidence.  #}
       <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}/details"

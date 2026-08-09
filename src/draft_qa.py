@@ -53,7 +53,9 @@ TITLE_CHAR_LIMIT = 500               # 37 CFR 1.72(a)
 _FIG_RE = re.compile(r"\bFIGS?\.?\s*([0-9]+[A-Za-z]?)", re.IGNORECASE)
 _FIG_RANGE_RE = re.compile(r"\bFIGS?\.?\s*([0-9]+[A-Za-z]?)\s*(?:-|–|—|to|through|and)\s*"
                            r"([0-9]+[A-Za-z]?)", re.IGNORECASE)
-_NUMERAL_IN_TEXT_RE = re.compile(r"(?<![\w.\-/])(\d{1,4}[a-z]?)(?![\w%°]|\s*(?:%|percent))")
+_NUMERAL_IN_TEXT_RE = re.compile(
+    r"(?<![\w.\-/])([a-z]?\d{1,4}[a-z]?)(?![\w%°]|\s*(?:%|percent))",
+    re.IGNORECASE)
 _CLAIM_START_RE = re.compile(r"^\s*(\d{1,3})\s*[.)]\s+", re.MULTILINE)
 #  The reference-back phrase, then everything that is still a claim number.  The tail has to span
 #  "1 to 3", "1 or 4" and "1, 2 and 3" without running on into "wherein …", which is why the
@@ -210,7 +212,7 @@ def numerals_used(text: str) -> Counter:
     #  heel portion is deformed…") reported numerals 1, 2 and 3 as undefined and failed the draft.
     cleaned = re.sub(r"(?m)^\s{0,8}[0-9]{1,3}\s*[.)]\s+", " ", cleaned)
     # Numbers carrying units, decimals, ranges or percent signs are measurements.
-    cleaned = re.sub(r"\b\d+(?:\.\d+)?\s*(?:%|percent|mm|cm|m\b|in\.|inch(?:es)?|ft|kg|g\b|lb|"
+    cleaned = re.sub(r"\b\d+(?:\.\d+)?\b\s*(?:%|percent|mm|cm|m\b|in\.|inch(?:es)?|ft|kg|g\b|lb|"
                      r"psi|kpa|mpa|bar|deg|degrees?|°|hz|khz|mhz|v\b|volts?|a\b|amps?|w\b|watts?|"
                      r"s\b|sec(?:onds?)?|min(?:utes?)?|h\b|hours?|rpm|n\b|newtons?)", " ",
                      cleaned, flags=re.IGNORECASE)
@@ -218,13 +220,19 @@ def numerals_used(text: str) -> Counter:
     cleaned = re.sub(r"\b(?:19|20)\d{2}\b", " ", cleaned)
     cleaned = re.sub(r"\b\d+\s*(?:-|–|—|to)\s*\d+\b", " ", cleaned)
     cleaned = re.sub(r"\b(?:35|37)\s+(?:U\.?S\.?C\.?|C\.?F\.?R\.?)[^.\n]*", " ", cleaned)
-    return Counter(match.group(1) for match in _NUMERAL_IN_TEXT_RE.finditer(cleaned))
+    return Counter(match.group(1).upper() for match in _NUMERAL_IN_TEXT_RE.finditer(cleaned))
+
+
+def _drawing_numeral(value: Any) -> str:
+    """Canonical numeral at the start of a figure entry, preserving letter qualifiers."""
+    match = re.match(r"\s*([A-Za-z]?\d{1,4}[A-Za-z]?)\b", str(value or ""))
+    return match.group(1).upper() if match else ""
 
 
 def _numeral_checks(spec_text: str, claims_text: str,
                     numerals: Sequence[Mapping[str, str]],
                     figures: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    table = {str(item.get("numeral") or "").strip(): str(item.get("part") or "").strip()
+    table = {str(item.get("numeral") or "").strip().upper(): str(item.get("part") or "").strip()
              for item in numerals if str(item.get("numeral") or "").strip()}
     used = numerals_used(spec_text)
     out: list[dict[str, Any]] = []
@@ -281,8 +289,43 @@ def _numeral_checks(spec_text: str, claims_text: str,
 
     out.append(_first_use_introduces(spec_text, table))
 
-    figure_numerals = {re.sub(r"\D", "", str(n).split()[0]) if str(n).strip() else ""
-                       for figure in figures for n in (figure.get("numerals") or [])}
+    figure_values = [_drawing_numeral(n)
+                     for figure in figures for n in (figure.get("numerals") or [])]
+    figure_values = [value for value in figure_values if value]
+    figure_numerals = set(figure_values)
+    figure_numerals.discard("")
+    duplicate_drawing_numerals = []
+    unreadable_drawings = [
+        str(figure.get("label") or "drawing")
+        for figure in figures
+        if "numeral_audit" in figure and
+        not bool((figure.get("numeral_audit") or {}).get("inspected"))
+    ]
+    if unreadable_drawings:
+        out.append(_check(
+            "Drawing pixels were inspected", "fail",
+            "The reference-numeral audit could not read one or more drawing sheets. The draft "
+            "cannot be marked consistent until those pixels are checked.",
+            items=unreadable_drawings))
+    elif any("numeral_audit" in figure for figure in figures):
+        out.append(_check(
+            "Drawing pixels were inspected", "pass",
+            "The reference numerals were read from every generated drawing."))
+    for figure in figures:
+        values = [_drawing_numeral(n) for n in (figure.get("numerals") or [])]
+        counts = Counter(value for value in values if value)
+        duplicate_drawing_numerals.extend(
+            f"{figure.get('label') or 'drawing'}: {value}"
+            for value, count in counts.items() if count > 1)
+    if duplicate_drawing_numerals:
+        out.append(_check(
+            "Each drawing numeral appears once", "fail",
+            "A reference numeral is printed more than once across the drawing set. Move its "
+            "existing label or remove the duplicate instead of creating a second label.",
+            items=duplicate_drawing_numerals))
+    elif figures:
+        out.append(_check("Each drawing numeral appears once", "pass",
+                          "No reference numeral is duplicated within a drawing."))
     unknown_on_figures = sorted((n for n in figure_numerals if n and n not in table),
                                 key=_numeral_sort)
     if unknown_on_figures:
@@ -293,6 +336,36 @@ def _numeral_checks(spec_text: str, claims_text: str,
     elif figures:
         out.append(_check("Numerals on the drawings are defined", "pass",
                           "Every numeral marked on a drawing is in the table."))
+
+    # A prompt is only a request to an image model. For generated sheets the caller replaces the
+    # figure specification's requested list with the numerals detected in the returned pixels,
+    # which makes these two checks an audit of the actual drawing rather than of our own prompt.
+    # Compare the aggregate sets in BOTH directions: allowing either an extra drawing label or a
+    # described part with no drawing is how text and figures quietly drift apart over revisions.
+    if figures:
+        drawing_only = sorted(figure_numerals - set(used), key=_numeral_sort)
+        if drawing_only:
+            out.append(_check(
+                "Every drawing numeral appears in the specification", "fail",
+                f"{len(drawing_only)} reference numeral(s) appear on a drawing but nowhere in "
+                "the specification. Remove them from the drawing or describe the disclosed part "
+                "in the text.", items=drawing_only))
+        else:
+            out.append(_check(
+                "Every drawing numeral appears in the specification", "pass",
+                "Every reference numeral on the drawings also appears in the specification."))
+
+        text_only = sorted(set(used) - figure_numerals, key=_numeral_sort)
+        if text_only:
+            out.append(_check(
+                "Every specification numeral appears in a drawing", "fail",
+                f"{len(text_only)} reference numeral(s) are used in the specification but absent "
+                "from every drawing. Add them to an appropriate drawing or remove the numbering "
+                "from the text.", items=text_only))
+        else:
+            out.append(_check(
+                "Every specification numeral appears in a drawing", "pass",
+                "Every reference numeral used in the specification appears on a drawing."))
     return out
 
 
@@ -393,7 +466,21 @@ def _figure_checks(sections: Mapping[str, str],
                               items=[f"FIG. {n} missing" for n in gaps]))
 
     if figures:
-        labels = {figure_number(f.get("label")) for f in figures}
+        tracks_pixels = any("drawn" in figure for figure in figures)
+        labels = {figure_number(f.get("label")) for f in figures
+                  if not tracks_pixels or f.get("drawn")}
+        extra = sorted((label for label in labels if label and label not in described),
+                       key=_numeral_sort)
+        if extra:
+            out.append(_check(
+                "Every drawing sheet is described", "fail",
+                "A stored drawing sheet is not listed in the Brief Description of the Drawings. "
+                "Restore its description or delete the obsolete sheet.",
+                items=[f"FIG. {n}" for n in extra]))
+        elif tracks_pixels:
+            out.append(_check(
+                "Every drawing sheet is described", "pass",
+                "Every stored drawing sheet is listed in the specification."))
         missing = sorted({n for n in described
                           if n not in labels and re.sub(r"\D", "", n) not in labels},
                          key=_numeral_sort)

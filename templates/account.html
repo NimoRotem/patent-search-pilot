@@ -22,7 +22,7 @@
         <input id="profile-name" type="text" name="full_name" value="{{ user.full_name }}" required maxlength="120">
         <label for="profile-org">Organization <span class="muted">(optional)</span></label>
         <input id="profile-org" type="text" name="organization" value="{{ user.organization or '' }}" maxlength="180">
-        <label for="profile-applicant">Default applicant <span class="muted">(optional)</span></label>
+        <label for="profile-applicant">Default applicant or assignee <span class="muted">(optional)</span></label>
         <input id="profile-applicant" type="text" name="default_applicant" value="{{ user.default_applicant or '' }}" maxlength="240">
         <label for="profile-inventors">Default inventor names <span class="muted">(one per line)</span></label>
         <textarea id="profile-inventors" name="default_inventors" rows="4" maxlength="2000"

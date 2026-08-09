@@ -163,6 +163,25 @@ CREATE TABLE IF NOT EXISTS app_draft_documents (
 CREATE INDEX IF NOT EXISTS app_draft_documents_project_idx
   ON app_draft_documents (project_id, id);
 
+-- A search launched from the current draft stays attached to that draft. The report itself keeps
+-- using the established report cache and account-search row; this table is the small durable link
+-- that lets the studio show progress after a reload and import the resulting art in place.
+CREATE TABLE IF NOT EXISTS app_draft_searches (
+  id bigserial PRIMARY KEY,
+  project_id bigint NOT NULL REFERENCES app_drafting_projects(id) ON DELETE CASCADE,
+  requested_by_user_id bigint NOT NULL REFERENCES app_users(id) ON DELETE RESTRICT,
+  slug text NOT NULL,
+  query text NOT NULL DEFAULT '',
+  status text NOT NULL DEFAULT 'running'
+    CHECK (status IN ('running', 'complete', 'error')),
+  imported_count integer NOT NULL DEFAULT 0 CHECK (imported_count >= 0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  completed_at timestamptz,
+  UNIQUE (project_id, slug)
+);
+CREATE INDEX IF NOT EXISTS app_draft_searches_project_idx
+  ON app_draft_searches (project_id, id DESC);
+
 -- Versions gain the agent's provenance so the history reads as a conversation, not a list, and
 -- they carry the two things that used to live only in the workspace directory: the reference
 -- numeral table and the figure specifications. Those are PART OF THE DRAFT — a numeral table that

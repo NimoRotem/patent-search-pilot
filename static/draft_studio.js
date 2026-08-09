@@ -17,8 +17,10 @@
   let S = JSON.parse(document.getElementById('studioState').textContent || '{}');
   let lastMessageId = 0;
   let polling = null;
+  let searchPolling = null;
   let pending = [];
   let reviewing = false;
+  let drawingEditor = null;
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s)
@@ -194,27 +196,56 @@
   }
 
   // ── review ─────────────────────────────────────────────────────────────────
+  function drawingAuditChecks() {
+    return (S.figures || []).filter((figure) => figure.drawn).map((figure) => {
+      const audit = figure.numeral_audit || {};
+      if (!audit.inspected) return {
+        name: `${figure.label} pixel numeral check`, status: 'fail', severity: 'error',
+        detail: audit.error || 'The visible numerals could not be inspected.', items: [],
+        figureMismatch: true,
+      };
+      const items = [];
+      if (audit.missing && audit.missing.length) items.push(`Missing: ${audit.missing.join(', ')}`);
+      if (audit.unexpected && audit.unexpected.length) {
+        items.push(`Not in draft: ${audit.unexpected.join(', ')}`);
+      }
+      if (audit.duplicates && audit.duplicates.length) {
+        items.push(`Duplicated: ${audit.duplicates.join(', ')}`);
+      }
+      return {
+        name: `${figure.label} pixel numeral check`, status: audit.ok ? 'pass' : 'fail',
+        severity: 'error', figureMismatch: !audit.ok, items,
+        detail: audit.ok ? 'Visible labels match the current figure specification.' :
+          'The numerals detected in the drawing pixels do not match the current draft.',
+      };
+    });
+  }
+
   function renderReview() {
     const body = $('reviewBody');
     const qa = S.qa;
-    if (!qa) {
+    const pixelChecks = drawingAuditChecks();
+    if (!qa && !pixelChecks.length) {
       body.innerHTML = `<div class="emptypane"><h3>Nothing reviewed yet</h3>
         <p>Every iteration is checked automatically: reference numerals against the text and the
         drawings, claim numbering and dependency, whether each citation resolves to a real
         publication, and whether the claims are supported by what was disclosed.</p></div>`;
       return;
     }
-    const [tone, label] = VERDICT[qa.verdict] || VERDICT.unknown;
-    const checks = qa.checks || [];
-    const findings = qa.findings || [];
+    const hasPixelFailure = pixelChecks.some((check) => check.status === 'fail');
+    const [tone, label] = hasPixelFailure ? VERDICT.fail :
+      (VERDICT[(qa || {}).verdict] || VERDICT.unknown);
+    const checks = pixelChecks.concat((qa || {}).checks || []);
+    const findings = (qa || {}).findings || [];
     const order = { fail: 0, warn: 1, pass: 2 };
     checks.sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
     body.innerHTML = `
       <div class="rvhead">
         <span class="verdict big ${tone}">${label}</span>
-        <div><b>${esc(qa.summary)}</b>
-          <div class="small muted">version ${qa.version_no || '—'} · reviewed by
-            ${esc(qa.model_name || 'the reviewer')}${qa.last_error ?
+        <div><b>${esc(hasPixelFailure ? 'A drawing does not match the current draft.' :
+          ((qa || {}).summary || 'Drawing pixels checked.'))}</b>
+          <div class="small muted">version ${(qa || {}).version_no || 'current'} · reviewed by
+            ${esc((qa || {}).model_name || 'the deterministic drawing check')}${(qa || {}).last_error ?
               ' · reviewer error: ' + esc(qa.last_error) : ''}</div></div>
         <span class="grow"></span>
         <button type="button" class="btn ghost sm" id="rvRerun">Re-run the review</button>
@@ -228,16 +259,31 @@
         '<p class="muted small">The reviewer raised nothing.</p>'}`;
     const rerun = $('rvRerun');
     if (rerun) rerun.addEventListener('click', rerunReview);
+    body.querySelectorAll('.fixchip').forEach((button) => button.addEventListener('click', () => {
+      $('chatInput').value = button.dataset.q || '';
+      $('chatInput').focus();
+    }));
+    body.querySelectorAll('.openfigrepair').forEach((button) =>
+      button.addEventListener('click', () => showPane('figures')));
   }
 
   function checkRow(check) {
     const tone = { pass: 'good', warn: 'warn', fail: 'bad' }[check.status] || 'muted';
     const advisory = check.severity === 'advisory'
       ? '<span class="chip tiny">heuristic</span>' : '';
+    const numeralMismatch = check.figureMismatch || (check.status === 'fail' && (
+      check.name === 'Every drawing numeral appears in the specification' ||
+      check.name === 'Every specification numeral appears in a drawing'));
+    const repair = numeralMismatch ? `<div class="ffix">
+      <button type="button" class="chip openfigrepair">Fix a drawing</button>
+      <button type="button" class="chip fixchip" data-q="${esc(
+        `Resolve ${check.name.toLowerCase()}: ${(check.items || []).join(', ')}. ` +
+        'Change the text only when the inventor disclosure supports the visible part; otherwise change the drawing.')}">
+        Ask the agent to fix text</button></div>` : '';
     return `<details class="chk ${tone}"${check.status === 'fail' ? ' open' : ''}>
       <summary><span class="dot"></span><b>${esc(check.name)}</b>${advisory}
         <span class="small">${esc(check.detail)}</span></summary>
-      ${list(check.items, 'chkitems')}</details>`;
+      ${list(check.items, 'chkitems')}${repair}</details>`;
   }
 
   function findingRow(finding) {
@@ -259,17 +305,67 @@
      The image is drawn from it on request, because an image nobody asked for is five seconds and
      a model call spent on a figure the user was about to reword. */
   function renderFigures() {
+    // A state poll must not destroy unsaved canvas work. The pane is rebuilt after the editor
+    // closes, when there is no local-only bitmap left to preserve.
+    if (drawingEditor && document.body.contains(drawingEditor.canvas)) return;
     const figures = S.figures || [];
     $('figuresBody').innerHTML = `
-      <p class="small muted">Drawn from this draft's own Brief Description of the Drawings and its
-        reference numerals, so the numerals on the sheet are the draft's rather than invented.
-        Drafting aids only — not formal drawings under 37 CFR 1.84.</p>
+      <div class="photosketch">
+        <div><b>Turn a product photo into a drawing</b>
+          <div class="small muted">Upload a real product or part. AI removes the background,
+          colour, texture, reflections, and logos while preserving visible geometry.</div></div>
+        <input type="file" id="photoSketchFile" accept="image/png,image/jpeg,image/webp">
+        <input type="text" id="photoSketchCaption" maxlength="400"
+          placeholder="View or part, for example: front view of pump housing">
+        <button type="button" class="btn ghost sm" id="photoSketchBtn">Make line drawing</button>
+        <span class="small" id="photoSketchMsg" role="status"></span>
+      </div>
+      <p class="small muted">Each drawing is checked against the reference numerals actually
+        visible in its pixels. These are drafting aids, not formal drawings under 37 CFR 1.84.</p>
       ${figures.length ? figures.map(figureCard).join('') :
         `<div class="emptypane"><h3>No drawings yet</h3><p>The agent writes one specification per
-         figure as it drafts. Ask it for the figures this invention needs — for example
-         “add an exploded view showing how the ring comes out of the groove”.</p></div>`}`;
+         figure as it drafts. Ask it for the figures this invention needs, or upload a product
+         photo above.</p></div>`}
+      <div id="figureEditorHost"></div>`;
     document.querySelectorAll('.figdraw').forEach((button) =>
       button.addEventListener('click', () => drawFigure(button)));
+    document.querySelectorAll('.figedit').forEach((button) =>
+      button.addEventListener('click', () => openFigureEditor(Number(button.dataset.figure))));
+    document.querySelectorAll('.figdel').forEach((button) =>
+      button.addEventListener('click', () => deleteFigure(Number(button.dataset.figure))));
+    document.querySelectorAll('.figfix').forEach((button) =>
+      button.addEventListener('click', () => fixFigureNumerals(button)));
+    document.querySelectorAll('.figfixtext').forEach((button) =>
+      button.addEventListener('click', () => fixDraftNumerals(button)));
+    document.querySelectorAll('.figversion').forEach((button) =>
+      button.addEventListener('click', () => activateFigureVersion(button)));
+    $('photoSketchBtn').addEventListener('click', photoToSketch);
+  }
+
+  function numeralValue(value) {
+    const match = String(value || '').match(/\b([A-Za-z]?\d{1,4}[A-Za-z]?)\b/);
+    return match ? match[1].toUpperCase() : '';
+  }
+
+  function auditHtml(figure) {
+    if (!figure.drawn) return '';
+    const audit = figure.numeral_audit || {};
+    if (!audit.inspected) return `<div class="fignumaudit warn"><b>Numeral check unavailable.</b>
+      ${esc(audit.error || 'Run an AI redraw or re-save the drawing to inspect it again.')}</div>`;
+    if (audit.ok) return `<div class="fignumaudit good"><b>Numerals match.</b>
+      The drawing and draft use the same labels, once each.</div>`;
+    const issues = [];
+    if (audit.missing && audit.missing.length) issues.push(`missing: ${audit.missing.join(', ')}`);
+    if (audit.unexpected && audit.unexpected.length) {
+      issues.push(`not in draft: ${audit.unexpected.join(', ')}`);
+    }
+    if (audit.duplicates && audit.duplicates.length) {
+      issues.push(`duplicated: ${audit.duplicates.join(', ')}`);
+    }
+    return `<div class="fignumaudit bad"><b>Numerals do not match.</b> ${esc(issues.join(' · '))}
+      <button type="button" class="chip figfix" data-figure="${figure.figure_id}">Fix drawing</button>
+      <button type="button" class="chip figfixtext" data-figure="${figure.figure_id}">Update draft text</button>
+    </div>`;
   }
 
   function figureCard(figure) {
@@ -282,17 +378,28 @@
       ${figure.orphan ? `<div class="small warn">This drawing is no longer described in the
         specification.</div>` : ''}
       ${src ? `<img class="figimg" loading="lazy" alt="${esc(figure.label)}" src="${src}">` : ''}
-      ${figure.numerals && figure.numerals.length ?
-        `<div class="fignums">${figure.numerals.map((n) =>
+      ${(figure.expected_numerals || figure.numerals || []).length ?
+        `<div class="fignums" title="Numerals required by the current draft">${
+          (figure.expected_numerals || figure.numerals).map((n) =>
           `<span class="chip tiny">${esc(n)}</span>`).join('')}</div>` : ''}
+      ${auditHtml(figure)}
+      ${figure.n_versions > 1 ? `<div class="figversions"><span class="small muted">Versions</span>${
+        (figure.versions || []).map((version) => `<button type="button" class="chip tiny figversion"
+          data-figure="${figure.figure_id}" data-version="${version.version_no}"
+          ${Number(version.version_no) === Number(figure.active_version) ? 'disabled' : ''}>v${
+            version.version_no}${Number(version.version_no) === Number(figure.active_version) ? ' current' : ''}</button>`).join('')}
+        </div>` : ''}
       <div class="figrow2">
         <input type="text" class="figinstr" maxlength="1000"
-          placeholder="${figure.drawn ? 'Change something — “move the pump into the handle”'
+          placeholder="${figure.drawn ? 'AI change, for example: move the pump into the handle'
                                       : 'Anything to add before it is drawn'}">
         <button type="button" class="btn ghost sm figdraw"
           data-label="${esc(figure.label)}" data-caption="${esc(figure.caption || '')}"
           ${figure.figure_id ? `data-figure="${figure.figure_id}"` : ''}>${
           figure.drawn ? 'Redraw' : 'Draw this figure'}</button>
+        ${figure.figure_id ? `<button type="button" class="btn ghost sm figedit"
+          data-figure="${figure.figure_id}">Edit by hand</button>
+          <button type="button" class="chip figdel" data-figure="${figure.figure_id}">Delete</button>` : ''}
         <span class="small figmsg" role="status"></span>
       </div></article>`;
   }
@@ -323,11 +430,334 @@
     }
   }
 
+  async function photoToSketch() {
+    const input = $('photoSketchFile');
+    const button = $('photoSketchBtn');
+    const message = $('photoSketchMsg');
+    if (!input.files.length) { message.textContent = 'Choose a photo first.'; return; }
+    const form = new FormData();
+    form.append('image', input.files[0]);
+    form.append('caption', $('photoSketchCaption').value.trim());
+    button.disabled = true;
+    message.textContent = 'Removing the photographic detail and drawing clean line art…';
+    try {
+      const response = await fetch(`${BASE}/drafts/${PID}/studio/photo-to-sketch`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'X-CSRF-Token': window.CSRF_TOKEN || '' }, body: form,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Could not convert that photo.');
+      input.value = '';
+      $('photoSketchCaption').value = '';
+      await refresh();
+      showPane('figures');
+    } catch (error) {
+      message.textContent = error.message;
+      message.className = 'small bad';
+    } finally { button.disabled = false; }
+  }
+
+  async function deleteFigure(figureId) {
+    if (!window.confirm('Delete this drawing and all of its versions?')) return;
+    try {
+      await api(`/drafts/${PID}/studio/figure/${figureId}/delete`, { method: 'POST' });
+      if (location.hash.includes(`/figures/${figureId}/`)) location.hash = '#/figures';
+      await refresh();
+      showPane('figures');
+    } catch (error) { window.alert(error.message); }
+  }
+
+  async function activateFigureVersion(button) {
+    button.disabled = true;
+    try {
+      await api(`/drafts/${PID}/figures/${button.dataset.figure}/activate`, {
+        method: 'POST', body: JSON.stringify({ version_no: Number(button.dataset.version) }),
+      });
+      await refresh(); showPane('figures');
+    } catch (error) { button.textContent = error.message; }
+  }
+
+  async function fixFigureNumerals(button) {
+    const figure = (S.figures || []).find((item) => item.figure_id === Number(button.dataset.figure));
+    if (!figure) return;
+    const audit = figure.numeral_audit || {};
+    const instruction = `Correct reference numerals only. Use exactly ${
+      (audit.expected || []).join(', ') || 'no numerals'}; remove extras and duplicates.`;
+    const card = button.closest('.figblock');
+    const draw = card.querySelector('.figdraw');
+    card.querySelector('.figinstr').value = instruction;
+    await drawFigure(draw);
+  }
+
+  async function fixDraftNumerals(button) {
+    const figure = (S.figures || []).find((item) => item.figure_id === Number(button.dataset.figure));
+    if (!figure) return;
+    const audit = figure.numeral_audit || {};
+    const message = `Resolve the reference numeral mismatch for ${figure.label}. The drawing ` +
+      `inspection found ${JSON.stringify(audit.detected || [])}; the current draft expects ` +
+      `${JSON.stringify(audit.expected || [])}. Update the specification and numeral table only ` +
+      `where the visible part is supported by the inventor disclosure. Otherwise remove the ` +
+      `unsupported numeral from the drawing.`;
+    try {
+      await api(`/drafts/${PID}/studio/message`, {
+        method: 'POST', body: JSON.stringify({ message, kind: 'qa_fix' }),
+      });
+      showPane('draft');
+      await refresh();
+      startPolling();
+    } catch (error) { window.alert(error.message); }
+  }
+
+  // ── manual drawing editor ─────────────────────────────────────────────────
+  function openFigureEditor(figureId) {
+    const figure = (S.figures || []).find((item) => item.figure_id === Number(figureId));
+    if (!figure) return;
+    showPane('figures', false);
+    if (location.hash !== `#/figures/${figureId}/edit`) {
+      location.hash = `#/figures/${figureId}/edit`;
+    }
+    const host = $('figureEditorHost');
+    host.innerHTML = `<section class="draweditor" aria-label="Drawing editor">
+      <div class="draweditor-head"><div><b>Edit ${esc(figure.label)}</b>
+        <div class="small muted">Every save creates a new version. Undo stays local until save.</div></div>
+        <button type="button" class="chip" id="drawClose">Close</button></div>
+      <div class="drawtools" role="toolbar" aria-label="Drawing tools">
+        <button type="button" class="chip on" data-tool="select">Select and move</button>
+        <button type="button" class="chip" data-tool="pen">Pen</button>
+        <button type="button" class="chip" data-tool="line">Line</button>
+        <button type="button" class="chip" data-tool="erase">Delete tool</button>
+        <button type="button" class="chip" data-tool="numeral">Place numeral</button>
+        <input type="text" id="drawNumeral" inputmode="numeric" maxlength="5" placeholder="12">
+        <button type="button" class="chip" id="drawDeleteSelection">Delete selected area</button>
+        <button type="button" class="chip" id="drawUndo">Undo</button>
+      </div>
+      <div class="drawcanvaswrap"><canvas id="drawCanvas"></canvas><canvas id="drawOverlay"></canvas></div>
+      <div class="drawaifix"><input type="text" id="drawAiInstruction" maxlength="1000"
+          placeholder="Select an area, then describe what AI should redo in that area">
+        <button type="button" class="btn ghost sm" id="drawAi">AI fix selected area</button>
+        <button type="button" class="btn sm" id="drawSave">Save new version</button>
+        <span class="small" id="drawMsg" role="status"></span></div>
+    </section>`;
+    host.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setupCanvasEditor(figure);
+  }
+
+  function setupCanvasEditor(figure) {
+    const canvas = $('drawCanvas');
+    const overlay = $('drawOverlay');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const octx = overlay.getContext('2d');
+    const editor = drawingEditor = {
+      figure, canvas, overlay, ctx, octx, tool: 'select', down: false, start: null,
+      selection: null, undo: [], before: null, moving: false, pixels: null, ready: false,
+    };
+    $('drawMsg').textContent = 'Loading drawing…';
+    const image = new Image();
+    image.onload = () => {
+      canvas.width = overlay.width = image.naturalWidth;
+      canvas.height = overlay.height = image.naturalHeight;
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0);
+      editor.ready = true;
+      $('drawMsg').textContent = '';
+    };
+    image.onerror = () => { $('drawMsg').textContent = 'The drawing could not be loaded.'; };
+    image.src = `${BASE}/drafts/${PID}/figures/${figure.figure_id}.png?version=${figure.active_version}`;
+
+    document.querySelectorAll('.drawtools [data-tool]').forEach((button) => {
+      button.addEventListener('click', () => {
+        editor.tool = button.dataset.tool;
+        document.querySelectorAll('.drawtools [data-tool]').forEach((item) =>
+          item.classList.toggle('on', item === button));
+      });
+    });
+    overlay.addEventListener('pointerdown', (event) => editorDown(editor, event));
+    overlay.addEventListener('pointermove', (event) => editorMove(editor, event));
+    overlay.addEventListener('pointerup', (event) => editorUp(editor, event));
+    overlay.addEventListener('pointercancel', (event) => editorUp(editor, event));
+    $('drawDeleteSelection').addEventListener('click', () => deleteSelection(editor));
+    $('drawUndo').addEventListener('click', () => undoDrawing(editor));
+    $('drawSave').addEventListener('click', () => saveDrawing(editor));
+    $('drawAi').addEventListener('click', () => aiFixRegion(editor));
+    $('drawClose').addEventListener('click', () => { location.hash = '#/figures'; });
+  }
+
+  function canvasPoint(editor, event) {
+    const box = editor.overlay.getBoundingClientRect();
+    return { x: Math.round((event.clientX - box.left) * editor.canvas.width / box.width),
+      y: Math.round((event.clientY - box.top) * editor.canvas.height / box.height) };
+  }
+  function keepUndo(editor, snapshot) {
+    editor.undo.push(snapshot || editor.ctx.getImageData(0, 0, editor.canvas.width, editor.canvas.height));
+    if (editor.undo.length > 20) editor.undo.shift();
+  }
+  function clearOverlay(editor) { editor.octx.clearRect(0, 0, editor.overlay.width, editor.overlay.height); }
+  function showSelection(editor, rect) {
+    clearOverlay(editor);
+    if (!rect) return;
+    editor.octx.save(); editor.octx.strokeStyle = '#2878ff'; editor.octx.lineWidth = 2;
+    editor.octx.setLineDash([8, 6]); editor.octx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+    editor.octx.restore();
+  }
+  function rectFrom(a, b) {
+    return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
+      w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };
+  }
+  function inside(point, rect) {
+    return rect && point.x >= rect.x && point.y >= rect.y &&
+      point.x <= rect.x + rect.w && point.y <= rect.y + rect.h;
+  }
+  function movedSelection(editor, point) {
+    const rect = editor.selection;
+    const x = Math.max(0, Math.min(editor.canvas.width - rect.w,
+      rect.x + point.x - editor.start.x));
+    const y = Math.max(0, Math.min(editor.canvas.height - rect.h,
+      rect.y + point.y - editor.start.y));
+    return { ...rect, x, y };
+  }
+
+  function editorDown(editor, event) {
+    event.preventDefault();
+    if (!editor.ready) return;
+    editor.overlay.setPointerCapture(event.pointerId);
+    const point = canvasPoint(editor, event); editor.down = true; editor.start = point;
+    if (editor.tool === 'numeral') {
+      const value = numeralValue($('drawNumeral').value);
+      if (!value) { $('drawMsg').textContent = 'Enter a reference numeral first.'; editor.down = false; return; }
+      keepUndo(editor); editor.ctx.fillStyle = '#000'; editor.ctx.font = '24px Arial';
+      editor.ctx.fillText(value, point.x, point.y); editor.down = false; return;
+    }
+    if (editor.tool === 'select' && inside(point, editor.selection)) {
+      keepUndo(editor); editor.before = editor.undo[editor.undo.length - 1];
+      editor.pixels = editor.ctx.getImageData(
+        editor.selection.x, editor.selection.y, editor.selection.w, editor.selection.h);
+      editor.moving = true; return;
+    }
+    if (editor.tool === 'pen' || editor.tool === 'erase') {
+      keepUndo(editor); editor.ctx.beginPath(); editor.ctx.moveTo(point.x, point.y);
+      editor.ctx.strokeStyle = editor.tool === 'erase' ? '#fff' : '#000';
+      editor.ctx.lineWidth = editor.tool === 'erase' ? 22 : 3;
+      editor.ctx.lineCap = 'round'; editor.ctx.lineJoin = 'round';
+    } else if (editor.tool === 'line') keepUndo(editor);
+  }
+
+  function editorMove(editor, event) {
+    if (!editor.down) return;
+    const point = canvasPoint(editor, event);
+    if (editor.tool === 'pen' || editor.tool === 'erase') {
+      editor.ctx.lineTo(point.x, point.y); editor.ctx.stroke(); return;
+    }
+    if (editor.tool === 'line') {
+      clearOverlay(editor); editor.octx.beginPath(); editor.octx.moveTo(editor.start.x, editor.start.y);
+      editor.octx.lineTo(point.x, point.y); editor.octx.strokeStyle = '#000'; editor.octx.lineWidth = 3;
+      editor.octx.stroke(); return;
+    }
+    if (editor.tool === 'select' && editor.moving) {
+      const moved = movedSelection(editor, point);
+      editor.ctx.putImageData(editor.before, 0, 0); editor.ctx.fillStyle = '#fff';
+      editor.ctx.fillRect(editor.selection.x, editor.selection.y, editor.selection.w, editor.selection.h);
+      editor.ctx.putImageData(editor.pixels, moved.x, moved.y);
+      showSelection(editor, moved);
+    } else if (editor.tool === 'select') showSelection(editor, rectFrom(editor.start, point));
+  }
+
+  function editorUp(editor, event) {
+    if (!editor.down) return;
+    const point = canvasPoint(editor, event);
+    if (editor.tool === 'line') {
+      editor.ctx.beginPath(); editor.ctx.moveTo(editor.start.x, editor.start.y);
+      editor.ctx.lineTo(point.x, point.y); editor.ctx.strokeStyle = '#000'; editor.ctx.lineWidth = 3;
+      editor.ctx.stroke(); clearOverlay(editor);
+    } else if (editor.tool === 'select') {
+      if (editor.moving) {
+        editor.selection = movedSelection(editor, point);
+        editor.moving = false;
+      } else {
+        const rect = rectFrom(editor.start, point);
+        editor.selection = rect.w >= 5 && rect.h >= 5 ? rect : null;
+      }
+      showSelection(editor, editor.selection);
+    }
+    editor.down = false;
+  }
+
+  function deleteSelection(editor) {
+    if (!editor.selection) { $('drawMsg').textContent = 'Select an area first.'; return; }
+    keepUndo(editor); editor.ctx.fillStyle = '#fff';
+    editor.ctx.fillRect(editor.selection.x, editor.selection.y,
+      editor.selection.w, editor.selection.h); editor.selection = null; clearOverlay(editor);
+  }
+  function undoDrawing(editor) {
+    const prior = editor.undo.pop(); if (!prior) return;
+    editor.ctx.putImageData(prior, 0, 0); editor.selection = null; clearOverlay(editor);
+  }
+
+  async function saveDrawing(editor) {
+    const message = $('drawMsg'); $('drawSave').disabled = true;
+    if (!editor.ready) { message.textContent = 'Wait for the drawing to finish loading.';
+      $('drawSave').disabled = false; return; }
+    message.textContent = 'Saving and checking visible numerals…';
+    try {
+      const blob = await new Promise((resolve) => editor.canvas.toBlob(resolve, 'image/png'));
+      const form = new FormData(); form.append('image', blob, 'manual-edit.png');
+      form.append('instruction', 'Manual canvas edit');
+      const response = await fetch(`${BASE}/drafts/${PID}/studio/figure/${editor.figure.figure_id}/manual`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'X-CSRF-Token': window.CSRF_TOKEN || '' }, body: form,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Could not save the drawing.');
+      location.hash = '#/figures'; await refresh(); showPane('figures');
+    } catch (error) { message.textContent = error.message; message.className = 'small bad'; }
+    finally { if ($('drawSave')) $('drawSave').disabled = false; }
+  }
+
+  async function aiFixRegion(editor) {
+    const instruction = $('drawAiInstruction').value.trim();
+    const message = $('drawMsg');
+    if (!editor.ready) { message.textContent = 'Wait for the drawing to finish loading.'; return; }
+    if (!editor.selection || !instruction) {
+      message.textContent = 'Select an area and describe the correction first.'; return;
+    }
+    $('drawAi').disabled = true; message.textContent = 'Redrawing only the selected area…';
+    const r = editor.selection;
+    try {
+      await api(`/drafts/${PID}/studio/figure`, { method: 'POST', body: JSON.stringify({
+        figure_id: editor.figure.figure_id, label: editor.figure.label,
+        caption: editor.figure.caption, instruction,
+        region: [r.x, r.y, r.x + r.w, r.y + r.h],
+      }) });
+      await refresh(); openFigureEditor(editor.figure.figure_id);
+    } catch (error) { message.textContent = error.message; message.className = 'small bad'; }
+    finally { if ($('drawAi')) $('drawAi').disabled = false; }
+  }
+
   // ── sources ────────────────────────────────────────────────────────────────
   function renderSources() {
     const references = S.references || [];
     const documents = S.documents || [];
+    const searches = S.searches || [];
+    const searchRunning = searches.some((item) => item.status === 'running');
     $('sourcesBody').innerHTML = `
+      <div class="draftsearch">
+        <div><b>Search prior art from this draft</b>
+          <div class="small muted">Runs in the background from the current title, summary,
+            claims, and description. You stay here while it searches.</div></div>
+        <button type="button" class="btn sm" id="draftSearchBtn" ${searchRunning ? 'disabled' : ''}>${
+          searchRunning ? 'Search running…' : 'Search current draft'}</button>
+        <span class="small" id="draftSearchMsg" role="status"></span>
+        ${searches.length ? `<div class="draftsearches">${searches.map((item) => `
+          <div class="draftsearchrow" data-slug="${esc(item.slug)}">
+            <span class="statuspill status-${esc(item.status)}">${esc(item.status)}</span>
+            <span class="small searchmessage">${esc(item.msg || (item.ready ? 'Results ready.' : 'Searching…'))}</span>
+            <span class="grow"></span>
+            ${item.report_url ? `<a class="small" href="${esc(item.report_url)}"
+              target="_blank" rel="noopener">Open report</a>` : ''}
+            ${item.ready && !item.imported_count ? `<button type="button" class="chip importsearch"
+              data-slug="${esc(item.slug)}">Add top 5 references</button>` : ''}
+            ${item.imported_count ? `<span class="small good">${item.imported_count} added</span>` : ''}
+          </div>`).join('')}</div>` : ''}
+      </div>
       <div class="srcadd">
         <label for="srcPub">Add prior art by publication number</label>
         <div class="srcrow">
@@ -350,7 +780,7 @@
             data-pub="${esc(reference.publication_number)}">remove</button>
         </div>`).join('') :
         `<p class="muted small">No references. The draft is being written from your description
-         alone — add art here, or run a prior-art search and start a new draft from it.</p>`}
+         alone. Add art here or search the current draft above.</p>`}
       <h4 class="rvsub">Uploaded documents <span class="small muted">${documents.length}</span></h4>
       ${documents.length ? documents.map((document_) => `
         <div class="srcitem">
@@ -363,6 +793,7 @@
         </div>`).join('') : '<p class="muted small">Nothing uploaded.</p>'}`;
 
     $('srcAdd').addEventListener('click', addReference);
+    $('draftSearchBtn').addEventListener('click', startDraftSearch);
     $('srcPub').addEventListener('keydown', (event) => {
       if (event.key === 'Enter') { event.preventDefault(); addReference(); }
     });
@@ -370,6 +801,53 @@
       button.addEventListener('click', () => removeReference(button.dataset.pub)));
     document.querySelectorAll('.docdel').forEach((button) =>
       button.addEventListener('click', () => removeDocument(button.dataset.id)));
+    document.querySelectorAll('.importsearch').forEach((button) =>
+      button.addEventListener('click', () => importDraftSearch(button)));
+    if (searchRunning) startSearchPolling();
+  }
+
+  async function startDraftSearch() {
+    const button = $('draftSearchBtn'); const message = $('draftSearchMsg');
+    button.disabled = true; button.textContent = 'Starting…';
+    try {
+      const data = await api(`/drafts/${PID}/studio/search`, {
+        method: 'POST', body: JSON.stringify({}),
+      });
+      S.searches = [data.search].concat(S.searches || []);
+      renderSources(); startSearchPolling();
+    } catch (error) {
+      message.textContent = error.message; message.className = 'small bad';
+      button.disabled = false; button.textContent = 'Search current draft';
+    }
+  }
+
+  async function importDraftSearch(button) {
+    button.disabled = true; button.textContent = 'Adding…';
+    try {
+      const data = await api(`/drafts/${PID}/studio/search/${button.dataset.slug}/import`, {
+        method: 'POST', body: JSON.stringify({}),
+      });
+      button.textContent = `${data.imported} added`;
+      await refresh(); showPane('sources');
+    } catch (error) { button.textContent = error.message; }
+  }
+
+  function startSearchPolling() {
+    if (searchPolling) return;
+    searchPolling = setInterval(async () => {
+      const active = (S.searches || []).filter((item) => item.status === 'running');
+      if (!active.length) { clearInterval(searchPolling); searchPolling = null; return; }
+      let completed = false;
+      await Promise.all(active.map(async (item) => {
+        try {
+          const state = await api(`/status/${item.slug}`);
+          item.msg = state.msg || item.msg; item.ready = !!state.ready; item.done = !!state.done;
+          if (state.status === 'error') item.status = 'error';
+          if (state.done && state.ready) { item.status = 'complete'; completed = true; }
+        } catch (error) { /* another poll will retry; search continues server-side */ }
+      }));
+      if (completed) await refresh(); else renderSources();
+    }, 4000);
   }
 
   async function addReference() {
@@ -475,16 +953,33 @@
   }
 
   // ── panes ──────────────────────────────────────────────────────────────────
-  function showPane(name) {
+  function showPane(name, updateHash = true) {
     document.querySelectorAll('.stab').forEach((tab) =>
       tab.classList.toggle('on', tab.dataset.pane === name));
     document.querySelectorAll('.spane').forEach((pane) =>
       pane.classList.toggle('on', pane.id === 'pane-' + name));
     if (name === 'filing') renderFiling();
+    if (updateHash && location.hash !== '#/' + name) location.hash = '#/' + name;
   }
   document.querySelectorAll('.stab').forEach((tab) =>
     tab.addEventListener('click', () => showPane(tab.dataset.pane)));
   $('stFileBtn').addEventListener('click', () => showPane('filing'));
+
+  function routeFromHash() {
+    const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+    const pane = ['draft', 'review', 'figures', 'sources', 'history', 'filing'].includes(parts[0])
+      ? parts[0] : 'draft';
+    showPane(pane, false);
+    if (pane === 'figures' && parts[2] === 'edit' && /^\d+$/.test(parts[1] || '')) {
+      const figureId = Number(parts[1]);
+      if (!drawingEditor || drawingEditor.figure.figure_id !== figureId) openFigureEditor(figureId);
+    } else if (drawingEditor) {
+      const host = $('figureEditorHost'); if (host) host.innerHTML = '';
+      drawingEditor = null;
+      renderFigures();
+    }
+  }
+  window.addEventListener('hashchange', routeFromHash);
 
   // ── composing ──────────────────────────────────────────────────────────────
   const modeButton = $('chatModeBtn');
@@ -619,7 +1114,11 @@
       ? 'version ' + S.project.latest_version_no : 'no draft yet';
     $('stTitle').textContent = S.project.title;
     const verdictBox = $('stVerdict');
-    if (S.qa) {
+    const pixelFailures = drawingAuditChecks().filter((check) => check.status === 'fail').length;
+    if (pixelFailures) {
+      const [tone, label] = VERDICT.fail;
+      verdictBox.innerHTML = `<span class="verdict ${tone} tiny">${label}: drawing mismatch</span>`;
+    } else if (S.qa) {
       const [tone, label] = VERDICT[S.qa.verdict] || VERDICT.unknown;
       verdictBox.innerHTML = `<span class="verdict ${tone} tiny">${label}</span>`;
     } else verdictBox.innerHTML = '';
@@ -629,7 +1128,7 @@
       $('stDownloadDocx').href = `${BASE}/drafts/${PID}/download/docx?version=${version}`;
     }
     const counts = (S.qa && S.qa.counts) || {};
-    const bad = (counts.checks_failed || 0) + (counts.critical || 0);
+    const bad = (counts.checks_failed || 0) + (counts.critical || 0) + pixelFailures;
     $('tabReview').textContent = bad ? bad : '';
     $('tabReview').className = 'tabbadge' + (bad ? ' bad' : '');
     $('tabSources').textContent =
@@ -653,6 +1152,7 @@
   async function refresh() {
     S = await api(`/api/drafts/${PID}/studio`);
     renderAll();
+    routeFromHash();
   }
 
   /* Poll while a turn is in flight, and for a short while after the page loads so a turn started
@@ -683,5 +1183,6 @@
   }
 
   renderAll();
+  routeFromHash();
   startPolling();
 })();

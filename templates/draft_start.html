@@ -101,16 +101,85 @@
                  placeholder="Left blank, the agent proposes one">
         </div>
         <div>
-          <label for="applicant">Applicant</label>
+          <label for="applicant">Applicant or assignee</label>
           <input type="text" id="applicant" name="applicant" maxlength="300"
                  value="{{ values.applicant or current_user.default_applicant or '' }}">
         </div>
       </div>
       <label for="inventors">Named inventors, one per line</label>
       <textarea id="inventors" name="inventors" rows="3" maxlength="2000">{{ values.inventors or current_user.default_inventors or '' }}</textarea>
-      <label for="notes">Anything else the drafter should know</label>
-      <textarea id="notes" name="inventor_notes" rows="4" maxlength="40000"
-        placeholder="Priority claims, a filing deadline, terminology you want kept, claim scope you care about most…">{{ values.inventor_notes or '' }}</textarea>
+
+      <fieldset class="startfieldset">
+        <legend>Priority claim</legend>
+        <label class="radio"><input type="radio" name="priority_status" value="unknown"
+          {% if (values.priority_status or 'unknown') == 'unknown' %}checked{% endif %}>
+          Not confirmed yet</label>
+        <label class="radio"><input type="radio" name="priority_status" value="none"
+          {% if values.priority_status == 'none' %}checked{% endif %}> No priority claim</label>
+        <label class="radio"><input type="radio" name="priority_status" value="claim"
+          {% if values.priority_status == 'claim' %}checked{% endif %}> Claim priority</label>
+        <input type="text" name="priority_details" maxlength="1000"
+          value="{{ values.priority_details or '' }}"
+          placeholder="Application number, country, and filing date if known">
+      </fieldset>
+
+      <fieldset class="startfieldset">
+        <legend>Government support</legend>
+        <label class="radio"><input type="radio" name="government_support" value="unknown"
+          {% if (values.government_support or 'unknown') == 'unknown' %}checked{% endif %}>
+          Not confirmed yet</label>
+        <label class="radio"><input type="radio" name="government_support" value="none"
+          {% if values.government_support == 'none' %}checked{% endif %}> None</label>
+        <label class="radio"><input type="radio" name="government_support" value="yes"
+          {% if values.government_support == 'yes' %}checked{% endif %}> Yes</label>
+        <input type="text" name="government_support_details" maxlength="1000"
+          value="{{ values.government_support_details or '' }}"
+          placeholder="Agency, award, or contract number if known">
+      </fieldset>
+
+      <fieldset class="startfieldset">
+        <legend>Claim approach</legend>
+        <div class="startgrid">
+          <div>
+            <label for="claimStrategy">Scope strategy</label>
+            <select id="claimStrategy" name="claim_strategy">
+              <option value="balanced"{% if (values.claim_strategy or 'balanced') == 'balanced' %} selected{% endif %}>Balanced with fallback claims</option>
+              <option value="broad"{% if values.claim_strategy == 'broad' %} selected{% endif %}>Broadest supported claim first</option>
+              <option value="conservative"{% if values.claim_strategy == 'conservative' %} selected{% endif %}>Conservative written support</option>
+            </select>
+          </div>
+          <div>
+            <label for="meansFunction">Means-plus-function language</label>
+            <select id="meansFunction" name="means_plus_function">
+              <option value="avoid"{% if (values.means_plus_function or 'avoid') == 'avoid' %} selected{% endif %}>Avoid unless requested later</option>
+              <option value="allow"{% if values.means_plus_function == 'allow' %} selected{% endif %}>Allow where useful</option>
+            </select>
+          </div>
+        </div>
+        <span class="fieldlabel">Claim classes to include when supported</span>
+        {% set chosen_claim_types = values.get('claim_types') or ['apparatus', 'method'] %}
+        <div class="checkrow">
+          <label class="radio"><input type="checkbox" name="claim_types" value="apparatus"
+            {% if 'apparatus' in chosen_claim_types %}checked{% endif %}> Apparatus</label>
+          <label class="radio"><input type="checkbox" name="claim_types" value="method"
+            {% if 'method' in chosen_claim_types %}checked{% endif %}> Method</label>
+          <label class="radio"><input type="checkbox" name="claim_types" value="system"
+            {% if 'system' in chosen_claim_types %}checked{% endif %}> System</label>
+        </div>
+      </fieldset>
+
+      <div class="startgrid">
+        <div>
+          <label for="protectedTerms">Terminology that must stay consistent</label>
+          <input type="text" id="protectedTerms" name="protected_terms" maxlength="2000"
+            value="{{ values.protected_terms or '' }}" placeholder="Exact product or component terms">
+        </div>
+        <div>
+          <label for="filingDeadline">Target filing date</label>
+          <input type="date" id="filingDeadline" name="filing_deadline"
+            value="{{ values.filing_deadline or '' }}">
+        </div>
+      </div>
     </section>
 
     <div class="startactions">

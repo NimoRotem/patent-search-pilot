@@ -58,7 +58,8 @@ NUMERALS = [
 FIGURES = [
     {"label": "FIG. 1", "caption": "side elevation", "numerals": ["10 vacuum lifting tool",
                                                                   "12 body", "14 pump"]},
-    {"label": "FIG. 2", "caption": "exploded view", "numerals": ["16 sealing ring", "18 groove"]},
+    {"label": "FIG. 2", "caption": "exploded view", "numerals": ["16 sealing ring", "18 groove",
+                                                                    "20 passage"]},
 ]
 ALLOWED = ["US-11223344-B2"]
 
@@ -128,6 +129,108 @@ def test_a_numeral_on_a_drawing_that_the_table_does_not_define_is_caught():
                                   "numerals": ["44 mystery bracket"]}]
     check = checks_for(figures=figures)["Numerals on the drawings are defined"]
     assert check["status"] == "fail" and "44" in check["items"]
+
+
+def test_a_numeral_visible_on_a_drawing_but_absent_from_the_text_is_caught():
+    numerals = NUMERALS + [{"numeral": "22", "part": "trigger"}]
+    figures = FIGURES + [{"label": "FIG. 3", "caption": "trigger detail",
+                          "numerals": ["22 trigger"]}]
+    check = checks_for(numerals=numerals, figures=figures)[
+        "Every drawing numeral appears in the specification"]
+    assert check["status"] == "fail" and "22" in check["items"]
+
+
+def test_a_text_numeral_missing_from_every_drawing_is_caught():
+    figures = [{**FIGURES[0]}, {**FIGURES[1], "numerals": ["16 sealing ring", "18 groove"]}]
+    check = checks_for(figures=figures)["Every specification numeral appears in a drawing"]
+    assert check["status"] == "fail" and "20" in check["items"]
+
+
+def test_a_reference_numeral_printed_twice_is_caught():
+    figures = [{**FIGURES[0], "numerals": FIGURES[0]["numerals"] + ["10"]}, FIGURES[1]]
+    check = checks_for(figures=figures)["Each drawing numeral appears once"]
+    assert check["status"] == "fail" and check["items"] == ["FIG. 1: 10"]
+
+
+def test_letter_qualified_reference_numerals_are_compared_exactly():
+    version = {**GOOD, "detailed_description":
+               GOOD["detailed_description"] + " A secondary spacer 10a is beside a lug A12."}
+    numerals = NUMERALS + [{"numeral": "10A", "part": "secondary spacer"},
+                           {"numeral": "A12", "part": "lug"}]
+    figures = [{**FIGURES[0], "numerals": FIGURES[0]["numerals"] + ["10a", "A12"]},
+               FIGURES[1]]
+    checks = checks_for(version, numerals=numerals, figures=figures)
+    assert checks["Numerals on the drawings are defined"]["status"] == "pass"
+    assert checks["Every drawing numeral appears in the specification"]["status"] == "pass"
+    assert checks["Every specification numeral appears in a drawing"]["status"] == "pass"
+
+
+def test_qa_uses_numerals_detected_in_the_active_drawing_pixels(monkeypatch):
+    import draft_figures
+    monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [{
+        "figure_label": "FIG. 1", "active_version": 2,
+        "versions": [{"version_no": 2, "detected_numerals": ["10", "44"],
+                      "numeral_audit": {"inspected": True}}],
+    }])
+    merged = draft_studio.figures_for_qa(
+        7, 91, [{"label": "FIG. 1", "caption": "view", "numerals": ["10 body", "12 pump"]}])
+    assert merged[0]["numerals"] == ["10", "44"]
+
+
+def test_qa_fails_closed_when_drawing_pixels_cannot_be_inspected(monkeypatch):
+    import draft_figures
+    monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [{
+        "figure_label": "FIG. 1", "active_version": 2,
+        "versions": [{"version_no": 2, "detected_numerals": [],
+                      "numeral_audit": {"inspected": False, "error": "vision unavailable"}}],
+    }])
+    merged = draft_studio.figures_for_qa(
+        7, 91, [{"label": "FIG. 1", "caption": "view", "numerals": ["10 body"]}])
+    checks = {item["name"]: item for item in draft_qa.run_checks(
+        sections=GOOD, numerals=NUMERALS, figures=merged, allow_remote=False)}
+    assert checks["Drawing pixels were inspected"]["status"] == "fail"
+
+
+def test_qa_fails_closed_when_the_drawing_store_is_unavailable(monkeypatch):
+    import draft_figures
+
+    def unavailable(project_id, user_id):
+        raise RuntimeError("database offline")
+
+    monkeypatch.setattr(draft_figures, "listing", unavailable)
+    merged = draft_studio.figures_for_qa(
+        7, 91, [{"label": "FIG. 1", "caption": "view", "numerals": ["10 body"]}])
+    checks = {item["name"]: item for item in draft_qa.run_checks(
+        sections=GOOD, numerals=NUMERALS, figures=merged, allow_remote=False)}
+    assert checks["Drawing pixels were inspected"]["status"] == "fail"
+    assert merged[0]["numerals"] == []
+
+
+def test_an_undrawn_figure_spec_is_not_counted_as_visible_pixels(monkeypatch):
+    import draft_figures
+    monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [])
+    merged = draft_studio.figures_for_qa(
+        7, 91, [{"label": "FIG. 1", "caption": "view", "numerals": ["10 body"]}])
+    assert merged == [{"label": "FIG. 1", "caption": "view", "numerals": [], "drawn": False}]
+    checks = {item["name"]: item for item in draft_qa.run_checks(
+        sections=GOOD, numerals=NUMERALS, figures=merged, allow_remote=False)}
+    assert checks["Every specification numeral appears in a drawing"]["status"] == "fail"
+    assert checks["Each described figure has a drawing sheet"]["status"] == "warn"
+
+
+def test_an_orphaned_drawing_remains_in_bidirectional_qa(monkeypatch):
+    import draft_figures
+    monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [{
+        "figure_label": "FIG. 9", "caption": "obsolete", "active_version": 1,
+        "versions": [{"version_no": 1, "detected_numerals": ["44"],
+                      "numeral_audit": {"inspected": True}}],
+    }])
+    merged = draft_studio.figures_for_qa(7, 91, [])
+    assert merged[0]["orphan"] is True and merged[0]["numerals"] == ["44"]
+    checks = {item["name"]: item for item in draft_qa.run_checks(
+        sections=GOOD, numerals=NUMERALS, figures=merged, allow_remote=False)}
+    assert checks["Every drawing sheet is described"]["status"] == "fail"
+    assert checks["Numerals on the drawings are defined"]["items"] == ["44"]
 
 
 def test_measurements_and_years_are_not_read_as_reference_numerals():
@@ -324,7 +427,7 @@ def test_figures_round_trip(tmp_path):
     draft_workspace.write_figures(tmp_path, FIGURES)
     out = draft_workspace.read_figures(tmp_path)
     assert [f["label"] for f in out] == ["FIG. 1", "FIG. 2"]
-    assert out[1]["numerals"] == ["16 sealing ring", "18 groove"]
+    assert out[1]["numerals"] == ["16 sealing ring", "18 groove", "20 passage"]
 
 
 def test_an_existing_draft_is_split_on_its_headings():
@@ -669,6 +772,14 @@ def test_figure_labels_match_across_spellings():
     assert draft_studio_service._figure_key("FIG. 1") == draft_studio_service._figure_key("Fig 1")
     assert draft_studio_service._figure_key("FIGURE 2") == draft_studio_service._figure_key("FIG.2")
     assert draft_studio_service._figure_key("FIG. 1") != draft_studio_service._figure_key("FIG. 2")
+
+
+def test_a_drawing_prompt_gets_only_the_numerals_for_that_figure():
+    import draft_studio_service
+    version = {"numerals": NUMERALS, "figure_specs": FIGURES}
+    assert draft_studio_service._expected_numerals(version, "Figure 1") == [
+        "10 = vacuum lifting tool", "12 = body", "14 = pump"]
+    assert "20 = passage" in draft_studio_service._expected_numerals(version, "FIG. 2")
 
 
 # =============================================================================================

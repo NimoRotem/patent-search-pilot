@@ -1,6 +1,7 @@
 """Authenticated Flask contracts for the versioned drafting workspace."""
 import io
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -164,6 +165,152 @@ def test_conversational_intake_can_start_from_scratch(draft_client):
     assert 'name="search_slug" value=""' in body
     assert "Describe the invention" in body
     assert "Detailed RFID lifter disclosure" not in body
+
+
+def test_intake_uses_profile_defaults_and_specific_drafting_choices(draft_client):
+    client, _service = draft_client
+    body = client.get("/drafts/start").get_data(as_text=True)
+    assert 'name="applicant"' in body and 'value="Example Labs"' in body
+    assert 'name="inventors"' in body and "Dana Drafter" in body
+    assert "Anything else the drafter should know" not in body
+    assert 'name="priority_status"' in body
+    assert 'name="claim_strategy"' in body
+    assert 'name="government_support"' in body
+
+
+def test_intake_uses_profile_name_when_no_inventor_default_exists(draft_client, monkeypatch):
+    client, _service = draft_client
+    user = {**USER, "default_inventors": ""}
+    monkeypatch.setattr(accounts, "get_user", lambda uid: dict(user))
+    body = client.get("/drafts/start").get_data(as_text=True)
+    assert '<textarea id="inventors" name="inventors"' in body
+    assert '>Dana Drafter</textarea>' in body
+
+
+def test_completed_search_can_start_drafting_without_repeating_intake(draft_client, monkeypatch):
+    client, _service = draft_client
+
+    class Studio:
+        created = None
+
+        def create(self, principal, **values):
+            self.created = values
+            return {"id": 44}
+
+    studio = Studio()
+    monkeypatch.setattr(webapp, "_studio", lambda: studio)
+    response = client.post("/drafts/start", data={
+        "csrf_token": "csrf-draft", "direct": "1", "search_slug": "adhoc-owned",
+    })
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/drafts/44/studio?created=1")
+    assert studio.created["disclosure_text"] == \
+        "Verbatim full uploaded disclosure with all four claims."
+    assert studio.created["publication_numbers"] == ["US-11223344-B2"]
+    assert studio.created["applicant"] == "Example Labs"
+    assert studio.created["inventors"] == "Dana Drafter"
+
+
+def test_studio_search_runs_in_background_and_can_import_without_navigation(
+        draft_client, monkeypatch, tmp_path):
+    client, _service = draft_client
+
+    class Studio:
+        recorded = None
+        imported = None
+
+        def search_material(self, principal, project_id):
+            return {"title": "Current draft", "query": "A detailed current patent draft " * 8}
+
+        def record_search(self, principal, project_id, **values):
+            self.recorded = (project_id, values)
+            return {"slug": values["slug"], "status": values["status"],
+                    "imported_count": 0, "created_at": "2026-08-09"}
+
+        def import_search(self, principal, project_id, slug, pubs):
+            self.imported = (project_id, slug, pubs)
+            return len(pubs)
+
+    studio = Studio()
+    monkeypatch.setattr(webapp, "_studio", lambda: studio)
+    monkeypatch.setattr(webapp, "REPORTS", tmp_path)
+    monkeypatch.setattr(webapp, "ensure_report", lambda *a, **k: ("running", None))
+    monkeypatch.setattr(webapp.accounts, "record_search", lambda *a, **k: {})
+    monkeypatch.setattr(webapp, "_draft_report_loader", lambda *a, **k: {
+        "cards": [{"pub": "US-11223344-B2"}, {"pub": "EP-1234567-A1"}]})
+
+    started = client.post("/drafts/7/studio/search", json={},
+                          headers={"X-CSRF-Token": "csrf-draft"})
+    assert started.status_code == 200 and started.get_json()["status"] == "running"
+    slug = started.get_json()["slug"]
+    assert studio.recorded[0] == 7
+    imported = client.post(f"/drafts/7/studio/search/{slug}/import", json={},
+                           headers={"X-CSRF-Token": "csrf-draft"})
+    assert imported.get_json()["imported"] == 2
+    assert studio.imported == (7, slug, ["US-11223344-B2", "EP-1234567-A1"])
+
+
+def test_studio_exposes_manual_photo_and_delete_drawing_actions(draft_client, monkeypatch):
+    client, _service = draft_client
+
+    class Studio:
+        calls = []
+
+        def save_figure(self, principal, project_id, figure_id, png, instruction=""):
+            self.calls.append(("save", project_id, figure_id, png, instruction))
+            return {"figure_id": figure_id, "version_no": 2}
+
+        def photo_to_sketch(self, principal, project_id, **values):
+            self.calls.append(("photo", project_id, values))
+            return {"figure_id": 10, "version_no": 1}
+
+        def delete_figure(self, principal, project_id, figure_id):
+            self.calls.append(("delete", project_id, figure_id))
+
+    studio = Studio()
+    monkeypatch.setattr(webapp, "_studio", lambda: studio)
+    edited = client.post("/drafts/7/studio/figure/9/manual", data={
+        "image": (io.BytesIO(b"png bytes"), "edited.png"), "instruction": "move 12",
+        "csrf_token": "csrf-draft",
+    })
+    assert edited.status_code == 200 and studio.calls[-1][0] == "save"
+    photo = client.post("/drafts/7/studio/photo-to-sketch", data={
+        "image": (io.BytesIO(b"jpeg bytes"), "part.jpg"), "caption": "front view",
+        "csrf_token": "csrf-draft",
+    })
+    assert photo.status_code == 200 and studio.calls[-1][0] == "photo"
+    deleted = client.post("/drafts/7/studio/figure/9/delete", json={},
+                          headers={"X-CSRF-Token": "csrf-draft"})
+    assert deleted.status_code == 200 and studio.calls[-1] == ("delete", 7, 9)
+
+
+def test_figure_version_actions_cannot_cross_between_the_users_projects(
+        draft_client, monkeypatch):
+    client, _service = draft_client
+    monkeypatch.setattr(webapp.draft_figures, "get_figure", lambda figure_id, user_id: {
+        "id": figure_id, "user_id": user_id, "project_id": 8,
+    })
+    response = client.post(
+        "/drafts/7/figures/9/activate", json={"version_no": 1},
+        headers={"X-CSRF-Token": "csrf-draft"})
+    assert response.status_code == 404
+
+
+def test_studio_ui_exposes_sketch_tools_and_reload_safe_navigation():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "static" / "draft_studio.js").read_text()
+    assert "Select and move" in script and "Delete selected area" in script
+    assert "AI fix selected area" in script and "photo-to-sketch" in script
+    assert "Search current draft" in script and "importsearch" in script
+    assert "hashchange" in script and "#/figures/" in script
+
+
+def test_report_draft_action_is_a_csrf_protected_direct_post():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / "templates" / "report.html").read_text()
+    assert 'method="post" action="{{ request.script_root }}/drafts/start"' in template
+    assert 'name="direct" value="1"' in template
+    assert 'name="csrf_token"' in template
 
 
 def test_create_draft_uses_server_report_and_selected_publications(draft_client):

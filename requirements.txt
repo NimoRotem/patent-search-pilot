@@ -3,6 +3,14 @@ Flask==3.1.3
 openai==1.59.6
 google-cloud-bigquery==3.27.0
 google-cloud-bigquery-storage==2.27.0
+# Direct runtime dependencies used by the drafting image generator and image normalizer. These
+# used to be present only as hand-installed packages on production, so a clean deploy could start
+# successfully and then fail the first time a user opened the drawing workflow.
+google-genai==1.47.0
+# Last release supporting production's Python 3.9. Untrusted decoding is restricted in
+# draft_figures.normalize_source_image to the PNG, JPEG, and WebP plugins with byte/pixel caps.
+Pillow==11.3.0
+pydantic==2.13.4
 pyarrow==18.1.0
 numpy==2.0.2
 # Requests 2.33 drops Python 3.9, which this production worker still runs. 2.32.5 closes the

@@ -69,7 +69,7 @@ def _asset_version():
     if override:
         return override
     digest = hashlib.sha256()
-    for name in ("style.css", "app.js"):
+    for name in ("style.css", "app.js", "draft_studio.js"):
         path = Path(app.static_folder) / name
         try:
             digest.update(path.read_bytes())
@@ -3228,6 +3228,14 @@ def _figure_project(principal, project_id):
     return _drafting_service().get_project(principal, project_id)
 
 
+def _figure_in_project(user_id, project_id, figure_id):
+    """Resolve a figure only inside the project named by the URL."""
+    figure = draft_figures.get_figure(figure_id, user_id)
+    if not figure or int(figure.get("project_id") or 0) != int(project_id):
+        abort(404)
+    return figure
+
+
 @app.route("/drafts/<int:project_id>/figures", methods=["POST"])
 def draft_figure_generate(project_id):
     """Generate a new figure, or apply a change to an existing one.
@@ -3283,6 +3291,7 @@ def draft_figure_generate(project_id):
 def draft_figure_png(project_id, figure_id):
     user, principal = _draft_identity()
     _figure_project(principal, project_id)
+    _figure_in_project(user["id"], project_id, figure_id)
     version = request.args.get("version", type=int)
     mime, data = draft_figures.png_bytes(figure_id, user["id"], version)
     if not data:
@@ -3296,6 +3305,7 @@ def draft_figure_activate(project_id, figure_id):
     user, principal = _draft_identity()
     auth.require_csrf()
     _figure_project(principal, project_id)
+    _figure_in_project(user["id"], project_id, figure_id)
     body = request.get_json(silent=True) or request.form.to_dict() or {}
     try:
         n = int(body.get("version_no"))
@@ -3311,6 +3321,7 @@ def draft_figure_delete(project_id, figure_id):
     user, principal = _draft_identity()
     auth.require_csrf()
     _figure_project(principal, project_id)
+    _figure_in_project(user["id"], project_id, figure_id)
     draft_figures.delete_figure(figure_id, user["id"])
     return redirect(url_for("draft_detail", project_id=project_id, message="Figure deleted."))
 
@@ -4001,22 +4012,19 @@ def _draft_new_context(user, principal, slug, selected=None, values=None, error=
         except drafting.DraftingError as exc:
             error = error or str(exc)
     values = dict(values or {})
+    if not values.get("applicant"):
+        values["applicant"] = user.get("default_applicant") or user.get("organization") or ""
+    if not values.get("inventors"):
+        values["inventors"] = user.get("default_inventors") or user.get("full_name") or ""
     if report_view:
         account_search = accounts.get_search(user["id"], slug) or {}
         source_document = report_view.get("query_document") or {}
-        values.setdefault("title", account_search.get("title") or
-                          source_document.get("title") or
-                          (report_view.get("query") or "US patent application")[:180])
-        values.setdefault("disclosure_text", source_document.get("disclosure_text") or
-                          report_view.get("query") or "")
-        defaults = []
-        if user.get("organization"):
-            defaults.append(f"Organization: {user['organization']}")
-        if user.get("default_applicant"):
-            defaults.append(f"Applicant: {user['default_applicant']}")
-        if user.get("default_inventors"):
-            defaults.append(f"Inventors:\n{user['default_inventors']}")
-        values.setdefault("inventor_notes", "\n\n".join(defaults))
+        if not values.get("title"):
+            values["title"] = (account_search.get("title") or source_document.get("title") or
+                               (report_view.get("query") or "US patent application")[:180])
+        if not values.get("disclosure_text"):
+            values["disclosure_text"] = (source_document.get("disclosure_text") or
+                                         report_view.get("query") or "")
     cards = list((report_view or {}).get("cards") or [])
     selected = list(selected or [])
     if cards and not selected:
@@ -4025,6 +4033,54 @@ def _draft_new_context(user, principal, slug, selected=None, values=None, error=
     return {"choices": choices, "report_view": report_view, "search_slug": slug,
             "source_document": source_document,
             "selected": set(selected), "values": values, "error": error}
+
+
+def _structured_drafting_notes(values) -> str:
+    """Turn explicit intake choices into a stable brief instead of accepting a catch-all box."""
+    priority = str(values.get("priority_status") or "unknown")
+    priority_text = {
+        "none": "No domestic or foreign priority claim is expected.",
+        "claim": "A priority claim may be required: " +
+                 (str(values.get("priority_details") or "details not supplied; ask for them")[:1000]),
+        "unknown": "Priority status is not confirmed; leave a drafting note requesting it.",
+    }.get(priority, "Priority status is not confirmed; leave a drafting note requesting it.")
+    support = str(values.get("government_support") or "unknown")
+    support_text = {
+        "none": "No federally sponsored research or government contract was identified.",
+        "yes": "Government support may apply: " +
+               (str(values.get("government_support_details") or
+                    "award and contract details not supplied; ask for them")[:1000]),
+        "unknown": "Government support status is not confirmed; leave a drafting note requesting it.",
+    }.get(support, "Government support status is not confirmed; leave a drafting note requesting it.")
+    strategy = {
+        "balanced": "Use a broad, disclosure-supported independent claim with a graduated fallback ladder.",
+        "broad": "Prioritize the broadest disclosure-supported independent claim and retain narrower fallbacks.",
+        "conservative": "Prioritize explicit written support and use narrower independent claims where needed.",
+    }.get(str(values.get("claim_strategy") or "balanced"),
+          "Use a broad, disclosure-supported independent claim with a graduated fallback ladder.")
+    claim_types = values.getlist("claim_types") if hasattr(values, "getlist") else \
+        values.get("claim_types") or []
+    if isinstance(claim_types, str):
+        claim_types = [claim_types]
+    allowed_types = [item for item in claim_types if item in ("apparatus", "method", "system")]
+    classes = ("Requested claim classes where supported: " + ", ".join(allowed_types) + ".") \
+        if allowed_types else "Use every statutory claim class the disclosure genuinely supports."
+    means = ("Means-plus-function language is permitted where useful."
+             if str(values.get("means_plus_function") or "avoid") == "allow"
+             else "Avoid means-plus-function language unless the user later requests it.")
+    terminology = str(values.get("protected_terms") or "").replace("\x00", "").strip()[:2000]
+    deadline = str(values.get("filing_deadline") or "").strip()[:40]
+    parts = ["Filing and drafting instructions:", priority_text, support_text, strategy, classes, means]
+    if terminology:
+        parts.append("Terminology to preserve: " + terminology)
+    if deadline:
+        parts.append("Target filing date supplied by the user: " + deadline)
+    # Legacy clients may still post this field. Preserve it as clearly labelled user material,
+    # while the shipped UI no longer invites an unstructured catch-all answer.
+    legacy = str(values.get("inventor_notes") or "").replace("\x00", "").strip()[:20_000]
+    if legacy:
+        parts.append("Additional user-supplied instructions: " + legacy)
+    return "\n".join(parts)
 
 
 @app.route("/drafts")
@@ -4396,8 +4452,34 @@ def draft_start():
         auth.require_csrf()
         values = {key: request.form.get(key, "") for key in
                   ("title", "disclosure_text", "inventor_notes", "applicant", "inventors",
-                   "input_kind")}
+                   "input_kind", "priority_status", "priority_details", "government_support",
+                   "government_support_details", "claim_strategy", "means_plus_function",
+                   "protected_terms", "filing_deadline")}
+        values["claim_types"] = request.form.getlist("claim_types")
         try:
+            # A finished owned search is already a complete intake. The action on the report is a
+            # POST so one click can create durable state without turning a GET into a mutation.
+            # All content and publications are loaded again from the server-owned report; hidden
+            # form values cannot substitute another disclosure or smuggle in a reference.
+            if request.form.get("direct") == "1":
+                if not slug:
+                    raise drafting.DraftingValidationError("Choose a completed search first.")
+                ctx = _draft_new_context(user, principal, slug)
+                if not ctx.get("report_view"):
+                    raise drafting.DraftingNotFound("That completed search is not available.")
+                direct_values = ctx["values"]
+                direct_cards = list(ctx["report_view"].get("cards") or [])
+                selected = [card.get("pub") for card in direct_cards[:5] if card.get("pub")]
+                project = _studio().create(
+                    principal, title=direct_values.get("title") or "",
+                    disclosure_text=direct_values.get("disclosure_text") or "",
+                    input_kind="description", search_slug=slug,
+                    publication_numbers=selected,
+                    inventor_notes=_structured_drafting_notes(request.form),
+                    applicant=direct_values.get("applicant") or "",
+                    inventors=direct_values.get("inventors") or "", uploads=[])
+                return redirect(url_for("draft_studio_page", project_id=project["id"], created="1"))
+
             uploads = _uploads_from_request()
             #  A source document supersedes the pasted text: the user who uploads their own draft
             #  and also leaves the textarea half-filled means the file.
@@ -4413,7 +4495,7 @@ def draft_start():
             project = _studio().create(
                 principal, title=values["title"], disclosure_text=values["disclosure_text"],
                 input_kind=values["input_kind"] or "description", search_slug=slug,
-                publication_numbers=selected, inventor_notes=values["inventor_notes"],
+                publication_numbers=selected, inventor_notes=_structured_drafting_notes(request.form),
                 applicant=values["applicant"], inventors=values["inventors"], uploads=uploads)
             return redirect(url_for("draft_studio_page", project_id=project["id"], created="1"))
         except drafting.DraftingError as exc:
@@ -4502,8 +4584,29 @@ def _studio_payload(state):
         "sections": [{"key": key, "heading": heading} for key, _n, heading in
                      draft_workspace.SECTION_FILES],
         "figures": state.get("figures") or [],
+        "searches": _draft_search_payload(state.get("searches") or []),
         "agent": state["agent"],
     }
+
+
+def _draft_search_payload(rows):
+    out = []
+    for row in rows:
+        slug = str(row.get("slug") or "")
+        with _JOB_LOCK:
+            job = dict(_JOBS.get(slug, {}))
+        event = _job_event(slug, job) if valid_slug(slug) else {
+            "status": "error", "msg": "Invalid search id.", "ready": False, "done": False,
+            "detail": {}}
+        status = "complete" if event.get("done") and event.get("ready") else \
+            ("error" if event.get("status") == "error" else "running")
+        out.append({"slug": slug, "status": status, "ready": bool(event.get("ready")),
+                    "done": bool(event.get("done")), "msg": event.get("msg") or "",
+                    "detail": event.get("detail") or {},
+                    "imported_count": int(row.get("imported_count") or 0),
+                    "created_at": str(row.get("created_at") or ""),
+                    "report_url": url_for("report", slug=slug) if valid_slug(slug) else ""})
+    return out
 
 
 @app.route("/api/drafts/<int:project_id>/studio/poll")
@@ -4562,6 +4665,62 @@ def draft_studio_reference(project_id):
         return _studio_error(exc)
 
 
+@app.route("/drafts/<int:project_id>/studio/search", methods=["POST"])
+def draft_studio_search(project_id):
+    """Start the established prior-art pipeline from the current draft and stay in studio."""
+    auth.require_csrf()
+    try:
+        user, principal = _draft_identity()
+        material = _studio().search_material(principal, project_id)
+        query = material["query"]
+        mode, focus, wide = "novelty", "all_text", True
+        slug = search_slug(query, mode, wide=wide, search_focus=focus)
+        state, detail = ensure_report(
+            slug, query=query, mode=mode, wide=wide, search_focus=focus)
+        if state == "busy":
+            return jsonify({"ok": False, "error": f"The search server is busy: {detail}"}), 429
+        (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
+            {"query": query, "mode": mode, "subject": None, "wide": wide,
+             "ood": None, "doc_token": None, "search_focus": focus,
+             "draft_project_id": int(project_id)}))
+        accounts.record_search(
+            user["id"], slug, query, mode, focus, None, notify_email=False,
+            status="complete" if state == "ready" else "running", saved=False)
+        tracked = _studio().record_search(
+            principal, project_id, slug=slug, query=query,
+            status="complete" if state == "ready" else "running")
+        return jsonify({"ok": True, "slug": slug, "status": state,
+                        "search": _draft_search_payload([tracked])[0]})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    except Exception as exc:                                  # search launch boundary
+        traceback.print_exc()
+        return jsonify({"ok": False,
+                        "error": f"Could not start the search: {str(exc)[:200]}"}), 502
+
+
+@app.route("/drafts/<int:project_id>/studio/search/<slug>/import", methods=["POST"])
+def draft_studio_search_import(project_id, slug):
+    """Attach ranked results from a draft-originated search without leaving the studio."""
+    auth.require_csrf()
+    if not valid_slug(slug):
+        return jsonify({"ok": False, "error": "Invalid search id."}), 400
+    try:
+        _user, principal = _draft_identity()
+        report_view = _draft_report_loader(principal, slug, principal.user_id)
+        body = request.get_json(silent=True) or request.form
+        pubs = body.get("publications") if isinstance(body, dict) else body.getlist("publications")
+        if not pubs:
+            pubs = [card.get("pub") for card in (report_view.get("cards") or [])[:5]
+                    if card.get("pub")]
+        if isinstance(pubs, str):
+            pubs = [pubs]
+        count = _studio().import_search(principal, project_id, slug, list(pubs)[:10])
+        return jsonify({"ok": True, "imported": count})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
 @app.route("/drafts/<int:project_id>/studio/document/<int:document_id>/delete", methods=["POST"])
 def draft_studio_document_delete(project_id, document_id):
     auth.require_csrf()
@@ -4580,16 +4739,78 @@ def draft_studio_figure(project_id):
     try:
         _user, principal = _draft_identity()
         body = request.get_json(silent=True) or request.form
+        region = body.get("region")
+        if region is not None and (not isinstance(region, (list, tuple)) or len(region) != 4):
+            raise drafting.DraftingValidationError("Select one rectangular area to edit.")
         drawn = _studio().draw_figure(
             principal, project_id, label=body.get("label") or "",
             caption=body.get("caption") or "", instruction=body.get("instruction") or "",
-            figure_id=int(body["figure_id"]) if body.get("figure_id") else None)
+            figure_id=int(body["figure_id"]) if body.get("figure_id") else None,
+            region=region)
         return jsonify({"ok": True, "figure": drawn})
     except drafting.DraftingError as exc:
         return _studio_error(exc)
     except Exception as exc:                                # noqa: BLE001 - the image model
         traceback.print_exc()
         return jsonify({"ok": False, "error": f"Could not draw that: {str(exc)[:200]}"}), 502
+
+
+@app.route("/drafts/<int:project_id>/studio/figure/<int:figure_id>/manual", methods=["POST"])
+def draft_studio_figure_manual(project_id, figure_id):
+    """Store a flattened browser-canvas edit as a new figure version."""
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        storage = request.files.get("image")
+        if not storage:
+            raise drafting.DraftingValidationError("The edited drawing was not received.")
+        png = storage.read(draft_figures.MAX_PNG_BYTES + 1)
+        if len(png) > draft_figures.MAX_PNG_BYTES:
+            raise drafting.DraftingValidationError("The edited drawing is too large.")
+        saved = _studio().save_figure(
+            principal, project_id, figure_id, png,
+            instruction=request.form.get("instruction") or "Manual drawing edit")
+        return jsonify({"ok": True, "figure": saved})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/figure/<int:figure_id>/delete", methods=["POST"])
+def draft_studio_figure_delete(project_id, figure_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        _studio().delete_figure(principal, project_id, figure_id)
+        return jsonify({"ok": True})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/photo-to-sketch", methods=["POST"])
+def draft_studio_photo_to_sketch(project_id):
+    """Convert an uploaded product/part photo into a patent drawing."""
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        storage = request.files.get("image")
+        if not storage or not storage.filename:
+            raise drafting.DraftingValidationError("Choose a product or part image first.")
+        data = storage.read(draft_figures.MAX_SOURCE_BYTES + 1)
+        if len(data) > draft_figures.MAX_SOURCE_BYTES:
+            raise drafting.DraftingValidationError(
+                f"Choose an image smaller than "
+                f"{draft_figures.MAX_SOURCE_BYTES // (1024 * 1024)} MB.")
+        drawn = _studio().photo_to_sketch(
+            principal, project_id, image=data, content_type=storage.mimetype or "",
+            label=request.form.get("label") or "", caption=request.form.get("caption") or "",
+            instruction=request.form.get("instruction") or "")
+        return jsonify({"ok": True, "figure": drawn})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    except Exception as exc:                                  # image provider boundary
+        traceback.print_exc()
+        return jsonify({"ok": False,
+                        "error": f"Could not convert that image: {str(exc)[:200]}"}), 502
 
 
 @app.route("/drafts/<int:project_id>/studio/cancel", methods=["POST"])

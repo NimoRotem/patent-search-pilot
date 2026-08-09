@@ -115,6 +115,27 @@ def _figure_key(label: Any) -> str:
     return re.sub(r"[^0-9a-z]", "", str(label or "").lower()).replace("figure", "fig")
 
 
+def _expected_numerals(version: Mapping[str, Any], label: str) -> list[str] | None:
+    """The selected figure's labels, joined to the versioned numeral table for prompting."""
+    spec = next((item for item in (version or {}).get("figure_specs") or []
+                 if _figure_key(item.get("label")) == _figure_key(label)), None)
+    if spec is None:
+        return None
+    table = {str(item.get("numeral") or ""): str(item.get("part") or "")
+             for item in (version or {}).get("numerals") or []}
+    out = []
+    for raw in spec.get("numerals") or []:
+        match = re.search(r"\b([A-Za-z]?\d{1,4}[A-Za-z]?)\b", str(raw))
+        if not match:
+            continue
+        numeral = match.group(1)
+        fallback_part = re.sub(
+            r"^\s*" + re.escape(numeral) + r"\s*(?:=|-)?\s*", "", str(raw)).strip()
+        part = table.get(numeral) or fallback_part
+        out.append(f"{numeral} = {part}" if part else numeral)
+    return out
+
+
 def _title_of(text: str) -> str:
     for line in (text or "").splitlines():
         line = line.strip()
@@ -350,9 +371,66 @@ class StudioService:
             "qa_reports": qa_reports,
             "qa_by_version": qa_by_version,
             "documents": self.repository.documents(project_id),
+            "searches": self.repository.searches(project_id),
             "version": latest_version,
             "agent": draft_agent.availability(),
         }
+
+    def search_material(self, principal: drafting.Principal, project_id: int) -> dict[str, str]:
+        """Build a bounded prior-art query from the current draft without model rewriting."""
+        project = self.drafting_service.get_project(principal, project_id, include_versions=True)
+        version_no = int(project.get("latest_version_no") or 0)
+        version = next((item for item in project.get("versions", [])
+                        if int(item.get("version_no") or 0) == version_no), None)
+        if not version:
+            raise drafting.DraftingValidationError(
+                "Wait for the first draft before searching from it.")
+        sections = version.get("sections") or {}
+        blocks = [str(sections.get("title") or project.get("title") or "").strip(),
+                  str(sections.get("summary") or "").strip(),
+                  str(sections.get("claims") or "").strip(),
+                  str(sections.get("detailed_description") or "").strip()[:9000]]
+        query = "\n\n".join(block for block in blocks if block)[:20_000]
+        if len(query) < 40:
+            raise drafting.DraftingValidationError(
+                "The current draft does not contain enough technical detail to search yet.")
+        return {"title": (str(sections.get("title") or project.get("title") or
+                              "Draft prior-art search")[:240]), "query": query}
+
+    def record_search(self, principal: drafting.Principal, project_id: int, *, slug: str,
+                      query: str, status: str) -> dict[str, Any]:
+        self._project(principal, project_id)
+        row = self.repository.add_search(
+            project_id, principal.user_id, slug, query, status=status)
+        self.repository.add_message(
+            project_id, "system",
+            "A prior-art search based on the current draft has started in the background. "
+            "It will appear under Sources when results are ready.")
+        return row
+
+    def import_search(self, principal: drafting.Principal, project_id: int, slug: str,
+                      publication_numbers: Sequence[str]) -> int:
+        project = self._project(principal, project_id)
+        tracked = self.repository.search(project_id, slug)
+        if not tracked:
+            raise drafting.DraftingNotFound("That search was not started from this draft.")
+        selected = self.drafting_service._selected_report_references(
+            principal, slug, project["user_id"], publication_numbers)
+        for reference in selected:
+            self.repository.add_reference(
+                project_id, publication_number=reference["publication_number"],
+                title=reference.get("title") or "", source_url=reference.get("source_url"),
+                relevance_summary=reference.get("relevance_summary") or "",
+                snapshot=reference.get("snapshot") or {}, origin="report",
+                report_rank=int(reference.get("report_rank") or 9000))
+        self.repository.update_search(
+            project_id, slug, status="complete", imported_count=len(selected))
+        if selected:
+            self.repository.add_message(
+                project_id, "system",
+                f"{len(selected)} ranked reference(s) from search {slug} were added to the draft. "
+                "They are available to the drafting agent from the next message onward.")
+        return len(selected)
 
     def figures(self, project: Mapping[str, Any],
                 version: Mapping[str, Any] | None) -> list[dict[str, Any]]:
@@ -374,35 +452,127 @@ class StudioService:
         out = []
         for spec in specs:
             image = by_label.pop(_figure_key(spec.get("label")), None)
+            versions = (image or {}).get("versions") or []
+            active = next((item for item in versions
+                           if int(item.get("version_no") or 0) ==
+                           int((image or {}).get("active_version") or 0)), None) or {}
+            expected = list(spec.get("numerals") or [])
+            audit = dict(active.get("numeral_audit") or {})
+            detected = list(active.get("detected_numerals") or [])
             out.append({"label": spec.get("label"), "caption": spec.get("caption"),
-                        "numerals": spec.get("numerals") or [], "drawn": bool(image),
+                        # QA reads the detected pixels when inspection succeeded. Expected stays
+                        # separate so the UI can explain and repair either side of a mismatch.
+                        "numerals": detected if audit.get("inspected") else expected,
+                        "expected_numerals": expected, "detected_numerals": detected,
+                        "numeral_audit": audit, "drawn": bool(image),
                         "figure_id": (image or {}).get("id"),
                         "active_version": (image or {}).get("active_version"),
                         "n_versions": (image or {}).get("n_versions") or 0,
-                        "versions": (image or {}).get("versions") or []})
+                        "versions": versions})
         for orphan in by_label.values():
+            versions = orphan.get("versions") or []
+            active = next((item for item in versions
+                           if int(item.get("version_no") or 0) ==
+                           int(orphan.get("active_version") or 0)), None) or {}
             out.append({"label": orphan.get("figure_label"), "caption": orphan.get("caption"),
-                        "numerals": [], "drawn": True, "figure_id": orphan.get("id"),
+                        "numerals": list(active.get("detected_numerals") or []),
+                        "expected_numerals": [],
+                        "detected_numerals": list(active.get("detected_numerals") or []),
+                        "numeral_audit": dict(active.get("numeral_audit") or {}),
+                        "drawn": True, "figure_id": orphan.get("id"),
                         "active_version": orphan.get("active_version"),
                         "n_versions": orphan.get("n_versions") or 0,
-                        "versions": orphan.get("versions") or [], "orphan": True})
+                        "versions": versions, "orphan": True})
         return out
 
     def draw_figure(self, principal: drafting.Principal, project_id: int, *, label: str,
                     caption: str, instruction: str = "",
-                    figure_id: int | None = None) -> dict[str, Any]:
+                    figure_id: int | None = None, region=None) -> dict[str, Any]:
         """Draw (or redraw) one figure from the draft's own description and numerals."""
         import draft_figures
         project = self.drafting_service.get_project(principal, project_id, include_versions=True)
         version_no = int(project.get("latest_version_no") or 0)
-        sections = next((v.get("sections") for v in project.get("versions", [])
-                         if int(v.get("version_no") or 0) == version_no), {}) or {}
+        version = next((item for item in project.get("versions", [])
+                        if int(item.get("version_no") or 0) == version_no), {}) or {}
+        sections = version.get("sections") or {}
+        expected = _expected_numerals(version, label)
         try:
             return draft_figures.render_figure(
                 project_id, project["user_id"], label=str(label or "")[:80],
                 caption=str(caption or "")[:400], sections=sections,
                 instruction=str(instruction or "")[:1000], figure_id=figure_id,
-                disclosure=str(project.get("disclosure_text") or "")[:4000])
+                disclosure=str(project.get("disclosure_text") or "")[:4000], region=region,
+                numerals=expected)
+        except draft_figures.FigureError as exc:
+            raise drafting.DraftingValidationError(str(exc)) from exc
+
+    def save_figure(self, principal: drafting.Principal, project_id: int, figure_id: int,
+                    png: bytes, instruction: str = "Manual drawing edit") -> dict[str, Any]:
+        """Flatten a browser canvas into a new immutable, audited figure version."""
+        import draft_figures
+        project = self.drafting_service.get_project(principal, project_id, include_versions=True)
+        version_no = int(project.get("latest_version_no") or 0)
+        version = next((item for item in project.get("versions", [])
+                        if int(item.get("version_no") or 0) == version_no), {})
+        figures = self.figures(project, version)
+        target = next((item for item in figures if int(item.get("figure_id") or 0) ==
+                       int(figure_id)), None)
+        if not target:
+            raise drafting.DraftingNotFound("That drawing is not part of this draft.")
+        try:
+            return draft_figures.save_manual_version(
+                project_id, project["user_id"], figure_id, png,
+                instruction=str(instruction or "Manual drawing edit")[:1000],
+                numerals=target.get("expected_numerals") or [])
+        except draft_figures.FigureError as exc:
+            raise drafting.DraftingValidationError(str(exc)) from exc
+
+    def delete_figure(self, principal: drafting.Principal, project_id: int,
+                      figure_id: int) -> None:
+        import draft_figures
+        project = self._project(principal, project_id)
+        figure = draft_figures.get_figure(figure_id, project["user_id"])
+        if not figure or int(figure.get("project_id") or 0) != int(project_id):
+            raise drafting.DraftingNotFound("That drawing is not part of this draft.")
+        if not draft_figures.delete_figure(figure_id, project["user_id"]):
+            raise drafting.DraftingNotFound("That drawing was already removed.")
+
+    def photo_to_sketch(self, principal: drafting.Principal, project_id: int, *, image: bytes,
+                        content_type: str, label: str = "", caption: str = "",
+                        instruction: str = "") -> dict[str, Any]:
+        """Turn a real product/part photo into a versioned patent line drawing."""
+        import draft_figures
+        project = self.drafting_service.get_project(principal, project_id, include_versions=True)
+        existing = draft_figures.listing(project_id, project["user_id"])
+        if len(existing) >= draft_figures.MAX_FIGURES:
+            raise drafting.DraftingValidationError(
+                f"A draft can hold at most {draft_figures.MAX_FIGURES} drawings.")
+        try:
+            source = draft_figures.normalize_source_image(image, content_type)
+            version_no = int(project.get("latest_version_no") or 0)
+            version = next((item for item in project.get("versions", [])
+                            if int(item.get("version_no") or 0) == version_no), {}) or {}
+            sections = version.get("sections") or {}
+            if not label:
+                used_labels = {_figure_key(item.get("figure_label")) for item in existing}
+                number = 1
+                while _figure_key(f"FIG. {number}") in used_labels:
+                    number += 1
+                label = f"FIG. {number}"
+            expected = _expected_numerals(version, label)
+            if expected is None:
+                expected = []
+            photo_instruction = (
+                "Convert the supplied product or part photograph into a clean utility patent "
+                "line drawing. Remove the photographic background, colour, reflections, logos, "
+                "surface texture, and decorative detail. Preserve the visible geometry and "
+                "component relationships. " + str(instruction or ""))
+            return draft_figures.render_figure(
+                project_id, project["user_id"], label=str(label)[:80],
+                caption=str(caption or "view derived from a product photograph")[:400],
+                sections=sections, instruction=photo_instruction[:1000],
+                disclosure=str(project.get("disclosure_text") or "")[:4000],
+                source_png=source, numerals=expected)
         except draft_figures.FigureError as exc:
             raise drafting.DraftingValidationError(str(exc)) from exc
 

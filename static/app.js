@@ -2019,6 +2019,10 @@ function guardStaticFigures(){
 /* ── init ────────────────────────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   guardStaticFigures();
+  document.querySelectorAll('.directdraft').forEach(form => form.addEventListener('submit', () => {
+    const button = form.querySelector('button[type=submit]');
+    if (button) { button.disabled = true; button.textContent = 'Starting draft…'; }
+  }));
   const compactReport = window.matchMedia && window.matchMedia('(max-width:640px)').matches;
   document.querySelectorAll('.reportoverview,.resultfilters').forEach(d => { d.open = !compactReport; });
   const lb = document.getElementById('lb');
