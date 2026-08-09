@@ -511,6 +511,12 @@
   }
 
   // ── manual drawing editor ─────────────────────────────────────────────────
+  function discardDrawingEditor() {
+    const host = $('figureEditorHost');
+    if (host) host.innerHTML = '';
+    drawingEditor = null;
+  }
+
   function openFigureEditor(figureId) {
     const figure = (S.figures || []).find((item) => item.figure_id === Number(figureId));
     if (!figure) return;
@@ -709,6 +715,7 @@
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) throw new Error(data.error || 'Could not save the drawing.');
+      discardDrawingEditor();
       location.hash = '#/figures'; await refresh(); showPane('figures');
     } catch (error) { message.textContent = error.message; message.className = 'small bad'; }
     finally { if ($('drawSave')) $('drawSave').disabled = false; }
@@ -729,7 +736,10 @@
         caption: editor.figure.caption, instruction,
         region: [r.x, r.y, r.x + r.w, r.y + r.h],
       }) });
-      await refresh(); openFigureEditor(editor.figure.figure_id);
+      const figureId = editor.figure.figure_id;
+      discardDrawingEditor();
+      await refresh();
+      if (!drawingEditor || drawingEditor.figure.figure_id !== figureId) openFigureEditor(figureId);
     } catch (error) { message.textContent = error.message; message.className = 'small bad'; }
     finally { if ($('drawAi')) $('drawAi').disabled = false; }
   }
@@ -976,8 +986,7 @@
       const figureId = Number(parts[1]);
       if (!drawingEditor || drawingEditor.figure.figure_id !== figureId) openFigureEditor(figureId);
     } else if (drawingEditor) {
-      const host = $('figureEditorHost'); if (host) host.innerHTML = '';
-      drawingEditor = null;
+      discardDrawingEditor();
       renderFigures();
     }
   }

@@ -306,6 +306,8 @@ def test_studio_ui_exposes_sketch_tools_and_reload_safe_navigation():
     assert "hashchange" in script and "#/figures/" in script
     assert "cache: 'no-store'" in script
     assert "refreshSerial" in script
+    assert "function discardDrawingEditor" in script
+    assert script.count("discardDrawingEditor();") >= 3
     assert ".chatstatus[hidden]{display:none!important}" in css
 
 
