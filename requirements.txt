@@ -11,7 +11,9 @@ google-genai==1.47.0
 # draft_figures.normalize_source_image to the PNG, JPEG, and WebP plugins with byte/pixel caps.
 Pillow==11.3.0
 pydantic==2.13.4
-pyarrow==18.1.0
+# Python 3.9-compatible release required by the production datasets stack. The Arrow 2026 IPC
+# pre-buffer advisory is not exposed through Python bindings; the fixed 23.x line needs Python 3.10.
+pyarrow==21.0.0
 numpy==2.0.2
 # Requests 2.33 drops Python 3.9, which this production worker still runs. 2.32.5 closes the
 # credential-forwarding issue; the remaining 2.33-only advisory is for extract_zipped_paths(),
