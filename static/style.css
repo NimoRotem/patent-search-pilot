@@ -771,7 +771,7 @@ td.cell-no-coord .cmark, td.cell-unchecked .cmark{ color:#6e7681; }
 .facts{display:flex;gap:8px 20px;flex-wrap:wrap;align-items:baseline;font-size:12.5px;
   color:var(--faint)}
 .facts b{color:var(--ink);font-weight:650;font-size:13.5px;font-variant-numeric:tabular-nums}
-.rhead .actions{margin-top:13px}
+.rhead .actions{margin-top:9px}
 
 /* Per-source state. Colour AND glyph AND a visually-hidden word, so the state does not rely
    on hue alone. Data-driven: an unknown source id renders in the neutral style. */
@@ -792,13 +792,38 @@ td.cell-no-coord .cmark, td.cell-unchecked .cmark{ color:#6e7681; }
 .srctag.s-off{color:var(--faint);border-style:dashed}
 .srctag.s-off .sdot{background:none;border:1px solid currentColor}
 
-/* The one-line off-field notice. Replaces a five-sentence callout: it says which way the
-   result list is skewed, once, and gets out of the way. */
-.offfield{display:flex;gap:10px;align-items:baseline;margin:16px 0 0;padding:9px 13px;
-  border-radius:var(--r-sm);background:var(--warn-soft);border:1px solid rgba(210,153,34,.3);
-  font-size:12.5px;line-height:1.5;color:#e3d5b8}
-.offfield b{color:#f0dfc0}
-.offfield .ci{flex:none}
+/* Compact report framing. Each item occupies one line until its disclosure is opened. */
+.scopewarning{position:relative;display:inline-block;margin:12px 0 0;z-index:4}
+.scopewarning>summary{display:inline-flex;align-items:center;gap:6px;list-style:none;cursor:pointer;
+  padding:4px 9px;border:1px solid rgba(210,153,34,.35);border-radius:var(--r-pill);
+  background:var(--warn-soft);color:#e3d5b8;font-size:11.5px;font-weight:650}
+.scopewarning>summary::-webkit-details-marker{display:none}
+.scopewarning>summary:hover,.scopewarning[open]>summary{border-color:var(--warn);color:#f0dfc0}
+.scopewarning .ci{font-size:12px;line-height:1}
+.scopewarning-pop{position:absolute;left:0;top:calc(100% + 6px);width:min(390px,calc(100vw - 28px));
+  padding:11px 12px;border:1px solid rgba(210,153,34,.42);border-radius:var(--r-sm);
+  background:var(--s2);box-shadow:0 12px 34px rgba(0,0,0,.35);color:var(--muted);
+  font-size:12px;line-height:1.5}
+.scopewarning-pop b{color:var(--ink)}.scopewarning-pop p{margin:4px 0 0}
+.scopewarning:not([open]):hover>.scopewarning-pop,.scopewarning:not([open]):focus-within>.scopewarning-pop{display:block}
+
+.runsummary{max-width:100%;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.runsummary>summary{height:39px;display:flex;align-items:center;gap:10px;list-style:none;cursor:pointer;
+  overflow:hidden;color:var(--faint);font-size:11.5px}
+.runsummary>summary::-webkit-details-marker{display:none}
+.runline{display:flex;align-items:center;gap:12px;min-width:0;flex:1;overflow:hidden;white-space:nowrap}
+.runfacts{display:inline-flex;align-items:center;gap:11px;flex:none}.runfacts b{color:var(--ink);font-weight:650}
+.runsummary .srcrow{display:flex;flex-wrap:nowrap;gap:5px;margin:0;min-width:0;overflow:hidden}
+.runsummary .srctag{padding:2px 7px;font-size:10.5px}
+.runmore{flex:none;color:var(--accent);font-weight:650}.whenopen{display:none}
+.runsummary[open] .whenclosed{display:none}.runsummary[open] .whenopen{display:inline}
+.runsummary-detail{padding:12px 0 14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.providerlist{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px 18px;
+  margin:9px 0 0;padding:0;list-style:none}
+.providerlist li{display:grid;grid-template-columns:7px auto 1fr;align-items:baseline;gap:7px;line-height:1.45}
+.providerlist .sdot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.providerlist .s-used{color:var(--good)}.providerlist .s-degraded{color:var(--warn)}
+.providerlist .s-failed{color:var(--bad)}.providerlist .s-none,.providerlist .s-unknown{color:var(--faint)}
 
 /*  Collapsed analysis blocks. They sit directly under the header, ABOVE the results, so the grid
     and the measured-recall figure are one click away instead of one full scroll away. Closed, the
@@ -814,11 +839,13 @@ details.tail[open]>summary::before{transform:rotate(90deg)}
 details.tail>summary:hover .th{color:var(--ink)}
 details.tail .th{font-size:13px;font-weight:650;color:var(--muted)}
 details.tail .ts{font-size:11.5px;color:var(--faint)}
-details.tail.pending>summary{cursor:default}
-details.tail.pending>summary::before{visibility:hidden}
+details.tail.pending>summary,details.tail[data-state="pending"]>summary{cursor:default}
+details.tail.pending>summary::before,details.tail[data-state="pending"]>summary::before{visibility:hidden}
 .tailin{padding:4px 0 22px}
 /* Inside a .tail the scope block loses its own frame — the <details> already provides one. */
 .tailin .scope{border:0;background:none;padding:0;margin:0}
+.overviewsection{padding:4px 0 18px}.overviewsection+.overviewsection{padding-top:18px;border-top:1px solid var(--line)}
+.overviewsection>h4{margin:0 0 10px;font-size:13px;color:var(--ink)}
 
 /* Uploaded Claim x Reference grid: async state plus readable full-claim rows. */
 .claimgrid-loading{display:flex;align-items:center;gap:9px;color:var(--faint);font-size:12.5px;
@@ -943,8 +970,6 @@ details.tail.pending>summary::before{visibility:hidden}
 .accountname,.accountemail{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .accountname{color:var(--ink);font-size:12.5px;font-weight:650}
 .accountemail{color:var(--faint);font-size:10.5px;font-weight:500;margin-top:2px}
-.accountnav.legacy{border-color:rgba(210,153,34,.34);background:var(--warn-soft)}
-.accountnav.legacy .accountemail{color:#d6b75e}
 .sessionnotice{padding:10px 12px;border:1px solid rgba(76,141,255,.34);border-radius:var(--r-sm);
   color:var(--muted);background:var(--accent-soft);font-size:12.5px;line-height:1.5;margin:15px 0}
 .sessionnotice b{color:var(--ink)}
@@ -958,8 +983,6 @@ details.tail.pending>summary::before{visibility:hidden}
 .authform.compact{margin-top:11px}
 .authlinks{display:flex;justify-content:space-between;gap:14px;margin-top:17px;font-size:13px}
 .authfoot{margin-top:18px!important;font-size:13px}
-.adminaccess{margin-top:22px;padding-top:17px;border-top:1px solid var(--line);color:var(--muted)}
-.adminaccess summary{cursor:pointer;font-size:12.5px;font-weight:600}
 .formerror,.formsuccess{padding:10px 12px;border:1px solid;border-radius:var(--r-sm);font-size:13px;margin:15px 0}
 .formerror{color:var(--bad);border-color:rgba(248,81,73,.32);background:var(--bad-soft)}
 .formsuccess{color:var(--good);border-color:rgba(63,185,80,.32);background:var(--good-soft)}
@@ -995,12 +1018,12 @@ details.tail.pending>summary::before{visibility:hidden}
 .adminactions{display:flex;gap:6px;flex-wrap:wrap}.adminactions form{margin:0}
 .good{color:var(--good)!important}.bad{color:var(--bad)!important}
 
-/* The archive is a first-class report artifact, not hidden in the selected-reference export bar. */
-.archivecard{display:flex;align-items:center;gap:12px;margin-top:13px;padding:11px 13px;background:var(--s2);border:1px solid var(--line2);border-radius:var(--r-sm)}
-.archivecard [hidden]{display:none!important}
-.archiveicon{display:grid;place-items:center;width:38px;height:34px;border-radius:6px;background:var(--accent-soft);color:var(--accent);font:700 10px ui-monospace,Menlo,monospace;flex:none}
-.archivecopy{display:flex;flex-direction:column;min-width:0;flex:1}
-.archivecopy b{font-size:12.5px}.archivecopy span{font-size:11.5px;color:var(--muted);line-height:1.45}
+.archivecompact{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:2px 3px 2px 7px;
+  border:1px solid var(--line2);border-radius:var(--r-pill);background:var(--s1);color:var(--faint);
+  font-size:10.5px;white-space:nowrap}
+.archivecompact [hidden]{display:none!important}
+.archivecompact .btn{min-height:26px;padding:3px 8px;border-radius:var(--r-pill);font-size:10.5px}
+.archiveicon{display:inline-grid;place-items:center;color:var(--accent);font:700 9px ui-monospace,Menlo,monospace}
 .save-report.saved{color:var(--good);border-color:rgba(63,185,80,.4);background:var(--good-soft)}
 
 /* ── versioned US drafting workspace ───────────────────────────────────── */
@@ -1067,7 +1090,10 @@ details.draftpanel>summary{list-style:none;cursor:pointer;margin:-19px;padding:1
   .adminpage .adminactions{margin-top:-3px}
   .historytools{grid-template-columns:1fr}.historytools .btn{width:100%;justify-content:center}
   .waitchoice{grid-template-columns:1fr}.waitactions{justify-content:flex-start}
-  .archivecard{align-items:flex-start;flex-wrap:wrap}.archivecopy{min-width:180px}
+  .scopewarning-pop{left:0;right:auto;width:min(390px,calc(100vw - 28px));max-width:none}
+  .runsummary>summary{height:42px}.runfacts{gap:9px}.runmore{font-size:11px}
+  .runsummary-detail{padding-left:2px;padding-right:2px}.providerlist{grid-template-columns:1fr}
+  .archivecompact{max-width:100%;overflow:hidden}.archivecompact #archiveStatus{overflow:hidden;text-overflow:ellipsis}
   .reportoverview>summary,.resultfilters>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 13px;margin:10px 0;background:var(--s1);border:1px solid var(--line);border-radius:var(--r-sm);font-size:13px;font-weight:650;cursor:pointer;list-style:none}
   .reportoverview>summary span{font-size:11px;color:var(--muted);font-weight:400}.reportoverview>summary::-webkit-details-marker,.resultfilters>summary::-webkit-details-marker{display:none}
   details.reportoverview:not([open])>.tailwrap,details.resultfilters:not([open])>.controls{display:none}

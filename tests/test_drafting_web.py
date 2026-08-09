@@ -145,6 +145,27 @@ def test_draft_library_and_intake_render(draft_client):
     assert "Full uploaded disclosure loaded" in body
 
 
+def test_conversational_intake_carries_search_text_and_prior_art(draft_client):
+    client, _service = draft_client
+    intake = client.get("/drafts/start?search_slug=adhoc-owned")
+    assert intake.status_code == 200
+    body = intake.get_data(as_text=True)
+    assert 'name="search_slug" value="adhoc-owned"' in body
+    assert "Verbatim full uploaded disclosure with all four claims." in body
+    assert 'name="pubs" value="US-11223344-B2" checked' in body
+    assert "References from adhoc-owned" in body
+
+
+def test_conversational_intake_can_start_from_scratch(draft_client):
+    client, _service = draft_client
+    intake = client.get("/drafts/start")
+    assert intake.status_code == 200
+    body = intake.get_data(as_text=True)
+    assert 'name="search_slug" value=""' in body
+    assert "Describe the invention" in body
+    assert "Detailed RFID lifter disclosure" not in body
+
+
 def test_create_draft_uses_server_report_and_selected_publications(draft_client):
     client, service = draft_client
     response = client.post("/drafts/new", data={

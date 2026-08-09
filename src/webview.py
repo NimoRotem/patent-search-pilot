@@ -84,6 +84,23 @@ def _engine_sources():
     return _ENGINE_SRC["v"]
 
 
+def _mark_provider_fallbacks(tags):
+    """A failed optional provider is degraded, not fatal, when another provider supplied art."""
+    fallback_worked = any(tag.get("id") != "local" and tag.get("state") == "used" and
+                          int(tag.get("n") or 0) > 0 for tag in tags)
+    if not fallback_worked:
+        return tags
+    for tag in tags:
+        if tag.get("id") != "serpapi_gpatents" or tag.get("state") != "failed":
+            continue
+        reason = str(tag.get("why") or tag.get("note") or "").strip()
+        suffix = "Fallback patent sources returned candidates for this search."
+        tag["state"] = "degraded"
+        tag["why"] = tag["note"] = f"{reason} {suffix}".strip()
+        tag["fallback"] = True
+    return tags
+
+
 def _source_tags(report, n_local):
     """-> source chips; `degraded` means useful hits plus at least one provider error."""
     tags = [{"id": "local", "label": "Local corpus",
@@ -109,7 +126,7 @@ def _source_tags(report, n_local):
 
     fed = report.get("federation")
     if not fed:
-        return tags
+        return _mark_provider_fallbacks(tags)
 
     # 1. Engine-supplied per-source status wins outright.
     status = fed.get("source_status") or fed.get("by_source")
@@ -139,7 +156,7 @@ def _source_tags(report, n_local):
                 reason = " ".join(str(raw_reason).split())[:160]
             tags.append({"id": sid, "label": x.get("label") or _src_label(sid),
                          "state": st, "n": n, "note": reason, "why": reason})
-        return tags
+        return _mark_provider_fallbacks(tags)
 
     # 2. Derive from the hits actually recorded, crossed with the advertised catalogue.
     counts = {}
@@ -180,7 +197,7 @@ def _source_tags(report, n_local):
     if not fed_ok:
         tags.append({"id": "federation", "label": "External APIs", "state": "failed",
                      "n": 0, "note": "", "why": str(fed.get("error") or "")[:160]})
-    return tags
+    return _mark_provider_fallbacks(tags)
 
 
 def _d(s):

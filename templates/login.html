@@ -5,10 +5,6 @@
   <section class="panel authcard" aria-labelledby="login-title">
     <h1 id="login-title">Sign in</h1>
     <p class="muted">Open saved searches, receive completion alerts, and keep reports in your account.</p>
-    {% if current_is_admin and not current_user %}
-      <div class="sessionnotice" role="status"><b>A named account is required for drafting.</b>
-        Sign in below to switch from the shared administrator session and open your draft workspace.</div>
-    {% endif %}
     {% if error %}<div class="formerror" role="alert">{{ error }}</div>{% endif %}
     <form method="post" action="{{ request.script_root }}/login" class="authform">
       {% if next_path %}<input type="hidden" name="next" value="{{ next_path }}">{% endif %}
@@ -17,25 +13,13 @@
              placeholder="you@company.com" autofocus>
       <label for="login-password">Password</label>
       <input id="login-password" type="password" name="password" required
-             autocomplete="current-password" minlength="10">
+             autocomplete="current-password">
       <button class="btn" type="submit">Sign in</button>
     </form>
     <div class="authlinks">
       <a href="{{ request.script_root }}/register">Create an account</a>
       <a href="{{ request.script_root }}/forgot-password">Forgot password?</a>
     </div>
-
-    <details class="adminaccess">
-      <summary>Emergency shared administrator access</summary>
-      <form method="post" action="{{ request.script_root }}/login" class="authform compact">
-        {% if next_path %}<input type="hidden" name="next" value="{{ next_path }}">{% endif %}
-        <label for="admin-password">Shared administrator password</label>
-        <input id="admin-password" type="password" name="password" required
-               autocomplete="current-password">
-        <button class="btn ghost" type="submit">Administrator sign in</button>
-      </form>
-      <p class="small muted">This maintenance session has no personal search library or drafting workspace.</p>
-    </details>
   </section>
 </div>
 {% endblock %}

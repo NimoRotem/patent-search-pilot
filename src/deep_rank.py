@@ -195,17 +195,11 @@ UNREAD_SCORE_CAP = int(os.environ.get("DEEP_RANK_UNREAD_CAP", "70"))
 #  however relevant it is: it can only be listed. Measured against a real examiner citation list,
 #  twelve of the thirteen families that never reached the ranked list were abstract-only here.
 #
-#  Measured per source on those documents: SerpApi Google Patents returned claims for 10 of 15 in
-#  about a second each, including every DE, FR, CN and JP one; the lemad Mongo lookup covered 1;
-#  EPO OPS covered 0, because its full text is EP and WO only and none of them were. So SerpApi is
-#  the path, and `enrich.enrich_publication` already persists the claims WITHOUT embedding them,
-#  which is exactly right here: the reading stage needs text, not vectors, and the vectors follow
-#  on the next ordinary embed pass.
-#
-#  Bounded because SerpApi is quota'd: only references already selected for reading, only when the
-#  corpus has nothing to read, and only ENRICH_TOP of them. It is a ONE-TIME cost per publication
-#  that every later search in the field inherits.
-ENRICH_TOP = int(os.environ.get("DEEP_RANK_ENRICH_TOP", "80"))
+#  The recovery chain is local Mongo -> official EPO OPS -> direct Google Patents -> ScrapingBee
+#  -> SerpApi. Because the quota'd provider is now last rather than the gate, every reference the
+#  reader selected is eligible. It remains bounded by CHART_TOP_MAX: the pipeline never fetches a
+#  document it was not already about to read, and the persisted text benefits every later search.
+ENRICH_TOP = int(os.environ.get("DEEP_RANK_ENRICH_TOP", str(CHART_TOP_MAX)))
 ENRICH_WORKERS = int(os.environ.get("DEEP_RANK_ENRICH_WORKERS", "8"))
 
 _STOP = set((
@@ -413,7 +407,11 @@ def _enrich_missing_text(chosen, on_progress=None):
         import enrich
     except Exception:
         return 0
-    if not getattr(enrich, "SERP_KEY", ""):
+    available = getattr(enrich, "recovery_available", None)
+    if available is not None:
+        if not available():
+            return 0
+    elif not getattr(enrich, "SERP_KEY", ""):
         return 0
     pubs = [r["pub"] for r in chosen]
     thin = []
@@ -453,7 +451,9 @@ def _enrich_missing_text(chosen, on_progress=None):
     def one(pub):
         try:
             r = enrich.enrich_publication(pub, reembed=False)
-            ok = bool(r and r.get("ok") and r.get("added_claims"))
+            ok = bool(r and r.get("ok") and (r.get("added_claims") or
+                                              r.get("added_paragraphs") or
+                                              r.get("added_chunks")))
         except Exception:
             ok = False
         with lock:

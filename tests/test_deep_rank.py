@@ -669,10 +669,64 @@ def test_only_references_with_nothing_readable_are_fetched(monkeypatch):
 
 
 def test_enrichment_is_skipped_without_a_key(monkeypatch):
-    class NoKey:
+    class NoRecovery:
         SERP_KEY = ""
-    monkeypatch.setitem(__import__("sys").modules, "enrich", NoKey)
+
+        @staticmethod
+        def recovery_available():
+            return False
+
+    monkeypatch.setitem(__import__("sys").modules, "enrich", NoRecovery)
     assert deep_rank._enrich_missing_text([{"pub": "US-1-A"}]) == 0
+
+
+def test_scrapingbee_or_official_fallback_runs_without_serpapi(monkeypatch):
+    fetched = []
+
+    class FallbackEnrich:
+        SERP_KEY = ""
+        SB_KEY = "configured"
+
+        @staticmethod
+        def recovery_available():
+            return True
+
+        @staticmethod
+        def enrich_publication(pub, reembed=False):
+            fetched.append(pub)
+            return {"ok": True, "added_claims": 2, "added_paragraphs": 8,
+                    "source": "scrapingbee:google_patents"}
+
+    class Cur:
+        def execute(self, sql, params=None):
+            self.rows = [{"pub": "US-1-A", "cl": 0, "pa": 0}]
+
+        def fetchall(self):
+            return self.rows
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    class Conn:
+        autocommit = True
+
+        def cursor(self):
+            return Cur()
+
+        def close(self):
+            pass
+
+    monkeypatch.setitem(__import__("sys").modules, "enrich", FallbackEnrich)
+    monkeypatch.setattr(deep_rank.db, "connect", lambda *a, **k: Conn())
+    assert deep_rank._enrich_missing_text([{"pub": "US-1-A"}]) == 1
+    assert fetched == ["US-1-A"]
+
+
+def test_every_reference_selected_for_reading_is_eligible_for_text_recovery():
+    assert deep_rank.ENRICH_TOP >= deep_rank.CHART_TOP_MAX
 
 
 def test_a_screen_score_from_no_text_does_not_exclude_a_reference():

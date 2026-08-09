@@ -32,8 +32,6 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
         {% if current_user %}
           <a href="{{ request.script_root }}/library" class="navitem{% if endpoint == 'library' %} active{% endif %}"{% if endpoint == 'library' %} aria-current="page"{% endif %}>Saved</a>
           <a href="{{ request.script_root }}/drafts" class="navitem navdraft{% if endpoint.startswith('draft') %} active{% endif %}"{% if endpoint.startswith('draft') %} aria-current="page"{% endif %}>Drafting</a>
-        {% elif current_is_admin and account_mode %}
-          <a href="{{ request.script_root }}/login?next=/drafts" class="navitem navdraft" title="Drafting belongs to a named account; sign in to continue">Drafting</a>
         {% endif %}
       </nav>
     {% else %}
@@ -54,12 +52,6 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
           <span class="accountemail">{{ current_user.email }}</span>
         </a>
         <a class="signout" href="{{ request.script_root }}/logout">Sign out</a>
-      {% elif current_is_admin %}
-        <a href="{{ request.script_root }}/admin/users" class="accountnav legacy" aria-label="Shared administrator session; no named user">
-          <span class="accountname">Shared admin</span>
-          <span class="accountemail">No named user</span>
-        </a>
-        <a class="signout" href="{{ request.script_root }}/logout">Sign out</a>
       {% elif account_mode %}
         <a href="{{ request.script_root }}/login">Sign in</a>
         <a class="navcta" href="{{ request.script_root }}/register">Create account</a>
@@ -74,9 +66,6 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
     <a href="{{ request.script_root }}/about">About &amp; scope</a>
     {% if current_user %}
       <a href="{{ request.script_root }}/account">Account</a>
-    {% elif current_is_admin %}
-      <a href="{{ request.script_root }}/admin/users">Admin console</a>
-      {% if account_mode %}<a href="{{ request.script_root }}/login?next=/drafts">Use a named account for drafting</a>{% endif %}
     {% elif account_mode %}
       <a href="{{ request.script_root }}/register">Create account</a>
     {% endif %}

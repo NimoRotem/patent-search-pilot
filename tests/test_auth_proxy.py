@@ -11,10 +11,14 @@ Reading element [0] meant every per-IP bucket was keyed on a value the attacker 
 brute-force protection could be reset at will by rotating one header.
 """
 import pytest
+import accounts
 import auth
 import webapp
 
 PASSWORD = "unit-test-password-8f3a"
+EMAIL = "proxy-auth@example.test"
+USER = {"id": 902, "email": EMAIL, "full_name": "Proxy Auth", "is_admin": False,
+        "is_active": True, "session_version": 1}
 PROXY = "10.128.0.7"          # nginx's VPC address: a trusted peer
 REAL = "198.51.100.77"        # the actual attacker, appended by nginx
 
@@ -23,7 +27,11 @@ REAL = "198.51.100.77"        # the actual attacker, appended by nginx
 def secured(monkeypatch):
     webapp.app.config["TESTING"] = True
     webapp.app.config["FORCE_AUTH"] = True
-    webapp.app.config["APP_PASSWORD"] = PASSWORD
+    webapp.app.config["FORCE_ACCOUNTS"] = True
+    monkeypatch.setattr(accounts, "authenticate", lambda email, password:
+                        dict(USER) if email == EMAIL and password == PASSWORD else None)
+    monkeypatch.setattr(accounts, "get_user", lambda uid:
+                        dict(USER) if int(uid) == USER["id"] else None)
     monkeypatch.setattr(auth, "TRUST_LOOPBACK", False)
     monkeypatch.setattr(auth, "API_TOKEN", "")
     auth.reset_limits()
@@ -31,7 +39,7 @@ def secured(monkeypatch):
         yield webapp.app.test_client()
     finally:
         webapp.app.config.pop("FORCE_AUTH", None)
-        webapp.app.config.pop("APP_PASSWORD", None)
+        webapp.app.config.pop("FORCE_ACCOUNTS", None)
         auth.reset_limits()
 
 
@@ -39,7 +47,7 @@ def _login(client, spoof, real=REAL):
     """One wrong-password POST carrying an nginx-shaped XFF chain."""
     return client.post(
         "/login",
-        data={"password": "wrong"},
+        data={"email": EMAIL, "password": "wrong"},
         environ_overrides={"REMOTE_ADDR": PROXY},
         headers={"X-Forwarded-For": f"{spoof}, {real}"},
     )
@@ -117,7 +125,7 @@ def test_flood_from_one_source_cannot_lock_out_a_known_good_user(secured):
     good = "198.51.100.200"
 
     # the real user logs in once, successfully
-    r = secured.post("/login", data={"password": PASSWORD},
+    r = secured.post("/login", data={"email": EMAIL, "password": PASSWORD},
                      environ_overrides={"REMOTE_ADDR": PROXY},
                      headers={"X-Forwarded-For": f"203.0.113.1, {good}"})
     assert r.status_code == 302, "correct password should sign in"
@@ -127,13 +135,13 @@ def test_flood_from_one_source_cannot_lock_out_a_known_good_user(secured):
     lim.global_bucket.tokens = 0.0
 
     # the known-good user is still served (their own per-IP bucket still applies)
-    r = secured.post("/login", data={"password": PASSWORD},
+    r = secured.post("/login", data={"email": EMAIL, "password": PASSWORD},
                      environ_overrides={"REMOTE_ADDR": PROXY},
                      headers={"X-Forwarded-For": f"203.0.113.1, {good}"})
     assert r.status_code == 302, "global backstop locked out the legitimate user"
 
     # an unknown IP is still shed by the backstop
-    r = secured.post("/login", data={"password": "wrong"},
+    r = secured.post("/login", data={"email": EMAIL, "password": "wrong"},
                      environ_overrides={"REMOTE_ADDR": PROXY},
                      headers={"X-Forwarded-For": f"203.0.113.1, 198.51.100.201"})
     assert r.status_code == 429, "global backstop should still shed unknown floods"

@@ -35,15 +35,18 @@
 
   {#  Kept above the results, and kept short. This is not a caveat about the tool, it is a fact
       about THIS query: it fell outside the indexed field, so the list below is adjacent art.
-      That changes how the results are read, which is why it precedes them. One line. #}
+      The reason remains available on hover or click without consuming a full line. #}
   {% if v.domain and v.domain.should_federate %}
-  <div class="offfield">
-    <span class="ci" aria-hidden="true">⚠</span>
-    <div style="min-width:0">
+  <details class="scopewarning">
+    <summary><span class="ci" aria-hidden="true">⚠</span>
+      <span>{% if v.domain.in_domain %}Weak indexed match{% else %}Outside indexed field{% endif %}</span>
+      <span class="vh">Show why these results need extra care</span>
+    </summary>
+    <div class="scopewarning-pop" role="note">
       <b>{% if v.domain.in_domain %}Weak match for the indexed field{% else %}Outside the indexed field{% endif %}</b>
-      — {{ v.domain.reason }} Treat these as adjacent art.
+      <p>{{ v.domain.reason }} Treat these as adjacent art.</p>
     </div>
-  </div>
+  </details>
   {% endif %}
 
   <!-- ── compact header ──────────────────────────────────────────────────── -->
@@ -89,31 +92,46 @@
     </form>
     {% endif %}
 
-    <div class="facts">
-      <span><b>{{ v.cards|length }}</b> ranked references</span>
-      <span><b>{{ '{:,}'.format(v.n_families or 0) }}</b> families surfaced</span>
-      <span><b>{{ v.elements|length }}</b> invention elements</span>
-      <span><b>{{ v.mode.replace('_',' ')|title }}</b> mode</span>
-      <span><b>{{ 'Claims' if v.search_focus == 'claims' else 'All text' }}</b> search focus</span>
-      {% if v.subject %}<span>subject
-        <a href="{{ v.subject_google or ('https://patents.google.com/patent/' + v.subject.replace('-','') + '/en') }}"
-           target="_blank" rel="noopener">{{ v.subject_flag }} {{ v.subject }}</a></span>{% endif %}
-      <span>{{ v.languages|join(', ')|upper }}</span>
-    </div>
-
-    {#  Which APIs ran, and what each returned. Data-driven from whatever the backend reports —
-        a source added upstream (Lens) appears here without a template change. #}
-    {% if v.source_tags %}
-    <div class="srcrow" role="group" aria-label="Sources searched">
-      {% for s in v.source_tags %}
-      <span class="srctag s-{{ s.state }}"{% if s.why or s.note %} title="{{ s.why or s.note }}"{% endif %}>
-        <span class="sdot" aria-hidden="true"></span>{{ s.label }}{% if s.n %}<b>{{ s.n }}</b>{% endif %}
-        <span class="vh">— {{ {'used':'used','degraded':'partial results','none':'no results','failed':'failed',
-                               'unknown':'not run','off':'not configured'}.get(s.state, s.state) }}{% if s.why %}: {{ s.why }}{% endif %}</span>
-      </span>
-      {% endfor %}
-    </div>
-    {% endif %}
+    {# One collapsed-height run line. It keeps every metric and provider in the DOM and lets the
+       provider strip clip horizontally; Read more exposes the full status and reasons. #}
+    <details class="runsummary">
+      <summary>
+        <span class="runline">
+          <span class="runfacts">
+            <span><b>{{ v.cards|length }}</b> references</span>
+            <span><b>{{ '{:,}'.format(v.n_families or 0) }}</b> families</span>
+            <span><b>{{ v.elements|length }}</b> elements</span>
+            <span>{{ v.mode.replace('_',' ')|title }}</span>
+            <span>{{ 'Claims' if v.search_focus == 'claims' else 'All text' }}</span>
+            {% if v.subject %}<a href="{{ v.subject_google or ('https://patents.google.com/patent/' + v.subject.replace('-','') + '/en') }}"
+               target="_blank" rel="noopener">{{ v.subject_flag }} {{ v.subject }}</a>{% endif %}
+            <span>{{ v.languages|join(', ')|upper }}</span>
+          </span>
+          {% if v.source_tags %}
+          <span class="srcrow" role="group" aria-label="Sources searched">
+            {% for s in v.source_tags %}
+            <span class="srctag s-{{ s.state }}"{% if s.why or s.note %} title="{{ s.why or s.note }}"{% endif %}>
+              <span class="sdot" aria-hidden="true"></span>{{ s.label }}{% if s.n %}<b>{{ s.n }}</b>{% endif %}
+              <span class="vh">{{ {'used':'used','degraded':'fallback used','none':'no results','failed':'failed',
+                                     'unknown':'not run','off':'not configured'}.get(s.state, s.state) }}{% if s.why %}: {{ s.why }}{% endif %}</span>
+            </span>
+            {% endfor %}
+          </span>
+          {% endif %}
+        </span>
+        <span class="runmore"><span class="whenclosed">Read more</span><span class="whenopen">Show less</span></span>
+      </summary>
+      <div class="runsummary-detail">
+        <b>Search run details</b>
+        {% if v.source_tags %}<ul class="providerlist">
+          {% for s in v.source_tags %}
+          <li><span class="sdot s-{{ s.state }}" aria-hidden="true"></span><b>{{ s.label }}</b>
+            {% if s.n %}{{ '{:,}'.format(s.n) }} results, {% endif %}{{ {'used':'used','degraded':'fallback used','none':'no results','failed':'failed',
+              'unknown':'not run','off':'not configured'}.get(s.state, s.state) }}{% if s.why or s.note %}. {{ s.why or s.note }}{% endif %}</li>
+          {% endfor %}
+        </ul>{% endif %}
+      </div>
+    </details>
 
     <div class="actions">
       {% if current_user and not read_only %}<a class="btn sm" href="{{ request.script_root }}/drafts/start?search_slug={{ v.slug }}">Draft US application</a>
@@ -131,21 +149,14 @@
       {% endif %}
       <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}?rerun=1"
          onclick="return confirm('Re-run the agent live? First matches usually appear within a minute; full refinement can take several minutes.')">Re-run</a>
-    </div>
-    <div class="archivecard" id="archiveCard" data-status="{{ v.archive.status or 'not_started' }}">
-      <div class="archiveicon" aria-hidden="true">ZIP</div>
-      <div class="archivecopy">
-        <b>Top-50 full-text patent archive</b>
-        <span id="archiveStatus">
-          {% if v.archive.ready %}Ready — {{ v.archive.n_patents }} Markdown files; {{ v.archive.n_full_text }} include both claims and full description.
-          {% elif v.archive.status == 'error' %}Archive generation needs a retry.
-          {% elif v.partial %}Starts automatically as soon as the final ranking is ready.
-          {% else %}Building automatically in the background: one Markdown file per ranked patent, with full text and sketch links.{% endif %}
-        </span>
-      </div>
-      <a class="btn sm" id="archiveDownload" href="{{ request.script_root }}/archive/{{ v.slug }}/download"
-         {% if not v.archive.ready %}hidden{% endif %}>Download ZIP</a>
-      <button type="button" class="btn ghost sm" id="archiveRetry" {% if v.archive.status != 'error' %}hidden{% endif %}>Retry</button>
+      <span class="archivecompact" id="archiveCard" data-status="{{ v.archive.status or 'not_started' }}"
+            title="Top-50 full-text patent archive">
+        <span class="archiveicon" aria-hidden="true">ZIP</span>
+        <span id="archiveStatus">{% if v.archive.ready %}{{ v.archive.n_full_text }}/{{ v.archive.n_patents }} full text{% elif v.archive.status == 'error' %}needs retry{% elif v.partial %}after ranking{% else %}building{% endif %}</span>
+        <a class="btn ghost sm" id="archiveDownload" href="{{ request.script_root }}/archive/{{ v.slug }}/download"
+           {% if not v.archive.ready %}hidden{% endif %}>Download ZIP</a>
+        <button type="button" class="btn ghost sm" id="archiveRetry" {% if v.archive.status != 'error' %}hidden{% endif %}>Retry ZIP</button>
+      </span>
     </div>
   </div>
 
@@ -158,41 +169,6 @@
   <details class="reportoverview">
     <summary>Report overview <span>grids, coverage and search scope</span></summary>
   <div class="tailwrap">
-
-    {#  IDENTIFIED BUT NOT READABLE. The search found these and screened them as worth reading,
-        and this corpus holds only a title and an abstract for each. They are NOT mixed into the
-        ranked list: a reference whose full text was quoted and a reference we hold forty words of
-        are not comparable, and sorting them into one list by one number produced a page of fifty
-        on which forty-four were records nobody had read. Shown here, named, with the office copy
-        one click away, because an examiner cites exactly these documents. #}
-    {% if v.deep_rank and v.deep_rank.not_readable %}
-    <details class="tail">
-      <summary><span class="th">Identified but not readable here</span>
-        <span class="ts">{{ v.deep_rank.not_readable|length }} references · this corpus holds only a title and an abstract</span></summary>
-      <div class="tailin">
-        <p class="gridline">The search found these and judged them worth reading, but the text is
-          not in this corpus, so they are not ranked against the references above and nothing is
-          claimed about what they disclose. The office copy usually says considerably more. The
-          score is the screen's judgement of whether reading it would be worth your time.</p>
-        <div class="chartwrap">
-          <table class="chart nrtable">
-            <caption class="vh">References identified but not readable in this corpus</caption>
-            <thead><tr><th scope="col">Publication</th><th scope="col">Title</th>
-              <th scope="col">Worth reading</th></tr></thead>
-            <tbody>
-              {% for r in v.deep_rank.not_readable %}
-              <tr>
-                <td>{% if r.google_patents %}<a href="{{ r.google_patents }}" target="_blank" rel="noopener">{{ r.pub }}</a>{% else %}{{ r.pub }}{% endif %}</td>
-                <td>{{ r.title[:90] }}</td>
-                <td class="nrscore">{{ r.screen if r.screen is not none else '-' }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </details>
-    {% endif %}
 
     {#  BEST REFERENCE PER FEATURE. A reference is not only a novelty candidate: a document that
         discloses ONE rare feature and nothing else is the one an inventive-step attack is built
@@ -320,10 +296,36 @@
     </details>
     {% endif %}
 
-    <details class="tail{% if v.partial %} pending{% endif %}">
-      <summary><span class="th">Coverage ledger</span>
-        <span class="ts">{% if v.partial %}available when agentic refinement completes{% else %}{{ v.rounds }} rounds · {{ v.coverage_ledger.cpc_branches|length }} CPC branches · {{ v.channels_used|length }} channels{% endif %}</span></summary>
+    <details class="tail reportlimits"{% if v.partial %} data-state="pending"{% endif %}>
+      <summary><span class="th">Coverage, text recovery and search scope</span>
+        <span class="ts">{% if v.partial %}available when agentic refinement completes{% else %}{% if v.deep_rank and v.deep_rank.not_readable %}{{ v.deep_rank.not_readable|length }} unresolved · {% endif %}{{ v.rounds }} rounds · {{ v.coverage_ledger.cpc_branches|length }} CPC branches · {{ v.channels_used|length }} channels · {{ corpus.recall_pct }}% recall@100{% endif %}</span></summary>
       <div class="tailin">
+        {% if v.deep_rank and v.deep_rank.not_readable %}
+        <section class="overviewsection">
+          <h4>Full text still unavailable after recovery ({{ v.deep_rank.not_readable|length }})</h4>
+          <p class="gridline">Automated recovery checked local text, official patent services,
+            Google Patents and the configured proxy. These references remain outside the ranked
+            full-text comparison. Open the office copy to review one directly.</p>
+          <div class="chartwrap">
+            <table class="chart nrtable">
+              <caption class="vh">References whose full text remained unavailable after recovery</caption>
+              <thead><tr><th scope="col">Publication</th><th scope="col">Title</th>
+                <th scope="col">Worth reading</th></tr></thead>
+              <tbody>
+                {% for r in v.deep_rank.not_readable %}
+                <tr>
+                  <td>{% if r.google_patents %}<a href="{{ r.google_patents }}" target="_blank" rel="noopener">{{ r.pub }}</a>{% else %}{{ r.pub }}{% endif %}</td>
+                  <td>{{ r.title[:90] }}</td>
+                  <td class="nrscore">{{ r.screen if r.screen is not none else '-' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+        <section class="overviewsection">
+          <h4>Coverage ledger</h4>
         <div class="ledger">
           <div class="box">
             <h4>Marginal new-family yield per round</h4>
@@ -349,19 +351,11 @@
             {% endif %}
           </div>
         </div>
-      </div>
-    </details>
-
-    {#  The scope + measured-reliability disclosure. NOT deleted and NOT abbreviated — the full
-        text is still here, one click away, and /about still renders it opened and in full. The
-        exported PDF/DOCX and /print also keep it in full: an exported document travels to people
-        who never saw this screen. What changed is only that it no longer sits above the results
-        on the operator's own screen. #}
-    <details class="tail">
-      <summary><span class="th">Search scope and measured reliability</span>
-        <span class="ts">corpus limits, date ceiling, {{ corpus.recall_pct }}% measured recall@100</span></summary>
-      <div class="tailin">
+        </section>
+        <section class="overviewsection">
+          <h4>Search scope and measured reliability</h4>
         {% with variant='results' %}{% include "_scope.html" %}{% endwith %}
+        </section>
       </div>
     </details>
   </div>
@@ -768,28 +762,31 @@ window.REPORT_SAVED = {{ (v.account_search and v.account_search.saved)|default(f
   if(!card) return;
   if(window.PARTIAL){
     download.hidden = true; retry.hidden = true;
-    status.textContent = 'Starts automatically as soon as the final ranking is ready.';
+    status.textContent = 'after ranking';
+    card.title = 'The full-text ZIP starts automatically after final ranking.';
     return;
   }
   let timer = null;
   function renderArchive(d){
     card.dataset.status = d.status || 'building';
     if(d.ready){
-      status.textContent = 'Ready — ' + (d.n_patents || 0) + ' Markdown files; ' +
-        (d.n_full_text || 0) + ' include both claims and full description.';
+      status.textContent = (d.n_full_text || 0) + '/' + (d.n_patents || 0) + ' full text';
+      card.title = (d.n_patents || 0) + ' Markdown files. ' + (d.n_full_text || 0) +
+        ' include claims and full description.';
       download.hidden = false; retry.hidden = true;
       if(timer) clearTimeout(timer);
       return true;
     }
     download.hidden = true;
     if(d.status === 'error'){
-      status.textContent = 'Archive generation failed: ' + (d.error || 'unknown error') + '.';
+      status.textContent = 'needs retry';
+      card.title = 'Archive generation failed: ' + (d.error || 'unknown error') + '.';
       retry.hidden = false;
       return true;
     }
     retry.hidden = true;
-    const progress = d.n_patents ? ' (' + (d.n_done || 0) + ' of ' + d.n_patents + ')' : '';
-    status.textContent = (d.message || 'Building full-text Markdown files in the background…') + progress;
+    status.textContent = d.n_patents ? 'building ' + (d.n_done || 0) + '/' + d.n_patents : 'building';
+    card.title = d.message || 'Building full-text Markdown files in the background.';
     return false;
   }
   async function poll(){

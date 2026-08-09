@@ -6,10 +6,14 @@ turn off the loopback exemption (the Flask test client always presents as 127.0.
 """
 import time
 import pytest
+import accounts
 import auth
 import webapp
 
 PASSWORD = "unit-test-password-8f3a"
+EMAIL = "auth-test@example.test"
+USER = {"id": 901, "email": EMAIL, "full_name": "Auth Test", "is_admin": False,
+        "is_active": True, "session_version": 1}
 GOLD = "grabo_gripper_novelty"
 
 
@@ -18,7 +22,11 @@ def secured(monkeypatch):
     """A client with the auth gate actually enforced."""
     webapp.app.config["TESTING"] = True
     webapp.app.config["FORCE_AUTH"] = True
-    webapp.app.config["APP_PASSWORD"] = PASSWORD
+    webapp.app.config["FORCE_ACCOUNTS"] = True
+    monkeypatch.setattr(accounts, "authenticate", lambda email, password:
+                        dict(USER) if email == EMAIL and password == PASSWORD else None)
+    monkeypatch.setattr(accounts, "get_user", lambda uid:
+                        dict(USER) if int(uid) == USER["id"] else None)
     monkeypatch.setattr(auth, "TRUST_LOOPBACK", False)   # test client looks like loopback
     monkeypatch.setattr(auth, "API_TOKEN", "")
     auth.reset_limits()
@@ -26,7 +34,7 @@ def secured(monkeypatch):
         yield webapp.app.test_client()
     finally:
         webapp.app.config.pop("FORCE_AUTH", None)
-        webapp.app.config.pop("APP_PASSWORD", None)
+        webapp.app.config.pop("FORCE_ACCOUNTS", None)
         auth.reset_limits()
 
 
@@ -70,18 +78,18 @@ def test_sse_endpoint_returns_401_when_anonymous(secured):
 
 
 def test_login_then_access_granted(secured):
-    assert secured.post("/login", data={"password": PASSWORD}).status_code == 302
+    assert secured.post("/login", data={"email": EMAIL, "password": PASSWORD}).status_code == 302
     assert secured.get(GATED).status_code == 200        # session cookie now carried
 
 
 def test_wrong_password_is_401_and_grants_nothing(secured):
-    r = secured.post("/login", data={"password": "wrong"})
+    r = secured.post("/login", data={"email": EMAIL, "password": "wrong"})
     assert r.status_code == 401
     assert secured.get(GATED).status_code == 302
 
 
 def test_logout_revokes_session(secured):
-    secured.post("/login", data={"password": PASSWORD})
+    secured.post("/login", data={"email": EMAIL, "password": PASSWORD})
     assert secured.get(GATED).status_code == 200
     secured.get("/logout")
     assert secured.get(GATED).status_code == 302
@@ -104,14 +112,15 @@ def test_loopback_exemption_when_enabled(secured, monkeypatch):
 # ---- open-redirect + prefix safety ----------------------------------------------------------
 def test_login_next_is_path_only(secured):
     """An absolute `next` must be refused (open-redirect guard)."""
-    r = secured.post("/login?next=https://evil.example/x", data={"password": PASSWORD})
+    r = secured.post("/login?next=https://evil.example/x",
+                     data={"email": EMAIL, "password": PASSWORD})
     assert r.status_code == 302
     assert "evil.example" not in r.headers["Location"]
 
 
 def test_login_redirect_keeps_proxy_prefix(secured):
     """Behind nginx the app is mounted at /patents-data; the post-login redirect must keep it."""
-    r = secured.post("/login?next=/report/x", data={"password": PASSWORD},
+    r = secured.post("/login?next=/report/x", data={"email": EMAIL, "password": PASSWORD},
                      headers={"X-Forwarded-Prefix": "/patents-data"})
     assert r.status_code == 302
     assert "/patents-data/report/x" in r.headers["Location"]
@@ -125,7 +134,7 @@ def test_anonymous_redirect_targets_prefixed_login(secured):
 
 # ---- rate limiting -------------------------------------------------------------------------
 def test_expensive_route_is_rate_limited(secured, monkeypatch):
-    secured.post("/login", data={"password": PASSWORD})
+    secured.post("/login", data={"email": EMAIL, "password": PASSWORD})
     # tiny bucket so the test is fast and deterministic
     monkeypatch.setitem(auth._LIMITERS, "api_graph",
                         auth.Limiter("graph", 0.0, 2, 0.0, 100))
@@ -137,7 +146,7 @@ def test_expensive_route_is_rate_limited(secured, monkeypatch):
 
 
 def test_global_limit_applies_across_ips(secured, monkeypatch):
-    secured.post("/login", data={"password": PASSWORD})
+    secured.post("/login", data={"email": EMAIL, "password": PASSWORD})
     monkeypatch.setitem(auth._LIMITERS, "api_graph",
                         auth.Limiter("graph", 0.0, 50, 0.0, 2))   # generous per-IP, tight global
     seen = []
@@ -149,7 +158,7 @@ def test_global_limit_applies_across_ips(secured, monkeypatch):
 
 def test_cheap_routes_are_not_rate_limited(secured):
     """Report reads / status must never be throttled — only the expensive routes are."""
-    secured.post("/login", data={"password": PASSWORD})
+    secured.post("/login", data={"email": EMAIL, "password": PASSWORD})
     for _ in range(30):
         assert secured.get(f"/status/{GOLD}").status_code == 200
     assert secured.get("/healthz").status_code == 200

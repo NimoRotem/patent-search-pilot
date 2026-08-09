@@ -32,6 +32,9 @@ def no_paid_apis(monkeypatch):
     monkeypatch.setattr(embed, "embed_texts",
                         lambda texts, dim=768, **k: [_det_vec(t, dim) for t in texts])
     monkeypatch.setattr(enrich, "fetch_details", lambda *a, **k: None)   # no SerpApi
+    monkeypatch.setattr(enrich, "fetch_google_full_text",
+                        lambda *a, **k: {"claims": [], "description": [],
+                                         "abstract": [], "source": ""})
     monkeypatch.setattr(llm, "chat_json",
                         lambda system, user, **k: {"elements": ["a vacuum gripper element",
                                                                  "a sealing element", "a vacuum pump"],

@@ -1,22 +1,15 @@
 """Official-source enrichment (spec §2.3 + §6 step 8).
 
-Fills EP/WO/DE full-text holes that BigQuery lacks and attaches drawings / facsimile PDF /
-legal status for FINAL candidates. Canonical source would be EPO OPS (INADOC family, facsimile)
-+ USPTO ODP — we have no OPS credentials here, so we use SerpApi's Google Patents details engine
-(structured claims/description/pdf/events) with a ScrapingBee HTML fallback. Provenance records
-the real source and a non-authoritative 'scrape' status: the facsimile PDF remains the legal
-evidence; scraped OCR text can be wrong.
-
-EPO OPS: `ops_fetch()` is now IMPLEMENTED in `ops.py` (zero-step unlock). The moment
-OPS_CONSUMER_KEY/OPS_CONSUMER_SECRET land in `.env`, `ops.backfill(pubnums)` fills the full
-EP/WO/DE description+claims+drawings+legal hole. Until then `ops.py` runs in mock/dry-run mode
-(`python ops.py --dry-run`, `python test_ops.py`) so the parser + schema mapping are provable
-without credentials. One-command backfill: see README.
+Fills full-text holes before the evidence reader runs. Recovery is deliberately multi-source:
+the local lemad corpus, EPO OPS for EP/WO, the public Google Patents document page, ScrapingBee
+for a throttled Google page, and finally SerpApi when its monthly allowance is available. Every
+successful path is normalized into the same claims, paragraphs and chunks with provenance.
 """
 from __future__ import annotations
 import os, re, json, sys, threading, time
 import requests
 import db, patent_text as pt
+from fulltext_recovery import fetch_google_full_text
 from config import DATA
 import pubnorm  # zero-padded Google Patents ids (dropped-zero fix)
 
@@ -132,50 +125,240 @@ def _claims_from_details(d):
     return cl or ""
 
 
-def enrich_publication(pubnum, reembed=False):
-    """Fetch official full text + PDF + legal events for one publication; fill gaps + provenance."""
-    src = db.get_source_id("serpapi:google_patents", "2026-07")
-    d = fetch_details(pubnum)
-    if not d:
-        return {"pub": pubnum, "ok": False, "reason": "no_details"}
+def recovery_available():
+    """Whether the live reader may try text recovery.
+
+    Direct Google Patents needs no credential, so recovery remains available when SerpApi is out
+    of quota. Operators can still disarm all outbound recovery explicitly for an offline run.
+    """
+    return os.environ.get("FULLTEXT_RECOVERY_DISABLED", "0") != "1"
+
+
+def _as_lines(value):
+    if not value:
+        return []
+    if isinstance(value, str):
+        return [value]
+    out = []
+    for item in value if isinstance(value, (list, tuple)) else [value]:
+        if isinstance(item, str):
+            text = item
+        elif isinstance(item, dict):
+            text = (item.get("text") or item.get("claim_text") or item.get("description") or
+                    item.get("value") or "")
+            if isinstance(text, list):
+                text = " ".join(str(part) for part in text if part)
+        else:
+            text = str(item)
+        text = " ".join(str(text or "").split())
+        if text:
+            out.append(text)
+    return out
+
+
+def _merge_text(target, candidate, source):
+    used = False
+    for key in ("claims", "description", "abstract"):
+        values = _as_lines((candidate or {}).get(key))
+        if values and not target[key]:
+            target[key] = values
+            used = True
+    if used and source and source not in target["sources"]:
+        target["sources"].append(source)
+    return bool(target["claims"] and target["description"])
+
+
+def fetch_best_full_text(pubnum):
+    """Resolve the richest available specification without making SerpApi a single point of failure."""
+    result = {"claims": [], "description": [], "abstract": [], "sources": [],
+              "_serp_raw": None}
+
+    # The pre-built corpus is instant and costs no provider request.
+    try:
+        import mongo_corpus
+        md = mongo_corpus.get_detail(pubnum) or {}
+        if _merge_text(result, md, "lemad:mongo"):
+            return result
+    except Exception:
+        pass
+
+    # OPS is the issuing-office source for EP/WO full text and is preferred when configured.
+    if str(pubnum).upper()[:2] in ("EP", "WO"):
+        try:
+            import ops
+            if ops.have_creds():
+                recovered = ops.ops_fetch(pubnum, want=("claims", "description"))
+                payload = {"claims": recovered.get("claims"),
+                           "description": recovered.get("paragraphs")}
+                if _merge_text(result, payload, "epo:ops"):
+                    return result
+        except Exception:
+            pass
+
+    # Google normally answers directly. ScrapingBee is used only if the document page is blocked,
+    # throttled or incomplete, so an exhausted SerpApi account cannot strand the reader.
+    try:
+        google = fetch_google_full_text(pubnum, SB_KEY)
+        if _merge_text(result, google, google.get("source")):
+            return result
+    except Exception:
+        pass
+
+    # SerpApi remains useful as a last structured source when it has allowance, but it no longer
+    # controls whether recovery runs at all.
+    details = fetch_details(pubnum)
+    if details:
+        result["_serp_raw"] = details
+        patent = details.get("patent") if isinstance(details.get("patent"), dict) else {}
+        payload = {
+            "claims": details.get("claims") or patent.get("claims"),
+            "description": (details.get("description") or details.get("full_description") or
+                            patent.get("description")),
+            "abstract": details.get("abstract") or patent.get("abstract"),
+        }
+        _merge_text(result, payload, "serpapi:google_patents")
+    return result
+
+
+def _claim_blob(lines):
+    numbered = []
+    for i, line in enumerate(lines or [], 1):
+        line = " ".join(str(line or "").split())
+        if not line:
+            continue
+        match = re.match(r"^\s*(\d{1,3})\s*[.)、]\s*(.*)$", line)
+        numbered.append(f"{match.group(1)}. {match.group(2)}" if match else f"{i}. {line}")
+    return "\n".join(numbered)
+
+
+def _persist_full_text(pubnum, payload, reembed=False):
+    """Write recovered text once, including the chunks consumed by ``deep_analysis``."""
+    sources = list(payload.get("sources") or [])
+    source_name = "+".join(sources) or "unknown:fulltext"
+    source_id = db.get_source_id(source_name, "live")
+    status = "authoritative" if sources == ["epo:ops"] else "scrape"
+    added = {"claims": 0, "paragraphs": 0, "chunks": 0}
+    chunk_ids = []
     with db.cursor() as cur:
-        cur.execute("SELECT id FROM publications WHERE publication_number=%s LIMIT 1", (pubnum,))
+        cur.execute("SELECT id, abstract FROM publications WHERE publication_number=%s "
+                    "LIMIT 1 FOR UPDATE", (pubnum,))
         row = cur.fetchone()
         if not row:
             return {"pub": pubnum, "ok": False, "reason": "not_in_corpus"}
         pid = row["id"]
-        added_claims = 0
-        # claims (only if we currently have none)
+        claim_rows, para_rows = [], []
+
         cur.execute("SELECT count(*) c FROM claims WHERE publication_id=%s", (pid,))
-        if cur.fetchone()["c"] == 0:
-            blob = _claims_from_details(d)
-            claims = pt.resolve_claims(pt.split_claims(blob)) if blob else []
-            for c in claims:
-                cur.execute("INSERT INTO claims(publication_id, claim_no, is_independent, lang, text, resolved_text) "
-                            "VALUES (%s,%s,%s,%s,%s,%s)",
-                            (pid, c["claim_no"], c["is_independent"], "en", c["text"], c["resolved_text"]))
-                added_claims += 1
-        # facsimile / drawings
-        pdf = d.get("pdf") or (d.get("patent") or {}).get("pdf")
+        have_claims = int(cur.fetchone()["c"] or 0)
+        if not have_claims:
+            claims = pt.resolve_claims(pt.split_claims(_claim_blob(payload.get("claims") or [])))
+            for claim in claims[:200]:
+                cur.execute(
+                    "INSERT INTO claims(publication_id,claim_no,is_independent,lang,text,resolved_text) "
+                    "VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
+                    (pid, claim["claim_no"], claim["is_independent"], "en", claim["text"],
+                     claim["resolved_text"]))
+                claim_rows.append({"id": cur.fetchone()["id"], "claim_no": claim["claim_no"],
+                                   "lang": "en", "text": claim["text"],
+                                   "resolved_text": claim["resolved_text"]})
+                added["claims"] += 1
+        else:
+            cur.execute("SELECT count(*) c FROM chunks WHERE publication_id=%s "
+                        "AND kind LIKE 'claim%%'", (pid,))
+            if not int(cur.fetchone()["c"] or 0):
+                cur.execute("SELECT id,claim_no,lang,text,resolved_text FROM claims "
+                            "WHERE publication_id=%s ORDER BY claim_no", (pid,))
+                claim_rows = [dict(item) for item in cur.fetchall()]
+
+        cur.execute("SELECT count(*) c FROM paragraphs WHERE publication_id=%s", (pid,))
+        have_paragraphs = int(cur.fetchone()["c"] or 0)
+        if not have_paragraphs:
+            description = "\n".join(payload.get("description") or [])
+            paragraphs = pt.split_paragraphs(description)
+            if description.strip() and not paragraphs:
+                paragraphs = [{"para_no": "p0001", "heading": None, "text": description}]
+            for paragraph in paragraphs[:1200]:
+                cur.execute(
+                    "INSERT INTO paragraphs(publication_id,para_no,heading,page_no,lang,text) "
+                    "VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
+                    (pid, paragraph.get("para_no"), paragraph.get("heading"), None, "en",
+                     paragraph.get("text")))
+                para_rows.append({"id": cur.fetchone()["id"],
+                                  "para_no": paragraph.get("para_no"),
+                                  "heading": paragraph.get("heading"), "lang": "en",
+                                  "text": paragraph.get("text")})
+                added["paragraphs"] += 1
+        else:
+            cur.execute("SELECT count(*) c FROM chunks WHERE publication_id=%s "
+                        "AND kind='paragraph'", (pid,))
+            if not int(cur.fetchone()["c"] or 0):
+                cur.execute("SELECT id,para_no,heading,lang,text FROM paragraphs "
+                            "WHERE publication_id=%s ORDER BY id", (pid,))
+                para_rows = [dict(item) for item in cur.fetchall()]
+
+        import ops
+        for chunk in ops._chunk_rows(pid, claim_rows, para_rows):
+            cur.execute(
+                "INSERT INTO chunks(publication_id,kind,ref_id,coord,lang,text,token_count) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id", chunk)
+            chunk_ids.append(cur.fetchone()["id"])
+        added["chunks"] = len(chunk_ids)
+
+        abstract = "\n".join(payload.get("abstract") or []).strip()
+        if abstract and not (row.get("abstract") or "").strip():
+            cur.execute("UPDATE publications SET abstract=%s WHERE id=%s", (abstract, pid))
+        if any(added.values()):
+            cur.execute("SELECT 1 FROM field_provenance WHERE entity='publication' AND "
+                        "entity_id=%s AND field='recovered_fulltext' AND source_id=%s LIMIT 1",
+                        (pid, source_id))
+            if not cur.fetchone():
+                cur.execute(
+                    "INSERT INTO field_provenance(entity,entity_id,field,source_id,ocr_status) "
+                    "VALUES ('publication',%s,'recovered_fulltext',%s,%s)",
+                    (pid, source_id, status))
+
+    if reembed and chunk_ids:
+        _embed_chunk_ids(chunk_ids)
+    return {"pub": pubnum, "ok": bool(any(added.values()) or have_claims or have_paragraphs),
+            "source": source_name, "added_claims": added["claims"],
+            "added_paragraphs": added["paragraphs"], "added_chunks": added["chunks"],
+            "reembedded": bool(reembed and chunk_ids)}
+
+
+def _persist_serp_metadata(pubnum, raw):
+    if not raw:
+        return {"pdf": False, "events": 0}
+    pdf = raw.get("pdf") or (raw.get("patent") or {}).get("pdf")
+    events = [event for event in (raw.get("events") or []) if isinstance(event, dict)]
+    with db.cursor() as cur:
+        cur.execute("SELECT id FROM publications WHERE publication_number=%s LIMIT 1", (pubnum,))
+        row = cur.fetchone()
+        if not row:
+            return {"pdf": False, "events": 0}
+        pid = row["id"]
         if pdf:
             cur.execute("UPDATE publications SET facsimile_path=%s WHERE id=%s", (pdf, pid))
-        # legal status events
-        events = d.get("events") or []
-        for ev in events:
-            if isinstance(ev, dict):
-                cur.execute("INSERT INTO legal_events(publication_id, event_code, event_date, raw) "
-                            "VALUES (%s,%s,%s,%s)",
-                            (pid, ev.get("type") or ev.get("title"),
-                             _safe_date(ev.get("date")), json.dumps(ev)))
-        # provenance: enrichment is scraped, not authoritative facsimile OCR
-        cur.execute("INSERT INTO field_provenance(entity, entity_id, field, source_id, ocr_status) "
-                    "VALUES ('publication',%s,'enriched_fulltext',%s,'scrape')", (pid, src))
-    res = {"pub": pubnum, "ok": True, "added_claims": added_claims, "pdf": bool(pdf),
-           "events": len(events)}
-    if reembed and added_claims:
-        _reembed_pub(pid)
-        res["reembedded"] = True
-    return res
+        for event in events:
+            code = event.get("type") or event.get("title")
+            date = _safe_date(event.get("date"))
+            cur.execute("SELECT 1 FROM legal_events WHERE publication_id=%s AND event_code=%s "
+                        "AND event_date IS NOT DISTINCT FROM %s LIMIT 1", (pid, code, date))
+            if not cur.fetchone():
+                cur.execute("INSERT INTO legal_events(publication_id,event_code,event_date,raw) "
+                            "VALUES (%s,%s,%s,%s)", (pid, code, date, json.dumps(event)))
+    return {"pdf": bool(pdf), "events": len(events)}
+
+
+def enrich_publication(pubnum, reembed=False):
+    """Recover and persist one specification using every configured source in priority order."""
+    if not recovery_available():
+        return {"pub": pubnum, "ok": False, "reason": "recovery_disabled"}
+    payload = fetch_best_full_text(pubnum)
+    if not (payload.get("claims") or payload.get("description")):
+        return {"pub": pubnum, "ok": False, "reason": "no_full_text_source"}
+    result = _persist_full_text(pubnum, payload, reembed=reembed)
+    result.update(_persist_serp_metadata(pubnum, payload.get("_serp_raw")))
+    return result
 
 
 def _safe_date(s):

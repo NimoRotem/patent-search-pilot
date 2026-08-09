@@ -161,3 +161,52 @@ def test_searches_left_is_cached_and_fail_soft(monkeypatch):
     assert enrich.searches_left() is None
     assert enrich.searches_left() is None
     assert len(calls) == 1, "the second call must come from the cache"
+
+
+def test_google_full_text_falls_back_to_scrapingbee_after_direct_rate_limit(monkeypatch):
+    import fulltext_recovery
+
+    html = """
+      <section itemprop="abstract"><div>Compact abstract.</div></section>
+      <section itemprop="claims"><div>1. A lifting device comprising a pump.</div></section>
+      <section itemprop="description"><p>The pump draws air through a handle.</p></section>
+    """
+    calls = []
+
+    class Response:
+        def __init__(self, status_code, text=""):
+            self.status_code, self.text = status_code, text
+            self.content = text.encode()
+
+    def get(url, **kwargs):
+        calls.append((url, kwargs))
+        if "patents.google.com" in url:
+            return Response(429)
+        return Response(200, html)
+
+    monkeypatch.setattr(fulltext_recovery.requests, "get", get)
+    got = fulltext_recovery.fetch_google_full_text("US-11223344-B2", "bee-key")
+    assert got["source"] == "scrapingbee:google_patents"
+    assert got["claims"] == ["1. A lifting device comprising a pump."]
+    assert got["description"] == ["The pump draws air through a handle."]
+    assert len(calls) == 2 and calls[1][0] == "https://app.scrapingbee.com/api/v1/"
+    assert calls[1][1]["params"]["url"].startswith("https://patents.google.com/patent/")
+
+
+def test_best_full_text_uses_google_recovery_without_serpapi(monkeypatch):
+    import enrich, mongo_corpus
+
+    monkeypatch.setattr(mongo_corpus, "get_detail", lambda pub: None)
+    monkeypatch.setattr(enrich, "fetch_google_full_text", lambda pub, key: {
+        "claims": ["1. A gripper comprising a pump."],
+        "description": ["The pump supplies a sealing plate."],
+        "abstract": [], "source": "google_patents:direct",
+    })
+
+    def no_serp(_pub):
+        raise AssertionError("SerpApi must be the last fallback, not the recovery gate")
+
+    monkeypatch.setattr(enrich, "fetch_details", no_serp)
+    got = enrich.fetch_best_full_text("US-11223344-B2")
+    assert got["claims"] and got["description"]
+    assert got["sources"] == ["google_patents:direct"]
