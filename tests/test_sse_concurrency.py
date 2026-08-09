@@ -159,6 +159,12 @@ def test_two_generations_run_concurrently(monkeypatch, tmp_path):
 
     monkeypatch.setattr(webapp, "CoverageAgent", FakeAgent)
     monkeypatch.setattr(webapp, "retriever", lambda: None)
+    # This test is about the generation threads, not the domain preflight.  Leaving the detector
+    # live runs two 200-vector probes before either fake agent reaches the barrier; on a cold,
+    # concurrently-tested corpus one probe can exceed the barrier timeout and report false
+    # serialization even though both generation threads were launched.  Domain detection has its
+    # own tests, so keep this concurrency proof deterministic and scoped to CoverageAgent.run().
+    monkeypatch.setattr(webapp.domain_detect, "detect", lambda *a, **k: None)
 
     for slug, q in (("conc-a", "query a"), ("conc-b", "query b")):
         st, _ = webapp.ensure_report(slug, query=q, mode="novelty")
@@ -174,6 +180,12 @@ def test_two_generations_run_concurrently(monkeypatch, tmp_path):
             time.sleep(0.05)
         assert webapp._JOBS[slug]["status"] == "done"
         webapp._JOBS.pop(slug, None)
+    # `_generate` publishes the terminal event before `_run_job` returns through its `finally`
+    # block and releases the reserved slots.  Give those two already-finished daemon threads one
+    # scheduling turn; a real leak still stays non-zero and fails this assertion.
+    release_deadline = time.time() + 2
+    while auth.run_gate.stats()["active"] and time.time() < release_deadline:
+        time.sleep(0.01)
     assert auth.run_gate.stats()["active"] == 0      # slots released
 
 

@@ -18,35 +18,53 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
 </script>
 </head>
 <body>
+{% set endpoint = request.endpoint or '' %}
+{% set signed_in = current_user or current_is_admin %}
 <a class="skip" href="#main">Skip to main content</a>
 <header class="top">
-  <div class="wrap">
+  <div class="wrap navshell">
     <a class="brand" href="{{ request.script_root }}/">rotem<span>AI</span> patent search</a>
-    <span class="grow"></span>
-    {#  Two navigations. A signed-out visitor is being asked to decide whether to trust the
-        product with an unpublished invention, so their nav is the explanation; a signed-in user's
-        nav is the work.  #}
-    {% if current_user or current_is_admin or not account_mode %}
-    <a href="{{ request.script_root }}/">New search</a>
-    <a href="{{ request.script_root }}/history">Search history</a>
-    {% if current_user %}<a href="{{ request.script_root }}/library">Saved patents</a>
-    <a href="{{ request.script_root }}/drafts">Drafts</a>{% endif %}
-    <a href="{{ request.script_root }}/how-it-works">How it works</a>
-    <a href="{{ request.script_root }}/about">About</a>
+    {# A visitor needs product context. An authenticated person needs the work areas first. #}
+    {% if signed_in or not account_mode %}
+      <nav class="primarynav appnav" aria-label="Primary navigation">
+        <a href="{{ request.script_root }}/" class="navitem{% if endpoint == 'index' %} active{% endif %}"{% if endpoint == 'index' %} aria-current="page"{% endif %}>Search</a>
+        <a href="{{ request.script_root }}/history" class="navitem{% if endpoint == 'history' %} active{% endif %}"{% if endpoint == 'history' %} aria-current="page"{% endif %}>History</a>
+        {% if current_user %}
+          <a href="{{ request.script_root }}/library" class="navitem{% if endpoint == 'library' %} active{% endif %}"{% if endpoint == 'library' %} aria-current="page"{% endif %}>Saved</a>
+          <a href="{{ request.script_root }}/drafts" class="navitem navdraft{% if endpoint.startswith('draft') %} active{% endif %}"{% if endpoint.startswith('draft') %} aria-current="page"{% endif %}>Drafting</a>
+        {% elif current_is_admin and account_mode %}
+          <a href="{{ request.script_root }}/login?next=/drafts" class="navitem navdraft" title="Drafting belongs to a named account; sign in to continue">Drafting</a>
+        {% endif %}
+      </nav>
     {% else %}
-    <a href="{{ request.script_root }}/how-it-works">How it works</a>
-    <a href="{{ request.script_root }}/about">About</a>
+      <nav class="primarynav publicnav" aria-label="Primary navigation">
+        <a href="{{ request.script_root }}/how-it-works" class="navitem{% if endpoint == 'how_it_works' %} active{% endif %}"{% if endpoint == 'how_it_works' %} aria-current="page"{% endif %}>How it works</a>
+        <a href="{{ request.script_root }}/about" class="navitem{% if endpoint == 'about' %} active{% endif %}"{% if endpoint == 'about' %} aria-current="page"{% endif %}>About</a>
+      </nav>
     {% endif %}
-    {% if current_is_admin %}<a href="{{ request.script_root }}/admin/users">Admin</a>{% endif %}
-    {% if current_user %}
-      <a class="accountnav" href="{{ request.script_root }}/account" title="{{ current_user.email }}">{{ current_user.full_name }}</a>
-      <a href="{{ request.script_root }}/logout">Sign out</a>
-    {% elif current_is_admin %}
-      <span class="accountnav muted">Administrator</span><a href="{{ request.script_root }}/logout">Sign out</a>
-    {% elif account_mode %}
-      <a href="{{ request.script_root }}/login">Sign in</a>
-      <a class="navcta" href="{{ request.script_root }}/register">Create account</a>
-    {% endif %}
+
+    <nav class="utilitynav" aria-label="Account and help">
+      {% if signed_in or not account_mode %}
+        <a class="helpnav{% if endpoint == 'how_it_works' %} active{% endif %}" href="{{ request.script_root }}/how-it-works"{% if endpoint == 'how_it_works' %} aria-current="page"{% endif %}>How it works</a>
+      {% endif %}
+      {% if current_is_admin %}<a href="{{ request.script_root }}/admin/users"{% if endpoint.startswith('auth.admin_') %} class="active" aria-current="page"{% endif %}>Admin</a>{% endif %}
+      {% if current_user %}
+        <a href="{{ request.script_root }}/account" class="accountnav{% if endpoint == 'auth.account' %} active{% endif %}" aria-label="Signed in as {{ current_user.full_name }}, {{ current_user.email }}"{% if endpoint == 'auth.account' %} aria-current="page"{% endif %}>
+          <span class="accountname">{{ current_user.full_name }}</span>
+          <span class="accountemail">{{ current_user.email }}</span>
+        </a>
+        <a class="signout" href="{{ request.script_root }}/logout">Sign out</a>
+      {% elif current_is_admin %}
+        <a href="{{ request.script_root }}/admin/users" class="accountnav legacy" aria-label="Shared administrator session; no named user">
+          <span class="accountname">Shared admin</span>
+          <span class="accountemail">No named user</span>
+        </a>
+        <a class="signout" href="{{ request.script_root }}/logout">Sign out</a>
+      {% elif account_mode %}
+        <a href="{{ request.script_root }}/login">Sign in</a>
+        <a class="navcta" href="{{ request.script_root }}/register">Create account</a>
+      {% endif %}
+    </nav>
   </div>
 </header>
 <main id="main">{% block body %}{% endblock %}</main>
@@ -54,7 +72,14 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
   <div class="wrap footlinks">
     <a href="{{ request.script_root }}/how-it-works">How it works</a>
     <a href="{{ request.script_root }}/about">About &amp; scope</a>
-    {% if current_user %}<a href="{{ request.script_root }}/account">Account</a>{% elif account_mode %}<a href="{{ request.script_root }}/register">Create account</a>{% endif %}
+    {% if current_user %}
+      <a href="{{ request.script_root }}/account">Account</a>
+    {% elif current_is_admin %}
+      <a href="{{ request.script_root }}/admin/users">Admin console</a>
+      {% if account_mode %}<a href="{{ request.script_root }}/login?next=/drafts">Use a named account for drafting</a>{% endif %}
+    {% elif account_mode %}
+      <a href="{{ request.script_root }}/register">Create account</a>
+    {% endif %}
     <span class="grow"></span>
     <span class="muted">A retrieval and drafting aid. Not a search opinion or legal advice.</span>
   </div>

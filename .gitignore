@@ -1,4 +1,8 @@
 .env
+*.pem
+*.key
+credentials.*
+secrets.*
 .venv/
 data/pdfs/
 data/embed_batches/

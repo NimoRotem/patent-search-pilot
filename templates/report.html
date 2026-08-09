@@ -116,7 +116,7 @@
     {% endif %}
 
     <div class="actions">
-      {% if current_user and not read_only %}<a class="btn sm" href="{{ request.script_root }}/drafts/new?search_slug={{ v.slug }}">Draft US application</a>
+      {% if current_user and not read_only %}<a class="btn sm" href="{{ request.script_root }}/drafts/start?search_slug={{ v.slug }}">Draft US application</a>
       {#  The letterhead, client details and narrative that head every export. Kept out of the
           report page itself so the evidence stays the evidence.  #}
       <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}/details"

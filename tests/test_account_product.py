@@ -57,6 +57,12 @@ def test_named_login_and_account_navigation(account_client, monkeypatch):
     assert home.status_code == 200
     body = home.get_data(as_text=True)
     assert "Patent Analyst" in body and "/account" in body and "/logout" in body
+    assert "analyst@example.test" in body
+    assert 'aria-label="Primary navigation"' in body
+    assert re.search(r'href="/drafts"[^>]*>\s*Drafting\s*</a>', body)
+    assert re.search(r'href="/account"[^>]*class="accountnav"[^>]*>.*?'
+                     r'<span class="accountemail">analyst@example\.test</span>', body, re.S)
+    assert re.search(r'href="/"[^>]*aria-current="page"[^>]*>\s*Search\s*</a>', body)
     assert 'name="search_focus"' in body and 'value="claims"' in body
     assert 'name="notify_email"' in body
 
@@ -85,6 +91,32 @@ def test_legacy_login_is_an_admin_bootstrap(account_client, monkeypatch):
     admin = account_client.get("/admin/users")
     assert admin.status_code == 200
     assert "User administration" in admin.get_data(as_text=True)
+
+
+def test_legacy_admin_shell_is_honest_and_never_looks_signed_out(account_client, monkeypatch):
+    """The emergency password is authenticated but is not a named drafting principal.
+
+    Its shell must say that plainly, keep Drafting discoverable via named-account sign-in, and
+    never fall through to the signed-out acquisition footer.
+    """
+    monkeypatch.setattr(accounts, "list_users", list)
+    monkeypatch.setattr(accounts, "mail_stats", dict)
+    assert account_client.post("/login", data={"password": "legacy-admin-password"}).status_code == 302
+
+    body = account_client.get("/").get_data(as_text=True)
+    header = re.search(r"<header.*?</header>", body, re.S).group(0)
+    footer = re.search(r"<footer.*?</footer>", body, re.S).group(0)
+
+    assert re.search(r'href="/login\?next=/drafts"[^>]*>\s*Drafting\s*</a>', header)
+    assert re.search(r'href="/admin/users"[^>]*class="accountnav legacy"[^>]*>.*?'
+                     r'<span class="accountname">Shared admin</span>.*?'
+                     r'<span class="accountemail">No named user</span>', header, re.S)
+    assert '<span class="accountnav muted">Administrator</span>' not in header
+    assert "Create account" not in footer and "Sign in" not in footer
+    assert 'href="/admin/users"' in footer
+
+    switch_page = account_client.get("/login?next=/drafts").get_data(as_text=True)
+    assert "named account is required for drafting" in switch_page.lower()
 
 
 def test_saved_report_toggle_requires_csrf(account_client, monkeypatch):

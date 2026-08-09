@@ -1396,10 +1396,12 @@ function openCompare(){
   window.open(B + '/compare?slug=' + encodeURIComponent(window.SLUG) + '&pubs=' + encodeURIComponent(sel.join(',')), '_blank');
 }
 function startDraft(){
+  /*  Selecting references is a shortcut, not a requirement: the drafting intake can attach art
+      later, or none at all, so an empty selection opens the intake rather than refusing.       */
   const sel = selectedPubs();
-  if (!sel.length){ alert('Select at least one ranked reference for the drafting source set.'); return; }
-  const query = new URLSearchParams({search_slug: window.SLUG, pubs: sel.join(',')});
-  location.href = B + '/drafts/new?' + query.toString();
+  const query = new URLSearchParams({search_slug: window.SLUG});
+  if (sel.length) query.set('pubs', sel.join(','));
+  location.href = B + '/drafts/start?' + query.toString();
 }
 
 /* ── triage flags ────────────────────────────────────────────────────────────────────────── */
