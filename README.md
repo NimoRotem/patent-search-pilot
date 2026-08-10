@@ -59,10 +59,17 @@ Finding the art is half of the job. The second half writes the application.
   the specification in 37 CFR 1.77 order with numbered paragraphs, the ADS field values, the claim
   counts that set the fee, and the cited-art listing. **No fee amount is printed** — those change by
   rulemaking and a number baked in here would be quietly wrong within a year.
+- **Figure compiler.** The `#/compiler` workspace turns the current draft into a source-linked
+  canonical model, requires approval of that model and the figure manifest, emits deterministic
+  semantic SVG/PDF sheets, validates reference signs in both directions, and locks export until a
+  third human approval. Raster AI drawings remain concept aids, not filing output. See
+  [`docs/figure-compiler.md`](docs/figure-compiler.md).
 
 Modules: `draft_agent` (the CLI bridge), `draft_workspace` (the file tree), `draft_studio` (turns,
 prompt, persistence), `draft_studio_service` (routes + worker), `draft_qa` (checks + reviewer),
 `draft_cite` (citation resolution), `draft_uspto` (readiness + package). Schema: `sql/006_draft_agent.sql`.
+The filing-figure path is `figure_compiler` + `figure_compiler_service`; schema:
+`sql/007_figure_compiler.sql`.
 
 ---
 

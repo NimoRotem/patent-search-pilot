@@ -37,6 +37,7 @@ import drafting, draft_export, draft_worker
 #  Phase two: the drafting CONVERSATION. A Claude Code agent edits a workspace of files, a second
 #  agent reviews every iteration, and draft_uspto answers "can this be filed".
 import draft_studio, draft_studio_service, draft_uspto, draft_workspace
+import figure_compiler, figure_compiler_service       # deterministic filing-drawing compiler
 import claim_chart, translate, drawings          # ported per-card enrichment
 import ingest_input                                # front-door document / patent-link -> search brief
 import grounding                                  # length-stable quote grounding (shared w/ claim_chart)
@@ -4424,6 +4425,7 @@ def draft_print(project_id):
 #  The classic page above edits a draft section by section. This is the product: the user talks to
 #  a drafting agent, the agent edits the application, and a reviewer checks every iteration.
 _STUDIO_SERVICE = None
+_FIGURE_COMPILER_SERVICE = None
 
 
 def _studio():
@@ -4433,6 +4435,14 @@ def _studio():
     return _STUDIO_SERVICE
 
 
+def _figure_compiler():
+    global _FIGURE_COMPILER_SERVICE
+    if _FIGURE_COMPILER_SERVICE is None:
+        _FIGURE_COMPILER_SERVICE = figure_compiler_service.FigureCompilerService(
+            _drafting_service())
+    return _FIGURE_COMPILER_SERVICE
+
+
 def _turn_runner():
     return draft_studio.TurnRunner(draft_studio.StudioRepository(),
                                    _drafting_service().repository)
@@ -4440,6 +4450,13 @@ def _turn_runner():
 
 def _studio_error(exc):
     return jsonify({"ok": False, "error": str(exc)}), _draft_error_status(exc)
+
+
+def _figure_compiler_error(exc):
+    status = 409 if isinstance(
+        exc, (figure_compiler.ApprovalRequired, figure_compiler.CompilationBlocked)) else \
+        _draft_error_status(exc)
+    return jsonify({"ok": False, "error": str(exc)}), status
 
 
 def _uploads_from_request(default_kind="prior_art"):
@@ -4643,6 +4660,101 @@ def api_draft_studio_poll(project_id):
         return jsonify(_studio().poll(principal, project_id))
     except drafting.DraftingError as exc:
         return _studio_error(exc)
+
+
+# ---- deterministic filing drawings ----------------------------------------------------------
+@app.route("/api/drafts/<int:project_id>/figure-compiler")
+def api_draft_figure_compiler(project_id):
+    try:
+        _user, principal = _draft_identity()
+        return jsonify({"ok": True, "compiler": _figure_compiler().state(principal, project_id)})
+    except (drafting.DraftingError, figure_compiler.FigureCompilerError) as exc:
+        return _figure_compiler_error(exc)
+
+
+def _compiler_action(project_id, action):
+    """One authenticated response shape for every explicit compiler gate."""
+    try:
+        _user, principal = _draft_identity()
+        return jsonify({"ok": True, "compiler": action(principal)})
+    except (drafting.DraftingError, figure_compiler.FigureCompilerError) as exc:
+        return _figure_compiler_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/figure-compiler/start", methods=["POST"])
+def draft_figure_compiler_start(project_id):
+    auth.require_csrf()
+    body = request.get_json(silent=True) or request.form
+    return _compiler_action(project_id, lambda principal: _figure_compiler().start(
+        principal, project_id, version_no=body.get("version_no", type=int)
+        if hasattr(body, "get") and not isinstance(body, dict) else body.get("version_no"),
+        ruleset=str(body.get("ruleset") or "uspto-letter-2026.1")))
+
+
+@app.route("/drafts/<int:project_id>/figure-compiler/model/approve", methods=["POST"])
+def draft_figure_compiler_model_approve(project_id):
+    auth.require_csrf()
+    return _compiler_action(project_id, lambda principal:
+                            _figure_compiler().approve_model(principal, project_id))
+
+
+@app.route("/drafts/<int:project_id>/figure-compiler/model/resolve", methods=["POST"])
+def draft_figure_compiler_model_resolve(project_id):
+    auth.require_csrf()
+    body = request.get_json(silent=True) or request.form
+    return _compiler_action(project_id, lambda principal:
+                            _figure_compiler().resolve_model_conflict(
+                                principal, project_id,
+                                conflict_id=str(body.get("conflict_id") or ""),
+                                choice=str(body.get("choice") or "")))
+
+
+@app.route("/drafts/<int:project_id>/figure-compiler/manifest/approve", methods=["POST"])
+def draft_figure_compiler_manifest_approve(project_id):
+    auth.require_csrf()
+    return _compiler_action(project_id, lambda principal:
+                            _figure_compiler().approve_manifest(principal, project_id))
+
+
+@app.route("/drafts/<int:project_id>/figure-compiler/compile", methods=["POST"])
+def draft_figure_compiler_compile(project_id):
+    auth.require_csrf()
+    return _compiler_action(project_id, lambda principal:
+                            _figure_compiler().compile(principal, project_id))
+
+
+@app.route("/drafts/<int:project_id>/figure-compiler/patch", methods=["POST"])
+def draft_figure_compiler_patch(project_id):
+    auth.require_csrf()
+    body = request.get_json(silent=True) or request.form
+    patch = dict(body) if hasattr(body, "items") else {}
+    return _compiler_action(project_id, lambda principal:
+                            _figure_compiler().patch(principal, project_id, patch))
+
+
+@app.route("/drafts/<int:project_id>/figure-compiler/approve", methods=["POST"])
+def draft_figure_compiler_approve(project_id):
+    auth.require_csrf()
+    return _compiler_action(project_id, lambda principal:
+                            _figure_compiler().approve_final(principal, project_id))
+
+
+@app.route("/drafts/<int:project_id>/figure-compiler/export.<format_name>")
+def draft_figure_compiler_export(project_id, format_name):
+    if format_name not in {"svg", "pdf"}:
+        abort(404)
+    try:
+        _user, principal = _draft_identity()
+        sheet = max(1, request.args.get("sheet", 1, type=int))
+        output = _figure_compiler().export(
+            principal, project_id, format_name, sheet=sheet)
+        suffix = f"-sheet-{sheet}" if format_name == "svg" else ""
+        return Response(
+            output, mimetype="image/svg+xml" if format_name == "svg" else "application/pdf",
+            headers={"Content-Disposition":
+                     f'attachment; filename="draft-{project_id}-figures{suffix}.{format_name}"'})
+    except (drafting.DraftingError, figure_compiler.FigureCompilerError) as exc:
+        return _figure_compiler_error(exc)
 
 
 @app.route("/drafts/<int:project_id>/studio/message", methods=["POST"])
