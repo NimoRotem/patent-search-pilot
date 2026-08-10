@@ -1671,7 +1671,7 @@ td.cell-unrelated .cmark{color:var(--bad)}td.cell-no-coord .cmark,td.cell-unchec
   header.top .brand{grid-area:brand;align-self:center}.brandmark{width:30px;height:30px}
   header.top .primarynav{grid-area:primary;margin:7px -4px 0;overflow-x:auto;border-top:1px solid var(--line);padding:5px 0}
   header.top .utilitynav{grid-area:utility;margin:0;justify-content:flex-end;min-width:0}
-  header.top .helpnav,header.top .signout{display:none}header.top .accountnav{border-left:0;padding-left:8px;max-width:132px;min-width:0}
+  header.top .helpnav,header.top .signout{display:none!important}header.top .accountnav{border-left:0;padding-left:8px;max-width:132px;min-width:0}
   header.top .navitem{white-space:nowrap}
   .landingmast{padding:50px 0 42px}.landingcopy h1{font-size:44px}.landingcopy .lede{font-size:15px}
   .workpreview{box-shadow:0 14px 36px rgba(23,33,43,.1)}

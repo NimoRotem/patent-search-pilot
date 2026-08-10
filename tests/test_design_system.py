@@ -30,6 +30,7 @@ def test_mobile_navigation_has_an_explicit_layout():
     css = (ROOT / "static" / "style.css").read_text()
 
     assert "header.top .primarynav{grid-area:primary" in css
+    assert "header.top .helpnav,header.top .signout{display:none!important}" in css
 
 
 def test_landing_page_uses_the_new_product_preview_layout():
