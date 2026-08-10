@@ -59,3 +59,14 @@ def test_old_product_name_is_not_left_on_account_pages_or_messages():
 
     assert "rotemAI patent search" not in product_text
     assert "rotemAI patent-search" not in product_text
+
+
+def test_every_application_page_title_uses_the_shared_product_name():
+    standalone_documents = {"draft_print.html", "print.html"}
+
+    for path in sorted((ROOT / "templates").glob("*.html")):
+        if path.name in standalone_documents:
+            continue
+        source = path.read_text()
+        if "{% block title %}" in source:
+            assert "Rotem Patents" in source, path.name
