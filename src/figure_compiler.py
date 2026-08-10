@@ -19,7 +19,6 @@ import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from html import escape
-from itertools import pairwise
 from pathlib import Path
 from typing import Any, Literal
 
@@ -453,7 +452,8 @@ def build_pir(sections: Mapping[str, str], numerals: Sequence[Mapping[str, Any]]
         present = list({entity["id"]: entity for entity in present}.values())
         if len(present) < 2:
             continue
-        for left, right in pairwise(present):
+        # Keep this compatible with the production Python 3.9 runtime (no itertools.pairwise).
+        for left, right in zip(present, present[1:]):
             relations.append({
                 "id": _stable_id("relation", left["id"], predicate, right["id"], span["id"]),
                 "from_entity_id": left["id"], "to_entity_id": right["id"],
