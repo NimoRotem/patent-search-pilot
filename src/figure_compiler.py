@@ -20,7 +20,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import (
     BaseModel,
@@ -123,16 +123,16 @@ class _ReferenceConflictContract(_Contract):
     material: bool
     status: Literal["unresolved", "resolved"]
     source_span_ids: list[str] = Field(min_length=1)
-    reference: str | None = None
-    entity: str | None = None
-    resolution: dict[str, Any] | None = None
+    reference: Optional[str] = None
+    entity: Optional[str] = None
+    resolution: Optional[dict[str, Any]] = None
 
 
 class _BlockerContract(_Contract):
     code: str
     message: str
-    conflict_id: str | None = None
-    limitation_id: str | None = None
+    conflict_id: Optional[str] = None
+    limitation_id: Optional[str] = None
 
 
 class _PIRContract(_Contract):
@@ -145,9 +145,9 @@ class _PIRContract(_Contract):
     reference_conflicts: list[_ReferenceConflictContract]
     hard_blockers: list[_BlockerContract]
     input_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    reconciliation_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    approval: dict[str, Any] | None = None
-    artifact_type: Literal["canonical_model"] | None = None
+    reconciliation_sha256: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    approval: Optional[dict[str, Any]] = None
+    artifact_type: Optional[Literal["canonical_model"]] = None
 
 
 class _ManifestFigureContract(_Contract):
@@ -165,7 +165,7 @@ class _ManifestContract(_Contract):
     schema_version: Literal["figure-manifest-1"]
     artifact_type: Literal["figure_manifest"]
     artifact_version: int = Field(gt=0)
-    approval: dict[str, Any] | None
+    approval: Optional[dict[str, Any]]
     figures: list[_ManifestFigureContract]
     issues: list[dict[str, Any]]
     pir_input_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -215,14 +215,14 @@ class _PackageContract(_Contract):
     schema_version: Literal["figure-dsl-1"]
     artifact_type: Literal["compiled_figure_package"]
     artifact_version: int = Field(gt=0)
-    approval: dict[str, Any] | None
-    parent_sha256: str | None
+    approval: Optional[dict[str, Any]]
+    parent_sha256: Optional[str]
     renderer_version: str
     ruleset: str
     pir_input_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     manifest_approval_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     figures: list[_DSLFigureContract] = Field(min_length=1)
-    patch: dict[str, Any] | None
+    patch: Optional[dict[str, Any]]
     sheets: list[_SheetContract] = Field(min_length=1)
     content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
@@ -231,9 +231,9 @@ class _TypedPatchContract(_Contract):
     type: Literal["move_label", "move_entity", "delete_visible_entity", "reroute_leader"]
     figure_id: str = Field(min_length=1)
     reference: str = Field(min_length=1)
-    x: FiniteFloat | None = None
-    y: FiniteFloat | None = None
-    reason: str | None = Field(default=None, max_length=1000)
+    x: Optional[FiniteFloat] = None
+    y: Optional[FiniteFloat] = None
+    reason: Optional[str] = Field(default=None, max_length=1000)
 
     @model_validator(mode="after")
     def coordinates_for_moves(self):
@@ -358,7 +358,7 @@ def _split_claims(text: str) -> list[tuple[int, str]]:
     return [(1, clean)] if clean else []
 
 
-def _predicate(sentence: str) -> str | None:
+def _predicate(sentence: str) -> Optional[str]:
     value = sentence.lower()
     predicates = (
         ("received_in", ("received in", "seated in", "fitted in")),
@@ -635,7 +635,7 @@ def content_hash(value: Mapping[str, Any]) -> str:
 
 
 def approve_artifact(value: Mapping[str, Any], *, artifact_type: str, user_id: int,
-                     approved_at: str | None = None) -> dict[str, Any]:
+                     approved_at: Optional[str] = None) -> dict[str, Any]:
     out = copy.deepcopy(dict(value))
     if int(user_id) <= 0:
         raise FigureCompilerError("A named account must approve this artifact.")
@@ -845,7 +845,8 @@ def compile_package(pir: Mapping[str, Any], manifest: Mapping[str, Any],
 
 
 def validate_package(pir: Mapping[str, Any], manifest: Mapping[str, Any],
-                     package: Mapping[str, Any], ruleset_name: str | None = None) -> dict[str, Any]:
+                     package: Mapping[str, Any],
+                     ruleset_name: Optional[str] = None) -> dict[str, Any]:
     """Inspect without mutation; every issue declares the repair route that owns it."""
     validate_pir_contract(pir)
     validate_manifest_contract(manifest)
@@ -1099,7 +1100,7 @@ def apply_typed_patch(package: Mapping[str, Any], patch: Mapping[str, Any]) -> d
     return out
 
 
-def render_pdf(package: Mapping[str, Any], ruleset_name: str | None = None) -> bytes:
+def render_pdf(package: Mapping[str, Any], ruleset_name: Optional[str] = None) -> bytes:
     """Render the semantic DSL directly to a deterministic vector PDF."""
     from reportlab.lib.units import mm
     from reportlab.pdfgen import canvas

@@ -7,7 +7,7 @@ import re
 import threading
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import draft_workspace
 import drafting
@@ -60,7 +60,7 @@ class FigureCompilerRepository:
         ensure_schema()
 
     @staticmethod
-    def _decode(row: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    def _decode(row: Optional[Mapping[str, Any]]) -> Optional[dict[str, Any]]:
         if not row:
             return None
         out = dict(row)
@@ -82,7 +82,7 @@ class FigureCompilerRepository:
                  figure_compiler.PIR_SCHEMA_VERSION, figure_compiler.RENDERER_VERSION))
             return dict(cur.fetchone())
 
-    def latest_run(self, project_id: int) -> dict[str, Any] | None:
+    def latest_run(self, project_id: int) -> Optional[dict[str, Any]]:
         self._ready()
         with db.cursor() as cur:
             cur.execute("SELECT * FROM app_figure_compiler_runs WHERE project_id=%s AND active "
@@ -104,7 +104,7 @@ class FigureCompilerRepository:
 
     def save_artifact(self, run_id: int, artifact_type: str, payload: Mapping[str, Any],
                       created_by_user_id: int, state: str = "draft",
-                      parent_artifact_id: int | None = None) -> dict[str, Any]:
+                      parent_artifact_id: Optional[int] = None) -> dict[str, Any]:
         if state not in {"draft", "approved"}:
             raise figure_compiler.FigureCompilerError("Invalid compiler artifact state.")
         self._ready()
@@ -133,7 +133,7 @@ class FigureCompilerRepository:
             return self._decode(cur.fetchone()) or {}
 
     def latest_artifact(self, run_id: int, artifact_type: str,
-                        state: str | None = None) -> dict[str, Any] | None:
+                        state: Optional[str] = None) -> Optional[dict[str, Any]]:
         self._ready()
         sql = ("SELECT * FROM app_figure_compiler_artifacts WHERE run_id=%s "
                "AND artifact_type=%s")
@@ -197,7 +197,7 @@ def _derive_figure_specs(sections: Mapping[str, str],
 
 class FigureCompilerService:
     def __init__(self, drafting_service: drafting.DraftingService,
-                 repository: FigureCompilerRepository | None = None):
+                 repository: Optional[FigureCompilerRepository] = None):
         self.drafting_service = drafting_service
         self.repository = repository or FigureCompilerRepository()
 
@@ -227,7 +227,7 @@ class FigureCompilerService:
         return dict(version) if version else self.drafting_service.get_version(
             principal, int(project["id"]), int(version_no))
 
-    def _state_for_run(self, run: Mapping[str, Any] | None) -> dict[str, Any]:
+    def _state_for_run(self, run: Optional[Mapping[str, Any]]) -> dict[str, Any]:
         empty = {"run": None, "pir": None, "manifest": None, "package": None,
                  "validation": None, "artifacts": []}
         if not run:
@@ -261,7 +261,8 @@ class FigureCompilerService:
         self._project(principal, project_id)
         return self._state_for_run(self.repository.latest_run(project_id))
 
-    def start(self, principal: drafting.Principal, project_id: int, *, version_no: int | None = None,
+    def start(self, principal: drafting.Principal, project_id: int, *,
+              version_no: Optional[int] = None,
               ruleset: str = "uspto-letter-2026.1") -> dict[str, Any]:
         project = self._project(principal, project_id)
         figure_compiler.load_ruleset(ruleset)
