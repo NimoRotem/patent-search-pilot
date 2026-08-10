@@ -122,6 +122,32 @@ def test_named_administrator_has_identity_and_direct_drafting_access(account_cli
     assert "Create account" not in footer and "Sign in" not in footer
 
 
+def test_administrator_user_rows_include_email_confirmation_state(monkeypatch):
+    class Cursor:
+        sql = ""
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def execute(self, sql, params=None):
+            self.sql = sql
+
+        def fetchall(self):
+            return [{"id": 4, "email_verified_at": "verified"}]
+
+    cursor = Cursor()
+    monkeypatch.setattr(accounts, "ensure_schema", lambda: None)
+    monkeypatch.setattr(accounts.db, "cursor", lambda: cursor)
+
+    rows = accounts.list_users()
+
+    assert rows[0]["email_verified_at"] == "verified"
+    assert "u.email_verified_at" in cursor.sql
+
+
 def test_saved_report_toggle_requires_csrf(account_client, monkeypatch):
     with account_client.session_transaction() as session:
         session["user_id"] = USER["id"]
