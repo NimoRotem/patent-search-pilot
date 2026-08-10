@@ -308,6 +308,22 @@ def test_axis_graph_is_routed_to_the_supported_graph_renderer():
     assert manifest["figures"][0]["renderer"] == "graph"
 
 
+def test_incidental_axis_text_does_not_turn_an_elevation_into_a_graph():
+    spec = [{
+        "label": "FIG. 1",
+        "caption": (
+            "View type: Side elevation view, solid lines only, no section. "
+            "The handle is centred on the vertical axis of the suction cup."
+        ),
+        "numerals": ["10 vacuum lifting tool", "12 body"],
+    }]
+    pir = figure_compiler.build_pir(SECTIONS, NUMERALS, spec)
+    manifest = figure_compiler.plan_manifest(pir, spec)
+
+    assert manifest["figures"][0]["view_type"] == "elevation"
+    assert manifest["figures"][0]["renderer"] == "mechanical"
+
+
 def test_validator_blocks_unsupported_visible_objects_and_bidirectional_numeral_drift():
     pir, manifest, package = compiled_fixture()
     broken = deepcopy(package)

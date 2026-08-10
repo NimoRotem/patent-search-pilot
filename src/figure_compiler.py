@@ -573,15 +573,22 @@ def resolve_reference_conflict(pir: Mapping[str, Any], *, conflict_id: str, choi
 
 def _view_type(caption: str) -> str:
     value = caption.lower()
-    if "flow" in value or "process" in value:
+    # Draft agents often put the explicit view type first and then mention axes, flows, or
+    # sections as component details later. Classify only that header so incidental prose cannot
+    # route a physical elevation to the graph renderer.
+    header = value.split("what is shown", 1)[0][:240]
+    if re.search(r"\b(?:flow|process)\s+(?:diagram|chart|view)\b", header):
         return "flow"
-    if "graph" in value or "plot" in value or "axis" in value:
+    if re.search(r"\b(?:graph|plot)\b", header):
         return "graph"
-    if "network" in value or "system" in value or "block diagram" in value:
+    if ("network" in header or "block diagram" in header or
+            re.search(r"\bschematic\s*(?:\([^)]*\))?\s*diagram\b", header)):
         return "network"
-    if "exploded" in value:
+    if "exploded" in header:
         return "exploded"
-    if "section" in value or "cross-section" in value:
+    if "elevation" in header:
+        return "elevation"
+    if "section" in header or "cross-section" in header:
         return "section"
     return "mechanical"
 
