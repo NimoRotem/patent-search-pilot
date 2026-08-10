@@ -22,6 +22,9 @@
   let reviewing = false;
   let drawingEditor = null;
   let refreshSerial = Promise.resolve();
+  let C = null;
+  let compilerLoading = false;
+  const COMPILER_ROUTE = '#/compiler';
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s)
@@ -919,6 +922,219 @@
       </div>`).join('')}`;
   }
 
+  // ── deterministic filing-figure compiler ───────────────────────────────────
+  const COMPILER_STAGES = [
+    'INGESTED', 'PARSED', 'DISCLOSURE_EXTRACTED', 'MODEL_RECONCILED', 'MODEL_APPROVED',
+    'FIGURES_PLANNED', 'MANIFEST_APPROVED', 'FIGURE_SPECS_COMPILED', 'RENDERED',
+    'ANNOTATED', 'COMPOSED', 'VALIDATED', 'FINAL_REVIEW', 'APPROVED', 'EXPORTED',
+  ];
+  const compilerStage = (name) => COMPILER_STAGES.indexOf(name || '');
+
+  async function loadCompiler(force) {
+    if (compilerLoading || (C !== null && !force)) return;
+    compilerLoading = true;
+    const body = $('compilerBody');
+    body.innerHTML = '<p class="muted small">Reading the versioned figure artifacts…</p>';
+    try {
+      C = (await api(`/api/drafts/${PID}/figure-compiler`)).compiler;
+      renderCompiler();
+    } catch (error) {
+      body.innerHTML = `<div class="emptypane"><h3>Compiler unavailable</h3><p>${esc(error.message)}</p></div>`;
+    } finally { compilerLoading = false; }
+  }
+
+  async function compilerPost(path, payload, button) {
+    if (button) button.disabled = true;
+    const message = $('compilerMsg');
+    if (message) { message.className = 'small muted'; message.textContent = 'Working…'; }
+    try {
+      C = (await api(`/drafts/${PID}/figure-compiler/${path}`, {
+        method: 'POST', body: JSON.stringify(payload || {}),
+      })).compiler;
+      renderCompiler();
+    } catch (error) {
+      if (message) { message.className = 'small bad'; message.textContent = error.message; }
+      if (button) button.disabled = false;
+    }
+  }
+
+  function compilerSteps(stage) {
+    const at = compilerStage(stage);
+    const rows = [
+      ['Canonical model', 'MODEL_APPROVED'], ['Figure plan', 'MANIFEST_APPROVED'],
+      ['Semantic sheets', 'COMPOSED'], ['Validation', 'FINAL_REVIEW'],
+      ['Final approval', 'APPROVED'],
+    ];
+    return `<ol class="compilersteps">${rows.map(([label, target]) => {
+      const done = at >= compilerStage(target);
+      const current = !done && rows.findIndex((row) => compilerStage(row[1]) > at) ===
+        rows.findIndex((row) => row[0] === label);
+      return `<li class="${done ? 'done' : current ? 'current' : ''}"><span>${done ? '✓' : ''}</span>${esc(label)}</li>`;
+    }).join('')}</ol>`;
+  }
+
+  function compilerRegistry(pir) {
+    if (!pir) return '';
+    const entities = pir.entities || [];
+    const conflicts = (pir.reference_conflicts || []).filter((row) => row.status !== 'resolved');
+    const coverage = pir.claim_coverage || [];
+    const uncovered = coverage.filter((row) => row.drawable && !row.figure_ids.length);
+    return `<section class="compilercard">
+      <div class="compilerh"><div><h3>Canonical reference registry</h3>
+        <p>${entities.length} disclosed objects · ${pir.relations.length} sourced relations ·
+        ${coverage.length} claim limitations</p></div>
+        <span class="compilerflag ${conflicts.length ? 'bad' : 'good'}">${conflicts.length ?
+          conflicts.length + ' conflict(s)' : 'reconciled'}</span></div>
+      ${conflicts.length ? `<div class="compilerissues bad"><b>Material conflicts block compilation.</b>
+        ${conflicts.map((row) => `<div><code>${esc(row.reference || row.entity)}</code>
+          ${esc((row.candidates || []).join(' / '))} · ${esc(row.status)}
+          ${row.kind === 'one_reference_multiple_entities' ? `<span class="compilerchoices">${
+            (row.candidates || []).map((choice) => `<button type="button" class="chip compilerresolve"
+              data-conflict="${esc(row.id)}" data-choice="${esc(choice)}">Use ${esc(choice)}</button>`).join('')}</span>` :
+            '<small>Revise the draft reference table to distinguish these signs.</small>'}</div>`).join('')}</div>` : ''}
+      <div class="compilerregistry">${entities.map((entity) => `<div title="${esc(
+        (entity.source_span_ids || []).join(', '))}"><b>${esc(entity.reference)}</b>
+        <span>${esc(entity.name)}</span><small>${(entity.source_span_ids || []).length} source span(s)</small></div>`).join('')}</div>
+      <details class="compilerdetails"><summary>Claim-to-figure coverage · ${uncovered.length ?
+        uncovered.length + ' uncovered' : 'all drawable limitations covered'}</summary>
+        ${(coverage || []).map((row) => `<div class="coverrow"><code>${esc(row.limitation_id)}</code>
+          <span>${row.drawable ? esc((row.figure_ids || []).join(', ') || 'not covered') : 'not drawable'}</span></div>`).join('')}
+      </details></section>`;
+  }
+
+  function compilerManifest(manifest) {
+    if (!manifest) return '';
+    return `<section class="compilercard"><div class="compilerh"><div><h3>Figure manifest</h3>
+      <p>The smallest proposed set. Approving fixes what may be rendered.</p></div>
+      <span class="compilerflag ${manifest.approval ? 'good' : ''}">${manifest.approval ? 'approved' : 'review'}</span></div>
+      <div class="manifestgrid">${(manifest.figures || []).map((figure) => `<article>
+        <b>${esc(figure.label)}</b><span>${esc(figure.caption)}</span>
+        <small>${esc(figure.view_type)} · ${(figure.entity_ids || []).length} objects ·
+        ${(figure.relation_ids || []).length} relations</small></article>`).join('')}</div></section>`;
+  }
+
+  function compilerSvgUrl(svg) {
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(String(svg || ''));
+  }
+
+  function compilerPackage(packageData, validation, approved) {
+    if (!packageData) return '';
+    const issues = (validation || {}).issues || [];
+    const patchRows = (packageData.figures || []).flatMap((figure) =>
+      (figure.labels || []).map((label) => {
+        const entity = (figure.entities || []).find((row) => row.entity_id === label.entity_id) || label;
+        return `<div class="compilerpatchrow"><b>${esc(figure.label)} · ${esc(label.reference)}</b>
+          <select data-patch-type aria-label="Edit ${esc(label.reference)}">
+            <option value="move_label" data-x="${esc(label.x)}" data-y="${esc(label.y)}">Move numeral</option>
+            <option value="move_entity" data-x="${esc(entity.x)}" data-y="${esc(entity.y)}">Move object</option>
+            <option value="reroute_leader" data-x="${esc(label.target_x)}" data-y="${esc(label.target_y)}">Move leader end</option>
+            <option value="delete_visible_entity">Delete object</option>
+          </select>
+          <label>X <input type="number" step="1" value="${esc(label.x)}" data-patch-x></label>
+          <label>Y <input type="number" step="1" value="${esc(label.y)}" data-patch-y></label>
+          <button type="button" class="chip compilerpatch" data-figure="${esc(figure.id)}"
+            data-reference="${esc(label.reference)}">Apply</button></div>`;
+      })).join('');
+    return `<section class="compilercard"><div class="compilerh"><div><h3>Compiled sheets</h3>
+      <p>Semantic vector geometry · ${esc(packageData.renderer_version)} ·
+      artifact v${packageData.artifact_version}</p></div>
+      <span class="compilerflag ${issues.length ? 'bad' : 'good'}">${issues.length ?
+        issues.length + ' issue(s)' : 'valid'}</span></div>
+      ${(packageData.sheets || []).map((sheet, index) => `<article class="compilersheet">
+        <div class="compilersheetbar"><b>Sheet ${index + 1}</b><span>${esc(sheet.figure_id)}</span>
+        ${approved ? `<a href="${BASE}/drafts/${PID}/figure-compiler/export.svg?sheet=${index + 1}">SVG ↓</a>` : ''}</div>
+        <div class="compilersvg"><img src="${esc(compilerSvgUrl(sheet.svg))}"
+          alt="${esc(sheet.figure_id)} semantic patent drawing"></div></article>`).join('')}
+      ${!approved ? `<details class="compilerdetails"><summary>Edit objects, numerals, and leader lines</summary>
+        <p class="small muted">Every edit is a typed patch and creates a new artifact version.</p>
+        <div class="compilerpatches">${patchRows}</div>
+      </details>` : ''}
+      ${issues.length ? `<div class="compilerissues bad"><b>Validation does not alter the sheet.</b>
+        ${issues.map((issue) => `<div><code>${esc(issue.code)}</code> ${esc(issue.message)}
+          <small>${esc(issue.repair_action)}</small></div>`).join('')}</div>` :
+        '<div class="compilerissues good"><b>No deterministic blockers.</b> Numerals match the draft in both directions.</div>'}
+      ${approved ? `<div class="compilerexports"><a class="btn sm" href="${BASE}/drafts/${PID}/figure-compiler/export.pdf">PDF package ↓</a>
+        <span class="small muted">Approved artifacts are immutable.</span></div>` : ''}</section>`;
+  }
+
+  function renderCompiler() {
+    const body = $('compilerBody');
+    if (!body) return;
+    if (C === null) {
+      body.innerHTML = '<div class="emptypane"><h3>Filing figure compiler</h3><p>Open this tab to load the compiler artifacts.</p></div>';
+      return;
+    }
+    if (!C.run) {
+      body.innerHTML = `<div class="compilerintro"><span class="eyebrow">Draft → semantic SVG</span>
+        <h2>Compile disclosed facts, not generated pixels.</h2>
+        <p>The compiler builds a source-linked object registry, checks claim coverage, asks you to
+        approve the model and figure plan, then emits deterministic SVG and PDF sheets.</p>
+        <div class="compilerstart"><select id="compilerRules"><option value="uspto-letter-2026.1">USPTO · US Letter</option>
+          <option value="pct-a4-2026.1">PCT · A4</option></select>
+          <button class="btn sm" id="compilerStart" type="button" ${S.project.latest_version_no ? '' : 'disabled'}>Build from version ${S.project.latest_version_no || '—'}</button>
+          <span class="small" id="compilerMsg"></span></div></div>`;
+      const start = $('compilerStart');
+      if (start) start.addEventListener('click', () => compilerPost('start', {
+        ruleset: $('compilerRules').value, version_no: S.project.latest_version_no,
+      }, start));
+      return;
+    }
+    const run = C.run;
+    const at = compilerStage(run.stage);
+    const blockers = ((C.pir || {}).hard_blockers || []).length;
+    const finalApproved = at >= compilerStage('APPROVED');
+    const stale = Number(run.draft_version_no) !== Number(S.project.latest_version_no);
+    let action = '';
+    if (run.stage === 'MODEL_RECONCILED') action = `<button class="btn sm" id="compilerApproveModel" ${blockers ? 'disabled' : ''}>Approve canonical model</button>`;
+    else if (run.stage === 'FIGURES_PLANNED') action = '<button class="btn sm" id="compilerApproveManifest">Approve figure plan</button>';
+    else if (run.stage === 'MANIFEST_APPROVED') action = '<button class="btn sm" id="compilerCompile">Compile + validate</button>';
+    else if (C.package && (C.validation || {}).approved_for_export && !finalApproved) action = '<button class="btn sm" id="compilerApproveFinal">Approve filing package</button>';
+    body.innerHTML = `<div class="compilerbar"><div><span class="eyebrow">${esc(run.ruleset)}</span>
+      <b>Draft version ${run.draft_version_no}</b></div><span class="compilerstage">${esc(run.stage.replace(/_/g, ' '))}</span>
+      <span class="grow"></span><button class="btn ghost xs" id="compilerRestart">Rebuild from current draft</button></div>
+      ${stale ? '<div class="compilerstale">The draft changed after this run. Rebuild before filing so the registry and sheets use the current text.</div>' : ''}
+      ${compilerSteps(run.stage)}${compilerRegistry(C.pir)}${compilerManifest(C.manifest)}
+      ${compilerPackage(C.package, C.validation, finalApproved)}
+      <div class="compileractions">${action}<span class="small" id="compilerMsg"></span></div>`;
+    const actions = [
+      ['compilerApproveModel', 'model/approve'], ['compilerApproveManifest', 'manifest/approve'],
+      ['compilerCompile', 'compile'], ['compilerApproveFinal', 'approve'],
+    ];
+    actions.forEach(([id, path]) => { const button = $(id); if (button) button.addEventListener(
+      'click', () => compilerPost(path, {}, button)); });
+    const restart = $('compilerRestart');
+    if (restart) restart.addEventListener('click', () => compilerPost('start', {
+      ruleset: run.ruleset, version_no: S.project.latest_version_no,
+    }, restart));
+    body.querySelectorAll('[data-patch-type]').forEach((select) => select.addEventListener('change', () => {
+      const row = select.closest('.compilerpatchrow');
+      const option = select.selectedOptions[0];
+      const deleting = select.value === 'delete_visible_entity';
+      const x = row.querySelector('[data-patch-x]');
+      const y = row.querySelector('[data-patch-y]');
+      x.disabled = deleting;
+      y.disabled = deleting;
+      if (!deleting) { x.value = option.dataset.x; y.value = option.dataset.y; }
+    }));
+    body.querySelectorAll('.compilerpatch').forEach((button) => button.addEventListener('click', () => {
+      const row = button.parentElement;
+      const type = row.querySelector('[data-patch-type]').value;
+      if (type === 'delete_visible_entity' && !window.confirm(
+        `Delete visible object ${button.dataset.reference} from this artifact version?`)) return;
+      const patch = { type, figure_id: button.dataset.figure,
+        reference: button.dataset.reference, reason: 'Manual semantic figure edit' };
+      if (type !== 'delete_visible_entity') {
+        patch.x = Number(row.querySelector('[data-patch-x]').value);
+        patch.y = Number(row.querySelector('[data-patch-y]').value);
+      }
+      compilerPost('patch', patch, button);
+    }));
+    body.querySelectorAll('.compilerresolve').forEach((button) => button.addEventListener(
+      'click', () => compilerPost('model/resolve', {
+        conflict_id: button.dataset.conflict, choice: button.dataset.choice,
+      }, button)));
+  }
+
   // ── filing ─────────────────────────────────────────────────────────────────
   async function renderFiling() {
     const body = $('filingBody');
@@ -971,7 +1187,9 @@
     document.querySelectorAll('.spane').forEach((pane) =>
       pane.classList.toggle('on', pane.id === 'pane-' + name));
     if (name === 'filing') renderFiling();
-    if (updateHash && location.hash !== '#/' + name) location.hash = '#/' + name;
+    if (name === 'compiler') loadCompiler();
+    const targetHash = name === 'compiler' ? COMPILER_ROUTE : '#/' + name;
+    if (updateHash && location.hash !== targetHash) location.hash = targetHash;
   }
   document.querySelectorAll('.stab').forEach((tab) =>
     tab.addEventListener('click', () => showPane(tab.dataset.pane)));
@@ -979,7 +1197,7 @@
 
   function routeFromHash() {
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-    const pane = ['draft', 'review', 'figures', 'sources', 'history', 'filing'].includes(parts[0])
+    const pane = ['draft', 'review', 'figures', 'compiler', 'sources', 'history', 'filing'].includes(parts[0])
       ? parts[0] : 'draft';
     showPane(pane, false);
     if (pane === 'figures' && parts[2] === 'edit' && /^\d+$/.test(parts[1] || '')) {
@@ -1156,6 +1374,7 @@
     renderReview();
     renderSources();
     renderFigures();
+    renderCompiler();
     renderHistory();
     renderBusy();
   }
