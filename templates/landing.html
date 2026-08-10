@@ -1,131 +1,98 @@
 {% extends "base.html" %}
-{% block title %}rotemAI patent search — prior art, read in full{% endblock %}
+{% block title %}Patent search and drafting | Rotem Patents{% endblock %}
 {% block body %}
-{#  The PUBLIC front door. Before this existed, an anonymous visitor to /patents was redirected
-    straight to a login box with no way to find out what the product was. Everything factual on
-    this page comes from corpus_facts (live from the database), so it cannot overstate the corpus
-    the way a hand-written marketing page would.  #}
-<div class="hero landinghero">
-  <div class="wrap">
-    <p class="kicker">Prior-art search</p>
-    <h1>Most search tools tell you a patent <i>looks</i> similar.<br>This one reads it and shows you the sentence.</h1>
-    <p class="lede">Describe your invention, or drop the PDF. We search
-      {% if corpus.publications %}{{ '{:,}'.format(corpus.publications) }}{% else %}millions of{% endif %}
-      publications across eleven channels, then read the strongest references end to end and rank
-      them by what they actually disclose, with a verbatim quote and its location for every
-      feature.</p>
-    <div class="ctarow">
-      <a class="btn big" href="{{ request.script_root }}/register">Create a free account</a>
-      <a class="btn ghost big" href="{{ request.script_root }}/login">Sign in</a>
-      <a class="plainlink" href="{{ request.script_root }}/how-it-works">See how it works</a>
+<section class="landingmast">
+  <div class="wrap landingmast-grid">
+    <div class="landingcopy">
+      <p class="eyebrow">Patent search and drafting</p>
+      <h1>Find the prior art.<br>Build the application.</h1>
+      <p class="lede">Search claims, specifications, drawings and live patent sources. Every
+        strong reference is read against the invention, then carried directly into a drafting
+        workspace.</p>
+      <div class="landingactions">
+        <a class="btn big" href="{{ request.script_root }}/register">Create a free account</a>
+        <a class="btn ghost big" href="{{ request.script_root }}/login">Sign in</a>
+      </div>
+      <p class="landingnote">No card required. Your searches and drafts stay in your account.</p>
     </div>
+
+    <aside class="workpreview" aria-label="Example patent search report">
+      <div class="previewtop">
+        <div>
+          <span class="previewlabel">Search report</span>
+          <strong>Compliant vacuum lifting head</strong>
+        </div>
+        <span class="previewmode">Novelty</span>
+      </div>
+      <div class="previewmetrics">
+        <span><b>50</b> ranked references</span>
+        <span><b>12</b> claim elements</span>
+        <span><b>8</b> source channels</span>
+      </div>
+      <div class="previewresult">
+        <span class="previewrank">01</span>
+        <div>
+          <strong>Handheld vacuum lifting apparatus</strong>
+          <p>Flexible sealing lip, pump control and pressure-loss warning.</p>
+          <div class="previewevidence"><span>Evidence</span> "a pressure sensor configured to
+            signal a loss of holding vacuum"</div>
+        </div>
+        <span class="previewscore">92</span>
+      </div>
+      <div class="previewresult mutedresult">
+        <span class="previewrank">02</span>
+        <div><strong>Portable suction gripping device</strong><p>Seal geometry and cordless pump assembly.</p></div>
+        <span class="previewscore">84</span>
+      </div>
+      <div class="previewfoot"><span>Full text checked</span><span>Family deduplicated</span><span>Sources linked</span></div>
+    </aside>
   </div>
-</div>
+</section>
 
-<div class="wrap">
-
-  <div class="statrow" role="group" aria-label="Corpus at a glance">
-    <div class="stat">
-      <b>{% if corpus.publications %}{{ '{:,}'.format(corpus.publications) }}{% else %}live{% endif %}</b>
-      <span>publications indexed</span>
-    </div>
-    <div class="stat">
-      <b>{% if corpus.chunks %}{{ '{:.0f}M'.format(corpus.chunks / 1000000) }}{% else %}millions{% endif %}</b>
-      <span>separately searchable passages</span>
-    </div>
-    <div class="stat">
-      <b>{{ (corpus.jurisdictions or ['US','EP','WO','DE'])|length }}</b>
-      <span>patent offices: {{ (corpus.jurisdictions or ['US','EP','WO','DE'])|join(', ') }}</span>
-    </div>
-    <div class="stat">
-      <b>~180</b>
-      <span>references read in full, per search</span>
-    </div>
-  </div>
-
-  <section class="panel landingblock">
-    <h2>What one search does</h2>
-    <div class="threecol">
-      <div>
-        <h3>Searches eleven ways at once</h3>
-        <p>Semantic search over every claim and paragraph, claim-only search, keyword and phrase,
-          CPC classification, the citation and family graph, query-by-example, cross-lingual
-          English and German, your own document's passages, your drawings against our figure
-          index, and a live fan-out to eight external patent APIs.</p>
-      </div>
-      <div>
-        <h3>Reads the shortlist end to end</h3>
-        <p>Around 600 candidates are screened, then roughly 180 are read in full: every claim,
-          every paragraph. Each feature of your invention gets a verdict, a verbatim quote and its
-          location, and every "discloses" is checked by a second pass told to refute it.</p>
-      </div>
-      <div>
-        <h3>Ranks on evidence, not similarity</h3>
-        <p>The number on each card is what that reference was measured to disclose, weighted by
-          how rare the disclosure is. A reference we could not read never outranks one we quoted,
-          and every claim on the page can be traced to a sentence in a document.</p>
-      </div>
-    </div>
-    <p class="ctarow"><a class="plainlink" href="{{ request.script_root }}/how-it-works">The full pipeline, step by step</a></p>
+<div class="wrap landingbody">
+  <section class="landmetrics" aria-label="Search coverage">
+    <div><b>{% if corpus.publications %}{{ '{:,}'.format(corpus.publications) }}{% else %}Live{% endif %}</b><span>publications indexed</span></div>
+    <div><b>{% if corpus.chunks %}{{ '{:.1f}M'.format(corpus.chunks / 1000000) }}{% else %}Millions{% endif %}</b><span>searchable passages</span></div>
+    <div><b>{{ (corpus.jurisdictions or ['US','EP','WO','DE'])|join('  ') }}</b><span>deep corpus jurisdictions</span></div>
+    <div><b>Evidence first</b><span>references read in full, then carried into drafting</span></div>
   </section>
 
-  <div class="twocol">
-    <section class="panel">
-      <h2>Built for the decision, not the demo</h2>
-      <ul class="ticks">
-        <li><b>Prior-art dating in code.</b> Novelty includes secret art under EPC Art. 54(3);
-          inventive step is public art only. Dates are never left to a model.</li>
-        <li><b>One card per patent family.</b> The same invention filed in six countries is one
-          result.</li>
-        <li><b>Element by reference chart</b> with a quote and a location in every filled cell.</li>
-        <li><b>Best reference per feature</b>, rarest first: the single-feature document an
-          inventive-step attack is built from.</li>
-        <li><b>Exports</b> to PDF, DOCX, XLSX, Markdown and an IDS-style citation listing.</li>
-        <li><b>Drafting workspace</b>: turn a search into a draft specification with figures.</li>
-      </ul>
-    </section>
-
-    <section class="panel">
-      <h2>Honest about its limits</h2>
-      <p>Every report and every export states the scope: which offices are indexed, how deep the
-        text goes for each, what is missing, and the measured reliability of the chart. Those
-        numbers come from evaluation runs and are not adjusted to look better.</p>
-      <p>The corpus is deep in vacuum gripping, lifting and handling and wide but shallower
-        elsewhere, and the page says so on every search. A query outside the indexed field is
-        detected and routed to the external patent APIs instead of being answered with the nearest
-        local neighbours.</p>
-      <p><a href="{{ request.script_root }}/about">The full scope statement and the measured numbers</a></p>
-    </section>
-  </div>
-
-  <section class="panel landingblock">
-    <h2>And then it writes the application</h2>
-    <p>Prior art is only useful if it changes what you file. From a finished search, or from
-      nothing but a description of your invention, a drafting agent writes the specification, the
-      drawings and the claims — reading every reference first, and telling you which feature
-      carries each independent claim clear of which document.</p>
-    <p>You revise it by talking to it: correct a fact, upload another reference, ask why a
-      limitation is there, ask for a different claim strategy. Every iteration is checked by a
-      separate reviewer before you see it — reference numerals against the drawings and the text,
-      claims against what was actually disclosed, and every citation against a publication that
-      really exists. What comes out is a filing package, with the things only a person can do
-      listed rather than quietly ticked off.</p>
-  </section>
-
-  <section class="panel landingblock">
-    <h2>Getting started takes a minute</h2>
-    <ol class="startsteps">
-      <li><b>Create an account.</b> Email and a password. No card.</li>
-      <li><b>Drop a PDF or describe the invention.</b> From a document we extract the claims and
-        the drawings and show you the summary to correct before searching.</li>
-      <li><b>Read the report.</b> First matches appear in seconds; the full reading takes a few
-        minutes, and you can have it emailed to you when it is done.</li>
-    </ol>
-    <div class="ctarow">
-      <a class="btn big" href="{{ request.script_root }}/register">Create a free account</a>
-      <a class="btn ghost big" href="{{ request.script_root }}/how-it-works">How it works</a>
+  <section class="landingsection">
+    <div class="sectionintro">
+      <p class="eyebrow">One evidence trail</p>
+      <h2>From disclosure to filing package</h2>
+      <p>The work stays connected. Search context, cited references, draft sections and drawings
+        remain available throughout the matter.</p>
+    </div>
+    <div class="workflowgrid">
+      <article><span>01</span><h3>Describe or upload</h3><p>Start with plain language, a patent link, or a PDF. Review the extracted invention before searching.</p></article>
+      <article><span>02</span><h3>Search and verify</h3><p>Retrieve across the local corpus and external sources, deduplicate families, and inspect the passages behind each result.</p></article>
+      <article><span>03</span><h3>Draft and revise</h3><p>Open the report in the drafting studio, revise by conversation, generate drawings, and run another search without leaving.</p></article>
     </div>
   </section>
 
+  <section class="capabilitysplit">
+    <div class="capabilitycopy">
+      <p class="eyebrow">Search</p>
+      <h2>Similarity is the start, not the answer.</h2>
+      <p>References are ranked by the invention elements they disclose. Filled chart cells carry
+        a quote and location. Unread or unavailable text is identified instead of silently scored
+        as evidence.</p>
+      <a href="{{ request.script_root }}/how-it-works">See the retrieval method</a>
+    </div>
+    <div class="capabilitycopy">
+      <p class="eyebrow">Draft</p>
+      <h2>Prior art stays beside the claims.</h2>
+      <p>Build a US application from a completed search or start from scratch. Drawing numerals are
+        checked in both directions, and each revision receives an independent review.</p>
+      <a href="{{ request.script_root }}/register">Start a matter</a>
+    </div>
+  </section>
+
+  <section class="trustbar">
+    <div><strong>Clear scope</strong><span>Coverage and date ceilings stay visible in every report.</span></div>
+    <div><strong>Source linked</strong><span>Open the publication behind each result and citation.</span></div>
+    <div><strong>Versioned work</strong><span>Drafts, reviews and drawings retain their history.</span></div>
+  </section>
 </div>
 {% endblock %}

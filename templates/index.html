@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}rotemAI patent search{% endblock %}
+{% block title %}Search prior art | Rotem Patents{% endblock %}
 {% block body %}
 {#  THE SEARCH PAGE IS THE SEARCH FIELD.
 
@@ -13,6 +13,11 @@
     The same disclosure on the RESULTS page and in every exported PDF/DOCX is deliberately
     untouched. That is the point where somebody decides what a result means, and it stays there.  #}
 <div class="wrap searchpage">
+  <header class="searchintro">
+    <p class="eyebrow">Prior art search</p>
+    <h1>Search prior art</h1>
+    <p>Describe the invention or begin with a patent, PDF, or document.</p>
+  </header>
   <form class="panel searchcard" method="post" action="{{ request.script_root }}/run" id="searchform">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field">

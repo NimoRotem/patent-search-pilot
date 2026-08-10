@@ -112,6 +112,33 @@ app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_BYTES", str(32
 app.config["SESSION_COOKIE_SECURE"] = (os.environ.get("SESSION_COOKIE_SECURE", "1").strip().lower()
                                        not in ("0", "false", "no"))
 
+_CSP = "; ".join((
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "frame-src 'self' https:",
+    "frame-ancestors 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+))
+
+
+@app.after_request
+def _browser_security_headers(response):
+    """Apply the browser boundary in the app so errors and direct service traffic get it too."""
+    response.headers.setdefault("Strict-Transport-Security",
+                                "max-age=31536000; includeSubDomains")
+    response.headers.setdefault("Content-Security-Policy", _CSP)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    return response
+
 # ---- slug hygiene ---------------------------------------------------------------------------
 # Slugs are interpolated straight into filenames (reports/<slug>.json, exports/<slug>__<key>.pdf,
 # rationale/<slug>__<pub>.json). Flask's default path converter refuses "/" so `/report/<slug>` was

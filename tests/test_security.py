@@ -111,3 +111,13 @@ def test_compact_publication_pdf_uses_canonical_cache(app_client, monkeypatch, t
     assert app_client.get("/api/pdfs?pubs=US20220256273A1").get_json() == {
         "US20220256273A1": True
     }
+
+
+def test_html_responses_carry_modern_browser_security_headers(app_client):
+    response = app_client.get("/")
+
+    assert response.headers["Strict-Transport-Security"].startswith("max-age=")
+    assert "frame-ancestors 'self'" in response.headers["Content-Security-Policy"]
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
+    assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
