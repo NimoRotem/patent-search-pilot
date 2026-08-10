@@ -35,6 +35,7 @@ PIR_SCHEMA_VERSION = "pir-1"
 MANIFEST_SCHEMA_VERSION = "figure-manifest-1"
 DSL_SCHEMA_VERSION = "figure-dsl-1"
 RENDERER_VERSION = "semantic-svg-1.0.0"
+VALIDATOR_VERSION = "figure-validator-1.2.0"
 RULES_DIR = Path(__file__).resolve().parents[1] / "rules" / "figure_compiler"
 
 WORKFLOW_STAGES = (
@@ -574,6 +575,8 @@ def _view_type(caption: str) -> str:
     value = caption.lower()
     if "flow" in value or "process" in value:
         return "flow"
+    if "graph" in value or "plot" in value or "axis" in value:
+        return "graph"
     if "network" in value or "system" in value or "block diagram" in value:
         return "network"
     if "exploded" in value:
@@ -605,11 +608,12 @@ def plan_manifest(pir: Mapping[str, Any],
         relations = [row["id"] for row in relation_rows
                      if row["from_entity_id"] in ids and row["to_entity_id"] in ids]
         caption = _clean(spec.get("caption"), 1000)
+        view_type = _view_type(caption)
         figures.append({
             "id": _figure_id(spec.get("label"), index),
             "label": _figure_label(spec.get("label"), index),
-            "caption": caption, "view_type": _view_type(caption),
-            "renderer": "graph" if _view_type(caption) in {"flow", "network"} else "mechanical",
+            "caption": caption, "view_type": view_type,
+            "renderer": "graph" if view_type in {"flow", "graph", "network"} else "mechanical",
             "entity_ids": [entity["id"] for entity in supported],
             "relation_ids": relations,
             "source_span_ids": list(dict.fromkeys(
@@ -719,6 +723,29 @@ def _layout_figure(manifest_figure: Mapping[str, Any], pir: Mapping[str, Any],
 def _svg_number(value: Any) -> str:
     number = float(value)
     return str(int(number)) if number.is_integer() else f"{number:.2f}".rstrip("0").rstrip(".")
+
+
+def _segments_cross(a1: tuple[float, float], a2: tuple[float, float],
+                    b1: tuple[float, float], b2: tuple[float, float]) -> bool:
+    """Return true only for a proper interior crossing, not a shared/touching endpoint."""
+    def orientation(p: tuple[float, float], q: tuple[float, float],
+                    r: tuple[float, float]) -> float:
+        return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+
+    first = orientation(a1, a2, b1)
+    second = orientation(a1, a2, b2)
+    third = orientation(b1, b2, a1)
+    fourth = orientation(b1, b2, a2)
+    epsilon = 1e-7
+    if any(abs(value) <= epsilon for value in (first, second, third, fourth)):
+        return False
+    return (first > 0) != (second > 0) and (third > 0) != (fourth > 0)
+
+
+def _boxes_overlap(first: tuple[float, float, float, float],
+                   second: tuple[float, float, float, float]) -> bool:
+    return not (first[2] <= second[0] or second[2] <= first[0] or
+                first[3] <= second[1] or second[3] <= first[1])
 
 
 def _render_svg(figure: Mapping[str, Any], rules: Mapping[str, Any], sheet: int,
@@ -882,9 +909,12 @@ def validate_package(pir: Mapping[str, Any], manifest: Mapping[str, Any],
             "repair_action": "recompile_package",
         })
     registry = {entity["id"]: entity for entity in pir.get("entities") or ()}
+    relation_registry = {relation["id"]: relation for relation in pir.get("relations") or ()}
+    manifest_figures = {figure["id"]: figure for figure in manifest.get("figures") or ()}
     text_refs = {entity["reference"] for entity in registry.values()}
     drawing_refs: list[str] = []
     unit = float(rules["units_per_mm"])
+    font = float(rules["minimum_character_height_mm"]) * unit
     sheet_width, sheet_height = [float(value) * unit for value in rules["sheet_mm"]]
     usable = {
         "left": float(rules["margins_mm"]["left"]) * unit,
@@ -893,8 +923,79 @@ def validate_package(pir: Mapping[str, Any], manifest: Mapping[str, Any],
         "bottom": sheet_height - float(rules["margins_mm"]["bottom"]) * unit,
     }
     for figure in package.get("figures") or ():
+        if figure.get("renderer") == "mechanical":
+            issues.append({
+                "code": "unresolved_mechanical_geometry", "severity": "blocker",
+                "category": "disclosure", "figure_id": figure.get("id"),
+                "message": (
+                    "This physical view is a relationship preview, not approved mechanical "
+                    "geometry for a filing drawing."
+                ),
+                "repair_action": "supply_approved_geometry",
+            })
         visible_by_id = {str(entity.get("entity_id") or ""): entity
                          for entity in figure.get("entities") or ()}
+        approved_figure = manifest_figures.get(str(figure.get("id") or "")) or {}
+        allowed_relations = set(approved_figure.get("relation_ids") or ())
+        present_relations = set()
+        relation_segments = []
+        for relation in figure.get("relations") or ():
+            relation_id = str(relation.get("id") or "")
+            present_relations.add(relation_id)
+            canonical = relation_registry.get(relation_id)
+            relation_matches = bool(canonical) and all(
+                relation.get(key) == canonical.get(key) for key in
+                ("from_entity_id", "to_entity_id", "predicate", "source_span_ids"))
+            if relation_id not in allowed_relations or not relation_matches:
+                issues.append({
+                    "code": "unsupported_visible_relation", "severity": "blocker",
+                    "category": "disclosure", "figure_id": figure.get("id"),
+                    "relation_id": relation_id,
+                    "message": "A visible connection is absent from the approved semantic model.",
+                    "repair_action": "reconcile_model",
+                })
+                continue
+            left = visible_by_id.get(str(relation.get("from_entity_id") or ""))
+            right = visible_by_id.get(str(relation.get("to_entity_id") or ""))
+            if not left or not right:
+                issues.append({
+                    "code": "relation_endpoint_missing", "severity": "blocker",
+                    "category": "semantic", "figure_id": figure.get("id"),
+                    "relation_id": relation_id,
+                    "message": "A rendered relation has no visible endpoint.",
+                    "repair_action": "recompile_package",
+                })
+                continue
+            relation_segments.append((
+                relation,
+                (left["x"] + left["width"] / 2, left["y"] + left["height"] / 2),
+                (right["x"] + right["width"] / 2, right["y"] + right["height"] / 2),
+            ))
+        for relation_id in sorted(allowed_relations - present_relations):
+            issues.append({
+                "code": "approved_relation_missing", "severity": "blocker",
+                "category": "semantic", "figure_id": figure.get("id"),
+                "relation_id": relation_id,
+                "message": "An approved semantic connection is absent from the drawing.",
+                "repair_action": "recompile_package",
+            })
+        relation_crossings = 0
+        for index, (first_relation, first_start, first_end) in enumerate(relation_segments):
+            first_entities = {first_relation["from_entity_id"], first_relation["to_entity_id"]}
+            for second_relation, second_start, second_end in relation_segments[index + 1:]:
+                if first_entities & {
+                        second_relation["from_entity_id"], second_relation["to_entity_id"]}:
+                    continue
+                relation_crossings += int(_segments_cross(
+                    first_start, first_end, second_start, second_end))
+        if relation_crossings:
+            issues.append({
+                "code": "relation_line_crossing", "severity": "blocker",
+                "category": "semantic", "figure_id": figure.get("id"),
+                "count": relation_crossings,
+                "message": f"{relation_crossings} connection-line crossings are ambiguous.",
+                "repair_action": "move_entity",
+            })
         for entity in figure.get("entities") or ():
             drawing_refs.append(str(entity.get("reference") or ""))
             canonical = registry.get(entity.get("entity_id"))
@@ -926,6 +1027,8 @@ def validate_package(pir: Mapping[str, Any], manifest: Mapping[str, Any],
                     "repair_action": "move_entity",
                 })
         label_counts: dict[tuple[str, str], int] = {}
+        leader_segments = []
+        label_boxes = []
         for label in figure.get("labels") or ():
             entity_id = str(label.get("entity_id") or "")
             reference = str(label.get("reference") or "")
@@ -942,6 +1045,18 @@ def validate_package(pir: Mapping[str, Any], manifest: Mapping[str, Any],
                     "message": "A reference label is not bound to its visible registry object.",
                     "repair_action": "reconcile_label",
                 })
+            leader_segments.append((
+                entity_id,
+                (float(label.get("x") or 0), float(label.get("y") or 0) - font * .25),
+                (float(label.get("target_x") or 0), float(label.get("target_y") or 0)),
+            ))
+            label_width = max(font * .65, len(reference) * font * .65)
+            label_boxes.append((
+                entity_id,
+                (float(label.get("x") or 0), float(label.get("y") or 0) - font,
+                 float(label.get("x") or 0) + label_width,
+                 float(label.get("y") or 0) + font * .2),
+            ))
             if (float(label.get("x") or 0) < usable["left"] or
                     float(label.get("x") or 0) > usable["right"] or
                     float(label.get("y") or 0) < usable["top"] or
@@ -968,6 +1083,32 @@ def validate_package(pir: Mapping[str, Any], manifest: Mapping[str, Any],
                     ),
                     "repair_action": "deduplicate_label" if count > 1 else "add_label",
                 })
+        leader_crossings = sum(
+            int(_segments_cross(first_start, first_end, second_start, second_end))
+            for index, (first_id, first_start, first_end) in enumerate(leader_segments)
+            for second_id, second_start, second_end in leader_segments[index + 1:]
+            if first_id != second_id
+        )
+        if leader_crossings:
+            issues.append({
+                "code": "leader_crossing", "severity": "blocker", "category": "formal",
+                "figure_id": figure.get("id"), "count": leader_crossings,
+                "message": f"{leader_crossings} reference leader lines cross.",
+                "repair_action": "reroute_leader",
+            })
+        label_collisions = sum(
+            int(_boxes_overlap(first_box, second_box))
+            for index, (first_id, first_box) in enumerate(label_boxes)
+            for second_id, second_box in label_boxes[index + 1:]
+            if first_id != second_id
+        )
+        if label_collisions:
+            issues.append({
+                "code": "label_collision", "severity": "blocker", "category": "formal",
+                "figure_id": figure.get("id"), "count": label_collisions,
+                "message": f"{label_collisions} reference numeral labels overlap.",
+                "repair_action": "move_label",
+            })
     drawing_set = set(filter(None, drawing_refs))
     for reference in sorted(text_refs - drawing_set, key=_sort_reference):
         issues.append({
@@ -1030,7 +1171,7 @@ def validate_package(pir: Mapping[str, Any], manifest: Mapping[str, Any],
                         for category in ("formal", "semantic", "disclosure", "cross_document",
                                          "claim_coverage")}
     return {
-        "validator_version": "figure-validator-1.0.0", "ruleset": rules["id"],
+        "validator_version": VALIDATOR_VERSION, "ruleset": rules["id"],
         "issues": issues, "hard_blockers": blockers, "warnings":
             sum(1 for issue in issues if issue["severity"] == "warning"),
         "validator_counts": validator_counts, "approved_for_export": blockers == 0,

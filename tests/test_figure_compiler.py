@@ -144,7 +144,7 @@ def test_same_component_can_be_labeled_once_in_each_figure_without_false_duplica
     sections = {
         "drawing_descriptions": (
             "FIG. 1 is a block diagram of the controller. "
-            "FIG. 2 is another state of the controller."
+            "FIG. 2 is a network diagram of another controller state."
         ),
         "detailed_description": "A controller 10 contains a processor 12.",
         "claims": "1. A controller comprising a processor.",
@@ -156,7 +156,7 @@ def test_same_component_can_be_labeled_once_in_each_figure_without_false_duplica
     figures = [
         {"label": "FIG. 1", "caption": "block diagram of the controller",
          "numerals": ["10 controller", "12 processor"]},
-        {"label": "FIG. 2", "caption": "another state of the controller",
+        {"label": "FIG. 2", "caption": "network diagram of another controller state",
          "numerals": ["10 controller", "12 processor"]},
     ]
     pir = approved(figure_compiler.build_pir(sections, numerals, figures), "canonical_model")
@@ -184,6 +184,92 @@ def test_validator_blocks_a_label_bound_to_the_wrong_registry_entity():
     assert result["approved_for_export"] is False
 
 
+def test_validator_blocks_a_relation_outside_the_approved_pir_and_manifest():
+    pir, manifest, package = compiled_fixture()
+    broken = deepcopy(package)
+    broken["figures"][0]["relations"].append({
+        "id": "relation-forged", "from_entity_id": "entity-10",
+        "to_entity_id": "entity-14", "predicate": "connected_to",
+        "source_span_ids": ["span-forged"],
+    })
+    figure_compiler._compose(
+        broken, figure_compiler.load_ruleset("uspto-letter-2026.1"))
+
+    result = figure_compiler.validate_package(pir, manifest, broken,
+                                               "uspto-letter-2026.1")
+
+    assert "unsupported_visible_relation" in {issue["code"] for issue in result["issues"]}
+    assert result["approved_for_export"] is False
+
+
+def test_validator_blocks_an_approved_relation_missing_from_the_drawing():
+    pir, manifest, package = compiled_fixture()
+    broken = deepcopy(package)
+    assert broken["figures"][0]["relations"]
+    broken["figures"][0]["relations"].pop()
+    figure_compiler._compose(
+        broken, figure_compiler.load_ruleset("uspto-letter-2026.1"))
+
+    result = figure_compiler.validate_package(pir, manifest, broken,
+                                               "uspto-letter-2026.1")
+
+    assert "approved_relation_missing" in {issue["code"] for issue in result["issues"]}
+    assert result["approved_for_export"] is False
+
+
+def test_validator_detects_ambiguous_relation_line_crossings():
+    sections = {
+        "drawing_descriptions": "FIG. 1 is a network diagram of the controller.",
+        "detailed_description": (
+            "A controller 10 is connected to a sensor 12. "
+            "A battery 14 is connected to an alarm 16."
+        ),
+        "claims": "1. A controller system comprising a sensor, a battery, and an alarm.",
+    }
+    numerals = [
+        {"numeral": "10", "part": "controller"},
+        {"numeral": "12", "part": "sensor"},
+        {"numeral": "14", "part": "battery"},
+        {"numeral": "16", "part": "alarm"},
+    ]
+    figures = [{"label": "FIG. 1", "caption": "network diagram of the controller",
+                "numerals": ["10 controller", "12 sensor", "14 battery", "16 alarm"]}]
+    pir = approved(figure_compiler.build_pir(sections, numerals, figures), "canonical_model")
+    manifest = approved(figure_compiler.plan_manifest(pir, figures))
+    package = figure_compiler.compile_package(pir, manifest, "uspto-letter-2026.1")
+    nodes = {node["reference"]: node for node in package["figures"][0]["entities"]}
+    first, second = nodes["12"], nodes["16"]
+    crossed = figure_compiler.apply_typed_patch(package, {
+        "type": "move_entity", "figure_id": "figure-1", "reference": "12",
+        "x": second["x"], "y": second["y"],
+    })
+    crossed = figure_compiler.apply_typed_patch(crossed, {
+        "type": "move_entity", "figure_id": "figure-1", "reference": "16",
+        "x": first["x"], "y": first["y"],
+    })
+
+    result = figure_compiler.validate_package(pir, manifest, crossed,
+                                               "uspto-letter-2026.1")
+
+    assert "relation_line_crossing" in {issue["code"] for issue in result["issues"]}
+    assert result["approved_for_export"] is False
+
+
+def test_validator_detects_overlapping_reference_labels():
+    pir, manifest, package = compiled_fixture()
+    first, second = package["figures"][0]["labels"][:2]
+    collided = figure_compiler.apply_typed_patch(package, {
+        "type": "move_label", "figure_id": "figure-1", "reference": second["reference"],
+        "x": first["x"], "y": first["y"],
+    })
+
+    result = figure_compiler.validate_package(pir, manifest, collided,
+                                               "uspto-letter-2026.1")
+
+    assert "label_collision" in {issue["code"] for issue in result["issues"]}
+    assert result["approved_for_export"] is False
+
+
 def test_validator_rejects_payload_drift_even_when_rendered_svg_is_unchanged():
     pir, manifest, package = compiled_fixture()
     broken = deepcopy(package)
@@ -194,6 +280,32 @@ def test_validator_rejects_payload_drift_even_when_rendered_svg_is_unchanged():
 
     assert "package_content_hash_mismatch" in {issue["code"] for issue in result["issues"]}
     assert result["approved_for_export"] is False
+
+
+def test_mechanical_previews_are_blocked_until_supported_geometry_is_supplied():
+    pir, manifest, package = compiled_fixture()
+
+    result = figure_compiler.validate_package(pir, manifest, package,
+                                               "uspto-letter-2026.1")
+    unresolved = [issue for issue in result["issues"]
+                  if issue["code"] == "unresolved_mechanical_geometry"]
+
+    assert {issue["figure_id"] for issue in unresolved} == {"figure-1", "figure-2"}
+    assert result["approved_for_export"] is False
+
+
+def test_axis_graph_is_routed_to_the_supported_graph_renderer():
+    raw_pir = figure_compiler.build_pir(SECTIONS, NUMERALS, [{
+        "label": "FIG. 4", "caption": "two-axis graph of vacuum level over time",
+        "numerals": ["14 body", "20 passage"],
+    }])
+    manifest = figure_compiler.plan_manifest(raw_pir, [{
+        "label": "FIG. 4", "caption": "two-axis graph of vacuum level over time",
+        "numerals": ["14 body", "20 passage"],
+    }])
+
+    assert manifest["figures"][0]["view_type"] == "graph"
+    assert manifest["figures"][0]["renderer"] == "graph"
 
 
 def test_validator_blocks_unsupported_visible_objects_and_bidirectional_numeral_drift():

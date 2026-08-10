@@ -1007,10 +1007,10 @@
     return `<section class="compilercard"><div class="compilerh"><div><h3>Figure manifest</h3>
       <p>The smallest proposed set. Approving fixes what may be rendered.</p></div>
       <span class="compilerflag ${manifest.approval ? 'good' : ''}">${manifest.approval ? 'approved' : 'review'}</span></div>
-      <div class="manifestgrid">${(manifest.figures || []).map((figure) => `<article>
-        <b>${esc(figure.label)}</b><span>${esc(figure.caption)}</span>
-        <small>${esc(figure.view_type)} · ${(figure.entity_ids || []).length} objects ·
-        ${(figure.relation_ids || []).length} relations</small></article>`).join('')}</div></section>`;
+      <div class="manifestgrid">${(manifest.figures || []).map((figure) => `<details class="manifestitem">
+        <summary><b>${esc(figure.label)}</b><small>${esc(figure.view_type)} ·
+          ${(figure.entity_ids || []).length} objects · ${(figure.relation_ids || []).length} relations</small></summary>
+        <p>${esc(figure.caption)}</p></details>`).join('')}</div></section>`;
   }
 
   function compilerSvgUrl(svg) {

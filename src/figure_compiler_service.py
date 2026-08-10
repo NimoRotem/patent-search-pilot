@@ -259,7 +259,16 @@ class FigureCompilerService:
 
     def state(self, principal: drafting.Principal, project_id: int) -> dict[str, Any]:
         self._project(principal, project_id)
-        return self._state_for_run(self.repository.latest_run(project_id))
+        run = self.repository.latest_run(project_id)
+        state = self._state_for_run(run)
+        package = state.get("package") or {}
+        validation = state.get("validation") or {}
+        if (run and package and not package.get("approval") and state.get("pir") and
+                state.get("manifest") and
+                validation.get("validator_version") != figure_compiler.VALIDATOR_VERSION):
+            state["validation"] = figure_compiler.validate_package(
+                state["pir"], state["manifest"], package, str(run["ruleset"]))
+        return state
 
     def start(self, principal: drafting.Principal, project_id: int, *,
               version_no: Optional[int] = None,

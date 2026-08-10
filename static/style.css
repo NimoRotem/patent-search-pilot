@@ -1437,8 +1437,11 @@ details.draftpanel>summary{list-style:none;cursor:pointer;margin:-19px;padding:1
 .compilerdetails summary{cursor:pointer;font-weight:600;color:var(--muted)}
 .coverrow{display:flex;justify-content:space-between;gap:10px;padding:5px 1px;border-bottom:1px solid var(--line);font-size:10.5px}
 .coverrow code{color:var(--faint)}.manifestgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:7px}
-.manifestgrid article{display:flex;flex-direction:column;gap:3px;padding:9px;background:#fff;border:1px solid var(--line);border-radius:3px;font-size:11.5px}
-.manifestgrid article small{font-size:10px;color:var(--faint)}
+.manifestitem{padding:9px;background:#fff;border:1px solid var(--line);border-radius:3px;font-size:11.5px}
+.manifestitem summary{cursor:pointer}.manifestitem summary::marker{color:var(--faint)}
+.manifestitem summary b,.manifestitem summary small{display:block;margin-left:3px}
+.manifestitem small{font-size:10px;color:var(--faint)}.manifestitem p{max-height:180px;overflow:auto;margin:9px 0 0;
+  padding-top:8px;border-top:1px solid var(--line);color:var(--muted);font-size:10.5px;line-height:1.5;white-space:pre-wrap}
 .compilersheet{margin:10px 0;border:1px solid var(--line);background:#fff}.compilersheetbar{display:flex;gap:9px;align-items:center;
   padding:6px 8px;border-bottom:1px solid var(--line);font-size:10.5px;color:var(--faint)}
 .compilersheetbar a{margin-left:auto}.compilersvg{max-height:520px;overflow:auto;padding:8px;background:#e8e8e5;text-align:center}

@@ -10,12 +10,14 @@ The MVP compiles graph, flow, network, control, and basic relationship schematic
 already exist in an immutable draft version. It also produces simple component schematics for a
 human to review. Exact physical contours and unrestricted text-to-CAD are intentionally outside
 this vertical slice; those need supplied geometry, CAD, or an approved tracing workflow rather
-than inferred shapes.
+than inferred shapes. A physical elevation, section, or exploded-view relationship preview is
+therefore marked `unresolved_mechanical_geometry` and cannot pass final approval or export.
 
 Every visible entity, relation, reference sign, and leader retains its source-span IDs. An
 unsupported visible object, an unresolved material reference conflict, an uncovered drawable
 claim limitation, a text/drawing numeral mismatch, a semantic-render mismatch, or content outside
-the usable sheet surface blocks final approval and export.
+the usable sheet surface blocks final approval and export. The formal/semantic pass also rejects
+unsupported connections, ambiguous connection crossings, crossed leaders, and numeral collisions.
 
 ## Workflow
 

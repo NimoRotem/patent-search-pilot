@@ -141,4 +141,5 @@ def test_studio_has_hash_routed_compiler_pane_and_no_page_navigation():
     assert "move_entity" in script
     assert "reroute_leader" in script
     assert "delete_visible_entity" in script
+    assert 'class="manifestitem"' in script
     assert '<div class="compilersvg">${sheet.svg}</div>' not in script

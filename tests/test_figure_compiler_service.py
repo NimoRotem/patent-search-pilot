@@ -249,3 +249,27 @@ def test_approved_run_cannot_be_regressed_or_edited_by_direct_api_calls():
 
     assert compiler.export(principal, 7, "svg").startswith(b"<svg")
     assert compiler.export(principal, 7, "pdf").startswith(b"%PDF-")
+
+
+def test_state_recomputes_an_unapproved_package_when_validator_version_changes(monkeypatch):
+    compiler, _drafts, repository = service()
+    principal = drafting.Principal(91)
+    compiler.start(principal, 7)
+    compiler.approve_model(principal, 7)
+    compiler.approve_manifest(principal, 7)
+    compiler.compile(principal, 7)
+    report = next(row for row in reversed(repository.artifacts)
+                  if row["artifact_type"] == "validation_report")
+    report["payload"]["validator_version"] = "figure-validator-old"
+    original = figure_compiler.validate_package
+    calls = []
+
+    def observed(*args, **kwargs):
+        calls.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(figure_compiler, "validate_package", observed)
+    current = compiler.state(principal, 7)
+
+    assert calls == [True]
+    assert current["validation"]["validator_version"] == figure_compiler.VALIDATOR_VERSION
