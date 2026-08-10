@@ -44,3 +44,18 @@ def test_search_page_opens_with_a_compact_task_heading():
 
     assert 'class="searchintro"' in search
     assert "Search prior art" in search
+
+
+def test_old_product_name_is_not_left_on_account_pages_or_messages():
+    product_text = "\n".join(
+        path.read_text()
+        for path in [
+            *sorted((ROOT / "templates").glob("*.html")),
+            ROOT / "src" / "auth.py",
+            ROOT / "src" / "notifications.py",
+            ROOT / "src" / "report_archive.py",
+        ]
+    )
+
+    assert "rotemAI patent search" not in product_text
+    assert "rotemAI patent-search" not in product_text

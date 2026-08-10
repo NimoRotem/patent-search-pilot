@@ -127,7 +127,7 @@ def _merge(target: dict, candidate: dict):
 def fetch_google_full_text(pub: str, scrapingbee_key: str = "") -> dict:
     """Return parsed claims/description/abstract, using ScrapingBee only when needed."""
     headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; rotemAI patent research/3.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; Rotem Patents research/3.0)",
         "Accept-Language": "en-US,en;q=0.8",
     }
     result = {"claims": [], "description": [], "abstract": [], "source": ""}

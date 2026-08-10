@@ -490,7 +490,7 @@ def _safe_next(raw):
 # Shown instead of raw JSON when a BROWSER (not a fetch/XHR caller) trips a rate limit.
 _TOOMANY_HTML = """<!doctype html><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>Slow down — rotemAI patent search</title>
+<title>Slow down | Rotem Patents</title>
 <style>
  body{font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1115;color:#e6e8ee;
       display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
