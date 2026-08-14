@@ -1,13 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Drafts — rotemAI patent search{% endblock %}
+{% block title %}Drafts | Rotem Patents{% endblock %}
 {% block body %}
 <div class="wrap draftpage">
   <div class="pagehead draftlibrary-head">
     <div>
       <h1>US patent drafts</h1>
-      <p class="muted">Editable, versioned working applications grounded in your own disclosure and selected search references.</p>
+      <p class="muted">Talk to a drafting agent, watch every iteration get checked, and take a
+        filing-ready package out the other end.</p>
     </div>
-    <a class="btn" href="{{ request.script_root }}/drafts/new">Start from a report</a>
+    <div class="draftlibrary-actions">
+      <a class="btn" href="{{ request.script_root }}/drafts/start">Draft an application</a>
+      <a class="btn ghost sm" href="{{ request.script_root }}/drafts/new">Classic one-shot draft</a>
+    </div>
   </div>
 
   {% if current_is_admin %}
@@ -26,19 +30,21 @@
           <span class="statuspill status-{{ d.status }}">{{ d.status }}</span>
           <span class="small muted">version {{ d.latest_version_no or 0 }} · {{ d.reference_count or 0 }} sources</span>
         </div>
-        <h2><a href="{{ request.script_root }}/drafts/{{ d.id }}">{{ d.title }}</a></h2>
-        <p class="small muted">From report <a href="{{ request.script_root }}/report/{{ d.search_slug }}">{{ d.search_slug }}</a>{% if include_all %} · {{ d.full_name }} · {{ d.email }}{% endif %}</p>
+        <h2><a href="{{ request.script_root }}/drafts/{{ d.id }}/studio">{{ d.title }}</a></h2>
+        <p class="small muted">{% if d.search_slug %}From report <a href="{{ request.script_root }}/report/{{ d.search_slug }}">{{ d.search_slug }}</a>{% else %}No prior-art search attached{% endif %}{% if include_all %} · {{ d.full_name }} · {{ d.email }}{% endif %}</p>
       </div>
-      <a class="btn ghost sm" href="{{ request.script_root }}/drafts/{{ d.id }}">{{ 'Review draft' if d.latest_version_no else 'Continue setup' }}</a>
+      <a class="btn ghost sm" href="{{ request.script_root }}/drafts/{{ d.id }}/studio">{{ 'Open the draft' if d.latest_version_no else 'Open' }}</a>
     </article>
     {% endfor %}
   </div>
   {% else %}
   <section class="panel emptystate">
     <div class="emptyicon" aria-hidden="true">¶</div>
-    <h2>{{ 'No account drafts yet' if include_all else 'Turn a completed search into an application' }}</h2>
-    <p class="muted">Choose a search report, confirm the inventor disclosure, select the most useful references, then generate a structured US utility application working draft.</p>
-    <a class="btn" href="{{ request.script_root }}/drafts/new">Choose a search report</a>
+    <h2>{{ 'No account drafts yet' if include_all else 'Write the application' }}</h2>
+    <p class="muted">Describe your invention, or hand over a draft you already have. The agent
+      reads whatever prior art you attach, writes the application around it, and a separate
+      reviewer checks the numerals, the claims and every citation after each iteration.</p>
+    <a class="btn" href="{{ request.script_root }}/drafts/start">Draft an application</a>
   </section>
   {% endif %}
 </div>

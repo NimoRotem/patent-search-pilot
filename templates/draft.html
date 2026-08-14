@@ -1,10 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ project.title }} — US patent draft{% endblock %}
+{% block title %}{{ project.title }} | Rotem Patents draft{% endblock %}
 {% block body %}
 <div class="wrap draftpage" data-draft-id="{{ project.id }}" data-draft-status="{{ project.status }}">
   <div class="drafthead">
     <div>
-      <div class="draftcrumb"><a href="{{ request.script_root }}/drafts">Drafts</a> / {{ project.id }}</div>
+      <div class="draftcrumb"><a href="{{ request.script_root }}/drafts">Drafts</a> / {{ project.id }}
+        · <a href="{{ request.script_root }}/drafts/{{ project.id }}/studio">drafting conversation ↗</a></div>
       <h1>{{ project.title }}</h1>
       <div class="draftmeta">
         <span class="statuspill status-{{ project.status }}" id="draftStatus">{{ project.status }}</span>

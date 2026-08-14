@@ -161,7 +161,14 @@ def test_build_figures_only(monkeypatch):
                   label="scan.pdf", notes=[])
     assert r["ok"] is True
     assert "clamping mechanism" in r["brief"]
-    assert "folded into the query" in r["brief"].lower()
+    #  What the drawings show still reaches the query — on a scan with no text layer it is the
+    #  ONLY description of the invention there is. What no longer reaches it is the scaffolding
+    #  the block used to be introduced by: the blurb is a description of the invention, and
+    #  "Drawings (figures analysed and folded into the query text...)" is a note about our
+    #  pipeline. It was 1,700 of one real query's 4,488 characters, it was stripped again before
+    #  embedding, and in between it was what the disclosure extractor and the screener read.
+    assert "folded into the query" not in r["brief"].lower()
+    assert "drawings (figures analysed" not in r["brief"].lower()
     assert r["text_present"] is False and r["figures_present"] is True
     assert len(r["thumbs"]) == 2
 

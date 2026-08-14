@@ -153,11 +153,11 @@ def render(model, out_path):
     _run(p, ", ".join(model["uncovered_elements"]) or "none identified", color=WARN)
 
     # ---- retrieval map (formerly mis-titled "claim chart") ----
-    doc.add_heading(disclosure.CHART_TITLE, level=1)
+    doc.add_heading(disclosure.chart_title(model.get('claim_chart')), level=1)
     tp = doc.add_paragraph()
     _run(tp, disclosure.CHART_TAG.upper(), bold=True, color=WARN, size=9)
     wp = doc.add_paragraph()
-    _run(wp, disclosure.chart_warning(), size=8.5)
+    _run(wp, disclosure.chart_warning(chart=model.get('claim_chart')), size=8.5)
     _claim_chart(doc, model)
 
     # ---- combination ----
@@ -233,8 +233,10 @@ def _claim_chart(doc, model):
                 # which is exactly backwards -- a high retrieval score is not evidence of
                 # disclosure, and printing it in bold green said that it was.
                 mr = para.add_run(word); mr.bold = True; mr.font.size = Pt(8)
-                sr = para.add_run(f"\n{cell.get('score')}")
-                sr.font.size = Pt(7); sr.font.color.rgb = MUTED
+                detail = disclosure.cell_detail(cell, 110)
+                if detail:
+                    sr = para.add_run(f"\n{detail}")
+                    sr.font.size = Pt(7); sr.font.color.rgb = MUTED
                 if cell.get("coord"):
                     cr = para.add_run(f"\n{cell['coord']}")
                     cr.font.size = Pt(6.5); cr.font.color.rgb = MUTED

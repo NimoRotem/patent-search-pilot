@@ -1,0 +1,167 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b08b_ep2172390a1",
+ "subject_pub": "EP-2172390-A1",
+ "n_claims_source": 14,
+ "claims_source": "family_claims:US-8534395-B2",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 23,
+  "by_kind": {
+   "independent_limitation": 7,
+   "combination": 3,
+   "dependent_limitation": 13
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "a central joint connects a first leg to a second leg",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a first foot connects to the first leg via a first foot joint for rotation",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a first foot connects to the first leg via a first foot joint for tilting",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a second foot connects to the second leg via a second foot joint for rotation",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a second foot connects to the second leg via a second foot joint for tilting",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a mounting for an implement is disposed on a first foot",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the first leg and the second leg are offset laterally relative to one another",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A mobile climbing robot comprising a central joint connecting a first leg to a second leg, a first foot connected to the first leg via a first foot joint for rotation and a first foot joint for tilting, a second foot connected to the second",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "a mobile climbing robot for cleaning an object",
+   "kind": "combination",
+   "source": "claim 8",
+   "weight": 0.9
+  },
+  {
+   "text": "A service system having a climbing robot, a supply station for supplying the robot, and a windlass on the object for lowering the supply station and securing the robot.",
+   "kind": "combination",
+   "source": "claim 10",
+   "weight": 0.9
+  },
+  {
+   "text": "the first and/or second foot are equipped with a suction cup",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "the first and/or second foot are equipped with a magnet",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "the first and/or second foot are equipped with a claw",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "the first and/or second foot are equipped with a drilling device",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "drives are provided for moving the legs and feet",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "the drives are electrical or hydraulic drives",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "the implement is a cleaning device",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "the object is a building, bridge, ship, or solar installation",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "the supply station comprises a control unit for controlling the climbing robot",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "the supply station comprises a supply container for cleaning agent",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "the supply station comprises an energy source for the drive of the climbing robot",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "a camera is disposed on the climbing robot",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "a control unit for controlling the climbing robot is included",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "7168e9530717e229"
+}

@@ -31,6 +31,16 @@ DOC_SUBTITLE = "Machine-generated drafting aid — not a prior-art search opinio
 
 CHART_TITLE = "Element × reference retrieval map"
 CHART_TAG = "drafting aid — verify every cell"
+#  The same grid, when its cells come from the full-text READING rather than from retrieval. The
+#  provenance is materially different and an exported document has to say which one it is: a cell
+#  here is a verdict backed by a verbatim quote that was found in the reference, located to a real
+#  passage by code, and put to an independent refuter. Calling that a "retrieval map" understates
+#  it; calling a retrieval map a "reading" would overstate it, which is worse.
+READING_CHART_TITLE = "Element × reference reading map"
+
+
+def chart_title(chart: dict = None) -> str:
+    return (READING_CHART_TITLE if (chart or {}).get("source") == "reading" else CHART_TITLE)
 
 # Verification state -> (mark, label, fill hex, is_coverage).
 # Colour encodes VERIFICATION STATE, never retrieval score. Only a confirmed cell may look like
@@ -61,18 +71,66 @@ def cell_state(cell: dict):
     return CELL_STATES.get(cell.get("verify") or "unchecked", CELL_STATES["unchecked"])
 
 
+#  Reading verdicts, for the same reason CELL_WORDS exists: a filed document must not need a
+#  legend, and reportlab's Helvetica has no glyph for the symbols the web page uses.
+READING_WORDS = {"disclosed": "discloses", "partial": "partial",
+                 "uncertain": "unconfirmed", "absent": "absent"}
+
+
 def cell_word(cell: dict) -> str:
-    """Export-safe verdict word for one chart cell."""
+    """Export-safe verdict word for one chart cell.
+
+    A READING cell carries its own verdict and must be read from that. It used to fall through to
+    `verify`, which for a reading cell is a glyph class, and before that was being overwritten to
+    "no-coord" by the retrieval verifier — so a full-text disclosure with a verbatim quote exported
+    as "no passage", which is the opposite of what the cell says.
+    """
+    if cell.get("verdict") in READING_WORDS:
+        return READING_WORDS[cell["verdict"]]
     return CELL_WORDS.get(cell.get("verify") or "unchecked", "unchecked")
 
 
-def chart_warning(f=None) -> str:
-    """The paragraph that must sit directly under the retrieval map on every surface."""
+def cell_detail(cell: dict, max_chars: int = 150) -> str:
+    """The second line of an exported cell: the EVIDENCE, not a number.
+
+    For a reading cell that is the verbatim quote — which is the whole point of the cell and was
+    being dropped from every export in favour of the model's confidence, printed bare as "1.0"
+    next to the word "no passage". For a retrieval cell it stays the retrieval score, which is all
+    such a cell has.
+    """
+    q = (cell.get("quote") or "").strip()
+    if q:
+        return f'"{q[:max_chars]}…"' if len(q) > max_chars else f'"{q}"'
+    s = cell.get("score")
+    return "" if s is None else str(s)
+
+
+def chart_warning(f=None, chart: dict = None) -> str:
+    """The paragraph that must sit directly under the map on every surface."""
     f = f or corpus_facts.facts()
-    s = ("This grid is NOT a verified claim chart and must not be filed or relied on as one. "
-         "Cells come from semantic retrieval; each cited passage is then checked by a separate "
-         "model pass asked to refute it. A cell is marked 'verified' only if that check "
-         "confirmed the passage teaches the element — and that check is itself imperfect. ")
+    if (chart or {}).get("source") == "reading":
+        #  A different artefact needs a different warning. This one is still a drafting aid, but
+        #  saying its cells "come from semantic retrieval" would misdescribe the evidence in a
+        #  document that gets filed or emailed to a client.
+        s = ("This grid is NOT a verified claim chart and must not be filed or relied on as one. "
+             "Each cell is a model's reading of the reference's full text: it had to quote the "
+             "reference verbatim, the quote had to be found in that text, the passage it came "
+             "from was resolved by code rather than named by the model, and every 'discloses' was "
+             "put to a second model asked to refute it — a cell that did not survive reads "
+             "'unconfirmed'. All three gates are imperfect and none of them is claim "
+             "construction. ")
+    else:
+        s = ("This grid is NOT a verified claim chart and must not be filed or relied on as one. "
+             "Cells come from semantic retrieval; each cited passage is then checked by a separate "
+             "model pass asked to refute it. A cell is marked 'verified' only if that check "
+             "confirmed the passage teaches the element — and that check is itself imperfect. ")
+    #  The audited error rates below were measured on the RETRIEVAL map's verification pass. They
+    #  are not a measurement of the reading, and quoting them under a reading map would be citing
+    #  a number for a thing it was not measured on — which is the failure this whole module exists
+    #  to prevent, pointed the other way.
+    if (chart or {}).get("source") == "reading":
+        return s + ("The error rate of this reading has not been separately audited; assume "
+                    "residual error and open each cited reference before using any cell.")
     if f.get("chart_fp_pre_pct") is not None:
         s += (f"In an audit of this feature {f['chart_fp_pre_pct']}% of {f['chart_fp_pre_n']} cells "
               f"asserting coverage were wrong before the verification pass existed. ")
@@ -93,6 +151,15 @@ def legend_lines(chart: dict):
     """[(mark, count, label)] for the verification legend, in a fixed order, omitting empty
     states so a clean report does not carry five zeroes."""
     vs = (chart or {}).get("verification") or {}
+    reading = (chart or {}).get("source") == "reading"
+    #  The glyph classes are shared between the two charts but their MEANING is not: on a reading
+    #  map "weak" is the model's own "partial" verdict and "unchecked" is a "discloses" the refuter
+    #  would not confirm, neither of which is "the verifier was unavailable".
+    reading_gloss = {
+        "discloses": "the reference's own words teach this, and the refuter confirmed it",
+        "weak": "partial — related but incomplete, narrower, or a different mechanism",
+        "unchecked": "unconfirmed — quoted and located, but the refuter would not confirm it",
+    }
     out = []
     for k in CELL_ORDER:
         n = vs.get(k) or 0
@@ -102,7 +169,12 @@ def legend_lines(chart: dict):
             #  and the count line prints that word itself, so keep only the explanatory half:
             #  otherwise the legend reads "3 verified — verified — passage checked ...".
             gloss = label.split("—", 1)[1].strip() if "—" in label else label
-            out.append((CELL_WORDS[k], n, gloss))
+            word = CELL_WORDS[k]
+            if reading:
+                gloss = reading_gloss.get(k, gloss)
+                word = {"discloses": "discloses", "weak": "partial",
+                        "unchecked": "unconfirmed"}.get(k, word)
+            out.append((word, n, gloss))
     return out
 
 

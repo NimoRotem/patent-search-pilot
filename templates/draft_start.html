@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block title %}Draft a patent application | Rotem Patents{% endblock %}
+{% block body %}
+<div class="wrap startpage">
+  <h1>Draft a patent application</h1>
+  <p class="lede">Describe your invention, or hand over a draft you already have. A drafting agent
+    writes the application, you talk to it about what to change, and every iteration is checked for
+    consistency before you see it.</p>
+
+  {% if error %}<div class="formerror" role="alert">{{ error }}</div>{% endif %}
+  {% if not agent.ok %}
+  <div class="formerror" role="alert"><b>The drafting agent is not available on this server.</b>
+    {{ agent.reason }} You can still create the project; drafting will start once it is configured.</div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" class="startform" id="startform">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="search_slug" value="{{ search_slug or '' }}">
+    <input type="hidden" name="input_kind" id="inputKind" value="{{ values.input_kind or 'description' }}">
+
+    <section class="panel startpanel">
+      <h2>1 · Where you are starting from</h2>
+      <div class="startchoice" role="tablist">
+        <button type="button" class="startopt on" data-kind="description" role="tab">
+          <b>An invention to describe</b>
+          <span>Write what it is and how it works, in your own words. The agent turns it into an
+            application.</span>
+        </button>
+        <button type="button" class="startopt" data-kind="existing_draft" role="tab">
+          <b>A draft I already have</b>
+          <span>Upload or paste it. The agent keeps your subject matter and improves the drafting
+            around it.</span>
+        </button>
+      </div>
+
+      <label for="disclosure" id="disclosureLabel">Describe the invention</label>
+      <p class="small muted" id="disclosureHelp">Everything the draft claims has to come from here
+        or from what you tell the agent later. Cover what it is, what problem it solves, how it
+        works, the parts and how they relate, and any variants that matter. Detail is worth more
+        than polish.</p>
+      <textarea id="disclosure" name="disclosure_text" rows="14" maxlength="240000"
+        required placeholder="A handheld vacuum lifting tool for moving glass panels. A battery-powered pump draws air through a channel in the handle…">{{ values.disclosure_text or '' }}</textarea>
+
+      <div class="startupload" id="sourceUpload" hidden>
+        <label for="sourceDoc">…or upload the draft as a file</label>
+        <input type="file" id="sourceDoc" name="source_document" accept=".pdf,.docx,.txt">
+        <span class="small muted">PDF, Word or plain text. A file replaces whatever is in the box
+          above.</span>
+      </div>
+    </section>
+
+    <section class="panel startpanel">
+      <h2>2 · Prior art <span class="opt">optional</span></h2>
+      <p class="small muted">The draft is better with it — the agent reads each reference and
+        writes claims that step around what it actually teaches. Without any, the draft is written
+        from your description alone and says so.</p>
+
+      {% if choices %}
+      <label for="slugpick">Use a prior-art search you have already run</label>
+      <select id="slugpick" name="pick_slug">
+        <option value="">— none —</option>
+        {% for choice in choices %}
+        <option value="{{ choice.slug }}"{% if choice.slug == search_slug %} selected{% endif %}>
+          {{ choice.title or choice.query[:80] }} · {{ choice.mode }}</option>
+        {% endfor %}
+      </select>
+      {% else %}
+      <p class="small muted">You have no completed searches yet.
+        <a href="{{ request.script_root }}/">Run one</a> and come back, or add references below.</p>
+      {% endif %}
+
+      {% if report_view and report_view.cards %}
+      <div class="startrefs">
+        <b class="small">References from {{ search_slug }} — tick the ones the draft should work
+          around</b>
+        <div class="draftrefs compact">
+          {% for card in report_view.cards[:40] %}
+          <label class="draftref">
+            <input type="checkbox" name="pubs" value="{{ card.pub }}"{% if card.pub in selected %} checked{% endif %}>
+            <span class="draftref-rank">#{{ card.rank }}</span>
+            <span><b>{{ card.pub }}</b> · {{ card.title or '(untitled)' }}
+              <small>{{ (card.get('relevancy_opinion') or (card.abstract or ''))[:150] }}</small></span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <label for="priorart">Upload prior art</label>
+      <input type="file" id="priorart" name="files" accept=".pdf,.docx,.txt" multiple>
+      <span class="small muted">Patents, papers, product manuals — anything the draft must take
+        account of. You can add more at any point in the conversation.</span>
+    </section>
+
+    <section class="panel startpanel">
+      <h2>3 · Who is filing <span class="opt">optional now, required to file</span></h2>
+      <div class="startgrid">
+        <div>
+          <label for="title">Working title</label>
+          <input type="text" id="title" name="title" maxlength="240" value="{{ values.title or '' }}"
+                 placeholder="Left blank, the agent proposes one">
+        </div>
+        <div>
+          <label for="applicant">Applicant or assignee</label>
+          <input type="text" id="applicant" name="applicant" maxlength="300"
+                 value="{{ values.applicant or current_user.default_applicant or '' }}">
+        </div>
+      </div>
+      <label for="inventors">Named inventors, one per line</label>
+      <textarea id="inventors" name="inventors" rows="3" maxlength="2000">{{ values.inventors or current_user.default_inventors or '' }}</textarea>
+
+      <fieldset class="startfieldset">
+        <legend>Priority claim</legend>
+        <label class="radio"><input type="radio" name="priority_status" value="unknown"
+          {% if (values.priority_status or 'unknown') == 'unknown' %}checked{% endif %}>
+          Not confirmed yet</label>
+        <label class="radio"><input type="radio" name="priority_status" value="none"
+          {% if values.priority_status == 'none' %}checked{% endif %}> No priority claim</label>
+        <label class="radio"><input type="radio" name="priority_status" value="claim"
+          {% if values.priority_status == 'claim' %}checked{% endif %}> Claim priority</label>
+        <input type="text" name="priority_details" maxlength="1000"
+          value="{{ values.priority_details or '' }}"
+          placeholder="Application number, country, and filing date if known">
+      </fieldset>
+
+      <fieldset class="startfieldset">
+        <legend>Government support</legend>
+        <label class="radio"><input type="radio" name="government_support" value="unknown"
+          {% if (values.government_support or 'unknown') == 'unknown' %}checked{% endif %}>
+          Not confirmed yet</label>
+        <label class="radio"><input type="radio" name="government_support" value="none"
+          {% if values.government_support == 'none' %}checked{% endif %}> None</label>
+        <label class="radio"><input type="radio" name="government_support" value="yes"
+          {% if values.government_support == 'yes' %}checked{% endif %}> Yes</label>
+        <input type="text" name="government_support_details" maxlength="1000"
+          value="{{ values.government_support_details or '' }}"
+          placeholder="Agency, award, or contract number if known">
+      </fieldset>
+
+      <fieldset class="startfieldset">
+        <legend>Claim approach</legend>
+        <div class="startgrid">
+          <div>
+            <label for="claimStrategy">Scope strategy</label>
+            <select id="claimStrategy" name="claim_strategy">
+              <option value="balanced"{% if (values.claim_strategy or 'balanced') == 'balanced' %} selected{% endif %}>Balanced with fallback claims</option>
+              <option value="broad"{% if values.claim_strategy == 'broad' %} selected{% endif %}>Broadest supported claim first</option>
+              <option value="conservative"{% if values.claim_strategy == 'conservative' %} selected{% endif %}>Conservative written support</option>
+            </select>
+          </div>
+          <div>
+            <label for="meansFunction">Means-plus-function language</label>
+            <select id="meansFunction" name="means_plus_function">
+              <option value="avoid"{% if (values.means_plus_function or 'avoid') == 'avoid' %} selected{% endif %}>Avoid unless requested later</option>
+              <option value="allow"{% if values.means_plus_function == 'allow' %} selected{% endif %}>Allow where useful</option>
+            </select>
+          </div>
+        </div>
+        <span class="fieldlabel">Claim classes to include when supported</span>
+        {% set chosen_claim_types = values.get('claim_types') or ['apparatus', 'method'] %}
+        <div class="checkrow">
+          <label class="radio"><input type="checkbox" name="claim_types" value="apparatus"
+            {% if 'apparatus' in chosen_claim_types %}checked{% endif %}> Apparatus</label>
+          <label class="radio"><input type="checkbox" name="claim_types" value="method"
+            {% if 'method' in chosen_claim_types %}checked{% endif %}> Method</label>
+          <label class="radio"><input type="checkbox" name="claim_types" value="system"
+            {% if 'system' in chosen_claim_types %}checked{% endif %}> System</label>
+        </div>
+      </fieldset>
+
+      <div class="startgrid">
+        <div>
+          <label for="protectedTerms">Terminology that must stay consistent</label>
+          <input type="text" id="protectedTerms" name="protected_terms" maxlength="2000"
+            value="{{ values.protected_terms or '' }}" placeholder="Exact product or component terms">
+        </div>
+        <div>
+          <label for="filingDeadline">Target filing date</label>
+          <input type="date" id="filingDeadline" name="filing_deadline"
+            value="{{ values.filing_deadline or '' }}">
+        </div>
+      </div>
+    </section>
+
+    <div class="startactions">
+      <button class="btn big" type="submit">Start drafting</button>
+      <span class="small muted">The first draft takes a few minutes. You can leave the page.</span>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const kind = document.getElementById('inputKind');
+  const label = document.getElementById('disclosureLabel');
+  const help = document.getElementById('disclosureHelp');
+  const upload = document.getElementById('sourceUpload');
+  const area = document.getElementById('disclosure');
+  const COPY = {
+    description: ['Describe the invention',
+      'Everything the draft claims has to come from here or from what you tell the agent later. ' +
+      'Cover what it is, what problem it solves, how it works, the parts and how they relate, and ' +
+      'any variants that matter. Detail is worth more than polish.',
+      'A handheld vacuum lifting tool for moving glass panels. A battery-powered pump draws air ' +
+      'through a channel in the handle…'],
+    existing_draft: ['Paste your draft',
+      'Paste the whole document — title, background, summary, detailed description and claims. ' +
+      'It is split on its headings to start with, and the agent fixes anything that lands in the ' +
+      'wrong place.',
+      'TITLE OF THE INVENTION\n\nVacuum Lifting Tool\n\nBACKGROUND\n…']
+  };
+  document.querySelectorAll('.startopt').forEach(button => button.addEventListener('click', () => {
+    document.querySelectorAll('.startopt').forEach(b => b.classList.toggle('on', b === button));
+    const which = button.dataset.kind;
+    kind.value = which;
+    const [labelText, helpText, placeholder] = COPY[which];
+    label.textContent = labelText;
+    help.textContent = helpText;
+    area.placeholder = placeholder;
+    upload.hidden = which !== 'existing_draft';
+  }));
+  const picker = document.getElementById('slugpick');
+  if (picker) picker.addEventListener('change', () => {
+    const url = new URL(window.location.href);
+    if (picker.value) url.searchParams.set('search_slug', picker.value);
+    else url.searchParams.delete('search_slug');
+    window.location.href = url.toString();
+  });
+  //  A first draft is minutes of work started by one click; a double submit would queue two.
+  const form = document.getElementById('startform');
+  form.addEventListener('submit', () => {
+    const button = form.querySelector('button[type=submit]');
+    button.disabled = true;
+    button.textContent = 'Setting up…';
+  });
+})();
+</script>
+{% endblock %}

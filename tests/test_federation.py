@@ -269,6 +269,20 @@ def test_source_status_shape_is_render_ready():
         assert {"id", "name", "label", "state", "n", "note"} <= set(e)
 
 
+def test_source_tracker_shows_a_successful_serpapi_handoff_as_degraded_not_failed():
+    t = F.SourceTracker()
+    t.feed({"kind": "start", "available": ["serpapi_gpatents"], "disabled": {}})
+    t.feed({"kind": "source_fallback", "from_source": "serpapi_gpatents",
+            "provider": "scrapingbee_patents", "hits": 9,
+            "reason": "HTTP 429: monthly quota exhausted"})
+    t.feed({"kind": "fanout", "by_source": {"scrapingbee_patents": 9}})
+    by = {e["id"]: e for e in t.snapshot()}
+
+    assert by["serpapi_gpatents"]["state"] == "degraded"
+    assert by["scrapingbee_patents"]["state"] == "used"
+    assert "fallback" in by["serpapi_gpatents"]["reason"].lower()
+
+
 def test_unknown_source_gets_a_label_automatically():
     """A newly activated adapter must appear in the tag row with no change here."""
     t = F.SourceTracker()

@@ -14,15 +14,14 @@ USER = {"id": 71, "email": "analyst@example.test", "full_name": "Patent Analyst"
 
 @pytest.fixture()
 def account_client(monkeypatch):
-    webapp.app.config.update(TESTING=True, FORCE_AUTH=True, FORCE_ACCOUNTS=True,
-                             APP_PASSWORD="legacy-admin-password")
+    webapp.app.config.update(TESTING=True, FORCE_AUTH=True, FORCE_ACCOUNTS=True)
     monkeypatch.setattr(auth, "TRUST_LOOPBACK", False)
     monkeypatch.setattr(accounts, "get_user", lambda uid: dict(USER) if int(uid) == USER["id"] else None)
     auth.reset_limits()
     try:
         yield webapp.app.test_client()
     finally:
-        for key in ("FORCE_AUTH", "FORCE_ACCOUNTS", "APP_PASSWORD"):
+        for key in ("FORCE_AUTH", "FORCE_ACCOUNTS"):
             webapp.app.config.pop(key, None)
         auth.reset_limits()
 
@@ -57,6 +56,12 @@ def test_named_login_and_account_navigation(account_client, monkeypatch):
     assert home.status_code == 200
     body = home.get_data(as_text=True)
     assert "Patent Analyst" in body and "/account" in body and "/logout" in body
+    assert "analyst@example.test" in body
+    assert 'aria-label="Primary navigation"' in body
+    assert re.search(r'href="/drafts"[^>]*>\s*Drafting\s*</a>', body)
+    assert re.search(r'href="/account"[^>]*class="accountnav"[^>]*>.*?'
+                     r'<span class="accountemail">analyst@example\.test</span>', body, re.S)
+    assert re.search(r'href="/"[^>]*aria-current="page"[^>]*>\s*Search\s*</a>', body)
     assert 'name="search_focus"' in body and 'value="claims"' in body
     assert 'name="notify_email"' in body
 
@@ -77,14 +82,70 @@ def test_inline_reauthentication_mints_new_csrf_and_named_session(account_client
         assert session["csrf_token"] == payload["csrf_token"]
 
 
-def test_legacy_login_is_an_admin_bootstrap(account_client, monkeypatch):
-    monkeypatch.setattr(accounts, "list_users", list)
-    monkeypatch.setattr(accounts, "mail_stats", dict)
+def test_account_mode_rejects_shared_admin_password_and_old_session(account_client):
+    """A password-only session has no owner and therefore cannot be an account administrator.
+
+    This is the production bug that made Drafting bounce an apparently signed-in administrator
+    back to login.  Account mode must accept named users only, including after an old signed cookie
+    containing ``session.auth`` is presented.
+    """
     response = account_client.post("/login", data={"password": "legacy-admin-password"})
-    assert response.status_code == 302
-    admin = account_client.get("/admin/users")
-    assert admin.status_code == 200
-    assert "User administration" in admin.get_data(as_text=True)
+    assert response.status_code == 401
+    assert "Email or password is incorrect" in response.get_data(as_text=True)
+    with account_client.session_transaction() as session:
+        assert session.get("auth") is not True
+        session.clear()
+        session["auth"] = True
+    admin = account_client.get("/admin/users", follow_redirects=False)
+    assert admin.status_code == 302 and "/login" in admin.headers["Location"]
+
+    login = account_client.get("/login").get_data(as_text=True)
+    assert "Shared administrator" not in login
+    assert "admin-password" not in login
+
+
+def test_named_administrator_has_identity_and_direct_drafting_access(account_client, monkeypatch):
+    administrator = {**USER, "is_admin": True, "email": "owner@example.test",
+                     "full_name": "Named Owner"}
+    monkeypatch.setattr(accounts, "authenticate", lambda email, password: dict(administrator))
+    monkeypatch.setattr(accounts, "get_user",
+                        lambda uid: dict(administrator) if int(uid) == USER["id"] else None)
+    assert account_client.post("/login", data={"email": administrator["email"],
+                                                "password": "owner-password"}).status_code == 302
+    body = account_client.get("/").get_data(as_text=True)
+    header = re.search(r"<header.*?</header>", body, re.S).group(0)
+    footer = re.search(r"<footer.*?</footer>", body, re.S).group(0)
+    assert re.search(r'href="/drafts"[^>]*>\s*Drafting\s*</a>', header)
+    assert "Named Owner" in header and "owner@example.test" in header
+    assert 'href="/admin/users"' in header
+    assert "Shared admin" not in body and "Shared administrator" not in body
+    assert "Create account" not in footer and "Sign in" not in footer
+
+
+def test_administrator_user_rows_include_email_confirmation_state(monkeypatch):
+    class Cursor:
+        sql = ""
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def execute(self, sql, params=None):
+            self.sql = sql
+
+        def fetchall(self):
+            return [{"id": 4, "email_verified_at": "verified"}]
+
+    cursor = Cursor()
+    monkeypatch.setattr(accounts, "ensure_schema", lambda: None)
+    monkeypatch.setattr(accounts.db, "cursor", lambda: cursor)
+
+    rows = accounts.list_users()
+
+    assert rows[0]["email_verified_at"] == "verified"
+    assert "u.email_verified_at" in cursor.sql
 
 
 def test_saved_report_toggle_requires_csrf(account_client, monkeypatch):

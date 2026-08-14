@@ -52,11 +52,14 @@ import os
 import re
 import threading
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 import db
+import coverage_rank
 import deep_analysis
 import llm
+import oracle
 
 VERSION = 1
 
@@ -86,7 +89,7 @@ SCREEN_WORKERS = int(os.environ.get("DEEP_RANK_SCREEN_WORKERS", "6"))
 #  minutes. Raised from 150 because the screen now looks at 2,500 rather than 600 candidates: on a
 #  real examiner citation list, seven cited families were screened at 60-80 and then never read,
 #  because the top-150 cut landed in the high 80s.
-CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "300"))
+CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "360"))
 #  A THRESHOLD, not only a slice. "Worth reading" is a judgement the screen already made on a
 #  0-100 scale, so a fixed top-N throws away its answer and substitutes an arbitrary cut: measured,
 #  the top-300 cut landed at a screen score of 75-80, and cited references the screen had rated 70
@@ -96,9 +99,18 @@ CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "300"))
 #  made the 50-card cut harder, and cited references that had been on the page at chart rank 30-47
 #  fell to 54-184. The read set is a shortlist for a fixed-size page, so widening it past what the
 #  page can show trades visible recall for invisible reading.
-CHART_MIN_SCREEN = int(os.environ.get("DEEP_RANK_CHART_MIN_SCREEN", "75"))
-CHART_TOP_MAX = int(os.environ.get("DEEP_RANK_CHART_TOP_MAX", "350"))
-CHART_WORKERS = int(os.environ.get("DEEP_RANK_CHART_WORKERS", "18"))
+#  Lowered 75 -> 70: the paragraph above records that "cited references the screen had rated 70
+#  were never read", and 70 is precisely where the old threshold sat. Read them.
+CHART_MIN_SCREEN = int(os.environ.get("DEEP_RANK_CHART_MIN_SCREEN", "70"))
+#  Raised 350 -> 420, AND `_DISPLAY_TOP` was raised with it (webapp), because the measurement
+#  above is specifically that widening the read set while the PAGE stays a fixed size trades
+#  visible recall for invisible reading. The two have to move together or not at all. This also
+#  widens the on-demand full-text recovery, which is bounded by exactly this number: a reference
+#  the pipeline was never going to read is one it never fetches text for.
+CHART_TOP_MAX = int(os.environ.get("DEEP_RANK_CHART_TOP_MAX", "420"))
+#  Raised 18 -> 24 to pay for the extra feature batch per reference (deep_analysis.FEATURE_BATCH).
+#  The stage is bound by Vertex round-trips, not by this box's four cores.
+CHART_WORKERS = int(os.environ.get("DEEP_RANK_CHART_WORKERS", "24"))
 
 #  Always read the head of the RETRIEVAL order regardless of what the screen thought, so a screen
 #  miss can never cost a reference the old pipeline would have shown. This is not paranoia: the
@@ -154,6 +166,12 @@ DEPTH_FULL_CHARS = int(os.environ.get("DEEP_RANK_DEPTH_FULL", "60000"))
 COVERAGE_WEIGHT = float(os.environ.get("DEEP_RANK_COVERAGE_WEIGHT", "0.55"))
 #  How the weight coverage gives up is split between the reader's verdict and the screen.
 OVERALL_SHARE = float(os.environ.get("DEEP_RANK_OVERALL_SHARE", "0.60"))
+#  How much of its score a reference keeps when nothing could be read of it. 1.0 would ignore
+#  depth entirely; 0 would rank an abstract-only record at zero however apt it is. Swept over both
+#  benchmark subjects at 0.30 / 0.45 / 0.60 / 0.75 against the sum of the cited references' ranks:
+#  0.75 was best (576, against 836 for the old depth-reweighting), and it is also the gentlest,
+#  which matters because a large share of the art examiners cite is abstract-only here.
+DEPTH_CONFIDENCE_FLOOR = float(os.environ.get("DEEP_RANK_DEPTH_FLOOR", "0.75"))
 #  A reference charted against the uploaded patent's own claims gets that counted too, at a
 #  discount: a claim is a conjunction of limitations, so a "partial" there is weaker evidence
 #  about the whole reference than a "partial" on a single feature.
@@ -172,6 +190,21 @@ _CLAIM_WEIGHT = 0.75
 #  Two incomparable things were being sorted into one list. They are now two lists. The cap
 #  survives only as the ceiling on what a card may DISPLAY, so a screen score is never presented
 #  as if it were evidence.
+#  Disclosures charted per reference. The old cap was deep_analysis.MAX_FEATURES=20, sized for
+#  a 12-item element summary; a real disclosure list runs to 60+ and the checklist is the
+#  point, so this is its own number. Each one lengthens every chart prompt, so it is a real
+#  cost and not free to raise.
+#  Raised 40 -> 48 only once the truncation below it was fixed. Until then the extra items were
+#  worse than useless: deep_analysis charted the first 20 and rarity() still counted every one of
+#  them in the denominator, so raising the cap lowered every score and reported the difference as
+#  "nothing discloses this".
+DISCLOSURE_CAP = int(os.environ.get("DEEP_RANK_DISCLOSURE_CAP", "48"))
+#  How many of the read references get the SECOND, concept-led look at the features their first
+#  reading returned nothing for (deep_analysis.reread_absent). Bounded to the head because it is
+#  one extra model call per reference and only the head is displayed, charted and argued from.
+CONCEPT_PASS_TOP = int(os.environ.get("DEEP_RANK_CONCEPT_PASS_TOP", "120"))
+#  Order by marginal contribution to disclosure coverage rather than by score alone.
+COVERAGE_ORDER = os.environ.get("DEEP_RANK_COVERAGE_ORDER", "1") != "0"
 UNREAD_SCORE_CAP = int(os.environ.get("DEEP_RANK_UNREAD_CAP", "70"))
 
 #  ON-DEMAND TEXT, fetched for the references we are ABOUT TO READ and persisted to the corpus.
@@ -180,17 +213,11 @@ UNREAD_SCORE_CAP = int(os.environ.get("DEEP_RANK_UNREAD_CAP", "70"))
 #  however relevant it is: it can only be listed. Measured against a real examiner citation list,
 #  twelve of the thirteen families that never reached the ranked list were abstract-only here.
 #
-#  Measured per source on those documents: SerpApi Google Patents returned claims for 10 of 15 in
-#  about a second each, including every DE, FR, CN and JP one; the lemad Mongo lookup covered 1;
-#  EPO OPS covered 0, because its full text is EP and WO only and none of them were. So SerpApi is
-#  the path, and `enrich.enrich_publication` already persists the claims WITHOUT embedding them,
-#  which is exactly right here: the reading stage needs text, not vectors, and the vectors follow
-#  on the next ordinary embed pass.
-#
-#  Bounded because SerpApi is quota'd: only references already selected for reading, only when the
-#  corpus has nothing to read, and only ENRICH_TOP of them. It is a ONE-TIME cost per publication
-#  that every later search in the field inherits.
-ENRICH_TOP = int(os.environ.get("DEEP_RANK_ENRICH_TOP", "80"))
+#  The recovery chain is local Mongo -> official EPO OPS -> direct Google Patents -> ScrapingBee
+#  -> SerpApi. Because the quota'd provider is now last rather than the gate, every reference the
+#  reader selected is eligible. It remains bounded by CHART_TOP_MAX: the pipeline never fetches a
+#  document it was not already about to read, and the persisted text benefits every later search.
+ENRICH_TOP = int(os.environ.get("DEEP_RANK_ENRICH_TOP", str(CHART_TOP_MAX)))
 ENRICH_WORKERS = int(os.environ.get("DEEP_RANK_ENRICH_WORKERS", "8"))
 
 _STOP = set((
@@ -398,7 +425,11 @@ def _enrich_missing_text(chosen, on_progress=None):
         import enrich
     except Exception:
         return 0
-    if not getattr(enrich, "SERP_KEY", ""):
+    available = getattr(enrich, "recovery_available", None)
+    if available is not None:
+        if not available():
+            return 0
+    elif not getattr(enrich, "SERP_KEY", ""):
         return 0
     pubs = [r["pub"] for r in chosen]
     thin = []
@@ -438,7 +469,9 @@ def _enrich_missing_text(chosen, on_progress=None):
     def one(pub):
         try:
             r = enrich.enrich_publication(pub, reembed=False)
-            ok = bool(r and r.get("ok") and r.get("added_claims"))
+            ok = bool(r and r.get("ok") and (r.get("added_claims") or
+                                              r.get("added_paragraphs") or
+                                              r.get("added_chunks")))
         except Exception:
             ok = False
         with lock:
@@ -534,7 +567,15 @@ def score_reference(ref, rar, lead=()):
         n_unc += r["verdict"] == "uncertain"
         covered.append({"item": r["item"], "verdict": r["verdict"],
                         "idf": round(fidf.get(r["item"], 0.0), 3),
-                        "location": r.get("location") or "", "quote": r.get("quote") or ""})
+                        "location": r.get("location") or "", "quote": r.get("quote") or "",
+                        #  WHICH PUBLICATION THIS QUOTE CAME FROM. Today it is always the charted
+                        #  reference itself, so the field is redundant and that is the point of
+                        #  adding it now: the family-member substitution planned next will let a
+                        #  sibling's text stand in for a reference we cannot read, and claims are
+                        #  amended between offices. A quote taken from a US sibling does not
+                        #  prove what the cited DE publication disclosed. Recording the source
+                        #  publication per cell is what makes that checkable rather than assumed.
+                        "evidence_pub": r.get("evidence_pub") or ref.get("pub") or ""})
     for r in _grounded_rows(ref, "claims"):
         got += _CLAIM_WEIGHT * _W[r["verdict"]] * cidf.get(r["item"], 0.0)
     got += LEAD_WEIGHT * sum(idf for _f, idf in lead)
@@ -555,17 +596,35 @@ def score_reference(ref, rar, lead=()):
     chars = int(ref.get("chars_read") or ref.get("chars") or 0)
     screen = ref.get("screen")
     if overall is not None and read_in_full and covered:
-        #  Weight what we PROVED by how much we had a chance to prove it from (see
-        #  DEPTH_FULL_CHARS), and give the remainder to the two length-independent judgements.
+        #  WEIGHTS ARE FIXED; DEPTH DISCOUNTS THE RESULT.
+        #
+        #  This used to scale the coverage weight by depth and hand the weight it gave up to
+        #  `overall` and `screen` -- two judgements made from a snippet. The effect was that the
+        #  LESS of a document we managed to read, the MORE the score came from a guess about it,
+        #  and the guess is systematically optimistic. Measured on two finished reports:
+        #
+        #      WO-2017215163  coverage  7, read   8k chars -> 77, displayed at rank 10
+        #      US-10625955    coverage 52, read 142k chars -> 63, NOT displayed, rank 53
+        #
+        #  A reference measured to disclose half the invention from its full text lost to one
+        #  measured to disclose almost nothing, because the second had been read too thinly to be
+        #  measured and inherited its screener's optimism. Both subjects of the benchmark failed
+        #  this way: every cited reference that got read sat at rank 57-290 behind a wall of
+        #  thin records, and the median text behind a displayed card was 15,432 characters.
+        #
+        #  So: weight coverage the same however much was read, and let a shallow reading discount
+        #  the whole score instead of redistributing it. Not reading a document can no longer
+        #  raise its rank. The floor keeps the discount modest -- an abstract-only record still
+        #  competes on what it does say, which matters because examiners cite plenty of them.
         depth = max(0.0, min(1.0, chars / float(DEPTH_FULL_CHARS))) if DEPTH_FULL_CHARS else 1.0
-        w_cov = COVERAGE_WEIGHT * depth
-        rest = max(0.0, 1.0 - w_cov)
+        rest = max(0.0, 1.0 - COVERAGE_WEIGHT)
         if screen is None:
             w_ovr, w_scr = rest, 0.0
         else:
             w_ovr, w_scr = rest * OVERALL_SHARE, rest * (1.0 - OVERALL_SHARE)
-        score = (w_cov * coverage + w_ovr * float(overall)
-                 + w_scr * float(screen if screen is not None else 0))
+        raw = (COVERAGE_WEIGHT * coverage + w_ovr * float(overall)
+               + w_scr * float(screen if screen is not None else 0))
+        score = raw * (DEPTH_CONFIDENCE_FLOOR + (1.0 - DEPTH_CONFIDENCE_FLOOR) * depth)
     else:
         score = coverage
         overall = None
@@ -587,6 +646,13 @@ def score_reference(ref, rar, lead=()):
         "leads": [f for f, _idf in lead],
         "read_in_full": read_in_full,
         "chars_read": int(ref.get("chars") or 0),
+        #  The publication whose TEXT was read. Equal to the reference itself unless a family
+        #  member stood in for it. `evidence_publication_id` is the identifier any displayed
+        #  evidence must be attributed to, and `is_proxy_text` says whether that attribution
+        #  differs from the reference being cited.
+        "evidence_publication_id": ref.get("text_source_pub") or ref.get("pub") or "",
+        "is_proxy_text": bool(ref.get("text_source_pub")
+                              and ref.get("text_source_pub") != ref.get("pub")),
     }
 
 
@@ -653,8 +719,23 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     ``/analysis/<slug>`` render from THIS reading instead of starting a second, separate one.
     """
     started = time.time()
-    features = [str(e).strip() for e in (report.get("elements") or []) if str(e).strip()]
-    features = features[:deep_analysis.MAX_FEATURES]
+    #  THE CHECKLIST THE SEARCH IS ARGUED AGAINST. `elements` is a 11-12 item summary of the
+    #  invention; `disclosures` is its claim limitations, its whole independent claims, what each
+    #  dependent claim adds, and the teachings the description supports but the claims do not
+    #  cover. Measured on real subjects: 63 disclosures against 12 elements.
+    #
+    #  This is not cosmetic. With 12 disclosures the top 50 saturates by document nine -- 42 of
+    #  the 50 slots were measured to add NOTHING to coverage -- so ranking by what a reference
+    #  CONTRIBUTES has nothing to work with, and the report is structurally blind to the document
+    #  that answers only claim 10. See coverage_rank.
+    disc = report.get("disclosures") or []
+    if disc:
+        features = [d["text"] for d in disc][:DISCLOSURE_CAP]
+        disc_weight = {d["text"]: d.get("weight", 1.0) for d in disc}
+    else:
+        features = [str(e).strip() for e in (report.get("elements") or []) if str(e).strip()]
+        features = features[:deep_analysis.MAX_FEATURES]
+        disc_weight = {}
     qd = report.get("query_document") or {}
     claim_items = []
     for c in (qd.get("claims") or [])[:deep_analysis.MAX_INPUT_CLAIMS]:
@@ -664,6 +745,19 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
                                 "claim_no": c.get("claim_no") or len(claim_items) + 1,
                                 "text": text})
     ranked = list(report.get("ranked_families") or [])
+    #  ORACLE INJECTION, diagnostic only. Hands a stage the gold it never received so the stages
+    #  BELOW it can be measured in isolation. Disarmed unless a flag, a valid stage and a non-empty
+    #  gold list are all present, and every report it touches is stamped so no metric can score it
+    #  as a real run. See src/oracle.py.
+    _orc = report.get("_oracle") or {}
+    orc = oracle.Oracle(stage=_orc.get("stage", ""), gold_families=_orc.get("gold") or [])
+    if orc:
+        before = len(ranked)
+        ranked = orc.inject(ranked, "before_screen")
+        report[oracle.REPORT_KEY] = orc.stamp()
+        if len(ranked) != before:
+            print(f"[oracle] injected {len(ranked) - before} gold families before the screen",
+                  flush=True)
     if not ranked or not (features or claim_items):
         return None
 
@@ -711,6 +805,19 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         if r["pub"] not in seen:
             chosen.append(r)
             seen.add(r["pub"])
+    #  before_read: everything the screen saw whose family is gold gets read, whatever it scored.
+    #  This isolates reading and below from any screening error.
+    if orc.at("before_read") or orc.at("before_charting"):
+        goldset = set(orc.gold)
+        added = 0
+        for r in rows:
+            if r["pub"] in seen or r.get("fam") not in goldset:
+                continue
+            chosen.append(r)
+            seen.add(r["pub"])
+            added += 1
+        report[oracle.REPORT_KEY] = orc.stamp()
+        print(f"[oracle] forced {added} gold references into the read set", flush=True)
     #  A low score from a screener that was shown NOTHING is not evidence of irrelevance, it is
     #  the absence of evidence, and it must not be the reason a reference is never read. Any
     #  candidate the screen could not see text for is read anyway if the retrieval ranked it
@@ -728,6 +835,24 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
               flush=True)
     #  Fetch the missing text BEFORE reading, for the references we have just chosen to read.
     enriched = _enrich_missing_text(chosen, on_progress=emit)
+
+    #  THE CONCEPT LAYER, built ONCE for the whole search and handed to every reader.
+    #
+    #  The checklist is extracted from the subject's own claims, so it speaks the subject's
+    #  vocabulary: "at least one bracing structure protrudes from the second side of the base
+    #  element". Almost no prior art says that. Measured on adhoc-939fb711122b, "seal element
+    #  elastically deformable at contact surface" is taught by hundreds of the references read, in
+    #  words like sealing lip, gasket, resilient ring, Dichtlippe. Giving each reader the IDEA and
+    #  the other words for it, before it decides "absent", is what turns a string comparison back
+    #  into a reading.
+    emit("concepts_start", n=len(features))
+    try:
+        hints = deep_analysis.concept_expansions(
+            features, title=(qd.get("label") or qd.get("title") or ""), brief=brief)
+    except Exception:
+        traceback.print_exc()
+        hints = {}
+    print(f"[deep_rank] concept expansions for {len(hints)}/{len(features)} features", flush=True)
     emit("chart_start", n=len(chosen))
 
     done = [0]
@@ -735,7 +860,8 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
 
     def one(row):
         try:
-            ref = deep_analysis.analyse_reference(row["pub"], features, claim_items, row["title"])
+            ref = deep_analysis.analyse_reference(row["pub"], features, claim_items, row["title"],
+                                                  hints=hints)
         except Exception as exc:
             ref = {"pub": row["pub"], "title": row["title"], "found": False, "features": [],
                    "claims": [], "method": "error", "error": str(exc)[:200], "chars": 0}
@@ -752,6 +878,42 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     with ThreadPoolExecutor(max_workers=min(CHART_WORKERS, max(1, len(chosen)))) as ex:
         charts = list(ex.map(one, chosen))
     chart_seconds = time.time() - t0
+
+    #  SECOND LOOK at the head, feature by feature, on the concepts rather than the wording. Only
+    #  the rows a first reading left empty are re-asked, and an upgrade still has to pass the same
+    #  grounding and location gates plus the refuter — a second look widens what the reader
+    #  RECOGNISES, never what it is allowed to assert.
+    reread_changed = reread_refs = 0
+    if CONCEPT_PASS_TOP > 0 and hints:
+        prelim = sorted(
+            [c for c in charts if c.get("method") == "llm"],
+            key=lambda c: (-(int((c.get("overall") or {}).get("score") or 0)),
+                           -(c.get("screen") if c.get("screen") is not None else -1),
+                           c.get("retrieval_rank") or 10 ** 6))[:CONCEPT_PASS_TOP]
+
+        def second(ref):
+            try:
+                n = deep_analysis.reread_absent(ref["pub"], ref.get("features") or [], hints=hints)
+                if n:
+                    #  Refute ONLY what the second pass changed. The dicts are shared with
+                    #  ref["features"], so the downgrade lands on the chart itself.
+                    deep_analysis._refute(
+                        [r for r in ref["features"] if r.get("second_pass")], ref["pub"])
+                    ref["counts"] = deep_analysis._counts(
+                        (ref.get("features") or []) + (ref.get("claims") or []))
+                return n
+            except Exception:
+                return 0
+
+        emit("reread_start", n=len(prelim))
+        t1 = time.time()
+        with ThreadPoolExecutor(max_workers=min(CHART_WORKERS, max(1, len(prelim)))) as ex:
+            gained = list(ex.map(second, prelim))
+        reread_changed = sum(gained)
+        reread_refs = sum(1 for g in gained if g)
+        print(f"[deep_rank] second concept pass: {reread_changed} cells recovered across "
+              f"{reread_refs} of {len(prelim)} references ({time.time() - t1:.0f}s)", flush=True)
+        chart_seconds += time.time() - t1
 
     rar = rarity(charts, features, [c["label"] for c in claim_items])
     lead_map = leaders(charts, rar)
@@ -775,6 +937,37 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
                               -by_pub[p]["score"],
                               -(by_pub[p]["screen"] if by_pub[p]["screen"] is not None else -1),
                               by_pub[p]["retrieval_rank"] or 10**6))
+
+    #  RANK BY WHAT EACH REFERENCE ADDS, not by how much it resembles the invention.
+    #
+    #  The sort above is pointwise: every reference scored alone, then ordered. That is the wrong
+    #  objective for a search whose whole purpose is a legal argument. If ten disclosures exist and
+    #  fifty documents each cover the same nine, all fifty outrank the one document covering the
+    #  tenth, so the report shows the fifty most similar results and stays permanently blind to the
+    #  only reference that speaks to disclosure ten. Measured on a finished report: 42 of 50
+    #  displayed documents added nothing at all to coverage.
+    #
+    #  Greedy maximum-coverage fixes the objective. The first pick is unchanged (nothing is covered
+    #  yet, so it is still the strongest reference); what changes is every slot after it.
+    if orc.at("before_portfolio"):
+        goldset = set(orc.gold)
+        head = [p for p in order if (by_pub.get(p) or {}).get("family") in goldset]
+        order = head + [p for p in order if p not in set(head)]
+        report[oracle.REPORT_KEY] = orc.stamp()
+        print(f"[oracle] moved {len(head)} charted gold references to the front", flush=True)
+    if COVERAGE_ORDER and len(order) > 1:
+        try:
+            idf = dict(rar["feature_idf"])
+            if disc_weight:                    # rarity x how much the disclosure carries legally
+                idf = {k: v * disc_weight.get(k, 1.0) for k, v in idf.items()}
+            reordered, gains = coverage_rank.rank(
+                order, by_pub, idf, score_of=lambda p: by_pub[p]["score"])
+            if len(reordered) == len(order):
+                for p, g in zip(reordered, gains):
+                    by_pub[p]["marginal_gain"] = g
+                order = reordered
+        except Exception:
+            traceback.print_exc()
 
     #  Candidates that were screened but not read keep their screen score, capped, so they stay
     #  visible without ever outranking a reference whose full text was quoted.
@@ -831,8 +1024,14 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         "screen_scores": {p: int(v) for p, v in scores.items()},
         "screened": len(scores),
         "enriched": enriched,
+        #  What the concept layer and the second look actually did, so both can be measured from a
+        #  finished report rather than taken on trust.
+        "concept_hints": len(hints),
+        "reread_refs": reread_refs,
+        "reread_cells": reread_changed,
         "n_candidates": len(rows),
         "charted": len(charts),
+        "n_features": len(features),
         "read_in_full": sum(1 for c in charts if c.get("method") == "llm"),
         "no_text": sum(1 for c in charts if c.get("method") == "no-text"),
         "chars_read": sum(int(c.get("chars") or 0) for c in charts),

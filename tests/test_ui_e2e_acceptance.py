@@ -7,7 +7,12 @@ import ui_e2e_acceptance as U
 
 
 def test_report_template_publishes_durable_pipeline_markers():
-    template = (Path(__file__).resolve().parents[1] / "templates" / "report.html").read_text()
+    #  The card markup moved to _refcard.html so the SAME card can be rendered mid-search and
+    #  streamed onto an open page (webapp.api_cards). These markers are a contract about what the
+    #  rendered page publishes, not about which file holds it, so the guard reads both templates —
+    #  otherwise it fails on a move and passes on a deletion from the card template.
+    root = Path(__file__).resolve().parents[1] / "templates"
+    template = (root / "report.html").read_text() + (root / "_refcard.html").read_text()
     for marker in (
         'data-partial=',
         'data-cross-encoder-reranked=',
@@ -47,6 +52,28 @@ def test_ui_uses_live_corpus_count_and_background_enrichment_contracts():
     assert "filename='app.js', v=asset_version" in base
     assert "filename='style.css', v=asset_version" in print_template
     assert "draftlibrary-head" in drafts and ".draftlibrary-head>.btn" in css
+
+
+def test_account_and_report_chrome_use_the_compact_release_contract():
+    root = Path(__file__).resolve().parents[1]
+    base = (root / "templates" / "base.html").read_text()
+    login = (root / "templates" / "login.html").read_text()
+    admin = (root / "templates" / "admin_users.html").read_text()
+    report = (root / "templates" / "report.html").read_text()
+    css = (root / "static" / "style.css").read_text()
+    auth_source = (root / "src" / "auth.py").read_text()
+
+    assert "Shared administrator" not in base + login + admin
+    assert "admin-password" not in login
+    assert "APP_PASSWORD" not in auth_source and "legacy_admin" not in auth_source
+    assert 'class="scopewarning"' in report
+    assert 'class="runsummary"' in report and "Read more" in report
+    assert 'class="archivecompact"' in report
+    assert 'class="tail reportlimits"' in report
+    assert report.count('<span class="th">Identified but not readable here</span>') == 0
+    assert report.count('<span class="th">Coverage ledger</span>') == 0
+    assert report.count('<span class="th">Search scope and measured reliability</span>') == 0
+    assert ".scopewarning-pop" in css and ".runsummary" in css and ".archivecompact" in css
 
 
 def test_parser_collects_a_gold_family_group():

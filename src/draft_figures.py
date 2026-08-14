@@ -26,17 +26,43 @@ from the draft and listed beside the figure for checking.
 """
 from __future__ import annotations
 
+from collections import Counter
+import hashlib
+import io
+import json
+import os
 import re
+import random
 import threading
+import time
 
 import db
 import llm
+from pydantic import BaseModel, Field
 
 MAX_FIGURES = 40
 MAX_VERSIONS_PER_FIGURE = 20
 MAX_PROMPT_CHARS = 4000
 MAX_PNG_BYTES = 8 * 1024 * 1024
-IMAGE_MODEL = "gemini-2.5-flash-image"
+MAX_SOURCE_BYTES = 16 * 1024 * 1024
+MAX_SOURCE_PIXELS = 24_000_000
+ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
+DEFAULT_IMAGE_MODEL = "gemini-2.5-flash-image"
+FIGURE_PROMPT_VERSION = "figure-v2-numeral-audit"
+
+
+class _NumeralInspection(BaseModel):
+    numerals: list[str] = Field(default_factory=list, max_length=120)
+
+
+def image_model() -> str:
+    """Deployment-selected image role. Model ids do not belong in feature code."""
+    return os.environ.get("PATENT_FIGURE_IMAGE_MODEL", DEFAULT_IMAGE_MODEL).strip() or \
+        DEFAULT_IMAGE_MODEL
+
+
+def vision_model() -> str:
+    return os.environ.get("PATENT_FIGURE_VISION_MODEL", llm.AGENT_MODEL).strip() or llm.AGENT_MODEL
 
 #  The instruction that makes the difference between a product render and a patent figure. Stated
 #  as prohibitions because that is what the model gets wrong by default: it reaches for shading,
@@ -84,6 +110,18 @@ _SCHEMA = (
     "CREATE INDEX IF NOT EXISTS app_draft_figure_versions_fig_idx "
     "ON app_draft_figure_versions (figure_id, version_no DESC)",
     "ALTER TABLE app_draft_figures ADD COLUMN IF NOT EXISTS active_version integer NOT NULL DEFAULT 0",
+    "ALTER TABLE app_draft_figure_versions ADD COLUMN IF NOT EXISTS detected_numerals "
+    "jsonb NOT NULL DEFAULT '[]'::jsonb",
+    "ALTER TABLE app_draft_figure_versions ADD COLUMN IF NOT EXISTS numeral_audit "
+    "jsonb NOT NULL DEFAULT '{}'::jsonb",
+    "ALTER TABLE app_draft_figure_versions ADD COLUMN IF NOT EXISTS source_kind "
+    "text NOT NULL DEFAULT 'generated'",
+    """CREATE TABLE IF NOT EXISTS app_draft_figure_cache (
+         cache_key char(64) PRIMARY KEY,
+         model_name text NOT NULL,
+         prompt_version text NOT NULL,
+         png bytea NOT NULL,
+         created_at timestamptz NOT NULL DEFAULT now())""",
 )
 
 _SCHEMA_READY = False
@@ -216,6 +254,27 @@ class FigureError(RuntimeError):
     pass
 
 
+def _model_call(prompt, previous_png=None):
+    """One transport attempt. Logical refusals are handled after transport succeeds."""
+    try:
+        from google.genai.types import GenerateContentConfig, Part
+    except ModuleNotFoundError:
+        # Unit-test/minimal environments can supply a fake client without installing the provider
+        # SDK. Production has the SDK and always uses its typed image Part objects.
+        if previous_png:
+            raise
+        return llm._client().models.generate_content(
+            model=image_model(), contents=[DRAWING_SYSTEM + "\n\n" + prompt],
+            config={"response_modalities": ["TEXT", "IMAGE"], "temperature": 0.35})
+    contents = []
+    if previous_png:
+        contents.append(Part.from_bytes(data=previous_png, mime_type="image/png"))
+    contents.append(DRAWING_SYSTEM + "\n\n" + prompt)
+    return llm._client().models.generate_content(
+        model=image_model(), contents=contents,
+        config=GenerateContentConfig(response_modalities=["TEXT", "IMAGE"], temperature=0.35))
+
+
 def generate_png(prompt, previous_png=None):
     """Prompt (+ the previous figure, when editing) -> PNG bytes.
 
@@ -223,17 +282,23 @@ def generate_png(prompt, previous_png=None):
     smaller" produces a new and unrelated drawing, and the user loses the parts of the figure they
     were happy with.
     """
-    from google.genai.types import GenerateContentConfig, Part
-    contents = []
-    if previous_png:
-        contents.append(Part.from_bytes(data=previous_png, mime_type="image/png"))
-    contents.append(DRAWING_SYSTEM + "\n\n" + prompt)
-    try:
-        resp = llm._client().models.generate_content(
-            model=IMAGE_MODEL, contents=contents,
-            config=GenerateContentConfig(response_modalities=["TEXT", "IMAGE"], temperature=0.35))
-    except Exception as exc:
-        raise FigureError(f"the image model refused this figure: {str(exc)[:200]}") from exc
+    started = time.time()
+    last_error = None
+    for attempt in range(3):
+        try:
+            resp = _model_call(prompt, previous_png)
+            break
+        except Exception as exc:                         # transport only, maximum three attempts
+            last_error = exc
+            if attempt < 2:
+                time.sleep((0.35 * (2 ** attempt)) + random.uniform(0, 0.2))
+    else:
+        print(json.dumps({"event": "draft_figure_llm", "provider": "vertex",
+                          "model": image_model(), "prompt_version": FIGURE_PROMPT_VERSION,
+                          "latency_ms": int((time.time() - started) * 1000),
+                          "cache_hit": False, "success": False}), flush=True)
+        raise FigureError(f"the image model could not draw this figure: {str(last_error)[:200]}") \
+            from last_error
     um = getattr(resp, "usage_metadata", None)
     llm._record_usage(getattr(um, "prompt_token_count", 0) if um else 0,
                       getattr(um, "candidates_token_count", 0) if um else 0)
@@ -246,10 +311,143 @@ def generate_png(prompt, previous_png=None):
         if blob and blob.data:
             if len(blob.data) > MAX_PNG_BYTES:
                 raise FigureError("the generated figure is unexpectedly large")
+            print(json.dumps({"event": "draft_figure_llm", "provider": "vertex",
+                              "model": image_model(), "prompt_version": FIGURE_PROMPT_VERSION,
+                              "latency_ms": int((time.time() - started) * 1000),
+                              "cache_hit": False, "success": True}), flush=True)
             return bytes(blob.data)
     #  A refusal comes back as text rather than an image; surface it instead of "no image".
     said = " ".join(str(getattr(p, "text", "") or "") for p in parts).strip()
     raise FigureError(said[:300] or "the image model returned no image")
+
+
+def normalize_source_image(data: bytes, content_type: str = "") -> bytes:
+    """Validate an uploaded/product image and return a bounded, white-backed PNG."""
+    if not data or len(data) > MAX_SOURCE_BYTES:
+        raise FigureError(
+            f"Choose an image smaller than {MAX_SOURCE_BYTES // (1024 * 1024)} MB.")
+    try:
+        from PIL import Image, ImageOps, UnidentifiedImageError
+        # Restrict plugin dispatch itself, not merely the filename or browser MIME type. This
+        # prevents an uploaded PSD, FITS, PDF, font, or specialist raster from reaching a decoder
+        # we neither need nor intend to expose.
+        source = Image.open(io.BytesIO(data), formats=list(ALLOWED_SOURCE_FORMATS))
+        width, height = source.size
+        if width < 20 or height < 20 or width * height > MAX_SOURCE_PIXELS:
+            raise FigureError("That image has unsupported dimensions.")
+        source.verify()
+        source = Image.open(io.BytesIO(data), formats=list(ALLOWED_SOURCE_FORMATS))
+        source = ImageOps.exif_transpose(source)
+        source.thumbnail((2400, 2400))
+        if source.mode in ("RGBA", "LA"):
+            rgba = source.convert("RGBA")
+            white = Image.new("RGBA", rgba.size, "white")
+            white.alpha_composite(rgba)
+            source = white.convert("RGB")
+        else:
+            source = source.convert("RGB")
+        out = io.BytesIO()
+        source.save(out, format="PNG", optimize=True)
+        normalized = out.getvalue()
+        if len(normalized) > MAX_PNG_BYTES:
+            raise FigureError("That image remains too large after normalization.")
+        return normalized
+    except FigureError:
+        raise
+    except (OSError, ValueError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
+        raise FigureError("That file is not a readable PNG, JPEG, or WebP image.") from exc
+
+
+def edit_region_png(source_png: bytes, instruction: str,
+                    region: tuple[int, int, int, int], allowed_numerals=()) -> bytes:
+    """AI-edit a crop and composite it back, guaranteeing pixels outside it never change."""
+    from PIL import Image
+    instruction = str(instruction or "").strip()
+    if not instruction:
+        raise FigureError("Describe what should change in the selected area.")
+    source_png = normalize_source_image(source_png, "image/png")
+    image = Image.open(io.BytesIO(source_png)).convert("RGB")
+    try:
+        x1, y1, x2, y2 = (int(value) for value in region)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise FigureError("Select a rectangular area to edit.") from exc
+    x1, x2 = sorted((max(0, min(image.width, x1)), max(0, min(image.width, x2))))
+    y1, y2 = sorted((max(0, min(image.height, y1)), max(0, min(image.height, y2))))
+    if x2 - x1 < 5 or y2 - y1 < 5:
+        raise FigureError("Select a larger area to edit.")
+    crop = image.crop((x1, y1, x2, y2))
+    crop_bytes = io.BytesIO()
+    crop.save(crop_bytes, format="PNG")
+    prompt = (
+        "Edit only this selected crop from an existing patent drawing. Preserve the crop's white "
+        "background, line weight, geometry, and reference-numeral style except for this requested "
+        f"change: {instruction[:1000]} The only reference numerals permitted "
+        "anywhere in the edited crop are: " +
+        (", ".join(filter(None, (_clean_numeral(value) for value in allowed_numerals))) or
+         "none. Do not invent a numeral."))
+    changed = generate_png(prompt, previous_png=crop_bytes.getvalue())
+    changed_image = Image.open(io.BytesIO(changed)).convert("RGB").resize(crop.size)
+    image.paste(changed_image, (x1, y1))
+    out = io.BytesIO()
+    image.save(out, format="PNG", optimize=True)
+    return out.getvalue()
+
+
+def _clean_numeral(value) -> str:
+    match = re.search(r"\b([A-Za-z]?\d{1,4}[A-Za-z]?)\b", str(value or ""))
+    return match.group(1).upper() if match else ""
+
+
+def numeral_audit(expected, detected) -> dict:
+    expected_values = [_clean_numeral(value) for value in (expected or [])]
+    detected_values = [_clean_numeral(value) for value in (detected or [])]
+    expected_values = [value for value in expected_values if value]
+    detected_values = [value for value in detected_values if value]
+    expected_set, detected_set = set(expected_values), set(detected_values)
+    counts = Counter(detected_values)
+    missing = sorted(expected_set - detected_set, key=lambda n: (int(re.sub(r"\D", "", n) or 0), n))
+    unexpected = sorted(detected_set - expected_set,
+                        key=lambda n: (int(re.sub(r"\D", "", n) or 0), n))
+    duplicates = sorted((n for n, count in counts.items() if count > 1),
+                        key=lambda n: (int(re.sub(r"\D", "", n) or 0), n))
+    return {"ok": not missing and not unexpected and not duplicates,
+            "expected": sorted(expected_set), "detected": detected_values,
+            "missing": missing, "unexpected": unexpected, "duplicates": duplicates}
+
+
+def inspect_numerals(png: bytes) -> dict:
+    """Vision-read actual labels from the returned pixels; never infer from the prompt."""
+    from google.genai.types import GenerateContentConfig, Part, ThinkingConfig
+    instruction = (
+        "Inspect this patent drawing pixel by pixel. Return JSON with one key, numerals, whose "
+        "value is every visible REFERENCE NUMERAL in reading order, including duplicates. Exclude "
+        "the figure number in labels such as FIG. 1, dimensions, page numbers, and other text. "
+        "Do not infer a number that is not visibly printed. Example: {\"numerals\":[\"10\",\"12\"]}.")
+    last_error = None
+    for attempt in range(3):
+        try:
+            response = llm._client().models.generate_content(
+                model=vision_model(),
+                contents=[Part.from_bytes(data=png, mime_type="image/png"), instruction],
+                config=GenerateContentConfig(
+                    response_mime_type="application/json", response_schema=_NumeralInspection,
+                    temperature=0,
+                    max_output_tokens=300, thinking_config=ThinkingConfig(thinking_budget=0)))
+            usage = getattr(response, "usage_metadata", None)
+            llm._record_usage(getattr(usage, "prompt_token_count", 0) if usage else 0,
+                              getattr(usage, "candidates_token_count", 0) if usage else 0)
+            parsed = getattr(response, "parsed", None)
+            payload = parsed if isinstance(parsed, _NumeralInspection) else \
+                _NumeralInspection.model_validate_json(
+                    str(getattr(response, "text", "") or "{}"))
+            values = [_clean_numeral(value) for value in payload.numerals]
+            return {"ok": True, "numerals": [value for value in values if value]}
+        except Exception as exc:                         # an unread audit must be visible, not guessed
+            last_error = exc
+            if attempt < 2:
+                time.sleep((0.25 * (2 ** attempt)) + random.uniform(0, 0.15))
+    return {"ok": False, "numerals": [],
+            "error": f"Could not inspect drawing numerals: {str(last_error)[:160]}"}
 
 
 # ---------------------------------------------------------------------------
@@ -265,17 +463,22 @@ def create_figure(project_id, user_id, label, caption="", sort_order=0):
         return dict(cur.fetchone())
 
 
-def add_version(figure_id, *, prompt, instruction, numerals, png, mime="image/png"):
+def add_version(figure_id, *, prompt, instruction, numerals, png, mime="image/png",
+                detected_numerals=(), audit=None, source_kind="generated"):
     ensure_schema()
     with db.cursor() as cur:
         cur.execute("SELECT coalesce(max(version_no),0)+1 AS n FROM app_draft_figure_versions "
                     "WHERE figure_id=%s", (int(figure_id),))
         n = int(cur.fetchone()["n"])
         cur.execute("INSERT INTO app_draft_figure_versions "
-                    "(figure_id,version_no,prompt,instruction,numerals,png,mime) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id,version_no,created_at",
+                    "(figure_id,version_no,prompt,instruction,numerals,png,mime,"
+                    "detected_numerals,numeral_audit,source_kind) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s) "
+                    "RETURNING id,version_no,created_at",
                     (int(figure_id), n, str(prompt)[:MAX_PROMPT_CHARS], str(instruction)[:1000],
-                     "\n".join(numerals or [])[:4000], png, mime))
+                     "\n".join(numerals or [])[:4000], png, mime,
+                     json.dumps(list(detected_numerals or [])), json.dumps(dict(audit or {})),
+                     str(source_kind or "generated")[:40]))
         row = dict(cur.fetchone())
         cur.execute("UPDATE app_draft_figures SET active_version=%s, updated_at=now() WHERE id=%s",
                     (n, int(figure_id)))
@@ -317,12 +520,22 @@ def listing(project_id, user_id):
         figs = [dict(r) for r in cur.fetchall()]
         if not figs:
             return []
-        cur.execute("SELECT figure_id,version_no,instruction,numerals,status,error,created_at "
+        cur.execute("SELECT figure_id,version_no,instruction,numerals,status,error,created_at,"
+                    "detected_numerals,numeral_audit,source_kind "
                     "FROM app_draft_figure_versions WHERE figure_id = ANY(%s) "
                     "ORDER BY figure_id, version_no DESC", ([f["id"] for f in figs],))
         versions = {}
         for r in cur.fetchall():
-            versions.setdefault(r["figure_id"], []).append(dict(r))
+            version = dict(r)
+            for key, fallback in (("detected_numerals", []), ("numeral_audit", {})):
+                value = version.get(key)
+                if isinstance(value, str):
+                    try:
+                        value = json.loads(value)
+                    except json.JSONDecodeError:
+                        value = fallback
+                version[key] = value if value is not None else fallback
+            versions.setdefault(r["figure_id"], []).append(version)
     for f in figs:
         f["versions"] = versions.get(f["id"], [])
         f["n_versions"] = len(f["versions"])
@@ -358,30 +571,123 @@ def get_figure(figure_id, user_id):
     return dict(row) if row else None
 
 
+def _cache_key(prompt: str, previous: bytes | None) -> str:
+    digest = hashlib.sha256()
+    digest.update(FIGURE_PROMPT_VERSION.encode())
+    digest.update(image_model().encode())
+    digest.update(str(prompt).encode("utf-8"))
+    digest.update(previous or b"")
+    return digest.hexdigest()
+
+
+def _cached_generate(prompt: str, previous: bytes | None = None) -> bytes:
+    """Content-addressed reuse before a paid image call; cache failure never blocks drawing."""
+    key = _cache_key(prompt, previous)
+    try:
+        ensure_schema()
+        with db.cursor() as cur:
+            cur.execute("SELECT png FROM app_draft_figure_cache WHERE cache_key=%s", (key,))
+            row = cur.fetchone()
+        if row and row.get("png"):
+            print(json.dumps({"event": "draft_figure_llm", "provider": "vertex",
+                              "model": image_model(), "prompt_version": FIGURE_PROMPT_VERSION,
+                              "latency_ms": 0, "cache_hit": True, "success": True}), flush=True)
+            return bytes(row["png"])
+    except Exception:
+        pass
+    png = generate_png(prompt, previous_png=previous)
+    try:
+        with db.cursor() as cur:
+            cur.execute(
+                "INSERT INTO app_draft_figure_cache (cache_key,model_name,prompt_version,png) "
+                "VALUES (%s,%s,%s,%s) ON CONFLICT (cache_key) DO NOTHING",
+                (key, image_model(), FIGURE_PROMPT_VERSION, png))
+    except Exception:
+        pass
+    return png
+
+
+def _audited_version(figure_id: int, *, prompt: str, instruction: str, numerals,
+                     png: bytes, source_kind: str, inspection=None) -> dict:
+    inspection = inspection or inspect_numerals(png)
+    audit = numeral_audit(numerals, inspection.get("numerals") or [])
+    audit["inspected"] = bool(inspection.get("ok"))
+    if inspection.get("error"):
+        audit["error"] = inspection["error"]
+    version = add_version(
+        figure_id, prompt=prompt, instruction=instruction, numerals=numerals, png=png,
+        detected_numerals=inspection.get("numerals") or [], audit=audit,
+        source_kind=source_kind)
+    return {**version, "audit": audit, "detected_numerals": inspection.get("numerals") or []}
+
+
+def save_manual_version(project_id: int, user_id: int, figure_id: int, png: bytes, *,
+                        instruction: str = "Manual drawing edit", numerals=()) -> dict:
+    figure = get_figure(figure_id, user_id)
+    if not figure or int(figure.get("project_id") or 0) != int(project_id):
+        raise FigureError("no such figure")
+    normalized = normalize_source_image(png, "image/png")
+    version = _audited_version(
+        figure_id, prompt="Manual canvas edit", instruction=instruction,
+        numerals=numerals, png=normalized, source_kind="manual")
+    return {"figure_id": figure_id, "label": figure["figure_label"],
+            "caption": figure["caption"], "version_no": version["version_no"],
+            "numerals": list(numerals or []), "numeral_audit": version["audit"],
+            "detected_numerals": version["detected_numerals"]}
+
+
 def render_figure(project_id, user_id, *, label, caption, sections=None, instruction="",
-                  figure_id=None, base_version=None, disclosure=""):
+                  figure_id=None, base_version=None, disclosure="", source_png=None,
+                  region=None, numerals=None):
     """Generate (or re-generate) one figure and store the result as a new version.
 
     With `figure_id` this is an EDIT: the currently active image is passed back to the model with
     the instruction, so the change applies to that drawing rather than producing a new one.
     """
     sections = sections or {}
-    numerals = numerals_for(sections, caption, disclosure)
-    previous = None
+    numerals = (numerals_for(sections, caption, disclosure) if numerals is None
+                else list(numerals))
+    previous = source_png
     if figure_id:
         fig = get_figure(figure_id, user_id)
-        if not fig:
+        if not fig or int(fig.get("project_id") or 0) != int(project_id):
             raise FigureError("no such figure")
         label = label or fig["figure_label"]
         caption = caption or fig["caption"]
         _, previous = png_bytes(figure_id, user_id, base_version)
     context = str(sections.get("summary") or disclosure or "")[:1200]
     prompt = build_prompt(label, caption, numerals, instruction, context)
-    png = generate_png(prompt, previous_png=previous)
+    inspection = None
+    if region:
+        if not previous:
+            raise FigureError("Draw the figure before editing one area of it.")
+        png = edit_region_png(previous, instruction, region, numerals)
+        source_kind = "region_edit"
+    else:
+        png = _cached_generate(prompt, previous)
+        source_kind = "photo_to_sketch" if source_png else "generated"
+        # One bounded self-correction pass. The inspection reads the returned pixels rather than
+        # trusting the prompt, and a second mismatch remains visible instead of looping/spending.
+        first_inspection = inspect_numerals(png)
+        first_audit = numeral_audit(numerals, first_inspection.get("numerals") or [])
+        if first_inspection.get("ok") and not first_audit["ok"]:
+            qa_instruction = (
+                "NUMERAL QA FAILED. Redraw the supplied image while preserving its "
+                "geometry. The only reference numerals permitted are " +
+                (", ".join(first_audit["expected"]) or "none") + ". Add missing numerals, remove "
+                "unexpected numerals, and show each permitted numeral exactly once.")
+            retained = max(0, MAX_PROMPT_CHARS - len(qa_instruction) - 2)
+            correction = prompt[:retained] + "\n\n" + qa_instruction
+            png = _cached_generate(correction, png)
+        else:
+            inspection = first_inspection
     if not figure_id:
         fig = create_figure(project_id, user_id, label, caption)
         figure_id = fig["id"]
-    version = add_version(figure_id, prompt=prompt, instruction=instruction, numerals=numerals,
-                          png=png)
+    version = _audited_version(
+        figure_id, prompt=prompt, instruction=instruction, numerals=numerals, png=png,
+        source_kind=source_kind, inspection=inspection)
     return {"figure_id": figure_id, "label": label, "caption": caption,
-            "version_no": version["version_no"], "numerals": numerals}
+            "version_no": version["version_no"], "numerals": numerals,
+            "detected_numerals": version["detected_numerals"],
+            "numeral_audit": version["audit"]}

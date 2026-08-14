@@ -1,5 +1,7 @@
 {% extends "base.html" %}
-{% block title %}{{ v.title }} — rotemAI patent search{% endblock %}
+{% from "_srcicon.html" import srcicon %}
+{% from "_refcard.html" import refcard with context %}
+{% block title %}{{ v.title }} | Rotem Patents{% endblock %}
 {% block body %}
 {#  ============================================================================================
     WEIGHT BUDGET. This template renders ONLY what a collapsed card shows. Claims, description,
@@ -35,15 +37,18 @@
 
   {#  Kept above the results, and kept short. This is not a caveat about the tool, it is a fact
       about THIS query: it fell outside the indexed field, so the list below is adjacent art.
-      That changes how the results are read, which is why it precedes them. One line. #}
+      The reason remains available on hover or click without consuming a full line. #}
   {% if v.domain and v.domain.should_federate %}
-  <div class="offfield">
-    <span class="ci" aria-hidden="true">⚠</span>
-    <div style="min-width:0">
+  <details class="scopewarning">
+    <summary><span class="ci" aria-hidden="true">⚠</span>
+      <span>{% if v.domain.in_domain %}Weak indexed match{% else %}Outside indexed field{% endif %}</span>
+      <span class="vh">Show why these results need extra care</span>
+    </summary>
+    <div class="scopewarning-pop" role="note">
       <b>{% if v.domain.in_domain %}Weak match for the indexed field{% else %}Outside the indexed field{% endif %}</b>
-      — {{ v.domain.reason }} Treat these as adjacent art.
+      <p>{{ v.domain.reason }} Treat these as adjacent art.</p>
     </div>
-  </div>
+  </details>
   {% endif %}
 
   <!-- ── compact header ──────────────────────────────────────────────────── -->
@@ -55,12 +60,16 @@
         the DOM (copyable, findable, printable) and only visually clamped to three lines; the toggle
         expands it in place. Capped at 20k chars so a pathological paste cannot bloat the page. #}
     {% set qfull = v.query[:20000] %}
+    {% set sp = v.search_params or {} %}
     <div class="qwrap{% if v.query|length > 240 %} clamped{% endif %}" id="qwrap">
       <p class="q" id="qtext">“{{ qfull }}{% if v.query|length > 20000 %} […truncated]{% endif %}”</p>
-      {% if v.query|length > 240 %}
-      <button type="button" class="qmore" id="qmore" aria-expanded="false" aria-controls="qtext"
-              onclick="toggleQuery()">Show full search <span class="qn">{{ '{:,}'.format(v.query|length) }} chars</span></button>
-      {% endif %}
+      {#  "Show full search" used to mean "un-clamp three lines of the query" — it showed the
+          searcher the one thing they already had. It now opens the whole search: the queries
+          actually fired, the checklist it was argued against, the scope, the sources and how deep
+          the reading went. Rendered always, not only for a long query, because the settings are
+          the interesting half and a typed one-line search has settings too. #}
+      <button type="button" class="qmore" id="qmore" aria-expanded="false" aria-controls="qparams"
+              onclick="toggleQuery()">Show full search{% if v.query|length > 240 %} <span class="qn">{{ '{:,}'.format(v.query|length) }} chars</span>{% endif %}</button>
       {#  Re-running the SAME query was the only option here. Most of the time what the results
           show you is that the query was wrong — a missing feature, the wrong term for a part —
           and the useful action is to change it and search again. A changed query is a different
@@ -69,6 +78,128 @@
       <button type="button" class="qmore" id="qeditbtn" aria-expanded="false" aria-controls="qeditbox">Refine and search again</button>
       {% endif %}
     </div>
+
+    {#  EVERY SETTING THIS SEARCH RAN WITH. All of it was already on the report and none of it was
+        on the page, so a result that looked wrong could not be traced to the thing that caused it
+        — the wrong focus, a date bar, a checklist the extractor wrote badly, an essence sentence
+        that missed the point. #}
+    <div class="qparams" id="qparams" hidden>
+      <div class="qpgrid">
+        <section class="qpsec">
+          <h4>Scope</h4>
+          <dl class="qpdl">
+            <dt>Mode</dt><dd>{{ v.mode.replace('_',' ')|title }}</dd>
+            <dt>Text searched</dt><dd>{{ 'Claims only' if v.search_focus == 'claims' else 'All patent text — claims, description, abstract, figure captions' }}</dd>
+            <dt>Sources</dt><dd>{{ 'Local corpus and the external patent APIs' if sp.wide else 'Local corpus only' }}{% if sp.figure_channel %}, plus figure-image similarity{% endif %}</dd>
+            <dt>Languages</dt><dd>{{ v.languages|join(', ')|upper or '—' }}</dd>
+            {% if sp.date_cutoff %}<dt>Date bar</dt><dd>Only art published or filed before {{ sp.date_cutoff }}</dd>{% endif %}
+            {% if v.subject %}<dt>Subject application</dt><dd>{{ v.subject }}{% if v.self_family_excluded %} (its own family excluded){% endif %}</dd>{% endif %}
+            {% if sp.query_document and sp.query_document.source %}
+            <dt>Started from</dt><dd>{{ sp.query_document.label or sp.query_document.source }}{% if sp.query_document.publication_number %} · {{ sp.query_document.publication_number }}{% endif %}{% if sp.query_document.n_claims %} · {{ sp.query_document.n_claims }} claims read{% endif %}</dd>
+            {% endif %}
+            <dt>Refinement rounds</dt><dd>{{ v.rounds }} — the agent re-queries the uncovered elements until new families stop appearing</dd>
+          </dl>
+        </section>
+
+        <section class="qpsec">
+          <h4>How deep it read</h4>
+          {% if v.deep_rank %}
+          <dl class="qpdl">
+            <dt>Screened</dt><dd>{{ '{:,}'.format(v.deep_rank.screened or 0) }} candidates on title, abstract and claims</dd>
+            <dt>Read in full</dt><dd>{{ v.deep_rank.read_in_full or 0 }} of {{ v.deep_rank.charted or 0 }} charted · {{ '{:,}'.format(v.deep_rank.chars_read or 0) }} characters</dd>
+            <dt>Checklist</dt><dd>{{ v.claim_chart.rows|length }} features charted against every one of them</dd>
+            {% if v.deep_rank.concept_hints %}<dt>Concept layer</dt><dd>{{ v.deep_rank.concept_hints }} features expanded into the words other patents use for the same idea</dd>{% endif %}
+            {% if v.deep_rank.reread_cells %}<dt>Second reading</dt><dd>{{ v.deep_rank.reread_cells }} disclosures recovered across {{ v.deep_rank.reread_refs }} references that a first read had missed</dd>{% endif %}
+            {% if v.deep_rank.enriched %}<dt>Text fetched</dt><dd>{{ v.deep_rank.enriched }} references had no full text here and it was fetched before reading</dd>{% endif %}
+            <dt>Time</dt><dd>{{ v.deep_rank.screen_seconds or 0 }}s screening · {{ v.deep_rank.chart_seconds or 0 }}s reading</dd>
+          </dl>
+          {% else %}<p class="small muted">This report was ranked on retrieval alone; no full-text reading stage ran.</p>{% endif %}
+        </section>
+      </div>
+
+      {% if v.query_set %}
+      <section class="qpsec">
+        <h4>Queries actually run <span class="qpn">{{ v.query_set|length }}</span></h4>
+        <p class="small muted">One long brief is one blurred vector. The search fires a set of
+          short, individually coherent queries and fuses what each one finds.</p>
+        <ul class="qplist">
+          {% for q in v.query_set %}
+          <li><span class="qpk qpk-{{ q.kind }}">{{ q.kind }}</span>{{ q.text[:400] }}{% if q.text|length > 400 %}…{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+
+      {% if v.elements %}
+      <section class="qpsec">
+        <h4>Concepts extracted <span class="qpn">{{ v.elements|length }}</span></h4>
+        <p class="small muted">The invention broken into the technical elements the search covers
+          separately; each one is also its own query and its own row of the coverage ledger.</p>
+        <div class="qpchips">{% for el in v.elements %}<span class="pill">{{ el }}</span>{% endfor %}</div>
+      </section>
+      {% endif %}
+
+      {% if sp.disclosures %}
+      <section class="qpsec">
+        <h4>Checklist the search is argued against <span class="qpn">{{ sp.disclosures|length }}</span></h4>
+        <p class="small muted">Extracted from the subject's own claims and description
+          {% if sp.disclosures_summary and sp.disclosures_summary.by_kind %}({% for k, n in sp.disclosures_summary.by_kind.items() %}{{ n }} {{ k.replace('_',' ') }}{{ '; ' if not loop.last }}{% endfor %}){% endif %}
+          and written in the words another patent would use, because a statement phrased in this
+          applicant's vocabulary is one nothing will match. Every reference read in full is charted
+          against this list.</p>
+        <ul class="qplist qpdisc">
+          {% for d in sp.disclosures %}
+          <li><span class="qpk qpk-{{ d.kind }}">{{ d.kind.replace('_',' ') }}</span>{{ d.text }}{% if d.source %}<span class="qpsrc">{{ d.source }}</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+
+      {% if sp.external_aspects %}
+      <section class="qpsec">
+        <h4>Problem-shaped aspects for the wider fan-out <span class="qpn">{{ sp.external_aspects|length }}</span></h4>
+        <p class="small muted">Art outside the indexed CPC branches is found by searching the
+          PROBLEM, not the product. Each aspect became its own set of external queries.
+          {% if sp.external_stats and sp.external_stats.n_candidates %}{{ '{:,}'.format(sp.external_stats.n_candidates) }} candidates,
+          {{ '{:,}'.format(sp.external_stats.n_families or 0) }} families in {{ sp.external_stats.elapsed or 0 }}s.{% endif %}</p>
+        <ul class="qplist">
+          {% for a in sp.external_aspects %}
+          <li><b>{{ a.name }}</b>{% if a.keywords %}<span class="qpsrc">{{ a.keywords|join(', ') }}</span>{% endif %}{% if a.cpc %}<span class="qpsrc">CPC {{ a.cpc|join(', ') }}</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+
+      <div class="qpgrid">
+        {% if v.coverage_ledger.cpc_branches %}
+        <section class="qpsec">
+          <h4>CPC branches searched <span class="qpn">{{ v.coverage_ledger.cpc_branches|length }}</span></h4>
+          <div class="qpchips">{% for c in v.coverage_ledger.cpc_branches %}<span class="pill">{{ c }}</span>{% endfor %}</div>
+        </section>
+        {% endif %}
+        {% if v.channels_used %}
+        <section class="qpsec">
+          <h4>Retrieval channels <span class="qpn">{{ v.channels_used|length }}</span></h4>
+          <div class="qpchips">{% for ch in v.channels_used %}<span class="pill">{{ ch }}</span>{% endfor %}</div>
+        </section>
+        {% endif %}
+      </div>
+
+      {% if v.source_tags %}
+      <section class="qpsec">
+        <h4>Sources <span class="qpn">{{ v.source_tags|length }}</span></h4>
+        <ul class="providerlist">
+          {% for s in v.source_tags %}
+          <li class="s-{{ s.state }}"><span class="srcmark" aria-hidden="true">{{ srcicon(s.id) }}</span>
+            <span><b>{{ s.label }}</b>
+            {% if s.n %}{{ '{:,}'.format(s.n) }} results, {% endif %}{{ {'used':'used','degraded':'fallback used','none':'no results','failed':'failed',
+              'unknown':'not run','off':'not configured'}.get(s.state, s.state) }}{% if s.why or s.note %}. {{ s.why or s.note }}{% endif %}</span></li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+    </div>
+
     {% if current_user and not read_only %}
     <form class="qedit" id="qeditbox" method="post" action="{{ request.script_root }}/run" hidden>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -89,34 +220,71 @@
     </form>
     {% endif %}
 
-    <div class="facts">
-      <span><b>{{ v.cards|length }}</b> ranked references</span>
-      <span><b>{{ '{:,}'.format(v.n_families or 0) }}</b> families surfaced</span>
-      <span><b>{{ v.elements|length }}</b> invention elements</span>
-      <span><b>{{ v.mode.replace('_',' ')|title }}</b> mode</span>
-      <span><b>{{ 'Claims' if v.search_focus == 'claims' else 'All text' }}</b> search focus</span>
-      {% if v.subject %}<span>subject
-        <a href="{{ v.subject_google or ('https://patents.google.com/patent/' + v.subject.replace('-','') + '/en') }}"
-           target="_blank" rel="noopener">{{ v.subject_flag }} {{ v.subject }}</a></span>{% endif %}
-      <span>{{ v.languages|join(', ')|upper }}</span>
-    </div>
+    {# One collapsed-height run line. It keeps every metric and provider in the DOM and lets the
+       provider strip clip horizontally; Read more exposes the full status and reasons. #}
+    <details class="runsummary">
+      <summary>
+        <span class="runline">
+          <span class="runfacts">
+            <span><b>{{ v.cards|length }}</b> references</span>
+            <span><b>{{ '{:,}'.format(v.n_families or 0) }}</b> families</span>
+            <span><b>{{ v.elements|length }}</b> elements</span>
+            <span>{{ v.mode.replace('_',' ')|title }}</span>
+            <span>{{ 'Claims' if v.search_focus == 'claims' else 'All text' }}</span>
+            {% if v.subject %}<a href="{{ v.subject_google or ('https://patents.google.com/patent/' + v.subject.replace('-','') + '/en') }}"
+               target="_blank" rel="noopener">{{ v.subject_flag }} {{ v.subject }}</a>{% endif %}
+            <span>{{ v.languages|join(', ')|upper }}</span>
+          </span>
+          {#  A TALLY, not the roll-call. This was the full labelled chip row — "SerpApi Google
+              Patents 41 fallback used…" — and on a wide search that is SIXTEEN sources on a line
+              that is 39px tall and shares its width with the run facts, so it clipped mid-word
+              every time. An icon-only strip was tried and clips too at sixteen.
 
-    {#  Which APIs ran, and what each returned. Data-driven from whatever the backend reports —
-        a source added upstream (Lens) appears here without a template change. #}
-    {% if v.source_tags %}
-    <div class="srcrow" role="group" aria-label="Sources searched">
-      {% for s in v.source_tags %}
-      <span class="srctag s-{{ s.state }}"{% if s.why or s.note %} title="{{ s.why or s.note }}"{% endif %}>
-        <span class="sdot" aria-hidden="true"></span>{{ s.label }}{% if s.n %}<b>{{ s.n }}</b>{% endif %}
-        <span class="vh">— {{ {'used':'used','degraded':'partial results','none':'no results','failed':'failed',
-                               'unknown':'not run','off':'not configured'}.get(s.state, s.state) }}{% if s.why %}: {{ s.why }}{% endif %}</span>
-      </span>
-      {% endfor %}
-    </div>
-    {% endif %}
+              What a collapsed line can usefully say is whether the fan-out worked, and that is
+              four short chips whatever the source count. The roll-call itself — every source,
+              its icon, its result count and the reason it degraded — is in Search run details
+              immediately below and in the Show-full-search panel above, which is where it was
+              already duplicated when it was clipping here. #}
+          {% if v.source_tags %}
+          {% set st = v.source_tags %}
+          {% set n_used = st|selectattr('state','equalto','used')|list|length %}
+          {% set n_deg = st|selectattr('state','equalto','degraded')|list|length %}
+          {% set n_bad = st|selectattr('state','equalto','failed')|list|length %}
+          {% set n_off = st|rejectattr('state','in',['used','degraded','failed'])|list|length %}
+          <span class="srcrow" role="group" aria-label="Sources searched">
+            <span class="srctag s-used" title="{{ st|selectattr('state','equalto','used')|map(attribute='label')|join(', ') }}">
+              <span class="sdot" aria-hidden="true"></span>{{ n_used }}<span class="srcw">of {{ st|length }} sources returned art</span></span>
+            {% if n_deg %}<span class="srctag s-degraded" title="{{ st|selectattr('state','equalto','degraded')|map(attribute='label')|join(', ') }}">
+              <span class="sdot" aria-hidden="true"></span>{{ n_deg }}<span class="srcw">on a fallback</span></span>{% endif %}
+            {% if n_bad %}<span class="srctag s-failed" title="{{ st|selectattr('state','equalto','failed')|map(attribute='label')|join(', ') }}">
+              <span class="sdot" aria-hidden="true"></span>{{ n_bad }}<span class="srcw">failed</span></span>{% endif %}
+            {% if n_off %}<span class="srctag s-off" title="{{ st|rejectattr('state','in',['used','degraded','failed'])|map(attribute='label')|join(', ') }}">
+              <span class="sdot" aria-hidden="true"></span>{{ n_off }}<span class="srcw">not run</span></span>{% endif %}
+          </span>
+          {% endif %}
+        </span>
+        <span class="runmore"><span class="whenclosed">Read more</span><span class="whenopen">Show less</span></span>
+      </summary>
+      <div class="runsummary-detail">
+        <b>Search run details</b>
+        {% if v.source_tags %}<ul class="providerlist">
+          {% for s in v.source_tags %}
+          <li class="s-{{ s.state }}"><span class="srcmark" aria-hidden="true">{{ srcicon(s.id) }}</span>
+            <span><b>{{ s.label }}</b>
+            {% if s.n %}{{ '{:,}'.format(s.n) }} results, {% endif %}{{ {'used':'used','degraded':'fallback used','none':'no results','failed':'failed',
+              'unknown':'not run','off':'not configured'}.get(s.state, s.state) }}{% if s.why or s.note %}. {{ s.why or s.note }}{% endif %}</span></li>
+          {% endfor %}
+        </ul>{% endif %}
+      </div>
+    </details>
 
     <div class="actions">
-      {% if current_user and not read_only %}<a class="btn sm" href="{{ request.script_root }}/drafts/new?search_slug={{ v.slug }}">Draft US application</a>
+      {% if current_user and not read_only %}<form method="post" action="{{ request.script_root }}/drafts/start" class="inlineform directdraft">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="direct" value="1">
+        <input type="hidden" name="search_slug" value="{{ v.slug }}">
+        <button class="btn sm" type="submit">Draft US application</button>
+      </form>
       {#  The letterhead, client details and narrative that head every export. Kept out of the
           report page itself so the evidence stays the evidence.  #}
       <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}/details"
@@ -131,21 +299,14 @@
       {% endif %}
       <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}?rerun=1"
          onclick="return confirm('Re-run the agent live? First matches usually appear within a minute; full refinement can take several minutes.')">Re-run</a>
-    </div>
-    <div class="archivecard" id="archiveCard" data-status="{{ v.archive.status or 'not_started' }}">
-      <div class="archiveicon" aria-hidden="true">ZIP</div>
-      <div class="archivecopy">
-        <b>Top-50 full-text patent archive</b>
-        <span id="archiveStatus">
-          {% if v.archive.ready %}Ready — {{ v.archive.n_patents }} Markdown files; {{ v.archive.n_full_text }} include both claims and full description.
-          {% elif v.archive.status == 'error' %}Archive generation needs a retry.
-          {% elif v.partial %}Starts automatically as soon as the final ranking is ready.
-          {% else %}Building automatically in the background: one Markdown file per ranked patent, with full text and sketch links.{% endif %}
-        </span>
-      </div>
-      <a class="btn sm" id="archiveDownload" href="{{ request.script_root }}/archive/{{ v.slug }}/download"
-         {% if not v.archive.ready %}hidden{% endif %}>Download ZIP</a>
-      <button type="button" class="btn ghost sm" id="archiveRetry" {% if v.archive.status != 'error' %}hidden{% endif %}>Retry</button>
+      <span class="archivecompact" id="archiveCard" data-status="{{ v.archive.status or 'not_started' }}"
+            title="Top-50 full-text patent archive">
+        <span class="archiveicon" aria-hidden="true">ZIP</span>
+        <span id="archiveStatus">{% if v.archive.ready %}{{ v.archive.n_full_text }}/{{ v.archive.n_patents }} full text{% elif v.archive.status == 'error' %}needs retry{% elif v.partial %}after ranking{% else %}building{% endif %}</span>
+        <a class="btn ghost sm" id="archiveDownload" href="{{ request.script_root }}/archive/{{ v.slug }}/download"
+           {% if not v.archive.ready %}hidden{% endif %}>Download ZIP</a>
+        <button type="button" class="btn ghost sm" id="archiveRetry" {% if v.archive.status != 'error' %}hidden{% endif %}>Retry ZIP</button>
+      </span>
     </div>
   </div>
 
@@ -159,80 +320,38 @@
     <summary>Report overview <span>grids, coverage and search scope</span></summary>
   <div class="tailwrap">
 
-    {#  IDENTIFIED BUT NOT READABLE. The search found these and screened them as worth reading,
-        and this corpus holds only a title and an abstract for each. They are NOT mixed into the
-        ranked list: a reference whose full text was quoted and a reference we hold forty words of
-        are not comparable, and sorting them into one list by one number produced a page of fifty
-        on which forty-four were records nobody had read. Shown here, named, with the office copy
-        one click away, because an examiner cites exactly these documents. #}
-    {% if v.deep_rank and v.deep_rank.not_readable %}
-    <details class="tail">
-      <summary><span class="th">Identified but not readable here</span>
-        <span class="ts">{{ v.deep_rank.not_readable|length }} references · this corpus holds only a title and an abstract</span></summary>
-      <div class="tailin">
-        <p class="gridline">The search found these and judged them worth reading, but the text is
-          not in this corpus, so they are not ranked against the references above and nothing is
-          claimed about what they disclose. The office copy usually says considerably more. The
-          score is the screen's judgement of whether reading it would be worth your time.</p>
-        <div class="chartwrap">
-          <table class="chart nrtable">
-            <caption class="vh">References identified but not readable in this corpus</caption>
-            <thead><tr><th scope="col">Publication</th><th scope="col">Title</th>
-              <th scope="col">Worth reading</th></tr></thead>
-            <tbody>
-              {% for r in v.deep_rank.not_readable %}
-              <tr>
-                <td>{% if r.google_patents %}<a href="{{ r.google_patents }}" target="_blank" rel="noopener">{{ r.pub }}</a>{% else %}{{ r.pub }}{% endif %}</td>
-                <td>{{ r.title[:90] }}</td>
-                <td class="nrscore">{{ r.screen if r.screen is not none else '-' }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </details>
-    {% endif %}
-
-    {#  BEST REFERENCE PER FEATURE. A reference is not only a novelty candidate: a document that
-        discloses ONE rare feature and nothing else is the one an inventive-step attack is built
-        on, and the old report had nowhere to put it. Rarity (df) is measured over the references
-        actually read in full, so it is evidence rather than assertion. #}
-    {% if v.deep_rank and v.deep_rank.by_feature %}
-    <details class="tail" open>
-      <summary><span class="th">Best reference for each feature</span>
-        <span class="ts">{{ v.deep_rank.read_in_full }} references read in full · {{ '{:,}'.format(v.deep_rank.chars_read or 0) }} characters · rarest feature first</span></summary>
-      <div class="tailin">
-        <p class="gridline">One row per feature of the invention, rarest first. <b>Disclosed by</b> counts how many of
-          the {{ v.deep_rank.charted }} references read in full actually teach it, with a verbatim quote that passed the
-          grounding check. A feature almost nothing discloses is the one a novelty argument turns on.</p>
-        <div class="chartwrap">
-          <table class="chart featbest">
-            <caption class="vh">The best disclosure found for each feature of the invention</caption>
-            <thead><tr><th scope="col">Invention feature</th><th scope="col">Disclosed by</th><th scope="col">Best evidence</th></tr></thead>
-            <tbody>
-              {% for row in v.deep_rank.by_feature %}
-              <tr>
-                <th class="elh" scope="row">{{ row.feature }}
-                  <span class="elcov">{{ row.df }} of {{ v.deep_rank.charted }} references</span></th>
-                <td class="fbrefs">
-                  {% for r in row.references[:4] %}<button type="button" class="pnlink" onclick="jumpRef('{{ r.pub }}')" title="{{ r.title[:120] }}">{{ r.pub }}</button><span class="fbv fbv-{{ r.verdict }}">{{ r.verdict }}</span>
-                  {% else %}<span class="muted">nothing read in full discloses this</span>{% endfor %}
-                </td>
-                <td class="fbq">{% if row.references %}<q>{{ row.references[0].quote[:220] }}</q><span class="fbloc">{{ row.references[0].location }} · {{ row.references[0].pub }}</span>{% endif %}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </details>
-    {% endif %}
-
+    {#  ELEMENT × REFERENCE GRID.
+        "Best reference for each feature" used to sit above this and said the same thing in a
+        different shape — one row per feature, its best disclosure, a quote — so it is gone and
+        the grid carries the quotes instead. The grid itself is now drawn from the FULL-TEXT
+        READING (webview.build_reading_chart) rather than from retrieval scores; a cell is a
+        verdict backed by a verbatim quote and the passage it came from, not a cosine. #}
+    {% set reading = v.claim_chart.source == 'reading' %}
+    {#  Collapsed, like its siblings. The grid is now the most substantial thing in the report and
+        that is exactly why it stays shut: opened it is 40 rows of quotations sitting between the
+        header and the first result, which is the layout this section was moved up here to end. #}
     <details class="tail{% if v.partial %} pending{% endif %}">
       <summary><span class="th">Element × reference grid</span>
-        <span class="ts">{% if v.partial %}available when final ranking completes{% else %}{{ v.elements|length }} elements × {{ v.claim_chart.columns|length }} references{% if v.claim_chart.verification and v.claim_chart.verification.covered %} · {{ v.claim_chart.verification.discloses }} verified{% endif %}{% endif %}</span></summary>
+        <span class="ts">{% if v.partial %}available when final ranking completes{% else %}{{ v.claim_chart.rows|length }} features × {{ v.claim_chart.columns|length }} references{% if reading %} · read in full · rarest feature first{% elif v.claim_chart.verification and v.claim_chart.verification.covered %} · {{ v.claim_chart.verification.discloses }} verified{% endif %}{% endif %}</span></summary>
       <div class="tailin">
+        {% if reading %}
+        <p class="gridline">One row per feature of the invention, <b>rarest first</b> — the feature
+          almost nothing discloses is the one a novelty argument turns on. Each cell is what that
+          reference was measured to teach when its full text was read, with the verbatim quote that
+          carries it; click a cell for the whole passage. Every quote passed the grounding check and
+          every ✓ survived an independent refuter.
+          <span class="lgi"><span class="lg lg-ok"></span>✓ discloses</span>
+          <span class="lgi"><span class="lg lg-weak"></span>~ partial</span>
+          <span class="lgi"><span class="lg lg-unk"></span>? unconfirmed</span>
+          <span class="lgi"><span class="lg lg-none"></span>· absent</span>
+        </p>
+        {% if v.claim_chart.n_unasked %}
+        <p class="gridline gridwarn"><b>{{ v.claim_chart.n_unasked }} of these features were never
+          put to a reference.</b> This report was generated before the reading covered the whole
+          checklist, so those rows are unanswered rather than undisclosed — they are listed last
+          and marked. Re-run the search to have them read.</p>
+        {% endif %}
+        {% else %}
         <p class="gridline">Each cell is one retrieved passage; the glyph is its verification state.
           <span class="lgi"><span class="lg lg-ok"></span>✓ verified</span>
           <span class="lgi"><span class="lg lg-weak"></span>~ weak</span>
@@ -240,24 +359,25 @@
           <span class="lgi"><span class="lg lg-none"></span>○ whole-document</span>
           {% if v.claim_chart.verification and v.claim_chart.verification.unchecked %}<span class="lgi"><span class="lg lg-unk"></span>? unchecked</span>{% endif %}
         </p>
+        {% endif %}
 
         <div class="chartwrap">
-          <table class="chart">
+          <table class="chart{% if reading %} readgrid{% endif %}">
             <caption class="vh">Which references disclose which elements of the invention</caption>
             <thead>
               <tr>
                 <th class="elh" scope="col">Invention element</th>
                 {% for c in v.claim_chart.columns %}
-                <th scope="col"><button type="button" class="pnlink" onclick="jumpRef('{{ c.pub }}')">{{ c.pub }}</button>
-                  <span class="colcount">{{ c.n_elements }} elements</span></th>
+                <th scope="col"><button type="button" class="pnlink" onclick="jumpRef('{{ c.pub }}')"{% if c.title %} title="{{ c.title }}"{% endif %}>{{ c.pub }}</button>
+                  <span class="colcount">{{ c.n_elements }} {{ 'features' if reading else 'elements' }}</span></th>
                 {% endfor %}
               </tr>
             </thead>
             <tbody>
               {% for row in v.claim_chart.rows %}
-              <tr>
+              <tr{% if reading and not row.asked %} class="rowunasked"{% endif %}>
                 <th class="elh" scope="row">{{ row.element }}
-                  <span class="elcov">best {{ '%.3f'|format(row.coverage.get('best_score',0)) }} · {{ row.coverage.get('n_evidence',0) }} refs</span></th>
+                  <span class="elcov">{% if reading %}{% if row.asked %}disclosed by {{ row.df }} of {{ row.n_charted }} read{% else %}not asked of any reference in this run{% endif %}{% else %}best {{ '%.3f'|format(row.coverage.get('best_score',0)) }} · {{ row.coverage.get('n_evidence',0) }} refs{% endif %}</span></th>
                 {% for cell in row.cells %}
                   {#  Colour encodes VERIFICATION STATE, not retrieval score. Green previously
                       scaled with the fused score, so a confidently-retrieved but wrong cell was the
@@ -265,20 +385,30 @@
                   {% if cell.covered %}
                   {% set vst = cell.verify or 'unchecked' %}
                   <td class="cell cell-{{ vst }}">
-                    <button type="button" onclick="jumpRef('{{ cell.pub }}')"
+                    <button type="button"
+                            {% if reading %}class="qcell" data-pub="{{ cell.pub }}" data-el="{{ row.element }}"
+                            data-verdict="{{ cell.verdict }}" data-loc="{{ cell.location }}"
+                            data-quote="{{ cell.quote }}" data-note="{{ cell.note }}"
+                            data-second="{{ 'true' if cell.second_pass else '' }}"
+                            onclick="showQuote(this)"{% else %}onclick="jumpRef('{{ cell.pub }}')"{% endif %}
                             aria-label="{{ cell.pub }} for “{{ row.element }}” — {{
-                              {'discloses':'verified: passage teaches this element',
-                               'weak':'weak: same topic, does not clearly show the element',
+                              {'discloses':'discloses this element',
+                               'weak':'partially discloses this element',
                                'unrelated':'unrelated: passage is about something else',
                                'no-coord':'whole-document match, no passage to verify',
-                               'unchecked':'not verified'}[vst] }} — retrieval score {{ '%.3f'|format(cell.score) }}"
-                            title="{{ cell.pub }} · {{ cell.verify_why or cell.basis }}">
+                               'unchecked':'disclosed but not confirmed by the refuter'}[vst] }}{% if reading %}. Show the passage{% endif %}"
+                            title="{% if reading %}{{ cell.pub }}{% if cell.location %} · {{ cell.location }}{% endif %}{% if cell.quote %} · “{{ cell.quote[:220] }}”{% endif %}{% else %}{{ cell.pub }} · {{ cell.verify_why or cell.basis }}{% endif %}">
                       <span class="cmark">{{ {'discloses':'✓','weak':'~','unrelated':'✕',
                                               'no-coord':'○','unchecked':'?'}[vst] }}</span>
-                      <span class="cs">{{ '%.3f'|format(cell.score) }}</span>
-                      {% if cell.coord %}<span class="cc">{{ cell.coord }}</span>{% endif %}
-                      {% if cell.basis=='secret_prior_art' %}<span class="cc">🔒 secret</span>
-                      {% elif cell.basis=='public_prior_art' %}<span class="cc">◆ public</span>{% endif %}
+                      {% if reading %}
+                        {% if cell.quote %}<span class="cq">{{ cell.quote[:110] }}{% if cell.quote|length > 110 %}…{% endif %}</span>{% endif %}
+                        {% if cell.location %}<span class="cc">{{ cell.location }}</span>{% endif %}
+                      {% else %}
+                        <span class="cs">{{ '%.3f'|format(cell.score) }}</span>
+                        {% if cell.coord %}<span class="cc">{{ cell.coord }}</span>{% endif %}
+                        {% if cell.basis=='secret_prior_art' %}<span class="cc">🔒 secret</span>
+                        {% elif cell.basis=='public_prior_art' %}<span class="cc">◆ public</span>{% endif %}
+                      {% endif %}
                     </button>
                   </td>
                   {% else %}<td class="cell empty">·</td>{% endif %}
@@ -320,10 +450,36 @@
     </details>
     {% endif %}
 
-    <details class="tail{% if v.partial %} pending{% endif %}">
-      <summary><span class="th">Coverage ledger</span>
-        <span class="ts">{% if v.partial %}available when agentic refinement completes{% else %}{{ v.rounds }} rounds · {{ v.coverage_ledger.cpc_branches|length }} CPC branches · {{ v.channels_used|length }} channels{% endif %}</span></summary>
+    <details class="tail reportlimits"{% if v.partial %} data-state="pending"{% endif %}>
+      <summary><span class="th">Coverage, text recovery and search scope</span>
+        <span class="ts">{% if v.partial %}available when agentic refinement completes{% else %}{% if v.deep_rank and v.deep_rank.not_readable %}{{ v.deep_rank.not_readable|length }} unresolved · {% endif %}{{ v.rounds }} rounds · {{ v.coverage_ledger.cpc_branches|length }} CPC branches · {{ v.channels_used|length }} channels · {{ corpus.recall_pct }}% recall@100{% endif %}</span></summary>
       <div class="tailin">
+        {% if v.deep_rank and v.deep_rank.not_readable %}
+        <section class="overviewsection">
+          <h4>Full text still unavailable after recovery ({{ v.deep_rank.not_readable|length }})</h4>
+          <p class="gridline">Automated recovery checked local text, official patent services,
+            Google Patents and the configured proxy. These references remain outside the ranked
+            full-text comparison. Open the office copy to review one directly.</p>
+          <div class="chartwrap">
+            <table class="chart nrtable">
+              <caption class="vh">References whose full text remained unavailable after recovery</caption>
+              <thead><tr><th scope="col">Publication</th><th scope="col">Title</th>
+                <th scope="col">Worth reading</th></tr></thead>
+              <tbody>
+                {% for r in v.deep_rank.not_readable %}
+                <tr>
+                  <td>{% if r.google_patents %}<a href="{{ r.google_patents }}" target="_blank" rel="noopener">{{ r.pub }}</a>{% else %}{{ r.pub }}{% endif %}</td>
+                  <td>{{ r.title[:90] }}</td>
+                  <td class="nrscore">{{ r.screen if r.screen is not none else '-' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+        <section class="overviewsection">
+          <h4>Coverage ledger</h4>
         <div class="ledger">
           <div class="box">
             <h4>Marginal new-family yield per round</h4>
@@ -349,19 +505,11 @@
             {% endif %}
           </div>
         </div>
-      </div>
-    </details>
-
-    {#  The scope + measured-reliability disclosure. NOT deleted and NOT abbreviated — the full
-        text is still here, one click away, and /about still renders it opened and in full. The
-        exported PDF/DOCX and /print also keep it in full: an exported document travels to people
-        who never saw this screen. What changed is only that it no longer sits above the results
-        on the operator's own screen. #}
-    <details class="tail">
-      <summary><span class="th">Search scope and measured reliability</span>
-        <span class="ts">corpus limits, date ceiling, {{ corpus.recall_pct }}% measured recall@100</span></summary>
-      <div class="tailin">
+        </section>
+        <section class="overviewsection">
+          <h4>Search scope and measured reliability</h4>
         {% with variant='results' %}{% include "_scope.html" %}{% endwith %}
+        </section>
       </div>
     </details>
   </div>
@@ -406,201 +554,7 @@
   </details>
 
   <div class="cards" id="cards">
-    {% for c in v.cards %}
-    <article class="refcard" data-pub="{{ c.pub }}" data-family="{{ c.family or '' }}"
-         data-rank="{{ c.rank }}" data-rel="{{ c.get('relevancy_score') if c.get('relevancy_score') is not none else c.relevancy }}"
-         data-date="{{ c.publication_date or '' }}" data-juris="{{ c.country or '' }}"
-         data-basis="{{ c.basis }}" data-covers="{{ c.covers_elements|join('||') }}"
-         data-ncovers="{{ c.n_covers }}" data-nimg="{{ c.n_images }}"
-         aria-labelledby="t-{{ c.pub }}">
-      <div class="refhead">
-        <div class="selcol">
-          <input type="checkbox" class="selbox" value="{{ c.pub }}" onchange="updateBar()"
-                 aria-label="Select {{ c.pub }} for export or comparison">
-          <div class="flagpills" role="group" aria-label="Triage {{ c.pub }}">
-            <button type="button" class="fp fp-relevant" data-flag="relevant" aria-pressed="false"
-                    aria-label="Mark {{ c.pub }} relevant" title="Mark relevant">✓</button>
-            <button type="button" class="fp fp-maybe" data-flag="maybe" aria-pressed="false"
-                    aria-label="Mark {{ c.pub }} maybe" title="Mark maybe">?</button>
-            <button type="button" class="fp fp-not" data-flag="not" aria-pressed="false"
-                    aria-label="Mark {{ c.pub }} not relevant" title="Mark not relevant">✕</button>
-          </div>
-          {#  A triage flag belongs to THIS report. Saving keeps the publication in the reader's
-              own library, where it survives the report entirely.  #}
-          {% if current_user and not read_only %}
-          <button type="button" class="libbtn" data-pub="{{ c.pub }}" aria-pressed="false"
-                  title="Keep this publication in your saved patents"
-                  aria-label="Save {{ c.pub }} to your saved patents">☆</button>
-          {% endif %}
-        </div>
-
-        {#  Direct-first: when build_view already resolved the manifest the figure is a plain <img>
-            and no JavaScript runs. Otherwise the thumb starts in state="loading" and app.js
-            settles it — to a figure, an explicit "no drawing", or an error. Never a live spinner. #}
-        <button type="button" class="rthumb" data-pub="{{ c.pub }}"
-                data-state="{% if c.images %}ok{% else %}loading{% endif %}"
-                onclick="openDetail('{{ c.pub }}')" aria-label="Open the full document for {{ c.pub }}">
-          {% if c.images %}
-            {% set im0 = c.images[0] %}
-            {#  A locally-recovered figure has a filename (served from /figures/<pub>/<file>); a
-                lemad-Mongo figure has file=null and a remote Google-CDN thumbnail URL that renders
-                directly — nothing was downloaded. Both render here at first paint, no click.
-                loading="eager": figures are cheap CDN URLs (no download), so every card's hero
-                shows immediately, iptorch-style, instead of only the ~2 above-fold ones. decoding
-                stays async so decode never blocks first paint. #}
-            <img loading="eager" decoding="async"
-                 src="{% if im0.file %}{{ request.script_root }}/figures/{{ c.pub }}/{{ im0.file }}{% else %}{{ im0.thumbnail or im0.full }}{% endif %}"
-                 alt="{% if im0.from_pdf %}Page{% else %}Figure{% endif %} 1 of {{ c.pub }}">
-            <span class="figbadge">{{ c.n_images }} fig{{ 's' if c.n_images != 1 else '' }}</span>
-            <span class="zoomhint" aria-hidden="true">🔍</span>
-          {% else %}
-            <span class="tstate"><span class="spin sm" aria-hidden="true"></span>loading<br>drawing</span>
-          {% endif %}
-        </button>
-        {#  WHERE the drawing came from, not decoration. Google Patents has no drawings for roughly
-            69% of German publications, so a figure shown here may have been recovered from EPO OPS
-            instead — and which office a facsimile came from changes what you can conclude when it
-            disagrees with the text, or when no drawing exists at all. #}
-        {% if c.drawings_provenance %}
-        <p class="figprov small muted">Drawings: {{ c.drawings_provenance }}</p>
-        {% endif %}
-
-        <div class="rbody">
-          <div class="rmain">
-            <button type="button" class="rtitle" id="t-{{ c.pub }}" onclick="openDetail('{{ c.pub }}')">
-              <span class="rank">#{{ c.rank }}</span>{{ c.flag }} {{ c.title or '(untitled)' }}</button>
-            <div class="rmeta">
-              {#  c.google_patents is built server-side by pubnorm (zero-padded + kind code); the
-                  inline fallback is only for a card that somehow lacks it and still drops the
-                  leading zero, so it is a last resort, not the normal path. #}
-              <a class="pn" href="{{ c.google_patents or ('https://patents.google.com/patent/' + c.pub.replace('-','') + '/en') }}"
-                 target="_blank" rel="noopener" aria-label="{{ c.pub }} on Google Patents">{{ c.pub }} ↗</a>
-              {% if c.espacenet %}<a class="pn" href="{{ c.espacenet }}" target="_blank"
-                 rel="noopener" aria-label="{{ c.pub }} on Espacenet">Espacenet ↗</a>{% endif %}
-              {% if c.priority_date %}<span>priority {{ c.priority_date }}</span>{% endif %}
-              {% if c.publication_date %}<span>published {{ c.publication_date }}</span>{% endif %}
-              {# Rendered inert and PROMOTED to a real link by app.js only once /api/pdfs confirms
-                 one exists. Starting as a link and demoting later would flash a dead link, and
-                 23 of 34 of these used to 404. #}
-              <span class="pdflink" data-pub="{{ c.pub }}" aria-disabled="true"
-                    title="Checking for a cached PDF…">PDF</span>
-            </div>
-            {% if c.assignees or c.inventors %}
-            <div class="rsub">
-              {% if c.assignees %}<span><span class="fldl">Assignee</span><b>{{ c.assignees|join('; ') }}</b></span>{% endif %}
-              {% if c.inventors %}<span><span class="fldl">Inventor{% if c.inventors|length > 1 %}s{% endif %}</span>{{ c.inventors[:3]|join(', ') }}{% if c.inventors|length > 3 %} +{{ c.inventors|length - 3 }}{% endif %}</span>{% endif %}
-            </div>{% endif %}
-            <div class="rchips">
-              <span class="stag t-{{ c.status.tone }}"{% if c.status.note %} title="{{ c.status.note }}"{% endif %}>{{ c.status.label }}</span>
-              {% if c.basis=='public_prior_art' %}<span class="bbadge b-public">◆ public prior art</span>
-              {% elif c.basis=='secret_prior_art' %}<span class="bbadge b-secret">🔒 secret prior art</span>
-              {% elif c.basis=='priority_interval' %}<span class="bbadge b-interval">priority interval</span>{% endif %}
-              {% for ch in c.channels[:3] %}<span class="chip ch">{{ ch }}</span>{% endfor %}
-              {# per-result source provenance: which channel/API found this reference (item 5).
-                 Image matches are visually distinct (icon + own colour). #}
-              {% for p in c.prov %}<span class="chip {{ p.cls }}"
-                title="Found via {{ p.label }}">{% if p.icon %}{{ p.icon }} {% endif %}{{ p.label }}</span>{% endfor %}
-              {% for cp in c.cpc[:3] %}<span class="chip cpc">{{ cp.code }}</span>{% endfor %}
-            </div>
-            {#  Worldwide patent family (Feature 1): a Google-Patents-style year → jurisdiction
-                strip. The server renders a corpus-only baseline (families inside our corpus);
-                app.js upgrades it in place to the authoritative worldwide EPO OPS INPADOC family
-                once the top-N prefetch (or a card open) resolves it. Grouped by application filing
-                year; hover a code for the member's publication number + filing date. #}
-            {% if c.family_timeline %}
-            <div class="famstrip" data-pub="{{ c.pub }}" data-src="{{ c.family_source or '' }}"
-                 aria-label="Worldwide patent family by application year and jurisdiction">
-              <span class="famsum">Family of {{ c.family_n }} in {{ c.family_juris }} jurisdiction{{ 's' if c.family_juris != 1 else '' }}{% if c.family_source == 'corpus' %} · corpus-only{% endif %}</span>
-              {% for g in c.family_timeline %}<span class="famyear"><span class="fy">{{ g.year }}</span>{% for code in g.codes %}<span class="fcc" title="{{ code.pub }}{% if code.date %} · filed {{ code.date }}{% endif %}">{{ code.cc }}</span>{% endfor %}</span>{% endfor %}
-            </div>
-            {% endif %}
-            {% if c.abstract %}<p class="rsnip">{{ c.abstract[:230] }}{% if c.abstract|length > 230 %}…{% endif %}</p>{% endif %}
-            {#  The iptorch-style written "why relevant" opinion (C's per-result relevance narrative),
-                shown on the card so a domain expert reads the take without opening a tab. The deeper
-                grounded opinion + best-matching passage still live in the "Why relevant" tab. #}
-            {% if c.get('relevancy_opinion') %}
-            <p class="relop" data-rationale-state="summary"><span class="relop-l">Why relevant</span>{{ c.get('relevancy_opinion') }}</p>
-            {% endif %}
-            {% if c.covers_elements %}
-            <div class="rcovers"><span class="lbl2">reads on</span>
-              {% for el in c.covers_elements[:5] %}<button type="button" class="chip el" data-el="{{ el|e }}"
-                onclick="filterByElement(this.dataset.el)"
-                aria-label="Filter the list to references covering “{{ el[:60] }}”">{{ el[:40] }}</button>{% endfor %}
-              {% if c.covers_elements|length > 5 %}<span class="chip">+{{ c.covers_elements|length - 5 }}</span>{% endif %}
-            </div>{% endif %}
-          </div>
-          {#  The number is the iptorch-style per-result AI relevancy score (0-100) when C's
-              reranker scored the card; it falls back to the best-passage cosine relevancy when
-              scoring was off. The hover carries the grounded one-line reason. #}
-          {% set relscore = c.get('relevancy_score') if c.get('relevancy_score') is not none else c.relevancy %}
-          <div class="relbox r{{ (relscore // 20) }}"
-               title="{% if c.get('deep_read') %}Read in full: {{ '{:,}'.format(c.get('deep_chars') or 0) }} characters. Grounds {{ c.get('deep_disclosed', 0) }} disclosed and {{ c.get('deep_partial', 0) }} partial of {{ c.get('deep_features', 0) }} features, weighted by how rare each disclosure is across the references read.{% elif c.get('relevancy_source') in ('deep_rank_screen', 'unread') %}Screened but NOT read in full, so it is held below every reference whose full text was quoted.{% elif c.get('relevancy_source') %}AI relevancy {{ c.get('relevancy_score') }}/100{% if c.get('relevancy_opinion') %} — {{ c.get('relevancy_opinion')[:200] }}{% endif %}{% else %}Best-passage semantic match: {{ '%.3f'|format(c.match_score) }} cosine{% if c.match_coord %} at {{ c.match_kind }} {{ c.match_coord }}{% endif %}{% endif %}">
-            <div class="relnum">{{ relscore }}</div>
-            <div class="rellab">relevancy</div>
-            {% if c.get('deep_read') %}
-            <div class="relsub relsub-read">{{ c.get('deep_disclosed', 0) }}/{{ c.get('deep_features', 0) }} read in full</div>
-            {% elif c.get('relevancy_source') in ('deep_rank_screen', 'unread') %}
-            <div class="relsub relsub-unread">not read in full</div>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-
-      {#  Tabbed document view, modelled on iptorch.com's per-result card: one tab strip, one pane,
-          content fetched only when a tab is picked. Following iptorch, a tab whose data is known
-          to be absent server-side is NOT rendered at all (rather than rendered and then
-          apologising) — and for sections whose presence is only known after /api/ref returns, the
-          pane itself degrades to a plain "not available" line.
-
-          These are DISCLOSURE buttons, not a WAI-ARIA tablist: they toggle one shared pane, there
-          is no roving tabindex and no aria-controls, so `role="tab"` would promise a keyboard
-          contract that is not implemented. Plain buttons + aria-expanded is the honest mapping,
-          and it is also ~30 bytes/button cheaper. Clicks are handled by ONE delegated listener
-          (see app.js) rather than 8 inline onclick attributes per card — with ~25 cards that
-          attribute alone was several KB of the page.
-
-          WEIGHT: this strip is the only thing on the card that scales with the tab count, so it
-          is kept to bare attributes. Everything it opens is fetched on demand. #}
-      <div class="rtabs">
-        {#  The full-text reading of THIS reference: what it discloses, feature by feature and —
-            when the search started from a patent — claim by claim, each with the verbatim quote
-            and the passage it came from. First tab because it is the answer, not a detail.  #}
-        <button type="button" class="rtab rtab-analysis" data-t="analysis" aria-expanded="false"
-                aria-controls="pane-{{ c.pub }}" aria-label="What this reference discloses, {{ c.pub }}">
-          What it discloses</button>
-        <button type="button" class="rtab" data-t="why" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
-                aria-label="Why relevant, {{ c.pub }}">Why relevant</button>
-        {% if c.abstract %}
-        <button type="button" class="rtab" data-t="abstract" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
-                aria-label="Abstract, {{ c.pub }}">Abstract</button>
-        {% endif %}
-        {% if c.claims %}
-        <button type="button" class="rtab" data-t="claims" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
-                aria-label="Claims, {{ c.pub }}">Claims<span class="n">{{ c.claims|length }}</span></button>
-        {% endif %}
-        {% if c.description %}
-        <button type="button" class="rtab" data-t="desc" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
-                aria-label="Description, {{ c.pub }}">Description</button>
-        {% endif %}
-        {% if c.cpc %}
-        <button type="button" class="rtab" data-t="class" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
-                aria-label="Classifications, {{ c.pub }}">Classifications</button>
-        {% endif %}
-        {% if c.n_images %}
-        <button type="button" class="rtab" data-t="figs" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
-                aria-label="Drawings, {{ c.pub }}">Drawings<span class="n">{{ c.n_images }}</span></button>
-        {% endif %}
-        <button type="button" class="rtab" data-t="cites" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
-                aria-label="Citations, {{ c.pub }}">Citations</button>
-        <span class="rtab spacer"></span>
-        <button type="button" class="rtab primary" data-a="detail"
-                aria-label="Full document, {{ c.pub }}">Full view →</button>
-        <button type="button" class="rtab" data-a="similar"
-                aria-label="Similar to {{ c.pub }}">Similar</button>
-      </div>
-      <div class="rpane" id="pane-{{ c.pub }}" role="region" aria-live="polite" hidden></div>
-    </article>
-    {% endfor %}
+    {% for c in v.cards %}{{ refcard(c, v.partial) }}{% endfor %}
   </div>
 
   {#  THE FULL-TEXT READING.
@@ -697,6 +651,25 @@
   </aside>
 </div>
 
+{#  The passage behind one grid cell. Both grids truncate their quote to what fits a table cell;
+    this is where the whole thing lives, with the reference, the passage it came from and the
+    reader's note. One dialog, reused by every cell, so a 48 x 10 grid costs one node. #}
+<div class="qpop" id="qpop" hidden role="dialog" aria-modal="true" aria-labelledby="qpopEl">
+  <div class="qpop-box">
+    <div class="qpop-head">
+      <span class="qpop-v" id="qpopVerdict"></span>
+      <b id="qpopEl"></b>
+      <button type="button" id="qpopClose" aria-label="Close the passage">✕</button>
+    </div>
+    <blockquote id="qpopQuote"></blockquote>
+    <p class="qpop-note" id="qpopNote"></p>
+    <div class="qpop-foot">
+      <span id="qpopLoc"></span>
+      <button type="button" class="pnlink" id="qpopRef"></button>
+    </div>
+  </div>
+</div>
+
 <div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Figure viewer">
   <button type="button" class="x" id="lbclose" onclick="closeLb()" aria-label="Close the figure viewer">✕</button>
   <button type="button" class="nav l" id="lbprev" onclick="lbNav(-1)" aria-label="Previous figure">‹</button>
@@ -768,28 +741,31 @@ window.REPORT_SAVED = {{ (v.account_search and v.account_search.saved)|default(f
   if(!card) return;
   if(window.PARTIAL){
     download.hidden = true; retry.hidden = true;
-    status.textContent = 'Starts automatically as soon as the final ranking is ready.';
+    status.textContent = 'after ranking';
+    card.title = 'The full-text ZIP starts automatically after final ranking.';
     return;
   }
   let timer = null;
   function renderArchive(d){
     card.dataset.status = d.status || 'building';
     if(d.ready){
-      status.textContent = 'Ready — ' + (d.n_patents || 0) + ' Markdown files; ' +
-        (d.n_full_text || 0) + ' include both claims and full description.';
+      status.textContent = (d.n_full_text || 0) + '/' + (d.n_patents || 0) + ' full text';
+      card.title = (d.n_patents || 0) + ' Markdown files. ' + (d.n_full_text || 0) +
+        ' include claims and full description.';
       download.hidden = false; retry.hidden = true;
       if(timer) clearTimeout(timer);
       return true;
     }
     download.hidden = true;
     if(d.status === 'error'){
-      status.textContent = 'Archive generation failed: ' + (d.error || 'unknown error') + '.';
+      status.textContent = 'needs retry';
+      card.title = 'Archive generation failed: ' + (d.error || 'unknown error') + '.';
       retry.hidden = false;
       return true;
     }
     retry.hidden = true;
-    const progress = d.n_patents ? ' (' + (d.n_done || 0) + ' of ' + d.n_patents + ')' : '';
-    status.textContent = (d.message || 'Building full-text Markdown files in the background…') + progress;
+    status.textContent = d.n_patents ? 'building ' + (d.n_done || 0) + '/' + d.n_patents : 'building';
+    card.title = d.message || 'Building full-text Markdown files in the background.';
     return false;
   }
   async function poll(){

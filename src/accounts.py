@@ -256,7 +256,7 @@ def list_users():
     with db.cursor() as cur:
         cur.execute(
             "SELECT u.id,u.email,u.full_name,u.is_admin,u.is_active,u.email_on_completion,"
-            "u.created_at,u.last_login_at,count(s.id)::int AS searches,"
+            "u.email_verified_at,u.created_at,u.last_login_at,count(s.id)::int AS searches,"
             "count(s.id) FILTER (WHERE s.saved)::int AS saved_searches "
             "FROM app_users u LEFT JOIN app_saved_searches s ON s.user_id=u.id "
             "GROUP BY u.id ORDER BY u.created_at DESC")

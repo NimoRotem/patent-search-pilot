@@ -109,3 +109,104 @@ def test_google_patents_id_zero_pads_us_pregrant_publications():
 def test_google_patents_id_survives_an_unparseable_number():
     import enrich
     assert enrich.gp_id("not-a-patent") == "patent/notapatent/en"
+
+
+# --- the live path must leave a reserve too ---------------------------------------------------
+def test_live_path_stops_at_the_reserve(monkeypatch):
+    """Live searches and the background field backfill share ONE monthly SerpApi allowance.
+
+    ops/enrich_field.py refuses to start without leaving a reserve; the live path had none, so the
+    batch job stopped politely while searches kept spending until the allowance hit zero mid-run
+    and on-demand full-text enrichment silently went dark.
+
+    Driven through `may_spend` rather than `fetch_details`, because conftest.no_paid_apis stubs
+    fetch_details out for every test -- a test that went through it would pass whether the guard
+    existed or not.
+    """
+    import enrich
+    monkeypatch.setattr(enrich, "SERP_KEY", "x")
+    monkeypatch.setattr(enrich, "LIVE_RESERVE", 200)
+    monkeypatch.setattr(enrich, "searches_left", lambda force=False: 150)
+    assert enrich.may_spend() is False
+    monkeypatch.setattr(enrich, "searches_left", lambda force=False: 201)
+    assert enrich.may_spend() is True
+
+
+def test_unreadable_quota_never_blocks_a_search(monkeypatch):
+    """Refusing to search because we could not CHECK a quota is worse than overspending."""
+    import enrich
+    monkeypatch.setattr(enrich, "SERP_KEY", "x")
+    monkeypatch.setattr(enrich, "searches_left", lambda force=False: None)
+    assert enrich.may_spend() is True
+
+
+def test_no_key_means_no_spend(monkeypatch):
+    import enrich
+    monkeypatch.setattr(enrich, "SERP_KEY", "")
+    assert enrich.may_spend() is False
+
+
+def test_searches_left_is_cached_and_fail_soft(monkeypatch):
+    """The account read must never raise into a search, and must not be re-read per reference."""
+    import enrich
+    calls = []
+
+    def boom(*a, **k):
+        calls.append(1)
+        raise RuntimeError("serpapi down")
+
+    monkeypatch.setattr(enrich, "SERP_KEY", "x")
+    monkeypatch.setattr(enrich.requests, "get", boom)
+    monkeypatch.setattr(enrich, "_quota", {"left": None, "at": 0.0})
+    assert enrich.searches_left() is None
+    assert enrich.searches_left() is None
+    assert len(calls) == 1, "the second call must come from the cache"
+
+
+def test_google_full_text_falls_back_to_scrapingbee_after_direct_rate_limit(monkeypatch):
+    import fulltext_recovery
+
+    html = """
+      <section itemprop="abstract"><div>Compact abstract.</div></section>
+      <section itemprop="claims"><div>1. A lifting device comprising a pump.</div></section>
+      <section itemprop="description"><p>The pump draws air through a handle.</p></section>
+    """
+    calls = []
+
+    class Response:
+        def __init__(self, status_code, text=""):
+            self.status_code, self.text = status_code, text
+            self.content = text.encode()
+
+    def get(url, **kwargs):
+        calls.append((url, kwargs))
+        if "patents.google.com" in url:
+            return Response(429)
+        return Response(200, html)
+
+    monkeypatch.setattr(fulltext_recovery.requests, "get", get)
+    got = fulltext_recovery.fetch_google_full_text("US-11223344-B2", "bee-key")
+    assert got["source"] == "scrapingbee:google_patents"
+    assert got["claims"] == ["1. A lifting device comprising a pump."]
+    assert got["description"] == ["The pump draws air through a handle."]
+    assert len(calls) == 2 and calls[1][0] == "https://app.scrapingbee.com/api/v1/"
+    assert calls[1][1]["params"]["url"].startswith("https://patents.google.com/patent/")
+
+
+def test_best_full_text_uses_google_recovery_without_serpapi(monkeypatch):
+    import enrich, mongo_corpus
+
+    monkeypatch.setattr(mongo_corpus, "get_detail", lambda pub: None)
+    monkeypatch.setattr(enrich, "fetch_google_full_text", lambda pub, key: {
+        "claims": ["1. A gripper comprising a pump."],
+        "description": ["The pump supplies a sealing plate."],
+        "abstract": [], "source": "google_patents:direct",
+    })
+
+    def no_serp(_pub):
+        raise AssertionError("SerpApi must be the last fallback, not the recovery gate")
+
+    monkeypatch.setattr(enrich, "fetch_details", no_serp)
+    got = enrich.fetch_best_full_text("US-11223344-B2")
+    assert got["claims"] and got["description"]
+    assert got["sources"] == ["google_patents:direct"]

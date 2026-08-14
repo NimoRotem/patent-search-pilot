@@ -6,7 +6,7 @@ arbitrary JSON to disk under an attacker-chosen slug. The app is reachable at
 https://rotem.ai/patents-data/ so all of that was a public cost-amplifier.
 
 Three layers, no new infrastructure:
-  1. A shared-secret session login over the whole app (single intended user).
+  1. Named, revocable user sessions over the whole app.
   2. Per-IP + global token buckets on the expensive routes only.
   3. Hard caps: concurrent report generations, and LLM-spending runs per day.
 
@@ -17,14 +17,10 @@ import os, hmac, json, time, threading, secrets
 from functools import wraps
 from pathlib import Path
 from urllib.parse import urlparse
-from flask import (Blueprint, request, session, redirect, url_for, render_template_string,
-                   render_template, jsonify, current_app, g, abort)
+from flask import (Blueprint, request, session, redirect, url_for, render_template,
+                   render_template_string, jsonify, current_app, g, abort)
 
-# Every secret below is read from the environment AT IMPORT TIME, so `load_dotenv()` must already
-# have run. That is `config`'s job. Until now this module never imported it and worked only by
-# accident: webapp.py imports `db` (which pulls in `config`) a couple of lines before it imports
-# `auth`. Reordering those two imports would have silently emptied APP_PASSWORD and disabled the
-# whole gate. Import it explicitly so the dependency is real rather than incidental.
+# Environment settings are read at import time, so load the deployment environment explicitly.
 import config  # noqa: F401  (imported for its load_dotenv side effect)
 import accounts
 import notifications
@@ -47,7 +43,6 @@ def _num(name, default):
         return float(default)
 
 
-APP_PASSWORD = _env("APP_PASSWORD")
 API_TOKEN = _env("APP_API_TOKEN")
 ACCOUNTS_ENABLED = _flag("USER_ACCOUNTS_ENABLED", "1")
 SESSION_HOURS = _num("SESSION_HOURS", 720)          # 30 days; single-user tool, don't nag
@@ -378,7 +373,7 @@ def init_run_gate(state_path):
 # the gate itself
 # ---------------------------------------------------------------------------------------------
 def auth_enabled(app=None):
-    """Auth is on when a password is configured.
+    """Auth is on for named-account deployments or an explicitly token-gated API.
 
     Off under app.config['TESTING'] so the existing hermetic suite (which drives the Flask test
     client directly) keeps exercising the real handlers rather than the login page. Tests that DO
@@ -388,23 +383,17 @@ def auth_enabled(app=None):
         return False
     if app.config.get("TESTING") and not app.config.get("FORCE_AUTH"):
         return False
-    return accounts_enabled(app) or bool(app.config.get("APP_PASSWORD") or APP_PASSWORD)
+    return accounts_enabled(app) or bool(app.config.get("APP_API_TOKEN") or API_TOKEN)
 
 
 def accounts_enabled(app=None):
-    """Named-account mode. Tests keep the historical password gate unless they opt in."""
+    """Named-account mode."""
     app = app or current_app
     if app.config.get("ACCOUNTS_DISABLED"):
         return False
     if app.config.get("TESTING") and not app.config.get("FORCE_ACCOUNTS"):
         return False
     return bool(app.config.get("ACCOUNTS_ENABLED", ACCOUNTS_ENABLED))
-
-
-def _password(app=None):
-    app = app or current_app
-    return app.config.get("APP_PASSWORD") or APP_PASSWORD
-
 
 def _wants_json():
     """API-ish callers get 401 JSON; browsers get a 302 to the login form. EventSource cannot
@@ -444,17 +433,13 @@ def current_user():
     return user
 
 
-def is_legacy_admin():
-    return session.get("auth") is True and not session.get("user_id")
-
-
 def is_admin():
     user = current_user()
-    return is_legacy_admin() or bool(user and user.get("is_admin"))
+    return bool(user and user.get("is_admin"))
 
 
 def _authenticated():
-    if current_user() is not None or session.get("auth") is True:
+    if current_user() is not None:
         return True
     # Bearer / X-API-Key for scripts and cron, if configured.
     tok = API_TOKEN or current_app.config.get("APP_API_TOKEN")
@@ -502,37 +487,10 @@ def _safe_next(raw):
     return raw
 
 
-_LOGIN_HTML = """<!doctype html><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1">
-<title>Sign in — rotemAI patent search</title>
-<style>
- body{font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1115;color:#e6e8ee;
-      display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
- form{background:#171a21;border:1px solid #262b36;border-radius:12px;padding:28px;width:min(360px,90vw)}
- h1{font-size:17px;margin:0 0 4px} p{color:#8b93a7;font-size:13px;margin:0 0 18px}
- label{display:block;font-size:12px;color:#8b93a7;margin:0 0 6px;font-weight:600}
- input{width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid #2d3341;
-       background:#0f1115;color:#e6e8ee;font-size:15px}
- button{width:100%;margin-top:12px;padding:10px;border:0;border-radius:8px;background:#3b82f6;
-        color:#fff;font-size:15px;font-weight:600;cursor:pointer}
- .err{color:#f87171;font-size:13px;margin-top:10px}
-</style>
-<form method=post>
-  <h1>rotemAI patent search</h1>
-  <p id=hint>This instance is private. Enter the access password.</p>
-  <label for=password>Access password</label>
-  <input id=password type=password name=password autofocus autocomplete=current-password
-         placeholder="Password" aria-describedby="hint"
-         {% if error %}aria-invalid=true aria-errormessage=loginerr{% endif %}>
-  <button type=submit>Sign in</button>
-  {% if error %}<div class=err id=loginerr role=alert>{{ error }}</div>{% endif %}
-</form>"""
-
-
 # Shown instead of raw JSON when a BROWSER (not a fetch/XHR caller) trips a rate limit.
 _TOOMANY_HTML = """<!doctype html><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>Slow down — rotemAI patent search</title>
+<title>Slow down | Rotem Patents</title>
 <style>
  body{font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1115;color:#e6e8ee;
       display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
@@ -557,12 +515,14 @@ def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip()
         supplied = request.form.get("password", "")
-        if accounts_enabled() and email:
+        if not accounts_enabled():
+            error = "Named accounts are temporarily unavailable. Please try again shortly."
+        else:
             try:
-                user = accounts.authenticate(email, supplied)
+                user = accounts.authenticate(email, supplied) if email else None
             except Exception:
                 user = None
-                error = "Accounts are temporarily unavailable. The administrator login still works."
+                error = "Accounts are temporarily unavailable. Please try again shortly."
             if user:
                 session.clear()
                 session["user_id"] = user["id"]
@@ -582,35 +542,16 @@ def login():
             time.sleep(0.5)
             if inline:
                 return jsonify({"ok": False, "error": error}), 401
-            return render_template("login.html", error=error,
-                                   next_path=_safe_next(request.form.get("next") or request.args.get("next"))), 401
-        expected = _password()
-        # constant-time: don't leak the password length/prefix via timing
-        if expected and hmac.compare_digest(supplied, expected):
-            session.clear()
-            session["auth"] = True
-            session["legacy_admin"] = True
-            session["csrf_token"] = secrets.token_urlsafe(32)
-            session.permanent = True
-            # This IP demonstrably holds the password, so it is not the brute-force. Remember it
-            # so a flood from somewhere else can't lock the real user out via the global bucket.
-            _LIMITERS["auth.login"].mark_known_good(client_ip())
-            if inline:
-                return jsonify({"ok": True, "csrf_token": session["csrf_token"]})
-            nxt = _safe_next(request.form.get("next") or request.args.get("next"))
-            if nxt:
-                # `next` is app-relative; re-attach the proxy prefix (/patents-data) so the
-                # redirect stays valid behind nginx.
-                return redirect((request.script_root or "") + nxt)
-            return redirect(url_for("index"))
-        error = "Incorrect password."
-        time.sleep(0.5)                      # blunt the brute-force rate
+            return render_template(
+                "login.html", error=error,
+                next_path=_safe_next(request.form.get("next") or request.args.get("next"))), 401
         if inline:
-            return jsonify({"ok": False, "error": error}), 401
-    if accounts_enabled():
-        return render_template("login.html", error=error,
-                               next_path=_safe_next(request.args.get("next"))), (401 if error else 200)
-    return render_template_string(_LOGIN_HTML, error=error), (401 if error else 200)
+            return jsonify({"ok": False, "error": error}), 503
+        return render_template(
+            "login.html", error=error,
+            next_path=_safe_next(request.form.get("next") or request.args.get("next"))), 503
+    return render_template("login.html", error=error,
+                           next_path=_safe_next(request.args.get("next")))
 
 
 @bp.route("/register", methods=["GET", "POST"])
@@ -701,8 +642,6 @@ def reset_password(token):
 def account():
     user = current_user()
     if not user:
-        if is_legacy_admin():
-            return redirect(url_for("auth.admin_users"))
         return redirect(url_for("auth.login", next="/account"))
     message = request.args.get("message", "")
     error = request.args.get("error", "")

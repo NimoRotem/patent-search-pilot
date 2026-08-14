@@ -81,10 +81,19 @@ def canonical(pub) -> Optional[str]:
 def _us_pregrant_num_variants(cc: str, num: str) -> List[str]:
     """Zero-padding variants of a US pre-grant serial (the dropped-leading-zero fix).
 
-    Returns num spellings most-canonical first: the zero-PADDED 11-digit form, the given form,
-    and the zero-STRIPPED form. Empty when this is not a US pre-grant number, so callers can
-    unconditionally splice it in."""
-    if cc != "US" or not (10 <= len(num) <= 11):
+    Emits EVERY strip level, not just "padded" and "fully stripped". The corpus does not always
+    drop all of the leading zeros -- it drops SOME of them -- and a two-zero serial is where the
+    two-value version silently failed:
+
+        US 2014/0008929 A1   serial 0008929
+            Google / Mongo   US20140008929A1   (padded, 7-digit serial)
+            this corpus      US-2014008929-A1  (ONE zero dropped, 6-digit serial)
+            old code emitted US20140008929A1 and US20148929A1 -- and never the corpus form,
+            so a document we hold looked absent and was inserted, ranked and displayed twice.
+
+    Ladder: 0008929 -> 008929 -> 08929 -> 8929, padded first (Google and Espacenet need that one,
+    and `mongo_candidates(pub)[0]` is what builds every outbound link)."""
+    if cc != "US" or not (8 <= len(num) <= 11):
         return []
     year = num[:4]
     try:
@@ -96,12 +105,17 @@ def _us_pregrant_num_variants(cc: str, num: str) -> List[str]:
     serial = num[4:]
     if len(serial) > _US_PREGRANT_SERIAL_LEN:
         return []
-    padded = year + serial.zfill(_US_PREGRANT_SERIAL_LEN)          # US + 2019 + 0168875
-    stripped = year + (serial.lstrip("0") or "0")                 # US + 2019 + 168875
-    out = []
-    for v in (padded, num, stripped):
+    out: List[str] = []
+    s = serial.zfill(_US_PREGRANT_SERIAL_LEN)
+    while True:
+        v = year + s
         if v not in out:
             out.append(v)
+        if not s.startswith("0") or len(s) <= 1:
+            break
+        s = s[1:]
+    if num not in out:
+        out.append(num)
     return out
 
 

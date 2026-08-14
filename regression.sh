@@ -68,6 +68,31 @@ echo "== edge cases: no 500s =="
 [ "$(code -X POST $BASE/export -d 'slug=x' -d 'pubs=' -d 'format=pdf')" = 400 ] && ok "empty export -> 400" || bad "empty export"
 [ "$(code $BASE/pdf/JUNK-9)" = 404 ] && ok "missing pdf -> 404" || bad "missing pdf"
 
+echo "== drafting studio: routes exist, are account-gated, and the agent is configured =="
+# These are unauthenticated calls on purpose. A drafting route that answers 200 to a signed-out
+# request is the failure worth catching here; 403 IS the pass.
+[ "$(code $BASE/drafts/start)" = 403 ] && ok "intake is account-gated" || bad "intake gate"
+[ "$(code $BASE/drafts/1/studio)" = 403 ] && ok "studio is account-gated" || bad "studio gate"
+[ "$(code $BASE/api/drafts/1/studio/poll)" = 403 ] && ok "studio poll is account-gated" || bad "poll gate"
+[ "$(code -X POST $BASE/drafts/1/studio/message)" = 400 ] && ok "message POST needs CSRF" || bad "message CSRF"
+health=$(curl -s $BASE/healthz)
+echo "$health" | grep -q '"draft_turn_worker"' && ok "turn worker reports health" || bad "turn worker health"
+echo "$health" | $PY -c "import sys,json;d=json.load(sys.stdin)['draft_turn_worker'];sys.exit(0 if d['thread_alive'] and d['configured'] else 1)" \
+  && ok "turn worker thread alive" || bad "turn worker thread"
+echo "$health" | $PY -c "import sys,json;a=json.load(sys.stdin)['draft_turn_worker']['agent'];print('   ',a.get('binary'),a.get('version'));sys.exit(0 if a['ok'] else 1)" \
+  && ok "drafting agent available" || bad "drafting agent NOT available"
+( cd src && $PY -c "
+import sys; sys.path.insert(0,'.')
+import draft_qa, draft_workspace, draft_uspto, draft_studio
+s = {k: 'x' for k,_n,_h in draft_workspace.SECTION_FILES}
+s['claims'] = '1. A tool comprising a body.'
+s['abstract'] = 'A tool.'
+assert draft_qa.run_checks(sections=s, numerals=[], figures=[], allow_remote=False)
+assert draft_uspto.fee_profile(s['claims'])['independent'] == 1
+assert draft_studio.render_markdown(s)
+print('drafting checks importable and runnable')
+" ) >/dev/null 2>&1 && ok "consistency checks run" || bad "consistency checks"
+
 echo "== OPS parser (dry-run, no creds) =="
 ( cd src && PATENT_SKIP_DOTENV=1 $PY test_ops.py ) 2>&1 | grep -q 'PASS' && ok "ops parser test PASS" || bad "ops parser"
 

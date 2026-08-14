@@ -219,11 +219,11 @@ def _chart_sheet(wb, model):
     chart = model.get("claim_chart") or {}
     cols = chart.get("columns") or []
 
-    ws["A1"] = disclosure.CHART_TITLE
+    ws["A1"] = disclosure.chart_title(chart)
     ws["A1"].font = TITLE_FONT
     ws["A2"] = disclosure.CHART_TAG.upper()
     ws["A2"].font = WARN_FONT
-    ws["A3"] = disclosure.chart_warning()
+    ws["A3"] = disclosure.chart_warning(chart=chart)
     ws["A3"].font = MUTED_FONT
     ws["A3"].alignment = TOP_WRAP
     ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=max(2, len(cols) + 1))
@@ -246,7 +246,8 @@ def _chart_sheet(wb, model):
                 continue
             _mark, _label, fill, _cov = disclosure.cell_state(cell)
             word = disclosure.cell_word(cell)
-            bits = [word, str(cell.get("score"))]
+            bits = [word] + ([disclosure.cell_detail(cell, 220)]
+                                 if disclosure.cell_detail(cell, 220) else [])
             if cell.get("coord"):
                 bits.append(str(cell["coord"]))
             c = ws.cell(row=r, column=j, value="\n".join(bits))

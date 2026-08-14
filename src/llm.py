@@ -77,19 +77,100 @@ def _call(system, user, max_tokens):
 
 
 def chat_json(system, user, max_tokens=1200):
+    """-> parsed JSON, or {} .
+
+    {} IS AMBIGUOUS AND THAT AMBIGUITY HAS COST REAL EXPERIMENTS. Every caller reads it as "the
+    model had nothing to say", and it is also what a 503, a quota refusal and a truncated response
+    return. The tournament comparisons failed this way for a whole A/B: the JSON was truncated at
+    max_tokens, every group returned {}, and the run reported a 40% ranking regression that was
+    entirely a broken call.
+
+    So the two cases are now separated. A transport or parse FAILURE goes through failclosed, which
+    raises in benchmark mode and records the degradation in production. A model that genuinely
+    returned empty JSON still returns {} and is not an error.
+    """
+    import failclosed
     try:
         resp = _call(system, user, max_tokens)
-    except Exception:
-        return {}
+    except Exception as e:
+        return failclosed.fallback("llm.chat_json", f"{type(e).__name__}: {str(e)[:160]}",
+                                   {}, kind="llm_call_failed")
     um = getattr(resp, "usage_metadata", None)
     _record_usage(
         getattr(um, "prompt_token_count", 0) if um else 0,
         getattr(um, "candidates_token_count", 0) if um else 0,
     )
+    text = getattr(resp, "text", None)
+    if not text:
+        return failclosed.fallback("llm.chat_json", "empty response body", {},
+                                   kind="llm_empty_response")
     try:
-        return json.loads(resp.text)
-    except Exception:
-        return {}
+        return json.loads(text)
+    except Exception as e:
+        #  Truncation is the common case and it looks exactly like an empty answer downstream.
+        #  Throwing the whole response away is far worse than it sounds: measured on the fifty
+        #  subject freeze, the disclosure extractor produced 21,364 characters for
+        #  b65g_ep1795464a3, ran out of output tokens mid-object, and the subject was recorded as
+        #  disclosing NOTHING. Two of the three unusable dev subjects failed this exact way, and
+        #  both were claim-rich subjects, which is to say the ones that matter most.
+        #  A truncated list is still a list up to the cut. Keep the complete prefix and SAY it is
+        #  a prefix, so a caller can decide whether a prefix is acceptable; silently returning one
+        #  as if it were whole is the failure this repair exists to avoid.
+        obj = _salvage_json(text)
+        if obj is not None:
+            obj["_truncated"] = True
+            print(f"[llm] SALVAGED a truncated response: {len(text)} chars, "
+                  f"kept {sum(len(v) for v in obj.values() if isinstance(v, list))} list items; "
+                  f"the result is a PREFIX, not a complete answer", flush=True)
+            return obj
+        return failclosed.fallback(
+            "llm.chat_json",
+            f"unparseable JSON ({type(e).__name__}); {len(text)} chars, "
+            f"ends {text[-40:]!r}", {}, kind="llm_bad_json")
+
+
+def _salvage_json(text):
+    """The complete prefix of a truncated JSON object, or None.
+
+    Handles the one shape that actually occurs: {"key": [ {...}, {...}, {"text": "Rele
+    i.e. a top level object holding one array, cut off inside an element. Walks the text tracking
+    string state and nesting depth, remembers the last position at which the array had just closed
+    an element, and rebuilds from there. Deliberately narrow: a clever general repair would invent
+    structure, and inventing structure in a metric denominator is worse than losing it.
+    """
+    if not text or "[" not in text:
+        return None
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth, in_str, esc, cut = 0, False, False, -1
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+            #  depth 2 means we just closed an element INSIDE the array inside the object
+            if depth == 2:
+                cut = i
+    if cut < 0:
+        return None
+    for suffix in ("]}", "}]}"):
+        try:
+            return json.loads(text[start:cut + 1] + suffix)
+        except Exception:
+            continue
+    return None
 
 
 # ---------------------------------------------------------------------------

@@ -26,6 +26,51 @@ displays, and **exports litigation-grade** prior-art reports.
   rationale, inventive-step combination analysis, and a full-ranked appendix.
 - **Side-by-side compare** of 2–3 references for a combination argument.
 
+### Phase two — the drafting studio (`/drafts`)
+
+Finding the art is half of the job. The second half writes the application.
+
+- **Start from anything.** A description of the invention in the inventor's own words, or a draft
+  they already have (pasted or uploaded, split on its headings to begin with). A prior-art search
+  is OPTIONAL: references can come from a finished report, from uploads, from a publication number
+  typed in mid-conversation, or not at all — in which case the draft says so rather than pretending.
+- **A conversation, not a form.** The user asks for changes, corrects a fact, uploads another
+  reference, or asks a question the agent answers without touching the draft. Every exchange is a
+  durable, leased TURN, so a restart mid-run loses the run and not the project.
+- **Claude Code is the drafting agent.** The draft is a tree of files (`draft/01-title.md` …
+  `09-abstract.md`, `numerals.md`, one file per drawing) that the agent edits in place, which is
+  what lets it narrow claim 1 and then go back and widen the description to support it. Each run is
+  pinned: `--safe-mode`, an explicit `--tools` allow-list, a private `CLAUDE_CONFIG_DIR`, and a
+  workspace deliberately outside `$HOME` so no CLAUDE.md from the host leaks in. The only command it
+  may run is `tools/patent_lookup.py`, which reads a publication out of the local corpus.
+- **The reasoning is the product.** Every iteration returns a structured answer: a summary, the
+  actual decisions (which feature carries claim 1 clear of which reference, what was deliberately
+  left out), what changed file by file, how the draft steps around the art, and what the agent needs
+  from the inventor. All of it is shown in the conversation.
+- **A separate reviewer runs after every iteration**, automatically, in a NEW session so it has not
+  heard the drafter's argument. Two halves that are never merged: mechanical checks decided in code
+  (numerals against the text and the drawings, claim numbering and dependency, antecedent basis,
+  citation resolution against the corpus, abstract word cap, figure cross-references) and the
+  reviewer's judgements, each carrying the sentence it is about. A finding without a quote is
+  dropped. Only a check code can PROVE can fail a draft; heuristics can only advise.
+- **Filing.** `draft_uspto` separates blockers (unresolved drafting notes, a citation that resolves
+  to nothing, no named inventor) from formalities from what only a person can do (the oath, entity
+  status, formal drawings under 37 CFR 1.84, the IDS, the fee, the attorney). The package carries
+  the specification in 37 CFR 1.77 order with numbered paragraphs, the ADS field values, the claim
+  counts that set the fee, and the cited-art listing. **No fee amount is printed** — those change by
+  rulemaking and a number baked in here would be quietly wrong within a year.
+- **Figure compiler.** The `#/compiler` workspace turns the current draft into a source-linked
+  canonical model, requires approval of that model and the figure manifest, emits deterministic
+  semantic SVG/PDF sheets, validates reference signs in both directions, and locks export until a
+  third human approval. Raster AI drawings remain concept aids, not filing output. See
+  [`docs/figure-compiler.md`](docs/figure-compiler.md).
+
+Modules: `draft_agent` (the CLI bridge), `draft_workspace` (the file tree), `draft_studio` (turns,
+prompt, persistence), `draft_studio_service` (routes + worker), `draft_qa` (checks + reviewer),
+`draft_cite` (citation resolution), `draft_uspto` (readiness + package). Schema: `sql/006_draft_agent.sql`.
+The filing-figure path is `figure_compiler` + `figure_compiler_service`; schema:
+`sql/007_figure_compiler.sql`.
+
 ---
 
 ## Architecture

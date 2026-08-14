@@ -235,16 +235,25 @@ SELECT p.id FROM publications p
 WHERE p.id > %s
   AND NOT EXISTS (SELECT 1 FROM chunks c WHERE c.publication_id = p.id)
   AND {text_pred}
+  {tier_pred}
 ORDER BY p.id
 """
 
 
-def unchunked_publication_ids(min_pub_id=0, limit=None, two_tier=None):
+def unchunked_publication_ids(min_pub_id=0, limit=None, two_tier=None, tiers=None):
     """The resumable/idempotent work queue: publications that still need chunking.
 
     If the job dies after loading but before chunking, the next run picks up exactly the
     publications that still need work -- no bookkeeping table required, the absence of
     chunks IS the state.
+
+    `tiers` scopes the queue to those tier values; None means every tier, which is what the
+    weekly job wants. It exists because the corpus now has a third tier: `external`, the
+    publications a live search DISCOVERED through the patent APIs and inserted (see
+    external.materialise). Those arrive with a title and an abstract and no chunks, so they are
+    genuine outstanding work -- chunking them is how art found once becomes retrievable by vector
+    for every later search. But it means "the queue is empty" is no longer a property of a
+    fully-ingested corpus, only of a fully-ingested corpus that has not been searched since.
 
     two_tier must match the depth the chunker will run at, or the queue and the chunker disagree
     about what counts as chunkable and the difference re-queues forever. Defaults to the
@@ -254,8 +263,11 @@ def unchunked_publication_ids(min_pub_id=0, limit=None, two_tier=None):
     if two_tier is None:
         two_tier = os.environ.get("TWO_TIER_DEFAULT", "").strip() not in ("", "0", "false", "False")
     q = _UNCHUNKED_SQL.format(
-        text_pred=_UNCHUNKED_TEXT_TWO_TIER if two_tier else _UNCHUNKED_TEXT_ANY)
+        text_pred=_UNCHUNKED_TEXT_TWO_TIER if two_tier else _UNCHUNKED_TEXT_ANY,
+        tier_pred="AND p.tier = ANY(%s)" if tiers else "")
     params = [min_pub_id]
+    if tiers:
+        params.append(list(tiers))
     if limit:
         q += " LIMIT %s"
         params.append(limit)

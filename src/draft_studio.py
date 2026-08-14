@@ -1,0 +1,1089 @@
+"""The drafting conversation: persistence, the prompt, and the loop that runs one turn.
+
+PHASE TWO OF THE PRODUCT.  Phase one finds the art.  This writes the application, and it is a
+conversation rather than a form: the user says what the invention is (or hands over a draft they
+already wrote), the agent drafts, the user reacts, the agent revises.  A separate reviewer runs
+after every single iteration whether or not anyone asked for it.
+
+WHAT AN ITERATION IS
+    user message  ->  workspace built from Postgres  ->  drafting agent edits the files
+                  ->  sections read back and validated  ->  new immutable version
+                  ->  reviewer runs  ->  report stored  ->  both posted into the conversation
+
+Everything durable lives in Postgres and the workspace is a rebuildable cache, so a restart in the
+middle of a fifteen-minute drafting run loses the run, not the project — and the recovery pass
+turns an abandoned lease back into a queued turn instead of a project stuck saying "drafting…"
+for ever.
+
+INPUT IS OPTIONAL IN BOTH DIRECTIONS.  A project may start from a description or from an existing
+draft; it may have a finished prior-art search behind it, a pile of uploaded references, a single
+publication number the user typed, or nothing at all.  Prior art makes the draft better and the
+prompt says exactly how; its absence is stated plainly in the output rather than hidden.
+"""
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import re
+import secrets
+import threading
+import time
+import traceback
+from datetime import timedelta
+from pathlib import Path
+from typing import Any, Callable, Mapping, Sequence
+
+import draft_agent
+import draft_cite
+import draft_qa
+import draft_workspace
+import drafting
+
+try:
+    import db
+except ModuleNotFoundError:                    # prompt/validation tests need no driver
+    db = None                                  # type: ignore[assignment]
+
+MAX_MESSAGE_CHARS = 20_000
+MAX_TURNS_LISTED = 200
+LEASE_SECONDS = 2400                           # a full drafting turn plus its review
+_SCHEMA_LOCK = threading.Lock()
+_SCHEMA_READY = False
+_MIGRATION = Path(__file__).resolve().parents[1] / "sql" / "006_draft_agent.sql"
+
+
+class StudioError(drafting.DraftingError):
+    pass
+
+
+# =============================================================================================
+# The drafting prompt
+# =============================================================================================
+TURN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "action": {"type": "string", "enum": ["revised", "answered"]},
+        "summary": {"type": "string"},
+        "reasoning": {"type": "array", "items": {"type": "string"}},
+        "changes": {"type": "array", "items": {"type": "string"}},
+        "prior_art_strategy": {"type": "string"},
+        "questions": {"type": "array", "items": {"type": "string"}},
+        "answer": {"type": "string"},
+    },
+    "required": ["action", "summary", "reasoning", "changes", "prior_art_strategy", "questions",
+                 "answer"],
+    "additionalProperties": False,
+}
+
+DRAFT_SYSTEM = """You are drafting a US utility patent application. You work by editing files in
+this workspace; the files ARE the draft.
+
+WHAT YOU ARE AND ARE NOT
+You produce a technically faithful working draft for a patent attorney to review and file. You do
+not give legal advice and you never state or imply that anything is patentable, novel,
+non-obvious, valid, infringing, or clear to practise. Write the application; leave the conclusions
+to the attorney who signs it.
+
+THE ONE RULE THAT OUTRANKS EVERY OTHER
+The inventor's disclosure (input/disclosure.md) and what the user tells you in conversation are
+the ONLY authority for what the invention is. Prior art in prior_art/ is context to write AROUND,
+never a source to borrow from. If a fact a filing-quality draft needs is missing — a dimension, a
+material, a step, an inventor name, a priority claim — write `[DRAFTING NOTE: what you need and
+why]` in place of it and list it in your questions. Never invent it. An invented structure is the
+one failure that cannot be repaired later, because nobody reading the draft can tell it was
+invented.
+
+WORKING AROUND THE PRIOR ART
+Read prior_art/INDEX.md and then every reference file before you write. For each one, work out
+what it actually teaches — not what its title suggests. Then:
+  * Draft the independent claims so that each one recites, in its own terms, at least one concrete
+    feature or relationship that no reference in prior_art/ discloses, and make that feature do
+    real technical work in the invention rather than being an arbitrary addition. Say in your
+    reasoning WHICH feature carries the claim clear of WHICH reference.
+  * Never write a claim whose recited combination you have just read in one of these documents.
+  * Where two references together would suggest the combination, add the feature that neither
+    teaches and that neither gives a reason to look for, and explain in the specification the
+    technical problem it solves. That explanation, in the specification, is what a later argument
+    is built from, so it must be there before it is needed.
+  * Describe the invention in a way that does not read onto the art: choose terminology that is
+    accurate for your invention and is not the art's own vocabulary for a different thing.
+
+CLAIMS: BROAD BUT DEFENSIBLE
+  * Claim 1 is the broadest statement of the invention that the description fully supports and
+    that no reference in prior_art/ discloses. Broad means: no limitation in claim 1 that is not
+    needed to distinguish the art or to make the invention work. Every unnecessary word in claim 1
+    is scope given away for nothing.
+  * Defensible means: every limitation is described in the detailed description, in the same
+    words; nothing is claimed that the description does not enable a skilled reader to build.
+  * Include a graduated ladder of dependent claims — the next-narrowest fallback first, then
+    genuinely different embodiments — so that if claim 1 falls there is somewhere to retreat to
+    that is still worth having. A dependent claim that adds a trivial or purely aesthetic
+    limitation is wasted; each one should add a feature you could argue independently.
+  * Write independent claims in more than one statutory class where the disclosure supports it
+    (apparatus and method; system and method of manufacture), because they are infringed by
+    different parties.
+  * Use consistent terminology and antecedent basis. Do not use means-plus-function language
+    unless the user asks for it.
+
+CITATIONS
+Cite as `[REF:KEY]`, using exactly the keys in prior_art/INDEX.md. Citations belong in the
+Background, and in the Detailed Description only to incorporate a document by reference. Never in
+the title, summary, claims or abstract. Never cite a key that is not in the index; never
+characterise a reference beyond what its file actually says. If the file does not support the
+statement you want to make, make a weaker statement or none.
+
+REFERENCE NUMERALS
+Keep draft/numerals.md in step with the text at all times: every numeral used anywhere appears
+there exactly once against one part name, and every part has one numeral. Introduce a numeral the
+first time its part is named ("a suction cup 10"), and use the same words for it every time after.
+Figures live in figures/, one file per drawing, listing the numerals that appear on it — a numeral
+on a drawing that is not in the table, or a part described as visible in a figure whose file does
+not list it, is a defect the review will find.
+
+FILES
+  input/disclosure.md     the invention (read-only authority)
+  input/brief.md          title, applicant, inventors, notes
+  input/conversation.md   what has been said so far
+  input/request.md        what the user is asking for THIS turn
+  input/materials/        anything else the user uploaded
+  prior_art/              the references, with INDEX.md listing the citation keys
+  draft/01-title.md … draft/09-abstract.md    the application, body text only, no heading lines
+  draft/numerals.md       the reference-numeral table
+  figures/                one file per drawing
+  review/previous-qa.md   what the reviewer found last time — fix it
+  tools/patent_lookup.py  `python3 tools/patent_lookup.py US-9108319-B2` reads a publication out
+                          of the local corpus of millions of patents. Use it when you need what a
+                          reference ACTUALLY says, or to check a publication before citing it.
+
+HOW TO WORK
+Read before you write: the request, the conversation, the disclosure, the current draft, the
+review. Then edit only what the request and the review require. A request to narrow one claim is
+not licence to reword the background — an unnecessary rewrite destroys the user's own edits and
+makes the change log useless.
+
+FINISH by returning the structured answer. `reasoning` is read by the user and is the record of
+why this draft is the shape it is: give the actual decisions — which feature you put in claim 1
+and what it clears, what you deliberately left out of the independent claim and why, where the
+description had to be widened to support a claim. Not a restatement of what you did."""
+
+FIRST_TURN_PROMPT = """Write the first working draft of this US patent application.
+
+Read, in this order: input/request.md, input/brief.md, input/disclosure.md, every file in
+prior_art/ (start with INDEX.md), and anything in input/materials/.
+
+%(seeded)s
+
+Then write every section in draft/, build draft/numerals.md, and write one file per drawing in
+figures/ for the figures this invention needs. Give the drawings enough detail that a draftsperson
+could produce them: what view it is, what is shown, and which numerals appear on it.
+
+Return the structured answer with `action` set to "revised"."""
+
+REVISE_PROMPT = """Continue drafting this application.
+
+The user's request for this turn is in input/request.md. The reviewer's report on the current
+draft is in review/previous-qa.md.
+
+Do what the user asked. Then fix anything in the review that is genuinely wrong — and if you
+think a review finding is mistaken, leave the draft alone and say why in your summary rather than
+changing good text to silence a check.
+
+Change only what needs changing. If the request is a question rather than a change, answer it in
+`answer`, set `action` to "answered", and leave the files alone.
+
+Return the structured answer."""
+
+QUESTION_PROMPT = """The user has asked a question about this draft rather than asking for a
+change. Their question is in input/request.md.
+
+Read whatever you need in order to answer it accurately — the draft, the prior art, the
+disclosure. Answer in `answer`, set `action` to "answered", and do not edit any file.
+
+If answering honestly requires a change to the draft, say so in your answer and ask them to
+confirm; do not make the change unasked."""
+
+
+def build_prompt(kind: str, *, seeded: bool = False) -> str:
+    if kind == "initial":
+        return FIRST_TURN_PROMPT % {"seeded": (
+            "The draft/ files have been pre-filled by splitting the user's own document on its "
+            "headings. That split was mechanical and may be wrong: check that every part of the "
+            "source document landed somewhere sensible, move anything that did not, and improve "
+            "the result. Do not discard the user's text and start again."
+            if seeded else
+            "The draft/ files are empty. Write them.")}
+    if kind == "question":
+        return QUESTION_PROMPT
+    return REVISE_PROMPT
+
+
+def figures_for_qa(project_id: int, user_id: int,
+                   figure_specs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Replace requested numerals with vision-detected pixels for every drawn sheet."""
+    try:
+        import draft_figures
+        drawn = draft_figures.listing(project_id, user_id)
+    except Exception:
+        # Never substitute the intended labels for pixels that could not be loaded. The review may
+        # continue, but it must carry a blocking, visible inspection result rather than a false pass.
+        return [{**dict(item), "numerals": [], "drawn": False,
+                 "numeral_audit": {"inspected": False,
+                                     "error": "The drawing store could not be read."}}
+                for item in figure_specs]
+
+    def key(value):
+        return re.sub(r"[^0-9a-z]", "", str(value or "").lower()).replace("figure", "fig")
+
+    by_label = {key(item.get("figure_label")): item for item in drawn}
+    out = []
+    for spec in figure_specs:
+        item = dict(spec)
+        image = by_label.pop(key(spec.get("label")), None)
+        item["drawn"] = False
+        # A figure specification is not a drawing. Until an active image exists it contributes no
+        # visible numerals to the bidirectional QA check.
+        item["numerals"] = []
+        if image:
+            active = next((version for version in image.get("versions") or []
+                           if int(version.get("version_no") or 0) ==
+                           int(image.get("active_version") or 0)), None) or {}
+            audit = active.get("numeral_audit") or {}
+            item["drawn"] = bool(active)
+            if audit.get("inspected"):
+                item["numerals"] = list(active.get("detected_numerals") or [])
+            item["numeral_audit"] = dict(audit)
+        out.append(item)
+    # Stored sheets whose figure specification disappeared are still real pixels. Include them so
+    # an unexpected numeral or obsolete drawing cannot vanish from QA merely because the text side
+    # was edited first.
+    for image in by_label.values():
+        active = next((version for version in image.get("versions") or []
+                       if int(version.get("version_no") or 0) ==
+                       int(image.get("active_version") or 0)), None) or {}
+        audit = active.get("numeral_audit") or {}
+        out.append({"label": image.get("figure_label"), "caption": image.get("caption") or "",
+                    "numerals": (list(active.get("detected_numerals") or [])
+                                 if audit.get("inspected") else []),
+                    "drawn": bool(active), "orphan": True, "numeral_audit": dict(audit)})
+    return out
+
+
+# =============================================================================================
+# Validation
+# =============================================================================================
+def validate_sections(sections: Mapping[str, str],
+                      allowed_references: Sequence[str] = ()) -> dict[str, str]:
+    """Check an agent-written draft hard enough to store it, and no harder.
+
+    Deliberately looser than the one-shot generator's validator in ``drafting``: this draft is
+    reviewed straight afterwards and shown to the user for another turn, so a citation in the
+    Detailed Description (which is where a document is incorporated by reference) is correct
+    rather than a reason to throw away twenty minutes of work.  What is still refused is what
+    cannot be repaired by another turn: an empty section, a fabricated citation key, and any
+    legal conclusion.
+    """
+    out: dict[str, str] = {}
+    missing: list[str] = []
+    total = 0
+    for key, _name, heading in draft_workspace.SECTION_FILES:
+        value = str(sections.get(key) or "").replace("\x00", "").strip()
+        if not value:
+            missing.append(heading)
+        out[key] = value
+        total += len(value)
+    if missing:
+        raise drafting.DraftingValidationError(
+            "The draft is missing " + ", ".join(missing) + ".")
+    if total > drafting.MAX_GENERATED_CHARS:
+        raise drafting.DraftingValidationError("The draft is too large to store safely.")
+
+    allowed = {draft_cite.normalize(a) for a in allowed_references if draft_cite.normalize(a)}
+    for key, _name, heading in draft_workspace.SECTION_FILES:
+        for raw in draft_cite.malformed_citations_in(out[key]):
+            raise drafting.DraftingValidationError(
+                f"{heading} contains a malformed citation [REF:{raw[:40]}].")
+        for citation in draft_cite.citations_in(out[key]):
+            canonical = draft_cite.normalize(citation)
+            if not canonical:
+                raise drafting.DraftingValidationError(
+                    f"{heading} cites an unusable publication number [REF:{citation[:40]}].")
+            if allowed and canonical not in allowed:
+                raise drafting.DraftingValidationError(
+                    f"{heading} cites {canonical}, which is not among this project's sources.")
+
+    joined = "\n".join(out.values())
+    for pattern in drafting._LEGAL_CONCLUSION_PATTERNS:
+        found = pattern.search(joined)
+        if found:
+            raise drafting.DraftingValidationError(
+                f"The draft states a legal conclusion ({found.group(0)!r}). A working draft "
+                "describes the invention; it does not conclude on patentability or infringement.")
+    return out
+
+
+def citations_of(sections: Mapping[str, str]) -> list[str]:
+    out: list[str] = []
+    for key, _name, _heading in draft_workspace.SECTION_FILES:
+        for citation in draft_cite.citations_in(str(sections.get(key) or "")):
+            canonical = draft_cite.normalize(citation) or citation
+            if canonical not in out:
+                out.append(canonical)
+    return out
+
+
+def project_title_from(version_no: int, sections: Mapping[str, str]) -> str:
+    """The title the project should take from a newly saved version, or '' to leave it alone.
+
+    The FIRST version names the project. Until one exists the title is a placeholder — usually the
+    opening line of whatever the user pasted — so the drafts list and the page header show a
+    sentence where the invention's title belongs. Only the first version does this, so a
+    deliberate rename later is never undone.
+    """
+    if int(version_no) != 1:
+        return ""
+    title = str(sections.get("title") or "").strip()
+    return title.splitlines()[0].strip()[:240] if title else ""
+
+
+def render_markdown(sections: Mapping[str, str]) -> str:
+    blocks = []
+    for index, (key, _name, heading) in enumerate(draft_workspace.SECTION_FILES):
+        prefix = "#" if index == 0 else "##"
+        blocks.append(f"{prefix} {heading}\n\n{str(sections.get(key) or '').strip()}")
+    return "\n\n".join(blocks).strip() + "\n"
+
+
+# =============================================================================================
+# Persistence
+# =============================================================================================
+def ensure_schema(force: bool = False) -> None:
+    global _SCHEMA_READY
+    if _SCHEMA_READY and not force:
+        return
+    with _SCHEMA_LOCK:
+        if _SCHEMA_READY and not force:
+            return
+        drafting.ensure_schema()
+        sql = _MIGRATION.read_text(encoding="utf-8")
+        with db.cursor(autocommit=True) as cur:
+            try:
+                cur.execute(sql, prepare=False)
+            except TypeError:
+                cur.execute(sql)
+        _SCHEMA_READY = True
+
+
+def reset_schema_cache_for_tests() -> None:
+    global _SCHEMA_READY
+    _SCHEMA_READY = False
+
+
+def _json(value: Any, fallback: Any) -> Any:
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return fallback
+    return value if value is not None else fallback
+
+
+def _dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+class StudioRepository:
+    """Postgres boundary for the conversation. Ownership is enforced by the drafting repository."""
+
+    def __init__(self, cursor_factory: Callable[..., Any] | None = None, *, migrate: bool = True):
+        self._cursor_factory = cursor_factory
+        self._migrate = migrate
+
+    def _ready(self) -> None:
+        if self._migrate:
+            ensure_schema()
+
+    def _cursor(self, **kwargs: Any):
+        if self._cursor_factory:
+            return self._cursor_factory(**kwargs)
+        if db is None:
+            raise RuntimeError("The Postgres driver is required for drafting persistence.")
+        return db.cursor(**kwargs)
+
+    # -- conversation ------------------------------------------------------------------------
+    def add_message(self, project_id: int, role: str, body: str, *, turn_id: int | None = None,
+                    payload: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        self._ready()
+        if role not in ("user", "agent", "qa", "system"):
+            raise drafting.DraftingValidationError("Unknown message role.")
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO app_draft_messages (project_id,turn_id,role,body,payload) "
+                "VALUES (%s,%s,%s,%s,%s::jsonb) RETURNING *",
+                (int(project_id), turn_id, role, str(body or "")[:MAX_MESSAGE_CHARS],
+                 _dumps(dict(payload or {}))))
+            row = dict(cur.fetchone())
+            row["payload"] = _json(row.get("payload"), {})
+            return row
+
+    def message_cursor(self, project_id: int) -> dict[str, int]:
+        """The cheap read behind the three-second poll: how many, and the newest id."""
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("SELECT count(*)::int AS n, coalesce(max(id),0) AS last "
+                        "FROM app_draft_messages WHERE project_id=%s", (int(project_id),))
+            row = cur.fetchone() or {}
+            return {"count": int(row.get("n") or 0), "last_id": int(row.get("last") or 0)}
+
+    def messages(self, project_id: int, *, limit: int = 400) -> list[dict[str, Any]]:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("SELECT * FROM app_draft_messages WHERE project_id=%s "
+                        "ORDER BY id LIMIT %s", (int(project_id), int(limit)))
+            out = []
+            for row in cur.fetchall():
+                item = dict(row)
+                item["payload"] = _json(item.get("payload"), {})
+                out.append(item)
+            return out
+
+    # -- documents ---------------------------------------------------------------------------
+    def add_document(self, project_id: int, user_id: int, *, kind: str, filename: str,
+                     body: str, title: str = "", note: str = "", content_type: str = "",
+                     publication_number: str | None = None) -> dict[str, Any]:
+        self._ready()
+        if kind not in ("prior_art", "material", "source_draft"):
+            raise drafting.DraftingValidationError("Unknown document kind.")
+        body = str(body or "").replace("\x00", "").strip()
+        if not body:
+            raise drafting.DraftingValidationError(
+                f"No readable text could be extracted from {filename!r}.")
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO app_draft_documents "
+                "(project_id,uploaded_by_user_id,kind,filename,content_type,publication_number,"
+                "title,note,body,char_count) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+                (int(project_id), int(user_id), kind, str(filename)[:300], str(content_type)[:120],
+                 (draft_cite.normalize(publication_number) or None) if publication_number else None,
+                 str(title)[:400], str(note)[:2000], body[:draft_workspace.MAX_DOCUMENT_CHARS],
+                 len(body)))
+            return dict(cur.fetchone())
+
+    def documents(self, project_id: int) -> list[dict[str, Any]]:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("SELECT * FROM app_draft_documents WHERE project_id=%s ORDER BY id",
+                        (int(project_id),))
+            return [dict(row) for row in cur.fetchall()]
+
+    def delete_document(self, project_id: int, document_id: int) -> None:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("DELETE FROM app_draft_documents WHERE project_id=%s AND id=%s",
+                        (int(project_id), int(document_id)))
+
+    # -- searches launched without leaving the studio ----------------------------------------
+    def add_search(self, project_id: int, user_id: int, slug: str, query: str,
+                   status: str = "running") -> dict[str, Any]:
+        self._ready()
+        if status not in ("running", "complete", "error"):
+            status = "running"
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO app_draft_searches "
+                "(project_id,requested_by_user_id,slug,query,status,completed_at) "
+                "VALUES (%s,%s,%s,%s,%s,CASE WHEN %s='complete' THEN now() ELSE NULL END) "
+                "ON CONFLICT (project_id,slug) DO UPDATE SET status=EXCLUDED.status,"
+                "query=EXCLUDED.query,completed_at=EXCLUDED.completed_at RETURNING *",
+                (int(project_id), int(user_id), str(slug)[:64], str(query)[:60_000], status, status))
+            return dict(cur.fetchone())
+
+    def searches(self, project_id: int, limit: int = 20) -> list[dict[str, Any]]:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("SELECT * FROM app_draft_searches WHERE project_id=%s "
+                        "ORDER BY id DESC LIMIT %s", (int(project_id), int(limit)))
+            return [dict(row) for row in cur.fetchall()]
+
+    def search(self, project_id: int, slug: str) -> dict[str, Any] | None:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("SELECT * FROM app_draft_searches WHERE project_id=%s AND slug=%s",
+                        (int(project_id), str(slug)))
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def update_search(self, project_id: int, slug: str, *, status: str,
+                      imported_count: int | None = None) -> None:
+        self._ready()
+        if status not in ("running", "complete", "error"):
+            raise drafting.DraftingValidationError("Unknown search status.")
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE app_draft_searches SET status=%s,"
+                "completed_at=CASE WHEN %s='complete' THEN coalesce(completed_at,now()) "
+                "ELSE completed_at END, imported_count=coalesce(%s,imported_count) "
+                "WHERE project_id=%s AND slug=%s",
+                (status, status, imported_count, int(project_id), str(slug)))
+
+    # -- references (prior art added outside a search report) ---------------------------------
+    def add_reference(self, project_id: int, *, publication_number: str, title: str,
+                      source_url: str | None, relevance_summary: str,
+                      snapshot: Mapping[str, Any], origin: str = "manual",
+                      report_rank: int = 9000) -> None:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO app_drafting_references "
+                "(project_id,publication_number,report_rank,title,source_url,relevance_summary,"
+                "snapshot,origin) VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb,%s) "
+                "ON CONFLICT (project_id,publication_number) DO UPDATE SET "
+                "title=EXCLUDED.title,source_url=EXCLUDED.source_url,snapshot=EXCLUDED.snapshot",
+                (int(project_id), publication_number, int(report_rank), str(title)[:1000],
+                 source_url, str(relevance_summary)[:8000], _dumps(dict(snapshot)), origin))
+
+    def remove_reference(self, project_id: int, publication_number: str) -> None:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("DELETE FROM app_drafting_references WHERE project_id=%s "
+                        "AND publication_number=%s", (int(project_id), publication_number))
+
+    # -- turns --------------------------------------------------------------------------------
+    def enqueue_turn(self, project_id: int, user_id: int, *, kind: str, user_message: str,
+                     project_revision: int, idempotency_key: str | None = None) -> dict[str, Any]:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("SELECT id,status FROM app_draft_turns WHERE project_id=%s "
+                        "AND status IN ('queued','running') LIMIT 1", (int(project_id),))
+            if cur.fetchone():
+                raise drafting.DraftingConflict(
+                    "The drafting agent is still working on the previous message.")
+            if idempotency_key:
+                cur.execute("SELECT * FROM app_draft_turns WHERE project_id=%s "
+                            "AND idempotency_key=%s", (int(project_id), idempotency_key))
+                prior = cur.fetchone()
+                if prior:
+                    return self._turn(dict(prior))
+            cur.execute("SELECT coalesce(max(turn_no),0)+1 AS n FROM app_draft_turns "
+                        "WHERE project_id=%s", (int(project_id),))
+            turn_no = int(cur.fetchone()["n"])
+            cur.execute(
+                "INSERT INTO app_draft_turns (project_id,turn_no,requested_by_user_id,"
+                "project_revision,kind,user_message,idempotency_key,stage) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,'queued') RETURNING *",
+                (int(project_id), turn_no, int(user_id), int(project_revision), kind,
+                 str(user_message or "")[:MAX_MESSAGE_CHARS], idempotency_key))
+            turn = self._turn(dict(cur.fetchone()))
+            cur.execute("UPDATE app_drafting_projects SET status='queued',updated_at=now() "
+                        "WHERE id=%s", (int(project_id),))
+            return turn
+
+    # A second tab, or a double click on Send, races the check above; the partial unique index
+    # is the real guard and its violation means the same thing the check does.
+    def enqueue_turn_safely(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        try:
+            return self.enqueue_turn(*args, **kwargs)
+        except drafting.DraftingError:
+            raise
+        except Exception as exc:                                   # noqa: BLE001
+            if "app_draft_turns_one_active_uq" in str(exc):
+                raise drafting.DraftingConflict(
+                    "The drafting agent is still working on the previous message.") from exc
+            raise
+
+    def turns(self, project_id: int, *, limit: int = MAX_TURNS_LISTED) -> list[dict[str, Any]]:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("SELECT * FROM app_draft_turns WHERE project_id=%s "
+                        "ORDER BY turn_no DESC LIMIT %s", (int(project_id), int(limit)))
+            return [self._turn(dict(row)) for row in cur.fetchall()]
+
+    def latest_turn(self, project_id: int) -> dict[str, Any] | None:
+        rows = self.turns(project_id, limit=1)
+        return rows[0] if rows else None
+
+    def cancel_turn(self, project_id: int, turn_id: int) -> None:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE app_draft_turns SET status='cancelled',stage='cancelled',"
+                "completed_at=now(),updated_at=now(),lease_token_hash=NULL,lease_expires_at=NULL,"
+                "last_error='Cancelled by the user' WHERE project_id=%s AND id=%s "
+                "AND status IN ('queued','running')", (int(project_id), int(turn_id)))
+            cur.execute("UPDATE app_drafting_projects SET status=CASE WHEN latest_version_no>0 "
+                        "THEN 'ready' ELSE 'active' END,updated_at=now() WHERE id=%s",
+                        (int(project_id),))
+
+    @staticmethod
+    def _turn(row: Mapping[str, Any]) -> dict[str, Any]:
+        out = dict(row)
+        for key in ("reasoning", "changes", "questions"):
+            out[key] = _json(out.get(key), [])
+        out.pop("lease_token_hash", None)
+        out["cost_usd"] = float(out.get("cost_usd") or 0)
+        return out
+
+    # -- worker boundary ----------------------------------------------------------------------
+    def claim_turn(self, worker_id: str, *, lease_seconds: int = LEASE_SECONDS
+                   ) -> dict[str, Any] | None:
+        """Take one queued turn, or one whose worker died, with an unguessable lease."""
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE app_draft_turns t SET status='cancelled',stage='cancelled',"
+                "completed_at=now(),updated_at=now(),last_error='The project was archived' "
+                "FROM app_drafting_projects p WHERE p.id=t.project_id "
+                "AND t.status IN ('queued','running') AND p.status='archived'")
+            cur.execute(
+                "WITH spent AS ("
+                " UPDATE app_draft_turns SET status='failed',stage='failed',completed_at=now(),"
+                " updated_at=now(),lease_token_hash=NULL,lease_expires_at=NULL,"
+                " last_error=coalesce(last_error,'The drafting agent could not finish this turn.')"
+                " WHERE status IN ('queued','running') AND attempts>=max_attempts"
+                " AND (status='queued' OR lease_expires_at IS NULL OR lease_expires_at<=now())"
+                " RETURNING project_id"
+                ") UPDATE app_drafting_projects p SET status=CASE WHEN latest_version_no>0"
+                " THEN 'ready' ELSE 'active' END,updated_at=now()"
+                " WHERE p.id IN (SELECT project_id FROM spent)")
+            cur.execute(
+                "SELECT t.* FROM app_draft_turns t "
+                "JOIN app_drafting_projects p ON p.id=t.project_id "
+                "WHERE t.attempts<t.max_attempts AND p.status<>'archived' "
+                "AND ((t.status='queued' AND t.next_attempt_at<=now()) "
+                "  OR (t.status='running' AND t.lease_expires_at<=now())) "
+                "ORDER BY t.next_attempt_at,t.id FOR UPDATE OF t,p SKIP LOCKED LIMIT 1")
+            row = cur.fetchone()
+            if not row:
+                return None
+            token = secrets.token_urlsafe(36)
+            cur.execute(
+                "UPDATE app_draft_turns SET status='running',stage='preparing',"
+                "attempts=attempts+1,claimed_by=%s,lease_token_hash=%s,"
+                "lease_expires_at=now()+(%s * interval '1 second'),"
+                "started_at=coalesce(started_at,now()),last_error=NULL,updated_at=now() "
+                "WHERE id=%s RETURNING *",
+                (str(worker_id)[:180], hashlib.sha256(token.encode()).hexdigest(),
+                 int(lease_seconds), row["id"]))
+            claimed = self._turn(dict(cur.fetchone()))
+            claimed["lease_token"] = token
+            cur.execute("UPDATE app_drafting_projects SET status='generating',updated_at=now() "
+                        "WHERE id=%s", (row["project_id"],))
+            cur.execute("SELECT * FROM app_drafting_projects WHERE id=%s", (row["project_id"],))
+            claimed["project"] = dict(cur.fetchone())
+            return claimed
+
+    def _verify(self, cur: Any, turn_id: int, lease_token: str) -> dict[str, Any]:
+        cur.execute("SELECT * FROM app_draft_turns WHERE id=%s FOR UPDATE", (int(turn_id),))
+        row = cur.fetchone()
+        if not row:
+            raise drafting.DraftingNotFound("Drafting turn was not found.")
+        expected = str(row.get("lease_token_hash") or "")
+        supplied = hashlib.sha256(str(lease_token or "").encode()).hexdigest()
+        if row.get("status") != "running" or not expected or not hmac.compare_digest(
+                supplied, expected):
+            raise drafting.DraftingConflict("This worker no longer owns the drafting turn.")
+        return dict(row)
+
+    def heartbeat(self, turn_id: int, lease_token: str, *, stage: str = "",
+                  lease_seconds: int = LEASE_SECONDS) -> None:
+        self._ready()
+        with self._cursor() as cur:
+            self._verify(cur, turn_id, lease_token)
+            if stage:
+                cur.execute("UPDATE app_draft_turns SET stage=%s,"
+                            "lease_expires_at=now()+(%s * interval '1 second'),updated_at=now() "
+                            "WHERE id=%s", (str(stage)[:60], int(lease_seconds), int(turn_id)))
+            else:
+                cur.execute("UPDATE app_draft_turns SET lease_expires_at=now()+"
+                            "(%s * interval '1 second'),updated_at=now() WHERE id=%s",
+                            (int(lease_seconds), int(turn_id)))
+
+    def save_version(self, turn_id: int, lease_token: str, *, sections: Mapping[str, str],
+                     citations: Sequence[str], change_note: str, model_name: str,
+                     numerals: Sequence[Mapping[str, Any]] = (),
+                     figures: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
+        """Publish an immutable version produced by this turn."""
+        self._ready()
+        with self._cursor() as cur:
+            turn = self._verify(cur, turn_id, lease_token)
+            cur.execute("SELECT * FROM app_drafting_projects WHERE id=%s FOR UPDATE",
+                        (turn["project_id"],))
+            project = dict(cur.fetchone())
+            version_no = int(project["latest_version_no"]) + 1
+            cur.execute(
+                "INSERT INTO app_draft_versions (project_id,version_no,base_version_no,"
+                "project_revision,sections,markdown,citations,model_name,created_by_user_id,"
+                "turn_id,change_note,numerals,figure_specs) "
+                "VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s::jsonb,%s,%s,%s,%s,%s::jsonb,%s::jsonb) "
+                "RETURNING *",
+                (project["id"], version_no,
+                 int(project["latest_version_no"]) or None, project["revision"],
+                 _dumps(dict(sections)), render_markdown(sections), _dumps(list(citations)),
+                 str(model_name)[:180], turn["requested_by_user_id"], turn["id"],
+                 str(change_note or "")[:4000], _dumps([dict(n) for n in numerals]),
+                 _dumps([dict(f) for f in figures])))
+            version = dict(cur.fetchone())
+            version["sections"] = _json(version.get("sections"), {})
+            version["citations"] = _json(version.get("citations"), [])
+            version["numerals"] = _json(version.get("numerals"), [])
+            version["figure_specs"] = _json(version.get("figure_specs"), [])
+            adopted = project_title_from(version_no, sections)
+            if adopted:
+                cur.execute("UPDATE app_drafting_projects SET latest_version_no=%s,title=%s,"
+                            "updated_at=now() WHERE id=%s", (version_no, adopted, project["id"]))
+            else:
+                cur.execute("UPDATE app_drafting_projects SET latest_version_no=%s,"
+                            "updated_at=now() WHERE id=%s", (version_no, project["id"]))
+            cur.execute("UPDATE app_draft_turns SET version_no=%s,updated_at=now() WHERE id=%s",
+                        (version_no, turn["id"]))
+            return version
+
+    def complete_turn(self, turn_id: int, lease_token: str, *, result: Mapping[str, Any],
+                      session_id: str, cost_usd: float, duration_ms: int, model_name: str,
+                      transcript_path: str = "") -> dict[str, Any]:
+        self._ready()
+        with self._cursor() as cur:
+            turn = self._verify(cur, turn_id, lease_token)
+            cur.execute(
+                "UPDATE app_draft_turns SET status='complete',stage='complete',"
+                "completed_at=now(),updated_at=now(),lease_token_hash=NULL,lease_expires_at=NULL,"
+                "agent_session_id=%s,summary=%s,reasoning=%s::jsonb,changes=%s::jsonb,"
+                "questions=%s::jsonb,prior_art_strategy=%s,answer=%s,cost_usd=%s,duration_ms=%s,"
+                "model_name=%s,transcript_path=%s WHERE id=%s RETURNING *",
+                (str(session_id)[:80], str(result.get("summary") or "")[:8000],
+                 _dumps(draft_agent.strings(result.get("reasoning"))),
+                 _dumps(draft_agent.strings(result.get("changes"))),
+                 _dumps(draft_agent.strings(result.get("questions"), limit=12)),
+                 str(result.get("prior_art_strategy") or "")[:8000],
+                 str(result.get("answer") or "")[:MAX_MESSAGE_CHARS],
+                 round(float(cost_usd or 0), 4), int(duration_ms or 0), str(model_name)[:180],
+                 str(transcript_path)[:500], turn["id"]))
+            out = self._turn(dict(cur.fetchone()))
+            cur.execute(
+                "UPDATE app_drafting_projects SET status='ready',agent_session_id=%s,"
+                "agent_turn_no=%s,updated_at=now() WHERE id=%s",
+                (str(session_id)[:80], turn["turn_no"], turn["project_id"]))
+            return out
+
+    def fail_turn(self, turn_id: int, lease_token: str, error: str, *,
+                  retryable: bool = True) -> dict[str, Any]:
+        self._ready()
+        with self._cursor() as cur:
+            turn = self._verify(cur, turn_id, lease_token)
+            will_retry = retryable and int(turn["attempts"]) < int(turn["max_attempts"])
+            if will_retry:
+                delay = min(300, 20 * (2 ** max(0, int(turn["attempts"]) - 1)))
+                cur.execute(
+                    "UPDATE app_draft_turns SET status='queued',stage='waiting to retry',"
+                    "next_attempt_at=now()+%s,lease_token_hash=NULL,lease_expires_at=NULL,"
+                    "last_error=%s,updated_at=now() WHERE id=%s RETURNING *",
+                    (timedelta(seconds=delay), str(error)[:4000], turn["id"]))
+            else:
+                cur.execute(
+                    "UPDATE app_draft_turns SET status='failed',stage='failed',"
+                    "completed_at=now(),lease_token_hash=NULL,lease_expires_at=NULL,"
+                    "last_error=%s,updated_at=now() WHERE id=%s RETURNING *",
+                    (str(error)[:4000], turn["id"]))
+            out = self._turn(dict(cur.fetchone()))
+            cur.execute(
+                "UPDATE app_drafting_projects SET status=CASE WHEN %s THEN 'queued' "
+                "WHEN latest_version_no>0 THEN 'ready' ELSE 'active' END,updated_at=now() "
+                "WHERE id=%s", (will_retry, turn["project_id"]))
+            return out
+
+    # -- QA -------------------------------------------------------------------------------------
+    def save_qa(self, project_id: int, *, turn_id: int | None, version_no: int | None,
+                report: Mapping[str, Any]) -> dict[str, Any]:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO app_draft_qa_reports (project_id,turn_id,version_no,status,verdict,"
+                "summary,checks,findings,counts,cost_usd,duration_ms,model_name,last_error) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s::jsonb,%s,%s,%s,%s) RETURNING *",
+                (int(project_id), turn_id, version_no,
+                 str(report.get("status") or "complete"), str(report.get("verdict") or "unknown"),
+                 str(report.get("summary") or "")[:8000], _dumps(report.get("checks") or []),
+                 _dumps(report.get("findings") or []), _dumps(report.get("counts") or {}),
+                 round(float(report.get("cost_usd") or 0), 4),
+                 int(report.get("duration_ms") or 0), str(report.get("model_name") or "")[:180],
+                 str(report.get("last_error") or "")[:4000]))
+            return self._qa(dict(cur.fetchone()))
+
+    def qa_reports(self, project_id: int, *, limit: int = 60) -> list[dict[str, Any]]:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("SELECT * FROM app_draft_qa_reports WHERE project_id=%s "
+                        "ORDER BY id DESC LIMIT %s", (int(project_id), int(limit)))
+            return [self._qa(dict(row)) for row in cur.fetchall()]
+
+    def latest_qa(self, project_id: int) -> dict[str, Any] | None:
+        rows = self.qa_reports(project_id, limit=1)
+        return rows[0] if rows else None
+
+    @staticmethod
+    def _qa(row: Mapping[str, Any]) -> dict[str, Any]:
+        out = dict(row)
+        out["checks"] = _json(out.get("checks"), [])
+        out["findings"] = _json(out.get("findings"), [])
+        out["counts"] = _json(out.get("counts"), {})
+        out["cost_usd"] = float(out.get("cost_usd") or 0)
+        return out
+
+
+# =============================================================================================
+# Running one turn
+# =============================================================================================
+class TurnRunner:
+    """Executes one claimed turn: build, draft, publish, review, post."""
+
+    def __init__(self, repository: StudioRepository, drafting_repository:
+                 drafting.DraftingRepository, *, agent=draft_agent, qa=draft_qa,
+                 workspace=draft_workspace):
+        self.repository = repository
+        self.drafting = drafting_repository
+        self.agent = agent
+        self.qa = qa
+        self.workspace = workspace
+
+    # -- inputs ---------------------------------------------------------------------------------
+    def _load(self, project_id: int) -> dict[str, Any]:
+        with self.drafting._cursor() as cur:
+            cur.execute("SELECT * FROM app_drafting_projects WHERE id=%s", (int(project_id),))
+            project = dict(cur.fetchone())
+            cur.execute("SELECT * FROM app_drafting_references WHERE project_id=%s "
+                        "ORDER BY report_rank,publication_number", (int(project_id),))
+            references = []
+            for row in cur.fetchall():
+                item = dict(row)
+                item["snapshot"] = _json(item.get("snapshot"), {})
+                references.append(item)
+            cur.execute("SELECT sections,numerals,figure_specs FROM app_draft_versions "
+                        "WHERE project_id=%s ORDER BY version_no DESC LIMIT 1", (int(project_id),))
+            row = cur.fetchone()
+            sections = _json(row["sections"], {}) if row else None
+            numerals = _json(row["numerals"], []) if row else []
+            figures = _json(row["figure_specs"], []) if row else []
+        return {"project": project, "references": references, "sections": sections,
+                "numerals": numerals, "figures": figures}
+
+    def prepare(self, turn: Mapping[str, Any]) -> dict[str, Any]:
+        project_id = int(turn["project_id"])
+        loaded = self._load(project_id)
+        project = loaded["project"]
+        documents = self.repository.documents(project_id)
+        history = [m for m in self.repository.messages(project_id, limit=60)
+                   if m["role"] in ("user", "agent")][-24:]
+        latest_qa = self.repository.latest_qa(project_id)
+        sections = loaded["sections"]
+        seeded = False
+
+        if sections is None:
+            # First turn.  If the user brought a draft, pre-split it so the agent improves a
+            # document rather than facing nine empty files and rewriting from the summary.
+            source = next((d for d in documents if d["kind"] == "source_draft"), None)
+            raw = (source or {}).get("body") or (
+                project.get("disclosure_text") if project.get("input_kind") == "existing_draft"
+                else "")
+            if raw:
+                seeded_sections = self.workspace.seed_sections_from_document(raw)
+                if seeded_sections:
+                    sections = seeded_sections
+                    seeded = True
+
+        numerals = (self.workspace.numerals_from_sections(sections) if seeded
+                    else loaded["numerals"])
+        workspace = self.workspace.build(
+            project=project, references=loaded["references"], documents=documents,
+            sections=sections, numerals=numerals, figures=loaded["figures"],
+            conversation=history, request=turn.get("user_message") or "",
+            qa_report=latest_qa)
+        return {"workspace": workspace, "project": project, "references": loaded["references"],
+                "documents": documents, "seeded": seeded, "had_version": loaded["sections"] is not None,
+                "previous_sections": loaded["sections"] or {}}
+
+    # -- the turn --------------------------------------------------------------------------------
+    def run(self, turn: Mapping[str, Any]) -> dict[str, Any]:
+        turn_id, lease = int(turn["id"]), turn["lease_token"]
+        project_id = int(turn["project_id"])
+        context = self.prepare(turn)
+        workspace: Path = context["workspace"]
+        project = context["project"]
+        allowed = [r["publication_number"] for r in context["references"]]
+        allowed += [d["publication_number"] for d in context["documents"]
+                    if d.get("kind") == "prior_art" and d.get("publication_number")]
+        allowed += [f"UPLOAD-{i:02d}" for i in range(1, 1 + sum(
+            1 for d in context["documents"]
+            if d.get("kind") == "prior_art" and not d.get("publication_number")))]
+
+        kind = str(turn.get("kind") or "revise")
+        first = not context["had_version"]
+        prompt = build_prompt("initial" if first else kind, seeded=context["seeded"])
+        transcript = workspace / ".agent" / f"turn-{turn['turn_no']:04d}.jsonl"
+
+        #  Whether to RESUME and which prompt to send are separate decisions, and conflating them
+        #  is an outage: `--session-id` on an id that already exists is an error, so a first turn
+        #  that answered a question without producing a version would make the next turn pass an
+        #  existing id as if it were new. Continue the thread whenever there is one.
+        prior_session = str(project.get("agent_session_id") or "")
+        self.repository.heartbeat(turn_id, lease, stage="drafting")
+        beat = _Heartbeat(self.repository, turn_id, lease, "drafting")
+        beat.start()
+        try:
+            run = self.agent.run(
+                workspace=workspace, prompt=prompt, system_prompt=DRAFT_SYSTEM,
+                schema=TURN_SCHEMA,
+                session_id=prior_session or self.agent.new_session_id(),
+                resume=bool(prior_session),
+                model=self.agent.DRAFT_MODEL, timeout=self.agent.DRAFT_TIMEOUT,
+                transcript=transcript, cancel=beat.cancelled)
+        finally:
+            beat.stop()
+        if not run.ok:
+            #  A stop is the user's decision, not a failure to retry.
+            raise (drafting.DraftingConflict("Stopped at your request.") if run.cancelled
+                   else StudioError(run.error or "The drafting agent did not finish."))
+
+        result = run.result
+        action = str(result.get("action") or "revised")
+        version = None
+        checks_context: dict[str, Any] = {}
+
+        #  An answered turn edits nothing. If the agent touched a file anyway, the edit is simply
+        #  not read: the next turn rebuilds draft/ from the stored version, so the workspace can
+        #  never quietly become the record.
+        if action != "answered":
+            self.repository.heartbeat(turn_id, lease, stage="checking the draft")
+            snapshot = self.workspace.snapshot(workspace)
+            sections = validate_sections(snapshot["sections"], allowed)
+            if sections != context["previous_sections"]:
+                version = self.repository.save_version(
+                    turn_id, lease, sections=sections, citations=citations_of(sections),
+                    change_note=str(result.get("summary") or "")[:4000],
+                    model_name=run.model, numerals=snapshot["numerals"],
+                    figures=snapshot["figures"])
+            checks_context = {"sections": sections, "numerals": snapshot["numerals"],
+                              "figures": snapshot["figures"]}
+
+        #  The agent's own message goes up BEFORE the review runs, so the user reads the draft
+        #  while it is being checked rather than after.
+        self.repository.add_message(
+            project_id, "agent",
+            str(result.get("answer") or result.get("summary") or "")[:MAX_MESSAGE_CHARS],
+            turn_id=turn_id,
+            payload={"action": action, "summary": result.get("summary"),
+                     "reasoning": draft_agent.strings(result.get("reasoning")),
+                     "changes": draft_agent.strings(result.get("changes")),
+                     "questions": draft_agent.strings(result.get("questions"), limit=12),
+                     "prior_art_strategy": result.get("prior_art_strategy"),
+                     "version_no": (version or {}).get("version_no"),
+                     "cost_usd": run.cost_usd, "steps": run.steps[-80:]})
+
+        #  THE REVIEW HAPPENS INSIDE THE TURN, not after it. Completing the turn first would tell
+        #  the page the iteration was over while a second agent was still reading the draft: the
+        #  spinner stops, the poller goes idle, and the report lands minutes later with nothing
+        #  having said it was coming. It is also why a review failure must NOT fail the turn — the
+        #  draft is already published and re-running it would redraft a good version.
+        if checks_context:
+            self.repository.heartbeat(turn_id, lease, stage="reviewing")
+            try:
+                self.review(project_id, turn_id=turn_id,
+                            version_no=(version or {}).get("version_no"),
+                            workspace=workspace, allowed=allowed, **checks_context)
+            except Exception:                              # noqa: BLE001 - never lose the draft
+                traceback.print_exc()
+                self.repository.add_message(
+                    project_id, "system",
+                    "The consistency review could not run on this version. The draft is saved; "
+                    "use “Re-run the review” to try again.", turn_id=turn_id)
+
+        completed = self.repository.complete_turn(
+            turn_id, lease, result=result, session_id=run.session_id, cost_usd=run.cost_usd,
+            duration_ms=run.duration_ms, model_name=run.model,
+            transcript_path=str(transcript))
+        return {"turn": completed, "version": version}
+
+    # -- review -----------------------------------------------------------------------------------
+    def review(self, project_id: int, *, turn_id: int | None, version_no: int | None,
+               workspace: Path, allowed: Sequence[str], sections: Mapping[str, str],
+               numerals: Sequence[Mapping[str, str]],
+               figures: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+        """The automatic post-iteration review. Never raises: a broken reviewer is a finding."""
+        started = time.time()
+        qa_figures = list(figures)
+        try:
+            loaded = self._load(project_id)
+            qa_figures = figures_for_qa(
+                project_id, int(loaded["project"]["user_id"]), figures)
+        except Exception:
+            pass
+        try:
+            checks = self.qa.run_checks(sections=sections, numerals=numerals, figures=qa_figures,
+                                        allowed_references=allowed)
+        except Exception as exc:                                # noqa: BLE001
+            traceback.print_exc()
+            checks = [{"name": "Mechanical checks", "status": "fail", "severity": "warn",
+                       "detail": f"The checks could not run ({type(exc).__name__}).", "items": []}]
+        transcript = workspace / ".agent" / f"review-{version_no or 0:04d}.jsonl"
+        outcome = self.qa.review(workspace, checks=checks, transcript=transcript)
+        findings = outcome.get("findings") or []
+        verdict = self.qa.verdict_for(checks, findings)
+        report = {
+            "status": "complete" if outcome.get("ok") else "failed",
+            "verdict": verdict,
+            "summary": (outcome.get("summary") or "").strip() or
+                       self.qa.summarize(checks, findings, verdict),
+            "checks": checks, "findings": findings,
+            "counts": self.qa.counts_for(checks, findings),
+            "cost_usd": outcome.get("cost_usd") or 0.0,
+            "duration_ms": int((time.time() - started) * 1000),
+            "model_name": outcome.get("model") or "",
+            "last_error": outcome.get("error") or "",
+        }
+        saved = self.repository.save_qa(project_id, turn_id=turn_id, version_no=version_no,
+                                        report=report)
+        self.repository.add_message(
+            project_id, "qa", report["summary"], turn_id=turn_id,
+            payload={"verdict": verdict, "counts": report["counts"],
+                     "qa_id": saved.get("id"), "version_no": version_no,
+                     "failed": self.qa.failed_check_names(checks)})
+        try:
+            self.workspace._write_review(workspace, saved)
+        except Exception:                                       # noqa: BLE001 - cosmetic only
+            pass
+        return saved
+
+
+class _Heartbeat:
+    """Renew the lease while a run that can take fifteen minutes is in flight.
+
+    It is also how Stop reaches the model. The lease is the authority: when the user cancels, the
+    turn row stops being `running` and the next renewal is refused — which is exactly the moment
+    to kill the subprocess. Without this the button would mark the turn cancelled while the agent
+    kept working, kept holding a core, and kept spending.
+    """
+
+    def __init__(self, repository: StudioRepository, turn_id: int, lease: str, stage: str):
+        self._repository, self._turn_id, self._lease, self._stage = repository, turn_id, lease, stage
+        self._stop = threading.Event()
+        self.cancelled = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        self._thread = threading.Thread(target=self._loop, name=f"draft-turn-{self._turn_id}",
+                                        daemon=True)
+        self._thread.start()
+
+    def _loop(self) -> None:
+        while not self._stop.wait(20):
+            try:
+                self._repository.heartbeat(self._turn_id, self._lease, stage=self._stage)
+            except drafting.DraftingError:
+                self.cancelled.set()                    # cancelled or taken over, on purpose
+                return
+            except Exception:                           # noqa: BLE001 - a DB blip is not fatal
+                pass
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=2)

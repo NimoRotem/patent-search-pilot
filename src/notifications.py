@@ -23,7 +23,7 @@ import db
 
 
 PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or "https://rotem.ai/patents").rstrip("/")
-MAIL_FROM = (os.environ.get("MAIL_FROM") or "rotemAI patent search <patents@rotem.ai>").strip()
+MAIL_FROM = (os.environ.get("MAIL_FROM") or "Rotem Patents <patents@rotem.ai>").strip()
 MAIL_TRANSPORT = (os.environ.get("MAIL_TRANSPORT") or "auto").strip().lower()
 POLL_SECONDS = max(5.0, float(os.environ.get("MAIL_POLL_SECONDS", "20")))
 
@@ -244,8 +244,8 @@ def queue_invitation(email, full_name, invite_url, inviter_name=""):
     return accounts.enqueue_mail(
         to_email=email, user_id=None, search_slug=None, kind="invitation",
         dedupe_key=f"invite:{email.lower()}:{hashlib.sha256(invite_url.encode()).hexdigest()[:16]}",
-        subject="You have been invited to rotemAI patent search",
-        body_text=(f"Hello {name},\n\nYou have been invited{who} to rotemAI patent search, a "
+        subject="You have been invited to Rotem Patents",
+        body_text=(f"Hello {name},\n\nYou have been invited{who} to Rotem Patents, a "
                    "prior-art search and drafting tool.\n\nChoose a password and open your "
                    f"account here:\n{invite_url}\n\nThe link works once and expires in two "
                    "weeks. If you were not expecting this, ignore it — no account exists until "
@@ -274,7 +274,7 @@ def queue_password_reset(email, reset_url):
         # Hash the opaque token deterministically without storing the reset credential itself.
         dedupe_key=(f"password-reset:{user['id']}:"
                     f"{hashlib.sha256(token.encode()).hexdigest()}"),
-        subject="Reset your rotemAI patent-search password",
+        subject="Reset your Rotem Patents password",
         body_text=(f"Hello {user['full_name']},\n\nUse this link within one hour to reset your password:\n"
                    f"{url}\n\nIf you did not request this, you can ignore this message.\n"))
     kick()

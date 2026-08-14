@@ -642,7 +642,10 @@ function renderQueryClaimGrid(d){
     (counts.disclosed || 0) + ' disclosed · ' + (d.seconds || 0) + 's background analysis';
   const marks = {disclosed:'✓', partial:'~', uncertain:'?', absent:'—'};
   const cls = {disclosed:'discloses', partial:'weak', uncertain:'unchecked', absent:'unrelated'};
-  let h = '<p class="gridline">Each row keeps an uploaded claim intact. A green cell has a grounded quotation and survived a separate refutation pass; it is not a legal claim-construction conclusion. ' +
+  let h = '<p class="gridline">Each row keeps an uploaded claim intact, and each cell carries the ' +
+    'passage the verdict rests on — click a cell for the whole quotation. A green cell has a ' +
+    'grounded quotation and survived a separate refutation pass; it is not a legal ' +
+    'claim-construction conclusion. ' +
     '<span class="lgi"><span class="lg lg-ok"></span>✓ disclosed</span>' +
     '<span class="lgi"><span class="lg lg-weak"></span>~ partial</span>' +
     '<span class="lgi"><span class="lg lg-unk"></span>? uncertain</span>' +
@@ -653,7 +656,7 @@ function renderQueryClaimGrid(d){
     if (d.truncated_refs) notes.push('top ' + d.n_refs_shown + ' of ' + d.n_refs_total + ' ranked references');
     h += '<p class="claimgrid-bound">Bounded background analysis: ' + esc(notes.join(' · ')) + '.</p>';
   }
-  h += '<div class="chartwrap"><table class="chart query-claim-chart"><caption class="vh">Which ranked references disclose each uploaded patent claim</caption><thead><tr>' +
+  h += '<div class="chartwrap"><table class="chart query-claim-chart readgrid"><caption class="vh">Which ranked references disclose each uploaded patent claim</caption><thead><tr>' +
     '<th class="elh" scope="col">Uploaded claim</th>' +
     (d.columns || []).map(c => '<th scope="col"><button type="button" class="pnlink" data-pub="' + esc(c.pub) +
       '" onclick="jumpRef(this.dataset.pub)">' + esc(c.pub) + '</button><span class="colcount">rank ' + esc(c.rank || '') + '</span></th>').join('') +
@@ -667,10 +670,17 @@ function renderQueryClaimGrid(d){
       (row.independent ? ' · independent' : '') + '</span>' + claimText + '</th>';
     (row.cells || []).forEach(cell => {
       const v = marks[cell.verdict] ? cell.verdict : 'uncertain';
-      const tip = [v, cell.location, cell.quote].filter(Boolean).join(' · ').slice(0, 600);
-      h += '<td class="cell cell-' + cls[v] + '"><button type="button" data-pub="' + esc(cell.pub) +
-        '" onclick="jumpRef(this.dataset.pub)" title="' + esc(tip) + '"><span class="cmark">' +
+      const q = cell.quote || '';
+      const tip = [v, cell.location, q].filter(Boolean).join(' · ').slice(0, 600);
+      // "partial" on its own says a verdict was reached and nothing about what it rests on. The
+      // cell now carries the passage, clipped to what fits, and opens the whole one on click.
+      h += '<td class="cell cell-' + cls[v] + '"><button type="button" class="qcell"' +
+        ' data-pub="' + esc(cell.pub) + '" data-el="Claim ' + esc(row.claim_no) + '"' +
+        ' data-verdict="' + esc(cell.verdict || v) + '" data-loc="' + esc(cell.location || '') + '"' +
+        ' data-quote="' + esc(q) + '" data-note="' + esc(cell.note || '') + '"' +
+        ' onclick="showQuote(this)" title="' + esc(tip) + '"><span class="cmark">' +
         marks[v] + '</span><span class="cs">' + esc(v) + '</span>' +
+        (q ? '<span class="cq">' + esc(q.length > 110 ? q.slice(0, 110) + '…' : q) + '</span>' : '') +
         (cell.location ? '<span class="cc">' + esc(cell.location) + '</span>' : '') + '</button></td>';
     });
     h += '</tr>';
@@ -1125,9 +1135,51 @@ function toggleQuery(){
   if (!w || !b) return;
   const open = w.classList.toggle('open');
   b.setAttribute('aria-expanded', open ? 'true' : 'false');
-  b.firstChild.nodeValue = open ? 'Show less ' : 'Show full search ';
+  b.firstChild.nodeValue = open ? 'Show less' : 'Show full search';
+  // The same control now also reveals every setting the search ran with (#qparams): the query
+  // string alone is the one input the searcher already had.
+  const p = document.getElementById('qparams');
+  if (p) p.hidden = !open;
   if (!open) w.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
+
+/* ── the passage behind a grid cell ──────────────────────────────────────────────────────────
+   Both grids have to fit a quote into a table cell, so both truncate. The evidence is the whole
+   passage, the location it came from and the reader's note, and none of that fits — so the cell
+   shows what it can and this shows the rest. One dialog for every cell in both grids. */
+const QVERDICT = { disclosed: 'Discloses', partial: 'Partial', uncertain: 'Unconfirmed',
+                   absent: 'Absent' };
+function showQuote(btn){
+  const pop = document.getElementById('qpop');
+  if (!pop || !btn) return;
+  const d = btn.dataset, verdict = d.verdict || 'disclosed';
+  const setText = (id, s) => { const n = document.getElementById(id); if (n) n.textContent = s || ''; };
+  const v = document.getElementById('qpopVerdict');
+  if (v){ v.textContent = QVERDICT[verdict] || verdict; v.className = 'qpop-v qpop-' + verdict; }
+  setText('qpopEl', d.el || '');
+  setText('qpopQuote', d.quote ? '“' + d.quote + '”' : 'No quotable passage was recorded for this cell.');
+  // The second-pass note matters: it says the first reading missed this and a concept-led re-read
+  // found it, which is the difference between "we looked" and "we looked twice".
+  setText('qpopNote', (d.note || '') + (d.second === 'true'
+    ? (d.note ? ' ' : '') + 'Found on the second, concept-led reading of this reference.' : ''));
+  setText('qpopLoc', [d.pub, d.loc].filter(Boolean).join(' · '));
+  const ref = document.getElementById('qpopRef');
+  if (ref){ ref.textContent = 'Go to ' + (d.pub || 'reference'); ref.dataset.pub = d.pub || ''; }
+  pop.hidden = false;
+  const close = document.getElementById('qpopClose');
+  if (close) close.focus();
+}
+function closeQuote(){
+  const pop = document.getElementById('qpop');
+  if (pop) pop.hidden = true;
+}
+document.addEventListener('click', e => {
+  const pop = document.getElementById('qpop');
+  if (!pop || pop.hidden) return;
+  if (e.target.id === 'qpopClose' || e.target === pop){ closeQuote(); return; }
+  if (e.target.id === 'qpopRef'){ closeQuote(); jumpRef(e.target.dataset.pub); }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeQuote(); });
 
 /* ── jump / element filter ───────────────────────────────────────────────────────────────── */
 function jumpRef(pub){
@@ -1396,10 +1448,12 @@ function openCompare(){
   window.open(B + '/compare?slug=' + encodeURIComponent(window.SLUG) + '&pubs=' + encodeURIComponent(sel.join(',')), '_blank');
 }
 function startDraft(){
+  /*  Selecting references is a shortcut, not a requirement: the drafting intake can attach art
+      later, or none at all, so an empty selection opens the intake rather than refusing.       */
   const sel = selectedPubs();
-  if (!sel.length){ alert('Select at least one ranked reference for the drafting source set.'); return; }
-  const query = new URLSearchParams({search_slug: window.SLUG, pubs: sel.join(',')});
-  location.href = B + '/drafts/new?' + query.toString();
+  const query = new URLSearchParams({search_slug: window.SLUG});
+  if (sel.length) query.set('pubs', sel.join(','));
+  location.href = B + '/drafts/start?' + query.toString();
 }
 
 /* ── triage flags ────────────────────────────────────────────────────────────────────────── */
@@ -2017,6 +2071,10 @@ function guardStaticFigures(){
 /* ── init ────────────────────────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   guardStaticFigures();
+  document.querySelectorAll('.directdraft').forEach(form => form.addEventListener('submit', () => {
+    const button = form.querySelector('button[type=submit]');
+    if (button) { button.disabled = true; button.textContent = 'Starting draft…'; }
+  }));
   const compactReport = window.matchMedia && window.matchMedia('(max-width:640px)').matches;
   document.querySelectorAll('.reportoverview,.resultfilters').forEach(d => { d.open = !compactReport; });
   const lb = document.getElementById('lb');
@@ -2074,8 +2132,70 @@ document.addEventListener('DOMContentLoaded', () => {
     warmQueryClaimGrid();  // uploaded claims x references; server already runs it in background
   } else {
     setTimeout(warmMissingThumbs, 1200);
+    streamNewCards();
   }
 
   const m = (location.hash || '').match(/patent=([^&]+)/);
   if (m){ try{ openDetail(decodeURIComponent(m[1])); }catch(e){} }
 });
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   LIVE CARD STREAM — references appear as the agent admits them
+   ══════════════════════════════════════════════════════════════════════════════════════════
+   A wide search runs for minutes. It used to show one snapshot of first matches and then, at the
+   very end, replace the entire page — so everything found by the refinement rounds, the citation
+   and family expansion and the external fan-out was invisible until it was over, and the page
+   looked frozen throughout. The agent now writes a snapshot after each stage and this asks for
+   whatever is new.
+
+   APPEND ONLY, and always the server's own card markup (templates/_refcard.html). Re-rendering
+   the list would throw away opened tabs, triage flags and loaded drawings; the authoritative
+   ORDER arrives separately and moves the existing nodes (reorderCards). */
+function bindStreamedCards(root){
+  root.querySelectorAll('.fp').forEach(b =>
+    b.addEventListener('click', e => { e.stopPropagation(); setFlag(b); }));
+  root.querySelectorAll('.rsnip').forEach(hlNode);
+}
+
+async function streamNewCards(){
+  if (!window.PARTIAL || !window.SLUG) return;
+  const host = document.getElementById('cards');
+  if (!host) return;
+  let quiet = 0;
+  const tick = async () => {
+    if (!window.PARTIAL) return;                 // the final report took over; nothing to stream
+    let d = null;
+    try {
+      const have = host.querySelectorAll('.refcard').length;
+      const r = await fetch(B + '/api/cards/' + encodeURIComponent(window.SLUG) + '?offset=' + have,
+                            {credentials: 'same-origin'});
+      if (r.ok) d = await r.json();
+    } catch (e) {}
+    if (d && d.cards){
+      const frag = document.createElement('div');
+      frag.innerHTML = d.cards;
+      const added = [...frag.querySelectorAll('.refcard')];
+      // A card can only be new to this page; the server sliced by offset, but a snapshot written
+      // between two polls can renumber, so dedupe by publication before inserting either way.
+      const seen = new Set([...host.querySelectorAll('.refcard')].map(c => c.dataset.pub));
+      added.forEach(card => {
+        if (seen.has(card.dataset.pub)) return;
+        seen.add(card.dataset.pub);
+        card.classList.add('justfound');
+        host.appendChild(card);
+        bindStreamedCards(card);
+      });
+      if (added.length){
+        resolveThumbs(); resolvePdfLinks(); applyControls();
+        const n = document.querySelector('.runfacts b');
+        if (n) n.textContent = host.querySelectorAll('.refcard').length;
+      }
+      quiet = added.length ? 0 : quiet + 1;
+    } else { quiet++; }
+    if (d && d.ready) return;                    // the streamJob poll reloads onto the full report
+    // Back off while nothing is arriving: between snapshots there is nothing to fetch, and the
+    // server rebuilds a partial view per new snapshot rather than per request.
+    setTimeout(tick, Math.min(3000 + quiet * 2000, 15000));
+  };
+  setTimeout(tick, 3000);
+}

@@ -204,6 +204,19 @@ def test_source_tags_preserve_degraded_provider_without_raw_exception():
     assert "example.invalid" not in tag["why"]
 
 
+def test_serpapi_failure_is_marked_as_fallback_when_other_sources_return_art():
+    rep = {"federation": {"source_status": [
+        {"id": "serpapi_gpatents", "label": "SerpApi Google Patents", "state": "failed",
+         "state_detail": "failed", "n": 0, "reason": "HTTP 429"},
+        {"id": "bigquery_gpatents", "label": "BigQuery Google Patents", "state": "used",
+         "state_detail": "used", "n": 1963},
+    ]}}
+    tags = {t["id"]: t for t in webview._source_tags(rep, n_local=50)}
+    assert tags["serpapi_gpatents"]["state"] == "degraded"
+    assert "fallback" in tags["serpapi_gpatents"]["why"].lower()
+    assert tags["bigquery_gpatents"]["state"] == "used"
+
+
 def test_attach_fed_family_sources_maps_api_provenance(monkeypatch):
     import federation
     rep = {"federation": {"hits": [

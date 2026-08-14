@@ -23,7 +23,7 @@ def test_home_is_just_the_search(app_client):
     assert r.status_code == 200
     html = r.get_data(as_text=True)
     assert "invention" in html.lower()             # free-text box
-    assert "rotemAI patent search" in html         # masthead / title
+    assert "Rotem Patents" in html                 # masthead / title
     assert "exchip" not in html                    # example chips are gone
     assert GOLD not in html                        # gold grid moved to /history
     assert "Search scope and measured reliability" not in html   # wall moved to /about

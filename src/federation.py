@@ -237,6 +237,17 @@ SOURCE_LABELS = {
     "uspto": "USPTO ODP",
     "epo_ops": "EPO OPS",
     "lens": "Lens.org",
+    "himmpat": "HimmPat (CN/JP/KR, English full text)",
+    "ipaustralia": "IP Australia",
+    "kipris": "KIPRIS (Korea)",
+    "euipo": "EUIPO designs",
+    "gpatents_scrape": "Google Patents page scraper",
+    "bigquery_semantic": "Semantic recall (embeddings)",
+    "citation_expand": "Citation / family expansion",
+    "web_patent_fallback": "Google Patents web fallbacks",
+    "scrapingbee_patents": "ScrapingBee patent fallback",
+    "firecrawl_patents": "Firecrawl patent fallback",
+    "tavily_patents": "Tavily patent fallback",
 }
 
 
@@ -262,6 +273,8 @@ def _display_reason(detail: str, reason: str) -> str:
     clean = " ".join(str(reason or "").split())
     code = re.search(r"(?:HTTP\s*)?([45]\d\d)\b", clean, re.I)
     suffix = f" (HTTP {code.group(1)})" if code else ""
+    if detail == "degraded" and clean.startswith("Fallback "):
+        return clean[:157] + ("…" if len(clean) > 157 else "")
     if detail == "degraded":
         return f"Partial results: one or more provider queries failed{suffix}."
     if detail in ("failed", "unavailable"):
@@ -296,6 +309,7 @@ class SourceTracker:
         self.disabled = {}
         self.hits = {}          # key -> best per-round hit count seen
         self.errors = {}        # key -> first error string
+        self.fallbacks = {}     # primary key -> (provider key, recovered hits)
 
     def feed(self, ev: dict) -> None:
         k = ev.get("kind")
@@ -319,6 +333,17 @@ class SourceTracker:
             s = ev.get("source") or ""
             if s and s not in self.errors:
                 self.errors[s] = str(ev.get("error") or "")[:200]
+        elif k == "source_fallback":
+            primary = ev.get("from_source") or ""
+            provider = ev.get("provider") or ""
+            try:
+                hits = int(ev.get("hits") or 0)
+            except Exception:
+                hits = 0
+            if primary and provider:
+                self.fallbacks[primary] = (provider, hits)
+                if provider not in self.available:
+                    self.available.append(provider)
 
     def snapshot(self) -> list:
         """-> [{key,label,state,hits,reason}]  state in
@@ -327,7 +352,13 @@ class SourceTracker:
         for s in self.available:
             n = self.hits.get(s, 0)
             err = self.errors.get(s, "")
-            if err and n <= 0:
+            fallback = self.fallbacks.get(s)
+            if fallback:
+                provider, recovered = fallback
+                state = "degraded"
+                reason = (f"Fallback {source_label(provider)} returned "
+                          f"{recovered} candidate{'s' if recovered != 1 else ''}.")
+            elif err and n <= 0:
                 state, reason = "failed", err
             elif err:
                 # answered on some rounds, errored on others: partial, not a failure

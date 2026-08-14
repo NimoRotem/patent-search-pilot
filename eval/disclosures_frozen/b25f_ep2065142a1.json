@@ -1,0 +1,137 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b25f_ep2065142a1",
+ "subject_pub": "EP-2065142-A1",
+ "n_claims_source": 8,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 18,
+  "by_kind": {
+   "independent_limitation": 7,
+   "combination": 1,
+   "dependent_limitation": 10
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A hand tool machine includes a clamping flange.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "An auxiliary handle is attachable to the clamping flange.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The auxiliary handle's head part is fixable, oriented to the working axis.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A loop-shaped clamping band is guided within the head part.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The clamping band is manually tensionable via a tensioning means.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The clamping band has at least one radially inwardly projecting cam.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The cam positively engages a corresponding recess of the clamping flange.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A hand tool machine comprising a clamping flange, an attachable auxiliary handle with a head part fixable oriented to a working axis, a loop-shaped clamping band guided within the head part and manually tensionable via a tensioning means, w",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "Multiple cams are offset along the loop of the clamping band.",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "At least two different types of cams are present.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The clamping band is made of metal.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The tensioning means is a rotatable handle part.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The rotatable handle part tensions the clamping band via a clamping screw.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The clamping band has a drive opening at each of its two ends.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive opening positively encloses a head of the clamping screw.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The clamping band has a radially outwardly projecting guide lug at each of its two ends.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The head part forms two guide surfaces.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The ends of the clamping band are guidable on the guide surfaces.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "be7c1c6b00541652"
+}

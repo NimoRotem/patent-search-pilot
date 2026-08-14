@@ -69,8 +69,33 @@ def _child_rerank(query, passages, top_k):
 
 
 # ---- parent-side ---------------------------------------------------------------------------
+def in_spawned_child() -> bool:
+    """True when this interpreter IS a multiprocessing child.
+
+    WHY THIS EXISTS. "spawn" re-imports the parent's __main__ module in the child. A script whose
+    work sits at module level, with no `if __name__ == "__main__":` guard, therefore RE-RUNS ITS
+    ENTIRE JOB inside every child it spawns, and that job spawns again. Measured: eval scripts
+    lacking the guard produced a four-deep tree of interpreters each holding a reranker, about
+    1.3 GB apiece, which exhausted 16 GB of RAM and 16 GB of swap and froze the host. The reports
+    were being written concurrently by several recursive copies of the same run, so the numbers
+    would have been meaningless even if it had survived.
+    The guard belongs in every such script, and it was missing from one. Relying on every future
+    script remembering it is the same bet that just lost, so refuse here as well: a child never
+    needs a rerank pool, it IS one.
+    """
+    try:
+        return multiprocessing.parent_process() is not None
+    except Exception:
+        return False
+
+
 def _get_pool_locked():
     global _pool, _tasks
+    if in_spawned_child():
+        raise RuntimeError(
+            "refusing to create a rerank pool inside a spawned child: the parent script is "
+            "missing an `if __name__ == \"__main__\":` guard, so this child re-ran the whole "
+            "job. Guard the script's module-level work.")
     if _pool is None:
         # "spawn", never "fork": forking a process that already holds torch, psycopg and a genai
         # client is a classic deadlock source (locks copied in a held state).
