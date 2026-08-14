@@ -1,0 +1,231 @@
+{#  ONE RANKED REFERENCE.
+
+    Lifted out of report.html so the SAME markup can be rendered by the server mid-search and
+    streamed onto a page that is already open (/api/cards/<slug>, see static/app.js). A card that
+    arrives while the agent is still working must be identical to one that was there at first
+    paint — a second, lighter card shape would mean two behaviours to keep in step and a visible
+    seam down the list.
+
+    Imported `with context`, so `v`, `current_user`, `read_only` and `request` are the caller's.
+    `partial` says the ranking is not final yet: while it is true the card shows a pending
+    relevancy rather than a number that is about to change under the reader.  #}
+{% macro refcard(c, partial=False) %}
+    <article class="refcard" data-pub="{{ c.pub }}" data-family="{{ c.family or '' }}"
+         data-rank="{{ c.rank }}" data-rel="{{ c.get('relevancy_score') if c.get('relevancy_score') is not none else c.relevancy }}"
+         data-date="{{ c.publication_date or '' }}" data-juris="{{ c.country or '' }}"
+         data-basis="{{ c.basis }}" data-covers="{{ c.covers_elements|join('||') }}"
+         data-ncovers="{{ c.n_covers }}" data-nimg="{{ c.n_images }}"
+         aria-labelledby="t-{{ c.pub }}">
+      <div class="refhead">
+        <div class="selcol">
+          <input type="checkbox" class="selbox" value="{{ c.pub }}" onchange="updateBar()"
+                 aria-label="Select {{ c.pub }} for export or comparison">
+          <div class="flagpills" role="group" aria-label="Triage {{ c.pub }}">
+            <button type="button" class="fp fp-relevant" data-flag="relevant" aria-pressed="false"
+                    aria-label="Mark {{ c.pub }} relevant" title="Mark relevant">✓</button>
+            <button type="button" class="fp fp-maybe" data-flag="maybe" aria-pressed="false"
+                    aria-label="Mark {{ c.pub }} maybe" title="Mark maybe">?</button>
+            <button type="button" class="fp fp-not" data-flag="not" aria-pressed="false"
+                    aria-label="Mark {{ c.pub }} not relevant" title="Mark not relevant">✕</button>
+          </div>
+          {#  A triage flag belongs to THIS report. Saving keeps the publication in the reader's
+              own library, where it survives the report entirely.  #}
+          {% if current_user and not read_only %}
+          <button type="button" class="libbtn" data-pub="{{ c.pub }}" aria-pressed="false"
+                  title="Keep this publication in your saved patents"
+                  aria-label="Save {{ c.pub }} to your saved patents">☆</button>
+          {% endif %}
+        </div>
+
+        {#  Direct-first: when build_view already resolved the manifest the figure is a plain <img>
+            and no JavaScript runs. Otherwise the thumb starts in state="loading" and app.js
+            settles it — to a figure, an explicit "no drawing", or an error. Never a live spinner. #}
+        <button type="button" class="rthumb" data-pub="{{ c.pub }}"
+                data-state="{% if c.images %}ok{% else %}loading{% endif %}"
+                onclick="openDetail('{{ c.pub }}')" aria-label="Open the full document for {{ c.pub }}">
+          {% if c.images %}
+            {% set im0 = c.images[0] %}
+            {#  A locally-recovered figure has a filename (served from /figures/<pub>/<file>); a
+                lemad-Mongo figure has file=null and a remote Google-CDN thumbnail URL that renders
+                directly — nothing was downloaded. Both render here at first paint, no click.
+                loading="eager": figures are cheap CDN URLs (no download), so every card's hero
+                shows immediately, iptorch-style, instead of only the ~2 above-fold ones. decoding
+                stays async so decode never blocks first paint. #}
+            <img loading="eager" decoding="async"
+                 src="{% if im0.file %}{{ request.script_root }}/figures/{{ c.pub }}/{{ im0.file }}{% else %}{{ im0.thumbnail or im0.full }}{% endif %}"
+                 alt="{% if im0.from_pdf %}Page{% else %}Figure{% endif %} 1 of {{ c.pub }}">
+            <span class="figbadge">{{ c.n_images }} fig{{ 's' if c.n_images != 1 else '' }}</span>
+            <span class="zoomhint" aria-hidden="true">🔍</span>
+          {% else %}
+            <span class="tstate"><span class="spin sm" aria-hidden="true"></span>loading<br>drawing</span>
+          {% endif %}
+        </button>
+        {#  WHERE the drawing came from, not decoration. Google Patents has no drawings for roughly
+            69% of German publications, so a figure shown here may have been recovered from EPO OPS
+            instead — and which office a facsimile came from changes what you can conclude when it
+            disagrees with the text, or when no drawing exists at all. #}
+        {% if c.drawings_provenance %}
+        <p class="figprov small muted">Drawings: {{ c.drawings_provenance }}</p>
+        {% endif %}
+
+        <div class="rbody">
+          <div class="rmain">
+            <button type="button" class="rtitle" id="t-{{ c.pub }}" onclick="openDetail('{{ c.pub }}')">
+              <span class="rank">#{{ c.rank }}</span>{{ c.flag }} {{ c.title or '(untitled)' }}</button>
+            <div class="rmeta">
+              {#  c.google_patents is built server-side by pubnorm (zero-padded + kind code); the
+                  inline fallback is only for a card that somehow lacks it and still drops the
+                  leading zero, so it is a last resort, not the normal path. #}
+              <a class="pn" href="{{ c.google_patents or ('https://patents.google.com/patent/' + c.pub.replace('-','') + '/en') }}"
+                 target="_blank" rel="noopener" aria-label="{{ c.pub }} on Google Patents">{{ c.pub }} ↗</a>
+              {% if c.espacenet %}<a class="pn" href="{{ c.espacenet }}" target="_blank"
+                 rel="noopener" aria-label="{{ c.pub }} on Espacenet">Espacenet ↗</a>{% endif %}
+              {% if c.priority_date %}<span>priority {{ c.priority_date }}</span>{% endif %}
+              {% if c.publication_date %}<span>published {{ c.publication_date }}</span>{% endif %}
+              {# Rendered inert and PROMOTED to a real link by app.js only once /api/pdfs confirms
+                 one exists. Starting as a link and demoting later would flash a dead link, and
+                 23 of 34 of these used to 404. #}
+              <span class="pdflink" data-pub="{{ c.pub }}" aria-disabled="true"
+                    title="Checking for a cached PDF…">PDF</span>
+            </div>
+            {% if c.assignees or c.inventors %}
+            <div class="rsub">
+              {% if c.assignees %}<span><span class="fldl">Assignee</span><b>{{ c.assignees|join('; ') }}</b></span>{% endif %}
+              {% if c.inventors %}<span><span class="fldl">Inventor{% if c.inventors|length > 1 %}s{% endif %}</span>{{ c.inventors[:3]|join(', ') }}{% if c.inventors|length > 3 %} +{{ c.inventors|length - 3 }}{% endif %}</span>{% endif %}
+            </div>{% endif %}
+            <div class="rchips">
+              <span class="stag t-{{ c.status.tone }}"{% if c.status.note %} title="{{ c.status.note }}"{% endif %}>{{ c.status.label }}</span>
+              {% if c.basis=='public_prior_art' %}<span class="bbadge b-public">◆ public prior art</span>
+              {% elif c.basis=='secret_prior_art' %}<span class="bbadge b-secret">🔒 secret prior art</span>
+              {% elif c.basis=='priority_interval' %}<span class="bbadge b-interval">priority interval</span>{% endif %}
+              {% for ch in c.channels[:3] %}<span class="chip ch">{{ ch }}</span>{% endfor %}
+              {# per-result source provenance: which channel/API found this reference (item 5).
+                 Image matches are visually distinct (icon + own colour). #}
+              {% for p in c.prov %}<span class="chip {{ p.cls }}"
+                title="Found via {{ p.label }}">{% if p.icon %}{{ p.icon }} {% endif %}{{ p.label }}</span>{% endfor %}
+              {% for cp in c.cpc[:3] %}<span class="chip cpc">{{ cp.code }}</span>{% endfor %}
+            </div>
+            {#  Worldwide patent family (Feature 1): a Google-Patents-style year → jurisdiction
+                strip. The server renders a corpus-only baseline (families inside our corpus);
+                app.js upgrades it in place to the authoritative worldwide EPO OPS INPADOC family
+                once the top-N prefetch (or a card open) resolves it. Grouped by application filing
+                year; hover a code for the member's publication number + filing date. #}
+            {% if c.family_timeline %}
+            <div class="famstrip" data-pub="{{ c.pub }}" data-src="{{ c.family_source or '' }}"
+                 aria-label="Worldwide patent family by application year and jurisdiction">
+              <span class="famsum">Family of {{ c.family_n }} in {{ c.family_juris }} jurisdiction{{ 's' if c.family_juris != 1 else '' }}{% if c.family_source == 'corpus' %} · corpus-only{% endif %}</span>
+              {% for g in c.family_timeline %}<span class="famyear"><span class="fy">{{ g.year }}</span>{% for code in g.codes %}<span class="fcc" title="{{ code.pub }}{% if code.date %} · filed {{ code.date }}{% endif %}">{{ code.cc }}</span>{% endfor %}</span>{% endfor %}
+            </div>
+            {% endif %}
+            {% if c.abstract %}<p class="rsnip">{{ c.abstract[:230] }}{% if c.abstract|length > 230 %}…{% endif %}</p>{% endif %}
+            {#  The iptorch-style written "why relevant" opinion (C's per-result relevance narrative),
+                shown on the card so a domain expert reads the take without opening a tab. The deeper
+                grounded opinion + best-matching passage still live in the "Why relevant" tab. #}
+            {% if partial %}
+            {#  The opinion available at this point is a sentence about a 900-character snippet,
+                and it is about to be replaced by one written from the reference's full text.
+                Showing it and then swapping it is how a reader ends up trusting neither. #}
+            <p class="relop relop-pending" data-rationale-state="pending">
+              <span class="relop-l">Why relevant</span>
+              <span class="spin sm" aria-hidden="true"></span>Reading this reference in full…</p>
+            {% elif c.get('relevancy_opinion') %}
+            <p class="relop" data-rationale-state="summary"><span class="relop-l">Why relevant</span>{{ c.get('relevancy_opinion') }}</p>
+            {% endif %}
+            {% if c.covers_elements %}
+            <div class="rcovers"><span class="lbl2">reads on</span>
+              {% for el in c.covers_elements[:5] %}<button type="button" class="chip el" data-el="{{ el|e }}"
+                onclick="filterByElement(this.dataset.el)"
+                aria-label="Filter the list to references covering “{{ el[:60] }}”">{{ el[:40] }}</button>{% endfor %}
+              {% if c.covers_elements|length > 5 %}<span class="chip">+{{ c.covers_elements|length - 5 }}</span>{% endif %}
+            </div>{% endif %}
+          </div>
+          {#  NO NUMBER UNTIL THE RANKING IS FINAL.
+
+              While the search is still running the only score that exists is the best-passage
+              cosine, and it is systematically higher than the evidence score that replaces it —
+              so a card showed 85, the reader formed a view, and the finished report said 47. A
+              number that is about to change is worse than no number: it is the same glyph making
+              two different promises. Until the reading has ranked it, the box says so.  #}
+          {% set relscore = c.get('relevancy_score') if c.get('relevancy_score') is not none else c.relevancy %}
+          {% if partial %}
+          <div class="relbox relbox-pending"
+               title="The relevancy score is the share of what makes this invention distinctive that this reference was measured to disclose, read in full. It is computed once every reference has been read, so that the references are scored against each other rather than one at a time.">
+            <span class="spin" aria-hidden="true"></span>
+            <div class="rellab">ranking</div>
+          </div>
+          {% else %}
+          <div class="relbox r{{ (relscore // 20) }}"
+               title="{% if c.get('deep_read') %}Read in full: {{ '{:,}'.format(c.get('deep_chars') or 0) }} characters. Grounds {{ c.get('deep_disclosed', 0) }} disclosed and {{ c.get('deep_partial', 0) }} partial of {{ c.get('deep_features', 0) }} features, weighted by how rare each disclosure is across the references read.{% elif c.get('relevancy_source') in ('deep_rank_screen', 'unread') %}Screened but NOT read in full, so it is held below every reference whose full text was quoted.{% elif c.get('relevancy_source') %}AI relevancy {{ c.get('relevancy_score') }}/100{% if c.get('relevancy_opinion') %} — {{ c.get('relevancy_opinion')[:200] }}{% endif %}{% else %}Best-passage semantic match: {{ '%.3f'|format(c.match_score) }} cosine{% if c.match_coord %} at {{ c.match_kind }} {{ c.match_coord }}{% endif %}{% endif %}">
+            <div class="relnum">{{ relscore }}</div>
+            <div class="rellab">relevancy</div>
+            {% if c.get('deep_read') %}
+            <div class="relsub relsub-read">{{ c.get('deep_disclosed', 0) }}/{{ c.get('deep_features', 0) }} read in full</div>
+            {% elif c.get('relevancy_source') in ('deep_rank_screen', 'unread') %}
+            <div class="relsub relsub-unread">not read in full</div>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      {#  Tabbed document view, modelled on iptorch.com's per-result card: one tab strip, one pane,
+          content fetched only when a tab is picked. Following iptorch, a tab whose data is known
+          to be absent server-side is NOT rendered at all (rather than rendered and then
+          apologising) — and for sections whose presence is only known after /api/ref returns, the
+          pane itself degrades to a plain "not available" line.
+
+          These are DISCLOSURE buttons, not a WAI-ARIA tablist: they toggle one shared pane, there
+          is no roving tabindex and no aria-controls, so `role="tab"` would promise a keyboard
+          contract that is not implemented. Plain buttons + aria-expanded is the honest mapping,
+          and it is also ~30 bytes/button cheaper. Clicks are handled by ONE delegated listener
+          (see app.js) rather than 8 inline onclick attributes per card — with ~25 cards that
+          attribute alone was several KB of the page.
+
+          WEIGHT: this strip is the only thing on the card that scales with the tab count, so it
+          is kept to bare attributes. Everything it opens is fetched on demand. #}
+      <div class="rtabs">
+        {#  The full-text reading of THIS reference: what it discloses, feature by feature and —
+            when the search started from a patent — claim by claim, each with the verbatim quote
+            and the passage it came from. First tab because it is the answer, not a detail.  #}
+        {#  Both of these are answered by the full-text reading, which has not run yet on a partial
+            page. Rendered disabled with a spinner rather than clickable-and-empty: a tab that
+            opens onto "nothing here" reads as a broken feature, not as work in progress. #}
+        <button type="button" class="rtab rtab-analysis{% if partial %} rtab-pending{% endif %}" data-t="analysis"
+                aria-expanded="false" {% if partial %}disabled aria-disabled="true"{% endif %}
+                aria-controls="pane-{{ c.pub }}" aria-label="What this reference discloses, {{ c.pub }}{% if partial %} — still reading{% endif %}">
+          {% if partial %}<span class="spin sm" aria-hidden="true"></span>{% endif %}What it discloses</button>
+        <button type="button" class="rtab{% if partial %} rtab-pending{% endif %}" data-t="why"
+                aria-expanded="false" {% if partial %}disabled aria-disabled="true"{% endif %}
+                aria-controls="pane-{{ c.pub }}" aria-label="Why relevant, {{ c.pub }}{% if partial %} — still reading{% endif %}">
+          {% if partial %}<span class="spin sm" aria-hidden="true"></span>{% endif %}Why relevant</button>
+        {% if c.abstract %}
+        <button type="button" class="rtab" data-t="abstract" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
+                aria-label="Abstract, {{ c.pub }}">Abstract</button>
+        {% endif %}
+        {% if c.claims %}
+        <button type="button" class="rtab" data-t="claims" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
+                aria-label="Claims, {{ c.pub }}">Claims<span class="n">{{ c.claims|length }}</span></button>
+        {% endif %}
+        {% if c.description %}
+        <button type="button" class="rtab" data-t="desc" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
+                aria-label="Description, {{ c.pub }}">Description</button>
+        {% endif %}
+        {% if c.cpc %}
+        <button type="button" class="rtab" data-t="class" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
+                aria-label="Classifications, {{ c.pub }}">Classifications</button>
+        {% endif %}
+        {% if c.n_images %}
+        <button type="button" class="rtab" data-t="figs" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
+                aria-label="Drawings, {{ c.pub }}">Drawings<span class="n">{{ c.n_images }}</span></button>
+        {% endif %}
+        <button type="button" class="rtab" data-t="cites" aria-expanded="false" aria-controls="pane-{{ c.pub }}"
+                aria-label="Citations, {{ c.pub }}">Citations</button>
+        <span class="rtab spacer"></span>
+        <button type="button" class="rtab primary" data-a="detail"
+                aria-label="Full document, {{ c.pub }}">Full view →</button>
+        <button type="button" class="rtab" data-a="similar"
+                aria-label="Similar to {{ c.pub }}">Similar</button>
+      </div>
+      <div class="rpane" id="pane-{{ c.pub }}" role="region" aria-live="polite" hidden></div>
+    </article>
+{% endmacro %}

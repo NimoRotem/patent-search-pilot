@@ -1988,6 +1988,65 @@ def report(slug):
     return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
 
 
+#  {slug: (report mtime, view)} for the live card stream below. Bounded by the number of searches
+#  running at once, and every entry is dropped the moment its report stops being partial.
+_PARTIAL_VIEWS: dict = {}
+
+
+@app.route("/api/cards/<slug>")
+def api_cards(slug):
+    """The references ranked SO FAR, as rendered cards, for a page that is already open.
+
+    A search that runs for fifteen minutes used to show one snapshot of results and then, at the
+    very end, replace the whole page. Everything the agent found in between — the rounds, the
+    citation and family expansion, the external fan-out — was invisible until it was all over.
+    This lets the open page take delivery of each new reference as the agent admits it, using the
+    SAME card markup as first paint (templates/_refcard.html), so nothing about a streamed card
+    differs from one that was there at the start.
+
+    `offset` is how many cards the page already holds. The response is the ones after it.
+    """
+    if not valid_slug(slug):
+        return jsonify({"error": "invalid slug"}), 400
+    p = report_path(slug)
+    if not p.exists():
+        return jsonify({"cards": "", "n": 0, "partial": True, "ready": False})
+    try:
+        rep = json.loads(p.read_text())
+    except Exception:
+        return jsonify({"cards": "", "n": 0, "partial": True, "ready": False})
+    try:
+        offset = max(0, int(request.args.get("offset") or 0))
+    except (TypeError, ValueError):
+        offset = 0
+    partial = bool(rep.get("partial"))
+    #  A partial view is deliberately never written to disk (it would shadow the final report), so
+    #  every poll would otherwise re-embed the query and re-resolve the whole candidate list from
+    #  Postgres. Keyed on the report's mtime: the answer can only change when the agent writes a
+    #  new snapshot, so between snapshots this is free, and a new snapshot invalidates it exactly.
+    stamp = p.stat().st_mtime
+    hit = _PARTIAL_VIEWS.get(slug)
+    if hit and hit[0] == stamp:
+        view = hit[1]
+    else:
+        view = _build_view_cached(slug, rep)
+        if partial:
+            _PARTIAL_VIEWS[slug] = (stamp, view)
+        else:
+            _PARTIAL_VIEWS.pop(slug, None)
+    cards = view.get("cards") or []
+    #  Only ever APPEND. Re-sending a card the page already holds would discard whatever state it
+    #  has accumulated — an opened tab, a triage flag, a loaded drawing. The authoritative order
+    #  arrives separately (reorderCards), which moves existing nodes instead of replacing them.
+    fresh = cards[offset:]
+    html = ""
+    if fresh:
+        html = render_template("_cards.html", v=view, cards=fresh, partial=partial)
+    return jsonify({"cards": html, "n": len(cards), "added": len(fresh),
+                    "partial": partial, "ready": not partial,
+                    "families": rep.get("n_families") or 0})
+
+
 @app.route("/api/searches/<slug>", methods=["GET", "POST"])
 def api_saved_search(slug):
     """Bookmark/unbookmark a report in the signed-in user's account."""
@@ -2102,7 +2161,10 @@ def download_archive(slug):
 #  50, not 25: the reading stage (deep_rank) reads far more than that in full, and a reference
 #  it grounded should be on the page rather than behind a 'more references' pager that shows
 #  bibliography only.
-_DISPLAY_TOP = int(os.environ.get('DISPLAY_TOP', '50'))
+#  60, raised with deep_rank.CHART_TOP_MAX. The measured lesson there is that widening the READ
+#  set while the page stays a fixed size lowers visible recall — references that had been on the
+#  page at chart rank 30-47 fell off it. So the page grows whenever the reading does.
+_DISPLAY_TOP = int(os.environ.get('DISPLAY_TOP', '60'))
 
 
 def _build_view_cached(slug, rep, regen=False):
@@ -2153,6 +2215,32 @@ def _build_view_cached(slug, rep, regen=False):
                         vp.write_text(json.dumps(view, default=str))
                 except Exception:
                     pass
+                # Backfill the ELEMENT GRID onto caches written before it was drawn from the
+                # reading. Every finished report already on disk holds a grid whose cells are
+                # retrieval cosines, next to a <slug>.deep.json holding the verdict, the verbatim
+                # quote and the passage number for the same feature and the same reference. This
+                # is a pure re-shape of data both files already contain — no LLM, no DB, no
+                # rerank — so an existing report upgrades on its next view rather than needing a
+                # re-run. Gated on the chart's own `source`, which is also what the template
+                # branches on, so there is one flag rather than a second one to keep in step.
+                try:
+                    dirty = False
+                    if (view.get("claim_chart") or {}).get("source") != "reading":
+                        deep = deep_analysis.result(slug, REPORTS)
+                        fresh = webview.build_reading_chart(rep, deep) if deep else None
+                        if fresh:
+                            view["claim_chart"] = fresh
+                            dirty = True
+                    # Same shape of backfill for the settings panel ("Show full search"): it is a
+                    # projection of the report, so a cache written before it existed can gain it
+                    # without a rebuild.
+                    if not view.get("search_params"):
+                        view["search_params"] = webview.search_params(rep)
+                        dirty = True
+                    if dirty:
+                        vp.write_text(json.dumps(view, default=str))
+                except Exception:
+                    traceback.print_exc()
                 # Backfill CORRECT outbound office links onto caches written before the dropped-zero
                 # fix (US pre-grant Google/Espacenet URLs that 404). Cheap pure-string pass via
                 # pubnorm, gated by a flag so it runs once per cache.
@@ -2174,7 +2262,16 @@ def _build_view_cached(slug, rep, regen=False):
                 return view
         except Exception:
             pass
-    view = webview.build_view(rep, top_n=_DISPLAY_TOP)
+    #  The full-text reading, when this search already has one. It is what the element grid is
+    #  drawn from (webview.build_reading_chart): the retrieval grid it replaces was showing a
+    #  cosine score per cell while this file held a verdict, a verbatim quote and a claim or
+    #  paragraph number for the same feature and the same reference.
+    deep = None
+    try:
+        deep = deep_analysis.result(slug, REPORTS)
+    except Exception:
+        traceback.print_exc()
+    view = webview.build_view(rep, top_n=_DISPLAY_TOP, deep=deep)
     view["partial"] = partial
     view["query_claim_grid"] = query_claim_grid.metadata(rep)
     if partial:

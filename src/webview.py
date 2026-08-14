@@ -345,9 +345,136 @@ def sections(cur, pid):
 
 
 # ---- claim chart ---------------------------------------------------------------------------
+#  Reading verdict -> the verification vocabulary the grid template already draws.
+_VERDICT_GLYPH = {"disclosed": "discloses", "partial": "weak", "uncertain": "unchecked"}
+
+
+def build_reading_chart(report, deep, max_cols=10):
+    """The element x reference grid built from WHAT WAS READ, not from what was retrieved.
+
+    WHY THIS REPLACED THE RETRIEVAL GRID
+    ------------------------------------
+    Every cell of the old grid was a cosine score between an element string and a chunk of a
+    publication — "the retriever returned this document for this element" — and it was presented
+    with a green tint as though it were coverage. On adhoc-939fb711122b the feature "seal element
+    elastically deformable at contact surface" showed one cell, a 0.07 match, while the reading
+    stage running beside it had grounded that same feature in 364 of the 434 references it read,
+    with a verbatim quote and a claim or paragraph number for each. The grid was reporting a
+    string comparison over a full-text reading it already had.
+
+    So the grid now renders the reading: one row per charted feature, rarest first (that is the
+    order a novelty argument is made in), one column per top-ranked reference, and each cell is
+    the verdict, the quote that carries it and the passage the quote came from. Returns None when
+    the search has no reading to render, and the caller falls back to the retrieval grid.
+    """
+    refs = [r for r in (deep or {}).get("references") or [] if r.get("pub")]
+    features = [f for f in (deep or {}).get("features") or [] if str(f or "").strip()]
+    if not refs or not features:
+        return None
+    dr = (report or {}).get("deep_rank") or {}
+    idf = dr.get("feature_idf") or {}
+    df = dr.get("feature_df") or {}
+    by_pub = {r["pub"]: r for r in refs}
+
+    #  Columns: the head of the ranked order, which coverage_rank has already arranged so that
+    #  each successive reference adds the most that is still uncovered — exactly what makes a grid
+    #  worth reading across rather than down. Only references whose full text was actually read
+    #  can carry a quote, so only those become columns.
+    order = [p for p in (dr.get("order") or []) if p in by_pub] or [r["pub"] for r in refs]
+    cols = []
+    for pub in order:
+        ref = by_pub[pub]
+        if ref.get("method") != "llm":
+            continue
+        cols.append(pub)
+        if len(cols) >= max_cols:
+            break
+    if not cols:
+        return None
+
+    #  {pub: {feature: row}} over the grounded cells only. An ungrounded or unlocatable quote was
+    #  already forced to "absent" upstream; it must not reappear here as coverage.
+    #
+    #  `asked` is separate and is the honest half: every feature ANY reference returned a row for,
+    #  whatever that row said. A feature nobody was asked about is NOT a feature nobody disclosed,
+    #  and until the truncation in deep_analysis was fixed the two were indistinguishable on the
+    #  page — 20 of one report's 40 features had no answer from any of 401 references, sorted to
+    #  the TOP of the grid as the rarest things in the art, because the reader was never shown
+    #  them. A report generated before that fix still carries exactly that hole, so the grid has
+    #  to be able to say "not asked" rather than draw an empty row and let it read as "not found".
+    cells, asked = {}, set()
+    for ref in refs:
+        for row in (ref.get("features") or []):
+            if row.get("item"):
+                asked.add(row["item"])
+    for pub in cols:
+        got = {}
+        for row in (by_pub[pub].get("features") or []):
+            if row.get("grounding") != "verified":
+                continue
+            if row.get("verdict") not in _VERDICT_GLYPH:
+                continue
+            got[row.get("item")] = row
+        cells[pub] = got
+
+    rows = []
+    #  Rarest first, because that is the order a novelty argument is made in — but anything the
+    #  reading never put to a reference goes last, not first. Ranking an unanswered feature as the
+    #  rarest disclosure in the art is the strongest possible claim made from the weakest possible
+    #  evidence: none.
+    for feat in sorted(features, key=lambda f: (f not in asked, -float(idf.get(f, 0.0)), f)):
+        out = []
+        for pub in cols:
+            r = cells[pub].get(feat)
+            if not r:
+                out.append({"pub": pub, "covered": False})
+                continue
+            out.append({
+                "pub": pub, "covered": True, "verdict": r["verdict"],
+                "verify": _VERDICT_GLYPH[r["verdict"]],
+                "quote": r.get("quote") or "", "location": r.get("location") or "",
+                "coord": r.get("location") or "", "note": r.get("note") or "",
+                "confidence": round(float(r.get("confidence") or 0.0), 2),
+                "score": round(float(r.get("confidence") or 0.0), 3),
+                "basis": "", "second_pass": bool(r.get("second_pass")),
+                "verify_why": r.get("refuted") if isinstance(r.get("refuted"), str) else "",
+            })
+        n_hit = sum(1 for c in out if c.get("covered"))
+        rows.append({"element": feat, "cells": out,
+                     "idf": round(float(idf.get(feat, 0.0)), 3),
+                     "df": int(df.get(feat, 0)),
+                     "asked": feat in asked,
+                     "n_charted": len(refs),
+                     "coverage": {"n_evidence": n_hit, "best_score": 0.0}})
+
+    tally = {}
+    for row in rows:
+        for c in row["cells"]:
+            if c.get("covered"):
+                tally[c["verify"]] = tally.get(c["verify"], 0) + 1
+    return {
+        "source": "reading",
+        "columns": [{"pub": p, "n_elements": sum(1 for f in cells[p]),
+                     "title": (by_pub[p].get("title") or "")[:120]} for p in cols],
+        "rows": rows,
+        "combination_view": report.get("combination_view", {}),
+        "n_charted": len(refs),
+        "n_unasked": sum(1 for r in rows if not r["asked"]),
+        "verification": {"covered": sum(tally.values()),
+                         "discloses": tally.get("discloses", 0),
+                         "weak": tally.get("weak", 0),
+                         "unchecked": tally.get("unchecked", 0),
+                         "unrelated": 0},
+    }
+
+
 def build_claim_chart(report, max_cols=8):
     """Rows = elements, columns = the references with the strongest cross-element evidence
-    (combination-view refs first). Each cell = best evidence of that ref for that element."""
+    (combination-view refs first). Each cell = best evidence of that ref for that element.
+
+    THE RETRIEVAL FALLBACK. Used only when the search has no full-text reading to render — see
+    :func:`build_reading_chart`, which is what a finished report shows.
+    """
     elements = report["elements"]
     ev = report.get("element_evidence", {})
     # aggregate ref strength
@@ -412,7 +539,7 @@ def build_claim_chart(report, max_cols=8):
         rows.append({"element": el, "cells": cells,
                      "coverage": report.get("element_coverage", {}).get(el, {})})
     columns = [{"pub": pub, "n_elements": len(ref_agg.get(pub, {}).get("elements", []))} for pub in cols]
-    return {"columns": columns, "rows": rows, "combination_view": cv}
+    return {"source": "retrieval", "columns": columns, "rows": rows, "combination_view": cv}
 
 
 def _relevancy(cosine):
@@ -1009,7 +1136,45 @@ def _deep_rank_summary(report):
     }
 
 
-def build_view(report, top_n=25):
+def search_params(report):
+    """WHAT THE SEARCH WAS ACTUALLY RUN WITH, for the "Show full search" panel.
+
+    All of this already existed on the report and none of it reached the page, so "Show full
+    search" could only reveal the query string — the one input the searcher already had. A result
+    that looks wrong is usually traceable to one of these instead: the focus, a date bar, a
+    checklist the extractor wrote in the applicant's own vocabulary, an essence sentence that
+    missed the point.
+
+    A pure projection of the report, so a view cache written before it existed can be backfilled
+    without rebuilding anything.
+    """
+    report = report or {}
+    ext = report.get("external") or {}
+    qd = report.get("query_document") or {}
+    return {
+        "disclosures": report.get("disclosures") or [],
+        "disclosures_summary": report.get("disclosures_summary") or {},
+        "disclosure_list_source": report.get("disclosure_list_source") or "",
+        "date_cutoff": report.get("date_cutoff") or "",
+        "search_focus": report.get("search_focus") or "all_text",
+        "wide": bool(report.get("federation")),
+        "figure_channel": bool((report.get("image_channel") or {}).get("n")),
+        "external_aspects": [
+            {"name": a.get("name") or "", "cpc": (a.get("cpc") or [])[:6],
+             "keywords": (a.get("keywords") or [])[:8]}
+            for a in (ext.get("aspects") or [])[:12]],
+        "external_stats": {k: ext.get(k)
+                           for k in ("n_queries", "n_candidates", "n_families", "elapsed")},
+        "query_document": {
+            "label": qd.get("label") or "",
+            "publication_number": qd.get("publication_number") or "",
+            "n_claims": len(qd.get("claims") or []),
+            "source": qd.get("source") or "",
+        },
+    }
+
+
+def build_view(report, top_n=25, deep=None):
     """Assemble the whole page view model. Reference text (claims/description/figure captions) and
     any already-downloaded drawings are attached PER CARD from Postgres here, so the results render
     with real content immediately; only missing drawings are fetched lazily by the page."""
@@ -1125,7 +1290,17 @@ def build_view(report, top_n=25):
         if c.get("relevancy_score") is None:
             _attach_deep_rank(report, c)
     _attach_family_members(cur, cards)
-    chart = build_claim_chart(report)
+    #  Prefer the grid built from the full-text reading; fall back to the retrieval grid only when
+    #  this search has no reading (a partial snapshot, or a run where deep_rank never completed).
+    chart = None
+    if deep:
+        try:
+            chart = build_reading_chart(report, deep)
+        except Exception:
+            import traceback
+            traceback.print_exc()          # a grid must never 500 the page
+    if chart is None:
+        chart = build_claim_chart(report)
     cur.close(); conn.close()
     return {
         "query": query, "mode": report.get("mode"), "subject": s,
@@ -1149,6 +1324,7 @@ def build_view(report, top_n=25):
         "federation_offered": bool(report.get("federation_offered")),
         "deep_rank": _deep_rank_summary(report),
         "query_set": report.get("query_set", []),
+        "search_params": search_params(report),
         "coverage_ledger": {
             "cpc_branches": report.get("cpc_branches", []),
             "round_new_families": report.get("round_new_families", []),

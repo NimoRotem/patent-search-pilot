@@ -7,7 +7,12 @@ import ui_e2e_acceptance as U
 
 
 def test_report_template_publishes_durable_pipeline_markers():
-    template = (Path(__file__).resolve().parents[1] / "templates" / "report.html").read_text()
+    #  The card markup moved to _refcard.html so the SAME card can be rendered mid-search and
+    #  streamed onto an open page (webapp.api_cards). These markers are a contract about what the
+    #  rendered page publishes, not about which file holds it, so the guard reads both templates —
+    #  otherwise it fails on a move and passes on a deletion from the card template.
+    root = Path(__file__).resolve().parents[1] / "templates"
+    template = (root / "report.html").read_text() + (root / "_refcard.html").read_text()
     for marker in (
         'data-partial=',
         'data-cross-encoder-reranked=',

@@ -52,6 +52,7 @@ import os
 import re
 import threading
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 import db
@@ -88,7 +89,7 @@ SCREEN_WORKERS = int(os.environ.get("DEEP_RANK_SCREEN_WORKERS", "6"))
 #  minutes. Raised from 150 because the screen now looks at 2,500 rather than 600 candidates: on a
 #  real examiner citation list, seven cited families were screened at 60-80 and then never read,
 #  because the top-150 cut landed in the high 80s.
-CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "300"))
+CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "360"))
 #  A THRESHOLD, not only a slice. "Worth reading" is a judgement the screen already made on a
 #  0-100 scale, so a fixed top-N throws away its answer and substitutes an arbitrary cut: measured,
 #  the top-300 cut landed at a screen score of 75-80, and cited references the screen had rated 70
@@ -98,9 +99,18 @@ CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "300"))
 #  made the 50-card cut harder, and cited references that had been on the page at chart rank 30-47
 #  fell to 54-184. The read set is a shortlist for a fixed-size page, so widening it past what the
 #  page can show trades visible recall for invisible reading.
-CHART_MIN_SCREEN = int(os.environ.get("DEEP_RANK_CHART_MIN_SCREEN", "75"))
-CHART_TOP_MAX = int(os.environ.get("DEEP_RANK_CHART_TOP_MAX", "350"))
-CHART_WORKERS = int(os.environ.get("DEEP_RANK_CHART_WORKERS", "18"))
+#  Lowered 75 -> 70: the paragraph above records that "cited references the screen had rated 70
+#  were never read", and 70 is precisely where the old threshold sat. Read them.
+CHART_MIN_SCREEN = int(os.environ.get("DEEP_RANK_CHART_MIN_SCREEN", "70"))
+#  Raised 350 -> 420, AND `_DISPLAY_TOP` was raised with it (webapp), because the measurement
+#  above is specifically that widening the read set while the PAGE stays a fixed size trades
+#  visible recall for invisible reading. The two have to move together or not at all. This also
+#  widens the on-demand full-text recovery, which is bounded by exactly this number: a reference
+#  the pipeline was never going to read is one it never fetches text for.
+CHART_TOP_MAX = int(os.environ.get("DEEP_RANK_CHART_TOP_MAX", "420"))
+#  Raised 18 -> 24 to pay for the extra feature batch per reference (deep_analysis.FEATURE_BATCH).
+#  The stage is bound by Vertex round-trips, not by this box's four cores.
+CHART_WORKERS = int(os.environ.get("DEEP_RANK_CHART_WORKERS", "24"))
 
 #  Always read the head of the RETRIEVAL order regardless of what the screen thought, so a screen
 #  miss can never cost a reference the old pipeline would have shown. This is not paranoia: the
@@ -184,7 +194,15 @@ _CLAIM_WEIGHT = 0.75
 #  a 12-item element summary; a real disclosure list runs to 60+ and the checklist is the
 #  point, so this is its own number. Each one lengthens every chart prompt, so it is a real
 #  cost and not free to raise.
-DISCLOSURE_CAP = int(os.environ.get("DEEP_RANK_DISCLOSURE_CAP", "40"))
+#  Raised 40 -> 48 only once the truncation below it was fixed. Until then the extra items were
+#  worse than useless: deep_analysis charted the first 20 and rarity() still counted every one of
+#  them in the denominator, so raising the cap lowered every score and reported the difference as
+#  "nothing discloses this".
+DISCLOSURE_CAP = int(os.environ.get("DEEP_RANK_DISCLOSURE_CAP", "48"))
+#  How many of the read references get the SECOND, concept-led look at the features their first
+#  reading returned nothing for (deep_analysis.reread_absent). Bounded to the head because it is
+#  one extra model call per reference and only the head is displayed, charted and argued from.
+CONCEPT_PASS_TOP = int(os.environ.get("DEEP_RANK_CONCEPT_PASS_TOP", "120"))
 #  Order by marginal contribution to disclosure coverage rather than by score alone.
 COVERAGE_ORDER = os.environ.get("DEEP_RANK_COVERAGE_ORDER", "1") != "0"
 UNREAD_SCORE_CAP = int(os.environ.get("DEEP_RANK_UNREAD_CAP", "70"))
@@ -817,6 +835,24 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
               flush=True)
     #  Fetch the missing text BEFORE reading, for the references we have just chosen to read.
     enriched = _enrich_missing_text(chosen, on_progress=emit)
+
+    #  THE CONCEPT LAYER, built ONCE for the whole search and handed to every reader.
+    #
+    #  The checklist is extracted from the subject's own claims, so it speaks the subject's
+    #  vocabulary: "at least one bracing structure protrudes from the second side of the base
+    #  element". Almost no prior art says that. Measured on adhoc-939fb711122b, "seal element
+    #  elastically deformable at contact surface" is taught by hundreds of the references read, in
+    #  words like sealing lip, gasket, resilient ring, Dichtlippe. Giving each reader the IDEA and
+    #  the other words for it, before it decides "absent", is what turns a string comparison back
+    #  into a reading.
+    emit("concepts_start", n=len(features))
+    try:
+        hints = deep_analysis.concept_expansions(
+            features, title=(qd.get("label") or qd.get("title") or ""), brief=brief)
+    except Exception:
+        traceback.print_exc()
+        hints = {}
+    print(f"[deep_rank] concept expansions for {len(hints)}/{len(features)} features", flush=True)
     emit("chart_start", n=len(chosen))
 
     done = [0]
@@ -824,7 +860,8 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
 
     def one(row):
         try:
-            ref = deep_analysis.analyse_reference(row["pub"], features, claim_items, row["title"])
+            ref = deep_analysis.analyse_reference(row["pub"], features, claim_items, row["title"],
+                                                  hints=hints)
         except Exception as exc:
             ref = {"pub": row["pub"], "title": row["title"], "found": False, "features": [],
                    "claims": [], "method": "error", "error": str(exc)[:200], "chars": 0}
@@ -841,6 +878,42 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     with ThreadPoolExecutor(max_workers=min(CHART_WORKERS, max(1, len(chosen)))) as ex:
         charts = list(ex.map(one, chosen))
     chart_seconds = time.time() - t0
+
+    #  SECOND LOOK at the head, feature by feature, on the concepts rather than the wording. Only
+    #  the rows a first reading left empty are re-asked, and an upgrade still has to pass the same
+    #  grounding and location gates plus the refuter — a second look widens what the reader
+    #  RECOGNISES, never what it is allowed to assert.
+    reread_changed = reread_refs = 0
+    if CONCEPT_PASS_TOP > 0 and hints:
+        prelim = sorted(
+            [c for c in charts if c.get("method") == "llm"],
+            key=lambda c: (-(int((c.get("overall") or {}).get("score") or 0)),
+                           -(c.get("screen") if c.get("screen") is not None else -1),
+                           c.get("retrieval_rank") or 10 ** 6))[:CONCEPT_PASS_TOP]
+
+        def second(ref):
+            try:
+                n = deep_analysis.reread_absent(ref["pub"], ref.get("features") or [], hints=hints)
+                if n:
+                    #  Refute ONLY what the second pass changed. The dicts are shared with
+                    #  ref["features"], so the downgrade lands on the chart itself.
+                    deep_analysis._refute(
+                        [r for r in ref["features"] if r.get("second_pass")], ref["pub"])
+                    ref["counts"] = deep_analysis._counts(
+                        (ref.get("features") or []) + (ref.get("claims") or []))
+                return n
+            except Exception:
+                return 0
+
+        emit("reread_start", n=len(prelim))
+        t1 = time.time()
+        with ThreadPoolExecutor(max_workers=min(CHART_WORKERS, max(1, len(prelim)))) as ex:
+            gained = list(ex.map(second, prelim))
+        reread_changed = sum(gained)
+        reread_refs = sum(1 for g in gained if g)
+        print(f"[deep_rank] second concept pass: {reread_changed} cells recovered across "
+              f"{reread_refs} of {len(prelim)} references ({time.time() - t1:.0f}s)", flush=True)
+        chart_seconds += time.time() - t1
 
     rar = rarity(charts, features, [c["label"] for c in claim_items])
     lead_map = leaders(charts, rar)
@@ -951,8 +1024,14 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         "screen_scores": {p: int(v) for p, v in scores.items()},
         "screened": len(scores),
         "enriched": enriched,
+        #  What the concept layer and the second look actually did, so both can be measured from a
+        #  finished report rather than taken on trust.
+        "concept_hints": len(hints),
+        "reread_refs": reread_refs,
+        "reread_cells": reread_changed,
         "n_candidates": len(rows),
         "charted": len(charts),
+        "n_features": len(features),
         "read_in_full": sum(1 for c in charts if c.get("method") == "llm"),
         "no_text": sum(1 for c in charts if c.get("method") == "no-text"),
         "chars_read": sum(int(c.get("chars") or 0) for c in charts),

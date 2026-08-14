@@ -60,7 +60,22 @@ VERSION = 3
 #  actually open. 50 is the number of references an attorney reads before deciding, and it is
 #  what the search is asked to justify.
 TOP_N = int(os.environ.get("DEEP_TOP_N", "50"))
-MAX_FEATURES = 20
+#  HOW MANY FEATURES ARE CHARTED. This was 20 and it was a SILENT TRUNCATION, not a cap.
+#  ``deep_rank`` builds its checklist from ``disclosures`` (40+ items) and hands the whole list
+#  here; ``analyse_reference`` then charted the first twenty and returned nothing for the rest,
+#  while ``deep_rank.rarity`` still counted all of them in the denominator. Measured on
+#  adhoc-220e6c97a41e: 40 features declared, 20 charted, and EXACTLY the last 20 had df=0 — the
+#  bracing structure, the channel geometry and the handle, which is the whole characterising half
+#  of that invention, were reported as "nothing read in full discloses this" having never been
+#  asked about, and every reference's score was divided by a denominator half of which was
+#  unreachable.
+MAX_FEATURES = int(os.environ.get("DEEP_MAX_FEATURES", "60"))
+#  Features per model call. NOT a truncation: the list is charted in consecutive batches and the
+#  answers are concatenated. It exists because the model ECONOMISES when a single answer has to
+#  carry too many quoted rows — the same effect already measured for features-plus-claims in one
+#  breath (10 of 12 grounded when asked alone, 2 of 12 when asked together). Two batches of 24
+#  costs one extra pass over the reference text and buys back the other half of the chart.
+FEATURE_BATCH = int(os.environ.get("DEEP_FEATURE_BATCH", "24"))
 MAX_INPUT_CLAIMS = 30
 #  Per-reference text budget. A US grant is typically 40,000-120,000 characters; the long tail
 #  reaches 400,000. Send the whole thing up to this bound and SAY when it was cut, rather than
@@ -75,7 +90,11 @@ VERDICTS = claim_chart.VERDICTS
 #  short refutation. Eight at a time keeps a search inside a few minutes without asking the shared
 #  Vertex quota for more than the rest of the app is already using.
 WORKERS = int(os.environ.get("DEEP_WORKERS", "8"))
-MAX_REFUTE_PER_REF = 12
+#  Raised with MAX_FEATURES: a checklist of 48 disclosures produces more than twelve "disclosed"
+#  cells on a strong reference, and the twelve that happened to be first were the only ones any
+#  refuter ever saw. An unrefuted "disclosed" is the cell an audit found to be a false positive
+#  7 times in 12, so the gate has to cover the whole chart, not its head.
+MAX_REFUTE_PER_REF = int(os.environ.get("DEEP_MAX_REFUTE", "24"))
 
 _POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="deep-analysis")
 _LOCK = threading.Lock()
@@ -170,6 +189,27 @@ _SYS = (
     "A subject claim is a whole limitation set. Judge it as disclosed only if the reference "
     "teaches ALL of its limitations; if it teaches some, that is \"partial\" and the note must say "
     "which limitation is missing.\n"
+    "\n"
+    "MATCH ON MEANING, NOT ON WORDING. This is the single most common way this task is done "
+    "badly. Each feature is phrased in the SUBJECT's vocabulary and reference frame. The reference "
+    "in front of you was written by different people, often decades earlier, frequently translated "
+    "from another language, and usually for a different application, so it will almost never use "
+    "the same nouns. Decide whether it teaches the same TECHNICAL IDEA:\n"
+    "  - the same part under another name — seal / gasket / sealing lip / sealing ring / "
+    "diaphragm / Dichtung; base / body / plate / housing / frame / carrier; air extraction means / "
+    "vacuum pump / blower / fan / impeller / ejector / venturi / aspirator;\n"
+    "  - the same structure described from another reference frame: \"protrudes from the second "
+    "side of the base element\" and \"stands proud of the underside of the plate\" and \"a rib on "
+    "the lower face\" are the same teaching;\n"
+    "  - the same function achieved by an equivalent structure;\n"
+    "  - a SPECIES of a genus the feature states: a closed-cell foam seal discloses \"a seal "
+    "elastically deformable at its contact surface\"; a hand grip discloses \"a handle\";\n"
+    "  - a teaching carried by a drawing description or a dimension rather than by a sentence "
+    "that restates the feature.\n"
+    "A reference that plainly teaches the idea in its own words is \"disclosed\". Reserve "
+    "\"absent\" for a reference that does not teach the idea AT ALL — never for one that simply "
+    "words it differently, and never because you could not find a sentence that repeats the "
+    "feature's phrasing. The quote you return is still the reference's own words, verbatim.\n"
     "\n"
     "Use ONLY the reference text supplied. You have no outside knowledge of this reference. "
     "\"absent\" with an empty quote is the correct and expected answer whenever the text does not "
@@ -293,8 +333,13 @@ def _refute(rows, pub, texts=None):
     return downgraded
 
 
-def analyse_reference(pub, features, input_claims, title=""):
-    """Read ONE reference in full and chart it against the features and the subject claims."""
+def analyse_reference(pub, features, input_claims, title="", hints=None):
+    """Read ONE reference in full and chart it against the features and the subject claims.
+
+    `hints` is the optional ``{feature: "other words for the same idea"}`` map from
+    :func:`concept_expansions`. It is sent alongside the checklist so the reader knows what the
+    subject's vocabulary looks like in OTHER people's patents before it decides "absent".
+    """
     started = time.time()
     ref = full_text(pub)
     result = {"pub": pub, "title": title or ref.get("title") or "", "found": ref["found"],
@@ -318,36 +363,45 @@ def analyse_reference(pub, features, input_claims, title=""):
     shown = _rendered(ref)
     claim_payload = [{"item": c["label"], "text": c["text"]} for c in input_claims
                      ][:MAX_INPUT_CLAIMS]
+    hints = hints or {}
 
     def _ask(features_now, claims_now):
         payload = {"reference": pub, "subject_features": features_now,
                    "subject_claims": claims_now, "reference_text": shown}
+        #  What the subject's own vocabulary looks like in other people's patents. Sent only for
+        #  the features actually being asked about, so the prompt does not carry the whole map.
+        vocab = {f: hints[f] for f in features_now if hints.get(f)}
+        if vocab:
+            payload["other_words_for_each_feature"] = vocab
         #  The prompt is dominated by the reference itself; leave room for a full chart.
         return llm.chat_json(_SYS, json.dumps(payload, ensure_ascii=False),
                              max_tokens=12000) or {}
 
-    #  TWO FOCUSED READS, not one combined one, whenever there are both features and claims.
-    #  MEASURED: asking for 12 feature rows AND 13 claim rows in a single answer, each with a
-    #  verbatim quote and a note, made the model economise: the same reference that grounded 10 of
-    #  12 features when asked about features alone grounded 2 when the claims were asked for in
-    #  the same breath. The reference text is re-sent, which costs input tokens and buys back the
-    #  chart. Sequential on purpose: this already runs inside a wide worker pool (deep_rank), and
-    #  a nested pool would multiply the concurrent Vertex calls by two.
-    if feature_items and claim_payload:
-        out_f = _ask(feature_items, [])
-        out_c = _ask([], claim_payload)
-        out = {}
-        if out_f.get("features"):
-            out["features"] = out_f["features"]
-        if out_c.get("claims"):
-            out["claims"] = out_c["claims"]
-        #  Take the holistic judgement from the FEATURE read: that is the pass that saw the
-        #  invention's features, and asking twice would only give two numbers to reconcile.
-        if isinstance(out_f.get("overall"), dict):
-            out["overall"] = out_f["overall"]
-    else:
-        out = _ask(feature_items, claim_payload)
-    if not out:
+    #  FOCUSED READS, not one combined one. MEASURED: asking for 12 feature rows AND 13 claim rows
+    #  in a single answer, each with a verbatim quote and a note, made the model economise: the
+    #  same reference that grounded 10 of 12 features when asked about features alone grounded 2
+    #  when the claims were asked for in the same breath. So the claims get their own pass, and
+    #  the features are asked for in batches of FEATURE_BATCH for the same reason — a 48-row
+    #  answer is subject to exactly the same economising as a 25-row one.
+    #
+    #  The reference text is re-sent per pass, which costs input tokens and buys back the chart.
+    #  Sequential on purpose: this already runs inside a wide worker pool (deep_rank), and a
+    #  nested pool would multiply the concurrent Vertex calls by the batch count.
+    out = {"features": [], "claims": []}
+    for i in range(0, len(feature_items), FEATURE_BATCH):
+        batch = feature_items[i:i + FEATURE_BATCH]
+        got = _ask(batch, [])
+        out["features"].extend(got.get("features") or [])
+        #  Take the holistic judgement from the FIRST feature pass: that pass saw the head of the
+        #  checklist, and averaging several would only give numbers to reconcile.
+        if i == 0 and isinstance(got.get("overall"), dict):
+            out["overall"] = got["overall"]
+    if claim_payload:
+        got = _ask([], claim_payload)
+        out["claims"] = got.get("claims") or []
+        if not out.get("overall") and isinstance(got.get("overall"), dict):
+            out["overall"] = got["overall"]
+    if not (out.get("features") or out.get("claims")):
         result["method"] = "unavailable"
         result["features"] = [_row(f, None, ref, shown, "feature") for f in feature_items]
         result["claims"] = [_row(c, None, ref, shown, "claim") for c in claim_items]
@@ -383,6 +437,156 @@ def _counts(rows):
     for r in rows:
         c[r.get("verdict", "absent")] = c.get(r.get("verdict", "absent"), 0) + 1
     return c
+
+
+# ---------------------------------------------------------------------------
+# the concept layer: what each feature looks like in OTHER people's words
+# ---------------------------------------------------------------------------
+_CONCEPT_SYS = (
+    "You are a patent examiner preparing to read prior art. You are given the checklist of "
+    "features of ONE subject invention, written in that applicant's own vocabulary and reference "
+    "frame.\n"
+    "\n"
+    "For each feature, write the SAME technical idea the way OTHER patents would express it. This "
+    "is what lets a reader recognise the feature in a 1974 German utility model or a translated "
+    "Japanese application that shares not one noun with the subject.\n"
+    "\n"
+    "For each feature return:\n"
+    '  "concept": the feature restated as a short, general technical idea, stripped of claim '
+    "scaffolding (\"at least one\", \"said\", \"first/second side\", reference numerals) and of "
+    "this applicant's private naming. 5-15 words.\n"
+    '  "other_words": 4-8 alternative terms and phrasings the same thing is called elsewhere — '
+    "older terms, the generic term, the industrial term, the robotics term, the translated term. "
+    "Include component synonyms AND functional restatements.\n"
+    '  "counts_as": one short sentence saying what ELSE in a reference would satisfy this '
+    "feature — a species of the genus, an equivalent structure, a different reference frame.\n"
+    "\n"
+    "Do not broaden a feature into something it is not. \"A bracing structure on the base, inside "
+    "the seal, shorter than the seal\" is the right generality for \"at least one bracing "
+    "structure protrudes from the second side of the base element to a lesser extent than the "
+    "vacuum seal element\"; \"a support\" is too broad and is useless.\n"
+    'Return ONLY JSON: {"features":[{"item":"<the feature verbatim as given>","concept":"...",'
+    '"other_words":["..."],"counts_as":"..."}]} with one entry per feature, in the order given.'
+)
+
+
+def concept_expansions(features, title="", brief=""):
+    """{feature: "concept · other words · what else counts"} for the whole checklist, in one call.
+
+    WHY THIS EXISTS. The checklist is written in the subject's vocabulary — it is extracted from
+    the subject's own claims — and the references are not. Measured on adhoc-939fb711122b, "seal
+    element elastically deformable at contact surface" is disclosed by hundreds of references that
+    say sealing lip, gasket, resilient ring or Dichtlippe, and the retrieval-side grid scored the
+    best of them 0.07 because it was comparing strings. This map is the bridge: computed ONCE per
+    search (not per reference), sent with the checklist, and reused by the second-pass re-read.
+
+    Fail-soft: an empty map simply means the reader works from the feature text alone, which is
+    what it did before.
+    """
+    feats = [f for f in (features or []) if str(f or "").strip()][:MAX_FEATURES]
+    if not feats:
+        return {}
+    out = {}
+    #  Batched for the same reason the chart is: a single answer covering fifty features with
+    #  eight synonyms each is where a model starts returning three words per row.
+    for i in range(0, len(feats), FEATURE_BATCH):
+        batch = feats[i:i + FEATURE_BATCH]
+        try:
+            got = llm.chat_json(_CONCEPT_SYS, json.dumps(
+                {"invention_title": title[:200], "invention": (brief or "")[:2500],
+                 "features": batch}, ensure_ascii=False), max_tokens=6000) or {}
+        except Exception:
+            continue
+        rows = got.get("features") or []
+        for item, raw in zip(batch, _align(rows, batch)):
+            if not isinstance(raw, dict):
+                continue
+            bits = []
+            concept = " ".join(str(raw.get("concept") or "").split())[:200]
+            words = [" ".join(str(w).split()) for w in (raw.get("other_words") or [])
+                     if str(w or "").strip()][:8]
+            counts = " ".join(str(raw.get("counts_as") or "").split())[:300]
+            if concept:
+                bits.append(concept)
+            if words:
+                bits.append("also called: " + "; ".join(words))
+            if counts:
+                bits.append(counts)
+            if bits:
+                out[item] = " — ".join(bits)[:600]
+    return out
+
+
+_REREAD_SYS = (
+    "You are a patent examiner taking a SECOND look at one reference. A first reading of this "
+    "document found nothing for the features below. First readings miss disclosures for one "
+    "reason above all others: the feature is phrased in the subject's vocabulary and the reference "
+    "uses its own.\n"
+    "\n"
+    "For each feature you are given the idea behind it and the other words the same thing goes by. "
+    "Search the reference text for the IDEA. Look in the description and the drawing description, "
+    "not only in the claims — an older patent often teaches in its figures what a modern one "
+    "claims. A species discloses its genus. An equivalent structure performing the same function "
+    "discloses the function.\n"
+    "\n"
+    "Return a row for each feature: verdict \"disclosed\", \"partial\" or \"absent\"; quote, the "
+    "EXACT verbatim passage from the reference, at most 40 words, copied word for word, empty when "
+    "absent; note, one short sentence; confidence 0.0-1.0.\n"
+    "\n"
+    "Most of these really will be absent, and saying so is correct — you are not being asked to "
+    "find something. Change the answer only where the reference genuinely teaches the idea in its "
+    "own words. NEVER paraphrase a quote, NEVER stitch sentences together, NEVER invent one.\n"
+    'Return STRICT JSON: {"features":[{"item":"<the feature verbatim as given>","verdict":"...",'
+    '"quote":"...","note":"...","confidence":0.0}]}'
+)
+
+
+def reread_absent(pub, rows, hints=None, ref=None, max_features=FEATURE_BATCH):
+    """Second pass over the features a first reading returned nothing for. -> rows changed.
+
+    THIS IS THE AGENTIC PART OF THE READING. The first pass reads a whole patent against a whole
+    checklist in one breath and is, measurably, conservative: it answers "absent" whenever it
+    cannot find a sentence that restates the feature. This pass takes only what came back empty,
+    hands the reader the CONCEPT and the other words for it, and asks the narrower question
+    against the same text. A row is only ever upgraded on a quote that passes the same grounding
+    and location gates as the first pass, so a second look cannot lower the evidential bar.
+    """
+    targets = [r for r in rows
+               if r.get("verdict") == "absent" and r.get("grounding") in
+               ("model-absent", "dropped-ungrounded-quote", "dropped-unlocatable-quote",
+                "no-row-returned")][:max_features]
+    if not targets:
+        return 0
+    ref = ref or full_text(pub)
+    if not ref.get("found") or not ref.get("passages"):
+        return 0
+    shown = _rendered(ref)
+    hints = hints or {}
+    items = [r["item"] for r in targets]
+    payload = {"reference": pub, "reference_text": shown,
+               "features": [{"item": it, "idea": hints.get(it) or it} for it in items]}
+    try:
+        out = llm.chat_json(_REREAD_SYS, json.dumps(payload, ensure_ascii=False),
+                            max_tokens=8000) or {}
+    except Exception:
+        return 0
+    changed = 0
+    by_item = {r["item"]: r for r in targets}
+    for item, raw in zip(items, _align(out.get("features"), items)):
+        if not isinstance(raw, dict):
+            continue
+        fresh = _row(item, raw, ref, shown, "feature")
+        if fresh["verdict"] == "absent" or fresh["grounding"] != "verified":
+            continue
+        row = by_item.get(item)
+        if row is None:
+            continue
+        row.update(fresh)
+        #  Recorded so the report can say which cells the second look found, and so a later audit
+        #  can measure this pass instead of taking it on trust.
+        row["second_pass"] = True
+        changed += 1
+    return changed
 
 
 # ---------------------------------------------------------------------------

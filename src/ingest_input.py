@@ -34,10 +34,12 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import os
 import re
 import subprocess
 import tempfile
+import traceback
 
 MAX_BYTES = 30 * 1024 * 1024      # matches the federated app's cap
 MAX_THUMBS = 6                    # figure previews returned to the UI
@@ -364,6 +366,56 @@ def embed_query_chunks(chunks: list[dict], dim: int = EMBED_DIM) -> list[dict]:
 # ---------------------------------------------------------------------------
 # brief assembly (text + full-text chunks + vision fusion + image exposure)
 # ---------------------------------------------------------------------------
+_FUSE_SYS = (
+    "You are writing the one-paragraph description of an invention that a prior-art search will "
+    "run on. You are given a written summary of the document and, separately, a description of "
+    "what its drawings show.\n"
+    "\n"
+    "Return ONE condensed natural-language description of the INVENTION and its features. Merge "
+    "anything structural the drawings reveal that the summary does not already say — a part, how "
+    "parts are arranged, a shape, a proportion — into the description as plain technical fact.\n"
+    "\n"
+    "NEVER narrate the figures. No 'Figure 1 shows', no 'a perspective view of', no 'this "
+    "embodiment', no reference numerals (210, 220, T, D1), no 'the drawings illustrate'. A reader "
+    "must not be able to tell which sentences came from the drawings.\n"
+    "Write what the device IS, what it is made of, how it works and what distinguishes it, in the "
+    "plain technical words used in patent abstracts. 120-260 words, no headings, no lists.\n"
+    'Return ONLY JSON: {"description":"..."}'
+)
+
+
+def _fuse_figures(disclosure: str, vision: str, title: str = "") -> str:
+    """One description of the invention, with what the drawings teach folded into it.
+
+    Fail-soft and one-directional: on any failure the caller keeps the written summary alone. The
+    figure narration is never appended to the blurb by this function, because putting it back is
+    the defect the function exists to remove.
+    """
+    import llm
+    if not vision:
+        return disclosure
+    try:
+        out = llm.chat_json(_FUSE_SYS, json.dumps({
+            "title": (title or "")[:200],
+            "summary_of_the_document": (disclosure or "")[:9000],
+            "what_the_drawings_show": vision[:9000],
+        }, ensure_ascii=False), max_tokens=1400) or {}
+        fused = " ".join(str(out.get("description") or "").split())
+    except Exception:
+        traceback.print_exc()
+        fused = ""
+    if len(fused) >= 120:
+        return fused
+    if disclosure:
+        return disclosure
+    #  A DRAWINGS-ONLY UPLOAD — a scan with no text layer — and the fusion did not come back.
+    #  What the vision model read is then the ONLY description of the invention that exists, so
+    #  it is the query. Returning the written summary here (empty) would search on nothing at
+    #  all, which is how removing the figure block could silently turn a sketch upload into a
+    #  search for the empty string.
+    return vision
+
+
 def _build(text: str, figures: list[bytes], source: str, label: str, notes: list[str],
            pub: str | None = None, drawings_source: str | None = None,
            struct: dict | None = None, embed_chunks: bool = True,
@@ -428,16 +480,25 @@ def _build(text: str, figures: list[bytes], source: str, label: str, notes: list
     else:
         notes.append("no usable figures found")
 
-    parts = []
-    if disclosure:
-        parts.append(disclosure)
+    #  THE SEARCH BLURB IS A DESCRIPTION OF THE INVENTION, NOT A TOUR OF THE DRAWINGS.
+    #
+    #  This used to append the vision model's figure-by-figure narration verbatim, under a
+    #  "Drawings (figures analysed and folded into the query text...)" heading. On a real upload
+    #  that block was 1,700 of the query's 4,488 characters and read "Figure 1 presents a
+    #  perspective view ... an outer wall 210 and an inner wall 220 ... thickness T and dimension
+    #  D1" — prose every patent has, naming parts by numeral rather than by function. It was
+    #  already stripped before embedding (query_set.retrieval_text), so it was doing nothing for
+    #  retrieval; what it did do was become the query the user reads on the report, and the text
+    #  the disclosure extractor and the screener are shown.
+    #
+    #  The drawings still get read, and what they teach still reaches the blurb — but as structure
+    #  merged into one description, not as narration appended after it. The raw narration is kept
+    #  as `figure_descriptions` for audit, and the images themselves still go to the
+    #  image-similarity channel untouched.
+    brief = _fuse_figures(disclosure, vision, title) if vision else disclosure
     if vision:
-        # Be explicit about what this is: figures folded into the QUERY TEXT (for the text
-        # channels). The raw images go to the IMAGE channel separately (figure_images below).
-        parts.append("Drawings (figures analysed and folded into the query text; the raw drawings "
-                     "are ALSO sent to the image-similarity channel): " + vision)
-        notes.append("figures analysed and folded into the query text")
-    brief = "\n\n".join(parts).strip()
+        notes.append("figures read and their structure merged into the description")
+    brief = (brief or "").strip()
 
     # Nothing usable ONLY if there is neither query text NOR any figure to image-search.
     if not brief and not figures:

@@ -403,22 +403,69 @@ td.cell.empty{color:var(--line2)}
 .relbox.r4,.relbox.r5{border-color:var(--good);color:var(--good)}
 .relbox.r3{border-color:var(--warn);color:var(--warn)}
 .relbox.r0,.relbox.r1,.relbox.r2{color:var(--muted)}
+/* PENDING. Nothing is scored until every reference has been read, so until then the box holds a
+   spinner rather than the pre-reading cosine — which is higher, and is what made a card show 85
+   and then settle at 47. Same footprint as the scored box, so no card reflows when it lands. */
+.relbox-pending{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:7px;color:var(--faint);border-style:dashed}
+.relbox-pending .spin{width:18px;height:18px}
+.relop-pending{color:var(--faint);font-style:italic}
+.relop-pending .spin.sm{margin-right:6px}
+.rtab-pending{opacity:.6;cursor:default}
+.rtab-pending .spin.sm{margin-right:6px;border-top-color:var(--faint)}
+/* A card that arrived after first paint, while the agent was still searching. */
+.refcard.justfound{animation:cardin .5s ease-out}
+@keyframes cardin{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.refcard.justfound{animation:none}}
 /* Evidence provenance under the score: the number now comes from a full-text reading, and a card
    the reading could not reach must say so rather than look identical. */
 .relbox{width:74px}
 .relsub{margin-top:3px;font-size:9px;line-height:1.25;letter-spacing:.01em;padding:0 3px}
 .relsub-read{color:var(--good)}
 .relsub-unread{color:var(--faint)}
-/* Best-reference-per-feature table */
-.featbest td{vertical-align:top}
-.featbest .fbrefs{white-space:normal;min-width:190px}
-.featbest .fbv{display:inline-block;margin:0 8px 3px 3px;font-size:9.5px;text-transform:uppercase;
-  letter-spacing:.04em;color:var(--faint)}
-.featbest .fbv-disclosed{color:var(--good)}
-.featbest .fbv-partial{color:var(--warn)}
-.featbest .fbq{max-width:520px;font-size:12px;line-height:1.5}
-.featbest .fbq q{color:var(--ink)}
-.featbest .fbloc{display:block;margin-top:3px;font-size:10px;color:var(--faint)}
+/* EVIDENCE GRID. The element and claim grids no longer print a bare score or a bare verdict: each
+   cell carries the passage the verdict rests on, clipped to four lines, and opens the whole
+   passage on click. That is what makes a grid readable without opening ten references, and it is
+   why cells are wider and left-aligned here than in the old numeric grid. */
+table.readgrid td.cell{min-width:210px;max-width:290px;vertical-align:top}
+table.readgrid td.cell button{text-align:left;display:block;padding:1px 0}
+table.readgrid .cmark{float:left;margin-right:5px;line-height:1.5}
+table.readgrid .cs{display:inline;font-weight:650;font-size:10px;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--muted)}
+.cq{display:block;margin-top:2px;font-size:11.5px;line-height:1.45;color:var(--ink);
+  white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical}
+table.readgrid td.cell button:hover .cq{color:var(--accent)}
+table.readgrid .cc{margin-top:3px;font-size:10px}
+/* A row nothing was asked about. Visually distinct from a row everything answered "absent" to,
+   because they are opposite findings and an empty row looks the same either way. */
+table.readgrid tr.rowunasked th.elh{color:var(--faint);background:repeating-linear-gradient(
+  135deg,var(--s1),var(--s1) 6px,var(--s3) 6px,var(--s3) 12px)}
+table.readgrid tr.rowunasked td.cell{background:var(--s3);opacity:.55}
+.gridwarn{padding:9px 12px;border-left:3px solid var(--warn);background:var(--warn-soft);
+  border-radius:0 var(--r-sm) var(--r-sm) 0}
+.gridwarn b{color:var(--ink)}
+
+/* The whole passage behind one cell. */
+.qpop{position:fixed;inset:0;z-index:90;background:rgba(23,33,43,.5);display:flex;
+  align-items:center;justify-content:center;padding:22px}
+.qpop[hidden]{display:none}
+.qpop-box{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--shadow);max-width:640px;width:100%;max-height:80vh;overflow:auto;padding:18px 20px}
+.qpop-head{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
+.qpop-head b{flex:1;font-size:14px;line-height:1.4}
+.qpop-head button{background:none;border:0;color:var(--faint);font-size:15px;cursor:pointer;
+  padding:0 2px;line-height:1}
+.qpop-v{flex:none;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  padding:2px 8px;border-radius:var(--r-pill);border:1px solid var(--line2);color:var(--muted)}
+.qpop-disclosed{color:var(--good);border-color:rgba(24,121,78,.35);background:var(--good-soft)}
+.qpop-partial{color:var(--warn);border-color:rgba(154,91,19,.35);background:var(--warn-soft)}
+.qpop-uncertain{color:var(--muted);border-style:dashed}
+.qpop blockquote{margin:0;padding:12px 14px;background:var(--s3);border-left:3px solid var(--accent);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;font-size:13.5px;line-height:1.65;color:var(--ink)}
+.qpop-note{margin:11px 0 0;font-size:12.5px;line-height:1.55;color:var(--muted)}
+.qpop-foot{display:flex;align-items:center;gap:12px;margin-top:14px;padding-top:11px;
+  border-top:1px solid var(--line);font-size:11.5px;color:var(--faint)}
+.qpop-foot .pnlink{margin-left:auto}
 
 .rtabs{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:0 14px 12px 14px}
 .rtab{background:transparent;border:1px solid var(--line2);color:var(--muted);border-radius:var(--r-pill);
@@ -776,6 +823,37 @@ td.cell-no-coord .cmark, td.cell-unchecked .cmark{ color:#6e7681; }
   font-size:12px;font-style:normal;color:var(--accent);display:inline-flex;align-items:baseline;gap:7px}
 .qmore:hover{text-decoration:underline}
 .qmore .qn{color:var(--faint);font-variant-numeric:tabular-nums}
+
+/* SEARCH PARAMETERS. Opened by the same "Show full search" control as the query text, because
+   the query string is only half of what produced these results. Kept to the header's measure so
+   it reads as part of the header rather than as a second page. */
+.qparams{max-width:900px;margin:2px 0 14px;padding:16px 18px;background:var(--s1);
+  border:1px solid var(--line);border-radius:var(--r);font-size:12.5px;color:var(--muted)}
+.qparams[hidden]{display:none}
+.qpgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:6px 26px}
+.qpsec{padding:11px 0;border-top:1px solid var(--line)}
+.qpgrid>.qpsec:nth-child(-n+2),.qparams>.qpgrid:first-child>.qpsec{border-top:0;padding-top:0}
+.qpsec h4{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);
+  margin:0 0 8px;display:flex;align-items:baseline;gap:8px}
+.qpn{font-size:11px;font-weight:650;color:var(--accent);letter-spacing:0;
+  font-variant-numeric:tabular-nums}
+.qpsec>p.small{margin:0 0 9px;line-height:1.55}
+.qpdl{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;margin:0;line-height:1.5}
+.qpdl dt{color:var(--faint);white-space:nowrap}
+.qpdl dd{margin:0;color:var(--ink)}
+.qplist{list-style:none;margin:0;padding:0;display:grid;gap:5px;line-height:1.5}
+.qplist li{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;color:var(--ink)}
+.qplist b{font-weight:650}
+.qpdisc{max-height:340px;overflow-y:auto;padding-right:6px}
+.qpk{flex:none;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--faint);border:1px solid var(--line2);border-radius:var(--r-pill);padding:1px 7px;
+  min-width:82px;text-align:center}
+.qpk-essence,.qpk-independent_limitation{color:var(--accent);border-color:rgba(23,92,211,.3);
+  background:var(--accent-soft)}
+.qpk-combination{color:var(--secret);border-color:rgba(15,118,110,.3);background:var(--secret-soft)}
+.qpsrc{color:var(--faint);font-size:11px}
+.qpchips{display:flex;flex-wrap:wrap;gap:5px}
+.qparams .providerlist{gap:5px 18px}
 .facts{display:flex;gap:8px 20px;flex-wrap:wrap;align-items:baseline;font-size:12.5px;
   color:var(--faint)}
 .facts b{color:var(--ink);font-weight:650;font-size:13.5px;font-variant-numeric:tabular-nums}
@@ -789,6 +867,11 @@ td.cell-no-coord .cmark, td.cell-unchecked .cmark{ color:#6e7681; }
   white-space:nowrap}
 .srctag b{font-variant-numeric:tabular-nums;font-weight:650;color:inherit}
 .srctag .sdot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none;opacity:.85}
+/* One glyph per source (templates/_srcicon.html). currentColor, so the icon carries the state
+   colour that the chip already sets — which is why these are drawn rather than brand logos. */
+.sicon{width:14px;height:14px;flex:none;display:block}
+.srctag .srcw{color:var(--muted);font-weight:400;margin-left:1px}
+.srctag.s-used .srcw,.srctag.s-degraded .srcw,.srctag.s-failed .srcw{opacity:.85}
 .srctag.s-used{color:var(--good);border-color:rgba(63,185,80,.34);background:var(--good-soft)}
 .srctag.s-degraded{color:var(--warn);border-color:rgba(210,153,34,.34);background:var(--warn-soft)}
 .srctag.s-none,.srctag.s-unknown{color:var(--muted)}
@@ -828,10 +911,16 @@ td.cell-no-coord .cmark, td.cell-unchecked .cmark{ color:#6e7681; }
 .runsummary-detail{padding:12px 0 14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
 .providerlist{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px 18px;
   margin:9px 0 0;padding:0;list-style:none}
-.providerlist li{display:grid;grid-template-columns:7px auto 1fr;align-items:baseline;gap:7px;line-height:1.45}
+.providerlist li{display:grid;grid-template-columns:16px 1fr;align-items:start;gap:9px;line-height:1.45}
+.providerlist .srcmark{display:block;color:inherit;margin-top:2px}
+.providerlist li>span:last-child{color:var(--muted)}
+.providerlist li>span:last-child b{color:var(--ink);margin-right:5px}
 .providerlist .sdot{width:6px;height:6px;border-radius:50%;background:currentColor}
-.providerlist .s-used{color:var(--good)}.providerlist .s-degraded{color:var(--warn)}
-.providerlist .s-failed{color:var(--bad)}.providerlist .s-none,.providerlist .s-unknown{color:var(--faint)}
+.providerlist .s-used,.providerlist li.s-used{color:var(--good)}
+.providerlist .s-degraded,.providerlist li.s-degraded{color:var(--warn)}
+.providerlist .s-failed,.providerlist li.s-failed{color:var(--bad)}
+.providerlist .s-none,.providerlist .s-unknown,
+.providerlist li.s-none,.providerlist li.s-unknown,.providerlist li.s-off{color:var(--faint)}
 
 /*  Collapsed analysis blocks. They sit directly under the header, ABOVE the results, so the grid
     and the measured-recall figure are one click away instead of one full scroll away. Closed, the

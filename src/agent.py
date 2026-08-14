@@ -149,7 +149,14 @@ class CoverageAgent:
     def decompose(self, text, subject=None):
         sys = ("You are a patent prior-art search analyst. Break an invention into the DISTINCT "
                "technical elements a prior-art search must separately cover. Return JSON "
-               '{"elements":[short phrases]} with 5-12 concise element phrases.')
+               '{"elements":[short phrases]} with 5-12 concise element phrases.\n'
+               "Write each element in the words ANOTHER patent would use, not in this document's "
+               "own drafting: no 'at least one', no 'said', no reference numerals, no private "
+               "reference frame ('the second side of the base element' -> 'on the underside of "
+               "the base'). Keep what distinguishes the invention — 'a loop-shaped elastic seal "
+               "around the rim', not 'a sealing element'. These phrases are matched against "
+               "documents written decades earlier in other languages, so a phrase only this "
+               "applicant would write is a phrase nothing will match.")
         out = llm.chat_json(sys, f"Field: {FIELD}\n\nInvention text:\n{text[:4000]}") or {}
         raw = out.get("elements") or []                      # key may be present-but-null
         els = [e.strip() for e in raw if isinstance(e, str) and e.strip()]
@@ -426,6 +433,13 @@ class CoverageAgent:
         ])
         ledger.note_round(len(ledger.families_seen))
         emit("seeded", {"families": len(ledger.families_seen)})
+        #  A SECOND SNAPSHOT, once the query set and the element passes have run. There used to be
+        #  exactly one 'partial' — the first seed pass — and everything the agent found after it
+        #  was invisible until the whole run finished and the page reloaded. The open report
+        #  streams each snapshot's new references in (webapp.api_cards), so the list grows while
+        #  the search works instead of standing still for a quarter of an hour.
+        emit("partial", {"report": self.report(
+            query_text, subject, m, ledger, rounds=0, rerank=False)})
 
         rnd = 0
         while not ledger.should_stop(cfg.llm_call_budget - llm.usage()["calls"],
@@ -455,6 +469,9 @@ class CoverageAgent:
             searched_batch("round_progress", round_specs, progress_round=rnd)
             ledger.note_round(len(ledger.families_seen) - before)
             emit("round", {"round": rnd, "families": len(ledger.families_seen)})
+            #  and one per refinement round, for the same reason.
+            emit("partial", {"report": self.report(
+                query_text, subject, m, ledger, rounds=rnd, rerank=False)})
 
         emit("reranking", {"families": len(ledger.families_seen)})
 
