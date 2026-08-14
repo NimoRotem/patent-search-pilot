@@ -168,6 +168,14 @@ def _attach_verification(slug, view, report):
     therefore a different column set.
     """
     chart = view.get("claim_chart") or {}
+    #  A READING chart already carries its verdict on every cell, and it is a stronger one than
+    #  anything this function can supply: a verbatim quote that was found in the reference, located
+    #  to a real passage by code, and put to an independent refuter. verify_matrix below looks a
+    #  cell up in report["element_evidence"] by coordinate, and a reading cell is not in there, so
+    #  running it would demote every one of them to "no-coord" — which is exactly what it did to
+    #  the web page before this guard existed.
+    if chart.get("source") == "reading":
+        return
     cached = REPORTS / f"{slug}.view.json"
     verdicts = {}
     if cached.exists():

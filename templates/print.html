@@ -46,21 +46,25 @@ h1,h2,h3{color:var(--navy)}
   <p class="small muted"><b>Indexed CPC classes:</b> {{ disc.cpc_lines()|join('; ') }}</p>
   <p class="small muted">{{ disc.not_indexed() }}</p>
 
-  <h3 style="margin-top:22px">{{ disc.CHART_TITLE }}
+  <h3 style="margin-top:22px">{{ disc.chart_title(v.claim_chart) }}
     <span style="font-size:11px;color:var(--warn);font-weight:700">[{{ disc.CHART_TAG }}]</span></h3>
-  <p class="small">{{ disc.chart_warning() }}</p>
-  <div class="chartwrap"><table class="chart">
+  <p class="small">{{ disc.chart_warning(chart=v.claim_chart) }}</p>
+  <div class="chartwrap"><table class="chart{% if v.claim_chart.source == 'reading' %} readgrid{% endif %}">
     <thead><tr><th class="elh" scope="col">Element</th>
       {% for c in v.claim_chart.columns %}<th scope="col">{{ c.pub }}</th>{% endfor %}</tr></thead>
     <tbody>
-      {% for row in v.claim_chart.rows %}<tr><th class="elh" scope="row">{{ row.element }}</th>
+      {% for row in v.claim_chart.rows %}<tr><th class="elh" scope="row">{{ row.element }}
+        {% if v.claim_chart.source == 'reading' and not row.asked %}<span class="cc">not asked of any reference in this run</span>{% endif %}</th>
       {% for cell in row.cells %}{% if cell.covered %}
         {# Colour = VERIFICATION VERDICT. It used to be rgba(green, retrieval score), which made
-           the most confidently-retrieved cell the greenest even when it was a false positive. #}
+           the most confidently-retrieved cell the greenest even when it was a false positive.
+           The second line is the EVIDENCE — the verbatim quote on a reading map, the retrieval
+           score on a retrieval map — because a printed document cannot be clicked. #}
         {% set st = disc.cell_state(cell) %}
         <td class="cell" style="background:#{{ st[2] }}">
           <b>{{ disc.cell_word(cell) }}</b>
-          <span class="cc">{{ '%.3f'|format(cell.score) }}</span>
+          {% set detail = disc.cell_detail(cell, 150) %}
+          {% if detail %}<span class="cc">{{ detail }}</span>{% endif %}
           {% if cell.coord %}<span class="cc">{{ cell.coord }}</span>{% endif %}</td>
       {% else %}<td class="cell empty">·</td>{% endif %}{% endfor %}</tr>{% endfor %}
     </tbody></table></div>

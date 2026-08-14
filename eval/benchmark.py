@@ -123,6 +123,19 @@ def generate(sub, tag, wide=True):
     t0 = time.time()
     webapp._generate(slug, query, None, sub["mode"], wide=wide, doc_token=token,
                      search_focus="all_text")
+    #  BUILD THE PAGE, because the page is what the benchmark measures.
+    #
+    #  `_generate` writes the report; the CARDS are built lazily when /report is first opened and
+    #  cached to <slug>.view.json. This function deletes that file above and nothing here recreated
+    #  it, so citation_recall — which reads exactly that file — saw `{"cards": []}` and scored
+    #  every run 0 displayed. v15, abc2 and abt2 all report "0 / 9 families in the RANKED top 0",
+    #  and "top 0" is the tell: the harness was reporting a page it never rendered. The headline
+    #  number of this benchmark has been structurally zero, while still being a number.
+    try:
+        rep = json.loads((R / f"{slug}.json").read_text())
+        webapp._build_view_cached(slug, rep, regen=True)
+    except Exception:
+        traceback.print_exc()      # audit will say 0 displayed, and now that means something
     return slug, round(time.time() - t0, 1)
 
 

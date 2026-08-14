@@ -2336,8 +2336,17 @@ def _build_view_cached(slug, rep, regen=False):
         # coordinate-backed cells as false positives. One batched LLM pass per report, cached in
         # the view, so it costs nothing on reload. Never fatal: on failure cells stay "unchecked"
         # and the template renders them as retrieval-only rather than as coverage.
+        #  NOT for a chart built from the reading. verify_matrix exists to put a verdict on a cell
+        #  that has none — a retrieval hit whose only evidence is a cosine — and it decides by
+        #  looking the cell's coordinate up in report["element_evidence"]. A reading cell is not in
+        #  there and its coord is a label, not a dict, so every cell fell to "no-coord" and the
+        #  grid rendered a full-text disclosure with a verbatim quote as "whole-document match, no
+        #  passage to verify". The reading's verdict IS the verification: the quote had to be found
+        #  in the reference, located to a real passage, and survive an independent refuter — three
+        #  gates this pass does not apply.
         try:
-            claim_chart.verify_matrix(view.get("claim_chart") or {}, rep)
+            if (view.get("claim_chart") or {}).get("source") != "reading":
+                claim_chart.verify_matrix(view.get("claim_chart") or {}, rep)
         except Exception:
             traceback.print_exc()
         webview.prune_missing_image_files(view.get("cards") or [])
@@ -3813,6 +3822,16 @@ def export():
     #  re-exporting hands back the file built before the edit.
     doc = _report_doc(slug)
     rev = str((doc or {}).get("updated_at") or "")
+    #  THE VIEW IS PART OF THE EXPORT'S IDENTITY. export_data.assemble builds from the cached view
+    #  — the ranked order, the cards and the element grid all come from it — so a change to the
+    #  view produces a different document from the same slug, pubs and letterhead revision. It was
+    #  not in the key, so when the grid changed from retrieval cells to full-text reading cells,
+    #  every report that had ever been exported kept serving the old file: the page showed the
+    #  reading and the exported PDF showed the retrieval map, indefinitely and silently.
+    try:
+        rev += "|" + str((REPORTS / f"{slug}.view.json").stat().st_mtime)
+    except OSError:
+        pass                                   # no cached view yet; assemble() will build one
     key = hashlib.sha1((slug + "|" + fmt + "|" + ",".join(sorted(pubs)) + "|" + rev)
                        .encode()).hexdigest()[:12]
     out = EXPORTS / f"{slug}__{key}.{fmt}"

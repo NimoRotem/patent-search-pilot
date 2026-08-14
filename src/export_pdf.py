@@ -233,9 +233,9 @@ def render(model, out_path):
     story.append(Paragraph(f"<b>Apparently novel (not found in corpus):</b> <font color='#b25e00'>{_esc(unc)}</font>", S["body"]))
 
     # ---- claim chart ----
-    story.append(Paragraph(disclosure.CHART_TITLE + " <font size=8 color='#8a3b00'>["
+    story.append(Paragraph(disclosure.chart_title(model["claim_chart"]) + " <font size=8 color='#8a3b00'>["
                            + _esc(disclosure.CHART_TAG) + "]</font>", S["h2"]))
-    story.append(Paragraph(_esc(disclosure.chart_warning()), S["warn"]))
+    story.append(Paragraph(_esc(disclosure.chart_warning(chart=model["claim_chart"])), S["warn"]))
     story.append(_claim_chart_table(model, S))
     legend = " &nbsp;·&nbsp; ".join(f"<b>{n} {_esc(w)}</b> — {_esc(lbl)}"
                                     for w, n, lbl in disclosure.legend_lines(model["claim_chart"]))
@@ -308,7 +308,10 @@ def _claim_chart_table(model, S):
                 #  judged it unrelated. See disclosure.CELL_STATES.
                 _mark, _label, fill, _cov = disclosure.cell_state(cell)
                 word = disclosure.cell_word(cell)
-                txt = f"<b>{_esc(word)}</b><br/><font size=6 color='#5b6b82'>{_esc(cell.get('score'))}</font>"
+                detail = disclosure.cell_detail(cell, 90)
+                txt = f"<b>{_esc(word)}</b>"
+                if detail:
+                    txt += f"<br/><font size=6 color='#5b6b82'>{_esc(detail)}</font>"
                 if cell.get("coord"):
                     txt += f"<br/><font size=6 color='#5b6b82'>{_esc(cell['coord'])}</font>"
                 cells.append(Paragraph(txt, S["cell"]))

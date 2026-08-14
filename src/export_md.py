@@ -107,12 +107,12 @@ def render(model, out_path):
         L.append(f"- **{s.get('label')}:** {state}{n}{('; ' + s['why']) if s.get('why') else ''}")
 
     # ---- retrieval map ----------------------------------------------------------------------
-    _hdr(L, disclosure.CHART_TITLE)
+    chart = model.get("claim_chart") or {}
+    _hdr(L, disclosure.chart_title(chart))
     L.append(f"*{disclosure.CHART_TAG}*")
     L.append("")
-    L.append(disclosure.chart_warning())
+    L.append(disclosure.chart_warning(chart=chart))
     L.append("")
-    chart = model.get("claim_chart") or {}
     cols = chart.get("columns") or []
     if cols:
         L.append("| Invention element | " + " | ".join(c.get("pub") for c in cols) + " |")
@@ -123,7 +123,13 @@ def render(model, out_path):
                 if not cell.get("covered"):
                     cells.append("·")
                     continue
-                bit = disclosure.cell_word(cell) + f" {cell.get('score')}"
+                #  The word, then the EVIDENCE. This used to print the word and then a bare
+                #  number, so a reading cell exported as "no passage 1.0" — the verdict was
+                #  wrong and the number was the model's confidence, not a match score.
+                bit = "**" + disclosure.cell_word(cell) + "**"
+                detail = disclosure.cell_detail(cell, 110)
+                if detail:
+                    bit += " " + detail.replace("|", "\\|").replace("\n", " ")
                 if cell.get("coord"):
                     bit += f" ({cell['coord']})"
                 cells.append(bit)

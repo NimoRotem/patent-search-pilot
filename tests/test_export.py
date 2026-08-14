@@ -38,7 +38,15 @@ def test_pdf_is_valid_and_complete(model, tmp_path):
     #  disclosure of any kind.
     assert "Prior-Art Search Report" not in text, "the old authoritative title must be gone"
     assert "Prior-art retrieval report" in text
-    assert "Element" in text and "retrieval map" in text
+    #  The grid must be titled as a MAP, never as a "claim chart" — that is the borrowed
+    #  authority this guard exists to prevent. WHICH map depends on how the cells were produced:
+    #  a report whose references were read in full carries the reading map, one ranked on
+    #  retrieval alone carries the retrieval map. Pinned to the module so a rename cannot quietly
+    #  drop the guard.
+    import disclosure
+    assert "Element" in text
+    assert (disclosure.CHART_TITLE in text or disclosure.READING_CHART_TITLE in text), \
+        f"the grid must be titled as a map; got neither title in the PDF"
     assert "drafting aid" in text.lower()
     assert "not a verified claim chart" in text.lower()
     assert "Absence of results is not evidence of absence" in text
@@ -57,7 +65,10 @@ def test_docx_is_valid_and_complete(model, tmp_path):
     joined = "\n".join(paras)
     assert "Prior-Art Search Report" not in joined, "the old authoritative title must be gone"
     assert "Prior-art retrieval report" in joined
-    assert any("retrieval map" in p.lower() for p in paras)
+    import disclosure
+    assert any(t in p for p in paras
+               for t in (disclosure.CHART_TITLE, disclosure.READING_CHART_TITLE)), \
+        "the grid must be titled as a map, retrieval or reading"
     assert any("drafting aid" in p.lower() for p in paras)
     assert any("Absence of results is not evidence of absence" in p for p in paras)
     assert any("Measured recall" in p for p in paras)

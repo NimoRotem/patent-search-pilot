@@ -319,3 +319,83 @@ def test_a_partial_card_shows_no_relevancy_number():
                for chunk in pending[1:]), \
         "while the ranking is partial the card must not render a relevancy number"
     assert "rtab-pending" in card and "Reading this reference in full" in card
+
+
+# ---------------------------------------------------------------------------
+# the reading must survive everything downstream of it
+# ---------------------------------------------------------------------------
+def test_the_retrieval_verifier_never_runs_over_a_reading_chart():
+    """It demoted every reading cell to "no-coord", on the page AND in every export.
+
+    verify_matrix decides a cell's verdict by looking its coordinate up in
+    report["element_evidence"]. A reading cell is not in there and its coord is a label, not a
+    dict, so all three of its outcomes collapsed to "no-coord": a full-text disclosure carrying a
+    verbatim quote rendered as "whole-document match, no passage to verify", and exported as the
+    words "no passage". Both call sites are guarded on chart["source"].
+    """
+    src = (ROOT / "src" / "webapp.py").read_text()
+    i = src.find("claim_chart.verify_matrix(view")
+    assert i > 0, "the view-build call site moved; re-point this guard"
+    assert 'source") != "reading"' in src[i - 400:i], \
+        "verify_matrix must not run over a chart built from the reading"
+    ed = (ROOT / "src" / "export_data.py").read_text()
+    j = ed.find("def _attach_verification")
+    assert 'source") == "reading"' in ed[j:j + 1600], \
+        "the export path must leave a reading chart's verdicts alone"
+
+
+def test_an_export_cell_says_the_verdict_and_quotes_the_evidence():
+    import disclosure
+    cell = {"covered": True, "verdict": "disclosed", "verify": "discloses",
+            "quote": "a resilient sealing ring on its underside", "score": 1.0,
+            "coord": "claim 1"}
+    assert disclosure.cell_word(cell) == "discloses"
+    #  the QUOTE, not the model's confidence printed bare as "1.0"
+    assert "resilient sealing ring" in disclosure.cell_detail(cell)
+    #  a verdict must never be read off `verify` when the cell carries its own
+    assert disclosure.cell_word({"verdict": "partial", "verify": "no-coord"}) == "partial"
+    #  a retrieval cell is unchanged
+    assert disclosure.cell_word({"verify": "discloses"}) == "verified"
+    assert disclosure.cell_detail({"score": 0.83}) == "0.83"
+
+
+def test_a_reading_chart_is_titled_and_disclaimed_as_a_reading():
+    import disclosure
+    reading, retrieval = {"source": "reading"}, {"source": "retrieval"}
+    assert disclosure.chart_title(reading) != disclosure.chart_title(retrieval)
+    assert "reading" in disclosure.chart_title(reading).lower()
+    w = disclosure.chart_warning(chart=reading)
+    assert "come from semantic retrieval" not in w, \
+        "a reading map must not describe its cells as retrieval hits"
+    assert "verbatim" in w and "refute" in w
+    #  the audited error rates were measured on the RETRIEVAL verifier and must not be quoted
+    #  under a chart they were not measured on
+    assert "%" not in w
+    assert "come from semantic retrieval" in disclosure.chart_warning(chart=retrieval)
+
+
+def test_the_export_cache_key_covers_the_view():
+    """A cached export outlived the view it was built from.
+
+    export_data.assemble builds from <slug>.view.json, but the cache key was slug|format|pubs|
+    letterhead-revision. When the grid changed from retrieval to reading, every previously
+    exported report kept serving the old file — page and PDF disagreeing, permanently and
+    silently.
+    """
+    src = (ROOT / "src" / "webapp.py").read_text()
+    i = src.find('out = EXPORTS / f"{slug}__{key}.{fmt}"')
+    assert i > 0, "the export cache line moved; re-point this guard"
+    assert "view.json" in src[i - 1200:i], "the view must be part of the export cache identity"
+
+
+def test_the_benchmark_renders_the_page_it_claims_to_measure():
+    """citation_recall reads <slug>.view.json; generate() deleted it and never rebuilt it.
+
+    Three consecutive benchmark tags (v15, abc2, abt2) therefore report "0 / 9 families in the
+    RANKED top 0" — a headline number that was structurally zero while still being a number.
+    """
+    src = (ROOT / "eval" / "benchmark.py").read_text()
+    i = src.find("webapp._generate(")
+    assert i > 0
+    assert "_build_view_cached" in src[i:i + 900], \
+        "the benchmark must build the view before auditing what is on the page"
