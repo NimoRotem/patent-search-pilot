@@ -493,24 +493,18 @@ def by_limitation(limitations, brief="", title="", subject=None, seeds=(), emit=
     out["queries"], out["pool"] = found.get("queries", 0), found.get("pool") or {}
     if found.get("error"):
         out["error"] = found["error"]
-    #  GOOGLE'S OWN SIMILARITY GRAPH, from the references the reading already trusts. One query,
-    #  and it is the cheapest way out of the neighbourhood any keyword walks in circles inside.
-    seed_pubs = [p for p in (seeds or [])][:40]
-    if seed_pubs and found.get("by_limitation"):
-        try:
-            known = {c["pub"] for c in found["candidates"]}
-            extra = [{"pub": r["pub"], "fam": r["pub"], "title": "", "abstract": "",
-                      "score": 0.0, "screen": None, "era": "", "for_limitation": "",
-                      "acquired": "similar_graph", "why": "Google similarity neighbour"}
-                     for r in worldset.similar_to(seed_pubs, limit=200, date_max=date_max,
-                                                  log=log) if r["pub"] not in known]
-            if extra:
-                #  Its own bucket, so the round robin gives it a share rather than the tail.
-                found.setdefault("by_limitation", {})["similar_graph"] = extra
-                log(f"[limq] similarity graph added {len(extra)} neighbours of "
-                    f"{len(seed_pubs)} trusted references")
-        except Exception:
-            traceback.print_exc()
+    #  NO SIMILARITY-GRAPH BUCKET HERE, deliberately. `by_worldset` still runs one and it belongs
+    #  there. It does not belong in a per-limitation pass for two reasons, both measured:
+    #
+    #  It does not find this art. `google_patents_research` holds exactly 25 neighbours per
+    #  publication; seeded on Hukelmann, Blatt and Cho — the three references the reading trusts
+    #  most — the only gold document among all 75 neighbours is the seed's own family member. It
+    #  ranks by resemblance and these references are the ones that do not resemble.
+    #
+    #  And it cannot be screened. `similar_to` returns a publication number and an offset, no title
+    #  and no abstract, and it is not FOR any limitation — so a bucket of them is screened against
+    #  the string "similar_graph" against no text at all, scores nothing, falls through to "keep
+    #  the top N unscored" and spends part of the read budget on blank rows.
     if not found.get("by_limitation"):
         out["error"] = out["error"] or "no hits"
         return out

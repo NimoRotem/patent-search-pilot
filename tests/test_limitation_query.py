@@ -192,6 +192,20 @@ def test_an_unreachable_screener_does_not_skip_the_budget(monkeypatch):
     assert len(per) == 6, per
 
 
+def test_a_bucket_with_no_limitation_text_is_dropped_not_screened(monkeypatch):
+    """A bucket that is not FOR a limitation — the similarity graph was one — has nothing to be
+    screened against, no title and no abstract. Screening it against its own bucket name produces
+    confident numbers about a question nobody asked, and then spends the read budget on blank
+    rows."""
+    monkeypatch.setattr(LQ, "MAX_READ", 60)
+    rows = _screen_rows(1, 5)
+    rows["by_limitation"]["similar_graph"] = [
+        {"pub": f"S{i}", "fam": f"S{i}", "title": "", "abstract": "", "score": 0.0,
+         "screen": None, "era": "", "for_limitation": ""} for i in range(50)]
+    sel = LQ.screen_and_select(rows, _plan(1), keep=30, log=lambda *a: None)
+    assert sel and all(c["for_limitation"] == "L0" for c in sel), sel[:3]
+
+
 def _run_selection(by_era, max_total):
     """Drive search()'s selection without BigQuery, by feeding it the rows a query would return."""
     rows = []

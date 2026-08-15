@@ -515,7 +515,14 @@ def screen_and_select(found, plan, keep=KEEP_PER_LIMITATION, min_screen=MIN_SCRE
     chosen_by_lim, per_lim = {}, {}
     for lim_id, rows in by_lim.items():
         p = plan.get(lim_id) or {}
-        text = p.get("text") or lim_id
+        text = p.get("text") or ""
+        if not text:
+            #  Without the limitation's text there is nothing to screen AGAINST, and screening
+            #  against the bucket's own name is worse than not screening: it produces confident
+            #  numbers about a question nobody asked. Drop the bucket and say so.
+            log(f"[limq] {lim_id}: no limitation text in the plan, {len(rows)} candidates dropped "
+                f"rather than screened against nothing")
+            continue
         #  The screener's row shape: `title` and `text`. Abstract only — the full text is not in
         #  the corpus yet and fetching it before the screen is the circularity this whole design
         #  avoids paying twice.
