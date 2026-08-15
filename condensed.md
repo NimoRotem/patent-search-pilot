@@ -177,8 +177,33 @@ PYTHONPATH=src .venv/bin/python eval/attorney_recall.py [<slug> ...]
 
 | Run | on page | read | screened | retrieved | in corpus |
 |---|---|---|---|---|---|
-| `adhoc-42a7b24f36d9` (before this session's fixes) | **1/10** | 4 | 5 | 5 | 7 |
+| `adhoc-42a7b24f36d9` (before the 08-15 fixes) | **1/10** | 4 | 5 | 5 | 7 |
 | `adhoc-674f5b499e65` (after fixes 1–9) | **2/10** | 4 | 4 | 6 | 7 |
+| `adhoc-3c99d840e5b3` (first clean end-to-end Type B, 41 min) | **2/10** | 4 | 5 | 5 | 7 |
+| `adhoc-9b115dbcaa73` (limitation portfolio live, 95 min) | **2/10** | 4 | 5 | 6 | 7 |
+
+**The page metric has not moved. The ledger metric has moved a great deal.** Both are true and
+they are measuring different things; see §10.
+
+| | `3c99d840e5b3` | `9b115dbcaa73` |
+|---|---|---|
+| limitations covered (≥2 grounded disclosures) | 10 of 27 | **15 of 28** |
+| limitations with nothing | 0 | 0 |
+| claims ANTICIPATED (one document teaches every limitation) | 1 | **4** — claims 2, 3, 5, 10 |
+| references read in full | 556 | 648 |
+| rescued references read | 60 | **206** |
+| wall clock | 41 min | **95 min — over the 90-minute guardrail** |
+
+And the composition of the page changed even though the count did not: **Quackenbush reached the
+page for the first time, at card 28.** It is the attorney's most comprehensive match, mapped
+against claims 1, 2, 5, 7 and 8, and in the baseline it was screened 10 of 100 on a title. The
+limitation portfolio found it, the limitation screen scored it, it was read in full, and it landed.
+Hukelmann fell off in exchange (card 56 → rank 275): 648 references were read instead of 556, so
+the 60-card cut is simply harder.
+
+That is the honest shape of the result. Retrieval and reading improved; **the 60-card cut is now
+the binding constraint on the page metric**, and §8 records that no variant of the promotion rule
+fixes it.
 
 Per-reference outcome on the later run:
 ```
@@ -319,6 +344,28 @@ Set-cover over reference **pairs and triples** to find the smallest set that bet
 every limitation of a claim, plus a motivation-to-combine rationale. This is the actual invalidity
 product and nothing today produces it. Hook: `Ledger.evidence` is already keyed by limitation.
 
+### Do these first — each is a measured, localised defect
+
+1. **The working set truncated the universe, silently.** `adhoc-9b115dbcaa73` built one of exactly
+   **8,000,000 rows** — `WORLDSET_MAX_ROWS`, applied as an unordered `LIMIT` — and Crevling
+   (US-9107549-B2) was not in it, while Sato and Bosch, classified in the same neighbourhood, were.
+   Raised to 16M and `build` now returns `truncated` and shouts; `ACQUIRE_SEED_CLASSES` cut 24 → 8
+   because widening the class list from the trusted art is what pushed it over. **Re-run and check
+   the log for `*** TRUNCATED`.** This is the cheapest remaining win and it is one line of output.
+2. **Sato and Bosch were IN that working set and still not acquired.** So for those two it is
+   selection, not universe: either no reading of the eight limitations searched for reached them,
+   or they were outside the top 30 after the limitation screen. `limitation_query.build_sql` is
+   pure — score them offline against the working set (§11) before spending another 95-minute run.
+3. **95 minutes breaks the wall-clock guardrail.** The rescue now reads 206 references against 60.
+   The knobs, in the order to reach for them: `LIMQ_MAX_READ` (150), `RESCUE_MAX_CLAIMS` (10, and
+   it is what took the rescue from 1 limitation to 10), `LIMQ_MAX_LIMITATIONS` (8).
+4. **The 60-card cut is the binding constraint on the page metric.** 648 references were read and
+   two of the attorney's ten are visible. §8 records that six variants of the promotion rule all
+   fail to move Blatt or Cho. The question to answer next is whether the page should be a page at
+   all for a Type B search, or whether the ledger — which is now `done=True` with 15 of 28
+   limitations covered and 4 claims anticipated — is the deliverable and the cards are a browsing
+   aid beneath it.
+
 ### Smaller, high value
 - Re-run `adhoc-385f6b114f20` (in flight at handoff) and score it; it is the first end-to-end Type B
   search with limitations + ledger and has never been measured.
@@ -335,9 +382,14 @@ product and nothing today produces it. Hook: `Ledger.evidence` is already keyed 
 | KPI | How | Baseline | Target |
 |---|---|---|---|
 | Attorney citations **on the page** | `eval/attorney_recall.py` | **2/10** | ≥7/10 |
-| Limitations **covered** (≥2 grounded disclosures) | `report["ledger"]["summary"]["counts"]` | unmeasured | ≥90% |
-| Claims **anticipated** (one doc covers all limitations) | `ledger_summary["anticipated"]` | unmeasured | report honestly; 0 is a valid finding |
-| Ledger **`done`** | `ledger_summary["done"]` | unmeasured | true, or every uncovered limitation named with what was tried |
+| Limitations **covered** (≥2 grounded disclosures) | `report["ledger"]["summary"]["counts"]` | **15 of 28 (54%)** | ≥90% |
+| Claims **anticipated** (one doc covers all limitations) | `ledger_summary["anticipated"]` | **4 of 11** | report honestly; 0 is a valid finding |
+| Ledger **`done`** | `ledger_summary["done"]` | **true** | true, or every uncovered limitation named with what was tried |
+
+**These two disagree and the disagreement is the finding.** The same run that moved the ledger from
+10 covered to 15, and from 1 anticipated claim to 4, left "on the page" at 2 of 10 — because
+reading 648 references instead of 556 makes a 60-card cut harder, not easier. Do not tune one
+without printing the other.
 
 **Diagnostic funnel** (these say *what to fix*, not whether it is good):
 in corpus → retrieved → screened → read in full → on the page. All five printed by
