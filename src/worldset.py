@@ -44,6 +44,7 @@ defect this module exists to end.
 """
 from __future__ import annotations
 
+import datetime
 import hashlib
 import os
 import re
@@ -159,9 +160,18 @@ def build(cpc_prefixes, date_max=None, log=print, force=False):
                           cluster=["publication_number"])
     rows = None
     try:
-        rows = bqclient.client().get_table(table).num_rows
-    except Exception:
-        pass
+        t = bqclient.client().get_table(table)
+        rows = t.num_rows
+        #  KEEP IT AS LONG AS WE SAY WE DO. `ensure_dataset` gives the dataset a 3-day default
+        #  table expiration — right for a scratch table, wrong for this one, which costs $9.38 and
+        #  145 seconds to build. TTL_DAYS said 30 and `_exists` believed it, so from day 4 every
+        #  search rebuilt the working set from scratch while logging that it was reusing one.
+        if TTL_DAYS:
+            t.expires = (datetime.datetime.now(datetime.timezone.utc)
+                         + datetime.timedelta(days=float(TTL_DAYS)))
+            bqclient.client().update_table(t, ["expires"])
+    except Exception as e:
+        log(f"[worldset] could not set the expiry on {table}: {str(e)[:120]}")
     log(f"[worldset] built {table}: {rows if rows is not None else '?'} publications across "
         f"{len(cpc)} classes ({gb:.0f} GB scanned, ${bqclient.usd(gb):.2f}, "
         f"{time.time() - t0:.0f}s) — {', '.join(cpc[:12])}")

@@ -58,6 +58,9 @@ CITE_FROM_TOP = int(os.environ.get("ACQUIRE_CITE_FROM_TOP", "40"))
 CITE_MAX = int(os.environ.get("ACQUIRE_CITE_MAX", "120"))
 
 ENABLED = os.environ.get("ACQUIRE_ENABLED", "1") != "0"
+#  CPC subclasses taken from the references the reading already trusts, as working-set seeds.
+#  Cheap: the build's cost is the text-column scan, not the class count.
+SEED_CLASS_MAX = int(os.environ.get("ACQUIRE_SEED_CLASSES", "24"))
 
 
 # ---------------------------------------------------------------------------
@@ -430,14 +433,43 @@ def by_limitation(limitations, brief="", title="", subject=None, seeds=(), emit=
         out["error"] = "no facets returned"
         return out
 
-    #  The working set's classes: every class the facets named, plus the subject's own. The
-    #  subject's own matter because the art that ANTICIPATES a claim outright usually is in the
-    #  invention's field; only the awkward requirements are not.
+    #  The working set's classes: every class the facets named, plus the subject's own, plus the
+    #  subclasses the references the reading ALREADY TRUSTS actually carry.
+    #
+    #  The last of those is the one that is not a guess. A model asked where an idea is classified
+    #  answers from what it knows; the documents that turned out to disclose something answer from
+    #  what is true, and they are already in front of us. It also makes the class list far more
+    #  stable between runs, which matters more than it looks: the working set is keyed on a hash of
+    #  (classes, date), so a class list that wobbles builds a fresh $9.38 table every search
+    #  instead of reusing one.
+    #
+    #  Widening this is nearly free. The build scans ~1,500 GB of text columns whatever the WHERE
+    #  says — that is the whole cost — so ten classes and forty cost the same. Only MAX_ROWS bounds
+    #  the result.
     cpc = sorted({c for p in plan.values() for c in (p.get("cpc") or [])})
     for extra in (getattr(subject, "cpc", None) or []):
         c = worldset.valid_cpc(extra)
         if c and c not in cpc:
             cpc.append(c)
+    if seeds:
+        try:
+            import db
+            with db.cursor() as cur:
+                cur.execute(
+                    """SELECT substring(cl.symbol from 1 for 4) sub, count(*) n
+                       FROM classifications cl JOIN publications p ON p.id = cl.publication_id
+                       WHERE p.publication_number = ANY(%s)
+                       GROUP BY sub ORDER BY n DESC LIMIT %s""",
+                    ([str(p) for p in seeds][:60], SEED_CLASS_MAX))
+                learned = [r["sub"] for r in cur.fetchall()]
+            fresh = [c for c in (worldset.valid_cpc(s) for s in learned) if c and c not in cpc]
+            if fresh:
+                cpc.extend(fresh)
+                log(f"[limq] the art already trusted is classified in "
+                    f"{', '.join(fresh[:12])} — added to the working set")
+        except Exception:
+            traceback.print_exc()
+    cpc = sorted(set(cpc))
     if not cpc:
         out["error"] = "no valid classes"
         return out
