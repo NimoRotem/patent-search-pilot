@@ -283,13 +283,19 @@ def _run_selection(by_era, max_total):
     for lim_id, eras in by_era.items():
         for era_rows in eras.values():
             for i, r in enumerate(era_rows):
-                rows.append({"q": f"q{sorted(by_era).index(lim_id)}", "pub": r["pub"],
+                #  Slug shape must match build_sql's: one bucket per (limitation, READING).
+                rows.append({"q": f"q{sorted(by_era).index(lim_id)}v0", "pub": r["pub"],
                              "pd": r["publication_date"], "family_id": r["fam"],
                              "title": r["title"], "abstract": r["abstract"], "era": r["era"],
                              "score": r["score"], "n_cooc": 1, "in_claims": False,
                              "in_title": False, "in_class": False, "rank_era": i + 1,
                              "rank_q": i + 1, "pool_q": len(era_rows)})
     plan = {lim: dict(PLAN["claim 1[c]"]) for lim in sorted(by_era)}
+    #  Derived from build_sql itself, so a change to the slug shape breaks the code, not just the
+    #  fixture: this exact drift made three tests fail silently by dropping every row.
+    _sql, slugs = LQ.build_sql(plan, "p.d.t")
+    for r in rows:
+        assert r["q"] in slugs, f"fixture slug {r['q']} is not one build_sql emits: {sorted(slugs)}"
     import types
     fake_bq = types.SimpleNamespace(run_guarded=lambda *a, **k: (rows, 1.0, 1.0))
     fake_ws = types.SimpleNamespace(QUERY_CEILING_GB=400.0)
