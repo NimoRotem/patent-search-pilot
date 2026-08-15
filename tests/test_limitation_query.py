@@ -151,6 +151,47 @@ def test_a_family_is_offered_once(monkeypatch):
     assert sum(1 for c in got["candidates"] if c["fam"] == "SAME") == 1
 
 
+def _screen_rows(n_lims, n_each):
+    return {"by_limitation": {
+        f"L{i}": [{"pub": f"L{i}-{j}", "fam": f"L{i}-{j}", "title": "t", "abstract": "a",
+                   "score": 100.0 - j, "screen": None, "era": "2015_now",
+                   "for_limitation": f"L{i}"} for j in range(n_each)]
+        for i in range(n_lims)}}
+
+
+def _plan(n_lims):
+    return {f"L{i}": {"text": "a requirement", "why": "w", "claim_label": "claim 1"}
+            for i in range(n_lims)}
+
+
+def test_the_read_budget_is_a_total_and_is_taken_round_robin(monkeypatch):
+    """Eight limitations at 30 is 240 full-text reads. The main loop's 508 reads took 1,787s, so
+    the per-limitation number alone is another hour on a 40-minute search against a 90-minute
+    guardrail. The total has to bind — without starving a limitation."""
+    monkeypatch.setattr(LQ, "MAX_READ", 60)
+    sel = LQ.screen_and_select(_screen_rows(6, 50), _plan(6), keep=30, log=lambda *a: None)
+    per = {}
+    for c in sel:
+        per[c["for_limitation"]] = per.get(c["for_limitation"], 0) + 1
+    assert len(sel) == 60
+    assert len(per) == 6 and min(per.values()) == 10, per
+
+
+def test_an_unreachable_screener_does_not_skip_the_budget(monkeypatch):
+    """The error path returned `[c for rows in by_lim.values() for c in rows[:keep]]`, which spends
+    the whole read budget on whichever limitation is first — the exact defect this module fixes,
+    reintroduced where nothing looks at it."""
+    monkeypatch.setattr(LQ, "MAX_READ", 60)
+    import deep_rank
+    monkeypatch.setattr(deep_rank, "screen", lambda *a, **k: (_ for _ in ()).throw(RuntimeError()))
+    sel = LQ.screen_and_select(_screen_rows(6, 50), _plan(6), keep=30, log=lambda *a: None)
+    per = {}
+    for c in sel:
+        per[c["for_limitation"]] = per.get(c["for_limitation"], 0) + 1
+    assert len(sel) == 60, len(sel)
+    assert len(per) == 6, per
+
+
 def _run_selection(by_era, max_total):
     """Drive search()'s selection without BigQuery, by feeding it the rows a query would return."""
     rows = []

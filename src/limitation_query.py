@@ -96,6 +96,11 @@ MAX_TOTAL = int(os.environ.get("LIMQ_MAX_TOTAL", "6000"))
 #  90-minute guardrail; it is the most valuable spend in the run and also the slowest.
 KEEP_PER_LIMITATION = int(os.environ.get("LIMQ_KEEP", "30"))
 MIN_SCREEN = int(os.environ.get("LIMQ_MIN_SCREEN", "45"))
+#  AND A TOTAL, because the per-limitation number alone is not a budget. Eight limitations at 30
+#  is 240 full-text reads; the main loop's 508 reads took 1,787s, so that is another hour on a
+#  search that already runs 40 minutes, against a 90-minute guardrail. Enforced round robin across
+#  limitations, so the total binds without any single limitation being starved.
+MAX_READ = int(os.environ.get("LIMQ_MAX_READ", "150"))
 
 ERAS = [("pre1980", 0, 19800000), ("1980_1999", 19800000, 20000000),
         ("2000_2014", 20000000, 20150000), ("2015_now", 20150000, 99999999)]
@@ -480,7 +485,7 @@ _SCREEN_SYS = (
 
 
 def screen_and_select(found, plan, keep=KEEP_PER_LIMITATION, min_screen=MIN_SCREEN,
-                      log=print, emit=None):
+                      max_read=None, log=print, emit=None):
     """Screen each limitation's candidates against THAT limitation. -> [candidate] to acquire.
 
     The portfolio hands back a few thousand title-and-abstract rows; this is the cheap judgement
@@ -495,13 +500,19 @@ def screen_and_select(found, plan, keep=KEEP_PER_LIMITATION, min_screen=MIN_SCRE
     by_lim = (found or {}).get("by_limitation") or {}
     if not by_lim:
         return []
+    #  A screener that cannot be reached leaves every candidate unscored and the lexical order
+    #  standing. It must NOT short-circuit past the selection below: returning
+    #  `[c for rows in by_lim.values() for c in rows[:keep]]` spends the whole read budget on
+    #  whichever limitation happens to be first, which is exactly the defect this module exists to
+    #  fix, reintroduced in the error path.
     try:
         import deep_rank
     except Exception:
         traceback.print_exc()
-        return [c for rows in by_lim.values() for c in rows[:keep]]
+        deep_rank = None
 
-    out, per_lim = [], {}
+    max_read = MAX_READ if max_read is None else max_read
+    chosen_by_lim, per_lim = {}, {}
     for lim_id, rows in by_lim.items():
         p = plan.get(lim_id) or {}
         text = p.get("text") or lim_id
@@ -511,13 +522,14 @@ def screen_and_select(found, plan, keep=KEEP_PER_LIMITATION, min_screen=MIN_SCRE
         shaped = [{"pub": c["pub"], "title": c["title"], "text": (c.get("abstract") or "")[:1600]}
                   for c in rows]
         scores = {}
-        try:
-            scores = deep_rank.screen(
-                shaped, f"{text}\n\n(from {p.get('claim_label') or lim_id}"
-                        + (f"; {p['why']}" if p.get("why") else "") + ")",
-                sys_prompt=_SCREEN_SYS, header="CLAIM LIMITATION TO FIND ART FOR") or {}
-        except Exception:
-            traceback.print_exc()
+        if deep_rank is not None:
+            try:
+                scores = deep_rank.screen(
+                    shaped, f"{text}\n\n(from {p.get('claim_label') or lim_id}"
+                            + (f"; {p['why']}" if p.get("why") else "") + ")",
+                    sys_prompt=_SCREEN_SYS, header="CLAIM LIMITATION TO FIND ART FOR") or {}
+            except Exception:
+                traceback.print_exc()
         for c in rows:
             c["screen"] = scores.get(c["pub"])
         ranked = sorted(rows, key=lambda c: (-(c["screen"] if c["screen"] is not None else -1),
@@ -527,20 +539,37 @@ def screen_and_select(found, plan, keep=KEEP_PER_LIMITATION, min_screen=MIN_SCRE
             chosen = ranked[:keep]
         per_lim[lim_id] = (len(rows), len(chosen),
                            sum(1 for c in rows if (c["screen"] or 0) >= min_screen))
-        out.extend(chosen)
+        chosen_by_lim[lim_id] = chosen
         log(f"[limq] {lim_id}: screened {len(scores)}/{len(rows)}, "
             f"{per_lim[lim_id][2]} at or above {min_screen}, {len(chosen)} to read")
-    #  Dedup by family across limitations, keeping the limitation that scored it highest, so one
-    #  document is not read twice and its `for_limitation` says why it is here.
-    best = {}
-    for c in out:
-        k = c["fam"]
-        cur = best.get(k)
-        if cur is None or (c.get("screen") or -1) > (cur.get("screen") or -1):
-            best[k] = c
-    sel = sorted(best.values(), key=lambda c: -(c.get("screen") if c.get("screen") is not None
-                                                else -1))
-    log(f"[limq] {len(sel)} distinct families selected to read across {len(per_lim)} limitations")
+
+    #  THE TOTAL READ BUDGET, taken round robin, and dedup by family across limitations so one
+    #  document is never read twice. Concatenating and slicing would spend the whole budget on the
+    #  first limitation, which is the same defect this module fixes one stage earlier.
+    seen_fam, sel, taken = set(), [], {k: 0 for k in chosen_by_lim}
+    depth = 0
+    while len(sel) < max_read:
+        progressed = False
+        for lim_id, rows_l in chosen_by_lim.items():
+            if depth >= len(rows_l):
+                continue
+            progressed = True
+            c = rows_l[depth]
+            if c["fam"] in seen_fam:
+                continue
+            seen_fam.add(c["fam"])
+            sel.append(c)
+            taken[lim_id] += 1
+            if len(sel) >= max_read:
+                break
+        if not progressed:
+            break
+        depth += 1
+    dropped = sum(len(v) for v in chosen_by_lim.values()) - sum(taken.values())
+    log(f"[limq] {len(sel)} distinct families to read across {len(per_lim)} limitations "
+        + (f"(budget {max_read} reached; {dropped} screened references not read: "
+           + ", ".join(f"{taken[k]} of {len(v)} for {k}" for k, v in chosen_by_lim.items()) + ")"
+           if dropped > 0 else "(everything that passed the screen)"))
     if emit:
         emit("limq_screened", n=len(sel), limitations=len(per_lim))
     return sel
