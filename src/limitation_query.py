@@ -349,7 +349,12 @@ def search(limitations, table, date_max=None, brief="", title="", plan=None,
     if not plan:
         out["error"] = "no facets"
         return out
-    sql, slugs = build_sql(plan, table, date_max=date_max)
+    #  Passed explicitly rather than left to build_sql's defaults: a default argument binds at def
+    #  time, so a probe that sets `limitation_query.PER_ERA = 20` after import would silently run
+    #  the production width and report a number that was never measured. Env tuning is unaffected
+    #  either way (read at import); this makes both work.
+    sql, slugs = build_sql(plan, table, date_max=date_max, per_era=PER_ERA,
+                           per_limitation=PER_LIMITATION)
     out["queries"] = len(plan)
     if emit:
         emit("limq_start", limitations=len(plan))

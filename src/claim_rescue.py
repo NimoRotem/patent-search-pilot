@@ -520,8 +520,17 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
         ws = {}
         lims_to_search = [lim_rows[c["label"]] for c in still_short if c["label"] in lim_rows]
         if lims_to_search:
-            ws = claim_acquire.by_limitation(
-                lims_to_search, brief=brief, title=title, subject=subject, seeds=seeds, emit=emit)
+            #  Its own try. This whole block runs at the end of a search that already has an
+            #  answer, so a new route failing must cost its own candidates and nothing else —
+            #  sharing the outer handler would take the keyword worldset, the concept fan-out and
+            #  the citation neighbourhood down with it.
+            try:
+                ws = claim_acquire.by_limitation(
+                    lims_to_search, brief=brief, title=title, subject=subject, seeds=seeds,
+                    emit=emit)
+            except Exception:
+                traceback.print_exc()
+                ws = {"error": "limitation portfolio raised"}
             summary["limitation_portfolio"] = {
                 k: ws.get(k) for k in ("rows", "queries", "screened", "n_new", "with_text",
                                        "error")}
