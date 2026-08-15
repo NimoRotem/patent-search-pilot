@@ -299,20 +299,38 @@ def by_citation(pubs, exclude_pubs=(), limit=CITE_MAX, emit=None):
         return out
     if emit:
         emit("acquire_cite_start", n=len(missing))
-    #  Fetched one at a time through the same recovery chain the reading stage uses, so a
-    #  document acquired here arrives with whatever text any source will give for it.
+    #  MATERIALISE THE ROW FIRST, THEN RECOVER THE TEXT.
+    #
+    #  enrich._persist_full_text opens with "SELECT id FROM publications WHERE
+    #  publication_number = %s" and returns {"ok": False, "reason": "not_in_corpus"} when there is
+    #  no row. These are by definition the documents with no row — that is how they were selected —
+    #  so calling enrich_publication on them could only ever return zero, and did: 0 of 19 on the
+    #  first live run, which looked like an unreachable source and was a guaranteed no-op.
+    #  Measured after inserting the row first: US-10000000-B2 recovered 3 claims and 20 paragraphs.
     try:
         import enrich
+        import external
         got = 0
         for pub in missing:
             try:
-                r = enrich.enrich_publication(pub, reembed=False)
+                placed = external.materialise(
+                    {external._norm(pub): {"pub_number": pub, "title": "", "abstract": ""}})
             except Exception:
                 continue
+            if not placed:
+                continue
+            pid = next((v[0] for v in placed.values()
+                        if isinstance(v, (list, tuple)) and v), None)
+            try:
+                r = enrich.enrich_publication(pub, reembed=False)
+            except Exception:
+                r = None
+            #  Kept even when no text came back: the row now exists, so a later search can enrich
+            #  it, and the reader reports "no text" rather than the document being invisible.
+            out["candidates"].append({"pub": pub, "fam": pub, "pid": pid, "title": "",
+                                      "for_claim": "", "acquired": "citation"})
             if r and r.get("ok"):
                 got += 1
-                out["candidates"].append({"pub": pub, "fam": pub, "pid": None, "title": "",
-                                          "for_claim": "", "acquired": "citation"})
         out["n_new"] = got
     except Exception as e:
         traceback.print_exc()
