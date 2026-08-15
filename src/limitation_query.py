@@ -110,29 +110,52 @@ ERAS = [("pre1980", 0, 19800000), ("1980_1999", 19800000, 20000000),
 # turning a limitation into a searchable conjunction
 # ---------------------------------------------------------------------------
 _FACET_SYS = (
-    "You are a patent examiner writing the SEARCH for one claim limitation.\n"
+    "You are a patent examiner writing the SEARCH STRINGS for one claim limitation.\n"
     "\n"
     "A limitation is a THING, in a PLACE, in a KIND OF APPARATUS: \"a sound-damping device\", "
     "\"in the exhaust air path\", \"of a hand-held vacuum gripper\". Give those three separately.\n"
     "\n"
-    "For each one, list the surface forms DIFFERENT TECHNICAL FIELDS use for it — the art that "
+    "YOU ARE WRITING WORDS TO MATCH IN TEXT, NOT DESCRIPTIONS OF THE REQUIREMENT. Every entry is "
+    "matched literally against the full text of every patent, so it has to be a string a document "
+    "actually contains. This is the whole job and it is the easy thing to get wrong:\n"
+    "\n"
+    "  WRONG (a paraphrase of the claim)   RIGHT (what a document says)\n"
+    "  \"in the grip portion\"               \"grip\", \"handgrip\", \"handle\"\n"
+    "  \"through grip portion\"              \"grip\", \"handle\"\n"
+    "  \"sound damping device\"              \"sound damp\", \"silenc\", \"muffler\"\n"
+    "  \"noise absorbing material\"          \"noise absorb\", \"acoustic\", \"fibrous\"\n"
+    "  \"in first housing portion\"          \"housing\", \"casing\"\n"
+    "  \"vacuum generating device\"          \"vacuum pump\", \"blower\", \"ejector\"\n"
+    "\n"
+    "No patent contains the string \"through grip portion\". A real one says \"the exhaust air is "
+    "guided through the hollow grip portion\", which contains \"grip\" and not that phrase. A term "
+    "that cannot match makes the whole search return nothing, and nothing is indistinguishable "
+    "from \"no such art exists\".\n"
+    "\n"
+    "For each facet, list the surface forms DIFFERENT TECHNICAL FIELDS use for it — the art that "
     "discloses a limitation is usually in another field and never uses the claim's words. A "
     "silencer in a handle is written as:\n"
-    "  automotive  muffler, exhaust silencer, resonator, expansion chamber\n"
-    "  acoustics   sound absorber, acoustic attenuator, noise attenuation, absorptive material\n"
-    "  power tools noise suppressor, exhaust deflector, muffling chamber\n"
-    "  1960s US    muffling means, sound deadening material, baffle plate\n"
-    "  translated  noise reduction part, soundproofing member, silencing structure\n"
+    "  automotive  muffler, silenc, resonator, expansion chamber\n"
+    "  acoustics   sound absorb, acoustic, attenuat, absorptive\n"
+    "  power tools noise suppress, exhaust deflector, muffling\n"
+    "  1960s US    muffling means, sound deadening, baffle\n"
+    "  translated  noise reduction, soundproof, silencing\n"
     "Include the 1960s and translated-from-German/Japanese forms. Old art is what kills claims.\n"
     "\n"
     "RULES\n"
-    "- Single words and short phrases only, lower case, no punctuation, no wildcards. Write the "
-    "STEM where a stem is safe: \"silenc\" catches silencer, silencing and silenced; \"absorb\" "
-    "catches absorber, absorbing and absorbent.\n"
+    "- ONE OR TWO WORDS each. Never three. Never start with a preposition (in, on, at, through, "
+    "within, inside, via, along, between, for, with, by, of) or an article. Lower case, no "
+    "punctuation, no wildcards.\n"
+    "- Write the STEM where a stem is safe: \"silenc\" catches silencer, silencing and silenced; "
+    "\"absorb\" catches absorber, absorbing and absorbent; \"attenuat\" catches attenuator and "
+    "attenuation. Prefer a stem to a full word.\n"
+    "- DROP THE HEAD NOUN. \"sound damping device\" is \"sound damp\". \"noise absorbing "
+    "material\" is \"noise absorb\". The noun carries nothing and makes the string too rare.\n"
     "- 6 to 14 forms for `thing` and `place`. 4 to 10 for `apparatus`.\n"
     "- NEVER use a word so general it appears in every mechanical patent: device, member, "
     "element, portion, means, unit, assembly, apparatus, housing, body, surface, opening, "
-    "chamber, wall, part. They match everything and select nothing.\n"
+    "chamber, wall, part, structure, material, section. They match everything and select "
+    "nothing.\n"
     "- `apparatus` says what KIND of machine this is, so the query stays in the right domain: "
     "handle, grip, hand-held, portable, power tool, vacuum, suction, blower.\n"
     "- `cpc` : 2 to 6 CPC subclasses (four characters, e.g. F01N, G10K, B25F) where this "
@@ -146,12 +169,45 @@ _FACET_SYS = (
 )
 
 
+#  Words that make a term a PARAPHRASE rather than a string a document contains. Stripped from the
+#  front; a term that is nothing else is dropped.
+_LEAD = re.compile(r"^(?:in|on|at|to|through|within|inside|into|via|along|between|for|with|by|of|"
+                   r"from|the|a|an|its|said|such)\s+", re.I)
+#  Head nouns that carry no meaning and make a phrase too rare to match. "sound damping device"
+#  appears in almost nothing; "sound damping" appears in the art.
+_HEAD = re.compile(r"\s+(?:device|devices|member|members|element|elements|portion|portions|means|"
+                   r"unit|units|assembly|apparatus|body|part|parts|structure|structures|material|"
+                   r"materials|section|sections|component|components|arrangement|mechanism)$", re.I)
+#  Two words is the ceiling. Measured: the model, asked for "surface forms", returned
+#  "through grip portion", "in first housing portion" and "sound damping device" — paraphrases of
+#  the limitation, none of which any patent contains — and the portfolio returned 0 of 10 where
+#  hand-written terms returned 5.
+MAX_WORDS = int(os.environ.get("LIMQ_MAX_WORDS", "2"))
+
+
 def _terms(raw, limit=MAX_TERMS_PER_FACET):
-    """Model output -> regex-safe alternation terms. Drops rather than escapes."""
+    """Model output -> regex-safe alternation terms. Repairs a paraphrase, drops what it cannot.
+
+    A term that cannot match is worse than a missing term: it contributes nothing to a disjunction
+    and, when it is the only thing in a facet, it makes the conjunction return nothing at all —
+    which reads exactly like "there is no such art".
+    """
     out = []
     for t in (raw or []):
         s = _SAFE.sub(" ", str(t or "").lower()).strip()
         s = re.sub(r"\s+", " ", s)
+        #  Repeatedly, because "in the grip portion" needs both "in" and "the" taken off.
+        while True:
+            stripped = _LEAD.sub("", s).strip()
+            if stripped == s:
+                break
+            s = stripped
+        s = _HEAD.sub("", s).strip()
+        words = s.split()
+        if len(words) > MAX_WORDS:
+            #  Keep the front: the qualifier carries the meaning ("sound damping insert" ->
+            #  "sound damping"), the tail is what made it unmatchable.
+            s = " ".join(words[:MAX_WORDS])
         if len(s) < MIN_TERM or s in out:
             continue
         out.append(s)

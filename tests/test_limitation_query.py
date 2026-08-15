@@ -56,6 +56,33 @@ def test_a_facet_with_no_partner_produces_no_query_rather_than_a_wide_one():
     assert LQ.proximity(["muffler"], []) == ""
 
 
+def test_a_paraphrase_is_repaired_into_something_that_can_match():
+    """THE MEASUREMENT THAT FORCED THIS. Asked for "surface forms", the model returned
+    "through grip portion", "in first housing portion", "sound damping device" and "noise absorbing
+    material" — paraphrases of the limitation, none of which any patent contains — and the
+    portfolio returned 0 of 10 where hand-written terms returned 5. A term that cannot match is
+    worse than a missing one: it makes the conjunction return nothing, which reads exactly like
+    "there is no such art"."""
+    for raw, want in (("through grip portion", "grip"),
+                      ("in the grip portion", "grip"),
+                      ("in first housing portion", "first housing"),
+                      ("sound damping device", "sound damping"),
+                      ("noise absorbing material", "noise absorbing"),
+                      ("vacuum generating device", "vacuum generating"),
+                      ("for vacuum", "vacuum")):
+        assert LQ._terms([raw]) == [want], (raw, LQ._terms([raw]))
+
+
+def test_terms_already_written_correctly_are_left_alone():
+    for good in ("muffler", "silenc", "sound absorb", "acoustic lining", "lined with", "baffle"):
+        assert LQ._terms([good]) == [good], good
+
+
+def test_no_term_exceeds_the_word_ceiling():
+    got = LQ._terms(["a very long descriptive phrase about damping", "sound damping insert"])
+    assert all(len(t.split()) <= LQ.MAX_WORDS for t in got), got
+
+
 def test_model_terms_are_neutralised_not_escaped():
     """A term carrying a regex metacharacter is a mistake, and an ESCAPED one is a term that can
     never match. Drop the character and keep the word."""
