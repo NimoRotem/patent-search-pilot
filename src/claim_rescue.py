@@ -385,9 +385,18 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
     #  counting matches per claim.
     lim_rows = {}
     if ledger is not None:
-        rows = ledger.uncovered(include_partial=False)[:MAX_CLAIMS]
-        if not rows:
-            rows = ledger.uncovered(include_partial=True)[:MAX_CLAIMS]
+        #  EMPTY FIRST, THEN THIN — not one or the other. An `if not rows` fallback only ever
+        #  searched for limitations with NOTHING against them, and a live run had 2 of those
+        #  against 15 that were "partial": evidence exists but fewer than `cover_min` documents
+        #  disclose it. Partial is where an attorney's references sit, and the KPI this ledger
+        #  reports is the count of limitations with two grounded disclosures, not the count with
+        #  one. Both are ordered weakest-and-most-load-bearing first by `uncovered`.
+        rows = ledger.uncovered(include_partial=False)
+        if len(rows) < MAX_CLAIMS:
+            have = {l["id"] for l in rows}
+            rows = rows + [l for l in ledger.uncovered(include_partial=True)
+                           if l["id"] not in have]
+        rows = rows[:MAX_CLAIMS]
         short = [{"label": l["id"], "claim_no": l.get("claim_no"),
                   "independent": bool(l.get("independent")), "text": l["text"]} for l in rows]
         #  Kept whole: the limitation portfolio needs the claim it came from and its id, which the
@@ -409,8 +418,14 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
     summary["n_orphans"] = len(short)
     if emit:
         emit("rescue_start", n=len(short), claims=[c["label"] for c in short])
-    print(f"[rescue] {len(short)} claims with <= {ORPHAN_MAX_MATCHES} grounded matches: "
-          f"{', '.join(c['label'] for c in short)}", flush=True)
+    if summary["driver"] == "ledger":
+        n_empty = sum(1 for l in rows if ledger.status(l["id"]) == "uncovered")
+        print(f"[rescue] {len(short)} limitations to search for — {n_empty} with no evidence at "
+              f"all, {len(short) - n_empty} with less than {ledger.cover_min} disclosures: "
+              f"{', '.join(c['label'] for c in short)}", flush=True)
+    else:
+        print(f"[rescue] {len(short)} claims with <= {ORPHAN_MAX_MATCHES} grounded matches: "
+              f"{', '.join(c['label'] for c in short)}", flush=True)
 
     independents = [c for c in claim_items if c.get("independent")] or claim_items[:1]
     plans = plan(short, brief=brief, title=title, independents=independents,
@@ -448,8 +463,22 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
         after, _ = claim_matches(all_charts, labels)
         return after, [l for l in summary["orphans"] if after.get(l, 0) > before.get(l, 0)]
 
-    still, _ = orphans(charts, [c for c in claim_items if c["label"] in set(summary["orphans"])])
-    plans = {l: p for l, p in plans.items() if l in {c["label"] for c in still}}
+    #  WHAT THE CHEAP PASS DID NOT FIX. The ledger is the driver when there is one, so it is what
+    #  gets asked — after re-ingesting the cells the re-read just added, or it answers from before
+    #  the re-read ran. `orphans()` would silently undo the "empty first, then thin" selection
+    #  above: it counts a limitation with two PARTIAL matches as answered, and a limitation with
+    #  two partials and no disclosure is exactly the one still worth searching for.
+    if ledger is not None:
+        try:
+            ledger.ingest_charts(charts)
+        except Exception:
+            traceback.print_exc()
+        keep = {l["id"] for l in rows if ledger.status(l["id"]) != "covered"}
+    else:
+        still, _ = orphans(charts,
+                           [c for c in claim_items if c["label"] in set(summary["orphans"])])
+        keep = {c["label"] for c in still}
+    plans = {l: p for l, p in plans.items() if l in keep}
     if not plans:
         summary["claim_matches_after"], summary["covered"] = _covered(charts)
         summary["seconds"] = round(time.time() - started, 1)
