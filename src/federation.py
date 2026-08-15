@@ -53,7 +53,10 @@ SELF_URL = os.environ.get("FEDERATION_SELF_URL", "https://rotem.ai/patents").rst
 FED_KEY = os.environ.get("FEDERATION_KEY", "")
 INTERNAL_URL = os.environ.get("FEDERATION_INTERNAL_URL", "http://10.128.0.13:8630").rstrip("/")
 ENABLED = os.environ.get("FEDERATION_ENABLED", "1") != "0"
-TIMEOUT = float(os.environ.get("FEDERATION_TIMEOUT", "360"))     # whole-stream budget, seconds
+#  MEASURED: a live run took 384s and was killed at 360, discarding 1,500 collected hits. App A
+#  screens wide and reads ~100 documents in full now, so this is the cost of the work rather than
+#  a hang. A budget below it guarantees a timeout on every search, and the retry pays it twice.
+TIMEOUT = float(os.environ.get("FEDERATION_TIMEOUT", "600"))     # whole-stream budget, seconds
 CONNECT_TIMEOUT = float(os.environ.get("FEDERATION_CONNECT_TIMEOUT", "10"))
 HEALTH_TIMEOUT = float(os.environ.get("FEDERATION_HEALTH_TIMEOUT", "6"))
 CACHE_TTL = float(os.environ.get("FEDERATION_CACHE_TTL", str(14 * 24 * 3600)))
@@ -472,10 +475,30 @@ def _stream_once(base: str, body: dict, on_event, tracker) -> dict:
         done = None
         saw_end = False
         bad_json = 0
+        #  The most recent interim shortlist App A has streamed. A deadline that arrives before
+        #  the `done` event used to discard everything; anything already delivered is returned
+        #  instead, marked partial so nothing downstream mistakes it for a completed search.
+        interim = None
         for line in r.iter_lines(decode_unicode=True):
             if time.time() > deadline:
+                if interim is not None:
+                    interim = dict(interim)
+                    interim["_partial"] = True
+                    interim["_partial_reason"] = (
+                        f"App A was still working after {TIMEOUT:.0f}s; this is the last "
+                        f"shortlist it had streamed ({len(interim.get('shortlist') or [])} "
+                        f"references), not its final answer")
+                    return interim
+                n = 0
+                if tracker is not None:
+                    try:
+                        n = sum(int((s or {}).get("hits") or 0) for s in tracker.snapshot())
+                    except Exception:
+                        n = 0
                 raise FederationError(
-                    "timeout", f"federated search exceeded {TIMEOUT:.0f}s")
+                    "timeout", f"federated search exceeded {TIMEOUT:.0f}s"
+                    + (f" after its sources had returned {n:,} hits, which were lost because "
+                       f"App A had not yet sent a result set" if n else ""))
             if not line or not line.startswith("data: "):
                 continue
             try:
@@ -500,6 +523,10 @@ def _stream_once(base: str, body: dict, on_event, tracker) -> dict:
                 raise FederationError("engine", str(ev.get("error"))[:300])
             if kind == "done":
                 done = ev
+            elif ev.get("shortlist"):
+                #  Any event carrying a result set, whatever App A calls it. Keeping the newest
+                #  one costs a reference and is the difference between a partial answer and none.
+                interim = ev
             elif kind == "end":
                 saw_end = True
                 break
