@@ -381,9 +381,16 @@ def _candidate_rows(cur, families, reps, limit):
     return rows
 
 
-def screen(rows, brief, on_progress=None):
+def screen(rows, brief, on_progress=None, sys_prompt=None, header="TARGET INVENTION"):
     """{pub: 0-100} over every candidate row, in batches. Fail-soft: an unscored candidate simply
-    has no screen score and falls back to its retrieval rank."""
+    has no screen score and falls back to its retrieval rank.
+
+    `sys_prompt` and `header` exist so a caller can ask a DIFFERENT question of the same machinery
+    — limitation_query screens candidates against one claim requirement rather than against the
+    whole invention. The batching below is the part that must not be duplicated: it is the fix for
+    a measured calibration defect, and a second screener with its own batching would reintroduce
+    it silently.
+    """
     if not rows:
         return {}
     #  BATCHES ARE INTERLEAVED, NOT CONTIGUOUS SLICES OF THE RANKING.
@@ -412,8 +419,8 @@ def screen(rows, brief, on_progress=None):
 
     def one(batch):
         body = "\n".join(f"[{j + 1}] {c['title']}\n  {c['text']}" for j, c in enumerate(batch))
-        out = llm.chat_json(_SCREEN_SYS,
-                            f"TARGET INVENTION:\n{brief[:6000]}\n\nCANDIDATES:\n{body}",
+        out = llm.chat_json(sys_prompt or _SCREEN_SYS,
+                            f"{header}:\n{brief[:6000]}\n\nCANDIDATES:\n{body}",
                             max_tokens=1600) or {}
         got = {}
         for x in (out.get("results") or []):

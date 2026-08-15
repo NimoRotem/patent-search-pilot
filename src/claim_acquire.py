@@ -235,6 +235,7 @@ def by_worldset(claims, hints=None, brief="", title="", subject=None, seeds=(), 
              cached=ws.get("cached"), gb=round(float(ws.get("gb") or 0)))
 
     found = {}                       # pub -> {"for_claim", "why"}
+    per_claim = {}                   # label -> [pub], in the order that label's queries found them
     terms_used = set()
     #  What this invention IS, in two or three words the art would also use. Every learned-vocabulary
     #  query must still match one of these, or the loop walks out of the field: see the comment on
@@ -247,9 +248,12 @@ def by_worldset(claims, hints=None, brief="", title="", subject=None, seeds=(), 
         if not must_any:
             return
         out["queries"] += 1
+        bucket = per_claim.setdefault(label, [])
         for h in worldset.lexical(out["table"], must_any=must_any, must_all=must_all,
                                   cpc=classes, limit=WS_PER_QUERY):
-            found.setdefault(h["pub"], {"for_claim": label, "why": why, "title": h.get("title")})
+            if h["pub"] not in found:
+                found[h["pub"]] = {"for_claim": label, "why": why, "title": h.get("title")}
+                bucket.append(h["pub"])
 
     #  ROUND 1 — what the model thinks this claim is about, in the classes it named.
     for label, p in plan.items():
@@ -304,8 +308,10 @@ def by_worldset(claims, hints=None, brief="", title="", subject=None, seeds=(), 
     if seed_pubs:
         try:
             for r in worldset.similar_to(seed_pubs, limit=200, date_max=date_max):
-                found.setdefault(r["pub"], {"for_claim": "", "why": "similar-graph neighbour",
-                                            "title": ""})
+                if r["pub"] not in found:
+                    found[r["pub"]] = {"for_claim": "", "why": "similar-graph neighbour",
+                                       "title": ""}
+                    per_claim.setdefault("~similar", []).append(r["pub"])
         except Exception:
             traceback.print_exc()
 
@@ -317,7 +323,34 @@ def by_worldset(claims, hints=None, brief="", title="", subject=None, seeds=(), 
 
     #  INGEST WITH TEXT. Bounded, because each one is a row plus claims plus paragraphs plus
     #  embeddings in the local corpus.
-    pubs = list(found)[:WS_INGEST_MAX]
+    #
+    #  ROUND ROBIN, NOT `list(found)[:200]`. `found` is filled claim by claim and each query
+    #  contributes up to WS_PER_QUERY=300 publications, so a flat slice of the first 200 is the
+    #  first claim's first query and nothing else: every later claim, both vocabulary rounds and
+    #  the whole similarity graph were being collected and then silently discarded. An empty row
+    #  for claim 7 reads on the page as "no such art exists", which is the opposite of what
+    #  happened. Take one from each bucket in turn instead, and say what the cap dropped.
+    pubs, taken = [], {k: 0 for k in per_claim}
+    depth = 0
+    while len(pubs) < WS_INGEST_MAX and per_claim:
+        progressed = False
+        for label, bucket in per_claim.items():
+            if depth >= len(bucket):
+                continue
+            progressed = True
+            pubs.append(bucket[depth])
+            taken[label] += 1
+            if len(pubs) >= WS_INGEST_MAX:
+                break
+        if not progressed:
+            break
+        depth += 1
+    dropped = {l: len(b) - taken.get(l, 0) for l, b in per_claim.items()
+               if len(b) > taken.get(l, 0)}
+    if dropped:
+        print(f"[acquire] ingest capped at {WS_INGEST_MAX}: took "
+              + ", ".join(f"{taken[l]} of {len(per_claim[l])} for {l}" for l in per_claim),
+              flush=True)
     if emit:
         emit("worldset_ingest_start", n=len(pubs))
     try:
@@ -355,6 +388,152 @@ def by_worldset(claims, hints=None, brief="", title="", subject=None, seeds=(), 
             break
     if emit:
         emit("worldset_done", n=len(out["candidates"]), with_text=out["with_text"])
+    return out
+
+
+# ---------------------------------------------------------------------------
+# route 0b: ONE QUERY PORTFOLIO PER LIMITATION
+# ---------------------------------------------------------------------------
+def by_limitation(limitations, brief="", title="", subject=None, seeds=(), emit=None,
+                  log=print):
+    """Search the world for each REQUIREMENT separately, screen against it, ingest what survives.
+
+    `by_worldset` above asks one keyword question per uncovered claim and ORs its terms together.
+    That shape cannot express what a limitation is — a thing, in a place, in a kind of apparatus —
+    and measured against the ten references an attorney filed it returns 111,545 hits with no
+    usable rank. This route asks the faceted question with proximity instead: 14,373 hits holding
+    nine of the ten, and per-limitation ranking that moves Bosch from position 8,810 under one
+    invention-wide query to 135 under the query for the requirement it was actually cited for.
+
+    See limitation_query for the measurements and for why the pool is sized for a screener rather
+    than for the reader.
+    """
+    out = {"candidates": [], "plan": {}, "table": "", "rows": 0, "n_new": 0, "with_text": 0,
+           "classes": [], "queries": 0, "pool": {}, "screened": 0, "error": ""}
+    if not ENABLED:
+        out["error"] = "acquisition disabled"
+        return out
+    lims = [l for l in (limitations or []) if str(l.get("text") or "").strip()]
+    if not lims:
+        out["error"] = "no limitations"
+        return out
+    try:
+        import limitation_query
+        import worldset
+    except Exception as e:
+        out["error"] = f"unavailable: {e}"
+        return out
+
+    plan = limitation_query.facets_for(lims, brief=brief, title=title, log=log)
+    out["plan"] = plan
+    if not plan:
+        out["error"] = "no facets returned"
+        return out
+
+    #  The working set's classes: every class the facets named, plus the subject's own. The
+    #  subject's own matter because the art that ANTICIPATES a claim outright usually is in the
+    #  invention's field; only the awkward requirements are not.
+    cpc = sorted({c for p in plan.values() for c in (p.get("cpc") or [])})
+    for extra in (getattr(subject, "cpc", None) or []):
+        c = worldset.valid_cpc(extra)
+        if c and c not in cpc:
+            cpc.append(c)
+    if not cpc:
+        out["error"] = "no valid classes"
+        return out
+    date_max = getattr(subject, "efd", None)
+    if emit:
+        emit("limq_build_start", cpc=cpc, date_max=str(date_max or ""))
+    try:
+        ws = worldset.build(cpc, date_max=date_max, log=log)
+    except Exception as e:
+        traceback.print_exc()
+        out["error"] = f"working set failed: {str(e)[:200]}"
+        return out
+    out["table"], out["rows"] = ws.get("table", ""), ws.get("rows")
+    out["classes"] = ws.get("cpc") or cpc
+    if not out["table"]:
+        out["error"] = ws.get("error") or "no working set"
+        return out
+
+    found = limitation_query.search(lims, out["table"], date_max=date_max, plan=plan,
+                                    brief=brief, title=title, log=log, emit=emit)
+    out["queries"], out["pool"] = found.get("queries", 0), found.get("pool") or {}
+    if found.get("error"):
+        out["error"] = found["error"]
+    #  GOOGLE'S OWN SIMILARITY GRAPH, from the references the reading already trusts. One query,
+    #  and it is the cheapest way out of the neighbourhood any keyword walks in circles inside.
+    seed_pubs = [p for p in (seeds or [])][:40]
+    if seed_pubs and found.get("by_limitation"):
+        try:
+            known = {c["pub"] for c in found["candidates"]}
+            extra = [{"pub": r["pub"], "fam": r["pub"], "title": "", "abstract": "",
+                      "score": 0.0, "screen": None, "era": "", "for_limitation": "",
+                      "acquired": "similar_graph", "why": "Google similarity neighbour"}
+                     for r in worldset.similar_to(seed_pubs, limit=200, date_max=date_max,
+                                                  log=log) if r["pub"] not in known]
+            if extra:
+                #  Its own bucket, so the round robin gives it a share rather than the tail.
+                found.setdefault("by_limitation", {})["similar_graph"] = extra
+                log(f"[limq] similarity graph added {len(extra)} neighbours of "
+                    f"{len(seed_pubs)} trusted references")
+        except Exception:
+            traceback.print_exc()
+    if not found.get("by_limitation"):
+        out["error"] = out["error"] or "no hits"
+        return out
+
+    chosen = limitation_query.screen_and_select(found, plan, log=log, emit=emit)
+    out["screened"] = len(chosen)
+    if not chosen:
+        out["error"] = out["error"] or "nothing survived the screen"
+        return out
+
+    #  INGEST WITH TEXT, and only what survived the screen. `by_worldset` ingests 200 documents
+    #  chosen lexically; this ingests what a screener judged worth reading, which is the same
+    #  budget spent on a better list.
+    if emit:
+        emit("limq_ingest_start", n=len(chosen))
+    try:
+        res = worldset.ingest([c["pub"] for c in chosen], table=out["table"], log=log)
+        out["n_new"], out["with_text"] = res.get("rows", 0), res.get("with_text", 0)
+    except Exception as e:
+        traceback.print_exc()
+        out["error"] = f"ingest failed: {str(e)[:200]}"
+        return out
+
+    import db
+    have = {}
+    pubs = [c["pub"] for c in chosen]
+    try:
+        with db.cursor() as cur:
+            cur.execute("""SELECT publication_number pub, title,
+                                  COALESCE(NULLIF(simple_family_id,''), publication_number) fam,
+                                  id
+                           FROM publications WHERE publication_number = ANY(%s)""", (pubs,))
+            have = {r["pub"]: r for r in cur.fetchall()}
+    except Exception:
+        traceback.print_exc()
+    seen_fam = set()
+    for c in chosen:
+        row = have.get(c["pub"])
+        if not row or row["fam"] in seen_fam:
+            continue
+        seen_fam.add(row["fam"])
+        out["candidates"].append({
+            "pub": c["pub"], "fam": row["fam"], "pid": row["id"],
+            "title": (row.get("title") or c.get("title") or "")[:300],
+            #  The LIMITATION it was fetched for, not the claim: that is what the reader is asked
+            #  about and what the ledger keys on.
+            "for_claim": c.get("for_limitation") or "",
+            "acquired": c.get("acquired") or "limitation_portfolio",
+            "screen": c.get("screen"), "why": c.get("why") or "",
+        })
+    log(f"[limq] acquired {len(out['candidates'])} references with text for "
+        f"{len(out['pool'])} limitations "
+        f"({out['n_new']} new rows, {out['with_text']} with full text)")
+    if emit:
+        emit("limq_acquired", n=len(out["candidates"]), with_text=out["with_text"])
     return out
 
 
