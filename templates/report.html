@@ -331,6 +331,62 @@
         the grid carries the quotes instead. The grid itself is now drawn from the FULL-TEXT
         READING (webview.build_reading_chart) rather than from retrieval scores; a cell is a
         verdict backed by a verbatim quote and the passage it came from, not a cosine. #}
+    {#  THE LIMITATION LEDGER — the primary answer for a search that started from a patent.
+        Down the claims, not across the references: one row per requirement, its status, and the
+        documents that carry it with a quote, a location and a date. The element grid below still
+        answers the other question (what does THIS reference teach) and is the only view a
+        disclosure-only search has. #}
+    {% if v.ledger and v.ledger.available %}
+    <details class="tail ledgerblock" open>
+      <summary><span class="th">Claim ledger</span>
+        <span class="ts">{{ v.ledger.n_limitations }} limitations across {{ v.ledger.n_claims }} claims ·
+          {{ v.ledger.counts.get('covered', 0) }} covered ·
+          {{ v.ledger.counts.get('partial', 0) }} partial ·
+          <b class="{% if v.ledger.counts.get('uncovered', 0) %}gridwarnt{% endif %}">{{ v.ledger.counts.get('uncovered', 0) }} with no art</b>
+          {% if v.ledger.anticipated %} · <b class="antic">{{ v.ledger.anticipated|length }} anticipated</b>{% endif %}</span></summary>
+      <div class="tailin">
+        <p class="gridline">One row per <b>requirement</b>, not per claim: a claim is a conjunction,
+          so a document teaching one of its three requirements is correctly "absent" for the whole
+          thing and the search has to track them separately. A requirement counts as covered once
+          <b>{{ v.ledger.cover_min }}</b> references disclose it. A claim is
+          <b class="antic">anticipated</b> when a <b>single</b> document discloses every one of its
+          requirements — that is computed from the reading, never asserted.
+          {% if not v.ledger.done %}<b>This search is not finished:</b> the requirements marked
+          below have no art against them yet.{% endif %}</p>
+        {% for c in v.ledger.claims %}
+        <div class="lclaim lc-{{ c.status }}">
+          <div class="lchead"><b>{{ c.label }}</b>
+            {% if c.independent %}<span class="indep">independent</span>{% endif %}
+            {% if c.depends_on %}<span class="indep">depends on claim {{ c.depends_on }}</span>{% endif %}
+            <span class="lstatus ls-{{ c.status }}">{{ c.status }}</span>
+            {% if c.anticipated_by %}<span class="anticby">by {{ c.anticipated_by[:3]|join(', ') }}</span>{% endif %}
+          </div>
+          {% for l in c.limitations %}
+          <div class="llim ll-{{ l.status }}">
+            <div class="lltext">{{ l.text }}</div>
+            {% if l.evidence %}
+            <ul class="llev">
+              {% for e in l.evidence %}
+              <li><button type="button" class="pnlink" onclick="jumpRef('{{ e.pub }}')">{{ e.pub }}</button>
+                <span class="llv llv-{{ e.verdict }}">{{ e.verdict }}</span>
+                {% if e.location %}<span class="cc">{{ e.location }}</span>{% endif %}
+                {% if e.date %}<span class="cc">{{ e.date[:4] }}</span>{% endif %}
+                {% if e.quote %}<span class="llq">“{{ e.quote[:180] }}{% if e.quote|length > 180 %}…{% endif %}”</span>{% endif %}
+              </li>
+              {% endfor %}
+              {% if l.n_evidence > l.evidence|length %}<li class="cc">and {{ l.n_evidence - l.evidence|length }} more</li>{% endif %}
+            </ul>
+            {% else %}
+            <div class="llnone">No prior art found for this requirement.</div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
+
     {% set reading = v.claim_chart.source == 'reading' %}
     {#  CLAIMS OR FEATURES. When the search started from a patent the rows are that patent's own
         claims and the whole table is a claim chart; otherwise they are the derived feature

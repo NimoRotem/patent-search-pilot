@@ -1864,3 +1864,30 @@ td.cell-unrelated .cmark{color:var(--bad)}td.cell-no-coord .cmark,td.cell-unchec
   max-height:5.4em;overflow:hidden;color:var(--fg,#222)}
 tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
 .gridwarnt{color:var(--warn,#c98a00)}
+
+
+/* ---- the claim ledger ----------------------------------------------------
+   Down the claims, not across the references. Status is the only colour that
+   carries meaning: green where art exists, amber where it does not, and the
+   anticipated marker for the one finding that ends a claim outright. */
+.ledgerblock{margin-bottom:1rem}
+.lclaim{border:1px solid var(--border,#ddd);border-radius:6px;margin:.6rem 0;overflow:hidden}
+.lchead{display:flex;gap:.5rem;align-items:baseline;flex-wrap:wrap;padding:.45rem .6rem;
+  background:var(--bg2,#fafafa);border-bottom:1px solid var(--border,#eee)}
+.lstatus{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;padding:.05rem .4rem;
+  border-radius:3px;background:var(--border,#eee)}
+.ls-anticipated{background:#1b7f4b;color:#fff}
+.ls-covered{background:#dff0e5;color:#155f38}
+.ls-partial{background:#fdf0d5;color:#7a5300}
+.ls-uncovered{background:#fbe3e3;color:#8a1f1f}
+.antic,.anticby{color:#1b7f4b;font-weight:600}
+.anticby{font-weight:400;font-size:.8rem}
+.llim{padding:.4rem .6rem;border-top:1px solid var(--border,#f0f0f0)}
+.ll-uncovered{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
+.lltext{line-height:1.4}
+.llev{margin:.25rem 0 0;padding-left:1rem;font-size:.86rem}
+.llev li{margin:.15rem 0}
+.llv{font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;margin:0 .3rem}
+.llv-disclosed{color:#155f38}.llv-partial{color:#7a5300}.llv-uncertain{color:#777}
+.llq{color:var(--muted,#666);font-style:italic}
+.llnone{color:var(--warn,#c98a00);font-size:.86rem;margin-top:.2rem}

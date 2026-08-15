@@ -565,6 +565,77 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
     }
 
 
+def build_ledger_view(report):
+    """The limitation ledger, as the report's primary answer for a Type B search.
+
+    The element grid answers "what does this reference teach?", one column per document. That is
+    the right shape for exploring art and the wrong shape for an attack, where the reader has one
+    question per row — is THIS requirement already disclosed, by what, and can I cite it — and does
+    not care what else the document says.
+
+    So this renders down the claims rather than across the references: every limitation, its
+    status, and the two or three documents that carry it with their quote, location and date. A
+    claim marked ANTICIPATED is the §102 kill and is computed by the ledger from one document
+    covering every one of its limitations, never asserted.
+
+    Returns None when the search has no ledger, and the page falls back to the grid.
+    """
+    led = (report or {}).get("ledger") or {}
+    lims = led.get("limitations") or []
+    summary = led.get("summary") or {}
+    if not lims:
+        return None
+    by_claim = {}
+    for l in lims:
+        by_claim.setdefault(l.get("claim_label") or "?", []).append(l)
+    claim_meta = summary.get("claims") or {}
+
+    def claim_key(label):
+        #  Anticipated first — that is the finding a reader opens this for — then the claims with
+        #  the most holes, because those are the work that is left.
+        st = (claim_meta.get(label) or {}).get("status") or "unknown"
+        rank = {"anticipated": 0, "covered": 1, "partial": 2, "uncovered": 3}.get(st, 4)
+        holes = sum(1 for x in by_claim[label] if x.get("status") == "uncovered")
+        indep = any(x.get("independent") for x in by_claim[label])
+        return (rank, -holes, not indep, _claim_no(label))
+
+    claims = []
+    for label in sorted(by_claim, key=claim_key):
+        rows = sorted(by_claim[label], key=lambda x: x.get("index") or 0)
+        meta = claim_meta.get(label) or {}
+        claims.append({
+            "label": label,
+            "status": meta.get("status") or "unknown",
+            "anticipated_by": meta.get("anticipated_by") or [],
+            "independent": any(r.get("independent") for r in rows),
+            "depends_on": next((r.get("depends_on") for r in rows if r.get("depends_on")), None),
+            "n_uncovered": sum(1 for r in rows if r.get("status") == "uncovered"),
+            "limitations": [{
+                "id": r.get("id"), "text": r.get("text") or "", "status": r.get("status"),
+                "evidence": (r.get("evidence") or [])[:4],
+                "n_evidence": len(r.get("evidence") or []),
+            } for r in rows],
+        })
+    counts = summary.get("counts") or {}
+    return {
+        "available": True,
+        "search_type": (report or {}).get("search_type") or "",
+        "n_limitations": summary.get("n_limitations") or len(lims),
+        "n_claims": summary.get("n_claims") or len(claims),
+        "cover_min": summary.get("cover_min") or 2,
+        "counts": counts,
+        "done": bool(summary.get("done")),
+        "anticipated": summary.get("anticipated") or [],
+        "claims": claims,
+    }
+
+
+def _claim_no(label):
+    import re as _re
+    m = _re.search(r"(\d+)", str(label or ""))
+    return int(m.group(1)) if m else 10 ** 6
+
+
 def build_claim_chart(report, max_cols=8):
     """Rows = elements, columns = the references with the strongest cross-element evidence
     (combination-view refs first). Each cell = best evidence of that ref for that element.
@@ -1429,6 +1500,9 @@ def build_view(report, top_n=25, deep=None):
         "elements": report["elements"],
         "element_coverage": report.get("element_coverage", {}),
         "claim_chart": chart,
+        #  The ledger is the answer for a Type B search; the grid stays for exploring the art and
+        #  as the only view a Type A search has.
+        "ledger": build_ledger_view(report),
         "cards": cards,
         "n_local": n_local,
         "substance_filter": {k: v for k, v in subs_stats.items() if k != "titleonly_ids"},
