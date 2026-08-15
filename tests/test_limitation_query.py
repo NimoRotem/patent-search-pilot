@@ -206,19 +206,20 @@ def test_independent_facet_samples_are_merged_and_deduped(monkeypatch):
     assert p["L1"]["cpc"] == ["F01N", "G10K"]        # classes unioned across samples
 
 
-def test_every_reading_is_evaluated_and_pooled_under_its_limitation():
-    """Pooled, not one bucket per reading: the quota is per REQUIREMENT, a document is offered once
-    however many readings found it, and its score is the best reading's so a document only one
-    reading reaches is not penalised for that."""
+def test_every_reading_gets_its_own_quota():
+    """A reading is a distinct query and needs its own contest, exactly as a limitation does."""
     plan = {"L1": {"readings": [
         {"thing": ["muffler"], "place": ["exhaust"], "apparatus": ["handle"]},
         {"thing": ["silenc"], "place": ["grip"], "apparatus": ["vacuum"]}],
         "cpc": ["F01N"], "text": "t", "why": "w", "claim_label": "claim 1"}}
     sql, slugs = LQ.build_sql(plan, "p.d.t")
     assert "q0v0_hit" in sql and "q0v1_hit" in sql
-    assert sql.count("STRUCT('q0'") == 1
-    assert "GREATEST" in sql
-    assert slugs == {"q0": "L1"}
+    #  Each reading is its own bucket, not one pooled bucket per limitation. Pooling them was
+    #  measured to make things WORSE — 2 of 10 against the 3 and 4 the individual readings scored —
+    #  because the union admits every document any reading reaches into the SAME per-era quota, so
+    #  the pool grows faster than the signal. `search` puts them back together round robin.
+    assert sql.count("STRUCT('q0v") == 2 and "STRUCT('q0'" not in sql
+    assert slugs == {"q0v0": "L1", "q0v1": "L1"}
 
 
 def _screen_rows(n_lims, n_each):

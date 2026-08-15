@@ -419,9 +419,16 @@ def build_sql(plan, table, date_max=None, per_era=PER_ERA, per_limitation=PER_LI
             cols.append(f"EXISTS (SELECT 1 FROM UNNEST(cpc) c WHERE {like}) AS {s}_cpc")
         else:
             cols.append(f"FALSE AS {s}_cpc")
-        oks, scores_, ns, clms, hds = [], [], [], [], []
+        #  EVERY READING GETS ITS OWN QUOTA. Pooling them under one limitation — OR the `ok`
+        #  conditions, take the best score — was measured to make things WORSE: 2 of 10 against 3
+        #  and 4 for the individual readings that went into it. The union admits every document any
+        #  reading reaches into the SAME per-era quota, so the pool grows faster than the signal
+        #  and dilutes the ranking that quota is spending. A reading is a distinct query and needs
+        #  its own contest, exactly as a limitation does; `search` puts them back together round
+        #  robin, so coverage is added rather than averaged.
         for v, r in enumerate(readings):
             w = f"{s}v{v}"
+            slugs[w] = lim_id
             core = proximity(r["thing"], r["place"]) or f"(?:{_alt(r['thing'])})"
             ctx = _alt(r["apparatus"])
             cols.append(f"REGEXP_CONTAINS(body, r'''{core}''') AS {w}_hit")
@@ -430,22 +437,14 @@ def build_sql(plan, table, date_max=None, per_era=PER_ERA, per_limitation=PER_LI
             cols.append(f"REGEXP_CONTAINS(head, r'''{_alt(r['thing'])}''') AS {w}_hd")
             cols.append((f"REGEXP_CONTAINS(body, r'''{ctx}''')" if ctx else "TRUE")
                         + f" AS {w}_ctx")
-            oks.append(f"({w}_hit AND {w}_ctx)")
             #  Deliberately crude. This is a RECALL stage feeding a screener and then a reader; a
             #  clever score here is only a worse version of the judgement they make from the text.
-            scores_.append(f"IF({w}_hit AND {w}_ctx, LEAST({w}_n, 20) + IF({w}_clm, 25, 0) "
-                           f"+ IF({w}_hd, 40, 0), 0)")
-            ns.append(f"IF({w}_hit AND {w}_ctx, {w}_n, 0)")
-            clms.append(f"({w}_hit AND {w}_ctx AND {w}_clm)")
-            hds.append(f"({w}_hit AND {w}_ctx AND {w}_hd)")
-        #  POOLED UNDER THE LIMITATION, not per reading: the quota is per requirement, and a
-        #  document is offered once however many readings found it. Its score is the best reading's,
-        #  so a document that only one reading reaches is not penalised for that.
-        structs.append(
-            f"STRUCT('{s}' AS q, ({' OR '.join(oks)}) AS ok, "
-            f"(GREATEST({', '.join(scores_)}) + IF({s}_cpc, 15, 0)) AS score, "
-            f"GREATEST({', '.join(ns)}) AS n_cooc, ({' OR '.join(clms)}) AS in_claims, "
-            f"({' OR '.join(hds)}) AS in_title, {s}_cpc AS in_class)")
+            structs.append(
+                f"STRUCT('{w}' AS q, ({w}_hit AND {w}_ctx) AS ok, "
+                f"(LEAST({w}_n, 20) + IF({w}_clm, 25, 0) + IF({w}_hd, 40, 0) "
+                f"+ IF({s}_cpc, 15, 0)) AS score, {w}_n AS n_cooc, {w}_clm AS in_claims, "
+                f"{w}_hd AS in_title, {s}_cpc AS in_class)")
+        slugs.pop(s, None)
     date_clause = ""
     if date_max:
         d = str(date_max).replace("-", "")[:8]
@@ -535,13 +534,18 @@ def search(limitations, table, date_max=None, brief="", title="", plan=None,
         out["error"] = f"portfolio query failed: {str(e)[:200]}"
         return out
 
-    by_era, pool = {}, {}
+    #  Bucketed by (READING, era), which is what the SQL ranked within. A reading is its own query;
+    #  merging its rows into a limitation-wide list here would throw away the separate quotas the
+    #  query just spent and re-impose the single ranking they exist to escape.
+    by_bucket, pool = {}, {}
     for r in rows:
         lim_id = slugs.get(r["q"])
         if not lim_id:
             continue
-        pool[lim_id] = int(r.get("pool_q") or 0)
-        by_era.setdefault(lim_id, {}).setdefault(r.get("era") or "?", []).append({
+        #  The widest reading's pool, not the sum: the readings overlap heavily and a sum would
+        #  report a number that is not the size of anything.
+        pool[lim_id] = max(pool.get(lim_id, 0), int(r.get("pool_q") or 0))
+        by_bucket.setdefault(lim_id, {}).setdefault((r["q"], r.get("era") or "?"), []).append({
             "pub": r["pub"], "fam": str(r.get("family_id") or r["pub"]),
             "title": (r.get("title") or "")[:300],
             "abstract": (r.get("abstract") or "")[:2000],
@@ -553,21 +557,29 @@ def search(limitations, table, date_max=None, brief="", title="", plan=None,
             "why": (plan.get(lim_id) or {}).get("why") or "",
         })
 
-    #  PER LIMITATION, ROUND ROBIN ACROSS ERAS. Taking the top `per_limitation` of a limitation's
-    #  rows by score would re-impose the single ranked list the era buckets exist to escape: the
-    #  modern era is the biggest bucket and the highest-scoring one, so it would take the whole
-    #  allowance and the 1960s art — which is what kills claims — would never be offered.
+    #  PER LIMITATION, ROUND ROBIN ACROSS EVERY (READING, ERA) BUCKET. Taking the top
+    #  `per_limitation` by score would re-impose the single ranked list the buckets exist to
+    #  escape: the modern era is the biggest and highest-scoring one, so it would take the whole
+    #  allowance and the 1960s art — which is what kills claims — would never be offered. The same
+    #  is true of a reading that happens to match more documents than its siblings.
     by_lim = {}
-    for lim_id, eras in by_era.items():
-        buckets = [eras[name] for name, _lo, _hi in ERAS if eras.get(name)]
-        picked, depth = [], 0
+    for lim_id, buckets_by_key in by_bucket.items():
+        era_rank = {name: i for i, (name, _lo, _hi) in enumerate(ERAS)}
+        buckets = [buckets_by_key[k] for k in
+                   sorted(buckets_by_key, key=lambda k: (era_rank.get(k[1], 99), k[0]))]
+        picked, seen, depth = [], set(), 0
         while len(picked) < PER_LIMITATION:
             progressed = False
             for bucket in buckets:
                 if depth >= len(bucket):
                     continue
                 progressed = True
-                picked.append(bucket[depth])
+                row = bucket[depth]
+                #  One document, once, however many readings reached it.
+                if row["pub"] in seen:
+                    continue
+                seen.add(row["pub"])
+                picked.append(row)
                 if len(picked) >= PER_LIMITATION:
                     break
             if not progressed:
