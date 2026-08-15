@@ -57,6 +57,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import db
 import claim_rescue
+import limitations as limmod
 import coverage_rank
 import deep_analysis
 import llm
@@ -819,6 +820,23 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
                                 #  the chart's row labels need to know which ones those are.
                                 "independent": bool(c.get("independent")),
                                 "text": text})
+    #  TYPE A vs TYPE B. A disclosure with no claims is a concept search; a patent WITH claims is
+    #  an attack, and its unit of work is the limitation, not the claim and not the invention. See
+    #  limitations.py — the two objectives disagree constantly and sharing one was measurably
+    #  wrong: three references an attorney cited were read in full, grounded 0/0/1 of 28 invention
+    #  features, and were ranked 253/346/152 because each answers exactly one requirement.
+    stype = limmod.search_type(report)
+    lims = []
+    if stype == limmod.TYPE_B and claim_items:
+        try:
+            lims = limmod.split_claims(claim_items)
+        except Exception:
+            traceback.print_exc()
+        if lims:
+            #  The reader charts the limitations INSTEAD of the whole claims. Same machinery, same
+            #  grounding and refutation gates; a better question. The label is the ledger key.
+            claim_items = limmod.as_chart_items(lims)
+    report["search_type"] = stype
     ranked = list(report.get("ranked_families") or [])
     #  ORACLE INJECTION, diagnostic only. Hands a stage the gold it never received so the stages
     #  BELOW it can be measured in isolation. Disarmed unless a flag, a valid stage and a non-empty
@@ -1027,6 +1045,26 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     #  THE ORPHAN-CLAIM RESCUE. Runs HERE — after the whole search and reading are finished, before
     #  anything is scored or ordered — so the references it brings back compete on the same
     #  evidence as the rest of the report rather than being listed beside it. See claim_rescue.
+    #  THE LEDGER. One row per limitation, filled only from grounded, located, refuter-survived
+    #  cells, and it is the stopping rule for a Type B search: a budget that expires while claim 7
+    #  has nothing against it is an abandoned search, not a finished one, and the two have looked
+    #  identical on the page.
+    ledger = None
+    if lims:
+        try:
+            ledger = limmod.Ledger(lims)
+            n = ledger.ingest_charts(charts)
+            s = ledger.summary()
+            report["ledger"] = ledger.to_dict()
+            print(f"[ledger] {s['n_limitations']} limitations across {s['n_claims']} claims: "
+                  f"{s['counts']['covered']} covered, {s['counts']['partial']} partial, "
+                  f"{s['counts']['uncovered']} with nothing ({n} cells)"
+                  + (f" — ANTICIPATED: {', '.join(s['anticipated'])}" if s["anticipated"] else ""),
+                  flush=True)
+        except Exception:
+            traceback.print_exc()
+            ledger = None
+
     rescue = {"ran": False}
     if RESCUE_CLAIMS and claim_items:
         t2 = time.time()
@@ -1041,12 +1079,26 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
                               {c.get("pub") for c in charts if c.get("pub")}),
                 exclude_families={r["fam"] for r in rows},
                 enrich=lambda chosen: _enrich_missing_text(chosen, on_progress=emit),
-                emit=emit)
+                ledger=ledger, emit=emit)
             if rescued_refs:
                 charts.extend(rescued_refs)
         except Exception:
             traceback.print_exc()
         chart_seconds += time.time() - t2
+        #  Re-ingest so the stored ledger is the FINAL state. Without this the report ships the
+        #  coverage the rescue was launched to fix, which is the one number it must not show.
+        if ledger is not None:
+            try:
+                ledger.ingest_charts(charts)
+                report["ledger"] = ledger.to_dict()
+                s2 = ledger.summary()
+                print(f"[ledger] after the rescue: {s2['counts']['covered']} covered, "
+                      f"{s2['counts']['partial']} partial, {s2['counts']['uncovered']} with "
+                      f"nothing; done={s2['done']}"
+                      + (f" — ANTICIPATED: {', '.join(s2['anticipated'])}"
+                         if s2["anticipated"] else ""), flush=True)
+            except Exception:
+                traceback.print_exc()
 
     rar = rarity(charts, features, [c["label"] for c in claim_items])
     lead_map = leaders(charts, rar)
@@ -1192,6 +1244,9 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         "reread_refs": reread_refs,
         "reread_cells": reread_changed,
         "rescue": rescue,
+        "search_type": stype,
+        "n_limitations": len(lims),
+        "ledger_summary": (ledger.summary() if ledger else None),
         "claim_idf": {k: round(v, 3) for k, v in (rar.get("claim_idf") or {}).items()},
         "claim_df": rar.get("claim_df") or {},
         "n_candidates": len(rows),

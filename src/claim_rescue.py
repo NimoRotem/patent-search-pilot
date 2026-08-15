@@ -361,7 +361,8 @@ def find_candidates(plans, subject, mode, exclude_pubs, exclude_families, retrie
 # the whole pass
 # ---------------------------------------------------------------------------
 def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief="", title="",
-        description="", exclude_pubs=(), exclude_families=(), enrich=None, emit=None):
+        description="", exclude_pubs=(), exclude_families=(), enrich=None, ledger=None,
+        emit=None):
     """Rescue the orphaned claims. Returns (new_charts, summary). Never raises.
 
     `charts` is mutated in place by the re-read of already-read references; `new_charts` are extra
@@ -374,7 +375,24 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
     if not claim_items:
         return [], summary
 
-    short, matched = orphans(charts, claim_items)
+    #  THE LEDGER DECIDES WHAT IS MISSING, when there is one. It tracks LIMITATIONS — the
+    #  separate requirements inside each claim — so "uncovered" here means a specific requirement
+    #  no document has been shown to teach, not a whole conjunction that failed because one part
+    #  of it did. Without a ledger (Type A, or a run whose claims could not be split) fall back to
+    #  counting matches per claim.
+    if ledger is not None:
+        rows = ledger.uncovered(include_partial=False)[:MAX_CLAIMS]
+        if not rows:
+            rows = ledger.uncovered(include_partial=True)[:MAX_CLAIMS]
+        short = [{"label": l["id"], "claim_no": l.get("claim_no"),
+                  "independent": bool(l.get("independent")), "text": l["text"]} for l in rows]
+        matched = {l["id"]: len(ledger.evidence.get(l["id"]) or [])
+                   for l in ledger.limitations}
+        summary["driver"] = "ledger"
+        summary["ledger_before"] = ledger.summary()["counts"]
+    else:
+        short, matched = orphans(charts, claim_items)
+        summary["driver"] = "claim_matches"
     summary["claim_matches"] = dict(matched)
     if not short:
         summary["seconds"] = round(time.time() - started, 1)

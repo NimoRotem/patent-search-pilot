@@ -76,7 +76,10 @@ MAX_FEATURES = int(os.environ.get("DEEP_MAX_FEATURES", "60"))
 #  breath (10 of 12 grounded when asked alone, 2 of 12 when asked together). Two batches of 24
 #  costs one extra pass over the reference text and buys back the other half of the chart.
 FEATURE_BATCH = int(os.environ.get("DEEP_FEATURE_BATCH", "24"))
-MAX_INPUT_CLAIMS = 30
+#  Raised for Type B: the reader charts LIMITATIONS, and eleven claims become sixty-odd of them.
+MAX_INPUT_CLAIMS = int(os.environ.get("DEEP_MAX_INPUT_CLAIMS", "80"))
+#  Claims (or limitations) per model call. See the batching comment in analyse_reference.
+CLAIM_BATCH = int(os.environ.get("DEEP_CLAIM_BATCH", "12"))
 #  Per-reference text budget. A US grant is typically 40,000-120,000 characters; the long tail
 #  reaches 400,000. Send the whole thing up to this bound and SAY when it was cut, rather than
 #  silently reading a quarter of the document.
@@ -396,9 +399,13 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
         #  checklist, and averaging several would only give numbers to reconcile.
         if i == 0 and isinstance(got.get("overall"), dict):
             out["overall"] = got["overall"]
-    if claim_payload:
-        got = _ask([], claim_payload)
-        out["claims"] = got.get("claims") or []
+    #  BATCHED, for exactly the reason the feature pass is. A Type B search charts LIMITATIONS
+    #  rather than whole claims — sixty rows where there used to be eleven — and a single answer
+    #  carrying sixty quoted, located rows is where a reader starts economising. Measured on the
+    #  feature side: the same reference grounded 10 of 12 asked alone and 2 of 12 asked together.
+    for i in range(0, len(claim_payload), CLAIM_BATCH):
+        got = _ask([], claim_payload[i:i + CLAIM_BATCH])
+        out["claims"].extend(got.get("claims") or [])
         if not out.get("overall") and isinstance(got.get("overall"), dict):
             out["overall"] = got["overall"]
     if not (out.get("features") or out.get("claims")):
