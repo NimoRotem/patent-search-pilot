@@ -129,6 +129,236 @@ def classes_for(claims, hints=None, brief="", title=""):
 
 
 # ---------------------------------------------------------------------------
+# route 0: the world, with its text
+# ---------------------------------------------------------------------------
+#  How many rounds of the vocabulary loop. Each one re-queries with the terms the art ITSELF uses
+#  and the classes it ACTUALLY lives in, which is the only reliable way to stop matching our own
+#  vocabulary. Two is where new families stopped appearing in testing.
+WS_ROUNDS = int(os.environ.get("ACQUIRE_WS_ROUNDS", "2"))
+WS_PER_QUERY = int(os.environ.get("ACQUIRE_WS_PER_QUERY", "300"))
+WS_INGEST_MAX = int(os.environ.get("ACQUIRE_WS_INGEST", "200"))
+WS_CANDIDATES = int(os.environ.get("ACQUIRE_WS_CANDIDATES", "60"))
+
+
+#  Terms so common in any patent that learning them widens a query to nothing. Not a stop-word
+#  list for text: these are specifically the words `top_terms` returns for almost every mechanical
+#  document, and each one alone will pull an entire CPC class.
+_GENERIC = {
+    "assembly", "apparatus", "device", "system", "member", "portion", "element", "unit", "means",
+    "chamber", "chambers", "housing", "casing", "body", "wall", "walls", "surface", "opening",
+    "hole", "inlet", "outlet", "conduit", "duct", "pipe", "tube", "passage", "flow", "air",
+    "gas", "gases", "fluid", "engine", "combustion engine", "combustion engines", "cylinder",
+    "vehicle", "aircraft", "motor", "application", "embodiment", "invention", "figure",
+}
+
+
+def _anchor_terms(brief, title, claims):
+    """Two or three words that say what field this invention is in, for anchoring learned terms."""
+    text = " ".join([str(title or ""), str(brief or "")[:1200],
+                     " ".join(str(c.get("text") or "")[:300] for c in (claims or []))]).lower()
+    #  Deliberately a fixed vocabulary rather than an LLM call: this runs inside a loop, it must be
+    #  deterministic, and getting it wrong silently narrows every query in the round.
+    candidates = [
+        "vacuum", "suction", "gripper", "grip", "handle", "handheld", "hand-held", "portable",
+        "lifting", "lifter", "workpiece", "pump", "blower", "power tool", "hand tool",
+        "robot", "end effector", "conveyor", "clamp", "chuck", "seal", "cup",
+    ]
+    return [c for c in candidates if c in text]
+
+
+def by_worldset(claims, hints=None, brief="", title="", subject=None, seeds=(), emit=None):
+    """Search all 170M patents, in the classes that own each uncovered claim, and INGEST WITH TEXT.
+
+    This is the route that fixes the failure the other two only work around. Measured against the
+    ten references an attorney filed: three were absent from the local corpus entirely and three
+    more were text-less stubs — and NINE OF THE TEN are in a BigQuery working set with their full
+    text, including all three that were unreachable. The seeded corpus was never the world; it was
+    eight CPC branches, and the art that invalidates a claim is routinely somewhere else.
+
+    Three loops, in order of what they buy:
+
+      1. CLASS-TARGETED LEXICAL over the working set, per claim, in the classes the model says own
+         that claim's idea.
+      2. THE VOCABULARY LOOP. Take what round 1 found, read the terms Google already extracted for
+         those documents (top_terms) and the CPC groups they actually carry, and query again with
+         THOSE. A model asked what else a thing might be called will not produce Blatt's real
+         words, "porous frequency-distorter insert"; the documents that disclose it will.
+      3. THE SIMILAR GRAPH. Google's own precomputed nearest neighbours of every seed, over all
+         170M publications — free query-by-example with no index of ours to maintain. On the
+         reference the attorney called the best match it returns 1950s art, which is the era that
+         kills claims and loses on every relevance ranking there is.
+
+    Everything selected is ingested WITH ITS TEXT or not at all.
+    """
+    out = {"candidates": [], "plan": {}, "table": "", "rows": 0, "n_new": 0, "with_text": 0,
+           "terms": [], "classes": [], "queries": 0, "error": ""}
+    if not ENABLED:
+        out["error"] = "acquisition disabled"
+        return out
+    try:
+        import worldset
+    except Exception as e:
+        out["error"] = f"worldset unavailable: {e}"
+        return out
+
+    plan = classes_for(claims, hints=hints, brief=brief, title=title)
+    out["plan"] = plan
+    if not plan:
+        out["error"] = "no classes named"
+        return out
+    cpc = sorted({c for p in plan.values() for c in (p.get("cpc") or [])})
+    #  The subject's own classes belong in the working set too: the art that anticipates a claim
+    #  outright usually IS in the invention's field, and only the awkward limitations are not.
+    for extra in (getattr(subject, "cpc", None) or []):
+        c = worldset.valid_cpc(extra)
+        if c and c not in cpc:
+            cpc.append(c)
+    if not cpc:
+        out["error"] = "no valid classes"
+        return out
+    date_max = getattr(subject, "efd", None)
+    if emit:
+        emit("worldset_build_start", cpc=cpc, date_max=str(date_max or ""))
+    try:
+        ws = worldset.build(cpc, date_max=date_max)
+    except Exception as e:
+        traceback.print_exc()
+        out["error"] = f"working set failed: {str(e)[:200]}"
+        return out
+    out["table"], out["rows"] = ws.get("table", ""), ws.get("rows")
+    out["classes"] = ws.get("cpc") or cpc
+    if not out["table"]:
+        out["error"] = ws.get("error") or "no working set"
+        return out
+    if emit:
+        emit("worldset_built", rows=out["rows"], cpc=len(out["classes"]),
+             cached=ws.get("cached"), gb=round(float(ws.get("gb") or 0)))
+
+    found = {}                       # pub -> {"for_claim", "why"}
+    terms_used = set()
+    #  What this invention IS, in two or three words the art would also use. Every learned-vocabulary
+    #  query must still match one of these, or the loop walks out of the field: see the comment on
+    #  `sweep(..., anchors, ...)` below.
+    anchors = [a for a in _anchor_terms(brief, title, claims) if a][:6]
+    if anchors:
+        print(f"[acquire] domain anchors for the vocabulary loop: {', '.join(anchors)}", flush=True)
+
+    def sweep(label, must_any, must_all, classes, why):
+        if not must_any:
+            return
+        out["queries"] += 1
+        for h in worldset.lexical(out["table"], must_any=must_any, must_all=must_all,
+                                  cpc=classes, limit=WS_PER_QUERY):
+            found.setdefault(h["pub"], {"for_claim": label, "why": why, "title": h.get("title")})
+
+    #  ROUND 1 — what the model thinks this claim is about, in the classes it named.
+    for label, p in plan.items():
+        kws = list(p.get("keywords") or [])
+        terms_used.update(kws)
+        sweep(label, kws, [], p.get("cpc") or [], "class-targeted keywords")
+        #  and the same terms with NO class filter, because a class guess that is wrong should
+        #  not also be a wall.
+        sweep(label, kws, [], [], "keywords, unclassed")
+
+    #  ROUND 2+ — the vocabulary and the classes the ART uses, not the ones we guessed.
+    for rnd in range(max(0, WS_ROUNDS - 1)):
+        if not found:
+            break
+        heads = list(found)[:120]
+        try:
+            learned = [t["term"] for t in worldset.top_terms(heads, limit=120)
+                       if len(t["term"]) > 3][:40]
+            classes = [c["code"][:8] for c in worldset.classes_of(heads, limit=24)]
+        except Exception:
+            traceback.print_exc()
+            break
+        fresh = [t for t in learned if t.lower() not in {x.lower() for x in terms_used}
+                 and t.lower() not in _GENERIC]
+        if not fresh:
+            break
+        terms_used.update(fresh)
+        out["terms"] = sorted(terms_used)[:80]
+        if emit:
+            emit("worldset_vocab", round=rnd + 2, terms=fresh[:12], classes=classes[:8])
+        print(f"[acquire] vocabulary round {rnd + 2}: the art calls it "
+              f"{', '.join(fresh[:10])} — and lives in {', '.join(classes[:6])}", flush=True)
+        before = len(found)
+        for label in plan:
+            #  ANCHORED. Learned vocabulary is not free of its class: run this unanchored against
+            #  F01N and "exhaust, chamber, silencer, engine" retrieves the whole automotive muffler
+            #  field, which is enormous, dense, and not the invention. MEASURED on the first live
+            #  run of this loop: round 2 returned diesel silencers, aircraft attenuators and model
+            #  airplane mufflers, and not one hand-tool or vacuum document. The subject's own
+            #  domain words go in as must_all so a learned term can WIDEN the query without being
+            #  allowed to relocate it.
+            sweep(label, fresh, anchors, classes,
+                  f"vocabulary learned from the art, round {rnd + 2}")
+            if not anchors:
+                sweep(label, fresh, [], classes,
+                      f"vocabulary learned from the art, unanchored, round {rnd + 2}")
+        if len(found) == before:
+            break
+
+    #  ROUND 3 — Google's own similarity graph from every seed we trust.
+    seed_pubs = [p for p in (seeds or [])][:40]
+    if seed_pubs:
+        try:
+            for r in worldset.similar_to(seed_pubs, limit=200, date_max=date_max):
+                found.setdefault(r["pub"], {"for_claim": "", "why": "similar-graph neighbour",
+                                            "title": ""})
+        except Exception:
+            traceback.print_exc()
+
+    if not found:
+        out["error"] = "no hits"
+        return out
+    print(f"[acquire] worldset: {out['queries']} queries over {len(out['classes'])} classes of "
+          f"{out['rows'] or '?'} publications -> {len(found)} distinct hits", flush=True)
+
+    #  INGEST WITH TEXT. Bounded, because each one is a row plus claims plus paragraphs plus
+    #  embeddings in the local corpus.
+    pubs = list(found)[:WS_INGEST_MAX]
+    if emit:
+        emit("worldset_ingest_start", n=len(pubs))
+    try:
+        res = worldset.ingest(pubs, table=out["table"])
+        out["n_new"], out["with_text"] = res.get("rows", 0), res.get("with_text", 0)
+    except Exception as e:
+        traceback.print_exc()
+        out["error"] = f"ingest failed: {str(e)[:200]}"
+        return out
+
+    import db
+    have = {}
+    try:
+        with db.cursor() as cur:
+            cur.execute("""SELECT publication_number pub, title,
+                                  COALESCE(NULLIF(simple_family_id,''), publication_number) fam, id
+                           FROM publications WHERE publication_number = ANY(%s)""", (pubs,))
+            have = {r["pub"]: r for r in cur.fetchall()}
+    except Exception:
+        traceback.print_exc()
+    seen_fam = set()
+    for pub in pubs:
+        row = have.get(pub)
+        if not row or row["fam"] in seen_fam:
+            continue
+        seen_fam.add(row["fam"])
+        meta = found.get(pub) or {}
+        out["candidates"].append({
+            "pub": pub, "fam": row["fam"], "pid": row["id"],
+            "title": (row.get("title") or meta.get("title") or "")[:300],
+            "for_claim": meta.get("for_claim") or "",
+            "acquired": "worldset", "why": meta.get("why") or "",
+        })
+        if len(out["candidates"]) >= WS_CANDIDATES:
+            break
+    if emit:
+        emit("worldset_done", n=len(out["candidates"]), with_text=out["with_text"])
+    return out
+
+
+# ---------------------------------------------------------------------------
 # route 1: fetch by concept and class
 # ---------------------------------------------------------------------------
 def by_concept(claims, hints=None, brief="", title="", emit=None):

@@ -449,6 +449,25 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
     still_short = [c for c in claim_items if c["label"] in set(plans)]
     try:
         import claim_acquire
+        #  THE WORLD FIRST. All 170M patents, in the classes that own these claims, ingested WITH
+        #  THEIR TEXT — which is the difference between finding a document and being able to read
+        #  it. Measured: of ten references an attorney filed, three were absent from this corpus
+        #  and three more were text-less stubs; nine of the ten are in a BigQuery working set with
+        #  full text. Seeded from the references the reading already trusts, so Google's own
+        #  similarity graph expands from evidence rather than from a guess.
+        ws = claim_acquire.by_worldset(
+            still_short, hints=claim_hints, brief=brief, title=title, subject=subject,
+            seeds=[r["pub"] for r in read_head[:40]], emit=emit)
+        summary["worldset"] = {k: ws.get(k) for k in
+                               ("rows", "queries", "n_new", "with_text", "error")}
+        summary["worldset_classes"] = ws.get("classes") or []
+        summary["worldset_terms"] = (ws.get("terms") or [])[:40]
+        seen0 = {c["pub"] for c in cands} | set(exclude_pubs or ())
+        for c in ws.get("candidates") or []:
+            if c["pub"] not in seen0:
+                seen0.add(c["pub"])
+                cands.append(c)
+
         got = claim_acquire.by_concept(still_short, hints=claim_hints, brief=brief, title=title,
                                        emit=emit)
         summary["acquire"] = {k: got.get(k) for k in
