@@ -65,6 +65,10 @@ _SAFE = re.compile(r"[^a-z0-9 /+-]")
 #  Terms shorter than this match inside other words and pull whole classes.
 MIN_TERM = 4
 MAX_TERMS_PER_FACET = int(os.environ.get("LIMQ_MAX_TERMS", "14"))
+#  Alternative readings of one limitation, all evaluated in the same scan. See the
+#  comment in facets_for: different readings retrieve different documents, and which
+#  one is right cannot be known in advance.
+MAX_READINGS = int(os.environ.get("LIMQ_MAX_READINGS", "3"))
 #  Sentence window for the THING-in-the-PLACE co-occurrence, in characters. 60 measured; 120 was
 #  no better on recall and 2,000 more hits.
 WINDOW = int(os.environ.get("LIMQ_WINDOW", "60"))
@@ -162,9 +166,22 @@ _FACET_SYS = (
     "particular idea is ACTUALLY classified — by anyone, in any field. NOT the subclass of the "
     "invention as a whole; the search has already covered that.\n"
     "\n"
-    'Return ONLY JSON: {"limitations":[{"item":"<the limitation id verbatim>",'
-    '"thing":["muffler","silenc"],"place":["exhaust","air flow"],'
-    '"apparatus":["handle","portable"],"cpc":["F01N","B25F"],"why":"one short sentence"}]} '
+    "GIVE TWO OR THREE READINGS OF THE SAME LIMITATION, and make them genuinely different.\n"
+    "\"a sound-damping device arranged in the exhaust air path within the grip portion\" can be "
+    "searched as damping NEAR the exhaust it acts on, or as damping NEAR the handle it sits in, "
+    "or as the absorbent material it is made of near either. Those retrieve different documents "
+    "and there is no way to know in advance which is right — running all of them costs nothing, "
+    "because every reading is evaluated in the same single pass over the data.\n"
+    "Reading 1 should anchor on what the thing ACTS ON (the flow, the load, the signal). Reading 2 "
+    "on where it physically SITS. Reading 3, if there is one, on what it is MADE OF or its "
+    "distinctive shape. Do not repeat one reading with synonyms.\n"
+    "\n"
+    'Return ONLY JSON: {"limitations":[{"item":"<the limitation id verbatim>","cpc":["F01N",'
+    '"B25F"],"why":"one short sentence","readings":['
+    '{"thing":["muffler","silenc"],"place":["exhaust","air flow"],'
+    '"apparatus":["handle","portable"]},'
+    '{"thing":["muffler","silenc"],"place":["grip","handgrip"],'
+    '"apparatus":["vacuum","blower"]}]}]} '
     "with one entry per limitation, in the order given."
 )
 
@@ -271,12 +288,29 @@ def facets_for(limitations, brief="", title="", log=print):
     for lim, raw in zip(lims, aligned):
         if not isinstance(raw, dict):
             continue
-        thing = _terms(raw.get("thing"))
-        place = _terms(raw.get("place"))
-        appar = _terms(raw.get("apparatus"), limit=10)
-        if not thing:
+        #  SEVERAL READINGS OF ONE LIMITATION. "a sound-damping device in the exhaust air path
+        #  within the grip portion" can be searched as damping near the exhaust or as damping near
+        #  the handle, and those retrieve different documents: measured, the model's own reading
+        #  found Cho and GRABO and missed Blatt and Quackenbush, while a hand-written one anchored
+        #  on the exhaust did the reverse. Together they cover 7 of the 10. Running both costs
+        #  nothing — every reading is evaluated in the same single pass.
+        raw_readings = raw.get("readings")
+        if not isinstance(raw_readings, list) or not raw_readings:
+            raw_readings = [raw]                      # a model that answered the older shape
+        readings = []
+        for r in raw_readings[:MAX_READINGS]:
+            if not isinstance(r, dict):
+                continue
+            t, pl = _terms(r.get("thing")), _terms(r.get("place"))
+            if not t:
+                continue
+            readings.append({"thing": t, "place": pl,
+                             "apparatus": _terms(r.get("apparatus"), limit=10)})
+        if not readings:
             log(f"[limq] {lim['id']}: no subject facet returned, skipped")
             continue
+        thing, place, appar = (readings[0]["thing"], readings[0]["place"],
+                               readings[0]["apparatus"])
         cpc = []
         for c in (raw.get("cpc") or []):
             c4 = "".join(str(c).split()).upper()[:4]
@@ -284,12 +318,24 @@ def facets_for(limitations, brief="", title="", log=print):
                     and c4 not in cpc):
                 cpc.append(c4)
         plan[lim["id"]] = {
+            #  `readings` is what build_sql uses; thing/place/apparatus mirror the first one so a
+            #  caller that only wants the primary reading does not have to know about the rest.
+            "readings": readings,
             "thing": thing, "place": place, "apparatus": appar, "cpc": cpc[:6],
             "why": " ".join(str(raw.get("why") or "").split())[:200],
             "text": str(lim.get("text") or "")[:400],
             "claim_label": lim.get("claim_label") or "",
         }
     return plan
+
+
+def readings_of(p):
+    """The readings of one limitation, from either plan shape. Never empty for a usable plan."""
+    rs = [r for r in (p.get("readings") or []) if (r or {}).get("thing")]
+    if rs:
+        return rs
+    return ([{"thing": p.get("thing") or [], "place": p.get("place") or [],
+              "apparatus": p.get("apparatus") or []}] if p.get("thing") else [])
 
 
 # ---------------------------------------------------------------------------
@@ -321,28 +367,44 @@ def build_sql(plan, table, date_max=None, per_era=PER_ERA, per_limitation=PER_LI
     for i, (lim_id, p) in enumerate(plan.items()):
         s = _slug(i)
         slugs[s] = lim_id
-        core = proximity(p["thing"], p["place"]) or f"(?:{_alt(p['thing'])})"
-        ctx = _alt(p["apparatus"])
-        thing_alt = _alt(p["thing"])
-        cols.append(f"REGEXP_CONTAINS(body, r'''{core}''') AS {s}_hit")
-        cols.append(f"ARRAY_LENGTH(REGEXP_EXTRACT_ALL(body, r'''{core}''')) AS {s}_n")
-        cols.append(f"REGEXP_CONTAINS(claims, r'''{core}''') AS {s}_clm")
-        cols.append(f"REGEXP_CONTAINS(head, r'''{thing_alt}''') AS {s}_hd")
-        cols.append(f"{'REGEXP_CONTAINS(body, r' + chr(39)*3 + ctx + chr(39)*3 + ')' if ctx else 'TRUE'} AS {s}_ctx")
+        readings = readings_of(p)
+        if not readings:
+            continue
         #  CLASS IS A BOOST, NEVER A FILTER. A wrong class guess must not be a wall: measured,
         #  narrowing the CPC channel to the subject's own symbols returned 0 of 12 cited references.
-        if p["cpc"]:
+        #  One per limitation, shared by its readings.
+        if p.get("cpc"):
             like = " OR ".join(f"c LIKE '{c}%'" for c in p["cpc"])
             cols.append(f"EXISTS (SELECT 1 FROM UNNEST(cpc) c WHERE {like}) AS {s}_cpc")
         else:
             cols.append(f"FALSE AS {s}_cpc")
-        #  Deliberately crude. This is a RECALL stage feeding a screener and then a reader; a
-        #  clever score here is only a worse version of the judgement they make from the text.
+        oks, scores_, ns, clms, hds = [], [], [], [], []
+        for v, r in enumerate(readings):
+            w = f"{s}v{v}"
+            core = proximity(r["thing"], r["place"]) or f"(?:{_alt(r['thing'])})"
+            ctx = _alt(r["apparatus"])
+            cols.append(f"REGEXP_CONTAINS(body, r'''{core}''') AS {w}_hit")
+            cols.append(f"ARRAY_LENGTH(REGEXP_EXTRACT_ALL(body, r'''{core}''')) AS {w}_n")
+            cols.append(f"REGEXP_CONTAINS(claims, r'''{core}''') AS {w}_clm")
+            cols.append(f"REGEXP_CONTAINS(head, r'''{_alt(r['thing'])}''') AS {w}_hd")
+            cols.append((f"REGEXP_CONTAINS(body, r'''{ctx}''')" if ctx else "TRUE")
+                        + f" AS {w}_ctx")
+            oks.append(f"({w}_hit AND {w}_ctx)")
+            #  Deliberately crude. This is a RECALL stage feeding a screener and then a reader; a
+            #  clever score here is only a worse version of the judgement they make from the text.
+            scores_.append(f"IF({w}_hit AND {w}_ctx, LEAST({w}_n, 20) + IF({w}_clm, 25, 0) "
+                           f"+ IF({w}_hd, 40, 0), 0)")
+            ns.append(f"IF({w}_hit AND {w}_ctx, {w}_n, 0)")
+            clms.append(f"({w}_hit AND {w}_ctx AND {w}_clm)")
+            hds.append(f"({w}_hit AND {w}_ctx AND {w}_hd)")
+        #  POOLED UNDER THE LIMITATION, not per reading: the quota is per requirement, and a
+        #  document is offered once however many readings found it. Its score is the best reading's,
+        #  so a document that only one reading reaches is not penalised for that.
         structs.append(
-            f"STRUCT('{s}' AS q, {s}_hit AND {s}_ctx AS ok, "
-            f"(LEAST({s}_n, 20) + IF({s}_clm, 25, 0) + IF({s}_hd, 40, 0) "
-            f"+ IF({s}_cpc, 15, 0)) AS score, {s}_n AS n_cooc, {s}_clm AS in_claims, "
-            f"{s}_hd AS in_title, {s}_cpc AS in_class)")
+            f"STRUCT('{s}' AS q, ({' OR '.join(oks)}) AS ok, "
+            f"(GREATEST({', '.join(scores_)}) + IF({s}_cpc, 15, 0)) AS score, "
+            f"GREATEST({', '.join(ns)}) AS n_cooc, ({' OR '.join(clms)}) AS in_claims, "
+            f"({' OR '.join(hds)}) AS in_title, {s}_cpc AS in_class)")
     date_clause = ""
     if date_max:
         d = str(date_max).replace("-", "")[:8]
