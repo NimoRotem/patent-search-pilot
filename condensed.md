@@ -492,6 +492,44 @@ Bosch is the demonstration. Under a single query built for the sound-damping req
 cooling air — it ranks **135**. Cho likewise: cited for a suction plate forming a vacuum chamber
 with an embedded pump, and buried by any query about damping.
 
+### 13b-2. THE RESULT, and the five configurations it took to get there
+
+Scored the same way every time — the model's own facets, the live caps, the working set above,
+counting a reference as found when the portfolio returns it inside `per_era=350`:
+
+| configuration | of the ten |
+|---|---|
+| the model writes paraphrases (`"through grip portion"`, `"sound damping device"`) | **0** |
+| terms repaired to strings a document contains | 4 — Cho, GRABO, Hukelmann, Sadler |
+| the same code, a second sample of the facets | 3 — Blatt, Quackenbush, Sadler |
+| two samples merged, readings POOLED under the limitation | 2 — Quackenbush, Sadler |
+| two samples merged, a quota per READING | **8** — Blatt, Cho, Crevling, GRABO, Hukelmann, Perlmutter, Quackenbush, Sadler |
+
+Missing at 8: Sato and Bosch. Both are reachable — a hand-written reading anchored on the exhaust
+found Bosch at era-rank 135 — so this is the facets, not the machinery.
+
+Four things are load-bearing there and each was measured, not reasoned:
+
+1. **A term has to be a string a document contains.** Asked for "surface forms" the model returned
+   `"through grip portion"`, `"in first housing portion"`, `"sound damping device"`. No patent
+   contains any of them; a real document says "the exhaust air is guided through the hollow grip
+   portion". `_terms` now strips leading prepositions and articles, drops a meaningless head noun,
+   and keeps the first two words. **0 of 10 → 4.**
+2. **One sample of the facets is a coin flip.** Same code, same limitations, two samples: one
+   found Cho, GRABO, Hukelmann, Sadler; the next Blatt, Quackenbush, Sadler. Three to five either
+   way and a *different* three to five. This is the largest single source of variance in the whole
+   portfolio, larger than any cap or threshold.
+3. **Merge the samples, but do NOT pool their readings.** OR-ing the readings and taking the best
+   score returned **2 of 10 — worse than either sample alone**, because the union admits every
+   document any reading reaches into the SAME per-era quota, so the pool grows faster than the
+   signal and dilutes the ranking the quota is spending.
+4. **A reading is a distinct query and needs its own quota**, exactly as a limitation does. With
+   that, Quackenbush lands at era-rank **2**, Sadler at 8, Perlmutter at 8. **2 of 10 → 8.**
+
+The general shape, and it has now bitten in four different places in this pipeline: *combining
+independent evidence by union or averaging destroys it; combining it by giving each source its own
+quota preserves it.*
+
 ### 13c. Era is its own competition
 
 Quackenbush (1960, and the attorney's most comprehensive match) is **1,971 of 14,373** overall and
