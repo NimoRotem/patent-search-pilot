@@ -69,6 +69,17 @@ MAX_TERMS_PER_FACET = int(os.environ.get("LIMQ_MAX_TERMS", "14"))
 #  comment in facets_for: different readings retrieve different documents, and which
 #  one is right cannot be known in advance.
 MAX_READINGS = int(os.environ.get("LIMQ_MAX_READINGS", "3"))
+#  INDEPENDENT SAMPLES OF THE FACETS, merged. This is not belt-and-braces, it is the largest single
+#  source of variance in the whole portfolio. MEASURED, twice, on the same code and the same
+#  limitations: one sample returned Cho, GRABO, Hukelmann and Sadler; the next returned Blatt,
+#  Quackenbush and Sadler. Three to five of the ten either way, and a DIFFERENT three to five. The
+#  union of the two is six. Which words the model reaches for is a coin flip, and the fix for a
+#  coin flip is to toss it twice — two model calls against one BigQuery scan that costs the same
+#  whatever it evaluates.
+SAMPLES = int(os.environ.get("LIMQ_SAMPLES", "2"))
+#  Readings kept per limitation after merging the samples. Every one is five more regexes per row
+#  over ~2.4M rows, so this is the compute bound rather than a cost bound.
+MAX_READINGS_TOTAL = int(os.environ.get("LIMQ_MAX_READINGS_TOTAL", "4"))
 #  Sentence window for the THING-in-the-PLACE co-occurrence, in characters. 60 measured; 120 was
 #  no better on recall and 2,000 more hits.
 WINDOW = int(os.environ.get("LIMQ_WINDOW", "60"))
@@ -257,11 +268,28 @@ def proximity(a_terms, b_terms, window=WINDOW):
             rf"(?:{b})[a-z]{{0,10}}[^.]{{0,{window}}}(?:{a})")
 
 
-def facets_for(limitations, brief="", title="", log=print):
-    """{lim id: {"thing", "place", "apparatus", "cpc", "why"}} — the conjunction to search for.
+def _one_sample(payload, ids):
+    """One model call -> the raw per-limitation answers, aligned to the ids we asked about."""
+    try:
+        import llm
+        out = llm.chat_json(_FACET_SYS, json.dumps(payload, ensure_ascii=False),
+                            max_tokens=4000) or {}
+    except Exception:
+        traceback.print_exc()
+        return []
+    try:
+        import deep_analysis
+        return deep_analysis._align(out.get("limitations"), ids)
+    except Exception:
+        return out.get("limitations") or []
 
-    A limitation with no `thing` is dropped rather than searched: a query missing its subject facet
-    degenerates to "documents that mention exhaust", which is the failure this replaces.
+
+def facets_for(limitations, brief="", title="", samples=None, log=print):
+    """{lim id: {"readings", "cpc", "why", …}} — the conjunctions to search for.
+
+    A limitation with no `thing` in any reading is dropped rather than searched: a query missing
+    its subject facet degenerates to "documents that mention exhaust", which is the failure this
+    module replaces.
     """
     lims = list(limitations or [])[:MAX_LIMITATIONS]
     if not lims:
@@ -272,60 +300,73 @@ def facets_for(limitations, brief="", title="", log=print):
         "limitations": [{"item": l["id"], "text": str(l.get("text") or "")[:800],
                          "from_claim": l.get("claim_label") or ""} for l in lims],
     }
-    try:
-        import llm
-        out = llm.chat_json(_FACET_SYS, json.dumps(payload, ensure_ascii=False),
-                            max_tokens=4000) or {}
-    except Exception:
-        traceback.print_exc()
-        return {}
-    try:
-        import deep_analysis
-        aligned = deep_analysis._align(out.get("limitations"), [l["id"] for l in lims])
-    except Exception:
-        aligned = out.get("limitations") or []
+    ids = [l["id"] for l in lims]
+    n = max(1, int(SAMPLES if samples is None else samples))
+    #  Concurrent, because they are independent and the search is already 40 minutes long.
+    if n == 1:
+        samples_out = [_one_sample(payload, ids)]
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=n) as ex:
+            samples_out = list(ex.map(lambda _i: _one_sample(payload, ids), range(n)))
+    #  Merge by position: every sample answered the same list in the same order.
+    aligned = []
+    for i in range(len(lims)):
+        merged = [s[i] for s in samples_out if i < len(s) and isinstance(s[i], dict)]
+        aligned.append(merged)
     plan = {}
-    for lim, raw in zip(lims, aligned):
-        if not isinstance(raw, dict):
-            continue
-        #  SEVERAL READINGS OF ONE LIMITATION. "a sound-damping device in the exhaust air path
-        #  within the grip portion" can be searched as damping near the exhaust or as damping near
-        #  the handle, and those retrieve different documents: measured, the model's own reading
-        #  found Cho and GRABO and missed Blatt and Quackenbush, while a hand-written one anchored
-        #  on the exhaust did the reverse. Together they cover 7 of the 10. Running both costs
-        #  nothing — every reading is evaluated in the same single pass.
-        raw_readings = raw.get("readings")
-        if not isinstance(raw_readings, list) or not raw_readings:
-            raw_readings = [raw]                      # a model that answered the older shape
-        readings = []
-        for r in raw_readings[:MAX_READINGS]:
-            if not isinstance(r, dict):
-                continue
-            t, pl = _terms(r.get("thing")), _terms(r.get("place"))
-            if not t:
-                continue
-            readings.append({"thing": t, "place": pl,
-                             "apparatus": _terms(r.get("apparatus"), limit=10)})
+    for lim, answers in zip(lims, aligned):
+        #  SEVERAL READINGS OF ONE LIMITATION, from several samples. "a sound-damping device in the
+        #  exhaust air path within the grip portion" can be searched as damping near the exhaust or
+        #  as damping near the handle, and those retrieve different documents. Measured: one sample
+        #  found Cho, GRABO, Hukelmann, Sadler; the next found Blatt, Quackenbush, Sadler; a
+        #  hand-written reading anchored on the exhaust found Blatt, Bosch, Hukelmann, Quackenbush,
+        #  Sadler. Each is 3-5 of the ten and a DIFFERENT 3-5. Merging them is the difference
+        #  between a coin flip and coverage, and it costs model calls, not query cost — every
+        #  reading is evaluated in the same single pass.
+        readings, seen, cpc, why = [], set(), [], ""
+        for raw in answers:
+            raw_readings = raw.get("readings")
+            if not isinstance(raw_readings, list) or not raw_readings:
+                raw_readings = [raw]                  # a model that answered the older shape
+            for r in raw_readings[:MAX_READINGS]:
+                if not isinstance(r, dict):
+                    continue
+                t, pl = _terms(r.get("thing")), _terms(r.get("place"))
+                if not t:
+                    continue
+                #  Dedup on the pair that decides what the query matches; the apparatus facet only
+                #  keeps it in the right domain.
+                key = (tuple(sorted(t)), tuple(sorted(pl)))
+                if key in seen:
+                    continue
+                seen.add(key)
+                readings.append({"thing": t, "place": pl,
+                                 "apparatus": _terms(r.get("apparatus"), limit=10)})
+            for c in (raw.get("cpc") or []):
+                c4 = "".join(str(c).split()).upper()[:4]
+                if (len(c4) == 4 and c4[0].isalpha() and c4[1:3].isdigit() and c4[3].isalpha()
+                        and c4 not in cpc):
+                    cpc.append(c4)
+            why = why or " ".join(str(raw.get("why") or "").split())[:200]
         if not readings:
             log(f"[limq] {lim['id']}: no subject facet returned, skipped")
             continue
-        thing, place, appar = (readings[0]["thing"], readings[0]["place"],
-                               readings[0]["apparatus"])
-        cpc = []
-        for c in (raw.get("cpc") or []):
-            c4 = "".join(str(c).split()).upper()[:4]
-            if (len(c4) == 4 and c4[0].isalpha() and c4[1:3].isdigit() and c4[3].isalpha()
-                    and c4 not in cpc):
-                cpc.append(c4)
+        readings = readings[:MAX_READINGS_TOTAL]
         plan[lim["id"]] = {
             #  `readings` is what build_sql uses; thing/place/apparatus mirror the first one so a
             #  caller that only wants the primary reading does not have to know about the rest.
             "readings": readings,
-            "thing": thing, "place": place, "apparatus": appar, "cpc": cpc[:6],
-            "why": " ".join(str(raw.get("why") or "").split())[:200],
+            "thing": readings[0]["thing"], "place": readings[0]["place"],
+            "apparatus": readings[0]["apparatus"], "cpc": cpc[:8],
+            "why": why,
             "text": str(lim.get("text") or "")[:400],
             "claim_label": lim.get("claim_label") or "",
         }
+    if plan:
+        log(f"[limq] {len(plan)} limitations, "
+            f"{sum(len(p['readings']) for p in plan.values())} readings from "
+            f"{n} independent samples")
     return plan
 
 

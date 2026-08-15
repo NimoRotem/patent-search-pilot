@@ -178,6 +178,49 @@ def test_a_family_is_offered_once(monkeypatch):
     assert sum(1 for c in got["candidates"] if c["fam"] == "SAME") == 1
 
 
+def test_independent_facet_samples_are_merged_and_deduped(monkeypatch):
+    """THE LARGEST SOURCE OF VARIANCE. Same code, same limitations, two samples: one returned Cho,
+    GRABO, Hukelmann and Sadler, the next Blatt, Quackenbush and Sadler. Three to five of the ten
+    either way, and a different three to five. Merging is the difference between a coin flip and
+    coverage, and it costs model calls rather than query cost — every reading is evaluated in the
+    same single scan."""
+    calls = {"n": 0}
+
+    def fake(system, user, **k):
+        calls["n"] += 1
+        if calls["n"] % 2:
+            return {"limitations": [{"item": "L1", "cpc": ["F01N"], "why": "w", "readings": [
+                {"thing": ["muffler", "silenc"], "place": ["exhaust"],
+                 "apparatus": ["handle"]}]}]}
+        return {"limitations": [{"item": "L1", "cpc": ["G10K"], "readings": [
+            {"thing": ["muffler", "silenc"], "place": ["grip"], "apparatus": ["vacuum"]},
+            {"thing": ["muffler", "silenc"], "place": ["exhaust"], "apparatus": ["handle"]}]}]}
+
+    import llm
+    monkeypatch.setattr(llm, "chat_json", fake)
+    p = LQ.facets_for([{"id": "L1", "text": "x", "claim_label": "claim 1"}], samples=2,
+                      log=lambda *a: None)
+    readings = p["L1"]["readings"]
+    assert calls["n"] == 2
+    assert len(readings) == 2, readings              # the repeated reading is merged away
+    assert p["L1"]["cpc"] == ["F01N", "G10K"]        # classes unioned across samples
+
+
+def test_every_reading_is_evaluated_and_pooled_under_its_limitation():
+    """Pooled, not one bucket per reading: the quota is per REQUIREMENT, a document is offered once
+    however many readings found it, and its score is the best reading's so a document only one
+    reading reaches is not penalised for that."""
+    plan = {"L1": {"readings": [
+        {"thing": ["muffler"], "place": ["exhaust"], "apparatus": ["handle"]},
+        {"thing": ["silenc"], "place": ["grip"], "apparatus": ["vacuum"]}],
+        "cpc": ["F01N"], "text": "t", "why": "w", "claim_label": "claim 1"}}
+    sql, slugs = LQ.build_sql(plan, "p.d.t")
+    assert "q0v0_hit" in sql and "q0v1_hit" in sql
+    assert sql.count("STRUCT('q0'") == 1
+    assert "GREATEST" in sql
+    assert slugs == {"q0": "L1"}
+
+
 def _screen_rows(n_lims, n_each):
     return {"by_limitation": {
         f"L{i}": [{"pub": f"L{i}-{j}", "fam": f"L{i}-{j}", "title": "t", "abstract": "a",
