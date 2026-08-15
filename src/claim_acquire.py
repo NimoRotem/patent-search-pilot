@@ -59,8 +59,12 @@ CITE_MAX = int(os.environ.get("ACQUIRE_CITE_MAX", "120"))
 
 ENABLED = os.environ.get("ACQUIRE_ENABLED", "1") != "0"
 #  CPC subclasses taken from the references the reading already trusts, as working-set seeds.
-#  Cheap: the build's cost is the text-column scan, not the class count.
-SEED_CLASS_MAX = int(os.environ.get("ACQUIRE_SEED_CLASSES", "24"))
+#  The build's COST is the text-column scan, not the class count — but its SIZE is not, and a
+#  working set that reaches WORLDSET_MAX_ROWS is truncated by an unordered LIMIT. Measured: 24 of
+#  these pulled in B01D, B23Q and B65G, the set hit exactly 8,000,000 rows, and one of the ten
+#  attorney references fell out of the universe. Take the commonest few; the facets name the
+#  targeted classes and these only widen the neighbourhood.
+SEED_CLASS_MAX = int(os.environ.get("ACQUIRE_SEED_CLASSES", "8"))
 
 
 # ---------------------------------------------------------------------------

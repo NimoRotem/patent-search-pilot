@@ -62,9 +62,20 @@ BUILD_CEILING_GB = float(os.environ.get("WORLDSET_BUILD_CEILING_GB", "4000"))
 #  Per-query ceiling. The similar-graph join touches the 3 TB source table for dates, so 60
 #  was below the cost of the cheapest useful question and simply refused every time.
 QUERY_CEILING_GB = float(os.environ.get("WORLDSET_QUERY_CEILING_GB", "400"))
-#  How many publications a working set may hold. A 40-subclass, all-era set is a few million rows;
-#  the bound exists so a careless class list cannot write a 100M-row table.
-MAX_ROWS = int(os.environ.get("WORLDSET_MAX_ROWS", "8000000"))
+#  How many publications a working set may hold. The bound exists so a careless class list cannot
+#  write a 100M-row table.
+#
+#  IT IS AN UNORDERED `LIMIT`, SO REACHING IT DISCARDS AN ARBITRARY PART OF THE UNIVERSE, and the
+#  universe is the one thing in this pipeline nothing downstream can recover from. Measured
+#  2026-08-15: a working set built from 20 classes came back at exactly 8,000,000 rows and did not
+#  contain US-9107549-B2, one of the ten references a patent attorney filed — while two other
+#  references classified in the same neighbourhood were in it. The log said "built ... 8000000
+#  publications" and read like success. A round number is a truncation, never a finding.
+#
+#  Raised, and `build` now says so loudly when it binds. The cost of a bigger set is storage, not
+#  scan: the build scans ~1,500 GB of text columns whatever the row count, and the table expires
+#  after TTL_DAYS.
+MAX_ROWS = int(os.environ.get("WORLDSET_MAX_ROWS", "16000000"))
 #  Working sets older than this are rebuilt. Patent data updates weekly.
 TTL_DAYS = float(os.environ.get("WORLDSET_TTL_DAYS", "30"))
 
@@ -175,7 +186,17 @@ def build(cpc_prefixes, date_max=None, log=print, force=False):
     log(f"[worldset] built {table}: {rows if rows is not None else '?'} publications across "
         f"{len(cpc)} classes ({gb:.0f} GB scanned, ${bqclient.usd(gb):.2f}, "
         f"{time.time() - t0:.0f}s) — {', '.join(cpc[:12])}")
-    return {"table": table, "rows": rows, "gb": gb, "cached": False, "cpc": cpc}
+    truncated = rows is not None and rows >= MAX_ROWS
+    if truncated:
+        #  Never silently. This is the retrieval universe: what the LIMIT dropped cannot be
+        #  recovered by any amount of ranking, screening or re-reading downstream, and the miss
+        #  looks exactly like "no such art exists".
+        log(f"[worldset] *** TRUNCATED at WORLDSET_MAX_ROWS={MAX_ROWS:,}. These {len(cpc)} classes "
+            f"hold more than that, so an ARBITRARY part of them is missing from the working set "
+            f"and nothing downstream can find it. Narrow the class list or raise the cap: "
+            f"{', '.join(cpc)}")
+    return {"table": table, "rows": rows, "gb": gb, "cached": False, "cpc": cpc,
+            "truncated": truncated}
 
 
 # ---------------------------------------------------------------------------
