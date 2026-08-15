@@ -71,8 +71,10 @@ def test_sql_uses_the_aliased_date_column():
     """The era CASE ran against `publication_date` while the CTE had already aliased it to `pd`,
     so the whole portfolio failed with an unresolved-column error and returned 0 of 10."""
     sql, _ = LQ.build_sql(PLAN, "p.d.t", date_max="20241018")
-    era = sql[sql.index("AS era") - 400:sql.index("AS era")]
-    assert "pd <" in era and "publication_date <" not in era
+    #  The CASE expression alone. The `b` CTE's own WHERE legitimately names the source column,
+    #  because the alias does not exist yet at that point.
+    era = sql[sql.index("CASE WHEN"):sql.index("AS era")]
+    assert "pd <" in era and "publication_date" not in era
 
 
 def test_class_is_a_boost_never_a_filter():
