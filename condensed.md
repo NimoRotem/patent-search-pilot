@@ -150,6 +150,7 @@ templates/report.html → ledger block first (Type B), then the element × refer
 | `src/deep_analysis.py` | `analyse_reference` — full-text reading, grounded quotes, `_refute`, `reread_absent(kind="feature"\|"claim")`, `concept_expansions` |
 | `src/coverage_rank.py` | Greedy max-coverage ordering + `guarantee()` (claim-slot promotion) |
 | **`src/limitations.py`** | **NEW.** Type A/B detection, claim → limitation split, the `Ledger` |
+| **`src/limitation_query.py`** | **NEW (step 3).** One faceted query portfolio per limitation, evaluated in ONE BigQuery scan; era-stratified selection; a screen that asks about the requirement rather than the invention |
 | **`src/worldset.py`** | **NEW.** BigQuery working set, lexical, `similar_to`, `top_terms`, `classes_of`, `fetch_text`, `ingest` |
 | **`src/claim_rescue.py`** | **NEW.** After the main loop: re-ask read refs about uncovered requirements → local no-CPC search → acquire → read → narrow re-ask |
 | **`src/claim_acquire.py`** | **NEW.** `by_worldset` (BigQuery + vocabulary loop + similar graph), `by_concept` (App A fan-out), `by_citation` |
@@ -240,6 +241,22 @@ Commits on `feat/claim-centric-search`: `f80d9972`, `e3353f04`, `3847c179`, `1fe
   citations do not sit in the subject's subgroups.
 - Rerank-gating in `fuse.final_score`: recall@20 0.018 → 0.000.
 - Charting 504 references instead of 344 did not improve order; it made the 50-card cut harder.
+- **Google's precomputed similarity graph does not reach this gold set.** `google_patents_research`
+  holds exactly 25 neighbours per publication. Seeded on Hukelmann, Blatt and Cho — the three the
+  reading trusts most — the only gold document among all 75 neighbours is the seed's own family
+  member. It is a resemblance signal and these references are precisely the ones that do not
+  resemble. Keep it as a cheap extra bucket; do not build on it.
+- **The citation graph is nearly as empty here.** Of the 45 possible pairs among the ten
+  references, the forward-citation table contains **one** edge (Hukelmann → Cho); the ten cite 160
+  distinct documents between them and almost none of each other. An examiner's own route does not
+  connect this art.
+- **Widening `coverage_rank.guarantee`'s bar does not rescue a read-but-buried reference.**
+  Measured offline against `adhoc-3c99d840e5b3` (618 references, 27 limitations, 60-card window)
+  in six arms — need 1 or 2 disclosers on the page, counting any verdict or only `disclosed`,
+  capped at 12, 20 or unlimited. Blatt moved 314 → 314/317 and Cho 121 → 122/126 in every one.
+  `guarantee` promotes the BEST discloser of a short item, and for every limitation Blatt and Cho
+  ground there is a stronger one. Their cells are all `partial`; the fix is better evidence or a
+  better reading, not a bigger promotion rule.
 
 **Open defects:**
 - **Vocabulary drift (unverified mitigation).** `claim_acquire.by_worldset` round 2 learned
@@ -249,7 +266,18 @@ Commits on `feat/claim-centric-search`: `f80d9972`, `e3353f04`, `3847c179`, `1fe
   **Neither has been re-tested.** Proper fix: score terms by log-odds against the class background,
   which needs a background model that does not exist yet.
 - **`by_concept` (App A route) ingests text-less rows.** Live: 300 publications acquired, 0 of 40
-  readable. `by_worldset` supersedes it. Consider deleting the `external.materialise`-only path.
+  readable, and those 40 were 40 of the 46 candidates the rescue then "read" — the whole rescue
+  read six documents. It is now a FALLBACK, taken only when the world routes returned fewer than
+  `RESCUE_CONCEPT_BELOW` candidates, because it is the only route that does not need BigQuery.
+- **`claim_rescue.second_look` on RESCUED references now grounds nothing.** Live on
+  `adhoc-3c99d840e5b3`: `narrow re-ask of the 60 rescued references: 0 claim cells grounded across
+  0 of them`, while the same pass over references the search had ALREADY read recovered 14 cells
+  across 13 of 150. The likely reason is that it has been fixed upstream: the pass exists because
+  a whole claim is a conjunction and a document found for the part it adds fails the whole-claim
+  test, and the reader is now asked about LIMITATIONS, so the first read of a rescued reference
+  already asks the narrow question. One run is not enough to delete a pass that was measured to
+  take a report from 1 grounded claim cell to 8 — but check it before trusting it, and check it
+  before spending ~60 model calls on it.
 - **Blatt and Cho are read and still off the page.** `guarantee()` only promotes a claim's *only*
   discloser; where something else already covers that claim they stay buried.
 - **`eval_baseline.json` is stale** — its recall@100_in 0.1158 sets a 0.0926 floor while plain HEAD
@@ -265,15 +293,19 @@ Commits on `feat/claim-centric-search`: `f80d9972`, `e3353f04`, `3847c179`, `1fe
 
 ## 9. Next steps
 
-### Step 3 — query portfolio per limitation
-Today one query set describes the whole invention. Per limitation, generate and run in parallel:
-semantic ×8 (mechanical / robotics / automotive / HVAC / consumer / translated-from-DE-JP /
-1960s patentese), lexical boolean with proximity over `claims_localized` + `description_localized`,
-classification (3–8 CPC groups that *own* the limitation), query-by-example via `worldset.similar_to`,
-citation forward+backward 2 hops, assignee, and **era-targeted** (pre-1980 run separately — old art
-kills claims and loses on every relevance ranking).
-~27 limitations × ~30 queries ≈ 800 queries against a materialised working set: minutes, not money.
-Hook: extend `claim_acquire.by_worldset`; the working set and `Ledger.uncovered()` already exist.
+### Step 3 — query portfolio per limitation — BUILT (`src/limitation_query.py`)
+See §13 for what was measured. In short: a limitation is a THING, in a PLACE, in a KIND OF
+APPARATUS, so a query for one is a conjunction of three disjunctions with proximity between the
+first two. `must_any`/`must_all` cannot express that. Per-limitation querying moved one reference
+from rank 8,810 under an invention-wide query to 135 under the query for the requirement it was
+actually cited for, and era-stratified selection is what makes 1960s art reachable at all.
+
+Still open inside step 3:
+- the eight semantic REGISTERS are asked for in one prompt (`_FACET_SYS` lists automotive,
+  acoustics, power-tool, 1960s-US and translated forms) rather than run as eight separate queries.
+  Whether separate queries beat one prompt is unmeasured.
+- assignee and forward/backward citation channels are not built. §8 says why citation looks
+  unpromising *for this subject*; that is one gold set, not a law.
 
 ### Step 4 — multi-lens readers
 Replace one reader/one checklist with five parallel readers over the same text:
@@ -346,12 +378,32 @@ grep -E "\[limitations\]|\[ledger\]|\[rescue\]|\[acquire\]|\[worldset\]|pre-scre
 ```
 [limitations] 11 claims -> 27 limitations (27 split by the model, 0 structurally)
 [ledger] 27 limitations across 11 claims: N covered, N partial, N with nothing — ANTICIPATED: ...
+[ledger] after the rescue: N covered, N partial, 0 with nothing; done=True
 [deep_rank] pre-screen text recovery: 388 fetched, 137 candidates the screener can now read
-[deep_rank] promoted 2 references into the top 60 as the only art found for a claim: ...
+[deep_rank] promoted 5 references into the top 60 as the only art found for a claim: ...
 [worldset] built …ws_<hash>: 2392628 publications across 10 classes (1501 GB, $9.38, 145s)
-[acquire] worldset: N queries over N classes -> N distinct hits
+[limq] the art already trusted is classified in F16L, B25J, ... — added to the working set
+[limq] <lim id>: N in the working set, N taken across 4 eras
+[limq] 6 limitation portfolios in one scan (15 GB) -> N candidates across 6 limitations
+[limq] <lim id>: screened N/N, N at or above 45, N to read
+[limq] N distinct families to read across N limitations (budget 150 reached; ...)
+[acquire] ingest capped at 200: took 100 of 300 for claim 6[a], 100 of 200 for ~similar
+[rescue] N limitations to search for — N with no evidence at all, N with less than 2 disclosures
 [rescue] narrow re-ask of the N rescued references: N claim cells grounded
 ```
+
+**Scoring the query layer WITHOUT a 50-minute pipeline run.** The whole of §13 was measured by
+generating the portfolio SQL and running it against the working set directly, for about $0.21 a
+time. `build_sql` is pure — it needs no database, no LLM and no service:
+
+```python
+import limitation_query as LQ
+sql, slugs = LQ.build_sql(plan, "nimo-gpt.patent_pilot.ws_36208e56133485ea", date_max="20241018")
+# wrap it and ask only where the gold landed:
+#   WITH portfolio AS (<sql>) SELECT ... FROM portfolio WHERE pub IN (<the ten>)
+```
+Iterate the facets there, not in the pipeline. A run only settles what the ledger and the reader do
+with what the query found.
 
 **A finished report is regenerated by deleting `<slug>.view.json` and re-fetching
 `/report/<slug>`** (~50s; runs the listwise rerank). The report `.json` is authoritative; the
@@ -363,7 +415,25 @@ grep -E "\[limitations\]|\[ledger\]|\[rescue\]|\[acquire\]|\[worldset\]|pre-scre
 
 - `bqclient.run_guarded` returns **`(rows, est_gb, billed_gb)`**. Iterating it yields the row list
   as a single "row".
-- `google_patents_research.similar` has **no similarity score**. Rank by array offset.
+- `google_patents_research.similar` has **no similarity score**. Rank by array offset. It also
+  holds only **25** neighbours per publication, which is why it is a bucket and not a channel.
+- **A mid-pattern `(?s)` is legal in RE2 and a hard error in Python's `re`.** A proximity pattern
+  that worked perfectly in BigQuery raised in every local test that touched it. `[^.]` already
+  spans newlines, so the flag was never needed.
+- **`ensure_dataset` gives `patent_pilot` a 3-day default table expiration** while
+  `worldset.TTL_DAYS` says 30 and `_exists` believes it. Both live working sets were due to vanish
+  three days after they were built while the code logged "reusing" — so from day 4 every search
+  silently paid $9.38 for a rebuild. `worldset.build` now sets the expiry on the table explicitly.
+- **A working set is keyed on `sha1(classes|date)`**, so a class list that comes from a model is a
+  new $9.38 table every search. `claim_acquire.by_limitation` seeds it from the subclasses the
+  references the reading already trusts actually carry, which is both stabler and not a guess.
+  Widening the class list is nearly free: the build scans ~1,500 GB of text columns whatever the
+  WHERE says.
+- **The gunicorn worker imports `claim_acquire` and `worldset` lazily, inside the rescue.** A
+  `git pull` during a running search therefore changes the code that search is about to execute,
+  while `deep_rank` and `claim_rescue` (imported at boot) stay on the old version. That happened
+  on `adhoc-3c99d840e5b3` and made it a mixed build. Restart between a deploy and a measurement,
+  or the run measures neither version.
 - `enrich._persist_full_text` returns `{"ok": false, "reason": "not_in_corpus"}` for any
   publication with no `publications` row. Materialise the row *first*.
 - **Runtime-reassigning a module constant does not change a default argument.**
@@ -378,3 +448,82 @@ grep -E "\[limitations\]|\[ledger\]|\[rescue\]|\[acquire\]|\[worldset\]|pre-scre
 - Never edit `src/webapp.py` by prepending imports above `from __future__ import annotations` —
   SyntaxError takes the front door down.
 - Backups: `*.bak-*` is gitignored; several exist beside changed files.
+
+---
+
+## 13. What the query layer was measured to do (2026-08-15, second session)
+
+Everything below was measured against **`nimo-gpt.patent_pilot.ws_36208e56133485ea`** — 2,392,628
+publications, 42.2 GB, every one with full text — which holds **all ten** references the attorney
+filed, including the three the local corpus has never had. Quackenbush is in it with 12,339
+characters of description where the corpus holds a title. So the retrieval universe is solved; the
+open question was only ever whether the queries find them inside it.
+
+### 13a. The query shape
+
+| | hits | of the ten |
+|---|---|---|
+| bag of keywords, OR-ed — what `worldset.lexical(must_any=…)` does | 111,545 | 10, at no usable rank |
+| three facets, literal forms only | 8,331 | 6 |
+| three facets **with proximity** | 14,373 | **9** |
+| …plus requiring the two facets in one sentence | 14,373 → same 9, 4k fewer hits | 9 |
+| …plus requiring the hand-tool facet | 6,044 | 8 (loses Blatt) |
+| …plus requiring it in the CLAIMS | 3,567 | 6 |
+
+The tenth is GRABO's own patent, which never uses the word "exhaust" anywhere in 84,872 characters
+— a real property of the document, not a query defect — and the main search finds it anyway.
+
+**Proximity is not a refinement.** Sato's patent is titled "Sound absorption structure for air flow
+path" and the damping words in its body are `sound | noise | sounds | absorbed | absorb`, never
+adjacent. Bosch's are `damping | noise | dampened | noises`. Neither matches `sound[- ]?absorb`;
+both match "sound within a sentence of absorb". Two of the ten are reachable only this way.
+
+### 13b. One query per limitation, not one per invention
+
+Rank of each reference in the query for the limitation it was actually cited for, era-stratified:
+
+```
+Sadler        55      Bosch    135      Blatt    200      Quackenbush 219      Hukelmann 334
+Perlmutter  1,045     Crevling 1,796    GRABO  2,703      Sato      3,765      Cho       5,152
+```
+
+Bosch is the demonstration. Under a single query built for the sound-damping requirement it ranks
+**8,810**; under the query for the requirement it was cited for — a hollow handle conducting
+cooling air — it ranks **135**. Cho likewise: cited for a suction plate forming a vacuum chamber
+with an embedded pump, and buried by any query about damping.
+
+### 13c. Era is its own competition
+
+Quackenbush (1960, and the attorney's most comprehensive match) is **1,971 of 14,373** overall and
+**219 of 1,403** among documents of its own era. Old art is short, written in another century's
+vocabulary, and has fewer of everything to match on; it loses every relevance contest it is
+entered in. Ranking inside era buckets and taking a quota from each is what makes it reachable.
+
+### 13d. Three caps, each of which returned nothing while looking like it worked
+
+This is the recurring failure mode in this pipeline and it is worth naming as a class: **a cap that
+binds is a silent truncation, and two caps on one list means the tighter one silently wins.**
+
+1. `by_worldset` ingested `list(found)[:200]` from a dict filled claim by claim, 300 hits per
+   query. It ingested the first claim's first query and discarded every later claim, both
+   vocabulary rounds and the entire similarity graph. Live, after the fix:
+   `ingest capped at 200: took 100 of 300 for claim 6[a], 100 of 200 for ~similar` — the second
+   hundred had never once been reached.
+2. `rank_era <= 350 AND rank_q <= 800` in the portfolio SQL. Blatt is era-rank 200 / limitation-rank
+   1,397, Quackenbush 219 / 2,429, Hukelmann 334 / 1,024 — all three inside the era quota, all
+   three cut by the global one. 2 of 10 instead of 5.
+3. `LIMQ_MAX_TOTAL` sized for the reader rather than the screener re-imposed the same cap one layer
+   up: at 2,400 over six limitations each gets 400, and a reference at era-rank 200 sits at
+   round-robin position ~800 because four era buckets interleave.
+
+Every cap in `limitation_query` is now per limitation and per era, taken round robin, and logs what
+it dropped.
+
+### 13e. The cost shape is why the portfolio is affordable
+
+BigQuery bills for columns scanned, so **thirty queries cost what one costs**: the portfolio is a
+single scan with one boolean per facet, a pivot, and a window function per limitation. About $0.21
+against the 42 GB working set, against ~$0.21 *per query* for the old one-query-at-a-time shape.
+That is what makes it reasonable to size the pool for a screener (2,480 candidates in 33 seconds)
+rather than for the reader, and to screen against the requirement before spending an ingest or a
+read on anything.
