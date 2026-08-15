@@ -135,6 +135,68 @@ def rank(order, by_pub, idf, depth=None, corroboration=None, score_weight=None,
     return chosen + tail, gains
 
 
+def guarantee(order, by_pub, must_cover, window=60):
+    """Promote the best discloser of every `must_cover` item that no visible card discloses.
+
+    -> {"order": permutation, "promoted": {pub: item}} or None when nothing needed promoting.
+
+    WHY A SEPARATE PASS AND NOT A BIGGER WEIGHT. Greedy maximum-coverage optimises TOTAL mass, so
+    it will always prefer a document covering three mid-rarity items to one covering a single rare
+    one, however the weights are set — and the single rare one is the reference an attorney needs,
+    because it is the only art there is for that claim. Raising the weight until greedy picks it
+    distorts every other position; promoting it afterwards changes exactly one thing.
+
+    Order within the window is preserved; a promoted reference is inserted at the end of it, so
+    the head of the report is untouched and the tail of the visible page becomes the answers
+    nothing else on the page gives.
+    """
+    must = [m for m in (must_cover or []) if m]
+    if not must or not order:
+        return None
+    strength = {p: quality(by_pub[p]) for p in order if p in by_pub}
+    visible = set(order[:window])
+    covered = set()
+    for p in order[:window]:
+        for item, v in strength.get(p, {}).items():
+            if v > 0.0:
+                covered.add(item)
+    missing = [m for m in must if m not in covered]
+    if not missing:
+        return None
+    #  Best discloser anywhere in the ranked list, strongest verdict first, then earliest rank —
+    #  so a promotion brings in the most defensible evidence, not merely the first one found.
+    rank_of = {p: i for i, p in enumerate(order)}
+    promoted = {}
+    for item in missing:
+        best, best_key = None, None
+        for p, q in strength.items():
+            v = q.get(item, 0.0)
+            if v <= 0.0 or p in visible:
+                continue
+            key = (-v, rank_of.get(p, 10 ** 9))
+            if best_key is None or key < best_key:
+                best, best_key = p, key
+        if best is None:
+            continue                       # nothing in the whole run discloses it; that is a finding
+        promoted[best] = item
+        visible.add(best)
+        #  One promotion can answer several missing items at once.
+        for it, v in strength.get(best, {}).items():
+            if v > 0.0:
+                covered.add(it)
+    if not promoted:
+        return None
+    #  MAKE ROOM. Appending the promotions after the window put them at positions 61+ — just
+    #  outside the page they were promoted to reach, which is the whole bug this pass exists to
+    #  fix, reintroduced one line later. They go at the END of the window and displace the
+    #  weakest cards that were in it, which are by construction the ones adding least.
+    head = [p for p in order[:window] if p not in promoted]
+    room = max(0, window - len(promoted))
+    keep, displaced = head[:room], head[room:]
+    tail = [p for p in order[window:] if p not in promoted]
+    return {"order": keep + list(promoted.keys()) + displaced + tail, "promoted": promoted}
+
+
 def covered_mass(order, by_pub, idf, cut=50):
     """(weighted disclosure mass the top `cut` covers, total mass, documents adding nothing).
 

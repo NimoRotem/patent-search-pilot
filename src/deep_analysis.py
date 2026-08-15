@@ -541,8 +541,42 @@ _REREAD_SYS = (
 )
 
 
-def reread_absent(pub, rows, hints=None, ref=None, max_features=FEATURE_BATCH):
-    """Second pass over the features a first reading returned nothing for. -> rows changed.
+_REREAD_CLAIM_SYS = (
+    "You are a patent examiner taking a SECOND look at one reference, this time for a few SPECIFIC "
+    "CLAIMS of the subject patent. A first reading of this document found nothing for them, and a "
+    "search of the whole corpus has found nothing for them either: as things stand these claims "
+    "have NO prior art at all.\n"
+    "\n"
+    "For each claim you are given the claim text and the idea behind it in other people's words. "
+    "Search the reference for the IDEA, not for the claim's phrasing. Look in the description and "
+    "the drawing description, not only in the claims — an older patent often teaches in its figures "
+    "what a modern one claims. A species discloses its genus. An equivalent structure performing "
+    "the same function discloses the function.\n"
+    "\n"
+    "A claim is a whole set of limitations. Answer \"disclosed\" only if this reference teaches ALL "
+    "of them. If it teaches some, answer \"partial\" and say in the note which limitation is "
+    "missing.\n"
+    "\n"
+    "A PARTIAL IS A REAL ANSWER HERE AND IT IS WANTED. These claims currently have nothing against "
+    "them, so a reference that teaches most of a claim, or teaches the specific thing a dependent "
+    "claim ADDS to the claim it depends from, is exactly what is being looked for — even if it "
+    "comes from a different field. Say so rather than rounding it down to \"absent\".\n"
+    "\n"
+    "What you must NOT do is manufacture one. Most of these will still be absent and saying so is "
+    "correct. NEVER paraphrase a quote, NEVER stitch sentences together, NEVER invent one — the "
+    "quote is the reference's own words, copied exactly, or there is no answer.\n"
+    'Return STRICT JSON: {"claims":[{"item":"<the claim label verbatim, e.g. \\"claim 7\\">",'
+    '"verdict":"...","quote":"...","note":"...","confidence":0.0}]}'
+)
+
+
+def reread_absent(pub, rows, hints=None, ref=None, max_features=FEATURE_BATCH, kind="feature",
+                  texts=None):
+    """Second pass over the rows a first reading returned nothing for. -> rows changed.
+
+    `kind="claim"` re-asks about the SUBJECT'S CLAIMS instead of the feature checklist, with the
+    claim text in `texts` and a prompt that knows a claim is a conjunction. Used by claim_rescue
+    for the claims the whole search found nothing for.
 
     THIS IS THE AGENTIC PART OF THE READING. The first pass reads a whole patent against a whole
     checklist in one breath and is, measurably, conservative: it answers "absent" whenever it
@@ -562,20 +596,34 @@ def reread_absent(pub, rows, hints=None, ref=None, max_features=FEATURE_BATCH):
         return 0
     shown = _rendered(ref)
     hints = hints or {}
+    texts = texts or {}
     items = [r["item"] for r in targets]
-    payload = {"reference": pub, "reference_text": shown,
-               "features": [{"item": it, "idea": hints.get(it) or it} for it in items]}
+    #  A CLAIM CARRIES ITS OWN TEXT INTO THE PROMPT; a feature is its own text. Handed the bare
+    #  label "claim 7" a reader has nothing to look for, which is the same defect the refuter had
+    #  (see _refute): it answered about our prompt instead of about the evidence.
+    key = "claims" if kind == "claim" else "features"
+    system = _REREAD_CLAIM_SYS if kind == "claim" else _REREAD_SYS
+    asked = [{"item": it, "idea": hints.get(it) or texts.get(it) or it} for it in items]
+    if kind == "claim":
+        for a in asked:
+            a["claim_text"] = texts.get(a["item"]) or ""
+    payload = {"reference": pub, "reference_text": shown, key: asked}
     try:
-        out = llm.chat_json(_REREAD_SYS, json.dumps(payload, ensure_ascii=False),
+        out = llm.chat_json(system, json.dumps(payload, ensure_ascii=False),
                             max_tokens=8000) or {}
     except Exception:
         return 0
     changed = 0
     by_item = {r["item"]: r for r in targets}
-    for item, raw in zip(items, _align(out.get("features"), items)):
+    #  Accept the other key too: the model occasionally answers under "features" whatever it was
+    #  asked, and dropping the whole answer over a key name reads as "nothing was found".
+    rows_back = out.get(key)
+    if not rows_back:
+        rows_back = out.get("features") if key == "claims" else out.get("claims")
+    for item, raw in zip(items, _align(rows_back, items)):
         if not isinstance(raw, dict):
             continue
-        fresh = _row(item, raw, ref, shown, "feature")
+        fresh = _row(item, raw, ref, shown, kind)
         if fresh["verdict"] == "absent" or fresh["grounding"] != "verified":
             continue
         row = by_item.get(item)

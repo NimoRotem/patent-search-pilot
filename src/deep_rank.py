@@ -56,6 +56,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 import db
+import claim_rescue
 import coverage_rank
 import deep_analysis
 import llm
@@ -119,7 +120,12 @@ CHART_WORKERS = int(os.environ.get("DEEP_RANK_CHART_WORKERS", "24"))
 #  abstract). A reference the retrieval ranked 15th must not be lost to a bad abstract.
 ALWAYS_CHART_RETRIEVAL_HEAD = int(os.environ.get("DEEP_RANK_HEAD", "60"))
 #  How far down the retrieval order to rescue candidates the screener was shown no text for.
-BLIND_RESCUE = int(os.environ.get("DEEP_RANK_BLIND_RESCUE", "400"))
+#  RAISED 400 -> the whole screen depth. 400 was a guess at where useful art stops and it was
+#  wrong by a factor of four on a real subject: the reference an attorney called the most
+#  comprehensive match sat at retrieval rank 1,817 with nothing but a title. BLIND_RESCUE_MAX is
+#  what bounds the cost; the reach should not also be doing that job, because a reach limit
+#  silently decides that art beyond it does not exist.
+BLIND_RESCUE = int(os.environ.get("DEEP_RANK_BLIND_RESCUE", str(SCREEN_TOP)))
 BLIND_RESCUE_MAX = int(os.environ.get("DEEP_RANK_BLIND_RESCUE_MAX", "60"))
 
 #  Evidence weights. "disclosed" survived the refuter; "partial" is the model's own hedge;
@@ -205,6 +211,11 @@ DISCLOSURE_CAP = int(os.environ.get("DEEP_RANK_DISCLOSURE_CAP", "48"))
 CONCEPT_PASS_TOP = int(os.environ.get("DEEP_RANK_CONCEPT_PASS_TOP", "120"))
 #  Order by marginal contribution to disclosure coverage rather than by score alone.
 COVERAGE_ORDER = os.environ.get("DEEP_RANK_COVERAGE_ORDER", "1") != "0"
+#  How much a CLAIM counts in the coverage objective, relative to a disclosure. 1.0 = the same.
+CLAIM_COVERAGE_WEIGHT = float(os.environ.get("DEEP_RANK_CLAIM_COVERAGE_WEIGHT", "1.0"))
+#  The window the report page renders. deep_rank must not import webapp, so this mirrors
+#  webapp._DISPLAY_TOP; it is what the claim-coverage guarantee promotes into.
+DISPLAY_WINDOW = int(os.environ.get("DEEP_RANK_DISPLAY_WINDOW", "60"))
 UNREAD_SCORE_CAP = int(os.environ.get("DEEP_RANK_UNREAD_CAP", "70"))
 
 #  ON-DEMAND TEXT, fetched for the references we are ABOUT TO READ and persisted to the corpus.
@@ -219,6 +230,23 @@ UNREAD_SCORE_CAP = int(os.environ.get("DEEP_RANK_UNREAD_CAP", "70"))
 #  document it was not already about to read, and the persisted text benefits every later search.
 ENRICH_TOP = int(os.environ.get("DEEP_RANK_ENRICH_TOP", str(CHART_TOP_MAX)))
 ENRICH_WORKERS = int(os.environ.get("DEEP_RANK_ENRICH_WORKERS", "8"))
+#  TEXT FETCHED BEFORE THE SCREEN, for candidates the corpus holds nothing readable for.
+#
+#  Without this the pipeline is circular: no text -> the screener scores what little there is ->
+#  the document is not chosen to be read -> its text is never fetched. Measured, it cost the
+#  single most on-point reference an attorney cited for a live subject (US-2966138-A: 0 claims,
+#  0 paragraphs here, screened 10 of 100, retrieval rank 1,817, never read).
+#
+#  Bounded hard, because this runs over the whole screen depth rather than the read set: these are
+#  network fetches against the recovery chain and the budget is the point. Set 0 to disable.
+PRESCREEN_ENRICH_TOP = int(os.environ.get("DEEP_RANK_PRESCREEN_ENRICH", "400"))
+#  THE ORPHAN-CLAIM RESCUE, after the reading. Set to 0 to skip it.
+#
+#  Everything above this line searches, screens and reads against the invention AS A WHOLE, and the
+#  claim table falls out of the reading as a by-product. That is why a claim can end a search with
+#  no prior art against it while the report shows four hundred references: nothing was ever
+#  searched FOR it. See claim_rescue.
+RESCUE_CLAIMS = os.environ.get("DEEP_RANK_RESCUE_CLAIMS", "1") != "0"
 
 _STOP = set((
     "a an the of and or to for with in on at by is are be as from that this it its which such "
@@ -413,7 +441,7 @@ def screen(rows, brief, on_progress=None):
     return scores
 
 
-def _enrich_missing_text(chosen, on_progress=None):
+def _enrich_missing_text(chosen, on_progress=None, limit=None):
     """Fetch and persist full text for the chosen references the corpus holds nothing readable for.
 
     Returns the number of references that gained text. Never fatal: a quota-exhausted or
@@ -455,7 +483,7 @@ def _enrich_missing_text(chosen, on_progress=None):
         if cl == 0 and pa == 0:
             thin.append(pub)
     thin.sort(key=lambda p: order.get(p, 10 ** 6))
-    thin = thin[:ENRICH_TOP]
+    thin = thin[:(limit or ENRICH_TOP)]
     if not thin:
         return 0
     if on_progress:
@@ -521,6 +549,36 @@ def rarity(charts, features, claims):
             "feature_idf": fidf, "claim_idf": cidf}
 
 
+def _claim_leaders(charts, rar, depth=LEAD_DEPTH):
+    """{pub: [(claim label, idf)]} — the rare CLAIMS each reference is among the best disclosures of.
+
+    The same credit `leaders` gives for a rare feature, for a rare claim. It matters more here: a
+    claim disclosed by two references out of five hundred is the claim an attorney builds an
+    attack on, and the reference that discloses it usually discloses nothing else, so without this
+    it earns nothing anywhere in the ranking.
+    """
+    cidf = rar.get("claim_idf") or {}
+    if not cidf:
+        return {}
+    idfs = sorted(cidf.values())
+    median = idfs[len(idfs) // 2]
+    hits = {}
+    for ref in charts:
+        for r in _grounded_rows(ref, "claims"):
+            if r["verdict"] == "uncertain":
+                continue
+            hits.setdefault(r["item"], []).append(
+                (ref["pub"], r["verdict"], float(r.get("confidence") or 0.0)))
+    out = {}
+    for item, hs in hits.items():
+        if cidf.get(item, 0.0) < median:
+            continue
+        hs.sort(key=lambda h: ({"disclosed": 0, "partial": 1}.get(h[1], 2), -h[2]))
+        for pub, _v, _c in hs[:depth]:
+            out.setdefault(pub, []).append((item, round(cidf[item], 3)))
+    return out
+
+
 def leaders(charts, rar, depth=LEAD_DEPTH):
     """{pub: [(feature, idf)]} — the RARE features each reference is among the best disclosures of.
 
@@ -565,7 +623,7 @@ def score_reference(ref, rar, lead=()):
         n_disc += r["verdict"] == "disclosed"
         n_part += r["verdict"] == "partial"
         n_unc += r["verdict"] == "uncertain"
-        covered.append({"item": r["item"], "verdict": r["verdict"],
+        covered.append({"item": r["item"], "verdict": r["verdict"], "kind": "feature",
                         "idf": round(fidf.get(r["item"], 0.0), 3),
                         "location": r.get("location") or "", "quote": r.get("quote") or "",
                         #  WHICH PUBLICATION THIS QUOTE CAME FROM. Today it is always the charted
@@ -578,6 +636,18 @@ def score_reference(ref, rar, lead=()):
                         "evidence_pub": r.get("evidence_pub") or ref.get("pub") or ""})
     for r in _grounded_rows(ref, "claims"):
         got += _CLAIM_WEIGHT * _W[r["verdict"]] * cidf.get(r["item"], 0.0)
+        #  CLAIMS GO INTO `covered` TOO. They used to contribute to the score above and then
+        #  vanish: `covered` is what coverage_rank consumes to order the page, so the one
+        #  reference that disclosed claim 5 and nothing else had a marginal gain of zero and was
+        #  ordered as though it added nothing. Measured: three of the ten references an attorney
+        #  cited for this subject were read in full and ranked 152, 253 and 346 of 498.
+        n_disc += r["verdict"] == "disclosed"
+        n_part += r["verdict"] == "partial"
+        n_unc += r["verdict"] == "uncertain"
+        covered.append({"item": r["item"], "verdict": r["verdict"], "kind": "claim",
+                        "idf": round(cidf.get(r["item"], 0.0), 3),
+                        "location": r.get("location") or "", "quote": r.get("quote") or "",
+                        "evidence_pub": r.get("evidence_pub") or ref.get("pub") or ""})
     got += LEAD_WEIGHT * sum(idf for _f, idf in lead)
     covered.sort(key=lambda c: -c["idf"])
     pct = 0.0 if total <= 0 else max(0.0, min(1.0, got / total))
@@ -743,6 +813,11 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         if text:
             claim_items.append({"label": f"claim {c.get('claim_no') or len(claim_items) + 1}",
                                 "claim_no": c.get("claim_no") or len(claim_items) + 1,
+                                #  Carried through because an INDEPENDENT claim with no prior art
+                                #  is the most serious hole a search can leave — it is the claim
+                                #  the patent stands on — and both the rescue's priority order and
+                                #  the chart's row labels need to know which ones those are.
+                                "independent": bool(c.get("independent")),
                                 "text": text})
     ranked = list(report.get("ranked_families") or [])
     #  ORACLE INJECTION, diagnostic only. Hands a stage the gold it never received so the stages
@@ -784,6 +859,40 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     rows = [r for r in rows if not deep_analysis._same_pub(subject_pub, r["pub"])]
     if not rows:
         return None
+
+    #  FETCH FIRST, SCREEN SECOND. See PRESCREEN_ENRICH_TOP. `_enrich_missing_text` decides for
+    #  itself which of these hold no claims and no paragraphs, in retrieval order, so the whole
+    #  candidate list is offered and the budget picks the head of what is genuinely unreadable.
+    prescreen_enriched = 0
+    if PRESCREEN_ENRICH_TOP > 0:
+        t_pre = time.time()
+        emit("prescreen_enrich_start", n=len(rows))
+        prescreen_enriched = _enrich_missing_text(rows, on_progress=emit,
+                                                  limit=PRESCREEN_ENRICH_TOP)
+        if prescreen_enriched:
+            #  Rebuild the candidate text so the screener sees what was just fetched. One query
+            #  set over the same pids — the alternative is tracking which rows changed, and a row
+            #  that silently keeps its old empty text is the exact defect being fixed.
+            try:
+                conn2 = db.connect()
+                conn2.autocommit = True
+                try:
+                    rebuilt = _candidate_rows(conn2.cursor(), ranked[:SCREEN_TOP], reps, SCREEN_TOP)
+                finally:
+                    conn2.close()
+                fresh = {r["pub"]: r for r in rebuilt}
+                gained = 0
+                for r in rows:
+                    f = fresh.get(r["pub"])
+                    if f and f.get("has_text") and not r.get("has_text"):
+                        r["text"], r["has_text"] = f["text"], True
+                        gained += 1
+                print(f"[deep_rank] pre-screen text recovery: {prescreen_enriched} fetched, "
+                      f"{gained} candidates the screener can now read "
+                      f"({time.time() - t_pre:.0f}s)", flush=True)
+            except Exception:
+                traceback.print_exc()
+
     emit("screen_start", n=len(rows), batches=(len(rows) + SCREEN_BATCH - 1) // SCREEN_BATCH)
     t0 = time.time()
     scores = screen(rows, brief,
@@ -915,8 +1024,34 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
               f"{reread_refs} of {len(prelim)} references ({time.time() - t1:.0f}s)", flush=True)
         chart_seconds += time.time() - t1
 
+    #  THE ORPHAN-CLAIM RESCUE. Runs HERE — after the whole search and reading are finished, before
+    #  anything is scored or ordered — so the references it brings back compete on the same
+    #  evidence as the rest of the report rather than being listed beside it. See claim_rescue.
+    rescue = {"ran": False}
+    if RESCUE_CLAIMS and claim_items:
+        t2 = time.time()
+        try:
+            rescued_refs, rescue = claim_rescue.run(
+                charts, claim_items, features, hints,
+                subject=_subject_for(report, qd), mode=report.get("mode") or "novelty",
+                retriever=_shared_retriever(), brief=brief,
+                title=(qd.get("label") or qd.get("title") or ""),
+                description=_subject_description(report, qd),
+                exclude_pubs=({r["pub"] for r in rows} |
+                              {c.get("pub") for c in charts if c.get("pub")}),
+                exclude_families={r["fam"] for r in rows},
+                enrich=lambda chosen: _enrich_missing_text(chosen, on_progress=emit),
+                emit=emit)
+            if rescued_refs:
+                charts.extend(rescued_refs)
+        except Exception:
+            traceback.print_exc()
+        chart_seconds += time.time() - t2
+
     rar = rarity(charts, features, [c["label"] for c in claim_items])
     lead_map = leaders(charts, rar)
+    for pub, leads in _claim_leaders(charts, rar).items():
+        lead_map.setdefault(pub, []).extend(leads)
     by_pub, order = {}, []
     for ref in charts:
         sc, detail = score_reference(ref, rar, lead=lead_map.get(ref["pub"], ()))
@@ -960,12 +1095,38 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
             idf = dict(rar["feature_idf"])
             if disc_weight:                    # rarity x how much the disclosure carries legally
                 idf = {k: v * disc_weight.get(k, 1.0) for k, v in idf.items()}
+            #  THE CLAIMS ARE PART OF THE OBJECTIVE. Same scale as a feature by default: a claim
+            #  and a disclosure are both things the report has to find art for, and weighting one
+            #  above the other is a thumb on the scale nobody measured. What makes the claims
+            #  reliably visible is the guarantee pass below, not a bigger number here.
+            for label, v in (rar.get("claim_idf") or {}).items():
+                idf[label] = v * CLAIM_COVERAGE_WEIGHT
             reordered, gains = coverage_rank.rank(
                 order, by_pub, idf, score_of=lambda p: by_pub[p]["score"])
             if len(reordered) == len(order):
                 for p, g in zip(reordered, gains):
                     by_pub[p]["marginal_gain"] = g
                 order = reordered
+        except Exception:
+            traceback.print_exc()
+
+    #  EVERY CLAIM'S BEST DISCLOSER GETS A SLOT. Greedy coverage maximises total mass, so a claim
+    #  disclosed once, weakly, by a document that covers nothing else is the very last thing it
+    #  picks — which is exactly the document an attorney needs and exactly the one that was at
+    #  rank 253 of 498. This promotes it into the window the page actually renders. It is a
+    #  reordering only: nothing is added, nothing is dropped.
+    if claim_items and order:
+        try:
+            promoted = coverage_rank.guarantee(
+                order, by_pub, [c["label"] for c in claim_items], window=DISPLAY_WINDOW)
+            if promoted:
+                order = promoted["order"]
+                for p in promoted["promoted"]:
+                    by_pub[p]["promoted_for_claim"] = promoted["promoted"][p]
+                print(f"[deep_rank] promoted {len(promoted['promoted'])} references into the "
+                      f"top {DISPLAY_WINDOW} as the only art found for a claim: "
+                      + ", ".join(f"{p} ({v})" for p, v in
+                                  list(promoted["promoted"].items())[:6]), flush=True)
         except Exception:
             traceback.print_exc()
 
@@ -1026,9 +1187,13 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         "enriched": enriched,
         #  What the concept layer and the second look actually did, so both can be measured from a
         #  finished report rather than taken on trust.
+        "prescreen_enriched": prescreen_enriched,
         "concept_hints": len(hints),
         "reread_refs": reread_refs,
         "reread_cells": reread_changed,
+        "rescue": rescue,
+        "claim_idf": {k: round(v, 3) for k, v in (rar.get("claim_idf") or {}).items()},
+        "claim_df": rar.get("claim_df") or {},
         "n_candidates": len(rows),
         "charted": len(charts),
         "n_features": len(features),
@@ -1053,6 +1218,58 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         except Exception:
             pass
     return result
+
+
+def _subject_for(report, qd):
+    """A search_modes.Subject for the document the search started from, or None.
+
+    The rescue searches the corpus again, and a search with no subject has no date cutoff: it will
+    happily return art published after the invention. `external.subject_from_doc` resolves the
+    local row first and App A's merged record second, which is the same route the search itself
+    used, so the cutoff is identical.
+    """
+    num = report.get("subject") or qd.get("publication_number") or ""
+    if not num:
+        return None
+    try:
+        import external
+        return external.subject_from_doc(num)
+    except Exception:
+        return None
+
+
+def _subject_description(report, qd):
+    """The invention's own description, as context for restating a dependent claim.
+
+    An upload carries its full text on the report. A LINK does not — only the claims are stashed —
+    so the description is read back out of the corpus, which is where the search found the document
+    in the first place.
+    """
+    txt = str(qd.get("disclosure_text") or "").strip()
+    if len(txt) >= 400:
+        return txt[:20000]
+    num = report.get("subject") or qd.get("publication_number") or ""
+    if not num:
+        return txt
+    try:
+        ref = deep_analysis.full_text(num, max_chars=30000)
+        if not ref.get("found"):
+            return txt
+        body = " ".join(p["text"] for p in ref["passages"]
+                        if p["kind"] not in ("claim",))[:20000]
+        return body or txt
+    except Exception:
+        return txt
+
+
+def _shared_retriever():
+    """The app's one Retriever. Building another loads a multi-million-row family map."""
+    try:
+        import webapp
+        return webapp.retriever()
+    except Exception:
+        import retrieval
+        return retrieval.Retriever()
 
 
 def _publish_deep_analysis(reports_dir, slug, report, charts, order, features, claim_items, qd,
