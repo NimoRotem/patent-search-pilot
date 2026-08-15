@@ -572,16 +572,27 @@ def _load_doc_materials(token):
 
 
 def _attach_query_document(report, doc):
-    """Persist only the uploaded claims needed by the second report grid.
+    """Record the claims of the document the search STARTED FROM, however it arrived.
 
-    Link-based query-by-example searches deliberately do not get this grid: the requested feature
-    is for a *full uploaded patent document*, where the user supplied the claim set to analyse.
+    A LINK COUNTS. This used to require source == "upload", and that single condition is why a
+    search started from a patent LINK produced no claim mapping at all. `query_document` is the
+    only place the reading stage looks for the subject's claims (deep_rank.run reads
+    report["query_document"]["claims"] and passes them to every reader), so a linked patent's
+    claims were extracted, stashed, embedded and used for RETRIEVAL — and then never put to a
+    single reference. The claim table came back empty and the report read as though no prior art
+    disclosed any of them, which is the opposite of "nobody looked".
+
+    The claims are the same claims whichever way the document arrived; `_stash_doc` already says
+    so and keeps them for both. Only `disclosure_text` differs, because the full text is stashed
+    for an upload alone, and everything downstream already treats it as optional.
+
+    The narrower Claim x Reference grid (query_claim_grid) keeps its own upload-only gate: it is
+    capped at eight references and the full-text reading grid supersedes it.
     """
-    if (not doc or doc.get("source") != "upload" or
-            not (doc.get("claims") or (doc.get("full_text") or "").strip())):
+    if not doc or not (doc.get("claims") or (doc.get("full_text") or "").strip()):
         return report
     report["query_document"] = {
-        "source": "upload",
+        "source": doc.get("source") or "upload",
         "label": doc.get("label") or "uploaded patent",
         "publication_number": doc.get("publication_number") or "",
         "title": doc.get("title"),
@@ -1016,6 +1027,33 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 _set_job(slug, kind="reading", detail=data,
                          msg=f"Read {data.get('done')} of {data.get('total')} references in "
                              f"full…")
+            #  The orphan-claim rescue (claim_rescue): a second, claim-driven search for the claims
+            #  the whole run found nothing against. It runs after the reading, so without these the
+            #  page would sit on "Read 420 of 420" for several more minutes.
+            elif stage == "rescue_start":
+                _set_job(slug, kind="rescuing", detail=data,
+                         msg=f"{data.get('n', 0)} claims have no prior art against them yet — "
+                             f"going back for them: " +
+                             ", ".join(data.get("claims") or [])[:120] + "…")
+            elif stage == "rescue_reread_start":
+                _set_job(slug, kind="rescuing", detail=data,
+                         msg=f"Re-reading {data.get('n', 0)} references already read, asking only "
+                             f"about those claims…")
+            elif stage == "rescue_search_start":
+                _set_job(slug, kind="rescuing", detail=data,
+                         msg=f"Searching for those claims specifically: {data.get('n', 0)} "
+                             f"queries, with no classification filter…")
+            elif stage == "rescue_search_progress":
+                _set_job(slug, kind="rescuing", detail=data,
+                         msg=f"Claim-focused search: {data.get('done')} of {data.get('total')}…")
+            elif stage == "rescue_read_start":
+                _set_job(slug, kind="rescuing", detail=data,
+                         msg=f"Reading {data.get('n', 0)} references found for the uncovered "
+                             f"claims…")
+            elif stage == "rescue_read_progress":
+                _set_job(slug, kind="rescuing", detail=data,
+                         msg=f"Reading rescued references: {data.get('done')} of "
+                             f"{data.get('total')}…")
         try:
             dr = deep_rank.run(rep, reports_dir=REPORTS, slug=slug, on_progress=_deep_event)
             if dr:

@@ -5,6 +5,8 @@ structured sections; the SerpApi cache (enrich_display) provides drawings, PDF a
 The agent report provides elements, element evidence, the claim chart and the coverage ledger.
 """
 from __future__ import annotations
+
+import os
 import json, re
 from datetime import date, datetime
 import db, embed, status as status_mod
@@ -349,7 +351,25 @@ def sections(cur, pid):
 _VERDICT_GLYPH = {"disclosed": "discloses", "partial": "weak", "uncertain": "unchecked"}
 
 
-def build_reading_chart(report, deep, max_cols=10):
+def _row_item(row):
+    """The subject a read row answers about.
+
+    Feature rows carry it as "item". Claim rows have been seen with "item", with
+    "claim", and with only a bare claim_no, so accept all three rather than drop
+    the row - a claim silently missing from the chart reads as "no prior art".
+    """
+    if not isinstance(row, dict):
+        return ""
+    for k in ("item", "claim", "label"):
+        v = row.get(k)
+        if v:
+            return str(v)
+    if row.get("claim_no"):
+        return "claim %s" % row["claim_no"]
+    return ""
+
+
+def build_reading_chart(report, deep, max_cols=None, axis="features"):
     """The element x reference grid built from WHAT WAS READ, not from what was retrieved.
 
     WHY THIS REPLACED THE RETRIEVAL GRID
@@ -367,8 +387,27 @@ def build_reading_chart(report, deep, max_cols=10):
     the verdict, the quote that carries it and the passage the quote came from. Returns None when
     the search has no reading to render, and the caller falls back to the retrieval grid.
     """
+    if max_cols is None:
+        try:
+            max_cols = max(4, int(os.environ.get("PILOT_CHART_COLS", "40")))
+        except (TypeError, ValueError):
+            max_cols = 40
     refs = [r for r in (deep or {}).get("references") or [] if r.get("pub")]
-    features = [f for f in (deep or {}).get("features") or [] if str(f or "").strip()]
+    #  axis="claims" charts the input patent's OWN claim text; anything else charts
+    #  the derived feature checklist. Same reading either way — analyse_reference
+    #  already answers both — so this only chooses which answers get rendered.
+    row_key = "claims" if axis == "claims" else "features"
+    if axis == "claims":
+        subject = [c for c in (deep or {}).get("claims") or [] if str(
+            (c.get("label") if isinstance(c, dict) else c) or "").strip()]
+        features = [(c.get("label") if isinstance(c, dict) else str(c)) for c in subject]
+        claim_text = {(c.get("label") if isinstance(c, dict) else str(c)):
+                      (c.get("text", "") if isinstance(c, dict) else "") for c in subject}
+        claim_meta = {(c.get("label") if isinstance(c, dict) else str(c)): c
+                      for c in subject if isinstance(c, dict)}
+    else:
+        features = [f for f in (deep or {}).get("features") or [] if str(f or "").strip()]
+        claim_text, claim_meta = {}, {}
     if not refs or not features:
         return None
     dr = (report or {}).get("deep_rank") or {}
@@ -381,14 +420,46 @@ def build_reading_chart(report, deep, max_cols=10):
     #  worth reading across rather than down. Only references whose full text was actually read
     #  can carry a quote, so only those become columns.
     order = [p for p in (dr.get("order") or []) if p in by_pub] or [r["pub"] for r in refs]
-    cols = []
-    for pub in order:
-        ref = by_pub[pub]
+    #  Every reference that was actually READ, and what each of them grounded. Built
+    #  before the columns are chosen, because the columns are now chosen to cover it.
+    read_pubs = [r["pub"] for r in refs if r.get("method") == "llm"]
+    grounded = {}                      # pub -> {feature: row}
+    for ref in refs:
         if ref.get("method") != "llm":
             continue
-        cols.append(pub)
+        got = {}
+        for row in (ref.get(row_key) or []):
+            if row.get("grounding") == "verified" and row.get("verdict") in _VERDICT_GLYPH:
+                got[_row_item(row)] = row
+        grounded[ref["pub"]] = got
+    disclosers = {}                    # feature -> [pub, ...] in ranked order
+    rank_of = {p: i for i, p in enumerate(order)}
+    for pub, got in grounded.items():
+        for feat in got:
+            disclosers.setdefault(feat, []).append(pub)
+    for feat in disclosers:
+        disclosers[feat].sort(key=lambda p: rank_of.get(p, 10 ** 6))
+
+    cols = []
+    for pub in order:
+        if pub in grounded:
+            cols.append(pub)
         if len(cols) >= max_cols:
             break
+    #  Now guarantee the grid can SHOW what its own counts claim: for any feature
+    #  with evidence but no discloser among the columns, pull in its best discloser.
+    #  Without this a row reads "disclosed by 2" beside ten empty cells, which is
+    #  the single most confusing thing a claim chart can do.
+    if len(cols) < max_cols:
+        chosen = set(cols)
+        for feat in sorted(disclosers, key=lambda f: len(disclosers[f])):
+            if len(cols) >= max_cols:
+                break
+            if any(p in chosen for p in disclosers[feat]):
+                continue
+            pick = disclosers[feat][0]
+            cols.append(pick)
+            chosen.add(pick)
     if not cols:
         return None
 
@@ -402,27 +473,27 @@ def build_reading_chart(report, deep, max_cols=10):
     #  the TOP of the grid as the rarest things in the art, because the reader was never shown
     #  them. A report generated before that fix still carries exactly that hole, so the grid has
     #  to be able to say "not asked" rather than draw an empty row and let it read as "not found".
-    cells, asked = {}, set()
+    asked = set()
     for ref in refs:
-        for row in (ref.get("features") or []):
-            if row.get("item"):
-                asked.add(row["item"])
-    for pub in cols:
-        got = {}
-        for row in (by_pub[pub].get("features") or []):
-            if row.get("grounding") != "verified":
-                continue
-            if row.get("verdict") not in _VERDICT_GLYPH:
-                continue
-            got[row.get("item")] = row
-        cells[pub] = got
+        for row in (ref.get(row_key) or []):
+            it = _row_item(row)
+            if it:
+                asked.add(it)
+    cells = {pub: grounded.get(pub, {}) for pub in cols}
 
     rows = []
     #  Rarest first, because that is the order a novelty argument is made in — but anything the
     #  reading never put to a reference goes last, not first. Ranking an unanswered feature as the
     #  rarest disclosure in the art is the strongest possible claim made from the weakest possible
     #  evidence: none.
-    for feat in sorted(features, key=lambda f: (f not in asked, -float(idf.get(f, 0.0)), f)):
+    #  Most-disclosed first. Rarest-first is the order a novelty ARGUMENT is written
+    #  in, but this table is for exploring what the art teaches, and a reader opening
+    #  it wants the heavily-taught features at the top. Features nobody was asked
+    #  about still sort last: an unanswered feature is not a rare one.
+    for feat in sorted(features,
+                       key=lambda f: (f not in asked,
+                                      -len(disclosers.get(f, [])),
+                                      -float(idf.get(f, 0.0)), f)):
         out = []
         for pub in cols:
             r = cells[pub].get(feat)
@@ -440,11 +511,26 @@ def build_reading_chart(report, deep, max_cols=10):
                 "verify_why": r.get("refuted") if isinstance(r.get("refuted"), str) else "",
             })
         n_hit = sum(1 for c in out if c.get("covered"))
+        all_disc = disclosers.get(feat, [])
+        #  Anything that grounded this feature but did not win a column. Named, so a
+        #  count can always be followed to the documents behind it.
+        also = [p for p in all_disc if p not in set(cols)]
+        meta = claim_meta.get(feat) or {}
         rows.append({"element": feat, "cells": out,
+                     "claim_text": claim_text.get(feat, ""),
+                     "claim_no": meta.get("claim_no"),
+                     "independent": bool(meta.get("independent")),
                      "idf": round(float(idf.get(feat, 0.0)), 3),
-                     "df": int(df.get(feat, 0)),
+                     #  df used to come from deep_rank and was counted over a different
+                     #  population than the cells, which is how "disclosed by 2" ended
+                     #  up beside an empty row. Count what this grid can actually show.
+                     "df": len(all_disc),
+                     "df_retrieval": int(df.get(feat, 0)),
+                     "n_disclosing": len(all_disc),
+                     "also": also[:40],
+                     "n_also": len(also),
                      "asked": feat in asked,
-                     "n_charted": len(refs),
+                     "n_charted": len(read_pubs) or len(refs),
                      "coverage": {"n_evidence": n_hit, "best_score": 0.0}})
 
     tally = {}
@@ -454,12 +540,23 @@ def build_reading_chart(report, deep, max_cols=10):
                 tally[c["verify"]] = tally.get(c["verify"], 0) + 1
     return {
         "source": "reading",
+        "axis": axis,
         "columns": [{"pub": p, "n_elements": sum(1 for f in cells[p]),
                      "title": (by_pub[p].get("title") or "")[:120]} for p in cols],
         "rows": rows,
         "combination_view": report.get("combination_view", {}),
-        "n_charted": len(refs),
+        "n_charted": len(read_pubs) or len(refs),
         "n_unasked": sum(1 for r in rows if not r["asked"]),
+        "n_read": len(read_pubs),
+        #  Rows that were put to every reference and came back with NOTHING. On the claim axis this
+        #  is the headline number of the whole report: the claims the search could not find prior
+        #  art for. It is deliberately NOT the same as n_unasked, which counts rows nobody was ever
+        #  asked about — "nothing discloses this" and "nobody looked" are opposite findings.
+        "n_uncovered": sum(1 for r in rows if r["asked"] and not r["df"]),
+        "uncovered": [r["element"] for r in rows if r["asked"] and not r["df"]][:40],
+        #  References that are in this grid because a claim had no art and the search went back for
+        #  it (claim_rescue), rather than because the retrieval ranked them.
+        "n_rescued": sum(1 for r in refs if r.get("rescue")),
         "verification": {"covered": sum(tally.values()),
                          "discloses": tally.get("discloses", 0),
                          "weak": tally.get("weak", 0),
@@ -1295,7 +1392,24 @@ def build_view(report, top_n=25, deep=None):
     chart = None
     if deep:
         try:
-            chart = build_reading_chart(report, deep)
+            #  Prefer the CLAIM axis. When the search started from a patent, whether
+            #  each of ITS claims is disclosed is the whole question; the derived
+            #  feature checklist is a fallback for a free-text disclosure.
+            chart = None
+            if (deep or {}).get("claims"):
+                chart = build_reading_chart(report, deep, axis="claims")
+                #  ...but only if it SAYS something. A claim chart in which no reference grounded a
+                #  single claim is worse than no claim chart: it replaces a feature grid that does
+                #  carry evidence with forty empty rows, and an empty grid reads as a finding about
+                #  the art rather than as a failure of the reading. Rare by construction (the
+                #  orphan rescue exists to stop it) and loud when it happens.
+                if chart and not any(r.get("df") for r in chart["rows"]):
+                    print(f"[chart] the claim axis grounded nothing across "
+                          f"{chart.get('n_read')} references read; falling back to the feature "
+                          f"checklist", flush=True)
+                    chart = None
+            if not chart:
+                chart = build_reading_chart(report, deep)
         except Exception:
             import traceback
             traceback.print_exc()          # a grid must never 500 the page

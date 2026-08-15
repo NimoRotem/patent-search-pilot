@@ -107,9 +107,14 @@
           <dl class="qpdl">
             <dt>Screened</dt><dd>{{ '{:,}'.format(v.deep_rank.screened or 0) }} candidates on title, abstract and claims</dd>
             <dt>Read in full</dt><dd>{{ v.deep_rank.read_in_full or 0 }} of {{ v.deep_rank.charted or 0 }} charted · {{ '{:,}'.format(v.deep_rank.chars_read or 0) }} characters</dd>
-            <dt>Checklist</dt><dd>{{ v.claim_chart.rows|length }} features charted against every one of them</dd>
+            <dt>Checklist</dt><dd>{{ v.claim_chart.rows|length }} {{ 'claims' if v.claim_chart.axis == 'claims' else 'features' }} charted against every one of them</dd>
             {% if v.deep_rank.concept_hints %}<dt>Concept layer</dt><dd>{{ v.deep_rank.concept_hints }} features expanded into the words other patents use for the same idea</dd>{% endif %}
             {% if v.deep_rank.reread_cells %}<dt>Second reading</dt><dd>{{ v.deep_rank.reread_cells }} disclosures recovered across {{ v.deep_rank.reread_refs }} references that a first read had missed</dd>{% endif %}
+            {% set rs = v.deep_rank.rescue %}
+            {% if rs and rs.ran %}<dt>Claims with no art</dt>
+            <dd>{{ rs.n_orphans }} claim{{ '' if rs.n_orphans == 1 else 's' }} ended the main search with nothing against them: {{ rs.orphans[:6]|join(', ') }}{% if rs.n_orphans > 6 %} and {{ rs.n_orphans - 6 }} more{% endif %}.
+              A second search was run for those claims alone{% if rs.queries %}, {{ rs.queries }} queries with no classification filter{% endif %}{% if rs.reread_cells %}, and {{ rs.reread_refs }} references already read were asked again about them ({{ rs.reread_cells }} recovered){% endif %}{% if rs.read %}, reading {{ rs.read }} further references in full{% endif %}.
+              {% if rs.covered %}<b>{{ rs.covered|length }} of them now have prior art.</b>{% else %}None of them turned up prior art, which is a finding about the art rather than about the search.{% endif %}{% if rs.seconds %} · {{ rs.seconds }}s{% endif %}</dd>{% endif %}
             {% if v.deep_rank.enriched %}<dt>Text fetched</dt><dd>{{ v.deep_rank.enriched }} references had no full text here and it was fetched before reading</dd>{% endif %}
             <dt>Time</dt><dd>{{ v.deep_rank.screen_seconds or 0 }}s screening · {{ v.deep_rank.chart_seconds or 0 }}s reading</dd>
           </dl>
@@ -327,16 +332,24 @@
         READING (webview.build_reading_chart) rather than from retrieval scores; a cell is a
         verdict backed by a verbatim quote and the passage it came from, not a cosine. #}
     {% set reading = v.claim_chart.source == 'reading' %}
+    {#  CLAIMS OR FEATURES. When the search started from a patent the rows are that patent's own
+        claims and the whole table is a claim chart; otherwise they are the derived feature
+        checklist. The two need different words for the same shape, so the labels are set once
+        here rather than branched at every use. #}
+    {% set claimaxis = reading and v.claim_chart.axis == 'claims' %}
+    {% set rowword = 'claims' if claimaxis else 'features' %}
     {#  Collapsed, like its siblings. The grid is now the most substantial thing in the report and
         that is exactly why it stays shut: opened it is 40 rows of quotations sitting between the
         header and the first result, which is the layout this section was moved up here to end. #}
     <details class="tail{% if v.partial %} pending{% endif %}">
-      <summary><span class="th">Element × reference grid</span>
-        <span class="ts">{% if v.partial %}available when final ranking completes{% else %}{{ v.claim_chart.rows|length }} features × {{ v.claim_chart.columns|length }} references{% if reading %} · read in full · rarest feature first{% elif v.claim_chart.verification and v.claim_chart.verification.covered %} · {{ v.claim_chart.verification.discloses }} verified{% endif %}{% endif %}</span></summary>
+      <summary><span class="th">{{ 'Claim × prior-art grid' if claimaxis else 'Element × reference grid' }}</span>
+        <span class="ts">{% if v.partial %}available when final ranking completes{% else %}{{ v.claim_chart.rows|length }} {{ rowword }} × {{ v.claim_chart.columns|length }} references{% if reading %} · read in full · most disclosed first{% if v.claim_chart.n_uncovered %} · <b class="gridwarnt">{{ v.claim_chart.n_uncovered }} with no prior art</b>{% endif %}{% elif v.claim_chart.verification and v.claim_chart.verification.covered %} · {{ v.claim_chart.verification.discloses }} verified{% endif %}{% endif %}</span></summary>
       <div class="tailin">
         {% if reading %}
-        <p class="gridline">One row per feature of the invention, <b>rarest first</b> — the feature
-          almost nothing discloses is the one a novelty argument turns on. Each cell is what that
+        <p class="gridline">{% if claimaxis %}One row per <b>claim of the patent this search started
+          from</b>, in its own words, <b>most disclosed first</b> — so the top of the table is the
+          art you already have and the bottom is the work still to do.{% else %}One row per feature
+          of the invention, <b>most disclosed first</b>.{% endif %} Each cell is what that
           reference was measured to teach when its full text was read, with the verbatim quote that
           carries it; click a cell for the whole passage. Every quote passed the grounding check and
           every ✓ survived an independent refuter.
@@ -345,6 +358,19 @@
           <span class="lgi"><span class="lg lg-unk"></span>? unconfirmed</span>
           <span class="lgi"><span class="lg lg-none"></span>· absent</span>
         </p>
+        {% if claimaxis and v.claim_chart.n_uncovered %}
+        <p class="gridline gridwarn"><b>{{ v.claim_chart.n_uncovered }} of these
+          {{ v.claim_chart.rows|length }} claims have no prior art against them</b> after
+          {{ v.claim_chart.n_read }} references were read in full{% if v.deep_rank and v.deep_rank.rescue and v.deep_rank.rescue.ran %} and a second, claim-focused search
+          was run for the claims that had nothing{% endif %}: {{ v.claim_chart.uncovered[:8]|join(', ') }}{% if v.claim_chart.n_uncovered > 8 %} and {{ v.claim_chart.n_uncovered - 8 }} more{% endif %}.
+          They are at the bottom of the table. This is a finding, not a gap in the search — but it
+          is the one worth checking by hand.</p>
+        {% endif %}
+        {% if v.claim_chart.n_rescued %}
+        <p class="gridline"><b>{{ v.claim_chart.n_rescued }}</b> of these references are here
+          because a claim had nothing against it and the search went back specifically for that
+          claim, without a classification filter — not because the main ranking surfaced them.</p>
+        {% endif %}
         {% if v.claim_chart.n_unasked %}
         <p class="gridline gridwarn"><b>{{ v.claim_chart.n_unasked }} of these features were never
           put to a reference.</b> This report was generated before the reading covered the whole
@@ -361,23 +387,24 @@
         </p>
         {% endif %}
 
-        <div class="chartwrap">
+        <div class="chartwrap chart-sticky">
           <table class="chart{% if reading %} readgrid{% endif %}">
             <caption class="vh">Which references disclose which elements of the invention</caption>
             <thead>
               <tr>
-                <th class="elh" scope="col">Invention element</th>
+                <th class="elh" scope="col">{{ 'Claim' if claimaxis else 'Invention element' }}</th>
                 {% for c in v.claim_chart.columns %}
                 <th scope="col"><button type="button" class="pnlink" onclick="jumpRef('{{ c.pub }}')"{% if c.title %} title="{{ c.title }}"{% endif %}>{{ c.pub }}</button>
-                  <span class="colcount">{{ c.n_elements }} {{ 'features' if reading else 'elements' }}</span></th>
+                  <span class="colcount">{{ c.n_elements }} {{ rowword if reading else 'elements' }}</span></th>
                 {% endfor %}
               </tr>
             </thead>
             <tbody>
               {% for row in v.claim_chart.rows %}
-              <tr{% if reading and not row.asked %} class="rowunasked"{% endif %}>
-                <th class="elh" scope="row">{{ row.element }}
-                  <span class="elcov">{% if reading %}{% if row.asked %}disclosed by {{ row.df }} of {{ row.n_charted }} read{% else %}not asked of any reference in this run{% endif %}{% else %}best {{ '%.3f'|format(row.coverage.get('best_score',0)) }} · {{ row.coverage.get('n_evidence',0) }} refs{% endif %}</span></th>
+              <tr{% if reading and not row.asked %} class="rowunasked"{% elif reading and not row.df %} class="rowuncovered"{% endif %}>
+                <th class="elh" scope="row">{% if claimaxis %}<span class="clno">{{ row.element }}{% if row.independent %} <span class="indep" title="an independent claim — the claim the patent stands on">independent</span>{% endif %}</span>
+                  <span class="cltext">{{ row.claim_text or '' }}</span>{% else %}{{ row.element }}{% endif %}
+                  <span class="elcov">{% if reading %}{% if row.asked %}disclosed by {{ row.df }} of {{ row.n_charted }} read{% if row.n_also %} · <span class="elalso" title="{{ row.also|join(', ') }}">{{ row.n_also }} more not shown as columns: {{ row.also[:6]|join(', ') }}{% if row.n_also > 6 %} …{% endif %}</span>{% endif %}{% else %}not asked of any reference in this run{% endif %}{% else %}best {{ '%.3f'|format(row.coverage.get('best_score',0)) }} · {{ row.coverage.get('n_evidence',0) }} refs{% endif %}</span></th>
                 {% for cell in row.cells %}
                   {#  Colour encodes VERIFICATION STATE, not retrieval score. Green previously
                       scaled with the fused score, so a confidently-retrieved but wrong cell was the
