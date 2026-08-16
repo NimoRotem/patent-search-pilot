@@ -12,32 +12,28 @@ ledger simply had two rows and reported itself done.
 """
 import patent_doc
 
-#  Long enough to clear patent_doc's own thresholds for recognising a claims run
-#  (MIN_RUN_CLAIMS=3, MIN_RUN_CHARS=600), because a fixture below them tests the guard rather than
-#  the behaviour.
-_DEP = ("A vacuum gripper as in claim 1, wherein the vacuum seal element comprises a first portion "
-        "disposed on a second portion, the first portion comprising a flexible and stretchable "
-        "material configured to conform to irregularities of an object surface, and the second "
-        "portion comprising a compressible and deformable material")
-BLOB = (
-    "1. A vacuum gripper for gripping an object, the vacuum gripper comprising a base element, "
-    "wherein the base element comprises one or more openings around a periphery of the base "
-    "element; a vacuum seal element coupled to the base element and configured to surround a "
-    "cavity; and an air extraction mechanism in fluid communication with the cavity.\n"
-    f"2. {_DEP} that is less compressible than the first.\n"
-    f"3. {_DEP} selected for layer thickness, hardness and elasticity.\n"
-    f"4. {_DEP} arranged in discrete layers of differing hardness.\n"
-    "20. A vacuum gripper for gripping an object, the vacuum gripper comprising a base element "
-    "with one or more openings around a periphery, a vacuum seal element having a flexible first "
-    "portion and a compressible second portion, an air extraction mechanism, a pressure alarm, "
-    "and a battery housed in a handle of the vacuum gripper.\n"
-)
+#  The shape of the real document: twenty SEQUENTIALLY numbered claims run together in one string,
+#  claim 1 and claim 20 independent and the rest dependent. Sequential matters — patent_doc stops a
+#  claims run at a numbering gap, which is its guard against a numbered list in a description, so a
+#  fixture that jumps 4 -> 20 tests that guard rather than this repair. It must also clear
+#  MIN_RUN_CLAIMS=3 and MIN_RUN_CHARS=600.
+_INDEP = ("A vacuum gripper for gripping an object, the vacuum gripper comprising a base element, "
+          "wherein the base element comprises one or more openings around a periphery of the base "
+          "element; a vacuum seal element coupled to the base element and configured to surround a "
+          "cavity; and an air extraction mechanism in fluid communication with the cavity")
+BLOB = "\n".join(
+    [f"1. {_INDEP}."]
+    + [f"{n}. A vacuum gripper as in claim 1, wherein the vacuum seal element comprises a first "
+       f"portion disposed on a second portion, the first portion comprising a flexible and "
+       f"stretchable material and the second portion a compressible material, variant {n}."
+       for n in range(2, 20)]
+    + [f"20. {_INDEP}, a pressure alarm, and a battery housed in a handle."]) + "\n"
 
 
 def test_a_run_together_claims_record_is_re_split():
     got = patent_doc.split_claims(BLOB)
-    assert len(got) == 5, [c["claim_no"] for c in got]
-    assert [c["claim_no"] for c in got] == [1, 2, 3, 4, 20]
+    assert len(got) == 20, [c["claim_no"] for c in got]
+    assert [c["claim_no"] for c in got] == list(range(1, 21))
 
 
 def test_the_claim_number_comes_from_the_text_not_the_list_position():
@@ -45,7 +41,7 @@ def test_the_claim_number_comes_from_the_text_not_the_list_position():
     and every downstream reference to "claim 20" then points at nothing."""
     got = patent_doc.split_claims(BLOB)
     assert got[-1]["claim_no"] == 20
-    assert got[-1]["text"].startswith("A vacuum gripper for gripping an object")
+    assert "battery housed in a handle" in got[-1]["text"]
 
 
 def test_a_correctly_split_record_is_left_alone():
