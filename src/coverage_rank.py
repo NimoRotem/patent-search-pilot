@@ -271,13 +271,20 @@ def claim_first(order, by_pub, claims, window=60, minimum=PLAUSIBLE):
     if not claims or not order:
         return None
     strength = {p: claims_disclosed(by_pub[p], minimum) for p in order if p in by_pub}
+    #  A claim answered by a DISCLOSED is not the same achievement as one answered by a partial,
+    #  and counting them together is what fills the head with documents that touch eight claims
+    #  weakly. Measured on adhoc-a2fec8ee8ba2: ranking on the plain count put ten such documents in
+    #  the first ten cards and pushed the one reference the attorney filed that WAS on the page
+    #  from card 22 to card 40. Strong claims lead, plain count breaks the tie.
+    strong = {p: claims_disclosed(by_pub[p], 1.0) for p in order if p in by_pub}
     rank_of = {p: i for i, p in enumerate(order)}
 
     #  1. STRONGEST FIRST, inside the window. Ties keep their existing order, so the greedy
     #     coverage result survives wherever claim counts are equal and this is a refinement of it
     #     rather than a replacement.
     head = [p for p in order[:window]]
-    head.sort(key=lambda p: (-len(strength.get(p, ())), rank_of.get(p, 10 ** 9)))
+    head.sort(key=lambda p: (-len(strong.get(p, ())), -len(strength.get(p, ())),
+                             rank_of.get(p, 10 ** 9)))
     tail = list(order[window:])
 
     #  2. EVERY CLAIM GETS AN ANSWER. A claim with nothing on the page is the one an attorney
@@ -296,7 +303,7 @@ def claim_first(order, by_pub, claims, window=60, minimum=PLAUSIBLE):
             #  The reference that answers the most claims overall, then the best-ranked one: a
             #  promotion should bring in the most useful document that answers this claim, not
             #  merely the first one found.
-            k = (-len(cs), rank_of.get(p, 10 ** 9))
+            k = (-len(strong.get(p, ())), -len(cs), rank_of.get(p, 10 ** 9))
             if key is None or k < key:
                 best, key = p, k
         if best is None:
@@ -314,5 +321,9 @@ def claim_first(order, by_pub, claims, window=60, minimum=PLAUSIBLE):
         tail = displaced + [p for p in tail if p not in promoted]
 
     per_claim = {c: sum(1 for p in head if c in strength.get(p, ())) for c in claims}
+    per_claim_strong = {c: sum(1 for p in head if c in strong.get(p, ())) for c in claims}
     return {"order": head + tail, "promoted": promoted, "per_claim": per_claim,
-            "claims_answered": sum(1 for c in claims if per_claim[c] > 0), "n_claims": len(claims)}
+            "per_claim_strong": per_claim_strong,
+            "claims_answered": sum(1 for c in claims if per_claim[c] > 0),
+            "claims_answered_strong": sum(1 for c in claims if per_claim_strong[c] > 0),
+            "n_claims": len(claims)}
