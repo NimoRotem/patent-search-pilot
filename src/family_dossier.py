@@ -51,9 +51,24 @@ import time
 import urllib.error
 import urllib.request
 
+try:                                     # side effect: config loads .env, where the key lives
+    import config                        # noqa: F401
+except Exception:
+    pass
+
 BASE = os.environ.get("USPTO_ODP_BASE", "https://api.uspto.gov/api/v1").rstrip("/")
-#  Never a literal. The repo is public.
+#  Never a literal. The repo is public; the value belongs in .env (0600, gitignored) or the
+#  supervisor config, and in the advisor as `uspto-odp`.
+#
+#  Read through `_key()` rather than used directly, because a module constant binds at IMPORT time
+#  and `config` is what loads .env — so a module imported before config, or an env set after
+#  import, silently has no key and the dossier reports "no USPTO_ODP_KEY" while the key is sitting
+#  in the file. Tests still monkeypatch KEY, which is why `_key` prefers it when it is set.
 KEY = os.environ.get("USPTO_ODP_KEY", "")
+
+
+def _key() -> str:
+    return KEY or os.environ.get("USPTO_ODP_KEY", "") or os.environ.get("ODP_API_KEY", "")
 TIMEOUT = float(os.environ.get("USPTO_ODP_TIMEOUT", "40"))
 ENABLED = os.environ.get("FAMILY_DOSSIER_ENABLED", "1") != "0"
 #  How far up and down the continuity chain to walk. The measured case needed two hops up to reach
@@ -81,13 +96,14 @@ def _call(path, body=None, log=print):
     """GET or POST against ODP. -> dict, or {} on any failure. Never raises."""
     if not ENABLED:
         return {}
-    if not KEY:
+    key = _key()
+    if not key:
         log("[dossier] no USPTO_ODP_KEY in the environment; skipping the file wrapper")
         return {}
     url = f"{BASE}/{path.lstrip('/')}"
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, headers={
-        "X-API-KEY": KEY, "Accept": "application/json",
+        "X-API-KEY": key, "Accept": "application/json",
         **({"Content-Type": "application/json"} if data else {})})
     for attempt in range(2):
         try:
@@ -228,7 +244,7 @@ def dossier(publication="", application="", log=print, emit=None) -> dict:
     if not ENABLED:
         out["error"] = "family dossier disabled"
         return out
-    if not KEY:
+    if not _key():
         out["error"] = "no USPTO_ODP_KEY"
         return out
     app = _norm_app(application)
