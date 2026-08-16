@@ -229,3 +229,21 @@ def test_every_owner_control_is_gated_in_the_report_template():
         i = src.find(needle)
         assert i > 0, needle
         assert "read_only" in src[max(0, i - 900):i], f"{needle} is not behind read_only"
+
+
+def test_a_second_owner_is_told_why_rather_than_shown_a_404(monkeypatch):
+    """The caller reached the publish route through the access check, so they CAN see this report.
+    Answering 404 would tell them their own report does not exist. One link per report, owned by
+    whoever published it first, and the second person is told that."""
+    class _Cur:
+        def execute(self, q, args=None):
+            self._q = q
+
+        def fetchone(self):
+            return {"user_id": 999, "slug": SLUG}
+
+    import contextlib
+    monkeypatch.setattr(PR, "ensure_schema", lambda: None)
+    monkeypatch.setattr(PR.db, "cursor", lambda *a, **k: contextlib.nullcontext(_Cur()))
+    out = PR.publish(1, SLUG)
+    assert out.get("error") == "already_published_by_another_user"

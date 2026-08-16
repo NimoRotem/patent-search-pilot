@@ -3863,6 +3863,9 @@ def report_publish(slug):
     rep = _load_report(slug) or {}
     row = public_report.publish(user["id"], slug, password=password or None,
                                 title=(rep.get("query") or "")[:200], clear_password=clear)
+    if row.get("error") == "already_published_by_another_user":
+        return jsonify({"ok": False, "error": "Someone else has already published this report. "
+                                              "Ask them to revoke their link first."}), 409
     if not row:
         abort(404)
     return jsonify({"ok": True, "published": True,

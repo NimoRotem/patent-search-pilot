@@ -117,7 +117,11 @@ def publish(user_id, slug, password=None, title="", clear_password=False) -> dic
         cur.execute("SELECT * FROM app_public_reports WHERE slug=%s", (slug,))
         row = cur.fetchone()
         if row and row["user_id"] != user_id:
-            return {}                     # somebody else's report; the caller 404s
+            #  Somebody else already published this report. Distinguishable from "no such report",
+            #  because the caller CAN see the report — they reached this route through the access
+            #  check — and a bare 404 would tell them their own report does not exist. One link per
+            #  report, owned by whoever published it first, and the second person is told so.
+            return {"error": "already_published_by_another_user"}
         pw = None
         if password:
             pw = generate_password_hash(password)
