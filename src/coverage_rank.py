@@ -219,3 +219,100 @@ def covered_mass(order, by_pub, idf, cut=50):
         if new < 0.01:
             dead += 1
     return sum(idf.get(d, 0.0) * v for d, v in best.items()), total, dead
+
+
+# ---------------------------------------------------------------------------
+# the page an attorney would want: every claim answered, strongest answers first
+# ---------------------------------------------------------------------------
+#  A reference "plausibly discloses" a claim when it grounds at least one of that claim's
+#  limitations at `disclosed` or `partial`. Deliberately not `uncertain`: an uncertain is a
+#  disclosed that an independent refuter would not confirm, and putting one forward as the answer
+#  to a claim is how a report ends up asserting something it cannot defend.
+PLAUSIBLE = float(os.environ.get("COVERAGE_PLAUSIBLE_MIN", "0.55"))
+
+
+def claim_of(item) -> str:
+    """"claim 12[c]" -> "claim 12". A limitation id carries its claim, so nothing has to be looked
+    up to go from one to the other."""
+    s = str(item or "")
+    i = s.find("[")
+    return (s[:i] if i > 0 else s).strip()
+
+
+def claims_disclosed(entry, minimum=PLAUSIBLE) -> set:
+    """The CLAIMS this reference plausibly answers, from its grounded limitation cells."""
+    out = set()
+    for item, v in quality(entry).items():
+        if v >= minimum:
+            c = claim_of(item)
+            if c:
+                out.add(c)
+    return out
+
+
+def claim_first(order, by_pub, claims, window=60, minimum=PLAUSIBLE):
+    """Reorder the visible page so the documents that kill the most CLAIMS lead it, then make sure
+    every claim has at least one plausible answer on it.
+
+    -> {"order", "promoted": {pub: claim}, "per_claim": {claim: n on the page}} or None.
+
+    WHY CLAIMS AND NOT LIMITATIONS. The greedy coverage pass above optimises limitation mass, which
+    is the right objective for "how much of the invention is answered" and the wrong one for "which
+    document should I read first". An attorney reads down a list looking for the single reference
+    that takes out the most claims — that is what a 102 rejection is built from, and it is what the
+    examiner in the measured docket did: one document, thirteen claims. A document answering one
+    limitation of each of five claims is worth more to that argument than one answering five
+    limitations of a single claim, and limitation mass cannot tell them apart.
+
+    WHY A SEPARATE PASS. Same reason `guarantee` is: weighting claim count inside the greedy score
+    would distort every other position to fix the head. This reorders the window and nothing else.
+    """
+    claims = sorted({claim_of(c) for c in (claims or []) if claim_of(c)})
+    if not claims or not order:
+        return None
+    strength = {p: claims_disclosed(by_pub[p], minimum) for p in order if p in by_pub}
+    rank_of = {p: i for i, p in enumerate(order)}
+
+    #  1. STRONGEST FIRST, inside the window. Ties keep their existing order, so the greedy
+    #     coverage result survives wherever claim counts are equal and this is a refinement of it
+    #     rather than a replacement.
+    head = [p for p in order[:window]]
+    head.sort(key=lambda p: (-len(strength.get(p, ())), rank_of.get(p, 10 ** 9)))
+    tail = list(order[window:])
+
+    #  2. EVERY CLAIM GETS AN ANSWER. A claim with nothing on the page is the one an attorney
+    #     cannot argue at all, and it is invisible: an empty row reads as "no such art exists"
+    #     rather than "the page was full".
+    on_page = set()
+    for p in head:
+        on_page |= strength.get(p, set())
+    missing = [c for c in claims if c not in on_page]
+    promoted = {}
+    for c in missing:
+        best, key = None, None
+        for p, cs in strength.items():
+            if c not in cs or p in head or p in promoted:
+                continue
+            #  The reference that answers the most claims overall, then the best-ranked one: a
+            #  promotion should bring in the most useful document that answers this claim, not
+            #  merely the first one found.
+            k = (-len(cs), rank_of.get(p, 10 ** 9))
+            if key is None or k < key:
+                best, key = p, k
+        if best is None:
+            continue                     # nothing in the whole run answers it; that is a finding
+        promoted[best] = c
+        on_page |= strength.get(best, set())
+
+    if promoted:
+        #  MAKE ROOM by displacing the weakest cards in the window, never by appending past it —
+        #  appending puts a promotion at position window+1, just outside the page it was promoted
+        #  to reach, which is the bug this codebase has already had once.
+        keep = [p for p in head if p not in promoted]
+        room = max(0, window - len(promoted))
+        head, displaced = keep[:room] + list(promoted), keep[room:]
+        tail = displaced + [p for p in tail if p not in promoted]
+
+    per_claim = {c: sum(1 for p in head if c in strength.get(p, ())) for c in claims}
+    return {"order": head + tail, "promoted": promoted, "per_claim": per_claim,
+            "claims_answered": sum(1 for c in claims if per_claim[c] > 0), "n_claims": len(claims)}
