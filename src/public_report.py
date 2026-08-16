@@ -207,16 +207,25 @@ _KEEP_HEADERS = (
 
 
 def client_ip(req) -> tuple:
-    """(best-guess client address, the whole forwarded chain).
+    """(the address we can actually stand behind, the whole forwarded chain).
 
-    This app sits behind nginx, so `remote_addr` is the proxy. The LEFTMOST entry of
-    X-Forwarded-For is the client as reported by the first proxy that saw it — untrustworthy in
-    general, and the only thing there is. Both are stored: the chain is what lets somebody later
-    tell a real reader from our own health check.
+    Delegates to `auth.client_ip`, which already solved this properly: X-Forwarded-For is entirely
+    forgeable, so it is only consulted when the TCP peer is our own reverse proxy, and it takes the
+    right ELEMENT of the chain given nginx appends rather than replaces. Reimplementing that here
+    would be a second, worse copy of a rule that has to be identical in both places — the rate
+    limiter and this log must agree about who a caller is.
+
+    The raw chain is stored alongside it regardless, because it is what lets somebody later tell a
+    real reader from our own health check.
     """
     chain = (req.headers.get("X-Forwarded-For") or "").strip()
-    first = chain.split(",")[0].strip() if chain else ""
-    return (first or req.headers.get("X-Real-IP") or req.remote_addr or ""), chain
+    try:
+        import auth
+        return (auth.client_ip() or ""), chain
+    except Exception:
+        #  Outside a request context, or auth unavailable: fall back to the peer, never to an
+        #  unverified header.
+        return (req.remote_addr or ""), chain
 
 
 def record_visit(slug, req, unlocked=False) -> str:
