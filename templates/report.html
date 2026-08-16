@@ -828,7 +828,11 @@ window.ARCHIVE_READY = {{ (v.archive.ready or false)|tojson }};
 window.REPORT_SAVED = {{ (v.account_search and v.account_search.saved)|default(false)|tojson }};
 
 /* Saved report + automatic top-50 Markdown archive. Both are account/report state, not retrieval
-   controls, so failures never disturb the ranked results already on screen. */
+   controls, so failures never disturb the ranked results already on screen.
+   OWNER ONLY. None of the elements it binds exist on a published page, so it was inert there
+   rather than dangerous -- but it names owner endpoints and reads the CSRF token, and shipping
+   that to somebody holding a link is a description of the application they cannot use. */
+{% if not read_only %}
 (function(){
   const B = window.APP_BASE || '';
   const save = document.getElementById('saveReportBtn');
@@ -926,6 +930,7 @@ window.REPORT_SAVED = {{ (v.account_search and v.account_search.saved)|default(f
   retry.addEventListener('click', start);
   if(!window.ARCHIVE_READY) start();
 })();
+{% endif %}
 {% if v.partial %}
 /* The report is renderable but the agent is still working. Show the SAME narrative the generating
    page shows, so the long quiet stretch between 'partial' and 'reranking' reads as progress
