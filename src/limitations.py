@@ -41,6 +41,8 @@ import json
 import os
 import re
 
+import grounding
+
 TYPE_A = "disclosure"
 TYPE_B = "claims"
 
@@ -121,22 +123,147 @@ _SPLIT_SYS = (
     "You are a patent examiner preparing an invalidity search. Split each claim into its "
     "LIMITATIONS: the separate technical requirements a reference would have to disclose.\n"
     "\n"
+    "COPY, DO NOT WRITE. Every limitation you return must be an EXACT, CONTIGUOUS, CHARACTER-FOR-"
+    "CHARACTER SPAN of the claim text you were given. You are cutting the claim into pieces, not "
+    "describing it. Do not reword, do not summarise, do not merge separate parts into one "
+    "sentence, do not fix grammar, do not expand an abbreviation, do not drop a qualifier such as "
+    "\"in particular of different geometries\" or \"at least one\". If you cannot express a "
+    "requirement by copying a span, return the span anyway and let it be imperfect.\n"
+    "\n"
+    "PRESERVE THE STATUTORY CLASS. If the claim begins \"A method for operating a handling "
+    "system...\", the first limitation begins with those exact words. Turning a method claim into "
+    "an apparatus claim, or the reverse, changes what art can invalidate it and is the single "
+    "worst error you can make here.\n"
+    "\n"
     "Rules that matter:\n"
-    "- A limitation is one requirement, stated so it can be searched ON ITS OWN. Write it as a "
-    "complete technical statement, not a fragment: \"a sound-damping device in the exhaust air "
-    "path\", never \"said device\".\n"
-    "- For a DEPENDENT claim, return ONLY what it ADDS to the claim it depends from. Do not repeat "
-    "the parent's requirements; they are tracked against the parent.\n"
+    "- A limitation is one requirement, cut so it can be searched ON ITS OWN. Prefer a span that "
+    "reads as a complete technical statement, but never invent words to make it read better.\n"
+    "- For a DEPENDENT claim, return ONLY the span of what it ADDS to the claim it depends from. "
+    "Do not repeat the parent's requirements; they are tracked against the parent.\n"
     "- Do not split a single requirement into its grammatical parts. \"a hollow grip portion "
     "extending between a front and a rear housing section\" is ONE limitation, not three.\n"
-    "- Drop pure preamble (\"A grip unit for a vacuum handling apparatus, comprising:\") unless it "
-    "carries a real structural or functional requirement.\n"
+    "- The preamble IS a limitation when it carries the statutory class or a real structural or "
+    "functional requirement. Copy it whole rather than dropping it.\n"
     "- 2 to 8 limitations for an independent claim; 1 to 3 for a dependent one.\n"
     "\n"
     'Return ONLY JSON: {"claims":[{"item":"<the claim label verbatim, e.g. \\"claim 3\\">",'
     '"depends_on":<claim number or null>,"limitations":["...","..."]}]} with one entry per claim, '
     "in the order given."
 )
+
+
+# ---------------------------------------------------------------------------
+# SNAPPING A LIMITATION BACK ONTO THE CLAIM IT CAME FROM
+#
+# The prompt above asks for verbatim spans. Asking is not enough, and this is not a hypothetical:
+# measured on adhoc-db64a3dd7c98 (US 2026/0034666 A1, a link search, claims stored VERBATIM and
+# correct), 21 of 45 limitations came back as paraphrase. The worst was claim 1[a]. The claim reads
+#
+#     "1. A method for operating a handling system for transporting a plurality of gripping
+#      objects, in particular of different geometries, from a pick-up area to a deposit area..."
+#
+# and the limitation the ledger, the rescue queries, the BigQuery portfolios and the user-facing
+# claim table all ran on was
+#
+#     "a handling system for transporting a plurality of gripping objects from a pick-up area to a
+#      deposit area, the handling system comprising a vacuum gripper..."
+#
+# A METHOD CLAIM SILENTLY BECAME AN APPARATUS CLAIM, and "in particular of different geometries"
+# was dropped. Everything downstream then searched for, and reported on, a claim the patent does
+# not contain.
+#
+# So the split is verified the same way every other model assertion in this pipeline is verified:
+# it has to be locatable in its source. `deep_analysis` already refuses a quote that is not
+# grounded in the reference; a limitation that is not grounded in its own claim is the same defect
+# one stage earlier, and it had no gate at all.
+# ---------------------------------------------------------------------------
+#  How much longer than the model's own text a snapped span may be before we treat it as having
+#  swallowed half the claim rather than located a requirement.
+_SNAP_MAX_GROWTH = float(os.environ.get("LEDGER_SNAP_MAX_GROWTH", "4.0"))
+
+
+def _norm_map(s):
+    """Normalised text, plus the original index of every normalised character.
+
+    Normalisation is lossy on purpose (case, punctuation and whitespace all collapse) because that
+    is exactly the set of differences a faithful model still introduces. The index map is what lets
+    us hand back the ORIGINAL characters once a match is found, rather than the normalised ones.
+    """
+    out, idx, prev_space = [], [], True
+    for i, ch in enumerate(s or ""):
+        c = ch.lower()
+        if c.isalnum():
+            out.append(c)
+            idx.append(i)
+            prev_space = False
+        elif not prev_space:
+            out.append(" ")
+            idx.append(i)
+            prev_space = True
+    while out and out[-1] == " ":
+        out.pop()
+        idx.pop()
+    return "".join(out), idx
+
+
+def _is_span(text, claim) -> bool:
+    """True when `text` is a contiguous span of `claim`, ignoring case, punctuation and spacing."""
+    nt, _ = _norm_map(text)
+    nc, _ = _norm_map(claim)
+    return bool(nt) and nt in nc
+
+
+#  When the FIRST limitation of a claim starts this close to the start of the claim, pull it back to
+#  the beginning. The model drops the opening words of a preamble more than anything else, and those
+#  words are the statutory class: `_snap` anchors on the model's own first content word, so it can
+#  never recover text that sits BEFORE that anchor. On the measured case the repaired claim 1[a]
+#  began "handling system for transporting..." when the claim begins "A method for operating a
+#  handling system for transporting...".
+_HEAD_SLACK = int(os.environ.get("LEDGER_HEAD_SLACK", "80"))
+_CLAIM_NO = re.compile(r"^\s*\d+\s*[.)]\s*")
+
+
+def _snap(text, claim, at_head=False):
+    """The span of `claim` that `text` is a rendering of, or None. -> (span, was_exact)."""
+    nt, _ = _norm_map(text)
+    nc, cidx = _norm_map(claim)
+    if not nt or not nc:
+        return None
+    #  1. The model copied faithfully and differs only in case, punctuation or whitespace.
+    p = nc.find(nt)
+    if p >= 0:
+        end = p + len(nt) - 1
+        extended = at_head and 0 < p <= _HEAD_SLACK
+        if extended:
+            p = 0
+        span = _CLAIM_NO.sub("", claim[cidx[p]:cidx[end] + 1]).strip(" ,;:.")
+        return span, not extended
+    #  2. It paraphrased. Anchor on its first and last content words, in its own order, and take
+    #     the claim text between them. Deliberately simple: the aim is to recover the REGION the
+    #     model was looking at, then let the grounding gate decide whether that region really is
+    #     what it described.
+    words = grounding.content_words(text)
+    if not words:
+        return None
+    a, b = nc.find(words[0]), nc.rfind(words[-1])
+    if a < 0 or b < 0:
+        return None
+    b += len(words[-1])
+    if b <= a:
+        return None
+    span = claim[cidx[a]:cidx[min(b, len(cidx)) - 1] + 1].strip(" ,;:.")
+    #  A span that ballooned is not a located requirement, it is most of the claim.
+    if len(span) > max(120, len(text) * _SNAP_MAX_GROWTH):
+        return None
+    #  The same bar the reader applies to a quote: the model's text has to actually be in there,
+    #  concentrated and in order, not merely built from words the span happens to contain.
+    if not grounding.grounded(text, span):
+        return None
+    #  Only now pull a first limitation back to the claim's opening words, so the growth and
+    #  grounding gates above judge what the model actually described rather than the extension.
+    if at_head and 0 < a <= _HEAD_SLACK:
+        span = _CLAIM_NO.sub("", claim[cidx[0]:cidx[min(b, len(cidx)) - 1] + 1]).strip(" ,;:.")
+    return span, False
 
 
 def split_claims(claim_items, use_llm=True, log=print):
@@ -174,11 +301,29 @@ def split_claims(claim_items, use_llm=True, log=print):
             traceback.print_exc()
 
     out = []
+    n_exact = n_snapped = n_dropped = 0
     for c in claims:
         label = c["label"]
         got = parsed.get(label) or {}
         lims = got.get("limitations")
         source = "model"
+        #  SNAP EVERY MODEL LIMITATION ONTO THE CLAIM, or drop it. See the note above `_snap`: a
+        #  limitation that cannot be located in its own claim is not a requirement of that claim,
+        #  and every stage after this one treats it as though it were.
+        if lims:
+            kept, exact_flags = [], []
+            for n, t in enumerate(lims):
+                hit = _snap(t, c["text"], at_head=(n == 0))
+                if hit is None:
+                    n_dropped += 1
+                    continue
+                span, was_exact = hit
+                kept.append(span)
+                exact_flags.append(was_exact)
+                n_exact += was_exact
+                n_snapped += (not was_exact)
+            lims = kept
+            got["_exact"] = exact_flags
         if not lims:
             #  STRUCTURAL FALLBACK, never an empty list. A claim with no limitations is a claim
             #  the ledger cannot track, and it would silently drop out of the stopping rule.
@@ -187,6 +332,7 @@ def split_claims(claim_items, use_llm=True, log=print):
         dep = got.get("depends_on")
         if dep is None:
             dep = parent_of(c["text"])
+        exact_flags = got.get("_exact") or []
         for j, text in enumerate(lims):
             out.append({
                 "id": f"{label}[{chr(97 + j)}]",
@@ -197,6 +343,11 @@ def split_claims(claim_items, use_llm=True, log=print):
                 "independent": bool(c.get("independent")),
                 "depends_on": dep,
                 "source": source,
+                #  Recorded so the claim table can show it and so a test can ASSERT the rate rather
+                #  than trusting the prompt. Measured directly rather than inferred: the structural
+                #  fallback glues clauses with "; " and can also drift off an exact span.
+                "verbatim": _is_span(text, c["text"]),
+                "snapped": (not exact_flags[j]) if j < len(exact_flags) else False,
             })
             if len(out) >= MAX_LIMITATIONS:
                 log(f"[limitations] capped at {MAX_LIMITATIONS}; "
@@ -204,7 +355,9 @@ def split_claims(claim_items, use_llm=True, log=print):
                 return out
     n_model = sum(1 for l in out if l["source"] == "model")
     log(f"[limitations] {len(claims)} claims -> {len(out)} limitations "
-        f"({n_model} split by the model, {len(out) - n_model} structurally)")
+        f"({n_model} split by the model, {len(out) - n_model} structurally); "
+        f"verbatim: {n_exact} copied cleanly, {n_snapped} relocated onto the claim, "
+        f"{n_dropped} discarded as not locatable in it")
     return out
 
 
