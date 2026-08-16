@@ -1,0 +1,63 @@
+{#  The published report, with the application taken away.
+
+    A recipient of a public link has no account and no way to get one, so every control that leads
+    somewhere they cannot go is noise at best and a broken promise at worst: the primary navigation,
+    the account block, Sign out, Admin. What is left is the brand, the document, and one line saying
+    where it came from.
+
+    Deliberately NOT `base.html` with flags. That template's nav is driven by `current_user` and
+    `account_mode`, and a published page has to be right when an owner opens their own link while
+    signed in — which is exactly how it will first be tested. A separate skeleton cannot regress
+    into showing the application to a stranger because somebody adds a nav item.  #}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+{#  A published report is a client document, not something to be indexed. The link is the access
+    control; a search engine holding a copy is not.  #}
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<title>{% block title %}Prior-art report{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23175cd3'/><path d='M9 8h10l4 4v12H9zM19 8v5h5M12 18h8M12 22h6' fill='none' stroke='white' stroke-width='1.8'/></svg>">
+<script>
+window.APP_BASE = {{ request.script_root|tojson }};
+window.CORPUS_PUBLICATIONS = {{ (corpus.publications if corpus and corpus.publications else 0)|tojson }};
+{#  No CSRF token and no account email: nothing on this page may mutate anything, and the reader's
+    identity is not ours to put in a page we hand to somebody else.  #}
+window.CSRF_TOKEN = "";
+window.CURRENT_USER_EMAIL = "";
+window.NAMED_ACCOUNT_SESSION = false;
+window.PUBLIC_REPORT = true;
+</script>
+</head>
+<body class="publicreport">
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+  <div class="wrap navshell">
+    <span class="brand" aria-label="Rotem Patents">
+      <svg class="brandmark" viewBox="0 0 36 36" aria-hidden="true">
+        <rect x="1" y="1" width="34" height="34" rx="8"></rect>
+        <path d="M10.5 8.5h10l5 5v14h-15z"></path>
+        <path d="M20.5 8.5v5h5M14 19h8M14 23h6"></path>
+      </svg>
+      <span class="brandname">Rotem Patents</span>
+    </span>
+    <span class="small muted publicbadge">Shared prior-art report</span>
+  </div>
+</header>
+<main id="main">{% block body %}{% endblock %}</main>
+<footer>
+  <div class="wrap footergrid">
+    <div class="footerbrand">
+      <strong>Rotem Patents</strong>
+      <span>Evidence-backed patent search. Not legal advice.</span>
+    </div>
+  </div>
+</footer>
+<script src="{{ url_for('static', filename='app.js', v=asset_version) }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

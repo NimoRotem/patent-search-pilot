@@ -2199,3 +2199,165 @@ async function streamNewCards(){
   };
   setTimeout(tick, 3000);
 }
+
+/* ── the public link: publish, password, revoke ───────────────────────────────────────────────
+   The owner's control. Everything it does is one POST; the dialog exists so a password and a
+   revoke are not two more buttons on an already busy toolbar. */
+(function publishLink() {
+  var btn = document.getElementById('publishBtn');
+  var dlg = document.getElementById('publishDlg');
+  if (!btn || !dlg || !dlg.showModal) return;
+  var slug = btn.dataset.slug;
+  var url = (window.APP_BASE || '') + '/public-report/' + slug;
+  var out = document.getElementById('publishUrl');
+  var pw = document.getElementById('publishPw');
+  var pwState = document.getElementById('publishPwState');
+  var state = document.getElementById('publishState');
+  var save = document.getElementById('publishSave');
+  var revoke = document.getElementById('publishRevoke');
+  var clearPw = document.getElementById('publishClearPw');
+
+  function paint() {
+    var live = btn.dataset.published === 'true';
+    var hasPw = btn.dataset.haspassword === 'true';
+    out.value = live ? location.origin + url : '';
+    out.placeholder = live ? '' : 'not published yet';
+    save.textContent = live ? 'Update' : 'Publish';
+    revoke.hidden = !live;
+    clearPw.hidden = !(live && hasPw);
+    pwState.textContent = hasPw
+      ? 'A password is set. Type a new one to change it, or remove it below.'
+      : 'No password — anyone with the link can open it.';
+    state.textContent = live
+      ? 'Anyone with this link can read the report. No account needed, and nothing on the public page can change or re-run the search.'
+      : 'Publishing creates a link that opens without an account. Until then the address does not resolve at all.';
+    btn.textContent = live ? 'Public link ✓' : 'Export';
+  }
+
+  function post(body) {
+    return fetch((window.APP_BASE || '') + '/report/' + slug + '/publish', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.CSRF_TOKEN || ''},
+      body: JSON.stringify(Object.assign({csrf_token: window.CSRF_TOKEN || ''}, body))
+    }).then(function (r) { return r.json(); });
+  }
+
+  btn.addEventListener('click', function () { paint(); dlg.showModal(); });
+  save.addEventListener('click', function () {
+    save.disabled = true;
+    post({password: pw.value || ''}).then(function (d) {
+      save.disabled = false;
+      if (!d || !d.ok) { pwState.textContent = 'Could not publish. Try again.'; return; }
+      btn.dataset.published = 'true';
+      btn.dataset.haspassword = d.has_password ? 'true' : 'false';
+      pw.value = '';
+      paint();
+    }).catch(function () { save.disabled = false; });
+  });
+  clearPw.addEventListener('click', function () {
+    post({clear_password: true}).then(function (d) {
+      if (d && d.ok) { btn.dataset.haspassword = 'false'; paint(); }
+    });
+  });
+  revoke.addEventListener('click', function () {
+    if (!confirm('Revoke the public link? Anyone holding it will get a 404. The viewer log is kept.')) return;
+    post({revoke: true}).then(function (d) {
+      if (d && d.ok) { btn.dataset.published = 'false'; paint(); }
+    });
+  });
+  document.getElementById('publishCopy').addEventListener('click', function () {
+    if (!out.value) return;
+    out.select();
+    (navigator.clipboard ? navigator.clipboard.writeText(out.value) : Promise.reject())
+      .catch(function () { try { document.execCommand('copy'); } catch (e) {} });
+    var b = document.getElementById('publishCopy');
+    b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1400);
+  });
+})();
+
+/* ── what only the page can know about its reader ─────────────────────────────────────────────
+   The server already has the address, the user agent, the languages and the client hints. It
+   cannot have the screen, the timezone, the capabilities, or TIME ON PAGE — which is not a
+   property of a request at all. It is a property of a session, so it has to be measured while it
+   happens and sent as it ends.
+
+   A heartbeat every 15s while the page is VISIBLE, plus a final sendBeacon on pagehide. The server
+   keeps the largest reading it has been told, so a closed laptop or a killed tab leaves the last
+   good number rather than resetting it to zero. Visible-only, because a tab left open in the
+   background overnight is not four hundred minutes of reading. */
+(function publicVisitTelemetry() {
+  var meta = document.getElementById('publicVisit');
+  if (!meta) return;
+  var key = meta.dataset.visitKey, slug = meta.dataset.slug;
+  if (!key) return;
+  var url = (window.APP_BASE || '') + '/public-report/' + slug + '/beacon';
+  var visible = 0, last = Date.now(), maxScroll = 0, sent = 0;
+
+  function tickVisible() {
+    var now = Date.now();
+    if (document.visibilityState === 'visible') visible += (now - last) / 1000;
+    last = now;
+  }
+  function scrollPct() {
+    var h = document.documentElement;
+    var total = (h.scrollHeight - h.clientHeight);
+    if (total <= 0) return 100;
+    return Math.max(0, Math.min(100, Math.round((h.scrollTop || window.pageYOffset) / total * 100)));
+  }
+  function facts() {
+    var n = navigator || {}, s = screen || {};
+    var conn = n.connection || {};
+    var uad = n.userAgentData || {};
+    var nav0 = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || {};
+    return {
+      visit_key: key,
+      seconds_on_page: Math.round(visible),
+      max_scroll_pct: maxScroll,
+      screen_w: s.width, screen_h: s.height, avail_w: s.availWidth, avail_h: s.availHeight,
+      viewport_w: window.innerWidth, viewport_h: window.innerHeight,
+      color_depth: s.colorDepth, pixel_ratio: window.devicePixelRatio,
+      timezone: (Intl.DateTimeFormat().resolvedOptions() || {}).timeZone,
+      timezone_offset: new Date().getTimezoneOffset(),
+      languages: n.languages ? Array.prototype.slice.call(n.languages) : [],
+      language: n.language, platform: n.platform, vendor: n.vendor, user_agent: n.userAgent,
+      hardware_concurrency: n.hardwareConcurrency, device_memory: n.deviceMemory,
+      max_touch_points: n.maxTouchPoints,
+      connection: conn.effectiveType, downlink: conn.downlink, rtt: conn.rtt,
+      save_data: !!conn.saveData,
+      cookies_enabled: n.cookieEnabled, do_not_track: n.doNotTrack,
+      referrer: document.referrer,
+      page_load_ms: nav0.duration ? Math.round(nav0.duration) : null,
+      prefers_dark: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches,
+      prefers_reduced_motion: window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      orientation: (s.orientation || {}).type,
+      ua_brands: (uad.brands || []).map(function (b) { return b.brand + ' ' + b.version; }),
+      ua_platform: uad.platform, ua_mobile: uad.mobile,
+      history_length: history.length,
+      /* An honest self-report. Automation usually leaves it set, and a dashboard that cannot tell
+         a person from a link preview is counting an audience that was never there. */
+      webdriver: !!n.webdriver
+    };
+  }
+  function send(useBeacon) {
+    tickVisible();
+    maxScroll = Math.max(maxScroll, scrollPct());
+    var body = JSON.stringify(facts());
+    sent++;
+    if (useBeacon && navigator.sendBeacon) {
+      navigator.sendBeacon(url, new Blob([body], {type: 'application/json'}));
+      return;
+    }
+    fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: body, keepalive: true}).catch(function () {});
+  }
+
+  document.addEventListener('visibilitychange', tickVisible);
+  window.addEventListener('scroll', function () {
+    maxScroll = Math.max(maxScroll, scrollPct());
+  }, {passive: true});
+  /* First one immediately, so a visitor who closes the tab in three seconds is still a recorded
+     reading with a browser and a screen attached to it. */
+  setTimeout(function () { send(false); }, 900);
+  setInterval(function () { send(false); }, 15000);
+  window.addEventListener('pagehide', function () { send(true); });
+})();

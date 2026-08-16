@@ -11,7 +11,7 @@ from __future__ import annotations
 import difflib, json, os, re, queue, secrets, threading, hashlib, time, traceback
 from pathlib import Path
 from flask import (Flask, Response, render_template, request, jsonify, redirect, url_for,
-                   send_from_directory, send_file, abort, stream_with_context)
+                   send_from_directory, send_file, abort, stream_with_context, make_response, session)
 import db, embed, goldset, webview, enrich_display, llm
 import pubnorm  # single link-builder: zero-padded Google/Espacenet URLs (dropped-zero fix)
 import ops_family, prefetch                        # worldwide family timeline + top-N proactive enrich
@@ -25,6 +25,7 @@ import deep_rank                                   # screen wide, read deep, ran
 import query_set                                   # many short queries instead of one long brief
 import report_archive                              # automatic top-50 full-text Markdown ZIP
 import export_data, export_pdf, export_docx, export_xlsx, export_md, export_ids
+import public_report                             # public link, password gate, visitor log
 import deliverables                                # letterhead / matter / narrative + share links
 import library                                     # saved publications, across searches
 #  NOT `import figures`: this module already defines a route function called `figures`
@@ -1990,12 +1991,19 @@ def report(slug):
         traceback.print_exc()
     user = auth.current_user()
     view["account_search"] = None
+    view["public"] = None
     if user:
         try:
             view["account_search"] = accounts.get_search(user["id"], slug)
             accounts.mark_search_viewed(user["id"], slug)
         except Exception:
             pass
+        #  Whether this report already has a public link, so the Export control can show its state
+        #  rather than asking. Never fatal: a missing table must not take down the report page.
+        try:
+            view["public"] = public_report.status_for_owner(user["id"], slug)
+        except Exception:
+            traceback.print_exc()
     # Also schedule on report-open.  This covers a process restart between generation and the
     # worker starting, while ensure() keeps the operation idempotent and cache-backed.
     try:
@@ -3831,6 +3839,152 @@ def shared_report(token):
     view["read_only"] = True
     return render_template("report.html", v=view, read_only=True, share_token=token,
                            ood=None, corpus=corpus_facts.facts())
+
+
+# ---- publish one report at a public URL, and record who reads it ---------------------------
+@app.route("/report/<slug>/publish", methods=["POST"])
+def report_publish(slug):
+    """Mint, re-password or revoke the public link. Owner only.
+
+    Separate from `/report/<slug>/share`, which mints an unguessable token at `/shared/<token>`.
+    This one is the STABLE, readable URL an owner can put in an email and later take back, and it
+    is the only thing that makes a slug resolve publicly at all.
+    """
+    user = _require_user()
+    auth.require_csrf()
+    if not _can_access_report(slug):
+        abort(404)
+    body = request.get_json(silent=True) or request.form or {}
+    if body.get("revoke"):
+        public_report.unpublish(user["id"], slug)
+        return jsonify({"ok": True, "published": False})
+    password = (body.get("password") or "").strip()
+    clear = bool(body.get("clear_password"))
+    rep = _load_report(slug) or {}
+    row = public_report.publish(user["id"], slug, password=password or None,
+                                title=(rep.get("query") or "")[:200], clear_password=clear)
+    if not row:
+        abort(404)
+    return jsonify({"ok": True, "published": True,
+                    "has_password": bool(row.get("password_hash")),
+                    "url": f"{notifications.PUBLIC_BASE_URL}/public-report/{slug}"})
+
+
+def _public_unlocked(slug) -> bool:
+    """Has this browser already answered this link's password?
+
+    Kept in the signed session cookie under a per-slug key, so unlocking one report does not unlock
+    another and a stolen cookie is worth exactly the link the visitor already had.
+    """
+    return slug in (session.get("public_unlocked") or [])
+
+
+@app.route("/public-report/<slug>")
+def public_report_page(slug):
+    """The report as its owner sees it, with the application taken away.
+
+    Renders the SAME template as the owner's page through a stripped layout, so the evidence
+    cannot drift between the two. Everything that mutates, exports, re-runs or navigates into the
+    application is off: `read_only` gates those, and `base_public.html` has no navigation at all.
+    """
+    pub = public_report.get(slug)
+    if not pub:
+        #  A revoked link, a never-published one and a slug that does not exist must all look the
+        #  same from out here. Anything else tells a stranger which reports are real.
+        abort(404)
+    if pub.get("password_hash") and not _public_unlocked(slug):
+        return render_template("public_gate.html", slug=slug, error=None,
+                               corpus=corpus_facts.facts()), 401
+    rep = _load_report(slug)
+    if not rep:
+        abort(404)
+    view = _build_view_cached(slug, rep)
+    #  The same keys the owner's route fills. A hand-rolled subset is how the token share first
+    #  shipped and it 500'd on a key the template reads and the route had never heard of.
+    view["slug"] = slug
+    view["title"] = pub.get("title") or slug
+    view["is_gold"] = slug in _GOLD
+    view["search_focus"] = rep.get("search_focus") or "all_text"
+    view["doc_token"] = ""
+    view["account_search"] = None
+    view["archive"] = report_archive.metadata(slug, REPORTS)
+    view["query_claim_grid_data"] = query_claim_grid.status(slug, REPORTS)
+    #  The letterhead belongs to whoever published the link, and it is part of the document a
+    #  recipient is meant to see. Read with the owner's id from the publish row, never from the
+    #  visitor's session — there is not one.
+    try:
+        view["report_doc"] = deliverables.get(pub["user_id"], slug)
+    except Exception:
+        view["report_doc"] = None
+    view["read_only"] = True
+    view["public"] = None
+    visit_key = public_report.record_visit(slug, request, unlocked=_public_unlocked(slug))
+    resp = make_response(render_template(
+        "report.html", v=view, read_only=True, layout="base_public.html", share_token=None,
+        ood=None, corpus=corpus_facts.facts(), public_visit_key=visit_key))
+    #  A client document, not something to be indexed or cached by an intermediary.
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    resp.headers["Cache-Control"] = "private, no-store"
+    return resp
+
+
+@app.route("/public-report/<slug>/unlock", methods=["POST"])
+def public_report_unlock(slug):
+    """One password, no username. Wrong answers are counted the same as any other login attempt."""
+    pub = public_report.get(slug)
+    if not pub:
+        abort(404)
+    password = (request.form.get("password") or "").strip()
+    if not public_report.check_password(slug, password):
+        #  No CSRF token on this form on purpose: the visitor has no session yet and a token would
+        #  be one more thing to get wrong for somebody who was simply sent a link. There is nothing
+        #  to forge — the only effect of this endpoint is to let the caller read a page they
+        #  already hold the URL for.
+        return render_template("public_gate.html", slug=slug,
+                               error="That password did not match.",
+                               corpus=corpus_facts.facts()), 401
+    unlocked = list(session.get("public_unlocked") or [])
+    if slug not in unlocked:
+        unlocked.append(slug)
+    session["public_unlocked"] = unlocked[-20:]
+    return redirect(f"{request.script_root}/public-report/{slug}")
+
+
+@app.route("/public-report/<slug>/beacon", methods=["POST"])
+def public_report_beacon(slug):
+    """What only the page can know: screen, timezone, capabilities, and TIME ON PAGE.
+
+    Called repeatedly — a heartbeat while the page is visible and a final `sendBeacon` on pagehide.
+    Idempotent, and it only ever raises the recorded maximum, because the final delivery is exactly
+    the one most likely to be lost.
+    """
+    if not public_report.get(slug):
+        abort(404)
+    payload = request.get_json(silent=True)
+    if payload is None:
+        try:
+            payload = json.loads((request.get_data() or b"{}").decode("utf-8", "replace"))
+        except Exception:
+            payload = {}
+    key = str((payload or {}).get("visit_key") or "")
+    public_report.record_beacon(key, payload or {})
+    #  204 and never a body: this is fired from `sendBeacon` during unload, where nothing can read
+    #  a response and an error would be invisible anyway.
+    return ("", 204)
+
+
+@app.route("/report/<slug>/visitors")
+def report_visitors(slug):
+    """Who has opened the public link. Owner only."""
+    user = _require_user()
+    if not _can_access_report(slug):
+        abort(404)
+    rows = public_report.visits(user["id"], slug)
+    return render_template("visitors.html", slug=slug, rows=rows,
+                           summary=public_report.summary(rows),
+                           status=public_report.status_for_owner(user["id"], slug),
+                           public_url=f"{notifications.PUBLIC_BASE_URL}/public-report/{slug}",
+                           corpus=corpus_facts.facts())
 
 
 @app.route("/shared/<token>/logo.img")

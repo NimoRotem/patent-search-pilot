@@ -1,8 +1,17 @@
-{% extends "base.html" %}
+{#  The layout is a parameter so the SAME report body can render inside the application shell for
+    its owner and inside the stripped public shell for somebody holding a link. One template, so a
+    change to the evidence cannot render differently in the two places — which is the whole point of
+    a shared report.  #}
+{% extends layout|default("base.html") %}
+{#  The telemetry anchor. Present ONLY on the published page — its existence is what arms the
+    beacon in app.js, so an owner reading their own report is never recorded as a visitor to it,
+    and the owner's page carries no reader-tracking code at all.  #}
 {% from "_srcicon.html" import srcicon %}
 {% from "_refcard.html" import refcard with context %}
 {% block title %}{{ v.title }} | Rotem Patents{% endblock %}
 {% block body %}
+{% if public_visit_key %}<div id="publicVisit" hidden
+     data-visit-key="{{ public_visit_key }}" data-slug="{{ v.slug }}"></div>{% endif %}
 {#  ============================================================================================
     WEIGHT BUDGET. This template renders ONLY what a collapsed card shows. Claims, description,
     figure manifests, opinions, citations and per-reference claim charts are fetched on demand
@@ -295,6 +304,25 @@
       <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}/details"
          title="Letterhead, client and matter details, purpose and key findings — printed at the head of every export">Report details</a>{% endif %}
       {% if not read_only %}<a class="btn ghost sm" href="{{ request.script_root }}/print/{{ v.slug }}" target="_blank" rel="noopener">Print / PDF view</a>{% endif %}
+      {#  PUBLISH. The one control that turns this page into something a client, an examiner or
+          opposing counsel can open without an account. Owner only, obviously — and it is the only
+          place a public link can be created, so an unpublished slug is not merely unlisted, it
+          does not resolve.  #}
+      {% if current_user and not read_only %}
+      <button type="button" class="btn ghost sm" id="publishBtn"
+              data-slug="{{ v.slug }}"
+              data-published="{{ 'true' if v.public and v.public.published else 'false' }}"
+              data-haspassword="{{ 'true' if v.public and v.public.has_password else 'false' }}"
+              data-visits="{{ (v.public.visits if v.public else 0) }}"
+              title="Publish this report at a public URL that needs no account">
+        {{ 'Public link ✓' if v.public and v.public.published else 'Export' }}
+      </button>
+      {% if v.public and v.public.published %}
+      <a class="btn ghost sm" id="visitorsLink"
+         href="{{ request.script_root }}/report/{{ v.slug }}/visitors"
+         title="Who has opened the public link">Viewers{% if v.public.visits %} ({{ v.public.visits }}){% endif %}</a>
+      {% endif %}
+      {% endif %}
       {% if current_user and not read_only %}
       <button type="button" class="btn ghost sm save-report{% if v.account_search and v.account_search.saved %} saved{% endif %}"
               id="saveReportBtn" data-saved="{{ 'true' if v.account_search and v.account_search.saved else 'false' }}">
@@ -302,16 +330,16 @@
       </button>
       <button type="button" class="btn ghost sm" id="renameReportBtn">Rename report</button>
       {% endif %}
-      <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}?rerun=1"
-         onclick="return confirm('Re-run the agent live? First matches usually appear within a minute; full refinement can take several minutes.')">Re-run</a>
-      <span class="archivecompact" id="archiveCard" data-status="{{ v.archive.status or 'not_started' }}"
+      {% if current_user and not read_only %}<a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}?rerun=1"
+         onclick="return confirm('Re-run the agent live? First matches usually appear within a minute; full refinement can take several minutes.')">Re-run</a>{% endif %}
+      {% if not read_only %}<span class="archivecompact" id="archiveCard" data-status="{{ v.archive.status or 'not_started' }}"
             title="Top-50 full-text patent archive">
         <span class="archiveicon" aria-hidden="true">ZIP</span>
         <span id="archiveStatus">{% if v.archive.ready %}{{ v.archive.n_full_text }}/{{ v.archive.n_patents }} full text{% elif v.archive.status == 'error' %}needs retry{% elif v.partial %}after ranking{% else %}building{% endif %}</span>
         <a class="btn ghost sm" id="archiveDownload" href="{{ request.script_root }}/archive/{{ v.slug }}/download"
            {% if not v.archive.ready %}hidden{% endif %}>Download ZIP</a>
         <button type="button" class="btn ghost sm" id="archiveRetry" {% if v.archive.status != 'error' %}hidden{% endif %}>Retry ZIP</button>
-      </span>
+      </span>{% endif %}
     </div>
   </div>
 
@@ -691,6 +719,34 @@
 
 
 </div>
+
+{% if current_user and not read_only %}
+{#  Publish dialog. Deliberately tiny: a link, an optional password, and a way to take it back.
+    No username, no signup and no expiry UI — the audience is one person you sent a link to.  #}
+<dialog id="publishDlg" class="dlg">
+  <form method="dialog" class="stack" style="min-width:min(30rem,90vw)">
+    <h3 class="h3" style="margin-top:0">Public link</h3>
+    <p class="small muted" id="publishState">Anyone with this link can read the report. No account
+      needed. Nothing on the public page can change or re-run the search.</p>
+    <label class="small" for="publishUrl">Link</label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="publishUrl" class="input" readonly style="flex:1" value="">
+      <button type="button" class="btn ghost sm" id="publishCopy">Copy</button>
+    </div>
+    <label class="small" for="publishPw">Password <span class="muted">(optional)</span></label>
+    <input id="publishPw" class="input" type="text" autocomplete="off"
+           placeholder="leave blank for no password" style="max-width:22rem">
+    <p class="small muted" id="publishPwState"></p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+      <button type="button" class="btn sm" id="publishSave">Publish</button>
+      <button type="button" class="btn ghost sm" id="publishClearPw" hidden>Remove password</button>
+      <button type="button" class="btn ghost sm danger" id="publishRevoke" hidden>Revoke link</button>
+      <span class="grow"></span>
+      <button class="btn ghost sm" value="close">Close</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
 
 {% if not read_only %}
 <div class="exportbar" id="exportbar" hidden inert>
