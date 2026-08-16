@@ -395,10 +395,28 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
     hints = hints or {}
 
     def _ask(features_now, claims_now):
-        payload = {"reference": pub, "subject_features": features_now,
-                   "subject_claims": claims_now, "reference_text": shown}
+        #  FIELD ORDER IS THE CACHE KEY, AND IT WAS BACKWARDS.
+        #
+        #  A reference is asked about in FEATURE_BATCH + CLAIM_BATCH passes — fourteen on a typical
+        #  subject — and every one of them re-sends this whole document. Both providers cache on a
+        #  PREFIX match, so fourteen prompts that share a 60,000-character document should cost one
+        #  full read and thirteen cached ones. They did not: `reference_text` was serialised LAST,
+        #  after `subject_features` and `subject_claims`, and those are exactly what differs between
+        #  the batches. Every call therefore diverged from every other at about character thirty and
+        #  no cache could ever match.
+        #
+        #  Measured on adhoc-db64a3dd7c98: 9,716 chart calls carrying 601,276,718 characters of
+        #  reference text, essentially all of it the same documents sent over and over.
+        #
+        #  Python preserves insertion order and `json.dumps` follows it, so putting the document
+        #  first is the whole fix. The stable part is now the prefix and the varying checklist is
+        #  the suffix, which is what Gemini's implicit caching and Anthropic's `cache_control` both
+        #  key on. Nothing about the CONTENT of the prompt changes; only the order of two keys.
+        payload = {"reference": pub, "reference_text": shown,
+                   "subject_features": features_now, "subject_claims": claims_now}
         #  What the subject's own vocabulary looks like in other people's patents. Sent only for
         #  the features actually being asked about, so the prompt does not carry the whole map.
+        #  Appended AFTER the document for the same reason: it varies per batch.
         vocab = {f: hints[f] for f in features_now if hints.get(f)}
         if vocab:
             payload["other_words_for_each_feature"] = vocab

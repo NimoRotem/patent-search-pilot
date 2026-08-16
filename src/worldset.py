@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import json
 import os
 import re
 import time
@@ -107,11 +108,128 @@ def _exists(table) -> bool:
         t = bqclient.client().get_table(table)
     except Exception:
         return False
-    if TTL_DAYS and t.modified is not None:
-        age = (time.time() - t.modified.timestamp()) / 86400.0
-        if age > TTL_DAYS:
-            return False
+    return _fresh(t)
+
+
+def _fresh(t) -> bool:
+    if TTL_DAYS and getattr(t, "modified", None) is not None:
+        return (time.time() - t.modified.timestamp()) / 86400.0 <= TTL_DAYS
     return True
+
+
+# ---------------------------------------------------------------------------
+# REUSING A WORKING SET THAT IS WIDER THAN THE ONE ASKED FOR
+#
+# The exact-key cache above is correct and it almost never hits, for two reasons that are both
+# properties of the caller rather than bugs:
+#
+#   * the class list comes from `limitation_query.facets_for`, which is a MODEL call, so it wobbles
+#     between runs on the same subject; and
+#   * `date_max` is the subject's own effective filing date, so two different subjects can never
+#     share a table however identical their classes are.
+#
+# Measured: two searches a day apart built ws_36208e56133485ea and ws_126282588b746b0b, each
+# scanning ~1,500 GB for $9.38 and ~18 minutes, and each was then asked eight questions that
+# returned 1,812 candidates of which 130 were read.
+#
+# A working set is a SUPERSET CACHE, though, not an exact one. A table built over classes H ⊇ the
+# classes we want, with a date bound at least as late as ours, contains every row our own build
+# would have produced and some extra. The extra is harmless as long as we filter it out at query
+# time, which `limitation_query.build_sql` already did and `lexical` now does too.
+#
+# So: prefer the NARROWEST superset. Widest would maximise future reuse but every query then scans
+# a bigger table, and query cost is what we are protecting downstream.
+_MANIFEST_KIND = "patent-pilot-worldset"
+
+
+def _dnorm(d):
+    """A date bound as an int yyyymmdd, or None for "no bound"."""
+    s = str(d or "").replace("-", "")[:8]
+    return int(s) if s.isdigit() and len(s) == 8 else None
+
+
+def _date_ok(table_bound, want_bound) -> bool:
+    """Can a table built with `table_bound` serve a request that needs `want_bound`?
+
+    Only if the table holds everything we do: unbounded, or bounded no earlier than we need. The
+    CALLER must then apply `want_bound` itself, or a reused table hands back art published after
+    the subject was filed, which is not prior art under any mode.
+    """
+    tb, rb = _dnorm(table_bound), _dnorm(want_bound)
+    if tb is None:
+        return True                     # the table has no date bound: it holds everything
+    if rb is None:
+        return False                    # we need everything; a bounded table is short
+    return tb >= rb
+
+
+def _manifest(t):
+    """What a table says it was built from, or None if it does not say."""
+    try:
+        d = json.loads((getattr(t, "description", "") or "").strip())
+    except Exception:
+        return None
+    return d if isinstance(d, dict) and d.get("kind") == _MANIFEST_KIND else None
+
+
+def _write_manifest(table, cpc, date_max, truncated=False, log=print):
+    """Record (classes, date bound, truncation) ON the table, so a later search can judge it.
+
+    On the table rather than in a local file on purpose: four hosts run this pipeline against the
+    same BigQuery project, and a cache only one of them can see is a cache three of them pay for.
+
+    `truncated` is the load-bearing field. A table that hit MAX_ROWS is missing an arbitrary slice
+    of the universe (see the note on MAX_ROWS), and reusing one would spread a silent truncation
+    from the single search that built it to every later search that matched it.
+    """
+    try:
+        t = bqclient.client().get_table(table)
+        t.description = json.dumps({"kind": _MANIFEST_KIND, "cpc": sorted(cpc),
+                                    "date_max": str(date_max or ""),
+                                    "truncated": bool(truncated)}, sort_keys=True)
+        bqclient.client().update_table(t, ["description"])
+    except Exception as e:
+        #  Never fatal. A table with no manifest is simply invisible to superset reuse; it still
+        #  serves the exact-key path, and the next build rewrites one.
+        log(f"[worldset] could not record the manifest on {table}: {str(e)[:120]}")
+
+
+def find_reusable(cpc_prefixes, date_max=None, log=print):
+    """The narrowest cached working set that already contains everything asked for, or None."""
+    want = {c for c in (valid_cpc(x) for x in (cpc_prefixes or [])) if c}
+    if not want:
+        return None
+    try:
+        listed = list(bqclient.client().list_tables(f"{bqclient.GCP_PROJECT}.{DATASET}"))
+    except Exception as e:
+        log(f"[worldset] could not list {DATASET}: {str(e)[:120]}")
+        return None
+    best = None
+    for ref in listed:
+        if not ref.table_id.startswith("ws_"):
+            continue
+        try:
+            t = bqclient.client().get_table(ref)
+        except Exception:
+            continue
+        if not _fresh(t):
+            continue
+        m = _manifest(t)
+        if not m:
+            continue
+        #  NEVER REUSE A TRUNCATED TABLE. It hit MAX_ROWS, so an arbitrary part of its classes is
+        #  simply absent, and nothing downstream can tell that from "there is no such art". One
+        #  search paying for that mistake is bad; every later search inheriting it is worse.
+        if m.get("truncated"):
+            continue
+        have = {c for c in (valid_cpc(x) for x in (m.get("cpc") or [])) if c}
+        if not want.issubset(have) or not _date_ok(m.get("date_max"), date_max):
+            continue
+        rows = t.num_rows or 0
+        if best is None or rows < best["rows"]:
+            best = {"table": f"{ref.project}.{ref.dataset_id}.{ref.table_id}",
+                    "rows": rows, "cpc": sorted(have), "date_max": m.get("date_max") or ""}
+    return best
 
 
 def build(cpc_prefixes, date_max=None, log=print, force=False):
@@ -128,7 +246,24 @@ def build(cpc_prefixes, date_max=None, log=print, force=False):
     table = table_for(cpc, date_max)
     if not force and _exists(table):
         log(f"[worldset] reusing {table} ({len(cpc)} classes)")
-        return {"table": table, "rows": None, "gb": 0.0, "cached": True, "cpc": cpc}
+        return {"table": table, "rows": None, "gb": 0.0, "cached": True, "cpc": cpc,
+                "date_max": str(date_max or "")}
+
+    #  NOT AN EXACT MATCH, BUT MAYBE A WIDER ONE. See the note above _MANIFEST_KIND: the exact key
+    #  is a hash of (classes, date) and both wobble per search, so without this the $9.38 build runs
+    #  every single time.
+    if not force:
+        try:
+            reuse = find_reusable(cpc, date_max, log=log)
+        except Exception:
+            reuse = None
+        if reuse:
+            extra = len(set(reuse["cpc"]) - set(cpc))
+            log(f"[worldset] reusing the wider {reuse['table']}: it already covers all "
+                f"{len(cpc)} classes asked for (plus {extra} more) with a date bound of "
+                f"{reuse['date_max'] or 'none'}, {reuse['rows']:,} rows — no build, $0.00")
+            return {"table": reuse["table"], "rows": reuse["rows"], "gb": 0.0, "cached": True,
+                    "cpc": reuse["cpc"], "date_max": reuse["date_max"], "superset": True}
 
     bqclient.ensure_dataset(DATASET)
     like = " OR ".join([f"c.code LIKE '{c}%'" for c in cpc])
@@ -183,10 +318,13 @@ def build(cpc_prefixes, date_max=None, log=print, force=False):
             bqclient.client().update_table(t, ["expires"])
     except Exception as e:
         log(f"[worldset] could not set the expiry on {table}: {str(e)[:120]}")
+    truncated = rows is not None and rows >= MAX_ROWS
+    #  What it was built from, so the NEXT search can reuse it without an exact key match. Written
+    #  AFTER `truncated` is known, because that flag is what keeps a capped table out of the cache.
+    _write_manifest(table, cpc, date_max, truncated=truncated, log=log)
     log(f"[worldset] built {table}: {rows if rows is not None else '?'} publications across "
         f"{len(cpc)} classes ({gb:.0f} GB scanned, ${bqclient.usd(gb):.2f}, "
         f"{time.time() - t0:.0f}s) — {', '.join(cpc[:12])}")
-    truncated = rows is not None and rows >= MAX_ROWS
     if truncated:
         #  Never silently. This is the retrieval universe: what the LIMIT dropped cannot be
         #  recovered by any amount of ranking, screening or re-reading downstream, and the miss
@@ -196,7 +334,7 @@ def build(cpc_prefixes, date_max=None, log=print, force=False):
             f"and nothing downstream can find it. Narrow the class list or raise the cap: "
             f"{', '.join(cpc)}")
     return {"table": table, "rows": rows, "gb": gb, "cached": False, "cpc": cpc,
-            "truncated": truncated}
+            "date_max": str(date_max or ""), "truncated": truncated}
 
 
 # ---------------------------------------------------------------------------
@@ -223,12 +361,18 @@ def _terms_clause(terms, col_expr, mode="any"):
     return "(" + joiner.join([f"STRPOS({col_expr}, '{t}') > 0" for t in safe]) + ")", safe
 
 
-def lexical(table, must_any=(), must_all=(), cpc=(), limit=400, log=print):
+def lexical(table, must_any=(), must_all=(), cpc=(), limit=400, log=print, date_max=None):
     """Full-text search over the working set. -> [{pub, title, score, ...}] best first.
 
     Scored by how many of the `must_any` terms appear and how early — crude, and deliberately so:
     this is a RECALL stage feeding a reader, and a clever lexical score here would only be a worse
     version of the judgement the reader makes from the full text.
+
+    `date_max` IS NOT OPTIONAL IN PRACTICE, even though the signature allows it. The working set may
+    now be a SUPERSET table built for a different subject with a later date bound (see
+    `find_reusable`), so the bound the caller needs can no longer be assumed to have been applied at
+    build time. Omit it and a reused table quietly returns art published after the subject was
+    filed, which is not prior art under any mode and which nothing downstream re-checks.
     """
     if not table:
         return []
@@ -246,6 +390,11 @@ def lexical(table, must_any=(), must_all=(), cpc=(), limit=400, log=print):
                          + " OR ".join([f"c LIKE '{s}%'" for s in syms]) + ")")
     if not where:
         return []
+    #  AFTER the guard above, never as part of it: a date bound is not a search, and letting it
+    #  stand alone would turn "no usable terms" into a full scan of the working set.
+    d = _dnorm(date_max)
+    if d:
+        where.append(f"publication_date > 0 AND publication_date < {d}")
     hits = " + ".join([f"CAST(STRPOS(body, '{t}') > 0 AS INT64)" for t in any_terms]) or "0"
     sql = f"""
       WITH b AS (SELECT *, {body} AS body FROM `{table}`)

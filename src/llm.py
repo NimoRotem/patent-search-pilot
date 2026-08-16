@@ -37,6 +37,23 @@ def usage():
         return dict(_usage)
 
 
+def process_usage():
+    """Process-wide totals, ignoring any active per-search scope.
+
+    `usage()` deliberately answers for the innermost scope, which is what the agent's call budget
+    needs. It is also why nothing has ever been able to report what a search actually SPENT: the
+    reading stage — `deep_rank`, `deep_analysis`, `claim_rescue` — runs outside the agent's
+    `usage_session`, and its calls are ~99.9% of the total. On adhoc-db64a3dd7c98 the saved report
+    said 7 calls and 2,265 prompt tokens for a search that issued on the order of twelve thousand.
+
+    Snapshot this before and after a stage and take the difference. Threads are fine: `_usage` is
+    lock-guarded and every worker thread writes to it (a ContextVar scope does not cross into a
+    ThreadPoolExecutor, so pool workers only ever hit the global).
+    """
+    with _usage_lock:
+        return dict(_usage)
+
+
 @contextmanager
 def usage_session():
     """Start a zeroed, concurrency-safe per-search usage counter."""

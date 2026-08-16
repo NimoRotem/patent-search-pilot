@@ -64,7 +64,15 @@ REREAD_TOP = int(os.environ.get("RESCUE_REREAD_TOP", "150"))
 #  Concurrent ANN passes. Each forks its own PostgreSQL connection; the box has four cores and the
 #  main search is already finished by the time this runs.
 SEARCH_WORKERS = int(os.environ.get("RESCUE_SEARCH_WORKERS", "4"))
-READ_WORKERS = int(os.environ.get("RESCUE_READ_WORKERS", "12"))
+#  RAISED 12 -> 24, to match `deep_rank.CHART_WORKERS`. These workers do not spend the box's cores,
+#  they wait on model round-trips, and the real ceiling is the per-provider semaphore in model_pool
+#  (48 for Vertex, 24 for Anthropic) which was measured not to throttle at 24 concurrent calls.
+#
+#  MEASURED, and the gap is the reason this number is here at all: on adhoc-db64a3dd7c98 the main
+#  read sustained 9.3 model calls/s at CHART_WORKERS=24, while the rescue — the same work, the same
+#  providers, the same box, minutes later — managed 0.44 calls/s at 12. The rescue was 79% of a
+#  2h21m search. Half of that pool was simply never asked for.
+READ_WORKERS = int(os.environ.get("RESCUE_READ_WORKERS", "24"))
 #  Families pulled per query before dedup against what was already screened.
 SEARCH_TOPK = int(os.environ.get("RESCUE_SEARCH_TOPK", "120"))
 #  Below this many candidates already acquired WITH TEXT, fall back to the text-less App A route.

@@ -64,7 +64,13 @@ except Exception:
 
 #  Which providers serve which tier, in preference order. Comma-separated names, env-overridable so
 #  a bad provider can be dropped without a deploy.
-FAST = [p for p in os.environ.get("MODEL_POOL_FAST", "vertex-flash,haiku").split(",") if p.strip()]
+#  `muse` IS IN THE DEFAULT FAST POOL, which the note above says would be a mistake under the old
+#  equal round-robin — and it was. `call` no longer round-robins: it takes the fastest provider that
+#  has a FREE SLOT, so a slow provider is never handed a call while a fast one is idle, and only
+#  absorbs overflow once the fast ones are saturated. Under that rule an extra provider can only add
+#  throughput, so the cheapest model in the pool is worth having in it.
+FAST = [p for p in os.environ.get("MODEL_POOL_FAST", "vertex-flash,haiku,muse").split(",")
+        if p.strip()]
 #  READ is its own tier and NOT the fast pool, because reading is where a cheaper model costs
 #  evidence rather than latency. MEASURED on US-11999030-B2 — the reference an examiner applied
 #  under 102(a)(2) to thirteen claims — asking the same 68 limitations with the same prompt:
@@ -94,10 +100,14 @@ _rr: dict = {}
 
 
 class _Provider:
-    def __init__(self, name, tier, call, concurrency, env=None, note=""):
+    def __init__(self, name, tier, call, concurrency, env=None, note="", rate=1.0):
         self.name, self.tier, self._call, self.note = name, tier, call, note
         self.env = env
         self.sem = threading.Semaphore(concurrency)
+        self.concurrency = concurrency
+        #  Measured calls/s at 24-way concurrency on 60k-char prompts. Used to prefer the fast
+        #  providers while a slow one still absorbs overflow. See `_order`.
+        self.rate = float(rate)
 
     def available(self) -> bool:
         if self.env and not os.environ.get(self.env):
@@ -106,6 +116,19 @@ class _Provider:
         if st.get("until", 0) > time.time():
             return False
         return True
+
+    def acquire(self, blocking=True):
+        return self.sem.acquire(blocking)
+
+    def release(self):
+        try:
+            self.sem.release()
+        except ValueError:                                   # pragma: no cover - over-release
+            pass
+
+    def invoke(self, system, user, max_tokens):
+        """Call WITHOUT touching the semaphore. The caller owns the slot."""
+        return self._call(system, user, max_tokens)
 
     def call(self, system, user, max_tokens):
         with self.sem:
@@ -182,14 +205,14 @@ def _meta(model):
 #  Anthropic throttled at 24 concurrent calls on 60k-character prompts.
 _ALL = {
     "vertex-flash": _Provider("vertex-flash", "fast", _vertex("gemini-2.5-flash"), 48,
-                              note="5.97 calls/s at 24 workers"),
+                              rate=5.97, note="5.97 calls/s at 24 workers"),
     "haiku": _Provider("haiku", "fast", _anthropic("claude-haiku-4-5-20251001"), 48,
-                       env="ANTHROPIC_API_KEY", note="7.96 calls/s at 24 workers"),
+                       env="ANTHROPIC_API_KEY", rate=7.96, note="7.96 calls/s at 24 workers"),
     "muse": _Provider("muse", "fast", _meta("muse-spark-1.2"), 12, env="META_API_KEY",
-                      note="reasoning model, 0.99 calls/s — diversity, not speed"),
+                      rate=0.99, note="reasoning model, 0.99 calls/s — capacity and diversity"),
     "sonnet": _Provider("sonnet", "strong", _anthropic("claude-sonnet-4-5-20250929"), 24,
-                        env="ANTHROPIC_API_KEY"),
-    "vertex-pro": _Provider("vertex-pro", "strong", _vertex("gemini-2.5-pro"), 16),
+                        env="ANTHROPIC_API_KEY", rate=3.0),
+    "vertex-pro": _Provider("vertex-pro", "strong", _vertex("gemini-2.5-pro"), 16, rate=2.0),
 }
 
 
@@ -235,35 +258,72 @@ def _mark(name, ok):
                   f"consecutive failures", flush=True)
 
 
+def _describe_error(p, e):
+    body = ""
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            body = e.read().decode()[:160]
+        except Exception:
+            pass
+    return f"{p.name}: {type(e).__name__}: {str(e)[:120]} {body}"
+
+
 def call(system, user, max_tokens=1200, tier="fast"):
     """Ask the tier. -> (text, provider_name, prompt_tokens, completion_tokens).
 
-    Tries each healthy provider in round-robin order and returns the first non-empty answer. Raises
-    only when every provider in the tier failed, so the caller's existing failclosed path still
-    sees a real exception rather than a silent empty string.
+    CAPACITY-AWARE, NOT ROUND-ROBIN, and the difference is the whole reason a third provider is
+    worth adding. Round-robin hands 1/N of the calls to the slowest member whatever the queue looks
+    like, so adding `muse` (0.99 calls/s against Vertex's 5.97 and Anthropic's 7.96) used to make
+    the pool SLOWER: a third of the traffic went to a provider five times slower than the one
+    sitting idle beside it.
+
+    Two passes instead:
+      1. the FASTEST provider that has a free slot right now, acquired non-blocking;
+      2. only if every provider is saturated, block on the round-robin choice.
+
+    Under that rule the pool's throughput is the SUM of its members and a slow member can never be
+    the reason a call waits. It only ever picks up work the fast providers had no room for, which
+    is exactly what a cheap model should be doing.
+
+    Raises only when every provider in the tier failed, so the caller's existing failclosed path
+    still sees a real exception rather than a silent empty string.
     """
     last = None
-    for p in _order(tier):
+    ps = _order(tier)
+
+    def attempt(p, blocking):
+        """-> (text, pt, ct) on success, None if busy or failed. Sets `last` on failure."""
+        nonlocal last
+        if not p.acquire(blocking=blocking):
+            return None
         try:
-            text, pt, ct = p.call(system, user, max_tokens)
+            text, pt, ct = p.invoke(system, user, max_tokens)
         except Exception as e:
-            body = ""
-            if isinstance(e, urllib.error.HTTPError):
-                try:
-                    body = e.read().decode()[:160]
-                except Exception:
-                    pass
-            last = f"{p.name}: {type(e).__name__}: {str(e)[:120]} {body}"
+            last = _describe_error(p, e)
             _mark(p.name, False)
-            continue
+            return None
+        finally:
+            p.release()
         if not (text or "").strip():
             #  An empty body is a failure for our purposes, whatever the transport said. This is
             #  exactly how muse-spark fails when its budget went on reasoning.
             last = f"{p.name}: empty response body"
             _mark(p.name, False)
-            continue
+            return None
         _mark(p.name, True)
-        return text, p.name, pt, ct
+        return text, pt, ct
+
+    #  PASS 1 — spare capacity, fastest first.
+    for p in sorted(ps, key=lambda x: -x.rate):
+        got = attempt(p, blocking=False)
+        if got:
+            return got[0], p.name, got[1], got[2]
+    #  PASS 2 — everything is busy or everything just failed. Wait for a slot, in round-robin order
+    #  so the queue spreads instead of piling onto whichever provider is nominally fastest.
+    for p in ps:
+        got = attempt(p, blocking=True)
+        if got:
+            return got[0], p.name, got[1], got[2]
     raise RuntimeError(f"every provider in tier '{tier}' failed; last: {last}")
 
 

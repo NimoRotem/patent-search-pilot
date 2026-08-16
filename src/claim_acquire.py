@@ -256,8 +256,13 @@ def by_worldset(claims, hints=None, brief="", title="", subject=None, seeds=(), 
             return
         out["queries"] += 1
         bucket = per_claim.setdefault(label, [])
+        #  `date_max` HAS TO BE PASSED HERE. The working set used to be built with the subject's own
+        #  date bound baked in, so a query over it could not return art published after the filing
+        #  date. It can now be a superset table built for a DIFFERENT subject with a later bound
+        #  (worldset.find_reusable), and the only thing standing between that and non-prior-art on
+        #  the page is this argument.
         for h in worldset.lexical(out["table"], must_any=must_any, must_all=must_all,
-                                  cpc=classes, limit=WS_PER_QUERY):
+                                  cpc=classes, limit=WS_PER_QUERY, date_max=date_max):
             if h["pub"] not in found:
                 found[h["pub"]] = {"for_claim": label, "why": why, "title": h.get("title")}
                 bucket.append(h["pub"])

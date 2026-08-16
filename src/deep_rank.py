@@ -56,6 +56,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 import db
+import claim_reach
 import claim_rescue
 import limitations as limmod
 import coverage_rank
@@ -91,7 +92,20 @@ SCREEN_WORKERS = int(os.environ.get("DEEP_RANK_SCREEN_WORKERS", "6"))
 #  minutes. Raised from 150 because the screen now looks at 2,500 rather than 600 candidates: on a
 #  real examiner citation list, seven cited families were screened at 60-80 and then never read,
 #  because the top-150 cut landed in the high 80s.
-CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "360"))
+#  LOWERED 360 -> 250, and NO FURTHER, because 250 is where this repo's own evidence stops.
+#  `tests/test_deep_rank.py::test_chart_depth_tracks_the_screen_depth` asserts >= 250 and it is
+#  guarding a measurement, not a preference: at a top-150 cut over a 2,500-candidate screen, seven
+#  cited families that screened 60-80 were never read.
+#
+#  The reason it can come down from 360 at all is `claim_reach`, which now runs BEFORE this cut and
+#  gives every claim its own quota. A reference that is the best answer to claim 9[b] is claimed by
+#  claim 9[b] whatever the whole-invention screen made of it, so the mid-screen band 360 was reaching
+#  by brute depth is now reached directly. That argument is sound and it is UNMEASURED: going below
+#  250 on the strength of it would be overriding evidence with a hypothesis, which is what the guard
+#  exists to prevent. Run `eval/attorney_recall.py` on both gold sets first.
+#
+#  A/B: DEEP_RANK_CHART_TOP=360 CLAIM_REACH=0 restores the old behaviour exactly.
+CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "250"))
 #  A THRESHOLD, not only a slice. "Worth reading" is a judgement the screen already made on a
 #  0-100 scale, so a fixed top-N throws away its answer and substitutes an arbitrary cut: measured,
 #  the top-300 cut landed at a screen score of 75-80, and cited references the screen had rated 70
@@ -109,7 +123,11 @@ CHART_MIN_SCREEN = int(os.environ.get("DEEP_RANK_CHART_MIN_SCREEN", "70"))
 #  visible recall for invisible reading. The two have to move together or not at all. This also
 #  widens the on-demand full-text recovery, which is bounded by exactly this number: a reference
 #  the pipeline was never going to read is one it never fetches text for.
-CHART_TOP_MAX = int(os.environ.get("DEEP_RANK_CHART_TOP_MAX", "420"))
+#  Lowered 420 -> 300 with CHART_TOP, for the reason above, and it is the ceiling that actually
+#  binds: the measured run read 525 references in the main pass to fill a 60-card page. Note this
+#  also lowers ENRICH_TOP, which defaults to it, so the pipeline still never fetches text for a
+#  document it was not going to read.
+CHART_TOP_MAX = int(os.environ.get("DEEP_RANK_CHART_TOP_MAX", "300"))
 #  Raised 18 -> 24 to pay for the extra feature batch per reference (deep_analysis.FEATURE_BATCH).
 #  The stage is bound by Vertex round-trips, not by this box's four cores.
 CHART_WORKERS = int(os.environ.get("DEEP_RANK_CHART_WORKERS", "24"))
@@ -790,6 +808,43 @@ def by_feature(charts, rar, top=6):
     return out
 
 
+def _spend_snapshot():
+    """Process-wide LLM counters, for differencing around a stage. Never raises."""
+    snap = {"usage": {}, "providers": {}}
+    try:
+        snap["usage"] = llm.process_usage()
+    except Exception:
+        pass
+    try:
+        import model_pool
+        snap["providers"] = {k: dict(v) for k, v in (model_pool.stats() or {}).items()}
+    except Exception:
+        pass
+    return snap
+
+
+def _llm_spend(before):
+    """What this stage cost, as a difference against `before`.
+
+    Reported per provider as well as in total, because the tiers are priced an order of magnitude
+    apart (see model_pool) and "12,000 calls" says nothing about the bill on its own.
+    `model_pool.stats()` has existed all along and had no callers; this is its first one.
+    """
+    now = _spend_snapshot()
+    b, a = before.get("usage") or {}, now.get("usage") or {}
+    out = {k: int(a.get(k, 0)) - int(b.get(k, 0))
+           for k in ("calls", "prompt_tokens", "completion_tokens")}
+    providers = {}
+    for name, cur in (now.get("providers") or {}).items():
+        prev = (before.get("providers") or {}).get(name) or {}
+        calls = int(cur.get("calls", 0)) - int(prev.get("calls", 0))
+        errors = int(cur.get("errors", 0)) - int(prev.get("errors", 0))
+        if calls or errors:
+            providers[name] = {"calls": calls, "errors": errors}
+    out["providers"] = providers
+    return out
+
+
 def run(report, reports_dir=None, slug=None, on_progress=None):
     """Screen wide, read deep, and return the authoritative ranking. Mutates `report`.
 
@@ -797,6 +852,9 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     ``/analysis/<slug>`` render from THIS reading instead of starting a second, separate one.
     """
     started = time.time()
+    #  WHAT THIS STAGE COSTS, measured rather than reconstructed afterwards. See llm.process_usage:
+    #  the report's existing `llm_usage` is scoped to the agent and misses essentially all of it.
+    usage_before = _spend_snapshot()
     #  THE CHECKLIST THE SEARCH IS ARGUED AGAINST. `elements` is a 11-12 item summary of the
     #  invention; `disclosures` is its claim limitations, its whole independent claims, what each
     #  dependent claim adds, and the teachings the description supports but the claims do not
@@ -928,11 +986,41 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     #  what the screen said (see ALWAYS_CHART_RETRIEVAL_HEAD).
     by_screen = sorted(rows, key=lambda r: (-(scores.get(r["pub"], -1)), r["rank"]))
     chosen, seen = [], set()
+
+    #  PER-CLAIM RETRIEVAL GETS FIRST CALL ON THE READ BUDGET. See claim_reach: the screen score is
+    #  one judgement about the invention as a whole, and it cannot know that claim 1[a] has four
+    #  hundred plausible references in the pool while claim 9[b] has twenty-one. Spending the whole
+    #  budget through that single ordering is why ten limitations finished the measured run still
+    #  uncovered and had to be rescued afterwards at 1h51m.
+    reach_map = {}
+    reach_n = 0
+    if claim_items:
+        t_reach = time.time()
+        try:
+            reach_map = claim_reach.reach(
+                claim_items, rows, brief=brief, subject=_subject_for(report, qd),
+                mode=report.get("mode") or "novelty", retriever=_shared_retriever(), emit=emit)
+            by_pub_row = {r["pub"]: r for r in rows}
+            for pub in claim_reach.quota(reach_map):
+                r = by_pub_row.get(pub)
+                if r is not None and pub not in seen:
+                    chosen.append(r)
+                    seen.add(pub)
+                    reach_n += 1
+            covered = sum(1 for hits in reach_map.values() if hits)
+            print(f"[claim_reach] one search per claim: {covered}/{len(claim_items)} claims found "
+                  f"candidates in the pool; {reach_n} references claimed a read slot "
+                  f"({time.time() - t_reach:.0f}s)", flush=True)
+        except Exception:
+            traceback.print_exc()
+
     for i, r in enumerate(by_screen):
         if len(chosen) >= CHART_TOP_MAX:
             break
         if i >= CHART_TOP and scores.get(r["pub"], -1) < CHART_MIN_SCREEN:
             break
+        if r["pub"] in seen:
+            continue
         chosen.append(r)
         seen.add(r["pub"])
     for r in rows[:ALWAYS_CHART_RETRIEVAL_HEAD]:
@@ -1300,8 +1388,17 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         "screen_seconds": round(screen_seconds, 1),
         "chart_seconds": round(chart_seconds, 1),
         "seconds": round(time.time() - started, 1),
+        "llm": _llm_spend(usage_before),
+        "claim_reach": {"claims_searched": len(reach_map),
+                        "claims_with_candidates": sum(1 for h in reach_map.values() if h),
+                        "read_slots_claimed": reach_n,
+                        "per_claim": {k: len(v) for k, v in reach_map.items()}},
     }
     report["deep_rank"] = result
+    sp = result["llm"]
+    print(f"[deep_rank] LLM spend: {sp['calls']:,} calls, "
+          f"{sp['prompt_tokens']:,} prompt + {sp['completion_tokens']:,} completion tokens"
+          + (f"; by provider {sp['providers']}" if sp.get("providers") else ""), flush=True)
 
     #  Hand the reading straight to deep_analysis's cache: it is the same schema, the same
     #  grounding and the same refutation, so re-reading these references would be pure waste.
