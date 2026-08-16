@@ -729,14 +729,40 @@ def extract_link(raw: str, on_stage=None) -> dict:
         notes.append(f"drawings source: {ds}")
 
     # Same three materials as the upload path, so the review panel behaves identically whichever
-    # way the document arrived. The claims here come from the publication record rather than a
-    # PDF, so they need no repair pass — only the brief has to be written.
+    # way the document arrived.
+    #
+    # THE PUBLICATION RECORD DOES NEED A REPAIR PASS. This used to say it did not, and take the
+    # claim number from the list index. MEASURED on US 2025/0033224 A1, the application a patent
+    # attorney actually attacked: the record came back as TWO items — claims 1 to 19 glued into one
+    # 17,309-character blob, and claim 20 on its own — so the report tracked a "claim 1" that was
+    # nineteen claims and a "claim 2" that was claim 20. For a Type B search that is fatal rather
+    # than untidy: the unit of work is the limitation, limitations come from claims, and
+    # `limitations.split_claims` only ever sees the first 4,000 characters of a claim, so claims 5
+    # through 19 were invisible to the entire pipeline. Nothing raised; the ledger simply had two
+    # rows.
+    #
+    # `patent_doc.split_claims` already recovers all twenty with their own numbers. Trust it only
+    # when it finds MORE claims than the source offered — a source that split correctly must not be
+    # re-split by a parser that might merge two, and the number comes from the text ("20." is claim
+    # 20) rather than from a position in a list.
     import patent_doc
     analysis = None
     if abstract or claims_list:
         records = [{"claim_no": i + 1, "text": str(c),
                     "independent": patent_doc.is_independent(str(c))}
                    for i, c in enumerate(claims_list)]
+        try:
+            resplit = patent_doc.split_claims("\n".join(claims_list)) or []
+            if len(resplit) > len(records):
+                records = [{"claim_no": r.get("claim_no") or i + 1,
+                            "text": str(r.get("text") or ""),
+                            "independent": patent_doc.is_independent(str(r.get("text") or ""))}
+                           for i, r in enumerate(resplit)]
+                notes.append(f"claims re-split from {len(claims_list)} record "
+                             f"{'entry' if len(claims_list) == 1 else 'entries'} into "
+                             f"{len(records)} numbered claims")
+        except Exception:
+            traceback.print_exc()
         analysis = {"title": title, "abstract": abstract, "claims": records,
                     "paragraphs": [], "figure_captions": [],
                     "publication_number": pub, "verified": True,
