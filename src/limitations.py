@@ -51,6 +51,10 @@ COVER_MIN = int(os.environ.get("LEDGER_COVER_MIN", "2"))
 #  answer carrying sixty quoted rows is where a reader starts economising.
 BATCH = int(os.environ.get("LEDGER_BATCH", "12"))
 MAX_LIMITATIONS = int(os.environ.get("LEDGER_MAX", "80"))
+#  Evidence rows STORED per limitation. Was 8, silently, and 8 is roughly the number of documents
+#  a model is most confident about — not the number an argument needs. A limitation with forty
+#  disclosers is a strong limitation and the report should be able to say which forty.
+EVIDENCE_KEEP = int(os.environ.get("LEDGER_EVIDENCE_KEEP", "40"))
 #  Verdicts that count as evidence, and what each is worth when ranking which limitation is
 #  weakest and should be searched next.
 _W = {"disclosed": 1.0, "partial": 0.55, "uncertain": 0.25, "absent": 0.0}
@@ -326,12 +330,28 @@ class Ledger:
         }
 
     def to_dict(self):
-        return {
-            "limitations": [dict(l, status=self.status(l["id"]),
-                                 evidence=(self.evidence.get(l["id"]) or [])[:8])
-                            for l in self.limitations],
-            "summary": self.summary(),
-        }
+        """The ledger as the report stores it. Carries `n_evidence`, the TRUE count.
+
+        THE STORED EVIDENCE WAS CAPPED AT 8 AND SAID NOTHING ABOUT IT. Measured on
+        `adhoc-a2fec8ee8ba2`, a real subject: the chart held 10,880 verified limitation cells and
+        the report stored 544 — five per cent — with all 68 of 68 limitations sitting at exactly
+        the cap, which is the tell for a truncation rather than a finding.
+
+        It is not a cosmetic loss. The cut is by verdict strength then model confidence, so a
+        `partial` from the reference a patent attorney would actually cite loses its place to eight
+        confident `disclosed` rows from documents nobody will file. Three of the four references
+        that attorney filed and this pipeline correctly READ — with grounded, located quotes
+        matching his own claim mapping — appear nowhere in the stored ledger for that reason.
+
+        `n_evidence` is now recorded whether or not the list is cut, so no consumer can mistake the
+        stored length for the real one.
+        """
+        rows = []
+        for l in self.limitations:
+            ev = self.evidence.get(l["id"]) or []
+            rows.append(dict(l, status=self.status(l["id"]),
+                             n_evidence=len(ev), evidence=ev[:EVIDENCE_KEEP]))
+        return {"limitations": rows, "summary": self.summary()}
 
 
 def as_chart_items(limitations):
