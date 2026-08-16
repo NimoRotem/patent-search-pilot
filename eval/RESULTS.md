@@ -167,3 +167,41 @@ than the hour.
 
 **Not changed, deliberately:** `FEATURE_BATCH` is still 24 and the same argument probably applies.
 One change at a time, or the next measurement cannot be attributed.
+
+---
+
+## R7 — Screen with several models at once and take the best score
+
+**Hypothesis.** The screen decides what is read, and what is not read cannot become evidence. On
+this docket Meyer was retrieved and never scored at all; on the Schmalz docket Quackenbush — the
+attorney's most comprehensive match — was screened 70 and not read. Different model families
+disagree, so scoring with three and taking the max should get more of the right documents read.
+
+**Measurement.** The five attorney references plus twenty real neighbours from the same run, in one
+batch (the screener calibrates within a batch, so scoring five alone would flatter them all).
+
+```
+attorney references clearing the read threshold (70):
+   3/5 as the run scored them        4/5 on the max across three models
+```
+
+Which looks like a win. **The control says otherwise.** On each model's own scale:
+
+```
+model A   attorney median 60.0   padding median 77.5   separation -17.5   12/20 padding over 70
+model B   attorney median 60.0   padding median 77.5   separation -17.5   13/20 padding over 70
+model C   attorney median 75.0   padding median 83.5   separation  -8.5   17/20 padding over 70
+```
+
+**Verdict. REJECTED.** Every model ranks the attorney's references BELOW the documents our own
+search surfaced. Taking a max over three samples raises everything — 17 of 20 padding candidates
+clear the threshold too — so the 3/5 → 4/5 is the arithmetic of a maximum, not better
+discrimination. Shipping it would have read more documents, not better ones.
+
+**Caveat on this experiment.** A latched-off provider falls back to a healthy one, so the per-model
+columns are not reliably attributable when that happens. The finding does not depend on which
+column is which: all three separations are negative.
+
+**What it does establish.** Screening is not the bottleneck on this subject either — 4 of 5 were
+read. Retrieval found 5/5, the screen read 4/5, the page shows 1/5. Every stage before the page is
+doing its job.
