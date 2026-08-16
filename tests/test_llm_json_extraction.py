@@ -36,10 +36,35 @@ def test_a_non_object_is_not_accepted():
     assert llm._extract_json("no json here at all") is None
 
 
-def test_chat_json_does_not_flag_a_fenced_answer_as_truncated(monkeypatch):
-    monkeypatch.setattr(llm, "_call",
-                        lambda s, u, m, tier="fast": ('```json\n{"disclosures":[{"text":"x"}]}\n```',
-                                                      "test", 1, 1))
-    out = llm.chat_json("sys", "user")
+def _real_llm():
+    """A private copy of the module, because conftest stubs llm.chat_json for every test.
+
+    The assertion below is about chat_json's own branching, so the stub would make it vacuous.
+    Loading a second copy leaves the shared stub in place for everything else.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_llm_under_test", llm.__file__)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_chat_json_does_not_flag_a_fenced_answer_as_truncated():
+    """The flag is not cosmetic: disclosures.extract reads _truncated as "the checklist is
+    incomplete", so a complete answer from a provider without a JSON mode was being treated as a
+    degraded one."""
+    mod = _real_llm()
+    mod._call = lambda s, u, m, tier="fast": (
+        '```json\n{"disclosures":[{"text":"x"}]}\n```', "test", 1, 1)
+    out = mod.chat_json("sys", "user")
     assert out == {"disclosures": [{"text": "x"}]}
     assert "_truncated" not in out
+
+
+def test_chat_json_still_flags_a_genuinely_truncated_answer():
+    mod = _real_llm()
+    mod._call = lambda s, u, m, tier="fast": (
+        '{"disclosures":[{"text":"a"},{"text":"b"},{"text":', "test", 1, 1)
+    out = mod.chat_json("sys", "user")
+    assert out.get("_truncated") is True
+    assert len(out.get("disclosures") or []) == 2
