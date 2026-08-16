@@ -765,3 +765,69 @@ examiner's is "this reference teaches this to a person skilled in the art". Ours
 machine that must not fabricate, and it costs most on dependent claims where the teaching is
 implicit or spread across the document. **This — evidence recall inside an already-read document —
 is now the weakest link in the pipeline, ahead of retrieval and ahead of ranking.**
+
+---
+
+## 15. Models, speed, and the dial between them (2026-08-16)
+
+**Every measurement behind this section is in `eval/RESULTS.md`**, one entry per change, with the
+rejected ones kept. Read that before touching any of it.
+
+### 15a. Three tiers, not one model
+
+`src/model_pool.py`. `llm.chat_json(..., tier=)` routes; no call site had to change.
+
+| tier | used by | providers | why |
+|---|---|---|---|
+| `fast` | the screen, query facets | vertex-flash, haiku | volume where a cheap model costs latency, not evidence |
+| `read` | the full-text chart | vertex-flash | where the evidence is MADE — see below |
+| `strong` | `_refute`, `split_claims`, `reread_absent` | sonnet, vertex-flash | the passes whose output IS the assertion |
+
+**Haiku screens well and reads shallow, measured.** On the reference an examiner applied under
+102(a)(2) to thirteen claims, asked the same 68 limitations: flash 20 disclosed / 7 claims / 28
+quotes, **haiku 9 / 3 / 23**, sonnet 21 / 8 / 29. Putting the whole reader on the fast pool buys
+2× wall clock with the evidence the report is made of, and nothing downstream shows it — fewer
+cells looks exactly like a document that discloses less. That is why `read` is its own tier and
+why collapsing it into `fast` is a test failure, not a config change.
+
+**Muse is in the pool and out of the hot path.** `muse-spark-1.2` is a reasoning model: ~1,600
+reasoning tokens for a 37-token answer, EMPTY below ~2,500 max_tokens (the adapter floors it), and
+0.99 calls/s against 6-8. `MODEL_POOL_FAST=vertex-flash,haiku,muse` when family diversity is worth
+the wall clock.
+
+### 15b. The ceiling was ours, not the model's
+
+`analyse_reference` issued its eleven batches one after another, with a comment saying that was
+deliberate. Profiled: the pipeline achieved 2.70 calls/s while one provider sustains 5.97 and a
+second 7.96 at the same concurrency and prompt size, neither throttling. The batches now run
+concurrently and the real ceiling is the per-provider semaphore. **2.1× on the stage that dominates
+a search.**
+
+### 15c. The dial: speed or evidence, and it is one knob
+
+`DEEP_CLAIM_BATCH` was 12 because eleven sequential calls per reference was the wall-clock ceiling.
+It is not any more, so the trade re-opened. Swept over the four references the attorney filed:
+
+```
+batch   claim calls   disclosed cells   quoted cells
+   12             6                58             94
+    4            17                66            117     <- default now
+    2            34                88            125
+```
+
+End to end, everything on, against the attorney's own subject: **limitations covered 62% → 79%,
+claims anticipated 4 → 6, the rescue's re-read 13 cells → 76** — and the **wall clock unchanged at
+2h35m**, because the 2.1× was spent here rather than banked. Set `DEEP_CLAIM_BATCH=12` to take the
+speed instead and roughly halve the read stage. They are the same knob.
+
+### 15d. The page is ordered by claims killed, and every claim is answered
+
+`coverage_rank.claim_first`, run last so it refines the greedy coverage order rather than replacing
+it. Ties keep their position. Live: `20/20 claims have at least one plausible match on the page
+(11 of them a full disclosure)`, **0 promotions needed** — the guarantee is a net that has not had
+to fire yet on this subject, which is worth knowing.
+
+It did **not** move the attorney metric and it was not expected to: the other four references sit
+at ranks 85-247, outside the window, and reordering cannot reach what is not in it. What did move:
+US 11,413,727 — the reference the examiner used to reject thirteen claims — is now on the page at
+card 33, where the run before showed Preta, cited for one claim.
