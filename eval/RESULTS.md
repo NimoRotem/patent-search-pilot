@@ -205,3 +205,41 @@ column is which: all three separations are negative.
 **What it does establish.** Screening is not the bottleneck on this subject either — 4 of 5 were
 read. Retrieval found 5/5, the screen read 4/5, the page shows 1/5. Every stage before the page is
 doing its job.
+
+---
+
+## R8 — End to end, everything on, against the attorney's own subject
+
+`adhoc-c0182f3d1d57` vs the `adhoc-a2fec8ee8ba2` baseline. Same subject (US 2025/0033224 A1), same
+gold set, everything from R2-R6 live.
+
+| | baseline | now |
+|---|---|---|
+| wall clock | 2h32m | 2h35m |
+| read stage | 700 references in 7,805s | 685 references in 8,153s |
+| claim calls per reference | 6 | **15** (57 limitations at batch 4) |
+| limitations covered | 42 of 68 — **62%** | 45 of 57 — **79%** |
+| limitations with only partial evidence | 26 | **12** |
+| claims ANTICIPATED (one document teaches all of it) | 4 | **6** |
+| rescue re-read of already-read references | 13 cells across 11 refs | **76 cells across 59 refs** |
+| claims with an answer on the page | not measured | **20/20**, 11 of them a full disclosure |
+| attorney references screened | 4/5 | **5/5** |
+| attorney references read in full | 4/5 | 4/5 |
+| attorney references on the page | 1/5 — Preta @32 | 1/5 — **GRABO @33** |
+
+**Verdict. The wall clock did not improve, and that is the honest result: the 2.1× from R2 was
+SPENT on R6 rather than banked.** Throughput rose about 2.5× (2.5× the calls in the same time) and
+every one of those extra calls went into asking fewer requirements per question. `DEEP_CLAIM_BATCH=12`
+takes the speed instead and roughly halves the read stage; the two are a dial, not a pair of wins.
+
+**The page metric is still 1/5 but it is now a different 1.** It is US 11,413,727 — the reference
+the examiner used to reject thirteen claims under 102(a)(2), and the one the attorney led his
+filing with — where before it was Preta, cited for a single claim. Getting the most important
+reference visible is worth more than the ratio says.
+
+**What is still not fixed.** Ristau at 103, Schmierer at 247, Meyer screened 70 and not read. Four
+of the five are found, read and correctly charted, and the 60-card page cannot hold them because
+~60 documents from our own search genuinely score higher on our own objective. Either the objective
+is wrong for a submission, or the page is the wrong deliverable for a Type B search and the ledger
+is — which is now at 79% covered with six anticipated claims, and is the thing an attorney would
+actually file from.
