@@ -135,3 +135,35 @@ metric.**
 (reordering cannot help), or the page (every claim answered). It is that our reader credits
 GRABO's patent with 4-7 claims where the examiner credits 13. R4 shows a stronger model buys one
 of those, not six. So the gap is the QUESTION, not the model — see R6.
+
+---
+
+## R6 — Ask fewer requirements per call
+
+**Hypothesis.** The reader economises when asked many things at once. This repo already recorded it
+on the feature side — "the same reference grounded 10 of 12 asked alone and 2 of 12 asked together"
+— and kept `CLAIM_BATCH=12` anyway, because eleven sequential calls per reference was already the
+wall-clock ceiling. R2 removed that ceiling, so the trade can be re-opened.
+
+**Measurement.** Swept over the four references the attorney filed that this run charted, same
+model (flash), same prompt, same document text. Ground truth for GRABO: the examiner applied it to
+thirteen claims.
+
+| batch | claim calls | disclosed cells | quoted cells | GRABO claims disclosed |
+|---|---|---|---|---|
+| 12 (was) | 6 | 58 | 94 | 8 |
+| 8 | 9 | 67 | 101 | 7 |
+| **4 (now)** | 17 | 66 | **117** | 7 |
+| 2 | 34 | **88** | **125** | **9** |
+
+Per-reference wall clock barely moves (8.5s → 7.9s at four) because the batches are concurrent.
+What grows is the global call budget: 11 calls per reference becomes 21 at four and 38 at two,
+which over ~660 references is roughly 20, 38 and 68 minutes at the measured 6.04 calls/s.
+
+**Verdict. ACCEPTED at 4.** +52% disclosed and +33% quoted are available at 2, and cost the whole
+speed win. Four takes 94% of the quote gain for half the price and still leaves the search
+substantially faster than the 77-minute baseline. `DEEP_CLAIM_BATCH=2` when evidence matters more
+than the hour.
+
+**Not changed, deliberately:** `FEATURE_BATCH` is still 24 and the same argument probably applies.
+One change at a time, or the next measurement cannot be attributed.

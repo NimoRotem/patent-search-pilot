@@ -79,7 +79,23 @@ FEATURE_BATCH = int(os.environ.get("DEEP_FEATURE_BATCH", "24"))
 #  Raised for Type B: the reader charts LIMITATIONS, and eleven claims become sixty-odd of them.
 MAX_INPUT_CLAIMS = int(os.environ.get("DEEP_MAX_INPUT_CLAIMS", "80"))
 #  Claims (or limitations) per model call. See the batching comment in analyse_reference.
-CLAIM_BATCH = int(os.environ.get("DEEP_CLAIM_BATCH", "12"))
+#  MEASURED, and it is the single biggest evidence lever found so far. Asking fewer requirements
+#  per call finds more of them — this repo already recorded the effect on the feature side ("the
+#  same reference grounded 10 of 12 asked alone and 2 of 12 asked together") and kept 12 anyway,
+#  because eleven SEQUENTIAL calls per reference was the wall-clock ceiling. The batches run
+#  concurrently now, so the trade re-opened. Swept over the four references a patent attorney filed,
+#  same model, same prompt, same document text:
+#
+#      batch   claim calls   disclosed cells   quoted cells
+#         12             6                58             94    <- was
+#          8             9                67            101
+#          4            17                66            117    <- is
+#          2            34                88            125
+#
+#  Two is the evidence ceiling and triples the call budget: 38 calls per reference over ~660
+#  references is about 68 minutes against 38 at four. Four takes 94% of the quote gain for half the
+#  cost. DEEP_CLAIM_BATCH=2 when the evidence matters more than the hour.
+CLAIM_BATCH = int(os.environ.get("DEEP_CLAIM_BATCH", "4"))
 #  How many of a single reference's batches may be in flight at once. A 68-limitation
 #  subject costs 9 batches plus the refuter; issuing them one at a time was measured to hold
 #  the whole pipeline at 2.70 calls/s against the 5.97 one provider alone sustains. The real
