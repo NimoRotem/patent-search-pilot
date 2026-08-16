@@ -122,15 +122,19 @@ def publish(user_id, slug, password=None, title="", clear_password=False) -> dic
         if password:
             pw = generate_password_hash(password)
         if row:
+            #  The three-way choice is made HERE, not in SQL. A `CASE WHEN %s IS NOT NULL THEN %s`
+            #  over a possibly-NULL parameter gives Postgres nothing to infer a type from and it
+            #  refuses the statement outright ("could not determine data type of parameter $3") —
+            #  which surfaced as "the password was silently never set", because the caller had
+            #  already returned a row that looked published.
+            new_hash = None if clear_password else (pw if pw else row.get("password_hash"))
             cur.execute(
                 """UPDATE app_public_reports
                    SET published=true, revoked_at=NULL, updated_at=now(),
                        title=COALESCE(NULLIF(%s,''), title),
-                       password_hash = CASE WHEN %s THEN NULL
-                                            WHEN %s IS NOT NULL THEN %s
-                                            ELSE password_hash END
+                       password_hash=%s
                    WHERE slug=%s RETURNING *""",
-                (title, bool(clear_password), pw, pw, slug))
+                (title, new_hash, slug))
         else:
             cur.execute(
                 """INSERT INTO app_public_reports(slug, user_id, title, password_hash)
