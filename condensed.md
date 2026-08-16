@@ -706,3 +706,62 @@ window to file.
 Needs `USPTO_ODP_KEY` (in `.env`, 0600, gitignored; advisor `uspto-odp`). ⚠️ **That key is cut off
 after 2026-08-18** unless four profile fields are completed on the USPTO.gov account — a browser
 and MFA step, not an API one.
+
+### 14d. The head-to-head, scored (`adhoc-a2fec8ee8ba2`, 2h32m)
+
+```
+Rotem / GRABO      US-11413727-B2   read (as family member US-11999030-B2), ranked  81 — off the page
+Ristau / Schmalz   US-7690610-B2    read, ranked 132 — off the page
+Preta              US-6419291-B1    ON THE PAGE (card 32)
+Schmierer / Schunk US-7240935-B2    read, ranked 288 — off the page
+Meyer              US-10549405-B2   retrieved, never read
+Office action                       not reachable by search (NPL) — see §14c
+---- 1/5 on the page · 4/5 read · 4/5 screened · 5/5 retrieved · 5/5 in corpus
+ledger: 68 limitations across 20 claims, 42 covered, 26 partial, 0 with nothing, done=True
+        ANTICIPATED: claims 3, 5, 12, 18
+```
+
+**Read that funnel carefully, because the headline number is the least informative part of it.**
+Retrieval found all five. The reader read four of them and — checked cell by cell — reproduced the
+attorney's own mapping on every one:
+
+```
+US-11999030-B2 (GRABO)  claim 1[b] disclosed "a rigid base element and a loop-shaped vacuum seal
+                        element"; 1[j], 1[k] disclosed on the air extraction means
+US-7690610-B2 (Ristau)  claim 1[f] disclosed "a sealing edge which comprises an elastic material";
+                        3[a] partial on Shore hardness      <- exactly what he cited it for
+US-7240935-B2 (Schmierer) claim 14[a] partial "a microstructure ... formed of one of a rod, louver
+                        and pin-shaped element"             <- exactly the press-rod claims
+US-6419291-B1 (Preta)   claim 1[f] disclosed "a two walled flexible structure ... inflated by a
+                        pressure"                           <- exactly the fluid-filled cavity
+```
+
+So the search and the reading are not what failed. **Presentation is**, in two places:
+
+1. The 60-card page. Same diagnosis as §6, now confirmed on a second, independent subject.
+2. **The ledger stored 8 evidence rows per limitation and said nothing about it.** The chart held
+   **10,880 verified limitation cells; the report kept 544** — five per cent — with all 68 of 68
+   limitations at exactly the cap. The cut is by verdict strength then model confidence, so a
+   `partial` from the reference an attorney would file loses its slot to eight confident
+   `disclosed` rows from documents nobody will file. Fixed: keeps 40, and records `n_evidence`.
+
+### 14e. Where we are genuinely weaker than the examiner
+
+Our reader is markedly more conservative than a human examiner *on a document it has already read*.
+Per-claim verdicts for GRABO's patent, against the examiner's §102(a)(2) rejection of parent claims
+1-3, 5-9, 11-12 and 14-15:
+
+```
+claim 1  (11 limitations)  3 disclosed, 1 partial, 3 uncertain, 4 absent   examiner: ANTICIPATED
+claims 5,6,7,8,9           absent almost throughout                        examiner: ANTICIPATED
+claim 20 (12 limitations)  3 disclosed, 1 partial, 4 uncertain, 4 absent
+```
+(The examiner's rejection is against the PARENT's claims and the concise description itself says
+"correspondence is approximate; claim language differs", so this is a strong signal rather than a
+clean count.)
+
+The bar differs: ours is "a verbatim quote I can locate and that survives a refuter", the
+examiner's is "this reference teaches this to a person skilled in the art". Ours is right for a
+machine that must not fabricate, and it costs most on dependent claims where the teaching is
+implicit or spread across the document. **This — evidence recall inside an already-read document —
+is now the weakest link in the pipeline, ahead of retrieval and ahead of ranking.**
