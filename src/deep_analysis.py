@@ -387,7 +387,10 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
         if vocab:
             payload["other_words_for_each_feature"] = vocab
         #  The prompt is dominated by the reference itself; leave room for a full chart.
-        return llm.chat_json(_SYS, json.dumps(payload, ensure_ascii=False),
+        #  READ TIER, not the fast pool. This call is where the evidence is made: a model that
+        #  finds fewer teachings in 90,000 characters costs the report cells, not seconds. See
+        #  model_pool.READ for the measurement that separated it out.
+        return llm.chat_json(_SYS, json.dumps(payload, ensure_ascii=False), tier="read",
                              max_tokens=12000) or {}
 
     #  FOCUSED READS, not one combined one. MEASURED: asking for 12 feature rows AND 13 claim rows

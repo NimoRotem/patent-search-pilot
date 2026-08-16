@@ -30,9 +30,11 @@ same argument that made two samples of the query facets worth more than one.
 
 TIERS
 -----
-`fast`   the big first passes: screening thousands of candidates, the first full-text read of
-         hundreds of references, generating query facets. Volume, and every answer is gated
-         downstream by grounding, location and refutation before it can be asserted.
+`fast`   volume where a cheaper model costs latency and not evidence: screening thousands of
+         candidates from a title and an abstract, generating query facets (which are sampled twice
+         and merged anyway).
+`read`   the full-text chart. High volume too, but this is where the evidence is MADE, and a
+         cheaper model was measured to find less of it — see READ below. Flash only by default.
 `strong` the passes whose output IS the assertion: the refuter that decides what may be claimed,
          the claim -> limitation split that everything else is keyed on, and the second look.
          A few hundred calls against tens of thousands.
@@ -63,6 +65,19 @@ except Exception:
 #  Which providers serve which tier, in preference order. Comma-separated names, env-overridable so
 #  a bad provider can be dropped without a deploy.
 FAST = [p for p in os.environ.get("MODEL_POOL_FAST", "vertex-flash,haiku").split(",") if p.strip()]
+#  READ is its own tier and NOT the fast pool, because reading is where a cheaper model costs
+#  evidence rather than latency. MEASURED on US-11999030-B2 — the reference an examiner applied
+#  under 102(a)(2) to thirteen claims — asking the same 68 limitations with the same prompt:
+#
+#      vertex-flash   20 disclosed,  8 partial, 40 absent   7 claims with a DISCLOSED, 28 quoted
+#      haiku           9 disclosed, 14 partial, 45 absent   3 claims with a DISCLOSED, 23 quoted
+#      sonnet         21 disclosed,  8 partial, 39 absent   8 claims with a DISCLOSED, 29 quoted
+#
+#  Haiku is fine at scoring a candidate 0-100 from a title and an abstract, and materially worse at
+#  finding a teaching in 90,000 characters and quoting it. Sonnet buys one claim over flash for
+#  twice the latency across seven hundred references, which is not worth it on the FIRST pass —
+#  the place to spend a strong model is the second look, and that is already on the strong tier.
+READ = [p for p in os.environ.get("MODEL_POOL_READ", "vertex-flash").split(",") if p.strip()]
 STRONG = [p for p in os.environ.get("MODEL_POOL_STRONG", "sonnet,vertex-flash").split(",")
           if p.strip()]
 #  Consecutive failures before a provider is latched off, and for how long. Lens sat dead for days
@@ -178,8 +193,11 @@ _ALL = {
 }
 
 
+_TIERS = {"fast": lambda: FAST, "read": lambda: READ, "strong": lambda: STRONG}
+
+
 def providers(tier) -> list:
-    names = FAST if tier == "fast" else STRONG
+    names = _TIERS.get(tier, lambda: FAST)()
     out = [_ALL[n] for n in names if n in _ALL and _ALL[n].available()]
     #  Never leave a tier empty. A strong tier with no key must fall back to a fast provider rather
     #  than fail the call: a degraded refuter is far better than no chart at all.
