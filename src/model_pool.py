@@ -63,7 +63,8 @@ except Exception:
 #  Which providers serve which tier, in preference order. Comma-separated names, env-overridable so
 #  a bad provider can be dropped without a deploy.
 FAST = [p for p in os.environ.get("MODEL_POOL_FAST", "vertex-flash,haiku").split(",") if p.strip()]
-STRONG = [p for p in os.environ.get("MODEL_POOL_STRONG", "vertex-flash").split(",") if p.strip()]
+STRONG = [p for p in os.environ.get("MODEL_POOL_STRONG", "sonnet,vertex-flash").split(",")
+          if p.strip()]
 #  Consecutive failures before a provider is latched off, and for how long. Lens sat dead for days
 #  behind a 401 because nothing latched; this is the same lesson applied up front.
 FAIL_LIMIT = int(os.environ.get("MODEL_POOL_FAIL_LIMIT", "4"))
