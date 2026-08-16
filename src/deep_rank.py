@@ -1189,6 +1189,38 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         except Exception:
             traceback.print_exc()
 
+        #  THE PAGE AN ATTORNEY READS DOWN. Everything above optimises limitation mass, which
+        #  answers "how much of the invention is covered". This answers the other question, and it
+        #  is the one a 102 rejection is built from: which single document takes out the most
+        #  CLAIMS. The examiner in the measured docket used one reference against thirteen claims.
+        #  A document answering one limitation of each of five claims is worth more to that
+        #  argument than one answering five limitations of a single claim, and limitation mass
+        #  cannot tell those apart. Runs last so it refines the coverage order rather than
+        #  replacing it: ties keep their existing position.
+        try:
+            cf = coverage_rank.claim_first(
+                order, by_pub, sorted({coverage_rank.claim_of(c["label"]) for c in claim_items}),
+                window=DISPLAY_WINDOW)
+            if cf:
+                order = cf["order"]
+                for p, c in (cf.get("promoted") or {}).items():
+                    by_pub[p]["promoted_for_claim"] = c
+                report["claim_page"] = {
+                    "claims_answered": cf["claims_answered"], "n_claims": cf["n_claims"],
+                    "claims_answered_strong": cf.get("claims_answered_strong"),
+                    "per_claim": cf["per_claim"], "promoted": cf.get("promoted") or {}}
+                empty = [c for c, n in cf["per_claim"].items() if n == 0]
+                print(f"[deep_rank] page ordered by claims disclosed: "
+                      f"{cf['claims_answered']}/{cf['n_claims']} claims have at least one "
+                      f"plausible match on the page "
+                      f"({cf.get('claims_answered_strong')} of them a full disclosure)"
+                      + (f"; promoted {len(cf['promoted'])} to answer "
+                         f"{', '.join(list(cf['promoted'].values())[:5])}"
+                         if cf.get("promoted") else "")
+                      + (f"; NO ART ANYWHERE for {', '.join(empty)}" if empty else ""), flush=True)
+        except Exception:
+            traceback.print_exc()
+
     #  Candidates that were screened but not read keep their screen score, capped, so they stay
     #  visible without ever outranking a reference whose full text was quoted.
     unread = []
