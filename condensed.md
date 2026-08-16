@@ -617,3 +617,92 @@ against the 42 GB working set, against ~$0.21 *per query* for the old one-query-
 That is what makes it reasonable to size the pool for a screener (2,480 candidates in 33 seconds)
 rather than for the reader, and to screen against the requirement before spending an ingest or a
 read on anything.
+
+---
+
+## 14. The second expert gold set — and what it exposed (2026-08-16)
+
+A patent attorney filed a preissuance submission on 2026-07-24 against **U.S. App. 18/915,337
+(US 2025/0033224 A1, "Portable vacuum gripper", Nhon Hoa Nguyen)** — a *different invention* from
+the Schmalz application in §6. Frozen as `eval/nguyen_gold.json`; score with
+`eval/attorney_recall.py --gold eval/nguyen_gold.json <slug>`.
+
+Six documents: five patents plus the examiner's own Office action from the parent. What each was
+mapped against is in the gold file. Two facts change how it must be read, and both are recorded
+there rather than left to be rediscovered:
+
+- **Document 1 is the client's own patent** (US 11,413,727, Nimrod Rotem). The attorney did not
+  have to search for it. Our system has no such knowledge and must find it by search, so it is
+  still the right thing to score — but "the attorney filed it" and "a search found it" are not the
+  same achievement, and a comparison that ignores this flatters the attorney.
+- **Document 6 is not prior art and no patent corpus contains it.** See §14c.
+
+### 14a. All five patents were already in the corpus, with full text
+
+```
+US-11413727-B2   claims=14  paras=74   Vacuum gripper                        (Rotem / GRABO)
+US-7690610-B2    claims=23  paras=18   Suction-type holding device           (Ristau / Schmalz)
+US-6419291-B1    claims=20  paras=53   Adjustable flexible vacuum gripper    (Preta)
+US-7240935-B2    claims=22  paras=11   Suction grip arm                      (Schmierer / Schunk)
+US-10549405-B2   claims=16  paras=36   Vacuum gripping device                (Meyer)
+```
+Unlike the Schmalz set — where 3 of 10 were absent from the corpus entirely — the universe is not
+the constraint here. This subject is a clean test of retrieval, ranking and reading alone.
+
+### 14b. A patent arriving as a LINK was tracked as two claims instead of twenty
+
+The first thing the run exposed, and it had nothing to do with search quality. The publication
+record for this application comes back as TWO items — claims 1 to 19 glued into one
+17,309-character blob, and claim 20 on its own — and `ingest_input`'s link path took the claim
+number from the list index. So the report tracked a "claim 1" that was nineteen claims and a
+"claim 2" that was claim 20.
+
+For a Type B search that is fatal rather than untidy: the unit of work is the limitation,
+limitations are split out of claims, and `limitations.split_claims` truncates each claim at 4,000
+characters — so claims 5 through 19 never reached any stage of the pipeline. Nothing raised. The
+ledger would simply have had two rows and reported itself `done`.
+
+`patent_doc.split_claims` already recovered all twenty correctly; the link path never called it.
+The comment above the code asserted the opposite ("claims from a publication record need no repair
+pass"). After the fix: `[limitations] 20 claims -> 68 limitations`.
+
+**The general lesson, and it is worth more than the fix.** Every measurement in §13 was a search
+quality measurement, and the first real subject broke on INPUT PARSING instead. A gold set on one
+subject tests the pipeline against one document's quirks. Run the extractor on a new subject and
+count the claims before believing anything downstream.
+
+### 14c. The document a search can never find, which we can fetch in four calls
+
+The attorney's strongest document was the examiner's Non-Final Rejection from the parent
+application — where the examiner had already applied Document 1 under 102(a)(2) to thirteen claims
+and the applicant then abandoned rather than respond. It is proof that a USPTO examiner, given the
+same specification, already reached the conclusion the submission is arguing.
+
+It is in a file wrapper. It is NPL. No patent-corpus search reaches it, and scoring it as a
+retrieval miss measures the wrong thing (`findable_by_search: false` in the gold file).
+
+**We already hold the key.** `src/family_dossier.py`, verified live 2026-08-16:
+
+```
+18/915,337  Docketed New Case - Ready for Examination          <- the subject
+  is a Continuation of 18/513,573  Patented Case                -> US 12,115,659
+    is a Continuation of 17/724,791  Abandoned -- Failure to Respond to an Office Action
+      claims priority from provisional 63/176,890
+17724791 CTNF 2025-09-16  Non-Final Rejection                   <- the attorney's Document 6
+17724791 892  2025-09-16  List of references cited by examiner
+18513573 CTNF 2024-01-24  Non-Final Rejection                   <- NOT in the submission
+```
+
+It walks the chain rather than one hop, because the office action was **two hops up**: the
+subject's parent was itself a continuation and the abandonment was above that. A one-hop parent
+lookup is the easy way to build this and get nothing.
+
+Three things it gives that no search can: whether an examiner has already rejected these claims and
+over what; the **892**, a reference list chosen by a professional who read the application (a better
+query-by-example seed than any model guess, and authoritative as an eval set); and the rest of the
+family — a granted sibling is a double-patenting argument, a still-pending continuation is the next
+window to file.
+
+Needs `USPTO_ODP_KEY` (in `.env`, 0600, gitignored; advisor `uspto-odp`). ⚠️ **That key is cut off
+after 2026-08-18** unless four profile fields are completed on the USPTO.gov account — a browser
+and MFA step, not an API one.
