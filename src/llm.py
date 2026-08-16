@@ -64,20 +64,25 @@ def _record_usage(prompt_tokens=0, completion_tokens=0):
 
 @retry(wait=wait_exponential(min=1, max=20), stop=stop_after_attempt(5),
        retry=retry_if_exception_type(Exception))
-def _call(system, user, max_tokens):
-    from google.genai.types import GenerateContentConfig, ThinkingConfig
-    # gemini-2.5-flash is a thinking model; thinking tokens eat the output budget and truncate
-    # the JSON -> disable thinking for these short structured tasks.
-    resp = _client().models.generate_content(
-        model=AGENT_MODEL, contents=user,
-        config=GenerateContentConfig(system_instruction=system, response_mime_type="application/json",
-                                     temperature=0.2, max_output_tokens=max_tokens,
-                                     thinking_config=ThinkingConfig(thinking_budget=0)))
-    return resp
+def _call(system, user, max_tokens, tier="fast"):
+    """One answer from the requested tier. -> (text, provider, prompt_tokens, completion_tokens).
+
+    Routed through model_pool rather than bound to one client, because the stage that dominates a
+    search issues eleven sequential calls per reference and a single provider was measured to be
+    the ceiling the whole pipeline ran under. See model_pool for the numbers. With no extra keys
+    configured the pool is exactly the Vertex client this used to hold, so behaviour is unchanged.
+    """
+    import model_pool
+    return model_pool.call(system, user, max_tokens, tier=tier)
 
 
-def chat_json(system, user, max_tokens=1200):
+def chat_json(system, user, max_tokens=1200, tier="fast"):
     """-> parsed JSON, or {} .
+
+    `tier` picks the model pool. "fast" for volume — screening thousands of candidates, the first
+    full-text read of hundreds of references — where every answer is gated downstream by grounding,
+    location and refutation before it can be asserted. "strong" for the passes whose output IS the
+    assertion: the refuter, the claim-to-limitation split, the second look.
 
     {} IS AMBIGUOUS AND THAT AMBIGUITY HAS COST REAL EXPERIMENTS. Every caller reads it as "the
     model had nothing to say", and it is also what a 503, a quota refusal and a truncated response
@@ -91,16 +96,11 @@ def chat_json(system, user, max_tokens=1200):
     """
     import failclosed
     try:
-        resp = _call(system, user, max_tokens)
+        text, _provider, pt, ct = _call(system, user, max_tokens, tier=tier)
     except Exception as e:
         return failclosed.fallback("llm.chat_json", f"{type(e).__name__}: {str(e)[:160]}",
                                    {}, kind="llm_call_failed")
-    um = getattr(resp, "usage_metadata", None)
-    _record_usage(
-        getattr(um, "prompt_token_count", 0) if um else 0,
-        getattr(um, "candidates_token_count", 0) if um else 0,
-    )
-    text = getattr(resp, "text", None)
+    _record_usage(pt, ct)
     if not text:
         return failclosed.fallback("llm.chat_json", "empty response body", {},
                                    kind="llm_empty_response")

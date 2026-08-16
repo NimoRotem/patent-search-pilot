@@ -80,6 +80,12 @@ FEATURE_BATCH = int(os.environ.get("DEEP_FEATURE_BATCH", "24"))
 MAX_INPUT_CLAIMS = int(os.environ.get("DEEP_MAX_INPUT_CLAIMS", "80"))
 #  Claims (or limitations) per model call. See the batching comment in analyse_reference.
 CLAIM_BATCH = int(os.environ.get("DEEP_CLAIM_BATCH", "12"))
+#  How many of a single reference's batches may be in flight at once. A 68-limitation
+#  subject costs 9 batches plus the refuter; issuing them one at a time was measured to hold
+#  the whole pipeline at 2.70 calls/s against the 5.97 one provider alone sustains. The real
+#  ceiling is the per-provider semaphore in model_pool; this only stops one enormous document
+#  from occupying all of it.
+BATCH_WORKERS = int(os.environ.get("DEEP_BATCH_WORKERS", "6"))
 #  Per-reference text budget. A US grant is typically 40,000-120,000 characters; the long tail
 #  reaches 400,000. Send the whole thing up to this bound and SAY when it was cut, rather than
 #  silently reading a quarter of the document.
@@ -319,7 +325,11 @@ def _refute(rows, pub, texts=None):
         return 0
     pairs = [{"i": n, "assertion": texts.get(r["item"]) or r["item"], "quote": r["quote"]}
              for n, (_, r) in enumerate(targets)]
+    #  STRONG TIER. This is the gate that decides what the report may assert: a cell it downgrades
+    #  never renders as coverage. It is also cheap in volume — one call per reference against the
+    #  eleven the reading costs — so it is exactly where a better model is worth paying for.
     out = llm.chat_json(_REFUTE_SYS, json.dumps({"reference": pub, "pairs": pairs})[:40000],
+                        tier="strong",
                         max_tokens=2000) or {}
     checks = {int(c.get("i", -1)): c for c in (out.get("checks") or []) if isinstance(c, dict)}
     downgraded = 0
@@ -388,26 +398,51 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
     #  answer is subject to exactly the same economising as a 25-row one.
     #
     #  The reference text is re-sent per pass, which costs input tokens and buys back the chart.
-    #  Sequential on purpose: this already runs inside a wide worker pool (deep_rank), and a
-    #  nested pool would multiply the concurrent Vertex calls by the batch count.
-    out = {"features": [], "claims": []}
-    for i in range(0, len(feature_items), FEATURE_BATCH):
-        batch = feature_items[i:i + FEATURE_BATCH]
-        got = _ask(batch, [])
-        out["features"].extend(got.get("features") or [])
-        #  Take the holistic judgement from the FIRST feature pass: that pass saw the head of the
-        #  checklist, and averaging several would only give numbers to reconcile.
-        if i == 0 and isinstance(got.get("overall"), dict):
+    #
+    #  THE BATCHES RUN CONCURRENTLY. They used to be sequential, on the reasoning that this already
+    #  runs inside a wide worker pool and a nested pool would multiply the concurrent calls. That
+    #  reasoning was never measured and it was the ceiling the whole pipeline ran under: profiled
+    #  on real documents, a reference costs ELEVEN calls and they were issued one after another, so
+    #  a single reference took 97 seconds of which almost all was waiting. At CHART_WORKERS=24 the
+    #  pipeline achieved 2.70 calls/s while ONE provider sustains 5.97 and a second sustains 7.96
+    #  at the same concurrency and the same 60k-character prompts, with no throttling from either.
+    #
+    #  Concurrency is now bounded where it should be — by the per-provider semaphores in
+    #  model_pool — rather than by refusing to ask two questions at once. `BATCH_WORKERS` caps the
+    #  fan-out per reference so a single 68-limitation document cannot occupy the whole pool.
+    out = {"features": [], "claims": [], "overall": None}
+    feature_batches = [feature_items[i:i + FEATURE_BATCH]
+                       for i in range(0, len(feature_items), FEATURE_BATCH)]
+    #  BATCHED, for a measured reason. A Type B search charts LIMITATIONS rather than whole claims
+    #  — sixty rows where there used to be eleven — and a single answer carrying sixty quoted,
+    #  located rows is where a reader starts economising. Measured on the feature side: the same
+    #  reference grounded 10 of 12 asked alone and 2 of 12 asked together. Widening the batch to
+    #  cut calls would buy speed with the evidence, which is the wrong trade.
+    claim_batches = [claim_payload[i:i + CLAIM_BATCH]
+                     for i in range(0, len(claim_payload), CLAIM_BATCH)]
+    jobs = ([("features", b, []) for b in feature_batches]
+            + [("claims", [], b) for b in claim_batches])
+
+    def _run(job):
+        kind, fb, cb = job
+        return kind, _ask(fb, cb)
+
+    if len(jobs) > 1 and BATCH_WORKERS > 1:
+        with ThreadPoolExecutor(max_workers=min(BATCH_WORKERS, len(jobs))) as ex:
+            results = list(ex.map(_run, jobs))
+    else:
+        results = [_run(j) for j in jobs]
+    #  Reassembled in the ORIGINAL batch order, not completion order: `_align` zips these back
+    #  against the item list positionally, so a chart whose rows arrived out of order would put
+    #  every verdict against the wrong requirement.
+    for (kind, got), _job in zip(results, jobs):
+        out[kind].extend(got.get(kind) or [])
+        #  The holistic judgement comes from the FIRST feature pass — that pass saw the head of the
+        #  checklist — and averaging several would only give numbers to reconcile.
+        if out["overall"] is None and isinstance(got.get("overall"), dict):
             out["overall"] = got["overall"]
-    #  BATCHED, for exactly the reason the feature pass is. A Type B search charts LIMITATIONS
-    #  rather than whole claims — sixty rows where there used to be eleven — and a single answer
-    #  carrying sixty quoted, located rows is where a reader starts economising. Measured on the
-    #  feature side: the same reference grounded 10 of 12 asked alone and 2 of 12 asked together.
-    for i in range(0, len(claim_payload), CLAIM_BATCH):
-        got = _ask([], claim_payload[i:i + CLAIM_BATCH])
-        out["claims"].extend(got.get("claims") or [])
-        if not out.get("overall") and isinstance(got.get("overall"), dict):
-            out["overall"] = got["overall"]
+    if out["overall"] is None:
+        out.pop("overall")
     if not (out.get("features") or out.get("claims")):
         result["method"] = "unavailable"
         result["features"] = [_row(f, None, ref, shown, "feature") for f in feature_items]
@@ -616,7 +651,10 @@ def reread_absent(pub, rows, hints=None, ref=None, max_features=FEATURE_BATCH, k
             a["claim_text"] = texts.get(a["item"]) or ""
     payload = {"reference": pub, "reference_text": shown, key: asked}
     try:
-        out = llm.chat_json(system, json.dumps(payload, ensure_ascii=False),
+        #  STRONG TIER. The second look exists because the first read economised; asking the same
+        #  model the same way again is the one thing that cannot help. Low volume: a few hundred
+        #  calls against tens of thousands.
+        out = llm.chat_json(system, json.dumps(payload, ensure_ascii=False), tier="strong",
                             max_tokens=8000) or {}
     except Exception:
         return 0

@@ -155,7 +155,10 @@ def split_claims(claim_items, use_llm=True, log=print):
             import llm
             for i in range(0, len(claims), BATCH):
                 chunk = claims[i:i + BATCH]
-                out = llm.chat_json(_SPLIT_SYS, json.dumps(
+                #  STRONG TIER. Runs a handful of times per search and every later stage is
+                #  keyed on its output: the ledger rows, the chart labels, the query portfolio.
+                #  A bad split is not a bad answer, it is a bad question asked of everything.
+                out = llm.chat_json(_SPLIT_SYS, tier="strong", user=json.dumps(
                     {"claims": [{"item": c["label"], "text": str(c["text"])[:4000]}
                                 for c in chunk]}, ensure_ascii=False), max_tokens=6000) or {}
                 for row in (out.get("claims") or []):
