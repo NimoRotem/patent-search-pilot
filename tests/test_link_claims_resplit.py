@@ -12,15 +12,25 @@ ledger simply had two rows and reported itself done.
 """
 import patent_doc
 
+#  Long enough to clear patent_doc's own thresholds for recognising a claims run
+#  (MIN_RUN_CLAIMS=3, MIN_RUN_CHARS=600), because a fixture below them tests the guard rather than
+#  the behaviour.
+_DEP = ("A vacuum gripper as in claim 1, wherein the vacuum seal element comprises a first portion "
+        "disposed on a second portion, the first portion comprising a flexible and stretchable "
+        "material configured to conform to irregularities of an object surface, and the second "
+        "portion comprising a compressible and deformable material")
 BLOB = (
-    "1. A vacuum gripper for gripping an object, the vacuum gripper comprising\n"
-    "a base element,\n"
-    "wherein the base element comprises one or more openings around a periphery;\n"
-    "2. A vacuum gripper as in claim 1,\nwherein the first portion extends into inside areas.\n"
-    "3. A vacuum gripper as in claim 1,\nwherein layer thickness and hardness are selected.\n"
-    "4. A vacuum gripper as in claim 1,\nwherein the first portion is harder than the second.\n"
-    "20. A vacuum gripper for gripping an object, the vacuum gripper comprising\n"
-    "a base element with one or more openings around a periphery and a seal element.\n"
+    "1. A vacuum gripper for gripping an object, the vacuum gripper comprising a base element, "
+    "wherein the base element comprises one or more openings around a periphery of the base "
+    "element; a vacuum seal element coupled to the base element and configured to surround a "
+    "cavity; and an air extraction mechanism in fluid communication with the cavity.\n"
+    f"2. {_DEP} that is less compressible than the first.\n"
+    f"3. {_DEP} selected for layer thickness, hardness and elasticity.\n"
+    f"4. {_DEP} arranged in discrete layers of differing hardness.\n"
+    "20. A vacuum gripper for gripping an object, the vacuum gripper comprising a base element "
+    "with one or more openings around a periphery, a vacuum seal element having a flexible first "
+    "portion and a compressible second portion, an air extraction mechanism, a pressure alarm, "
+    "and a battery housed in a handle of the vacuum gripper.\n"
 )
 
 
