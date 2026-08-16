@@ -6,7 +6,7 @@ Provider: Vertex AI `gemini-2.5-flash` via the GCE service account (OpenAI accou
 from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
-import json, threading
+import json, re, threading
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 
 AGENT_MODEL = "gemini-2.5-flash"
@@ -104,6 +104,9 @@ def chat_json(system, user, max_tokens=1200, tier="fast"):
     if not text:
         return failclosed.fallback("llm.chat_json", "empty response body", {},
                                    kind="llm_empty_response")
+    obj = _extract_json(text)
+    if obj is not None:
+        return obj
     try:
         return json.loads(text)
     except Exception as e:
@@ -127,6 +130,35 @@ def chat_json(system, user, max_tokens=1200, tier="fast"):
             "llm.chat_json",
             f"unparseable JSON ({type(e).__name__}); {len(text)} chars, "
             f"ends {text[-40:]!r}", {}, kind="llm_bad_json")
+
+
+def _extract_json(text):
+    """A COMPLETE JSON object out of a reply that may not be bare JSON. None if there is not one.
+
+    Vertex has a JSON response mode and returns nothing else. Anthropic does not: it returns the
+    object inside a ```json fence, or after a sentence of preamble. Measured on the reader's own
+    prompt over seven real documents, every single Anthropic reply failed `json.loads`, fell into
+    the truncation salvage, was logged as "a PREFIX, not a complete answer" and was flagged
+    `_truncated` — while in fact returning all 84 of 84 rows asked for.
+
+    That mislabelling is not cosmetic. `disclosures.extract` reads `_truncated` as "the checklist
+    is incomplete", so a complete answer from a healthy provider was being treated as a degraded
+    one. Try the honest extraction first; only text that is genuinely cut off reaches the salvage.
+    """
+    if not text:
+        return None
+    t = text.strip()
+    if t.startswith("```"):
+        t = re.sub(r"^```(?:json)?\s*", "", t)
+        t = re.sub(r"\s*```\s*$", "", t)
+    start, end = t.find("{"), t.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        obj = json.loads(t[start:end + 1])
+    except Exception:
+        return None
+    return obj if isinstance(obj, dict) else None
 
 
 def _salvage_json(text):
