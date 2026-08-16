@@ -84,6 +84,9 @@ def score(slug, gold, held):
 
     rows, tally = [], {"in_corpus": 0, "retrieved": 0, "screened": 0, "read": 0, "page": 0}
     for c in gold["citations"]:
+        if c.get("findable_by_search") is False:
+            rows.append((c["name"], c.get("pub") or "—", "not reachable by search (NPL)", None))
+            continue
         h = held.get(c["name"])
         if not h:
             rows.append((c["name"], "—", "not in corpus", None))
@@ -128,27 +131,45 @@ def score(slug, gold, held):
 
 
 def main(argv):
-    gold = load_gold()
-    slugs = argv[1:] or [gold["baseline_2026_08_15"]["run"]]
+    #  --gold <path> so a second subject does not need a second copy of this file. There are now
+    #  two frozen expert sets and they are different inventions: attorney_gold.json is a Schmalz
+    #  grip unit, nguyen_gold.json a portable vacuum gripper.
+    argv = list(argv)
+    path = GOLD
+    if "--gold" in argv:
+        i = argv.index("--gold")
+        path = argv[i + 1]
+        del argv[i:i + 2]
+    gold = load_gold(path)
+    slugs = argv[1:] or [(gold.get("baseline_2026_08_15") or {}).get("run")]
+    slugs = [s for s in slugs if s]
     with db.cursor() as cur:
         held = resolve(cur, gold)
-    base = gold["baseline_2026_08_15"]
+    base = gold.get("baseline_2026_08_15") or {}
     for slug in slugs:
         try:
             rep, rows, tally = score(slug, gold, held)
         except FileNotFoundError:
             print(f"{slug}: no such report")
             continue
-        n = len(gold["citations"])
+        n = sum(1 for c in gold["citations"] if c.get("findable_by_search") is not False)
         print(f"\n=== {slug} — {gold['subject']['title']} ===")
         for name, pub, where, _ in rows:
             print(f"  {name:14} {str(pub):18} {where}")
         print(f"  ---- {tally['page']}/{n} on the page · {tally['read']}/{n} read · "
               f"{tally['screened']}/{n} screened · {tally['retrieved']}/{n} retrieved · "
               f"{tally['in_corpus']}/{n} in corpus")
-        print(f"  baseline 2026-08-15 (before the fixes): {base['on_the_page']}/{n} on the page · "
-              f"{base['read_in_full']}/{n} read · {base['retrieved']}/{n} retrieved · "
-              f"{base['in_corpus']}/{n} in corpus")
+        if base:
+            print(f"  baseline 2026-08-15 (before the fixes): {base['on_the_page']}/{n} on the "
+                  f"page · {base['read_in_full']}/{n} read · {base['retrieved']}/{n} retrieved · "
+                  f"{base['in_corpus']}/{n} in corpus")
+        #  Documents nothing in a patent corpus could ever return are counted apart. Scoring an
+        #  office action from a file wrapper as a retrieval miss measures the wrong thing.
+        unsearchable = [c["name"] for c in gold["citations"]
+                        if c.get("findable_by_search") is False]
+        if unsearchable:
+            print(f"  not reachable by any patent-corpus search, excluded from the ratio above: "
+                  f"{', '.join(unsearchable)}")
     return 0
 
 
