@@ -70,12 +70,10 @@ def test_llm_separates_a_failed_call_from_an_empty_answer(monkeypatch):
     """{} is what a 503, a quota refusal, a truncated response AND a genuinely empty answer all
     returned. The tournament A/B was lost to exactly this: every comparison truncated at
     max_tokens, returned {}, and the run reported a 40% regression that was a broken call."""
-    class _R:
-        text = '{"order": []}'
-        usage_metadata = None
-
+    #  _call returns (text, provider, prompt_tokens, completion_tokens) since it started routing
+    #  through model_pool; it used to return a provider response object.
     monkeypatch.setattr(llm, "chat_json", _REAL_CHAT_JSON)
-    monkeypatch.setattr(llm, "_call", lambda *a, **k: _R())
+    monkeypatch.setattr(llm, "_call", lambda *a, **k: ('{"order": []}', "test", 0, 0))
     with fc.force(True):
         assert llm.chat_json("s", "u") == {"order": []}      # a real empty answer: fine
     assert fc.used() == []
@@ -90,12 +88,10 @@ def test_llm_separates_a_failed_call_from_an_empty_answer(monkeypatch):
 
 
 def test_llm_truncated_json_is_a_failure_not_an_empty_answer(monkeypatch):
-    class _R:
-        text = '{"order": [1, 2, 3'          # truncated at max_tokens
-        usage_metadata = None
-
     monkeypatch.setattr(llm, "chat_json", _REAL_CHAT_JSON)
-    monkeypatch.setattr(llm, "_call", lambda *a, **k: _R())
+    #  Truncated at max_tokens, and past the salvage's reach: nothing closed inside the array, so
+    #  there is no complete prefix to keep. This must stay a FAILURE, not an empty answer.
+    monkeypatch.setattr(llm, "_call", lambda *a, **k: ('{"order": [1, 2, 3', "test", 0, 0))
     with fc.force(False):
         assert llm.chat_json("s", "u") == {}
     assert any(r["kind"] == "llm_bad_json" for r in fc.used())
