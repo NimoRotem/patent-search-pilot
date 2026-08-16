@@ -47,8 +47,9 @@ def _fake_call(monkeypatch):
     def call(path, body=None, log=print):
         if path.endswith("/search"):
             return SEARCH
+        #  "patent/applications/<app>/continuity" -> the app is the SECOND-to-last part.
         parts = path.strip("/").split("/")
-        app = parts[3] if len(parts) > 3 else ""
+        app = parts[-2] if len(parts) >= 2 else ""
         if path.endswith("/continuity"):
             return CONTINUITY.get(app, {})
         if path.endswith("/documents"):
