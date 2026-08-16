@@ -96,8 +96,16 @@ def test_abandonment_reaches_the_summary(monkeypatch):
 
 def test_no_key_is_a_reason_not_a_crash(monkeypatch):
     """This runs beside a search that already has an answer. An unreachable USPTO must cost its own
-    findings and nothing else."""
+    findings and nothing else.
+
+    Both the constant AND the environment have to be cleared: `_key()` deliberately falls back to
+    os.environ so a key loaded from .env after import still works, which means clearing the
+    constant alone does not describe a keyless machine — on the live host it silently passes while
+    reading the real key.
+    """
     monkeypatch.setattr(FD, "KEY", "")
+    monkeypatch.delenv("USPTO_ODP_KEY", raising=False)
+    monkeypatch.delenv("ODP_API_KEY", raising=False)
     d = FD.dossier(publication="US20250033224A1", log=lambda *a: None)
     assert d["error"] == "no USPTO_ODP_KEY"
     assert d["rejections"] == [] and d["family"] == []
