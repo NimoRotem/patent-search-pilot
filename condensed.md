@@ -831,3 +831,67 @@ It did **not** move the attorney metric and it was not expected to: the other fo
 at ranks 85-247, outside the window, and reordering cannot reach what is not in it. What did move:
 US 11,413,727 — the reference the examiner used to reject thirteen claims — is now on the page at
 card 33, where the run before showed Preta, cited for one claim.
+
+---
+
+## 16. Publishing a report (2026-08-16)
+
+An **Export** button on the report page turns a search into a document a client, an examiner or
+opposing counsel can open with no account, at `/public-report/<slug>`. Optional password, revocable,
+and every reading is recorded.
+
+| | |
+|---|---|
+| Module | `src/public_report.py` — publish/revoke, password, one row per VIEW |
+| Layout | `templates/base_public.html` — the report with the application taken away |
+| Owner UI | Export button + publish dialog in `report.html`; `templates/visitors.html` |
+| Routes | `POST /report/<slug>/publish` · `GET /public-report/<slug>` · `POST …/unlock` · `POST …/beacon` · `GET /report/<slug>/visitors` |
+| Tables | `app_public_reports`, `app_public_visits` |
+
+**Why a separate base template rather than flags on `base.html`.** That template's navigation is
+driven by `current_user`, and the published page has to be right when the OWNER opens their own
+link while signed in — which is exactly how a human first tests it. A skeleton with no navigation
+in it cannot regress into showing the application to a stranger because somebody adds a nav item.
+The report BODY is one template for both audiences (`{% extends layout|default("base.html") %}`),
+so the evidence cannot drift between them.
+
+**Three things bit during the build and each is a test now:**
+
+1. **The global auth gate allow-lists by endpoint NAME.** It knew nothing about the new routes, so
+   every public link 302'd its recipient to `/login` — the one thing a shared document must never
+   do. `report_publish` and `report_visitors` deliberately stay behind it.
+2. **`CASE WHEN %s IS NOT NULL THEN %s` over a NULL parameter is rejected by Postgres** ("could not
+   determine data type of parameter $3"), and the symptom was worse than the error: the password
+   was silently never set, so a link the owner believed was protected was open. The three-way
+   choice is made in Python now.
+3. **`read_only` did not gate Re-run, the archive ZIP, or the save/rename inline script.** The
+   first two rendered controls a reader cannot use; the third shipped owner endpoints and the CSRF
+   token to a stranger.
+
+### 16a. What is recorded, and why it takes two halves
+
+Neither source alone is honest, so both are kept and joined on a visit id minted server-side:
+
+```
+server   address (via auth.client_ip, which only believes X-Forwarded-For when the peer is our own
+         proxy), the raw forwarded chain, user agent, referrer, Accept-Language, method, protocol,
+         host, path, query, and the sec-ch-ua* client hints. Cannot be blocked, cannot see a screen.
+page     screen and viewport, colour depth, pixel ratio, timezone, language list, platform, cores,
+         memory, touch points, connection type, load time, scroll depth — and TIME ON PAGE.
+```
+
+**Time on page is measured, not inferred.** It is not a property of a request at all. The page
+counts only while VISIBLE (a tab left open overnight is not eight hours of reading), heartbeats
+every 15s, and sends a final `sendBeacon` on `pagehide` — the delivery most likely to be lost,
+which is why the server keeps the LARGEST value it has been told rather than the latest.
+
+`beacon_ok` records which half arrived. "We do not know this visitor's screen" and "this visitor
+blocked scripts" are different facts, and a dashboard that conflates them is lying.
+
+**Automated fetches are separated, not folded in.** A link pasted into a chat app is unfurled
+before any human sees it; counting that as a reading reports an audience that was never there.
+
+Live example, recorded end to end through nginx: address from the forwarded chain, Chrome 141 on
+macOS via the client hints, `en-GB,en;q=0.9,he;q=0.8`, referred from mail.google.com, **47s on
+page, 63% scrolled, 3024×1964 screen at 2× DPR, window 1512×900, Asia/Jerusalem, 12 cores, 8 GB** —
+and the four curl probes in the same log correctly marked automated.
