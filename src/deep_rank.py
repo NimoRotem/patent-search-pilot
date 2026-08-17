@@ -1292,8 +1292,24 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         #  cannot tell those apart. Runs last so it refines the coverage order rather than
         #  replacing it: ties keep their existing position.
         try:
+            _claims = sorted({coverage_rank.claim_of(c["label"]) for c in claim_items})
+            #  PAGE MEMBERSHIP BEFORE PAGE ORDER, and OFF by default. `claim_first` below can only
+            #  sort the window it is handed, so a reference at rank 103 with grounded evidence can
+            #  never reach the page however it is sorted — which is exactly what both expert sets
+            #  showed. `claim_quota` reserves slots per claim from the whole order and fixes that
+            #  mechanically; it just did not measure well enough to switch on. See
+            #  coverage_rank.RESERVE_PER_CLAIM for the sweep.
+            if coverage_rank.RESERVE_PER_CLAIM > 0:
+                q = coverage_rank.claim_quota(order, by_pub, _claims, window=DISPLAY_WINDOW)
+                if q:
+                    order = q["order"]
+                    report["claim_quota"] = {"reserved": len(q["reserved"]),
+                                             "promoted": len(q["promoted"]),
+                                             "per_claim": q["per_claim"]}
+                    print(f"[coverage] claim quota reserved {len(q['reserved'])} cards, "
+                          f"{len(q['promoted'])} of them from outside the page", flush=True)
             cf = coverage_rank.claim_first(
-                order, by_pub, sorted({coverage_rank.claim_of(c["label"]) for c in claim_items}),
+                order, by_pub, _claims,
                 window=DISPLAY_WINDOW)
             if cf:
                 order = cf["order"]

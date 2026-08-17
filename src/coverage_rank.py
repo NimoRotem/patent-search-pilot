@@ -250,6 +250,114 @@ def claims_disclosed(entry, minimum=PLAUSIBLE) -> set:
     return out
 
 
+#  Cards reserved for each claim's best disclosers, and the ceiling on how much of the page the
+#  reservation may take. See `claim_quota`.
+#
+#  DEFAULT 0, WHICH MEANS OFF, AND THE MEASUREMENT IS WHY. Swept offline over four saved runs and
+#  both frozen expert sets, rebuilding each page and scoring it with eval/attorney_recall.py:
+#
+#      run                gold      baseline   pc=1   pc=2   pc=3
+#      adhoc-c0182f3d1d57 nguyen       1/5      2/5    2/5    2/5
+#      adhoc-a2fec8ee8ba2 nguyen       1/5      1/5    2/5    2/5
+#      adhoc-3c99d840e5b3 schmalz      2/10     1/10   1/10   1/10
+#      adhoc-22e7ab5734e7 schmalz      1/10     1/10   1/10   1/10
+#      total                           5/30     5/30   6/30   6/30
+#
+#  Two references gained on one expert set, one LOST on the other, for a net of +1 in 30. That is
+#  not a result, it is noise with a regression in it, and this repo has been here before: a wider
+#  pool bought recall and cost precision at the very top, and the fix measured worse and was
+#  reverted. So the mechanism ships, the default does not. Set COVERAGE_RESERVE_PER_CLAIM=2 to
+#  enable it, and widen the gold sets before trusting either direction.
+RESERVE_PER_CLAIM = int(os.environ.get("COVERAGE_RESERVE_PER_CLAIM", "0"))
+RESERVE_MAX_FRACTION = float(os.environ.get("COVERAGE_RESERVE_MAX_FRACTION", "0.5"))
+
+
+def _claim_strength(entry, minimum=PLAUSIBLE):
+    """{claim: the best grounded cell quality this reference has for that claim}."""
+    out = {}
+    for item, v in quality(entry).items():
+        if v < minimum:
+            continue
+        c = claim_of(item)
+        if c and v > out.get(c, 0.0):
+            out[c] = v
+    return out
+
+
+def claim_quota(order, by_pub, claims, window=60, per_claim=RESERVE_PER_CLAIM,
+                max_fraction=RESERVE_MAX_FRACTION, minimum=PLAUSIBLE):
+    """Reserve page slots for each claim's best disclosers, drawn from the WHOLE order.
+
+    -> a reordered `order` in which every reserved reference sits inside the first `window`.
+
+    WHY THIS EXISTS, MEASURED 2026-08-17 with eval/attorney_recall.py over both gold sets.
+
+    On the Nguyen set (US 2025/0033224 A1, adhoc-c0182f3d1d57) every reference the attorney filed
+    was in the corpus, retrieved, screened, and four of five were READ IN FULL with grounded cells.
+    One reached the page. Ristau ranked 103, Preta 85, Schmierer 247. On the Schmalz set the same
+    shape: Hukelmann 279, Cho 299, Blatt 114, all read. The funnel was not losing at retrieval and
+    was not losing at reading. It was losing at the last step, against a fixed 60-card window.
+
+    Neither existing pass can reach them, and for a different reason each:
+      * `claim_first` sorts `order[:window]` — it refines the page it is given and cannot pull a
+        document at rank 103 into it;
+      * `guarantee` and `claim_first`'s promotion only fire for a claim with NOTHING on the page,
+        and these claims all had an answer already. A previous session widened `guarantee`'s bar
+        six ways and Blatt stayed at 314 in every arm, because a guarantee promotes the SINGLE best
+        discloser and something always beats it.
+
+    A quota is the shape neither of those is: it takes each claim's top `per_claim` disclosers from
+    the whole ranked list rather than its single best, and it does so whether or not the claim is
+    already answered. Round-robin across claims, exactly as the read budget is shared in
+    `claim_reach.quota`, so a crowded claim cannot spend the reservation a starved one needs.
+
+    Bounded by `max_fraction` of the window: this decides page MEMBERSHIP only, and leaves the rest
+    of the page to the global ordering. `claim_first` still decides the order within it.
+    """
+    claims = sorted({claim_of(c) for c in (claims or []) if claim_of(c)})
+    if not claims or not order:
+        return None
+    rank_of = {p: i for i, p in enumerate(order)}
+    strength = {p: _claim_strength(by_pub[p], minimum) for p in order if p in by_pub}
+    queues = {}
+    for c in claims:
+        cands = [p for p in order if c in strength.get(p, {})]
+        #  Best evidence for THIS claim first, then the reference that answers the most claims
+        #  overall, then the existing rank. A reservation should spend its slot on the most useful
+        #  document that answers this claim, not the first one encountered.
+        cands.sort(key=lambda p: (-strength[p][c], -len(strength[p]), rank_of.get(p, 10 ** 9)))
+        queues[c] = cands
+    cap = max(0, int(window * max_fraction))
+    reserved, seen, taken = [], set(), {c: 0 for c in claims}
+    while len(reserved) < cap:
+        progressed = False
+        for c in claims:
+            if taken[c] >= per_claim or len(reserved) >= cap:
+                continue
+            q = queues[c]
+            while q:
+                p = q.pop(0)
+                if p in seen:
+                    continue
+                seen.add(p)
+                reserved.append(p)
+                taken[c] += 1
+                progressed = True
+                break
+        if not progressed:
+            break
+    if not reserved:
+        return None
+    #  Reserved references keep their relative order; everything else keeps the order it had. Only
+    #  membership of the first `window` changes here.
+    reserved.sort(key=lambda p: rank_of.get(p, 10 ** 9))
+    rest = [p for p in order if p not in seen]
+    return {"order": reserved + rest,
+            "reserved": reserved,
+            "promoted": [p for p in reserved if rank_of.get(p, 0) >= window],
+            "per_claim": {c: taken[c] for c in claims}}
+
+
 def claim_first(order, by_pub, claims, window=60, minimum=PLAUSIBLE):
     """Reorder the visible page so the documents that kill the most CLAIMS lead it, then make sure
     every claim has at least one plausible answer on it.
