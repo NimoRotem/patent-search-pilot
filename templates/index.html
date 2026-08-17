@@ -26,28 +26,19 @@
           the SAME "Search prior art" button also fans out over the document's own chunks and figures
           (multi-chunk semantic + image channels). Empty for a plain typed query. #}
       <input type="hidden" name="doc_token" id="doctoken" value="">
-      <textarea name="query" id="qbox" rows="4" required autofocus
-        placeholder="Describe it in plain language — the more specific the features, the better. e.g. “A cordless handheld vacuum lifter for glass and stone panels, with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that alarms the operator when grip vacuum is lost.”"></textarea>
-      {#  Retrieval here is semantic, so a three-word query retrieves the FIELD rather than the
-          invention. This expands what you wrote into the vocabulary the corpus is written in —
-          and shows what it added, so an expansion that drifted can be rejected rather than
-          silently searched.  #}
-      <div class="qimprove">
-        <button type="button" class="btn ghost sm" id="improveBtn"
-                title="Expand this into the terminology a patent examiner would use">Improve this description</button>
-        <span class="small muted" id="improveStatus" role="status" aria-live="polite"></span>
-      </div>
-      <div id="improveOut" class="improveout" hidden>
-        <div class="improvehead">
-          <b>Suggested description</b>
-          <span class="grow"></span>
-          <button type="button" class="btn sm" id="improveUse">Use this</button>
-          <button type="button" class="btn ghost sm" id="improveKeep">Keep mine</button>
-        </div>
-        <p class="ex-snip" id="improveText"></p>
-        <div id="improveAdded" class="improveadded small"></div>
-        <div id="improveQs" class="improveqs small"></div>
-      </div>
+      {#  ONE SMART BOX. It is the query, the drop target for a PDF, and the place a patent link or
+          number is recognised. Three separate controls (a textarea, a drop zone, a URL field with
+          its own button) asked the user to classify their own input before the page would take it;
+          the page can tell the difference perfectly well by itself.  #}
+      <textarea name="query" id="qbox" rows="5" required autofocus
+        placeholder="Describe the invention in plain language, drop a patent PDF here, or paste a patent link or number.&#10;&#10;e.g. “A cordless handheld vacuum lifter for glass and stone panels, with a flexible sealing lip, an electric vacuum pump, and a pressure sensor that alarms the operator when grip vacuum is lost.”"></textarea>
+      <p class="small muted qhint">
+        <label for="fileinput" class="vh">Upload a patent PDF, text or Word document</label>
+        <input type="file" id="fileinput" class="vh"
+               accept=".pdf,.txt,.docx,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+        Drop a PDF on the box above, <button type="button" class="linklike" id="browsebtn">browse to
+        upload</button>, or paste a patent link or number — PDF, .txt or .docx, up to 30&nbsp;MB.
+      </p>
     </div>
 
     {#  DOCUMENT / PATENT-LINK INPUT.
@@ -57,28 +48,6 @@
         drops straight into the textarea above, so the SAME "Search prior art" button runs the
         SAME pipeline — this is just a better way to fill the query box, not a new search path. #}
     <div class="field ingest">
-      <span class="lab">Or start from a document or a patent link
-        <span class="muted" style="font-weight:400">— we read its text and drawings and build the query for you</span></span>
-      <div id="dropzone" class="dropzone" tabindex="0" role="button"
-           aria-label="Drop a patent PDF here, or activate to browse for a file to upload">
-        <label for="fileinput" class="vh">Upload a patent PDF, text or Word document</label>
-        <input type="file" id="fileinput" class="vh"
-               accept=".pdf,.txt,.docx,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-        <div class="dz-inner" aria-hidden="true">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
-          <strong>Drop a patent PDF here</strong>
-          <span class="muted small">or <button type="button" class="linklike" id="browsebtn">browse to upload</button>
-            · PDF, .txt or .docx, up to 30&nbsp;MB</span>
-        </div>
-      </div>
-      <div class="urlrow">
-        <input type="text" id="urlinput" inputmode="url" autocomplete="off"
-               aria-label="Paste a Google Patents or Espacenet URL, or a publication number"
-               placeholder="…or paste a Google Patents link, e.g. https://patents.google.com/patent/DE1286275B/en">
-        <button type="button" class="btn ghost sm" id="urlbtn">Use link</button>
-      </div>
       {#  Real progress, not a spinner. Reading a 64-page grant takes the better part of a
           minute — two model passes over the whole document plus drawing extraction — and the
           bar below is driven by the phase the server reports, not by a timer.  #}
@@ -149,30 +118,18 @@
       </div>
     </div>
 
-    <div class="row">
-      <div class="field">
-        <label for="mode">Search mode</label>
-        {# Only the two modes the backend actually serves. INVALIDITY and FTO are refused by
-           require_available(), so offering them here would only produce a 400. #}
-        <select name="mode" id="mode">
-          <option value="novelty">Novelty — includes secret / earlier-filed art</option>
-          <option value="inventive_step">Inventive step — public art only</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="search-focus">Search focus</label>
-        <select name="search_focus" id="search-focus">
-          <option value="all_text">All patent text — broadest recall</option>
-          <option value="claims">Claims — claim-text semantic + keyword search</option>
-        </select>
-        <span class="small muted">Claim focus expands claim-level hits through patent families and citations.</span>
-      </div>
-      <div class="field">
-        <label for="subject">Subject patent number <span class="muted">(optional)</span></label>
-        <input type="text" name="subject" id="subject" placeholder="e.g. US-11999030-B2">
-        <span class="small muted">Enables prior-art dating under EPC Art. 54(2)/54(3).</span>
-      </div>
-    </div>
+    {#  ONE SEARCH TYPE. Mode, focus and the subject number were three controls asking the user to
+        make choices the pipeline can make better on its own:
+          * mode is always `novelty` — it is the broader of the two (it includes secret and
+            earlier-filed art), so it is the safe default for a prior-art search;
+          * `search_focus` still switches itself to `claims` when the ingested document brought
+            claims with it, which is a measured behaviour and not a preference — it stays, as a
+            hidden field the extract step sets;
+          * the subject number is recovered from the ingested document automatically
+            (`external.subject_from_doc`), which is what enables prior-art dating under EPC
+            Art. 54(2)/54(3) without anyone typing a number.  #}
+    <input type="hidden" name="mode" value="novelty">
+    <input type="hidden" name="search_focus" id="search-focus" value="all_text">
 
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <button class="btn" type="submit" id="gobtn">Search prior art</button>
@@ -217,70 +174,17 @@ window.addEventListener('pageshow', () => {
   searchButton.disabled = false;
 });
 
-/*  IMPROVE THE DESCRIPTION — one model pass over what the user typed.
-    The suggestion is never applied silently: it is shown beside what it added and what it still
-    cannot tell, and the user chooses.                                                          */
-(function(){
-  const B = window.APP_BASE || '';
-  const btn = document.getElementById('improveBtn');
-  const box = document.getElementById('qbox');
-  const out = document.getElementById('improveOut');
-  const status = document.getElementById('improveStatus');
-  if(!btn) return;
-  let suggested = '';
-  const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g, c =>
-    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-
-  btn.addEventListener('click', async () => {
-    const q = (box.value || '').trim();
-    if(q.length < 8){ status.textContent = 'Write a sentence or two first.'; box.focus(); return; }
-    btn.disabled = true; const was = btn.textContent; btn.textContent = 'Thinking…';
-    status.textContent = ''; out.hidden = true;
-    try{
-      const r = await fetch(B + '/api/improve-query', {method:'POST', credentials:'same-origin',
-        headers:{'Content-Type':'application/json','X-CSRF-Token':window.CSRF_TOKEN || ''},
-        body: JSON.stringify({query: q})});
-      const d = await r.json();
-      if(!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
-      if(!d.changed){
-        status.textContent = 'Your description already reads well for this engine.';
-        return;
-      }
-      suggested = d.improved;
-      document.getElementById('improveText').textContent = d.improved;
-      document.getElementById('improveAdded').innerHTML = (d.added||[]).length
-        ? '<b>What was added</b><ul><li>' + d.added.map(esc).join('</li><li>') + '</li></ul>' : '';
-      document.getElementById('improveQs').innerHTML = (d.questions||[]).length
-        ? '<b>Still unclear — answering these would sharpen the search</b><ul><li>'
-          + d.questions.map(esc).join('</li><li>') + '</li></ul>' : '';
-      out.hidden = false;
-    }catch(err){ status.textContent = 'Could not improve that: ' + (err.message || err); }
-    finally{ btn.disabled = false; btn.textContent = was; }
-  });
-  document.getElementById('improveUse').addEventListener('click', () => {
-    box.value = suggested; box.dispatchEvent(new Event('input'));
-    out.hidden = true; status.textContent = 'Applied — edit it further if you like.';
-    box.focus();
-  });
-  document.getElementById('improveKeep').addEventListener('click', () => {
-    out.hidden = true; status.textContent = 'Kept your own wording.';
-  });
-})();
-
 /*  DOCUMENT / PATENT-LINK INPUT — extract text + drawings, fuse into the query box.
     Prefix-aware (never hardcode /patents): everything through B = window.APP_BASE || ''.   */
 (function(){
   const B = window.APP_BASE || '';
-  const dz = document.getElementById('dropzone');
   const fileinput = document.getElementById('fileinput');
   const browsebtn = document.getElementById('browsebtn');
-  const urlinput = document.getElementById('urlinput');
-  const urlbtn = document.getElementById('urlbtn');
   const statusEl = document.getElementById('extractstatus');
   const preview = document.getElementById('extractpreview');
   const qbox = document.getElementById('qbox');
   const gobtn = document.getElementById('gobtn');
-  if(!dz) return;
+  if(!qbox) return;
 
   let busy = false;
   const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g, c =>
@@ -292,9 +196,9 @@ window.addEventListener('pageshow', () => {
   }
   function setBusy(on, msg){
     busy = on;
-    dz.setAttribute('aria-busy', on ? 'true' : 'false');
-    dz.classList.toggle('is-busy', on);
-    urlbtn.disabled = on; browsebtn.disabled = on;
+    qbox.setAttribute('aria-busy', on ? 'true' : 'false');
+    qbox.classList.toggle('is-busy', on);
+    browsebtn.disabled = on;
     if(msg) setStatus(msg, 'muted');
   }
 
@@ -517,11 +421,43 @@ window.addEventListener('pageshow', () => {
     const fd = new FormData(); fd.append('file', file, file.name);
     send(fd);
   }
-  function sendUrl(){
-    const v = (urlinput.value||'').trim();
-    if(!v){ setStatus('Paste a Google Patents link or a publication number first.', 'bad'); urlinput.focus(); return; }
+  function sendUrl(v){
+    v = (v||'').trim();
+    if(!v) return;
     const fd = new FormData(); fd.append('url', v);
     send(fd);
+  }
+
+  /*  RECOGNISING A PATENT IN THE BOX.
+      A Google Patents URL, an Espacenet URL, or a bare publication number. The bare-number case
+      only fires when the box contains NOTHING ELSE — a description that happens to mention
+      "US-11999030-B2" is a description, not a request to search that patent, and silently
+      replacing what somebody wrote would be the worst possible reading of an ambiguous input.
+      Either way it ASKS before it acts.                                                        */
+  const PAT_URL = /(?:https?:\/\/)?(?:www\.)?patents\.google\.com\/patent\/([A-Za-z]{2}[A-Za-z0-9]+)/i;
+  const PAT_ESP = /(?:https?:\/\/)?(?:www\.)?worldwide\.espacenet\.com\/[^\s]*?\b([A-Za-z]{2}\d{4,}[A-Za-z]\d?)\b/i;
+  const PAT_BARE = /^([A-Za-z]{2}[-\s]?[A-Za-z]?\d{4,}(?:[-\s]?[A-Za-z]\d?)?)$/;
+
+  function detectPatent(text){
+    const t = (text||'').trim();
+    if(!t) return '';
+    let m = t.match(PAT_URL) || t.match(PAT_ESP);
+    if(m) return m[1].toUpperCase();
+    //  Bare number ONLY when it is the entire contents of the box.
+    m = t.match(PAT_BARE);
+    return m ? m[1].toUpperCase().replace(/[\s]/g, '') : '';
+  }
+
+  let offered = '';                     // never ask twice about the same thing
+  function maybeOfferPatent(){
+    if(busy) return;
+    const pub = detectPatent(qbox.value);
+    if(!pub || pub === offered) return;
+    offered = pub;
+    if(window.confirm('Would you like to fetch patent ' + pub + ' as the search input?\n\n' +
+                      'We will read its text, claims and drawings and build the query from them.')){
+      sendUrl(qbox.value.trim());
+    }
   }
 
   $('exAddClaim').addEventListener('click', () => {
@@ -564,31 +500,34 @@ window.addEventListener('pageshow', () => {
 
   browsebtn.addEventListener('click', () => fileinput.click());
   fileinput.addEventListener('change', () => { if(fileinput.files[0]) sendFile(fileinput.files[0]); });
-  urlbtn.addEventListener('click', sendUrl);
-  urlinput.addEventListener('keydown', e => { if(e.key==='Enter'){ e.preventDefault(); sendUrl(); }});
 
-  // keyboard-accessible drop zone: Enter/Space opens the file picker.
-  dz.addEventListener('keydown', e => {
-    if(e.key==='Enter' || e.key===' '){ e.preventDefault(); fileinput.click(); }
+  /*  THE BOX IS THE DROP TARGET. `paste` fires before the value updates, so the check is deferred
+      a tick; `input` covers typing a number and any paste the browser routes differently. Both go
+      through the same one-shot guard.  */
+  qbox.addEventListener('paste', () => setTimeout(maybeOfferPatent, 0));
+  qbox.addEventListener('input', () => {
+    //  Reset the guard once the box no longer holds what we asked about, so correcting a typo in
+    //  a number gets a fresh offer rather than silence.
+    if(offered && detectPatent(qbox.value) !== offered) offered = '';
   });
-  dz.addEventListener('click', e => { if(e.target===browsebtn) return; fileinput.click(); });
+  qbox.addEventListener('blur', maybeOfferPatent);
 
-  ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => {
-    e.preventDefault(); e.stopPropagation(); dz.classList.add('dragover');
+  ['dragenter','dragover'].forEach(ev => qbox.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation(); qbox.classList.add('dragover');
   }));
-  ['dragleave','dragend'].forEach(ev => dz.addEventListener(ev, e => {
-    e.preventDefault(); e.stopPropagation();
-    if(ev==='dragleave' && dz.contains(e.relatedTarget)) return;
-    dz.classList.remove('dragover');
+  ['dragleave','dragend','drop'].forEach(ev => qbox.addEventListener(ev, e => {
+    if(ev === 'dragleave' && qbox.contains(e.relatedTarget)) return;
+    qbox.classList.remove('dragover');
   }));
-  dz.addEventListener('drop', e => {
-    e.preventDefault(); e.stopPropagation(); dz.classList.remove('dragover');
+  qbox.addEventListener('drop', e => {
     const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if(f) sendFile(f);
+    if(!f) return;                      // a plain text drop keeps the browser's own behaviour
+    e.preventDefault(); e.stopPropagation();
+    sendFile(f);
   });
-  // stop the page from navigating if a file is dropped outside the zone
+  // stop the page from navigating away if a file lands anywhere else
   window.addEventListener('dragover', e => e.preventDefault());
-  window.addEventListener('drop', e => { if(!dz.contains(e.target)) e.preventDefault(); });
+  window.addEventListener('drop', e => { if(e.target !== qbox) e.preventDefault(); });
 })();
 </script>
 {% endblock %}

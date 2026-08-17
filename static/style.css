@@ -1891,3 +1891,14 @@ tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
 .llv-disclosed{color:#155f38}.llv-partial{color:#7a5300}.llv-uncertain{color:#777}
 .llq{color:var(--muted,#666);font-style:italic}
 .llnone{color:var(--warn,#c98a00);font-size:.86rem;margin-top:.2rem}
+
+/* --- one smart search box --- */
+/*  The query box is now also the drop target and the place a patent link is recognised, so it
+    carries the affordances the separate dropzone used to: a dashed hover edge, an accent drag
+    state, and a busy state while a document is being read.  */
+#qbox{transition:border-color .12s ease, background .12s ease}
+#qbox.dragover{border-color:var(--accent);background:var(--accent-soft);
+  box-shadow:0 0 0 3px var(--accent-soft)}
+#qbox.is-busy{opacity:.7;cursor:progress}
+.qhint{margin-top:7px;display:block}
+.qhint .linklike{white-space:nowrap}
