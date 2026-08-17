@@ -34,17 +34,41 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 
-#  The same channels the orphan rescue uses. No CPC and no citation expansion: both pull back toward
-#  the neighbourhood the whole-invention search already covered, and the point here is per-claim
-#  reach within the pool rather than more of the same centre.
-CHANNELS = ["dense", "claim_dense", "bm25", "claim_bm25"]
+#  DENSE ONLY, AND THIS IS THE DIFFERENCE BETWEEN THREE MINUTES AND THREE HOURS.
+#
+#  The first version copied the orphan rescue's channel list, which includes `bm25` and
+#  `claim_bm25`. That is right for the rescue, whose queries are short model-written phrases, and
+#  badly wrong here, where the query is a VERBATIM CLAIM of up to 1,200 characters. A claim of that
+#  length is roughly 180 terms; as a lexical query that is a 180-term scan over 26.7M chunks, per
+#  claim. Dense retrieval embeds a query of any length into ONE vector, so the same long text costs
+#  nothing extra.
+#
+#  MEASURED on adhoc-5972e6042dfa, the first run with this stage enabled:
+#      [claim_reach] ... 240 references claimed a read slot (10534s)
+#  2h56m, six workers, 40 limitations, against a whole-run baseline of 2h21m. The stage cost more
+#  than the entire search it was meant to speed up, and it did it in the lexical channels.
+#
+#  No CPC and no citation expansion either: both pull back toward the neighbourhood the
+#  whole-invention search already covered, and the point here is per-claim reach within the pool.
+CHANNELS = [c for c in os.environ.get("CLAIM_REACH_CHANNELS", "dense,claim_dense").split(",")
+            if c.strip()]
 
 ENABLED = os.environ.get("CLAIM_REACH", "1") != "0"
-#  Families pulled per claim before we intersect with the candidate pool.
-TOPK = int(os.environ.get("CLAIM_REACH_TOPK", "120"))
+#  Families pulled per claim before we intersect with the candidate pool. Lowered 120 -> 80: on the
+#  measured run every limitation came back with 49-117 hits and nearly all of them mapped into the
+#  pool, so the tail was returning the same neighbourhood 40 times over rather than distinguishing
+#  between claims.
+TOPK = int(os.environ.get("CLAIM_REACH_TOPK", "80"))
+#  A HARD WALL-CLOCK CEILING ON THE WHOLE STAGE. This exists because the first version of this file
+#  ran for 2h56m inside a search whose entire previous runtime was 2h21m, and nothing stopped it or
+#  even said it was happening until the run finished. A stage that improves ranking must never be
+#  able to dominate the run it is improving: past this budget we stop launching searches and use
+#  whatever came back, which degrades the quota rather than the search.
+BUDGET_S = float(os.environ.get("CLAIM_REACH_BUDGET_S", "600"))
 #  How many references each claim may put into the read set. 20 claims x 6 is 120 documents, which
 #  is most of a 200-document read budget spent on per-claim winners instead of on the tail of one
 #  global ranking.
@@ -91,9 +115,19 @@ def reach(claim_items, rows, brief="", subject=None, mode="novelty", retriever=N
     fork = getattr(retriever, "fork", None)
     workers = min(WORKERS, len(specs)) if callable(fork) else 1
     done, lock = [0], threading.Lock()
+    t_start = time.time()
+    slowest = [0.0, ""]
+    skipped = [0]
 
     def one(spec):
         label, q = spec
+        #  Past the budget, return empty rather than starting another search. Threads already in
+        #  flight finish; nothing new is launched. `quota` simply has fewer claims to serve.
+        if time.time() - t_start > BUDGET_S:
+            with lock:
+                skipped[0] += 1
+            return label, []
+        t_one = time.time()
         worker = fork() if callable(fork) else retriever
         hits = []
         try:
@@ -113,8 +147,11 @@ def reach(claim_items, rows, brief="", subject=None, mode="novelty", retriever=N
                         close()
                     except Exception:
                         pass
+        dt = time.time() - t_one
         with lock:
             done[0] += 1
+            if dt > slowest[0]:
+                slowest[0], slowest[1] = dt, label
             if emit:
                 emit("claim_reach_progress", done=done[0], total=len(specs), claim=label)
         return label, hits
@@ -123,6 +160,12 @@ def reach(claim_items, rows, brief="", subject=None, mode="novelty", retriever=N
     with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
         for label, hits in ex.map(one, specs):
             out[label] = hits
+    #  Per-search timing in the log, not just a total. The total alone is what made a 2h56m stage
+    #  look like one number at the end of a five-hour run instead of a search costing 26 minutes.
+    log(f"[claim_reach] {len(specs)} searches over {len(CHANNELS)} channels in "
+        f"{time.time() - t_start:.0f}s at {workers} workers; slowest {slowest[0]:.0f}s "
+        f"({slowest[1]})"
+        + (f"; {skipped[0]} SKIPPED at the {BUDGET_S:.0f}s budget" if skipped[0] else ""))
     return out
 
 

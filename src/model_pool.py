@@ -97,6 +97,21 @@ REASONING_MIN_TOKENS = int(os.environ.get("MODEL_POOL_REASONING_MIN", "2500"))
 _lock = threading.Lock()
 _state: dict = {}
 _rr: dict = {}
+#  Prompt tokens served from a provider-side cache, process-wide. Differenced per search by
+#  deep_rank alongside the token counters. See `_note_cached`.
+_cached_tokens = [0]
+
+
+def _note_cached(n):
+    if not n:
+        return
+    with _lock:
+        _cached_tokens[0] += int(n)
+
+
+def cached_tokens() -> int:
+    with _lock:
+        return _cached_tokens[0]
 
 
 class _Provider:
@@ -157,6 +172,12 @@ def _vertex(model):
             thinking_config=ThinkingConfig(thinking_budget=0))
         r = _tl.genai.models.generate_content(model=model, contents=user, config=cfg)
         um = getattr(r, "usage_metadata", None)
+        #  CACHED PROMPT TOKENS, counted separately. `prompt_token_count` INCLUDES cached tokens, so
+        #  it cannot tell you whether caching engaged — and after reordering the reader payload so
+        #  the document leads (deep_analysis._ask), whether it engaged is the whole question. A run
+        #  that reports 112M prompt tokens looks identical cached and uncached; only this field
+        #  separates them, and they are billed at 0.25x.
+        _note_cached(getattr(um, "cached_content_token_count", 0) if um else 0)
         return (getattr(r, "text", "") or "",
                 getattr(um, "prompt_token_count", 0) if um else 0,
                 getattr(um, "candidates_token_count", 0) if um else 0)

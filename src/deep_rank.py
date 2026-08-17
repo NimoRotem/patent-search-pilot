@@ -818,6 +818,7 @@ def _spend_snapshot():
     try:
         import model_pool
         snap["providers"] = {k: dict(v) for k, v in (model_pool.stats() or {}).items()}
+        snap["cached_tokens"] = model_pool.cached_tokens()
     except Exception:
         pass
     return snap
@@ -842,6 +843,11 @@ def _llm_spend(before):
         if calls or errors:
             providers[name] = {"calls": calls, "errors": errors}
     out["providers"] = providers
+    #  Of `prompt_tokens`, how many were served from a provider-side cache at 0.25x. This is the
+    #  only number that answers "did the payload reorder actually work"; `prompt_tokens` counts
+    #  cached and uncached alike.
+    out["cached_prompt_tokens"] = max(
+        0, int(now.get("cached_tokens") or 0) - int(before.get("cached_tokens") or 0))
     return out
 
 
@@ -1396,8 +1402,11 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     }
     report["deep_rank"] = result
     sp = result["llm"]
+    cached = sp.get("cached_prompt_tokens") or 0
+    share = (100.0 * cached / sp["prompt_tokens"]) if sp.get("prompt_tokens") else 0.0
     print(f"[deep_rank] LLM spend: {sp['calls']:,} calls, "
-          f"{sp['prompt_tokens']:,} prompt + {sp['completion_tokens']:,} completion tokens"
+          f"{sp['prompt_tokens']:,} prompt ({cached:,} = {share:.0f}% served from cache) + "
+          f"{sp['completion_tokens']:,} completion tokens"
           + (f"; by provider {sp['providers']}" if sp.get("providers") else ""), flush=True)
 
     #  Hand the reading straight to deep_analysis's cache: it is the same schema, the same
