@@ -440,8 +440,39 @@ def _job_event(slug, job):
             # the message string, and to keep showing the last known state during the long silent
             # stretch between 'partial' and 'reranking'.
             "detail": job.get("detail") or {},
+            #  LIVE COST AND CLOCK. A search runs for a long time and the page had no way to say
+            #  how long or how much. `t0` is set where the job is created; the token figure is the
+            #  process-wide counter differenced against its value at that moment, so it is an
+            #  ESTIMATE and is labelled as one: concurrent searches share the same process counter
+            #  and would each attribute the other's spend to themselves. It is right to within one
+            #  other running search, which is the accuracy the number is used at.
+            "elapsed_sec": int(max(0.0, time.time() - float(job.get("t0") or 0))) if job.get("t0") else 0,
+            "tokens": _job_tokens(job),
             "ready": exists and (st in ("done", "partial") or not job),
             "done": st == "done" or (exists and not job)}
+
+
+def _job_tokens(job):
+    """Prompt + completion tokens spent since this job started, or 0. Never raises."""
+    base = job.get("tok0")
+    if base is None:
+        return 0
+    try:
+        import llm
+        u = llm.process_usage()
+        return max(0, (u.get("prompt_tokens", 0) + u.get("completion_tokens", 0)) - base)
+    except Exception:
+        return 0
+
+
+def _tok_now():
+    """The process-wide token counter, for use as a per-job baseline."""
+    try:
+        import llm
+        u = llm.process_usage()
+        return u.get("prompt_tokens", 0) + u.get("completion_tokens", 0)
+    except Exception:
+        return 0
 
 
 def _write_report(slug, rep):
@@ -770,7 +801,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
               search_focus="all_text"):
     """Run one report. Runs fully concurrently with other generations — the only serialized step is
     the cross-encoder, which lives in its own child process (rerank_pool)."""
-    _set_job(slug, status="running", msg="Queued…", t0=time.time())
+    _set_job(slug, status="running", msg="Queued…", t0=time.time(), tok0=_tok_now())
     #  IMMUTABLE RUN MANIFEST, written BEFORE anything happens. No comparison between two runs is
     #  valid unless they shared a corpus snapshot, a commit, the same prompts and the same budgets,
     #  and nothing recorded that: runs taken hours apart, with the corpus being written to and
@@ -1321,7 +1352,8 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
             return "running", None
         if query is None:
             return "missing", None
-        _JOBS[slug] = {"status": "running", "msg": "Queued…", "t0": time.time()}
+        _JOBS[slug] = {"status": "running", "msg": "Queued…", "t0": time.time(),
+                       "tok0": _tok_now()}
     # Reserve a generation slot AFTER claiming the slug (so the claim can be released cleanly).
     gated = False
     if auth.run_gate:
@@ -2414,7 +2446,8 @@ def status(slug):
     # `detail` too: the poll fallback drives the same progress narrative as the SSE path, and it
     # would otherwise silently lose the counters that SSE clients get.
     return jsonify({"ready": ev["ready"], "status": ev["status"], "done": ev["done"],
-                    "msg": ev["msg"], "kind": ev["kind"], "detail": ev["detail"]})
+                    "msg": ev["msg"], "kind": ev["kind"], "detail": ev["detail"],
+                    "elapsed_sec": ev["elapsed_sec"], "tokens": ev["tokens"]})
 
 
 @app.route("/events/<slug>")

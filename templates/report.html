@@ -207,7 +207,7 @@
           <li class="s-{{ s.state }}"><span class="srcmark" aria-hidden="true">{{ srcicon(s.id) }}</span>
             <span><b>{{ s.label }}</b>
             {% if s.n %}{{ '{:,}'.format(s.n) }} results, {% endif %}{{ {'used':'used','degraded':'fallback used','none':'no results','failed':'failed',
-              'unknown':'not run','off':'not configured'}.get(s.state, s.state) }}{% if s.why or s.note %}. {{ s.why or s.note }}{% endif %}</span></li>
+              'pending':'searching now','unknown':'not run','off':'not configured'}.get(s.state, s.state) }}{% if s.why or s.note %}. {{ s.why or s.note }}{% endif %}</span></li>
           {% endfor %}
         </ul>
       </section>
@@ -286,13 +286,18 @@
           <li class="s-{{ s.state }}"><span class="srcmark" aria-hidden="true">{{ srcicon(s.id) }}</span>
             <span><b>{{ s.label }}</b>
             {% if s.n %}{{ '{:,}'.format(s.n) }} results, {% endif %}{{ {'used':'used','degraded':'fallback used','none':'no results','failed':'failed',
-              'unknown':'not run','off':'not configured'}.get(s.state, s.state) }}{% if s.why or s.note %}. {{ s.why or s.note }}{% endif %}</span></li>
+              'pending':'searching now','unknown':'not run','off':'not configured'}.get(s.state, s.state) }}{% if s.why or s.note %}. {{ s.why or s.note }}{% endif %}</span></li>
           {% endfor %}
         </ul>{% endif %}
       </div>
     </details>
 
-    <div class="actions">
+    {#  NOTHING HERE WORKS UNTIL THE RANKING EXISTS. Draft, Report details, Print, Export, Save,
+        Rename, Re-run and the ZIP all read the FINAL ordering; clicked mid-search they either
+        capture a half-ranked page or start work that the still-running search invalidates.
+        Disabled rather than hidden, so it is visible that they are coming.  #}
+    <div class="actions{% if v.partial %} actions-pending{% endif %}"
+         {% if v.partial %}aria-disabled="true" title="Available when the search finishes ranking"{% endif %}>
       {% if current_user and not read_only %}<form method="post" action="{{ request.script_root }}/drafts/start" class="inlineform directdraft">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="direct" value="1">
@@ -517,8 +522,8 @@
                       {% else %}
                         <span class="cs">{{ '%.3f'|format(cell.score) }}</span>
                         {% if cell.coord %}<span class="cc">{{ cell.coord }}</span>{% endif %}
-                        {% if cell.basis=='secret_prior_art' %}<span class="cc">🔒 secret</span>
-                        {% elif cell.basis=='public_prior_art' %}<span class="cc">◆ public</span>{% endif %}
+                        {% if cell.basis=='secret_prior_art' %}<span class="cc" title="Secret prior art: filed before the subject's effective date but published after it. Citable for NOVELTY only under EPC Art. 54(3) — it cannot support an inventive-step attack.">🔒 secret</span>
+                        {% elif cell.basis=='public_prior_art' %}<span class="cc" title="Public prior art: published before the subject's effective filing date. Citable for both novelty and inventive step under EPC Art. 54(2).">◆ public</span>{% endif %}
                       {% endif %}
                     </button>
                   </td>

@@ -128,6 +128,26 @@ def _source_tags(report, n_local):
 
     fed = report.get("federation")
     if not fed:
+        #  NO FEDERATION BLOCK YET means the external fan-out has not landed, which is the normal
+        #  state for most of a live search — not evidence that nothing else is being searched.
+        #  Returning here used to leave the panel reading "Sources 1 · Local corpus", which is the
+        #  single most misleading thing the page says: a dozen providers are configured and running
+        #  at that moment. List them as PENDING so the panel shows the real scope from the start
+        #  and fills in counts as each one reports.
+        if report.get("wide", True):
+            for x in (_engine_sources() or []):
+                sid = x.get("name") or x.get("id")
+                if not sid:
+                    continue
+                if not x.get("enabled", True):
+                    tags.append({"id": sid, "label": x.get("label") or _src_label(sid),
+                                 "state": "off", "n": 0,
+                                 "note": "Not configured for this deployment.",
+                                 "why": "Not configured for this deployment."})
+                else:
+                    tags.append({"id": sid, "label": x.get("label") or _src_label(sid),
+                                 "state": "pending", "n": 0,
+                                 "note": "searching", "why": "searching"})
         return _mark_provider_fallbacks(tags)
 
     # 1. Engine-supplied per-source status wins outright.

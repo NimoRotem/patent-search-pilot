@@ -1902,3 +1902,11 @@ tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
 #qbox.is-busy{opacity:.7;cursor:progress}
 .qhint{margin-top:7px;display:block}
 .qhint .linklike{white-space:nowrap}
+
+/* --- pending sources and disabled post-search actions --- */
+.actions-pending .btn,.actions-pending .archivecompact,.actions-pending .inlineform{
+  pointer-events:none;opacity:.42;cursor:not-allowed;filter:grayscale(1)}
+.providerlist li.s-pending{opacity:.75}
+.providerlist li.s-pending .srcmark{animation:srcpulse 1.4s ease-in-out infinite}
+@keyframes srcpulse{0%,100%{opacity:.35}50%{opacity:1}}
+.chip.prov-local{background:var(--s2);border-color:var(--line2)}
