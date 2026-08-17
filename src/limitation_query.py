@@ -115,7 +115,13 @@ MIN_SCREEN = int(os.environ.get("LIMQ_MIN_SCREEN", "45"))
 #  is 240 full-text reads; the main loop's 508 reads took 1,787s, so that is another hour on a
 #  search that already runs 40 minutes, against a 90-minute guardrail. Enforced round robin across
 #  limitations, so the total binds without any single limitation being starved.
-MAX_READ = int(os.environ.get("LIMQ_MAX_READ", "150"))
+#  LOWERED 150 -> 60. Every one of these is a full-text read at ~12 model calls, so this line and
+#  RESCUE_MAX_NEW are what decide whether the rescue is a second whole pipeline or a top-up. On
+#  adhoc-5972e6042dfa the rescue read 192 references, 39.1M prompt tokens, $11.74 — a third of the
+#  entire bill, spent after the main read had already finished. It is also mostly moot now:
+#  claim_rescue.LOCAL_ENOUGH skips the BigQuery acquisition altogether when the local corpus has
+#  already answered, so this is the bound on the case where it genuinely has not.
+MAX_READ = int(os.environ.get("LIMQ_MAX_READ", "60"))
 
 ERAS = [("pre1980", 0, 19800000), ("1980_1999", 19800000, 20000000),
         ("2000_2014", 20000000, 20150000), ("2015_now", 20150000, 99999999)]

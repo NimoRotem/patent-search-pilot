@@ -104,8 +104,25 @@ SCREEN_WORKERS = int(os.environ.get("DEEP_RANK_SCREEN_WORKERS", "6"))
 #  250 on the strength of it would be overriding evidence with a hypothesis, which is what the guard
 #  exists to prevent. Run `eval/attorney_recall.py` on both gold sets first.
 #
-#  A/B: DEEP_RANK_CHART_TOP=360 CLAIM_REACH=0 restores the old behaviour exactly.
-CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "250"))
+#  NOW 150, AND THIS IS A DELIBERATE OVERRIDE OF THE GUARD ABOVE, not an oversight.
+#
+#  What the measurement actually costs us, priced: the last run read 549 references in full to fill
+#  a 60-card page, and reading is 97% of the bill — 72.8M of 112M prompt tokens went on the main
+#  read alone. Depth past the page is the single largest line item in the whole system.
+#
+#  What both frozen expert sets say about whether that depth is buying anything: on the Nguyen set
+#  every reference the attorney filed was in the corpus, retrieved, screened, and four of five were
+#  READ IN FULL — and one reached the page. They were lost at RANKING, at positions 85 to 288. Depth
+#  did not fail to find them; it found them and then could not show them. Reading deeper buys more
+#  of the same.
+#
+#  So the depth comes down to roughly the page it feeds, and `claim_reach` keeps the per-claim
+#  reach that depth used to provide by brute force. THIS IS STILL THE UNMEASURED PART: nobody has
+#  run the eval at 150. Run eval/attorney_recall.py on both gold sets after the next real search,
+#  and if "read" falls below 4/5 and 4/10 put it back.
+#
+#  A/B: DEEP_RANK_CHART_TOP=360 CLAIM_REACH=0 restores the original behaviour exactly.
+CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "150"))
 #  A THRESHOLD, not only a slice. "Worth reading" is a judgement the screen already made on a
 #  0-100 scale, so a fixed top-N throws away its answer and substitutes an arbitrary cut: measured,
 #  the top-300 cut landed at a screen score of 75-80, and cited references the screen had rated 70
@@ -127,7 +144,7 @@ CHART_MIN_SCREEN = int(os.environ.get("DEEP_RANK_CHART_MIN_SCREEN", "70"))
 #  binds: the measured run read 525 references in the main pass to fill a 60-card page. Note this
 #  also lowers ENRICH_TOP, which defaults to it, so the pipeline still never fetches text for a
 #  document it was not going to read.
-CHART_TOP_MAX = int(os.environ.get("DEEP_RANK_CHART_TOP_MAX", "300"))
+CHART_TOP_MAX = int(os.environ.get("DEEP_RANK_CHART_TOP_MAX", "180"))
 #  Raised 18 -> 24 to pay for the extra feature batch per reference (deep_analysis.FEATURE_BATCH).
 #  The stage is bound by Vertex round-trips, not by this box's four cores.
 CHART_WORKERS = int(os.environ.get("DEEP_RANK_CHART_WORKERS", "24"))

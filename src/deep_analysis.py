@@ -102,6 +102,9 @@ CLAIM_BATCH = int(os.environ.get("DEEP_CLAIM_BATCH", "4"))
 #  ceiling is the per-provider semaphore in model_pool; this only stops one enormous document
 #  from occupying all of it.
 BATCH_WORKERS = int(os.environ.get("DEEP_BATCH_WORKERS", "6"))
+#  Issue ONE batch and wait for it before fanning out the rest, so the shared document prefix is in
+#  the provider's cache before eleven more calls ask for it. See the note in analyse_reference.
+WARM_CACHE = os.environ.get("DEEP_WARM_CACHE", "1") != "0"
 #  Per-reference text budget. A US grant is typically 40,000-120,000 characters; the long tail
 #  reaches 400,000. Send the whole thing up to this bound and SAY when it was cut, rather than
 #  silently reading a quarter of the document.
@@ -465,8 +468,26 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
         return kind, _ask(fb, cb)
 
     if len(jobs) > 1 and BATCH_WORKERS > 1:
-        with ThreadPoolExecutor(max_workers=min(BATCH_WORKERS, len(jobs))) as ex:
-            results = list(ex.map(_run, jobs))
+        #  WARM THE CACHE ON ONE CALL BEFORE FANNING OUT THE REST.
+        #
+        #  All these calls share a prefix: the same document, ~15k tokens of it, sent once per
+        #  batch. A provider-side cache can only serve a prefix that has already been WRITTEN, so
+        #  firing all twelve at once means every one of them races and pays full price.
+        #
+        #  MEASURED on US-2026061634-A1, 48 features and 40 limitations, exactly the production
+        #  shape: fanning all 12 out at once cached 92,773 of 265,436 prompt tokens (35%). The
+        #  first call is the one that writes the entry; the other eleven should read it.
+        #
+        #  The cost is one call's latency on the critical path per reference, against roughly half
+        #  the document's input tokens across the other eleven. Set DEEP_WARM_CACHE=0 to fan out
+        #  flat again.
+        if WARM_CACHE and len(jobs) > 2:
+            first = _run(jobs[0])
+            with ThreadPoolExecutor(max_workers=min(BATCH_WORKERS, len(jobs) - 1)) as ex:
+                results = [first] + list(ex.map(_run, jobs[1:]))
+        else:
+            with ThreadPoolExecutor(max_workers=min(BATCH_WORKERS, len(jobs))) as ex:
+                results = list(ex.map(_run, jobs))
     else:
         results = [_run(j) for j in jobs]
     #  Reassembled in the ORIGINAL batch order, not completion order: `_align` zips these back

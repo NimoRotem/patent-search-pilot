@@ -78,6 +78,20 @@ SEARCH_TOPK = int(os.environ.get("RESCUE_SEARCH_TOPK", "120"))
 #  Below this many candidates already acquired WITH TEXT, fall back to the text-less App A route.
 #  See where it is used: it buys unreadable rows, so it is a last resort rather than a supplement.
 CONCEPT_FALLBACK_BELOW = int(os.environ.get("RESCUE_CONCEPT_BELOW", "12"))
+#  LOCAL FIRST. When the local corpus has already produced this many candidates for the orphaned
+#  limitations, the BigQuery acquisition below is skipped entirely.
+#
+#  MEASURED, and it is the clearest waste in the pipeline. The local corpus holds 4,975,809
+#  publications with 8.5M claims, 13.3M description paragraphs and 53.5M CPC classifications,
+#  current to within days. On adhoc-5972e6042dfa the local pass returned 48 candidates and the
+#  pipeline then spent $10.50 and 18 minutes building a 6,227,398-row BigQuery working set whose
+#  entire yield was 150 families read, 123 new rows, 63 with usable text. On the run before it,
+#  1,590,484 of that working set's 5,828,904 rows (27%) were ALREADY in the local corpus.
+#
+#  The BigQuery route is not wrong: the corpus is seeded from one field's CPC branches and cannot
+#  reach art outside them, which is a real measured failure. It is just not worth paying for when
+#  what we already own has answered. RESCUE_LOCAL_ENOUGH=0 always acquires.
+LOCAL_ENOUGH = int(os.environ.get("RESCUE_LOCAL_ENOUGH", "40"))
 #  NO CPC, NO CITATION, NO QBE. See the module docstring: all three pull back toward the
 #  neighbourhood the main search already covered, and an orphaned claim is orphaned because its art
 #  is not there.
@@ -502,98 +516,106 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
         traceback.print_exc()
     summary["local_candidates"] = len(cands)
 
-    # ---- 2b. GO AND GET WHAT THIS CORPUS DOES NOT HOLD --------------------------------------
-    #  Searching harder cannot find a document that was never indexed, and the corpus is seeded
-    #  from one field's CPC branches. Measured on US 2026/0109053: of ten references an attorney
-    #  filed, three are absent from this corpus entirely and three more are text-less stubs, and
-    #  every one of those six is classified OUTSIDE the seeded branches — mufflers, sound
-    #  absorption, portable power tools, blowers. See claim_acquire.
-    still_short = [c for c in claim_items if c["label"] in set(plans)]
-    try:
-        import claim_acquire
-        #  THE WORLD FIRST. All 170M patents, in the classes that own these claims, ingested WITH
-        #  THEIR TEXT — which is the difference between finding a document and being able to read
-        #  it. Measured: of ten references an attorney filed, three were absent from this corpus
-        #  and three more were text-less stubs; nine of the ten are in a BigQuery working set with
-        #  full text. Seeded from the references the reading already trusts, so Google's own
-        #  similarity graph expands from evidence rather than from a guess.
-        #
-        #  ONE PORTFOLIO PER LIMITATION when the ledger gave us limitations, because a limitation
-        #  is a thing in a place in a kind of apparatus and an OR of keywords cannot say that.
-        #  Measured on the same working set: the keyword shape returns 111,545 hits with no usable
-        #  rank; the faceted shape returns 14,373 holding nine of the ten, and asking per
-        #  requirement moved one reference from rank 8,810 to 135. by_worldset stays as the
-        #  fallback for a run with no ledger, and for the case where no facets come back.
-        seeds = [r["pub"] for r in read_head[:40]]
-        ws = {}
-        lims_to_search = [lim_rows[c["label"]] for c in still_short if c["label"] in lim_rows]
-        if lims_to_search:
-            #  Its own try. This whole block runs at the end of a search that already has an
-            #  answer, so a new route failing must cost its own candidates and nothing else —
-            #  sharing the outer handler would take the keyword worldset, the concept fan-out and
-            #  the citation neighbourhood down with it.
-            try:
-                ws = claim_acquire.by_limitation(
-                    lims_to_search, brief=brief, title=title, subject=subject, seeds=seeds,
-                    emit=emit)
-            except Exception:
-                traceback.print_exc()
-                ws = {"error": "limitation portfolio raised"}
-            summary["limitation_portfolio"] = {
-                k: ws.get(k) for k in ("rows", "queries", "screened", "n_new", "with_text",
-                                       "error")}
-            summary["limitation_pool"] = ws.get("pool") or {}
-            summary["limitation_classes"] = ws.get("classes") or []
-        if not (ws.get("candidates") if ws else None):
+    #  LOCAL FIRST — see LOCAL_ENOUGH. The block below costs ~$10.50 and ~18 minutes of BigQuery
+    #  per search; it is worth that only when the corpus we already own came up short.
+    if LOCAL_ENOUGH and len(cands) >= LOCAL_ENOUGH:
+        summary["skipped_acquisition"] = f"{len(cands)} local candidates >= {LOCAL_ENOUGH}"
+        print(f"[rescue] the local corpus returned {len(cands)} candidates for {len(plans)} "
+              f"uncovered limitations; skipping the BigQuery acquisition "
+              f"(saves ~$10.50 and ~18 min)", flush=True)
+    else:
+        # ---- 2b. GO AND GET WHAT THIS CORPUS DOES NOT HOLD --------------------------------------
+        #  Searching harder cannot find a document that was never indexed, and the corpus is seeded
+        #  from one field's CPC branches. Measured on US 2026/0109053: of ten references an attorney
+        #  filed, three are absent from this corpus entirely and three more are text-less stubs, and
+        #  every one of those six is classified OUTSIDE the seeded branches — mufflers, sound
+        #  absorption, portable power tools, blowers. See claim_acquire.
+        still_short = [c for c in claim_items if c["label"] in set(plans)]
+        try:
+            import claim_acquire
+            #  THE WORLD FIRST. All 170M patents, in the classes that own these claims, ingested WITH
+            #  THEIR TEXT — which is the difference between finding a document and being able to read
+            #  it. Measured: of ten references an attorney filed, three were absent from this corpus
+            #  and three more were text-less stubs; nine of the ten are in a BigQuery working set with
+            #  full text. Seeded from the references the reading already trusts, so Google's own
+            #  similarity graph expands from evidence rather than from a guess.
+            #
+            #  ONE PORTFOLIO PER LIMITATION when the ledger gave us limitations, because a limitation
+            #  is a thing in a place in a kind of apparatus and an OR of keywords cannot say that.
+            #  Measured on the same working set: the keyword shape returns 111,545 hits with no usable
+            #  rank; the faceted shape returns 14,373 holding nine of the ten, and asking per
+            #  requirement moved one reference from rank 8,810 to 135. by_worldset stays as the
+            #  fallback for a run with no ledger, and for the case where no facets come back.
+            seeds = [r["pub"] for r in read_head[:40]]
+            ws = {}
+            lims_to_search = [lim_rows[c["label"]] for c in still_short if c["label"] in lim_rows]
             if lims_to_search:
-                print(f"[rescue] the limitation portfolio returned nothing "
-                      f"({(ws or {}).get('error') or 'no reason given'}); "
-                      f"falling back to the keyword worldset", flush=True)
-            ws = claim_acquire.by_worldset(
-                still_short, hints=claim_hints, brief=brief, title=title, subject=subject,
-                seeds=seeds, emit=emit)
-            summary["worldset"] = {k: ws.get(k) for k in
-                                   ("rows", "queries", "n_new", "with_text", "error")}
-            summary["worldset_classes"] = ws.get("classes") or []
-            summary["worldset_terms"] = (ws.get("terms") or [])[:40]
-        seen0 = {c["pub"] for c in cands} | set(exclude_pubs or ())
-        for c in ws.get("candidates") or []:
-            if c["pub"] not in seen0:
-                seen0.add(c["pub"])
-                cands.append(c)
+                #  Its own try. This whole block runs at the end of a search that already has an
+                #  answer, so a new route failing must cost its own candidates and nothing else —
+                #  sharing the outer handler would take the keyword worldset, the concept fan-out and
+                #  the citation neighbourhood down with it.
+                try:
+                    ws = claim_acquire.by_limitation(
+                        lims_to_search, brief=brief, title=title, subject=subject, seeds=seeds,
+                        emit=emit)
+                except Exception:
+                    traceback.print_exc()
+                    ws = {"error": "limitation portfolio raised"}
+                summary["limitation_portfolio"] = {
+                    k: ws.get(k) for k in ("rows", "queries", "screened", "n_new", "with_text",
+                                           "error")}
+                summary["limitation_pool"] = ws.get("pool") or {}
+                summary["limitation_classes"] = ws.get("classes") or []
+            if not (ws.get("candidates") if ws else None):
+                if lims_to_search:
+                    print(f"[rescue] the limitation portfolio returned nothing "
+                          f"({(ws or {}).get('error') or 'no reason given'}); "
+                          f"falling back to the keyword worldset", flush=True)
+                ws = claim_acquire.by_worldset(
+                    still_short, hints=claim_hints, brief=brief, title=title, subject=subject,
+                    seeds=seeds, emit=emit)
+                summary["worldset"] = {k: ws.get(k) for k in
+                                       ("rows", "queries", "n_new", "with_text", "error")}
+                summary["worldset_classes"] = ws.get("classes") or []
+                summary["worldset_terms"] = (ws.get("terms") or [])[:40]
+            seen0 = {c["pub"] for c in cands} | set(exclude_pubs or ())
+            for c in ws.get("candidates") or []:
+                if c["pub"] not in seen0:
+                    seen0.add(c["pub"])
+                    cands.append(c)
 
-        #  by_concept ONLY WHEN THE WORLD ROUTES CAME BACK EMPTY-HANDED. It reaches App A's
-        #  fan-out, which returns bibliographic records, and `external.materialise` writes them
-        #  with no text at all. Measured on the run that prompted this: 300 publications acquired,
-        #  0 of 40 readable, and those 40 unreadable candidates were 40 of the 46 the rescue then
-        #  "read" — the whole rescue read six documents. A candidate the reader cannot read is not
-        #  a cheap candidate, it is a slot taken from one that could have been read. It stays as a
-        #  fallback because it is the only route that does not need BigQuery.
-        seen = {c["pub"] for c in cands} | set(exclude_pubs or ())
-        if len(cands) < CONCEPT_FALLBACK_BELOW:
-            got = claim_acquire.by_concept(still_short, hints=claim_hints, brief=brief,
-                                           title=title, emit=emit)
-            summary["acquire"] = {k: got.get(k) for k in
-                                  ("queries", "n_candidates", "n_new", "error")}
-            summary["acquire_classes"] = sorted({c for p in (got.get("plan") or {}).values()
-                                                 for c in (p.get("cpc") or [])})
-            for c in got.get("candidates") or []:
+            #  by_concept ONLY WHEN THE WORLD ROUTES CAME BACK EMPTY-HANDED. It reaches App A's
+            #  fan-out, which returns bibliographic records, and `external.materialise` writes them
+            #  with no text at all. Measured on the run that prompted this: 300 publications acquired,
+            #  0 of 40 readable, and those 40 unreadable candidates were 40 of the 46 the rescue then
+            #  "read" — the whole rescue read six documents. A candidate the reader cannot read is not
+            #  a cheap candidate, it is a slot taken from one that could have been read. It stays as a
+            #  fallback because it is the only route that does not need BigQuery.
+            seen = {c["pub"] for c in cands} | set(exclude_pubs or ())
+            if len(cands) < CONCEPT_FALLBACK_BELOW:
+                got = claim_acquire.by_concept(still_short, hints=claim_hints, brief=brief,
+                                               title=title, emit=emit)
+                summary["acquire"] = {k: got.get(k) for k in
+                                      ("queries", "n_candidates", "n_new", "error")}
+                summary["acquire_classes"] = sorted({c for p in (got.get("plan") or {}).values()
+                                                     for c in (p.get("cpc") or [])})
+                for c in got.get("candidates") or []:
+                    if c["pub"] not in seen:
+                        seen.add(c["pub"])
+                        cands.append(c)
+            else:
+                summary["acquire"] = {"skipped": f"{len(cands)} candidates already acquired with text"}
+            #  And the art our own best references point at, which crosses classification boundaries
+            #  in the one direction a CPC-seeded corpus cannot.
+            cited = claim_acquire.by_citation([r["pub"] for r in read_head], exclude_pubs=seen,
+                                              emit=emit)
+            summary["acquire_citations"] = {k: cited.get(k) for k in ("n_edges", "n_new", "error")}
+            for c in cited.get("candidates") or []:
                 if c["pub"] not in seen:
                     seen.add(c["pub"])
                     cands.append(c)
-        else:
-            summary["acquire"] = {"skipped": f"{len(cands)} candidates already acquired with text"}
-        #  And the art our own best references point at, which crosses classification boundaries
-        #  in the one direction a CPC-seeded corpus cannot.
-        cited = claim_acquire.by_citation([r["pub"] for r in read_head], exclude_pubs=seen,
-                                          emit=emit)
-        summary["acquire_citations"] = {k: cited.get(k) for k in ("n_edges", "n_new", "error")}
-        for c in cited.get("candidates") or []:
-            if c["pub"] not in seen:
-                seen.add(c["pub"])
-                cands.append(c)
-    except Exception:
-        traceback.print_exc()
+        except Exception:
+            traceback.print_exc()
 
     summary["candidates"] = len(cands)
     if not cands:

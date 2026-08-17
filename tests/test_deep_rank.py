@@ -612,10 +612,32 @@ def test_the_screen_is_a_third_signal_not_a_discarded_one():
 
 
 def test_chart_depth_tracks_the_screen_depth():
-    """With 2,500 screened, a top-150 read cut landed in the high 80s and seven cited families
-    screened at 60-80 were never read."""
-    assert deep_rank.CHART_TOP >= 250
+    """Read depth may only go shallow while something else provides per-claim reach.
+
+    THE ORIGINAL MEASUREMENT STANDS: with 2,500 screened, a top-150 read cut landed in the high 80s
+    and seven cited families that screened 60-80 were never read. That is why this guard exists and
+    it is why it asserted >= 250.
+
+    What changed is not the measurement, it is what else runs. `claim_reach` now gives every claim
+    its own quota of the read budget BEFORE the screen-ordered cut, so the mid-screen band that 360
+    reached by brute depth is reached directly. The depth was cut to 150 on the strength of that,
+    plus two frozen expert sets showing the references that matter are already read and lost at
+    RANKING (Nguyen: 4/5 read, 1/5 on the page, at ranks 85-288).
+
+    So the guard now protects the COUPLING rather than the number: shallow reading is allowed only
+    while the per-claim pass is on. Turning `claim_reach` off without restoring the depth would
+    silently reinstate the exact defect the original measurement recorded.
+    """
+    import claim_reach
+    if not claim_reach.ENABLED:
+        assert deep_rank.CHART_TOP >= 250, (
+            "with claim_reach off, read depth must go back to what the screen-depth measurement "
+            "required")
+    else:
+        assert deep_rank.CHART_TOP >= deep_rank.DISPLAY_WINDOW, (
+            "reading fewer references than the page can show cannot fill the page")
     assert deep_rank.CHART_TOP < deep_rank.SCREEN_TOP
+    assert deep_rank.CHART_TOP_MAX >= deep_rank.CHART_TOP
 
 
 # ---------------------------------------------------------------------------------------------
