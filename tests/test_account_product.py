@@ -62,7 +62,16 @@ def test_named_login_and_account_navigation(account_client, monkeypatch):
     assert re.search(r'href="/account"[^>]*class="accountnav"[^>]*>.*?'
                      r'<span class="accountemail">analyst@example\.test</span>', body, re.S)
     assert re.search(r'href="/"[^>]*aria-current="page"[^>]*>\s*Search\s*</a>', body)
-    assert 'name="search_focus"' in body and 'value="claims"' in body
+    #  `search_focus` is no longer a visible control. The three selectors (mode, focus, subject
+    #  number) asked the user to make choices the pipeline makes better itself, and were removed:
+    #  mode is always the broader `novelty`, and the subject number is recovered from the ingested
+    #  document by `external.subject_from_doc`. What survives is the MECHANISM — a hidden field
+    #  defaulting to all_text that the extract step flips to `claims` when the ingested document
+    #  brought claims with it, which is a measured behaviour rather than a preference.
+    assert 'name="search_focus"' in body and 'value="all_text"' in body
+    assert 'id="search-focus"' in body, "the extract step sets this field by id"
+    assert "focus.value = 'claims'" in body, "the upload-with-claims switch must survive"
+    assert 'name="mode"' in body and 'value="novelty"' in body
     assert 'name="notify_email"' in body
 
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 import difflib, json, os, re, queue, secrets, threading, hashlib, time, traceback
 from pathlib import Path
 from flask import (Flask, Response, render_template, request, jsonify, redirect, url_for,
-                   send_from_directory, send_file, abort, stream_with_context)
+                   send_from_directory, send_file, abort, stream_with_context, make_response, session)
 import db, embed, goldset, webview, enrich_display, llm
 import pubnorm  # single link-builder: zero-padded Google/Espacenet URLs (dropped-zero fix)
 import ops_family, prefetch                        # worldwide family timeline + top-N proactive enrich
@@ -25,6 +25,7 @@ import deep_rank                                   # screen wide, read deep, ran
 import query_set                                   # many short queries instead of one long brief
 import report_archive                              # automatic top-50 full-text Markdown ZIP
 import export_data, export_pdf, export_docx, export_xlsx, export_md, export_ids
+import public_report                             # public link, password gate, visitor log
 import deliverables                                # letterhead / matter / narrative + share links
 import library                                     # saved publications, across searches
 #  NOT `import figures`: this module already defines a route function called `figures`
@@ -33,6 +34,7 @@ import library                                     # saved publications, across 
 #  "'function' object has no attribute 'ensure_schema'".
 import draft_figures                               # model-generated patent drawings for a draft
 import auth, accounts, notifications, rerank_pool
+import run_queue                                   # gate-full searches wait in Postgres, not bounce
 import drafting, draft_export, draft_worker
 #  Phase two: the drafting CONVERSATION. A Claude Code agent edits a workspace of files, a second
 #  agent reviews every iteration, and draft_uspto answers "can this be filed".
@@ -439,8 +441,39 @@ def _job_event(slug, job):
             # the message string, and to keep showing the last known state during the long silent
             # stretch between 'partial' and 'reranking'.
             "detail": job.get("detail") or {},
+            #  LIVE COST AND CLOCK. A search runs for a long time and the page had no way to say
+            #  how long or how much. `t0` is set where the job is created; the token figure is the
+            #  process-wide counter differenced against its value at that moment, so it is an
+            #  ESTIMATE and is labelled as one: concurrent searches share the same process counter
+            #  and would each attribute the other's spend to themselves. It is right to within one
+            #  other running search, which is the accuracy the number is used at.
+            "elapsed_sec": int(max(0.0, time.time() - float(job.get("t0") or 0))) if job.get("t0") else 0,
+            "tokens": _job_tokens(job),
             "ready": exists and (st in ("done", "partial") or not job),
             "done": st == "done" or (exists and not job)}
+
+
+def _job_tokens(job):
+    """Prompt + completion tokens spent since this job started, or 0. Never raises."""
+    base = job.get("tok0")
+    if base is None:
+        return 0
+    try:
+        import llm
+        u = llm.process_usage()
+        return max(0, (u.get("prompt_tokens", 0) + u.get("completion_tokens", 0)) - base)
+    except Exception:
+        return 0
+
+
+def _tok_now():
+    """The process-wide token counter, for use as a per-job baseline."""
+    try:
+        import llm
+        u = llm.process_usage()
+        return u.get("prompt_tokens", 0) + u.get("completion_tokens", 0)
+    except Exception:
+        return 0
 
 
 def _write_report(slug, rep):
@@ -473,6 +506,7 @@ def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None,
     finally:
         if gated and auth.run_gate:
             auth.run_gate.end()
+        run_queue.mark_finished(slug, ok=report_path(slug).exists())
 
 
 # ---- document materials (multi-chunk + image channels) -------------------------------------
@@ -572,16 +606,27 @@ def _load_doc_materials(token):
 
 
 def _attach_query_document(report, doc):
-    """Persist only the uploaded claims needed by the second report grid.
+    """Record the claims of the document the search STARTED FROM, however it arrived.
 
-    Link-based query-by-example searches deliberately do not get this grid: the requested feature
-    is for a *full uploaded patent document*, where the user supplied the claim set to analyse.
+    A LINK COUNTS. This used to require source == "upload", and that single condition is why a
+    search started from a patent LINK produced no claim mapping at all. `query_document` is the
+    only place the reading stage looks for the subject's claims (deep_rank.run reads
+    report["query_document"]["claims"] and passes them to every reader), so a linked patent's
+    claims were extracted, stashed, embedded and used for RETRIEVAL — and then never put to a
+    single reference. The claim table came back empty and the report read as though no prior art
+    disclosed any of them, which is the opposite of "nobody looked".
+
+    The claims are the same claims whichever way the document arrived; `_stash_doc` already says
+    so and keeps them for both. Only `disclosure_text` differs, because the full text is stashed
+    for an upload alone, and everything downstream already treats it as optional.
+
+    The narrower Claim x Reference grid (query_claim_grid) keeps its own upload-only gate: it is
+    capped at eight references and the full-text reading grid supersedes it.
     """
-    if (not doc or doc.get("source") != "upload" or
-            not (doc.get("claims") or (doc.get("full_text") or "").strip())):
+    if not doc or not (doc.get("claims") or (doc.get("full_text") or "").strip()):
         return report
     report["query_document"] = {
-        "source": "upload",
+        "source": doc.get("source") or "upload",
         "label": doc.get("label") or "uploaded patent",
         "publication_number": doc.get("publication_number") or "",
         "title": doc.get("title"),
@@ -758,7 +803,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
               search_focus="all_text"):
     """Run one report. Runs fully concurrently with other generations — the only serialized step is
     the cross-encoder, which lives in its own child process (rerank_pool)."""
-    _set_job(slug, status="running", msg="Queued…", t0=time.time())
+    _set_job(slug, status="running", msg="Queued…", t0=time.time(), tok0=_tok_now())
     #  IMMUTABLE RUN MANIFEST, written BEFORE anything happens. No comparison between two runs is
     #  valid unless they shared a corpus snapshot, a commit, the same prompts and the same budgets,
     #  and nothing recorded that: runs taken hours apart, with the corpus being written to and
@@ -907,7 +952,17 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                                 input_claims=list((doc or {}).get("claims") or [])),
                 on_event=on_event)
             if wide:
-                futs["federated"] = ex.submit(_timed, "federated", _federate_block, query, mode)
+                #  PHASE 2a OF THE REBUILD: the App A /api/search channel is OFF by default.
+                #  Measured (2026-08-18 study): it ran App A's whole planner+cascade per call —
+                #  including 100 gemini-2.5-pro full-document reads, $2.34/call, 408-545s of every
+                #  fan-out — and its judged shortlist landed in a display-only side block while
+                #  its candidates re-entered anyway through the raw /api/bulk_search channel
+                #  below, which B screens and reads itself. Deleting the duplicate reader is the
+                #  single biggest per-search saving in the rebuild. FEDERATION_CHANNEL=1 restores
+                #  it exactly, for an A/B or if bulk reach ever measures short.
+                if os.environ.get("FEDERATION_CHANNEL", "0") != "0":
+                    futs["federated"] = ex.submit(_timed, "federated", _federate_block,
+                                                  query, mode)
                 futs["external"] = ex.submit(_timed, "external", _external_block, query, doc)
             if "docchunks" in parallel:
                 futs["docchunks"] = ex.submit(
@@ -1016,6 +1071,33 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 _set_job(slug, kind="reading", detail=data,
                          msg=f"Read {data.get('done')} of {data.get('total')} references in "
                              f"full…")
+            #  The orphan-claim rescue (claim_rescue): a second, claim-driven search for the claims
+            #  the whole run found nothing against. It runs after the reading, so without these the
+            #  page would sit on "Read 420 of 420" for several more minutes.
+            elif stage == "rescue_start":
+                _set_job(slug, kind="rescuing", detail=data,
+                         msg=f"{data.get('n', 0)} claims have no prior art against them yet — "
+                             f"going back for them: " +
+                             ", ".join(data.get("claims") or [])[:120] + "…")
+            elif stage == "rescue_reread_start":
+                _set_job(slug, kind="rescuing", detail=data,
+                         msg=f"Re-reading {data.get('n', 0)} references already read, asking only "
+                             f"about those claims…")
+            elif stage == "rescue_search_start":
+                _set_job(slug, kind="rescuing", detail=data,
+                         msg=f"Searching for those claims specifically: {data.get('n', 0)} "
+                             f"queries, with no classification filter…")
+            elif stage == "rescue_search_progress":
+                _set_job(slug, kind="rescuing", detail=data,
+                         msg=f"Claim-focused search: {data.get('done')} of {data.get('total')}…")
+            elif stage == "rescue_read_start":
+                _set_job(slug, kind="rescuing", detail=data,
+                         msg=f"Reading {data.get('n', 0)} references found for the uncovered "
+                             f"claims…")
+            elif stage == "rescue_read_progress":
+                _set_job(slug, kind="rescuing", detail=data,
+                         msg=f"Reading rescued references: {data.get('done')} of "
+                             f"{data.get('total')}…")
         try:
             dr = deep_rank.run(rep, reports_dir=REPORTS, slug=slug, on_progress=_deep_event)
             if dr:
@@ -1265,9 +1347,11 @@ def _espacenet_safe(pub, family_id=None):
 
 
 def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, wide=False,
-                  doc_token=None, search_focus="all_text"):
+                  doc_token=None, search_focus="all_text", from_queue=False):
     """Return ('ready'|'running'|'missing'|'busy', report_or_None). Kicks off background
-    generation if needed. 'busy' means the concurrency or daily spend cap is exhausted."""
+    generation if needed. A search that arrives while the gate is full is QUEUED (run_queue) and
+    reported as running; 'busy' is only returned to the dispatcher itself (`from_queue=True`),
+    which leaves the row queued and retries."""
     p = report_path(slug)
     if p.exists() and not regen:
         try:
@@ -1276,21 +1360,44 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
             pass
     # Atomically claim the slug: check-and-set under the lock so two concurrent requests for the
     # same new query can't both start a generation (the second sees "running" and just polls).
+    # A "queued" placeholder is claimable ONLY by the dispatcher — a user re-request must not
+    # jump the line, and the dispatcher must not be blocked by the placeholder it is serving.
     with _JOB_LOCK:
         job = _JOBS.get(slug)
         if job and job["status"] in ("running", "partial"):
-            return "running", None
+            if not (from_queue and job.get("queued")):
+                return "running", None
         if query is None:
             return "missing", None
-        _JOBS[slug] = {"status": "running", "msg": "Queued…", "t0": time.time()}
+        _JOBS[slug] = {"status": "running", "msg": "Queued…", "t0": time.time(),
+                       "tok0": _tok_now()}
     # Reserve a generation slot AFTER claiming the slug (so the claim can be released cleanly).
     gated = False
     if auth.run_gate:
         ok, why = auth.run_gate.try_begin()
         if not ok:
-            with _JOB_LOCK:
-                _JOBS.pop(slug, None)              # release the claim; nothing was started
-            return "busy", why
+            if from_queue:
+                with _JOB_LOCK:                    # restore the placeholder; row stays queued
+                    _JOBS[slug] = {"status": "running", "queued": True, "msg": "Queued…",
+                                   "t0": time.time(), "tok0": _tok_now()}
+                return "busy", why
+            try:
+                pos = run_queue.enqueue(slug, {
+                    "query": query, "subject": subject, "mode": mode, "wide": wide,
+                    "doc_token": doc_token, "search_focus": search_focus})
+                with _JOB_LOCK:
+                    _JOBS[slug] = {"status": "running", "queued": True,
+                                   "msg": (f"Queued behind {max(pos - 1, 0)} search(es) — "
+                                           "starts automatically, you can close this tab."),
+                                   "t0": time.time(), "tok0": _tok_now()}
+                return "running", None
+            except Exception:
+                #  The queue store being down must not turn into a lost search request:
+                #  fall back to the old refusal so the caller knows to retry.
+                traceback.print_exc()
+                with _JOB_LOCK:
+                    _JOBS.pop(slug, None)          # release the claim; nothing was started
+                return "busy", why
         gated = True
     try:
         subj_obj = _subject_obj(subject)
@@ -1896,6 +2003,58 @@ def extract_revise():
                     "n_independent": rebuilt["n_independent"]})
 
 
+@app.route("/report/<slug>/ranked")
+def ranked_tail(slug):
+    """The FULL ranked list, paginated — every family the search ordered, not only the 60 cards.
+
+    The card page is a fixed-size view over `ranked_families`; this page is the list itself, so
+    a reference the pipeline found, read and ranked is never unreachable (the measured failure:
+    attorney references read cell-perfectly and ranked 103/247 were invisible). Cheap by
+    construction: one reps query, no LLM, no figures."""
+    if not _can_access_report(slug):
+        abort(404)
+    p = report_path(slug)
+    if not p.exists():
+        return render_template("notfound.html", slug=slug), 404
+    try:
+        rep = json.loads(p.read_text())
+    except Exception:
+        return render_template("notfound.html", slug=slug), 404
+    fams = list(rep.get("ranked_families") or [])
+    try:
+        start = max(0, int(request.args.get("start", "0")))
+        n = min(300, max(20, int(request.args.get("n", "120"))))
+    except ValueError:
+        start, n = 0, 120
+    window = fams[start:start + n]
+    deep = {}
+    try:
+        d = deep_analysis.result(slug, REPORTS) or {}
+        deep = d.get("by_pub") or {}
+    except Exception:
+        pass
+    rows = []
+    try:
+        with db.cursor() as cur:
+            reps = webview.resolve_family_reps(cur, window)
+    except Exception:
+        traceback.print_exc()
+        reps = {}
+    for i, fam in enumerate(window):
+        r = reps.get(fam) or {}
+        pub = r.get("publication_number") or fam
+        info = deep.get(pub) or {}
+        cells = info.get("covered")
+        rows.append({
+            "rank": start + i + 1, "pub": pub, "title": (r.get("title") or "")[:160],
+            "date": str(r.get("publication_date") or "")[:10],
+            "screen": info.get("screen"), "read": bool(info.get("read_in_full")),
+            "batched": bool(info.get("batched")),
+            "cells": (len(cells) if isinstance(cells, list) else cells) or ""})
+    return render_template("ranked.html", slug=slug, rows=rows, start=start, n=n,
+                           total=len(fams), page_size_note=_DISPLAY_TOP)
+
+
 @app.route("/report/<slug>")
 def report(slug):
     if not _can_access_report(slug):
@@ -1952,12 +2111,19 @@ def report(slug):
         traceback.print_exc()
     user = auth.current_user()
     view["account_search"] = None
+    view["public"] = None
     if user:
         try:
             view["account_search"] = accounts.get_search(user["id"], slug)
             accounts.mark_search_viewed(user["id"], slug)
         except Exception:
             pass
+        #  Whether this report already has a public link, so the Export control can show its state
+        #  rather than asking. Never fatal: a missing table must not take down the report page.
+        try:
+            view["public"] = public_report.status_for_owner(user["id"], slug)
+        except Exception:
+            traceback.print_exc()
     # Also schedule on report-open.  This covers a process restart between generation and the
     # worker starting, while ensure() keeps the operation idempotent and cache-backed.
     try:
@@ -1985,6 +2151,7 @@ def report(slug):
             traceback.print_exc()
     view["deep_analysis"] = deep_analysis.metadata(rep, view)
     view["archive"] = report_archive.metadata(slug, REPORTS)
+    view["slug"] = slug                       # the full-ranked-list link needs it
     return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
 
 
@@ -2368,7 +2535,8 @@ def status(slug):
     # `detail` too: the poll fallback drives the same progress narrative as the SSE path, and it
     # would otherwise silently lose the counters that SSE clients get.
     return jsonify({"ready": ev["ready"], "status": ev["status"], "done": ev["done"],
-                    "msg": ev["msg"], "kind": ev["kind"], "detail": ev["detail"]})
+                    "msg": ev["msg"], "kind": ev["kind"], "detail": ev["detail"],
+                    "elapsed_sec": ev["elapsed_sec"], "tokens": ev["tokens"]})
 
 
 @app.route("/events/<slug>")
@@ -3793,6 +3961,155 @@ def shared_report(token):
     view["read_only"] = True
     return render_template("report.html", v=view, read_only=True, share_token=token,
                            ood=None, corpus=corpus_facts.facts())
+
+
+# ---- publish one report at a public URL, and record who reads it ---------------------------
+@app.route("/report/<slug>/publish", methods=["POST"])
+def report_publish(slug):
+    """Mint, re-password or revoke the public link. Owner only.
+
+    Separate from `/report/<slug>/share`, which mints an unguessable token at `/shared/<token>`.
+    This one is the STABLE, readable URL an owner can put in an email and later take back, and it
+    is the only thing that makes a slug resolve publicly at all.
+    """
+    user = _require_user()
+    auth.require_csrf()
+    if not _can_access_report(slug):
+        abort(404)
+    body = request.get_json(silent=True) or request.form or {}
+    if body.get("revoke"):
+        public_report.unpublish(user["id"], slug)
+        return jsonify({"ok": True, "published": False})
+    password = (body.get("password") or "").strip()
+    clear = bool(body.get("clear_password"))
+    rep = _load_report(slug) or {}
+    row = public_report.publish(user["id"], slug, password=password or None,
+                                title=(rep.get("query") or "")[:200], clear_password=clear)
+    if row.get("error") == "already_published_by_another_user":
+        return jsonify({"ok": False, "error": "Someone else has already published this report. "
+                                              "Ask them to revoke their link first."}), 409
+    if not row:
+        abort(404)
+    return jsonify({"ok": True, "published": True,
+                    "has_password": bool(row.get("password_hash")),
+                    "url": f"{notifications.PUBLIC_BASE_URL}/public-report/{slug}"})
+
+
+def _public_unlocked(slug) -> bool:
+    """Has this browser already answered this link's password?
+
+    Kept in the signed session cookie under a per-slug key, so unlocking one report does not unlock
+    another and a stolen cookie is worth exactly the link the visitor already had.
+    """
+    return slug in (session.get("public_unlocked") or [])
+
+
+@app.route("/public-report/<slug>")
+def public_report_page(slug):
+    """The report as its owner sees it, with the application taken away.
+
+    Renders the SAME template as the owner's page through a stripped layout, so the evidence
+    cannot drift between the two. Everything that mutates, exports, re-runs or navigates into the
+    application is off: `read_only` gates those, and `base_public.html` has no navigation at all.
+    """
+    pub = public_report.get(slug)
+    if not pub:
+        #  A revoked link, a never-published one and a slug that does not exist must all look the
+        #  same from out here. Anything else tells a stranger which reports are real.
+        abort(404)
+    if pub.get("password_hash") and not _public_unlocked(slug):
+        return render_template("public_gate.html", slug=slug, error=None,
+                               corpus=corpus_facts.facts()), 401
+    rep = _load_report(slug)
+    if not rep:
+        abort(404)
+    view = _build_view_cached(slug, rep)
+    #  The same keys the owner's route fills. A hand-rolled subset is how the token share first
+    #  shipped and it 500'd on a key the template reads and the route had never heard of.
+    view["slug"] = slug
+    view["title"] = pub.get("title") or slug
+    view["is_gold"] = slug in _GOLD
+    view["search_focus"] = rep.get("search_focus") or "all_text"
+    view["doc_token"] = ""
+    view["account_search"] = None
+    view["archive"] = report_archive.metadata(slug, REPORTS)
+    view["query_claim_grid_data"] = query_claim_grid.status(slug, REPORTS)
+    #  The letterhead belongs to whoever published the link, and it is part of the document a
+    #  recipient is meant to see. Read with the owner's id from the publish row, never from the
+    #  visitor's session — there is not one.
+    try:
+        view["report_doc"] = deliverables.get(pub["user_id"], slug)
+    except Exception:
+        view["report_doc"] = None
+    view["read_only"] = True
+    view["public"] = None
+    visit_key = public_report.record_visit(slug, request, unlocked=_public_unlocked(slug))
+    resp = make_response(render_template(
+        "report.html", v=view, read_only=True, layout="base_public.html", share_token=None,
+        ood=None, corpus=corpus_facts.facts(), public_visit_key=visit_key))
+    #  A client document, not something to be indexed or cached by an intermediary.
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    resp.headers["Cache-Control"] = "private, no-store"
+    return resp
+
+
+@app.route("/public-report/<slug>/unlock", methods=["POST"])
+def public_report_unlock(slug):
+    """One password, no username. Wrong answers are counted the same as any other login attempt."""
+    pub = public_report.get(slug)
+    if not pub:
+        abort(404)
+    password = (request.form.get("password") or "").strip()
+    if not public_report.check_password(slug, password):
+        #  No CSRF token on this form on purpose: the visitor has no session yet and a token would
+        #  be one more thing to get wrong for somebody who was simply sent a link. There is nothing
+        #  to forge — the only effect of this endpoint is to let the caller read a page they
+        #  already hold the URL for.
+        return render_template("public_gate.html", slug=slug,
+                               error="That password did not match.",
+                               corpus=corpus_facts.facts()), 401
+    unlocked = list(session.get("public_unlocked") or [])
+    if slug not in unlocked:
+        unlocked.append(slug)
+    session["public_unlocked"] = unlocked[-20:]
+    return redirect(f"{request.script_root}/public-report/{slug}")
+
+
+@app.route("/public-report/<slug>/beacon", methods=["POST"])
+def public_report_beacon(slug):
+    """What only the page can know: screen, timezone, capabilities, and TIME ON PAGE.
+
+    Called repeatedly — a heartbeat while the page is visible and a final `sendBeacon` on pagehide.
+    Idempotent, and it only ever raises the recorded maximum, because the final delivery is exactly
+    the one most likely to be lost.
+    """
+    if not public_report.get(slug):
+        abort(404)
+    payload = request.get_json(silent=True)
+    if payload is None:
+        try:
+            payload = json.loads((request.get_data() or b"{}").decode("utf-8", "replace"))
+        except Exception:
+            payload = {}
+    key = str((payload or {}).get("visit_key") or "")
+    public_report.record_beacon(key, payload or {})
+    #  204 and never a body: this is fired from `sendBeacon` during unload, where nothing can read
+    #  a response and an error would be invisible anyway.
+    return ("", 204)
+
+
+@app.route("/report/<slug>/visitors")
+def report_visitors(slug):
+    """Who has opened the public link. Owner only."""
+    user = _require_user()
+    if not _can_access_report(slug):
+        abort(404)
+    rows = public_report.visits(user["id"], slug)
+    return render_template("visitors.html", slug=slug, rows=rows,
+                           summary=public_report.summary(rows),
+                           status=public_report.status_for_owner(user["id"], slug),
+                           public_url=f"{notifications.PUBLIC_BASE_URL}/public-report/{slug}",
+                           corpus=corpus_facts.facts())
 
 
 @app.route("/shared/<token>/logo.img")
@@ -5232,9 +5549,45 @@ for _schema in (deliverables.ensure_schema, library.ensure_schema, draft_figures
         traceback.print_exc()
 draft_worker.init_app(app, _drafting_service)
 draft_studio_service.init_app(app, _turn_runner)
+def _report_is_finished(slug):
+    p = report_path(slug)
+    if not p.exists():
+        return False
+    try:
+        return not json.loads(p.read_text()).get("partial")
+    except Exception:
+        return False
+
+
+def _drop_partial_report(slug):
+    for suffix in (".json", ".view.json", ".detail-preview.json"):
+        (REPORTS / f"{slug}{suffix}").unlink(missing_ok=True)
+
+
+def _queue_launch(slug, payload):
+    """Dispatcher hook: start one queued run. -> 'started' | 'done' | 'busy' | 'gone'."""
+    try:
+        st, _ = ensure_report(
+            slug, query=payload.get("query"), subject=payload.get("subject"),
+            mode=payload.get("mode") or "novelty", wide=bool(payload.get("wide")),
+            doc_token=payload.get("doc_token"),
+            search_focus=payload.get("search_focus") or "all_text", from_queue=True)
+    except Exception:
+        traceback.print_exc()
+        return "gone"
+    return {"ready": "done", "running": "started", "busy": "busy"}.get(st, "gone")
+
+
 if "PYTEST_CURRENT_TEST" not in os.environ:
     recover_interrupted_searches()
     draft_studio_service.recover_interrupted_turns()
+    try:
+        run_queue.ensure_schema()
+        run_queue.requeue_orphans(report_finished=_report_is_finished,
+                                  drop_partial=_drop_partial_report)
+        run_queue.start_dispatcher(_queue_launch)
+    except Exception:                   # the queue store being down must not stop the app booting
+        traceback.print_exc()
 
 
 if __name__ == "__main__":

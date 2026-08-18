@@ -326,6 +326,25 @@ def bulk(queries, timeout: float = TIMEOUT) -> dict:
         replay.miss("bulk_search", body)
 
     last = ""
+    #  PHASE 2b SEAM: the same fan-out, in-process (src/sources, the App A adapter port), so the
+    #  external channel stops depending on a second web service entirely. Flag-gated OFF until
+    #  the port branch (rebuild/sources-port) is merged and measured; any failure falls through
+    #  to the HTTP path unchanged, and the result still lands in the replay cache so benchmark
+    #  arms stay frozen.
+    if os.environ.get("SOURCES_INPROC", "0") != "0":
+        try:
+            import sources as _sources
+            #  sources.bulk() returns App A's exact /api/bulk_search envelope, by construction
+            #  (see SOURCES_PORT.md), so everything downstream is unchanged.
+            d = _sources.bulk(queries[:MAX_QUERIES], timeout=timeout)
+            if isinstance(d, dict):
+                d.setdefault("ok", True)
+                d["base_url"] = "in-process"
+                replay.put("bulk_search", body, d, raw="")
+                return d
+            last = "in-process sources: non-dict result"
+        except Exception as e:
+            last = f"in-process sources: {type(e).__name__}: {str(e)[:160]}"
     for base in [b for b in (INTERNAL_URL, BASE_URL) if b]:
         try:
             r = requests.post(f"{base}/api/bulk_search", json=body, headers=headers,

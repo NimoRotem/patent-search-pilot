@@ -56,3 +56,6 @@ data/logs/
 
 # benchmark runs are regenerable artefacts (eval/benchmark.py --run --tag N)
 eval/benchmark_results/
+
+# Timestamped in-place backups taken before a live patch. Never artefacts.
+*.bak-*

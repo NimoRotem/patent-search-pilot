@@ -6,7 +6,7 @@ Provider: Vertex AI `gemini-2.5-flash` via the GCE service account (OpenAI accou
 from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
-import json, threading
+import json, re, threading
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 
 AGENT_MODEL = "gemini-2.5-flash"
@@ -33,6 +33,23 @@ def usage():
     scoped = _usage_scope.get()
     if scoped is not None:
         return dict(scoped)
+    with _usage_lock:
+        return dict(_usage)
+
+
+def process_usage():
+    """Process-wide totals, ignoring any active per-search scope.
+
+    `usage()` deliberately answers for the innermost scope, which is what the agent's call budget
+    needs. It is also why nothing has ever been able to report what a search actually SPENT: the
+    reading stage — `deep_rank`, `deep_analysis`, `claim_rescue` — runs outside the agent's
+    `usage_session`, and its calls are ~99.9% of the total. On adhoc-db64a3dd7c98 the saved report
+    said 7 calls and 2,265 prompt tokens for a search that issued on the order of twelve thousand.
+
+    Snapshot this before and after a stage and take the difference. Threads are fine: `_usage` is
+    lock-guarded and every worker thread writes to it (a ContextVar scope does not cross into a
+    ThreadPoolExecutor, so pool workers only ever hit the global).
+    """
     with _usage_lock:
         return dict(_usage)
 
@@ -64,20 +81,25 @@ def _record_usage(prompt_tokens=0, completion_tokens=0):
 
 @retry(wait=wait_exponential(min=1, max=20), stop=stop_after_attempt(5),
        retry=retry_if_exception_type(Exception))
-def _call(system, user, max_tokens):
-    from google.genai.types import GenerateContentConfig, ThinkingConfig
-    # gemini-2.5-flash is a thinking model; thinking tokens eat the output budget and truncate
-    # the JSON -> disable thinking for these short structured tasks.
-    resp = _client().models.generate_content(
-        model=AGENT_MODEL, contents=user,
-        config=GenerateContentConfig(system_instruction=system, response_mime_type="application/json",
-                                     temperature=0.2, max_output_tokens=max_tokens,
-                                     thinking_config=ThinkingConfig(thinking_budget=0)))
-    return resp
+def _call(system, user, max_tokens, tier="fast"):
+    """One answer from the requested tier. -> (text, provider, prompt_tokens, completion_tokens).
+
+    Routed through model_pool rather than bound to one client, because the stage that dominates a
+    search issues eleven sequential calls per reference and a single provider was measured to be
+    the ceiling the whole pipeline ran under. See model_pool for the numbers. With no extra keys
+    configured the pool is exactly the Vertex client this used to hold, so behaviour is unchanged.
+    """
+    import model_pool
+    return model_pool.call(system, user, max_tokens, tier=tier)
 
 
-def chat_json(system, user, max_tokens=1200):
+def chat_json(system, user, max_tokens=1200, tier="fast"):
     """-> parsed JSON, or {} .
+
+    `tier` picks the model pool. "fast" for volume — screening thousands of candidates, the first
+    full-text read of hundreds of references — where every answer is gated downstream by grounding,
+    location and refutation before it can be asserted. "strong" for the passes whose output IS the
+    assertion: the refuter, the claim-to-limitation split, the second look.
 
     {} IS AMBIGUOUS AND THAT AMBIGUITY HAS COST REAL EXPERIMENTS. Every caller reads it as "the
     model had nothing to say", and it is also what a 503, a quota refusal and a truncated response
@@ -91,19 +113,17 @@ def chat_json(system, user, max_tokens=1200):
     """
     import failclosed
     try:
-        resp = _call(system, user, max_tokens)
+        text, _provider, pt, ct = _call(system, user, max_tokens, tier=tier)
     except Exception as e:
         return failclosed.fallback("llm.chat_json", f"{type(e).__name__}: {str(e)[:160]}",
                                    {}, kind="llm_call_failed")
-    um = getattr(resp, "usage_metadata", None)
-    _record_usage(
-        getattr(um, "prompt_token_count", 0) if um else 0,
-        getattr(um, "candidates_token_count", 0) if um else 0,
-    )
-    text = getattr(resp, "text", None)
+    _record_usage(pt, ct)
     if not text:
         return failclosed.fallback("llm.chat_json", "empty response body", {},
                                    kind="llm_empty_response")
+    obj = _extract_json(text)
+    if obj is not None:
+        return obj
     try:
         return json.loads(text)
     except Exception as e:
@@ -127,6 +147,35 @@ def chat_json(system, user, max_tokens=1200):
             "llm.chat_json",
             f"unparseable JSON ({type(e).__name__}); {len(text)} chars, "
             f"ends {text[-40:]!r}", {}, kind="llm_bad_json")
+
+
+def _extract_json(text):
+    """A COMPLETE JSON object out of a reply that may not be bare JSON. None if there is not one.
+
+    Vertex has a JSON response mode and returns nothing else. Anthropic does not: it returns the
+    object inside a ```json fence, or after a sentence of preamble. Measured on the reader's own
+    prompt over seven real documents, every single Anthropic reply failed `json.loads`, fell into
+    the truncation salvage, was logged as "a PREFIX, not a complete answer" and was flagged
+    `_truncated` — while in fact returning all 84 of 84 rows asked for.
+
+    That mislabelling is not cosmetic. `disclosures.extract` reads `_truncated` as "the checklist
+    is incomplete", so a complete answer from a healthy provider was being treated as a degraded
+    one. Try the honest extraction first; only text that is genuinely cut off reaches the salvage.
+    """
+    if not text:
+        return None
+    t = text.strip()
+    if t.startswith("```"):
+        t = re.sub(r"^```(?:json)?\s*", "", t)
+        t = re.sub(r"\s*```\s*$", "", t)
+    start, end = t.find("{"), t.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        obj = json.loads(t[start:end + 1])
+    except Exception:
+        return None
+    return obj if isinstance(obj, dict) else None
 
 
 def _salvage_json(text):

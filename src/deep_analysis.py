@@ -76,7 +76,35 @@ MAX_FEATURES = int(os.environ.get("DEEP_MAX_FEATURES", "60"))
 #  breath (10 of 12 grounded when asked alone, 2 of 12 when asked together). Two batches of 24
 #  costs one extra pass over the reference text and buys back the other half of the chart.
 FEATURE_BATCH = int(os.environ.get("DEEP_FEATURE_BATCH", "24"))
-MAX_INPUT_CLAIMS = 30
+#  Raised for Type B: the reader charts LIMITATIONS, and eleven claims become sixty-odd of them.
+MAX_INPUT_CLAIMS = int(os.environ.get("DEEP_MAX_INPUT_CLAIMS", "80"))
+#  Claims (or limitations) per model call. See the batching comment in analyse_reference.
+#  MEASURED, and it is the single biggest evidence lever found so far. Asking fewer requirements
+#  per call finds more of them — this repo already recorded the effect on the feature side ("the
+#  same reference grounded 10 of 12 asked alone and 2 of 12 asked together") and kept 12 anyway,
+#  because eleven SEQUENTIAL calls per reference was the wall-clock ceiling. The batches run
+#  concurrently now, so the trade re-opened. Swept over the four references a patent attorney filed,
+#  same model, same prompt, same document text:
+#
+#      batch   claim calls   disclosed cells   quoted cells
+#         12             6                58             94    <- was
+#          8             9                67            101
+#          4            17                66            117    <- is
+#          2            34                88            125
+#
+#  Two is the evidence ceiling and triples the call budget: 38 calls per reference over ~660
+#  references is about 68 minutes against 38 at four. Four takes 94% of the quote gain for half the
+#  cost. DEEP_CLAIM_BATCH=2 when the evidence matters more than the hour.
+CLAIM_BATCH = int(os.environ.get("DEEP_CLAIM_BATCH", "4"))
+#  How many of a single reference's batches may be in flight at once. A 68-limitation
+#  subject costs 9 batches plus the refuter; issuing them one at a time was measured to hold
+#  the whole pipeline at 2.70 calls/s against the 5.97 one provider alone sustains. The real
+#  ceiling is the per-provider semaphore in model_pool; this only stops one enormous document
+#  from occupying all of it.
+BATCH_WORKERS = int(os.environ.get("DEEP_BATCH_WORKERS", "6"))
+#  Issue ONE batch and wait for it before fanning out the rest, so the shared document prefix is in
+#  the provider's cache before eleven more calls ask for it. See the note in analyse_reference.
+WARM_CACHE = os.environ.get("DEEP_WARM_CACHE", "1") != "0"
 #  Per-reference text budget. A US grant is typically 40,000-120,000 characters; the long tail
 #  reaches 400,000. Send the whole thing up to this bound and SAY when it was cut, rather than
 #  silently reading a quarter of the document.
@@ -95,6 +123,10 @@ WORKERS = int(os.environ.get("DEEP_WORKERS", "8"))
 #  refuter ever saw. An unrefuted "disclosed" is the cell an audit found to be a false positive
 #  7 times in 12, so the gate has to cover the whole chart, not its head.
 MAX_REFUTE_PER_REF = int(os.environ.get("DEEP_MAX_REFUTE", "24"))
+#  Output budget for one read batch. Limitation-rich subjects were measured hitting 12,000 mid-
+#  answer constantly (the live log's 49-59k-char salvages are exactly this), and a salvaged prefix
+#  silently loses the cells past the cut. Room is cheaper than the cells.
+READ_MAX_TOKENS = int(os.environ.get("DEEP_READ_MAX_TOKENS", "24000"))
 
 _POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="deep-analysis")
 _LOCK = threading.Lock()
@@ -216,11 +248,21 @@ _SYS = (
     "show something — it is not a failure, and it is much better than a guess. Do not state any "
     "conclusion about patentability, novelty, obviousness, validity or infringement.\n"
     "\n"
+    "THE TWO BARS. A verbatim quote is the strong bar: a cell backed by one exact passage of at "
+    "most 40 words. Sometimes a reference GENUINELY TEACHES an item and yet no single verbatim "
+    "passage supports it — the teaching sits in a drawing's description, is spread across several "
+    "sentences, or is implicit in the mechanism described. In that case keep your honest verdict, "
+    "set \"teaches\": true, leave \"quote\" EMPTY, and say in \"note\" exactly where the teaching "
+    "sits (which passage, figure or mechanism). NEVER stitch or invent a quote to reach the "
+    "strong bar; a truthful quote-free teaching is worth more than a fabricated quote, and a "
+    "fabricated quote is discarded anyway. When a clean verbatim quote exists, prefer it and "
+    "omit \"teaches\".\n"
+    "\n"
     "Return STRICT JSON:\n"
     '{"features":[{"item":"<the feature, verbatim as given>","verdict":"...","quote":"...",'
-    '"note":"...","confidence":0.0}],'
+    '"note":"...","confidence":0.0,"teaches":false}],'
     '"claims":[{"item":"<the claim number as given, e.g. \\"claim 3\\">","verdict":"...",'
-    '"quote":"...","note":"...","confidence":0.0}],'
+    '"quote":"...","note":"...","confidence":0.0,"teaches":false}],'
     '"overall":{"score":0,"why":"one sentence"}}\n'
     "Include every feature and every claim you were given, in the order given.\n"
     "\n"
@@ -242,7 +284,7 @@ def _row(item, raw, ref, shown, kind):
     """
     base = {"item": item, "kind": kind, "verdict": "absent", "quote": "", "note": "",
             "location": "", "coord": {}, "passage_kind": "", "confidence": 0.0,
-            "grounding": "no-row-returned", "refuted": None}
+            "grounding": "no-row-returned", "refuted": None, "bar": ""}
     if not isinstance(raw, dict):
         return base
     verdict = str(raw.get("verdict") or "absent").lower()
@@ -255,16 +297,33 @@ def _row(item, raw, ref, shown, kind):
     except (TypeError, ValueError):
         conf = 0.0
 
+    def _teaches():
+        #  THE SECOND BAR. The reader asserts a teaching it cannot back with one verbatim
+        #  passage. Measured need: on GRABO's own patent the reader marked "absent" across claims
+        #  the examiner ANTICIPATED, because its only vocabulary was quote-or-nothing. A teaches
+        #  cell is kept as evidence at the weaker bar: verdict never better than "partial",
+        #  confidence capped, quote empty (nothing unverifiable is ever rendered as a quote), and
+        #  it can never contribute to anticipation — that stays verbatim-only.
+        return {**base, "verdict": "partial", "bar": "teaches", "note": note,
+                "confidence": min(conf, 0.6), "grounding": "teaches-unquoted"}
+
+    asserts_teaching = bool(raw.get("teaches")) and verdict in ("disclosed", "partial")
     if verdict == "absent" or not quote:
+        if asserts_teaching:
+            return _teaches()
         return {**base, "note": note, "confidence": conf, "grounding": "model-absent"}
     if not grounding.grounded(quote, shown):
+        if asserts_teaching:
+            return _teaches()
         return {**base, "note": note, "grounding": "dropped-ungrounded-quote"}
     loc = claim_chart._locate(quote, ref["passages"])
     if not loc:
+        if asserts_teaching:
+            return _teaches()
         return {**base, "note": note, "grounding": "dropped-unlocatable-quote"}
     return {"item": item, "kind": kind, "verdict": verdict, "quote": quote, "note": note,
             "location": loc["label"], "coord": loc["coord"], "passage_kind": loc["kind"],
-            "confidence": conf, "grounding": "verified", "refuted": None}
+            "confidence": conf, "grounding": "verified", "refuted": None, "bar": "discloses"}
 
 
 def _align(rows, items):
@@ -316,7 +375,11 @@ def _refute(rows, pub, texts=None):
         return 0
     pairs = [{"i": n, "assertion": texts.get(r["item"]) or r["item"], "quote": r["quote"]}
              for n, (_, r) in enumerate(targets)]
+    #  STRONG TIER. This is the gate that decides what the report may assert: a cell it downgrades
+    #  never renders as coverage. It is also cheap in volume — one call per reference against the
+    #  eleven the reading costs — so it is exactly where a better model is worth paying for.
     out = llm.chat_json(_REFUTE_SYS, json.dumps({"reference": pub, "pairs": pairs})[:40000],
+                        tier="strong",
                         max_tokens=2000) or {}
     checks = {int(c.get("i", -1)): c for c in (out.get("checks") or []) if isinstance(c, dict)}
     downgraded = 0
@@ -341,6 +404,22 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
     subject's vocabulary looks like in OTHER people's patents before it decides "absent".
     """
     started = time.time()
+    #  THE FLYWHEEL: a reference already charted against this EXACT checklist (same features, same
+    #  claim texts, same read pool, inside the TTL) is served from the evidence store instead of
+    #  being re-read. Benchmark arms and re-runs ask identical checklists; before this, every one
+    #  re-read ~550-700 documents. `hints` are deliberately outside the fingerprint: they are
+    #  per-run phrasing aids, not part of the question, and fingerprinting them would mean no run
+    #  could ever match another. DEEP_EVIDENCE_REUSE=0 for a clean A/B.
+    import evidence
+    _fp = evidence.subject_fp([f for f in features][:MAX_FEATURES],
+                              list(input_claims or [])[:MAX_INPUT_CLAIMS])
+    cached = evidence.load_chart(pub, _fp)
+    if cached and cached.get("method") == "llm":
+        #  `method` stays "llm" — four downstream gates key on it — and `cached` says how it
+        #  was obtained.
+        cached["cached"] = True
+        cached["seconds"] = 0.0
+        return cached
     ref = full_text(pub)
     result = {"pub": pub, "title": title or ref.get("title") or "", "found": ref["found"],
               "features": [], "claims": [], "method": "llm",
@@ -364,18 +443,48 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
     claim_payload = [{"item": c["label"], "text": c["text"]} for c in input_claims
                      ][:MAX_INPUT_CLAIMS]
     hints = hints or {}
+    #  The stable prefix every batch of this reference shares: the document, serialized once.
+    #  json.dumps of a dict minus its closing brace, so prefix + ", " + rest-of-dict re-forms the
+    #  exact whole-payload string. See _ask for why it is split.
+    doc_prefix = json.dumps({"reference": pub, "reference_text": shown},
+                            ensure_ascii=False)[:-1]
 
     def _ask(features_now, claims_now):
-        payload = {"reference": pub, "subject_features": features_now,
-                   "subject_claims": claims_now, "reference_text": shown}
+        #  FIELD ORDER IS THE CACHE KEY, AND IT WAS BACKWARDS.
+        #
+        #  A reference is asked about in FEATURE_BATCH + CLAIM_BATCH passes — fourteen on a typical
+        #  subject — and every one of them re-sends this whole document. Both providers cache on a
+        #  PREFIX match, so fourteen prompts that share a 60,000-character document should cost one
+        #  full read and thirteen cached ones. They did not: `reference_text` was serialised LAST,
+        #  after `subject_features` and `subject_claims`, and those are exactly what differs between
+        #  the batches. Every call therefore diverged from every other at about character thirty and
+        #  no cache could ever match.
+        #
+        #  Measured on adhoc-db64a3dd7c98: 9,716 chart calls carrying 601,276,718 characters of
+        #  reference text, essentially all of it the same documents sent over and over.
+        #
+        #  Python preserves insertion order and `json.dumps` follows it, so putting the document
+        #  first is the whole fix. The stable part is now the prefix and the varying checklist is
+        #  the suffix, which is what Gemini's implicit caching and Anthropic's `cache_control` both
+        #  key on. Nothing about the CONTENT of the prompt changes; only the order of two keys.
+        tail_obj = {"subject_features": features_now, "subject_claims": claims_now}
         #  What the subject's own vocabulary looks like in other people's patents. Sent only for
         #  the features actually being asked about, so the prompt does not carry the whole map.
+        #  Appended AFTER the document for the same reason: it varies per batch.
         vocab = {f: hints[f] for f in features_now if hints.get(f)}
         if vocab:
-            payload["other_words_for_each_feature"] = vocab
+            tail_obj["other_words_for_each_feature"] = vocab
+        #  TWO SEGMENTS, ONE STRING. Joined they are byte-identical to json.dumps of the whole
+        #  payload (document first, as before), so Vertex's implicit prefix cache behaves exactly
+        #  as it did. The split exists for Anthropic, whose cache needs an explicit breakpoint at
+        #  the end of the stable document segment — see model_pool._anthropic.
+        tail = ", " + json.dumps(tail_obj, ensure_ascii=False)[1:]
         #  The prompt is dominated by the reference itself; leave room for a full chart.
-        return llm.chat_json(_SYS, json.dumps(payload, ensure_ascii=False),
-                             max_tokens=12000) or {}
+        #  READ TIER, not the fast pool. This call is where the evidence is made: a model that
+        #  finds fewer teachings in 90,000 characters costs the report cells, not seconds. See
+        #  model_pool.READ for the measurement that separated it out.
+        return llm.chat_json(_SYS, [{"text": doc_prefix, "cache": True}, {"text": tail}],
+                             tier="read", max_tokens=READ_MAX_TOKENS) or {}
 
     #  FOCUSED READS, not one combined one. MEASURED: asking for 12 feature rows AND 13 claim rows
     #  in a single answer, each with a verbatim quote and a note, made the model economise: the
@@ -385,22 +494,69 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
     #  answer is subject to exactly the same economising as a 25-row one.
     #
     #  The reference text is re-sent per pass, which costs input tokens and buys back the chart.
-    #  Sequential on purpose: this already runs inside a wide worker pool (deep_rank), and a
-    #  nested pool would multiply the concurrent Vertex calls by the batch count.
-    out = {"features": [], "claims": []}
-    for i in range(0, len(feature_items), FEATURE_BATCH):
-        batch = feature_items[i:i + FEATURE_BATCH]
-        got = _ask(batch, [])
-        out["features"].extend(got.get("features") or [])
-        #  Take the holistic judgement from the FIRST feature pass: that pass saw the head of the
-        #  checklist, and averaging several would only give numbers to reconcile.
-        if i == 0 and isinstance(got.get("overall"), dict):
+    #
+    #  THE BATCHES RUN CONCURRENTLY. They used to be sequential, on the reasoning that this already
+    #  runs inside a wide worker pool and a nested pool would multiply the concurrent calls. That
+    #  reasoning was never measured and it was the ceiling the whole pipeline ran under: profiled
+    #  on real documents, a reference costs ELEVEN calls and they were issued one after another, so
+    #  a single reference took 97 seconds of which almost all was waiting. At CHART_WORKERS=24 the
+    #  pipeline achieved 2.70 calls/s while ONE provider sustains 5.97 and a second sustains 7.96
+    #  at the same concurrency and the same 60k-character prompts, with no throttling from either.
+    #
+    #  Concurrency is now bounded where it should be — by the per-provider semaphores in
+    #  model_pool — rather than by refusing to ask two questions at once. `BATCH_WORKERS` caps the
+    #  fan-out per reference so a single 68-limitation document cannot occupy the whole pool.
+    out = {"features": [], "claims": [], "overall": None}
+    feature_batches = [feature_items[i:i + FEATURE_BATCH]
+                       for i in range(0, len(feature_items), FEATURE_BATCH)]
+    #  BATCHED, for a measured reason. A Type B search charts LIMITATIONS rather than whole claims
+    #  — sixty rows where there used to be eleven — and a single answer carrying sixty quoted,
+    #  located rows is where a reader starts economising. Measured on the feature side: the same
+    #  reference grounded 10 of 12 asked alone and 2 of 12 asked together. Widening the batch to
+    #  cut calls would buy speed with the evidence, which is the wrong trade.
+    claim_batches = [claim_payload[i:i + CLAIM_BATCH]
+                     for i in range(0, len(claim_payload), CLAIM_BATCH)]
+    jobs = ([("features", b, []) for b in feature_batches]
+            + [("claims", [], b) for b in claim_batches])
+
+    def _run(job):
+        kind, fb, cb = job
+        return kind, _ask(fb, cb)
+
+    if len(jobs) > 1 and BATCH_WORKERS > 1:
+        #  WARM THE CACHE ON ONE CALL BEFORE FANNING OUT THE REST.
+        #
+        #  All these calls share a prefix: the same document, ~15k tokens of it, sent once per
+        #  batch. A provider-side cache can only serve a prefix that has already been WRITTEN, so
+        #  firing all twelve at once means every one of them races and pays full price.
+        #
+        #  MEASURED on US-2026061634-A1, 48 features and 40 limitations, exactly the production
+        #  shape: fanning all 12 out at once cached 92,773 of 265,436 prompt tokens (35%). The
+        #  first call is the one that writes the entry; the other eleven should read it.
+        #
+        #  The cost is one call's latency on the critical path per reference, against roughly half
+        #  the document's input tokens across the other eleven. Set DEEP_WARM_CACHE=0 to fan out
+        #  flat again.
+        if WARM_CACHE and len(jobs) > 2:
+            first = _run(jobs[0])
+            with ThreadPoolExecutor(max_workers=min(BATCH_WORKERS, len(jobs) - 1)) as ex:
+                results = [first] + list(ex.map(_run, jobs[1:]))
+        else:
+            with ThreadPoolExecutor(max_workers=min(BATCH_WORKERS, len(jobs))) as ex:
+                results = list(ex.map(_run, jobs))
+    else:
+        results = [_run(j) for j in jobs]
+    #  Reassembled in the ORIGINAL batch order, not completion order: `_align` zips these back
+    #  against the item list positionally, so a chart whose rows arrived out of order would put
+    #  every verdict against the wrong requirement.
+    for (kind, got), _job in zip(results, jobs):
+        out[kind].extend(got.get(kind) or [])
+        #  The holistic judgement comes from the FIRST feature pass — that pass saw the head of the
+        #  checklist — and averaging several would only give numbers to reconcile.
+        if out["overall"] is None and isinstance(got.get("overall"), dict):
             out["overall"] = got["overall"]
-    if claim_payload:
-        got = _ask([], claim_payload)
-        out["claims"] = got.get("claims") or []
-        if not out.get("overall") and isinstance(got.get("overall"), dict):
-            out["overall"] = got["overall"]
+    if out["overall"] is None:
+        out.pop("overall")
     if not (out.get("features") or out.get("claims")):
         result["method"] = "unavailable"
         result["features"] = [_row(f, None, ref, shown, "feature") for f in feature_items]
@@ -429,6 +585,17 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
         pass
     result["counts"] = _counts(result["features"] + result["claims"])
     result["seconds"] = round(time.time() - started, 2)
+    #  Persist to the evidence store — the chart for identical re-asks, the claim-axis cells for
+    #  the cross-subject graph. Best-effort by design: the store being down costs the NEXT run
+    #  money, never this run its result. Only a real read is stored ("no-text" must not be cached:
+    #  a reference that gains text tomorrow deserves a fresh read).
+    try:
+        if result.get("method") == "llm" and ref["found"]:
+            evidence.save_chart(pub, _fp, result)
+            evidence.save_cells_from_chart(
+                result, {c["label"]: c["text"] for c in (input_claims or []) if c.get("label")})
+    except Exception:
+        traceback.print_exc()
     return result
 
 
@@ -541,8 +708,42 @@ _REREAD_SYS = (
 )
 
 
-def reread_absent(pub, rows, hints=None, ref=None, max_features=FEATURE_BATCH):
-    """Second pass over the features a first reading returned nothing for. -> rows changed.
+_REREAD_CLAIM_SYS = (
+    "You are a patent examiner taking a SECOND look at one reference, this time for a few SPECIFIC "
+    "CLAIMS of the subject patent. A first reading of this document found nothing for them, and a "
+    "search of the whole corpus has found nothing for them either: as things stand these claims "
+    "have NO prior art at all.\n"
+    "\n"
+    "For each claim you are given the claim text and the idea behind it in other people's words. "
+    "Search the reference for the IDEA, not for the claim's phrasing. Look in the description and "
+    "the drawing description, not only in the claims — an older patent often teaches in its figures "
+    "what a modern one claims. A species discloses its genus. An equivalent structure performing "
+    "the same function discloses the function.\n"
+    "\n"
+    "A claim is a whole set of limitations. Answer \"disclosed\" only if this reference teaches ALL "
+    "of them. If it teaches some, answer \"partial\" and say in the note which limitation is "
+    "missing.\n"
+    "\n"
+    "A PARTIAL IS A REAL ANSWER HERE AND IT IS WANTED. These claims currently have nothing against "
+    "them, so a reference that teaches most of a claim, or teaches the specific thing a dependent "
+    "claim ADDS to the claim it depends from, is exactly what is being looked for — even if it "
+    "comes from a different field. Say so rather than rounding it down to \"absent\".\n"
+    "\n"
+    "What you must NOT do is manufacture one. Most of these will still be absent and saying so is "
+    "correct. NEVER paraphrase a quote, NEVER stitch sentences together, NEVER invent one — the "
+    "quote is the reference's own words, copied exactly, or there is no answer.\n"
+    'Return STRICT JSON: {"claims":[{"item":"<the claim label verbatim, e.g. \\"claim 7\\">",'
+    '"verdict":"...","quote":"...","note":"...","confidence":0.0}]}'
+)
+
+
+def reread_absent(pub, rows, hints=None, ref=None, max_features=FEATURE_BATCH, kind="feature",
+                  texts=None):
+    """Second pass over the rows a first reading returned nothing for. -> rows changed.
+
+    `kind="claim"` re-asks about the SUBJECT'S CLAIMS instead of the feature checklist, with the
+    claim text in `texts` and a prompt that knows a claim is a conjunction. Used by claim_rescue
+    for the claims the whole search found nothing for.
 
     THIS IS THE AGENTIC PART OF THE READING. The first pass reads a whole patent against a whole
     checklist in one breath and is, measurably, conservative: it answers "absent" whenever it
@@ -562,20 +763,40 @@ def reread_absent(pub, rows, hints=None, ref=None, max_features=FEATURE_BATCH):
         return 0
     shown = _rendered(ref)
     hints = hints or {}
+    texts = texts or {}
     items = [r["item"] for r in targets]
-    payload = {"reference": pub, "reference_text": shown,
-               "features": [{"item": it, "idea": hints.get(it) or it} for it in items]}
+    #  A CLAIM CARRIES ITS OWN TEXT INTO THE PROMPT; a feature is its own text. Handed the bare
+    #  label "claim 7" a reader has nothing to look for, which is the same defect the refuter had
+    #  (see _refute): it answered about our prompt instead of about the evidence.
+    key = "claims" if kind == "claim" else "features"
+    system = _REREAD_CLAIM_SYS if kind == "claim" else _REREAD_SYS
+    asked = [{"item": it, "idea": hints.get(it) or texts.get(it) or it} for it in items]
+    if kind == "claim":
+        for a in asked:
+            a["claim_text"] = texts.get(a["item"]) or ""
+    doc_part = json.dumps({"reference": pub, "reference_text": shown}, ensure_ascii=False)[:-1]
+    tail_part = ", " + json.dumps({key: asked}, ensure_ascii=False)[1:]
     try:
-        out = llm.chat_json(_REREAD_SYS, json.dumps(payload, ensure_ascii=False),
-                            max_tokens=8000) or {}
+        #  STRONG TIER. The second look exists because the first read economised; asking the same
+        #  model the same way again is the one thing that cannot help. Low volume: a few hundred
+        #  calls against tens of thousands. Document segment flagged for the Anthropic cache —
+        #  the same reference was just read a dozen times on the read tier, and the refuter and
+        #  this pass revisit it on the strong tier.
+        out = llm.chat_json(system, [{"text": doc_part, "cache": True}, {"text": tail_part}],
+                            tier="strong", max_tokens=8000) or {}
     except Exception:
         return 0
     changed = 0
     by_item = {r["item"]: r for r in targets}
-    for item, raw in zip(items, _align(out.get("features"), items)):
+    #  Accept the other key too: the model occasionally answers under "features" whatever it was
+    #  asked, and dropping the whole answer over a key name reads as "nothing was found".
+    rows_back = out.get(key)
+    if not rows_back:
+        rows_back = out.get("features") if key == "claims" else out.get("claims")
+    for item, raw in zip(items, _align(rows_back, items)):
         if not isinstance(raw, dict):
             continue
-        fresh = _row(item, raw, ref, shown, "feature")
+        fresh = _row(item, raw, ref, shown, kind)
         if fresh["verdict"] == "absent" or fresh["grounding"] != "verified":
             continue
         row = by_item.get(item)

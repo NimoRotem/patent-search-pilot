@@ -69,6 +69,12 @@ _OPEN_ENDPOINTS = {"healthz", "index", "about", "how_it_works",
                    "auth.login", "auth.logout", "auth.register",
                    "auth.forgot_password", "auth.reset_password", "static",
                    "shared_report", "shared_report_logo",
+                   # A published report and its password gate. The link IS the access control and
+                   # the password, when set, is checked inside the view — sending a recipient to a
+                   # login they can never satisfy is the one thing a shared document must not do.
+                   # The beacon is open for the same reason: it is fired by that page, during
+                   # unload, by somebody with no session.
+                   "public_report_page", "public_report_unlock", "public_report_beacon",
                    # An invitee has no account yet; a verification link may be opened from a mail
                    # client with no session. Both are single-use, expiring, hashed tokens.
                    "auth.accept_invitation", "auth.verify_email"}

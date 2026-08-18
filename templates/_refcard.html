@@ -95,14 +95,19 @@
             </div>{% endif %}
             <div class="rchips">
               <span class="stag t-{{ c.status.tone }}"{% if c.status.note %} title="{{ c.status.note }}"{% endif %}>{{ c.status.label }}</span>
-              {% if c.basis=='public_prior_art' %}<span class="bbadge b-public">◆ public prior art</span>
-              {% elif c.basis=='secret_prior_art' %}<span class="bbadge b-secret">🔒 secret prior art</span>
-              {% elif c.basis=='priority_interval' %}<span class="bbadge b-interval">priority interval</span>{% endif %}
+              {% if c.basis=='public_prior_art' %}<span class="bbadge b-public" title="Published before the subject's effective filing date, so it is citable against both novelty and inventive step — EPC Art. 54(2).">◆ public prior art</span>
+              {% elif c.basis=='secret_prior_art' %}<span class="bbadge b-secret" title="Filed before the subject's effective date but published after it. Citable for NOVELTY ONLY under EPC Art. 54(3); it cannot be combined with other art for an inventive-step attack.">🔒 secret prior art</span>
+              {% elif c.basis=='priority_interval' %}<span class="bbadge b-interval" title="Published inside the priority interval — between the subject's earliest priority date and its filing date. Whether it is prior art depends on whether the priority claim is valid for this subject matter.">priority interval</span>{% endif %}
               {% for ch in c.channels[:3] %}<span class="chip ch">{{ ch }}</span>{% endfor %}
               {# per-result source provenance: which channel/API found this reference (item 5).
                  Image matches are visually distinct (icon + own colour). #}
               {% for p in c.prov %}<span class="chip {{ p.cls }}"
                 title="Found via {{ p.label }}">{% if p.icon %}{{ p.icon }} {% endif %}{{ p.label }}</span>{% endfor %}
+              {#  A reference with no external provenance came out of our OWN corpus, and saying so
+                  matters: "which source found this" is unanswerable if the commonest source is the
+                  only one that never labels itself.  #}
+              {% if not c.prov|selectattr('cls','equalto','prov-api')|list %}<span class="chip prov-local"
+                title="Found in our own pgvector corpus — full claims and description text, searched by embedding, BM25, CPC, citation and cross-lingual channels">Local corpus</span>{% endif %}
               {% for cp in c.cpc[:3] %}<span class="chip cpc">{{ cp.code }}</span>{% endfor %}
             </div>
             {#  Worldwide patent family (Feature 1): a Google-Patents-style year → jurisdiction

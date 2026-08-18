@@ -39,6 +39,13 @@ def no_paid_apis(monkeypatch):
                         lambda system, user, **k: {"elements": ["a vacuum gripper element",
                                                                  "a sealing element", "a vacuum pump"],
                                                    "queries": ["vacuum gripper"], "synonyms": [], "de": ""})
+    #  The evidence store must be INERT under test: reuse would serve one test's mocked answers
+    #  to another test asking about the same fake pub, and saves would pollute the real graph
+    #  with fixture rows. The dedicated phase-1 tests re-enable pieces explicitly.
+    import evidence
+    monkeypatch.setattr(evidence, "REUSE", False)
+    monkeypatch.setattr(evidence, "save_chart", lambda *a, **k: None)
+    monkeypatch.setattr(evidence, "save_cells_from_chart", lambda *a, **k: 0)
 
 
 @pytest.fixture(scope="session")

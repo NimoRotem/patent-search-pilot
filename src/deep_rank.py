@@ -56,6 +56,10 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 import db
+import claim_reach
+import batch_reader
+import claim_rescue
+import limitations as limmod
 import coverage_rank
 import deep_analysis
 import llm
@@ -89,7 +93,37 @@ SCREEN_WORKERS = int(os.environ.get("DEEP_RANK_SCREEN_WORKERS", "6"))
 #  minutes. Raised from 150 because the screen now looks at 2,500 rather than 600 candidates: on a
 #  real examiner citation list, seven cited families were screened at 60-80 and then never read,
 #  because the top-150 cut landed in the high 80s.
-CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "360"))
+#  LOWERED 360 -> 250, and NO FURTHER, because 250 is where this repo's own evidence stops.
+#  `tests/test_deep_rank.py::test_chart_depth_tracks_the_screen_depth` asserts >= 250 and it is
+#  guarding a measurement, not a preference: at a top-150 cut over a 2,500-candidate screen, seven
+#  cited families that screened 60-80 were never read.
+#
+#  The reason it can come down from 360 at all is `claim_reach`, which now runs BEFORE this cut and
+#  gives every claim its own quota. A reference that is the best answer to claim 9[b] is claimed by
+#  claim 9[b] whatever the whole-invention screen made of it, so the mid-screen band 360 was reaching
+#  by brute depth is now reached directly. That argument is sound and it is UNMEASURED: going below
+#  250 on the strength of it would be overriding evidence with a hypothesis, which is what the guard
+#  exists to prevent. Run `eval/attorney_recall.py` on both gold sets first.
+#
+#  NOW 150, AND THIS IS A DELIBERATE OVERRIDE OF THE GUARD ABOVE, not an oversight.
+#
+#  What the measurement actually costs us, priced: the last run read 549 references in full to fill
+#  a 60-card page, and reading is 97% of the bill — 72.8M of 112M prompt tokens went on the main
+#  read alone. Depth past the page is the single largest line item in the whole system.
+#
+#  What both frozen expert sets say about whether that depth is buying anything: on the Nguyen set
+#  every reference the attorney filed was in the corpus, retrieved, screened, and four of five were
+#  READ IN FULL — and one reached the page. They were lost at RANKING, at positions 85 to 288. Depth
+#  did not fail to find them; it found them and then could not show them. Reading deeper buys more
+#  of the same.
+#
+#  So the depth comes down to roughly the page it feeds, and `claim_reach` keeps the per-claim
+#  reach that depth used to provide by brute force. THIS IS STILL THE UNMEASURED PART: nobody has
+#  run the eval at 150. Run eval/attorney_recall.py on both gold sets after the next real search,
+#  and if "read" falls below 4/5 and 4/10 put it back.
+#
+#  A/B: DEEP_RANK_CHART_TOP=360 CLAIM_REACH=0 restores the original behaviour exactly.
+CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "150"))
 #  A THRESHOLD, not only a slice. "Worth reading" is a judgement the screen already made on a
 #  0-100 scale, so a fixed top-N throws away its answer and substitutes an arbitrary cut: measured,
 #  the top-300 cut landed at a screen score of 75-80, and cited references the screen had rated 70
@@ -102,12 +136,24 @@ CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "360"))
 #  Lowered 75 -> 70: the paragraph above records that "cited references the screen had rated 70
 #  were never read", and 70 is precisely where the old threshold sat. Read them.
 CHART_MIN_SCREEN = int(os.environ.get("DEEP_RANK_CHART_MIN_SCREEN", "70"))
+#  THE PASSAGE TAIL. The Aug-17 economy cut CHART_TOP 360 -> 150 and simply stopped reading the
+#  rest of the screen. batch_reader covers exactly that population at ~1/7 the effective token
+#  cost (one-requirement x many-documents calls, 83% measured cache hit), fed by the per-
+#  limitation candidates claim_reach already ranked — so every limitation gets its own tail of
+#  documents read against it instead of nothing. DEEP_RANK_BATCH_TAIL=0 restores the cut exactly.
+BATCH_TAIL = os.environ.get("DEEP_RANK_BATCH_TAIL", "1") != "0"
+BATCH_PER_LIM = int(os.environ.get("DEEP_RANK_BATCH_PER_LIM", "12"))
+BATCH_TAIL_MAX = int(os.environ.get("DEEP_RANK_BATCH_TAIL_MAX", "240"))
 #  Raised 350 -> 420, AND `_DISPLAY_TOP` was raised with it (webapp), because the measurement
 #  above is specifically that widening the read set while the PAGE stays a fixed size trades
 #  visible recall for invisible reading. The two have to move together or not at all. This also
 #  widens the on-demand full-text recovery, which is bounded by exactly this number: a reference
 #  the pipeline was never going to read is one it never fetches text for.
-CHART_TOP_MAX = int(os.environ.get("DEEP_RANK_CHART_TOP_MAX", "420"))
+#  Lowered 420 -> 300 with CHART_TOP, for the reason above, and it is the ceiling that actually
+#  binds: the measured run read 525 references in the main pass to fill a 60-card page. Note this
+#  also lowers ENRICH_TOP, which defaults to it, so the pipeline still never fetches text for a
+#  document it was not going to read.
+CHART_TOP_MAX = int(os.environ.get("DEEP_RANK_CHART_TOP_MAX", "180"))
 #  Raised 18 -> 24 to pay for the extra feature batch per reference (deep_analysis.FEATURE_BATCH).
 #  The stage is bound by Vertex round-trips, not by this box's four cores.
 CHART_WORKERS = int(os.environ.get("DEEP_RANK_CHART_WORKERS", "24"))
@@ -119,7 +165,12 @@ CHART_WORKERS = int(os.environ.get("DEEP_RANK_CHART_WORKERS", "24"))
 #  abstract). A reference the retrieval ranked 15th must not be lost to a bad abstract.
 ALWAYS_CHART_RETRIEVAL_HEAD = int(os.environ.get("DEEP_RANK_HEAD", "60"))
 #  How far down the retrieval order to rescue candidates the screener was shown no text for.
-BLIND_RESCUE = int(os.environ.get("DEEP_RANK_BLIND_RESCUE", "400"))
+#  RAISED 400 -> the whole screen depth. 400 was a guess at where useful art stops and it was
+#  wrong by a factor of four on a real subject: the reference an attorney called the most
+#  comprehensive match sat at retrieval rank 1,817 with nothing but a title. BLIND_RESCUE_MAX is
+#  what bounds the cost; the reach should not also be doing that job, because a reach limit
+#  silently decides that art beyond it does not exist.
+BLIND_RESCUE = int(os.environ.get("DEEP_RANK_BLIND_RESCUE", str(SCREEN_TOP)))
 BLIND_RESCUE_MAX = int(os.environ.get("DEEP_RANK_BLIND_RESCUE_MAX", "60"))
 
 #  Evidence weights. "disclosed" survived the refuter; "partial" is the model's own hedge;
@@ -205,6 +256,11 @@ DISCLOSURE_CAP = int(os.environ.get("DEEP_RANK_DISCLOSURE_CAP", "48"))
 CONCEPT_PASS_TOP = int(os.environ.get("DEEP_RANK_CONCEPT_PASS_TOP", "120"))
 #  Order by marginal contribution to disclosure coverage rather than by score alone.
 COVERAGE_ORDER = os.environ.get("DEEP_RANK_COVERAGE_ORDER", "1") != "0"
+#  How much a CLAIM counts in the coverage objective, relative to a disclosure. 1.0 = the same.
+CLAIM_COVERAGE_WEIGHT = float(os.environ.get("DEEP_RANK_CLAIM_COVERAGE_WEIGHT", "1.0"))
+#  The window the report page renders. deep_rank must not import webapp, so this mirrors
+#  webapp._DISPLAY_TOP; it is what the claim-coverage guarantee promotes into.
+DISPLAY_WINDOW = int(os.environ.get("DEEP_RANK_DISPLAY_WINDOW", "60"))
 UNREAD_SCORE_CAP = int(os.environ.get("DEEP_RANK_UNREAD_CAP", "70"))
 
 #  ON-DEMAND TEXT, fetched for the references we are ABOUT TO READ and persisted to the corpus.
@@ -219,6 +275,23 @@ UNREAD_SCORE_CAP = int(os.environ.get("DEEP_RANK_UNREAD_CAP", "70"))
 #  document it was not already about to read, and the persisted text benefits every later search.
 ENRICH_TOP = int(os.environ.get("DEEP_RANK_ENRICH_TOP", str(CHART_TOP_MAX)))
 ENRICH_WORKERS = int(os.environ.get("DEEP_RANK_ENRICH_WORKERS", "8"))
+#  TEXT FETCHED BEFORE THE SCREEN, for candidates the corpus holds nothing readable for.
+#
+#  Without this the pipeline is circular: no text -> the screener scores what little there is ->
+#  the document is not chosen to be read -> its text is never fetched. Measured, it cost the
+#  single most on-point reference an attorney cited for a live subject (US-2966138-A: 0 claims,
+#  0 paragraphs here, screened 10 of 100, retrieval rank 1,817, never read).
+#
+#  Bounded hard, because this runs over the whole screen depth rather than the read set: these are
+#  network fetches against the recovery chain and the budget is the point. Set 0 to disable.
+PRESCREEN_ENRICH_TOP = int(os.environ.get("DEEP_RANK_PRESCREEN_ENRICH", "400"))
+#  THE ORPHAN-CLAIM RESCUE, after the reading. Set to 0 to skip it.
+#
+#  Everything above this line searches, screens and reads against the invention AS A WHOLE, and the
+#  claim table falls out of the reading as a by-product. That is why a claim can end a search with
+#  no prior art against it while the report shows four hundred references: nothing was ever
+#  searched FOR it. See claim_rescue.
+RESCUE_CLAIMS = os.environ.get("DEEP_RANK_RESCUE_CLAIMS", "1") != "0"
 
 _STOP = set((
     "a an the of and or to for with in on at by is are be as from that this it its which such "
@@ -352,9 +425,16 @@ def _candidate_rows(cur, families, reps, limit):
     return rows
 
 
-def screen(rows, brief, on_progress=None):
+def screen(rows, brief, on_progress=None, sys_prompt=None, header="TARGET INVENTION"):
     """{pub: 0-100} over every candidate row, in batches. Fail-soft: an unscored candidate simply
-    has no screen score and falls back to its retrieval rank."""
+    has no screen score and falls back to its retrieval rank.
+
+    `sys_prompt` and `header` exist so a caller can ask a DIFFERENT question of the same machinery
+    — limitation_query screens candidates against one claim requirement rather than against the
+    whole invention. The batching below is the part that must not be duplicated: it is the fix for
+    a measured calibration defect, and a second screener with its own batching would reintroduce
+    it silently.
+    """
     if not rows:
         return {}
     #  BATCHES ARE INTERLEAVED, NOT CONTIGUOUS SLICES OF THE RANKING.
@@ -383,8 +463,8 @@ def screen(rows, brief, on_progress=None):
 
     def one(batch):
         body = "\n".join(f"[{j + 1}] {c['title']}\n  {c['text']}" for j, c in enumerate(batch))
-        out = llm.chat_json(_SCREEN_SYS,
-                            f"TARGET INVENTION:\n{brief[:6000]}\n\nCANDIDATES:\n{body}",
+        out = llm.chat_json(sys_prompt or _SCREEN_SYS,
+                            f"{header}:\n{brief[:6000]}\n\nCANDIDATES:\n{body}",
                             max_tokens=1600) or {}
         got = {}
         for x in (out.get("results") or []):
@@ -413,7 +493,7 @@ def screen(rows, brief, on_progress=None):
     return scores
 
 
-def _enrich_missing_text(chosen, on_progress=None):
+def _enrich_missing_text(chosen, on_progress=None, limit=None):
     """Fetch and persist full text for the chosen references the corpus holds nothing readable for.
 
     Returns the number of references that gained text. Never fatal: a quota-exhausted or
@@ -455,7 +535,7 @@ def _enrich_missing_text(chosen, on_progress=None):
         if cl == 0 and pa == 0:
             thin.append(pub)
     thin.sort(key=lambda p: order.get(p, 10 ** 6))
-    thin = thin[:ENRICH_TOP]
+    thin = thin[:(limit or ENRICH_TOP)]
     if not thin:
         return 0
     if on_progress:
@@ -492,10 +572,16 @@ def _enrich_missing_text(chosen, on_progress=None):
 
 
 def _grounded_rows(ref, kind):
-    """The rows of one charted reference that carry real, located, verbatim evidence."""
+    """The rows of one charted reference that carry real evidence.
+
+    Two bars count: "verified" (verbatim quote, located) and "teaches-unquoted" (the reader
+    asserted a teaching it could not quote; kept at verdict "partial", capped confidence). The
+    weaker bar earns partial-strength score only — it can shape the ordering, never an
+    anticipation call, which stays verbatim-only in limitations.claim_status.
+    """
     return [r for r in (ref.get(kind) or [])
-            if r.get("grounding") == "verified" and r.get("verdict") in _W
-            and _W[r["verdict"]] > 0]
+            if r.get("grounding") in ("verified", "teaches-unquoted")
+            and r.get("verdict") in _W and _W[r["verdict"]] > 0]
 
 
 def rarity(charts, features, claims):
@@ -519,6 +605,36 @@ def rarity(charts, features, claims):
     cidf = {c: math.log(n / max(1, d)) + 0.15 for c, d in cdf.items()}
     return {"n": n, "feature_df": fdf, "claim_df": cdf,
             "feature_idf": fidf, "claim_idf": cidf}
+
+
+def _claim_leaders(charts, rar, depth=LEAD_DEPTH):
+    """{pub: [(claim label, idf)]} — the rare CLAIMS each reference is among the best disclosures of.
+
+    The same credit `leaders` gives for a rare feature, for a rare claim. It matters more here: a
+    claim disclosed by two references out of five hundred is the claim an attorney builds an
+    attack on, and the reference that discloses it usually discloses nothing else, so without this
+    it earns nothing anywhere in the ranking.
+    """
+    cidf = rar.get("claim_idf") or {}
+    if not cidf:
+        return {}
+    idfs = sorted(cidf.values())
+    median = idfs[len(idfs) // 2]
+    hits = {}
+    for ref in charts:
+        for r in _grounded_rows(ref, "claims"):
+            if r["verdict"] == "uncertain":
+                continue
+            hits.setdefault(r["item"], []).append(
+                (ref["pub"], r["verdict"], float(r.get("confidence") or 0.0)))
+    out = {}
+    for item, hs in hits.items():
+        if cidf.get(item, 0.0) < median:
+            continue
+        hs.sort(key=lambda h: ({"disclosed": 0, "partial": 1}.get(h[1], 2), -h[2]))
+        for pub, _v, _c in hs[:depth]:
+            out.setdefault(pub, []).append((item, round(cidf[item], 3)))
+    return out
 
 
 def leaders(charts, rar, depth=LEAD_DEPTH):
@@ -565,7 +681,7 @@ def score_reference(ref, rar, lead=()):
         n_disc += r["verdict"] == "disclosed"
         n_part += r["verdict"] == "partial"
         n_unc += r["verdict"] == "uncertain"
-        covered.append({"item": r["item"], "verdict": r["verdict"],
+        covered.append({"item": r["item"], "verdict": r["verdict"], "kind": "feature",
                         "idf": round(fidf.get(r["item"], 0.0), 3),
                         "location": r.get("location") or "", "quote": r.get("quote") or "",
                         #  WHICH PUBLICATION THIS QUOTE CAME FROM. Today it is always the charted
@@ -578,6 +694,18 @@ def score_reference(ref, rar, lead=()):
                         "evidence_pub": r.get("evidence_pub") or ref.get("pub") or ""})
     for r in _grounded_rows(ref, "claims"):
         got += _CLAIM_WEIGHT * _W[r["verdict"]] * cidf.get(r["item"], 0.0)
+        #  CLAIMS GO INTO `covered` TOO. They used to contribute to the score above and then
+        #  vanish: `covered` is what coverage_rank consumes to order the page, so the one
+        #  reference that disclosed claim 5 and nothing else had a marginal gain of zero and was
+        #  ordered as though it added nothing. Measured: three of the ten references an attorney
+        #  cited for this subject were read in full and ranked 152, 253 and 346 of 498.
+        n_disc += r["verdict"] == "disclosed"
+        n_part += r["verdict"] == "partial"
+        n_unc += r["verdict"] == "uncertain"
+        covered.append({"item": r["item"], "verdict": r["verdict"], "kind": "claim",
+                        "idf": round(cidf.get(r["item"], 0.0), 3),
+                        "location": r.get("location") or "", "quote": r.get("quote") or "",
+                        "evidence_pub": r.get("evidence_pub") or ref.get("pub") or ""})
     got += LEAD_WEIGHT * sum(idf for _f, idf in lead)
     covered.sort(key=lambda c: -c["idf"])
     pct = 0.0 if total <= 0 else max(0.0, min(1.0, got / total))
@@ -712,6 +840,49 @@ def by_feature(charts, rar, top=6):
     return out
 
 
+def _spend_snapshot():
+    """Process-wide LLM counters, for differencing around a stage. Never raises."""
+    snap = {"usage": {}, "providers": {}}
+    try:
+        snap["usage"] = llm.process_usage()
+    except Exception:
+        pass
+    try:
+        import model_pool
+        snap["providers"] = {k: dict(v) for k, v in (model_pool.stats() or {}).items()}
+        snap["cached_tokens"] = model_pool.cached_tokens()
+    except Exception:
+        pass
+    return snap
+
+
+def _llm_spend(before):
+    """What this stage cost, as a difference against `before`.
+
+    Reported per provider as well as in total, because the tiers are priced an order of magnitude
+    apart (see model_pool) and "12,000 calls" says nothing about the bill on its own.
+    `model_pool.stats()` has existed all along and had no callers; this is its first one.
+    """
+    now = _spend_snapshot()
+    b, a = before.get("usage") or {}, now.get("usage") or {}
+    out = {k: int(a.get(k, 0)) - int(b.get(k, 0))
+           for k in ("calls", "prompt_tokens", "completion_tokens")}
+    providers = {}
+    for name, cur in (now.get("providers") or {}).items():
+        prev = (before.get("providers") or {}).get(name) or {}
+        calls = int(cur.get("calls", 0)) - int(prev.get("calls", 0))
+        errors = int(cur.get("errors", 0)) - int(prev.get("errors", 0))
+        if calls or errors:
+            providers[name] = {"calls": calls, "errors": errors}
+    out["providers"] = providers
+    #  Of `prompt_tokens`, how many were served from a provider-side cache at 0.25x. This is the
+    #  only number that answers "did the payload reorder actually work"; `prompt_tokens` counts
+    #  cached and uncached alike.
+    out["cached_prompt_tokens"] = max(
+        0, int(now.get("cached_tokens") or 0) - int(before.get("cached_tokens") or 0))
+    return out
+
+
 def run(report, reports_dir=None, slug=None, on_progress=None):
     """Screen wide, read deep, and return the authoritative ranking. Mutates `report`.
 
@@ -719,6 +890,9 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     ``/analysis/<slug>`` render from THIS reading instead of starting a second, separate one.
     """
     started = time.time()
+    #  WHAT THIS STAGE COSTS, measured rather than reconstructed afterwards. See llm.process_usage:
+    #  the report's existing `llm_usage` is scoped to the agent and misses essentially all of it.
+    usage_before = _spend_snapshot()
     #  THE CHECKLIST THE SEARCH IS ARGUED AGAINST. `elements` is a 11-12 item summary of the
     #  invention; `disclosures` is its claim limitations, its whole independent claims, what each
     #  dependent claim adds, and the teachings the description supports but the claims do not
@@ -743,7 +917,29 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         if text:
             claim_items.append({"label": f"claim {c.get('claim_no') or len(claim_items) + 1}",
                                 "claim_no": c.get("claim_no") or len(claim_items) + 1,
+                                #  Carried through because an INDEPENDENT claim with no prior art
+                                #  is the most serious hole a search can leave — it is the claim
+                                #  the patent stands on — and both the rescue's priority order and
+                                #  the chart's row labels need to know which ones those are.
+                                "independent": bool(c.get("independent")),
                                 "text": text})
+    #  TYPE A vs TYPE B. A disclosure with no claims is a concept search; a patent WITH claims is
+    #  an attack, and its unit of work is the limitation, not the claim and not the invention. See
+    #  limitations.py — the two objectives disagree constantly and sharing one was measurably
+    #  wrong: three references an attorney cited were read in full, grounded 0/0/1 of 28 invention
+    #  features, and were ranked 253/346/152 because each answers exactly one requirement.
+    stype = limmod.search_type(report)
+    lims = []
+    if stype == limmod.TYPE_B and claim_items:
+        try:
+            lims = limmod.split_claims(claim_items)
+        except Exception:
+            traceback.print_exc()
+        if lims:
+            #  The reader charts the limitations INSTEAD of the whole claims. Same machinery, same
+            #  grounding and refutation gates; a better question. The label is the ledger key.
+            claim_items = limmod.as_chart_items(lims)
+    report["search_type"] = stype
     ranked = list(report.get("ranked_families") or [])
     #  ORACLE INJECTION, diagnostic only. Hands a stage the gold it never received so the stages
     #  BELOW it can be measured in isolation. Disarmed unless a flag, a valid stage and a non-empty
@@ -784,6 +980,40 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     rows = [r for r in rows if not deep_analysis._same_pub(subject_pub, r["pub"])]
     if not rows:
         return None
+
+    #  FETCH FIRST, SCREEN SECOND. See PRESCREEN_ENRICH_TOP. `_enrich_missing_text` decides for
+    #  itself which of these hold no claims and no paragraphs, in retrieval order, so the whole
+    #  candidate list is offered and the budget picks the head of what is genuinely unreadable.
+    prescreen_enriched = 0
+    if PRESCREEN_ENRICH_TOP > 0:
+        t_pre = time.time()
+        emit("prescreen_enrich_start", n=len(rows))
+        prescreen_enriched = _enrich_missing_text(rows, on_progress=emit,
+                                                  limit=PRESCREEN_ENRICH_TOP)
+        if prescreen_enriched:
+            #  Rebuild the candidate text so the screener sees what was just fetched. One query
+            #  set over the same pids — the alternative is tracking which rows changed, and a row
+            #  that silently keeps its old empty text is the exact defect being fixed.
+            try:
+                conn2 = db.connect()
+                conn2.autocommit = True
+                try:
+                    rebuilt = _candidate_rows(conn2.cursor(), ranked[:SCREEN_TOP], reps, SCREEN_TOP)
+                finally:
+                    conn2.close()
+                fresh = {r["pub"]: r for r in rebuilt}
+                gained = 0
+                for r in rows:
+                    f = fresh.get(r["pub"])
+                    if f and f.get("has_text") and not r.get("has_text"):
+                        r["text"], r["has_text"] = f["text"], True
+                        gained += 1
+                print(f"[deep_rank] pre-screen text recovery: {prescreen_enriched} fetched, "
+                      f"{gained} candidates the screener can now read "
+                      f"({time.time() - t_pre:.0f}s)", flush=True)
+            except Exception:
+                traceback.print_exc()
+
     emit("screen_start", n=len(rows), batches=(len(rows) + SCREEN_BATCH - 1) // SCREEN_BATCH)
     t0 = time.time()
     scores = screen(rows, brief,
@@ -794,11 +1024,41 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     #  what the screen said (see ALWAYS_CHART_RETRIEVAL_HEAD).
     by_screen = sorted(rows, key=lambda r: (-(scores.get(r["pub"], -1)), r["rank"]))
     chosen, seen = [], set()
+
+    #  PER-CLAIM RETRIEVAL GETS FIRST CALL ON THE READ BUDGET. See claim_reach: the screen score is
+    #  one judgement about the invention as a whole, and it cannot know that claim 1[a] has four
+    #  hundred plausible references in the pool while claim 9[b] has twenty-one. Spending the whole
+    #  budget through that single ordering is why ten limitations finished the measured run still
+    #  uncovered and had to be rescued afterwards at 1h51m.
+    reach_map = {}
+    reach_n = 0
+    if claim_items:
+        t_reach = time.time()
+        try:
+            reach_map = claim_reach.reach(
+                claim_items, rows, brief=brief, subject=_subject_for(report, qd),
+                mode=report.get("mode") or "novelty", retriever=_shared_retriever(), emit=emit)
+            by_pub_row = {r["pub"]: r for r in rows}
+            for pub in claim_reach.quota(reach_map):
+                r = by_pub_row.get(pub)
+                if r is not None and pub not in seen:
+                    chosen.append(r)
+                    seen.add(pub)
+                    reach_n += 1
+            covered = sum(1 for hits in reach_map.values() if hits)
+            print(f"[claim_reach] one search per claim: {covered}/{len(claim_items)} claims found "
+                  f"candidates in the pool; {reach_n} references claimed a read slot "
+                  f"({time.time() - t_reach:.0f}s)", flush=True)
+        except Exception:
+            traceback.print_exc()
+
     for i, r in enumerate(by_screen):
         if len(chosen) >= CHART_TOP_MAX:
             break
         if i >= CHART_TOP and scores.get(r["pub"], -1) < CHART_MIN_SCREEN:
             break
+        if r["pub"] in seen:
+            continue
         chosen.append(r)
         seen.add(r["pub"])
     for r in rows[:ALWAYS_CHART_RETRIEVAL_HEAD]:
@@ -879,6 +1139,36 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         charts = list(ex.map(one, chosen))
     chart_seconds = time.time() - t0
 
+    #  THE PASSAGE TAIL — read the screened-but-uncut population per limitation, in batches.
+    #  See the BATCH_TAIL knob for why this exists and what it replaces.
+    if BATCH_TAIL and claim_items and reach_map:
+        try:
+            t2 = time.time()
+            by_pub_row = {r["pub"]: r for r in rows}
+            tail_pubs = [p for p in claim_reach.quota(reach_map, per_claim=BATCH_PER_LIM,
+                                                      exclude=seen, cap=BATCH_TAIL_MAX)
+                         if (by_pub_row.get(p) or {}).get("has_text")]
+            if tail_pubs:
+                emit("batch_tail_start", n=len(tail_pubs))
+                titles = {p: (by_pub_row.get(p) or {}).get("title") or "" for p in tail_pubs}
+                tail_refs = batch_reader.charts(tail_pubs, claim_items, kind="claim",
+                                                titles=titles, emit=emit)
+                for ref in tail_refs:
+                    row = by_pub_row.get(ref["pub"]) or {}
+                    ref["screen"] = scores.get(ref["pub"])
+                    ref["retrieval_rank"] = row.get("rank")
+                    ref["family"] = row.get("fam")
+                    seen.add(ref["pub"])
+                charts.extend(tail_refs)
+                cells = sum(1 for ref in tail_refs for r in ref.get("claims") or []
+                            if r.get("grounding") in ("verified", "teaches-unquoted"))
+                print(f"[batch_tail] {len(tail_refs)} tail references read against "
+                      f"{len(claim_items)} limitations: {cells} evidence cells "
+                      f"({time.time() - t2:.0f}s)", flush=True)
+                chart_seconds += time.time() - t2
+        except Exception:
+            traceback.print_exc()
+
     #  SECOND LOOK at the head, feature by feature, on the concepts rather than the wording. Only
     #  the rows a first reading left empty are re-asked, and an upgrade still has to pass the same
     #  grounding and location gates plus the refuter — a second look widens what the reader
@@ -915,8 +1205,68 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
               f"{reread_refs} of {len(prelim)} references ({time.time() - t1:.0f}s)", flush=True)
         chart_seconds += time.time() - t1
 
+    #  THE ORPHAN-CLAIM RESCUE. Runs HERE — after the whole search and reading are finished, before
+    #  anything is scored or ordered — so the references it brings back compete on the same
+    #  evidence as the rest of the report rather than being listed beside it. See claim_rescue.
+    #  THE LEDGER. One row per limitation, filled only from grounded, located, refuter-survived
+    #  cells, and it is the stopping rule for a Type B search: a budget that expires while claim 7
+    #  has nothing against it is an abandoned search, not a finished one, and the two have looked
+    #  identical on the page.
+    ledger = None
+    if lims:
+        try:
+            ledger = limmod.Ledger(lims)
+            n = ledger.ingest_charts(charts)
+            s = ledger.summary()
+            report["ledger"] = ledger.to_dict()
+            print(f"[ledger] {s['n_limitations']} limitations across {s['n_claims']} claims: "
+                  f"{s['counts']['covered']} covered, {s['counts']['partial']} partial, "
+                  f"{s['counts']['uncovered']} with nothing ({n} cells)"
+                  + (f" — ANTICIPATED: {', '.join(s['anticipated'])}" if s["anticipated"] else ""),
+                  flush=True)
+        except Exception:
+            traceback.print_exc()
+            ledger = None
+
+    rescue = {"ran": False}
+    if RESCUE_CLAIMS and claim_items:
+        t2 = time.time()
+        try:
+            rescued_refs, rescue = claim_rescue.run(
+                charts, claim_items, features, hints,
+                subject=_subject_for(report, qd), mode=report.get("mode") or "novelty",
+                retriever=_shared_retriever(), brief=brief,
+                title=(qd.get("label") or qd.get("title") or ""),
+                description=_subject_description(report, qd),
+                exclude_pubs=({r["pub"] for r in rows} |
+                              {c.get("pub") for c in charts if c.get("pub")}),
+                exclude_families={r["fam"] for r in rows},
+                enrich=lambda chosen: _enrich_missing_text(chosen, on_progress=emit),
+                ledger=ledger, emit=emit)
+            if rescued_refs:
+                charts.extend(rescued_refs)
+        except Exception:
+            traceback.print_exc()
+        chart_seconds += time.time() - t2
+        #  Re-ingest so the stored ledger is the FINAL state. Without this the report ships the
+        #  coverage the rescue was launched to fix, which is the one number it must not show.
+        if ledger is not None:
+            try:
+                ledger.ingest_charts(charts)
+                report["ledger"] = ledger.to_dict()
+                s2 = ledger.summary()
+                print(f"[ledger] after the rescue: {s2['counts']['covered']} covered, "
+                      f"{s2['counts']['partial']} partial, {s2['counts']['uncovered']} with "
+                      f"nothing; done={s2['done']}"
+                      + (f" — ANTICIPATED: {', '.join(s2['anticipated'])}"
+                         if s2["anticipated"] else ""), flush=True)
+            except Exception:
+                traceback.print_exc()
+
     rar = rarity(charts, features, [c["label"] for c in claim_items])
     lead_map = leaders(charts, rar)
+    for pub, leads in _claim_leaders(charts, rar).items():
+        lead_map.setdefault(pub, []).extend(leads)
     by_pub, order = {}, []
     for ref in charts:
         sc, detail = score_reference(ref, rar, lead=lead_map.get(ref["pub"], ()))
@@ -960,12 +1310,86 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
             idf = dict(rar["feature_idf"])
             if disc_weight:                    # rarity x how much the disclosure carries legally
                 idf = {k: v * disc_weight.get(k, 1.0) for k, v in idf.items()}
+            #  THE CLAIMS ARE PART OF THE OBJECTIVE. Same scale as a feature by default: a claim
+            #  and a disclosure are both things the report has to find art for, and weighting one
+            #  above the other is a thumb on the scale nobody measured. What makes the claims
+            #  reliably visible is the guarantee pass below, not a bigger number here.
+            for label, v in (rar.get("claim_idf") or {}).items():
+                idf[label] = v * CLAIM_COVERAGE_WEIGHT
             reordered, gains = coverage_rank.rank(
                 order, by_pub, idf, score_of=lambda p: by_pub[p]["score"])
             if len(reordered) == len(order):
                 for p, g in zip(reordered, gains):
                     by_pub[p]["marginal_gain"] = g
                 order = reordered
+        except Exception:
+            traceback.print_exc()
+
+    #  EVERY CLAIM'S BEST DISCLOSER GETS A SLOT. Greedy coverage maximises total mass, so a claim
+    #  disclosed once, weakly, by a document that covers nothing else is the very last thing it
+    #  picks — which is exactly the document an attorney needs and exactly the one that was at
+    #  rank 253 of 498. This promotes it into the window the page actually renders. It is a
+    #  reordering only: nothing is added, nothing is dropped.
+    if claim_items and order:
+        try:
+            promoted = coverage_rank.guarantee(
+                order, by_pub, [c["label"] for c in claim_items], window=DISPLAY_WINDOW)
+            if promoted:
+                order = promoted["order"]
+                for p in promoted["promoted"]:
+                    by_pub[p]["promoted_for_claim"] = promoted["promoted"][p]
+                print(f"[deep_rank] promoted {len(promoted['promoted'])} references into the "
+                      f"top {DISPLAY_WINDOW} as the only art found for a claim: "
+                      + ", ".join(f"{p} ({v})" for p, v in
+                                  list(promoted["promoted"].items())[:6]), flush=True)
+        except Exception:
+            traceback.print_exc()
+
+        #  THE PAGE AN ATTORNEY READS DOWN. Everything above optimises limitation mass, which
+        #  answers "how much of the invention is covered". This answers the other question, and it
+        #  is the one a 102 rejection is built from: which single document takes out the most
+        #  CLAIMS. The examiner in the measured docket used one reference against thirteen claims.
+        #  A document answering one limitation of each of five claims is worth more to that
+        #  argument than one answering five limitations of a single claim, and limitation mass
+        #  cannot tell those apart. Runs last so it refines the coverage order rather than
+        #  replacing it: ties keep their existing position.
+        try:
+            _claims = sorted({coverage_rank.claim_of(c["label"]) for c in claim_items})
+            #  PAGE MEMBERSHIP BEFORE PAGE ORDER, and OFF by default. `claim_first` below can only
+            #  sort the window it is handed, so a reference at rank 103 with grounded evidence can
+            #  never reach the page however it is sorted — which is exactly what both expert sets
+            #  showed. `claim_quota` reserves slots per claim from the whole order and fixes that
+            #  mechanically; it just did not measure well enough to switch on. See
+            #  coverage_rank.RESERVE_PER_CLAIM for the sweep.
+            if coverage_rank.RESERVE_PER_CLAIM > 0:
+                q = coverage_rank.claim_quota(order, by_pub, _claims, window=DISPLAY_WINDOW)
+                if q:
+                    order = q["order"]
+                    report["claim_quota"] = {"reserved": len(q["reserved"]),
+                                             "promoted": len(q["promoted"]),
+                                             "per_claim": q["per_claim"]}
+                    print(f"[coverage] claim quota reserved {len(q['reserved'])} cards, "
+                          f"{len(q['promoted'])} of them from outside the page", flush=True)
+            cf = coverage_rank.claim_first(
+                order, by_pub, _claims,
+                window=DISPLAY_WINDOW)
+            if cf:
+                order = cf["order"]
+                for p, c in (cf.get("promoted") or {}).items():
+                    by_pub[p]["promoted_for_claim"] = c
+                report["claim_page"] = {
+                    "claims_answered": cf["claims_answered"], "n_claims": cf["n_claims"],
+                    "claims_answered_strong": cf.get("claims_answered_strong"),
+                    "per_claim": cf["per_claim"], "promoted": cf.get("promoted") or {}}
+                empty = [c for c, n in cf["per_claim"].items() if n == 0]
+                print(f"[deep_rank] page ordered by claims disclosed: "
+                      f"{cf['claims_answered']}/{cf['n_claims']} claims have at least one "
+                      f"plausible match on the page "
+                      f"({cf.get('claims_answered_strong')} of them a full disclosure)"
+                      + (f"; promoted {len(cf['promoted'])} to answer "
+                         f"{', '.join(list(cf['promoted'].values())[:5])}"
+                         if cf.get("promoted") else "")
+                      + (f"; NO ART ANYWHERE for {', '.join(empty)}" if empty else ""), flush=True)
         except Exception:
             traceback.print_exc()
 
@@ -1026,9 +1450,16 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         "enriched": enriched,
         #  What the concept layer and the second look actually did, so both can be measured from a
         #  finished report rather than taken on trust.
+        "prescreen_enriched": prescreen_enriched,
         "concept_hints": len(hints),
         "reread_refs": reread_refs,
         "reread_cells": reread_changed,
+        "rescue": rescue,
+        "search_type": stype,
+        "n_limitations": len(lims),
+        "ledger_summary": (ledger.summary() if ledger else None),
+        "claim_idf": {k: round(v, 3) for k, v in (rar.get("claim_idf") or {}).items()},
+        "claim_df": rar.get("claim_df") or {},
         "n_candidates": len(rows),
         "charted": len(charts),
         "n_features": len(features),
@@ -1041,8 +1472,20 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         "screen_seconds": round(screen_seconds, 1),
         "chart_seconds": round(chart_seconds, 1),
         "seconds": round(time.time() - started, 1),
+        "llm": _llm_spend(usage_before),
+        "claim_reach": {"claims_searched": len(reach_map),
+                        "claims_with_candidates": sum(1 for h in reach_map.values() if h),
+                        "read_slots_claimed": reach_n,
+                        "per_claim": {k: len(v) for k, v in reach_map.items()}},
     }
     report["deep_rank"] = result
+    sp = result["llm"]
+    cached = sp.get("cached_prompt_tokens") or 0
+    share = (100.0 * cached / sp["prompt_tokens"]) if sp.get("prompt_tokens") else 0.0
+    print(f"[deep_rank] LLM spend: {sp['calls']:,} calls, "
+          f"{sp['prompt_tokens']:,} prompt ({cached:,} = {share:.0f}% served from cache) + "
+          f"{sp['completion_tokens']:,} completion tokens"
+          + (f"; by provider {sp['providers']}" if sp.get("providers") else ""), flush=True)
 
     #  Hand the reading straight to deep_analysis's cache: it is the same schema, the same
     #  grounding and the same refutation, so re-reading these references would be pure waste.
@@ -1053,6 +1496,58 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         except Exception:
             pass
     return result
+
+
+def _subject_for(report, qd):
+    """A search_modes.Subject for the document the search started from, or None.
+
+    The rescue searches the corpus again, and a search with no subject has no date cutoff: it will
+    happily return art published after the invention. `external.subject_from_doc` resolves the
+    local row first and App A's merged record second, which is the same route the search itself
+    used, so the cutoff is identical.
+    """
+    num = report.get("subject") or qd.get("publication_number") or ""
+    if not num:
+        return None
+    try:
+        import external
+        return external.subject_from_doc(num)
+    except Exception:
+        return None
+
+
+def _subject_description(report, qd):
+    """The invention's own description, as context for restating a dependent claim.
+
+    An upload carries its full text on the report. A LINK does not — only the claims are stashed —
+    so the description is read back out of the corpus, which is where the search found the document
+    in the first place.
+    """
+    txt = str(qd.get("disclosure_text") or "").strip()
+    if len(txt) >= 400:
+        return txt[:20000]
+    num = report.get("subject") or qd.get("publication_number") or ""
+    if not num:
+        return txt
+    try:
+        ref = deep_analysis.full_text(num, max_chars=30000)
+        if not ref.get("found"):
+            return txt
+        body = " ".join(p["text"] for p in ref["passages"]
+                        if p["kind"] not in ("claim",))[:20000]
+        return body or txt
+    except Exception:
+        return txt
+
+
+def _shared_retriever():
+    """The app's one Retriever. Building another loads a multi-million-row family map."""
+    try:
+        import webapp
+        return webapp.retriever()
+    except Exception:
+        import retrieval
+        return retrieval.Retriever()
 
 
 def _publish_deep_analysis(reports_dir, slug, report, charts, order, features, claim_items, qd,

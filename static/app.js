@@ -1738,35 +1738,60 @@ async function openSimilar(pn){
    backwards, each stage keeps the numbers it learned, and the active stage shows how long it has
    been running — a silent server still reads as visible, honest progress. */
 const LIVE_CORPUS_N = Number((typeof window !== 'undefined' && window.CORPUS_PUBLICATIONS) || 0);
-const LIVE_CORPUS_NOTE = LIVE_CORPUS_N
-  ? 'Searching ' + LIVE_CORPUS_N.toLocaleString() + ' publications in the latest measured corpus snapshot through dense, sparse, CPC, citation and cross-lingual retrieval channels.'
-  : 'Searching the live indexed corpus through dense, sparse, CPC, citation and cross-lingual retrieval channels.';
+const LIVE_CORPUS_NOTE = (LIVE_CORPUS_N
+  ? 'Our own pgvector corpus of ' + LIVE_CORPUS_N.toLocaleString() + ' publications with full claims and description text, '
+  : 'Our own pgvector corpus with full claims and description text, ')
+  + 'searched through eight channels at once: dense and claim-dense embeddings, sparse BM25 over '
+  + 'claims and full text, CPC classification, backward and forward citations, query-by-example '
+  + 'and cross-lingual EN/DE.';
+/*  THE STAGE LIST IS WHAT THE USER BELIEVES IS HAPPENING, so it has to match what is.
+
+    It did not. Two defects, both visible on a five-hour run:
+      * `KIND_RANK` topped out at `reranking`, so the deep read and the orphan-claim rescue — which
+        together are the overwhelming majority of a search's wall clock — had no stage at all. The
+        page parked on "Reranking and grounding" and its note for over two hours while the elapsed
+        timer counted, which reads as a hang and describes the wrong work entirely.
+      * the rerank note said "the closest 25 references" when retrieval.RERANK_TOP is 50, and the
+        corpus note listed a handful of channels as though the local index were the whole search.  */
 const STAGES = [
   { key: 'decompose', rank: 0, name: 'Reading the disclosure',
-    note: 'Decomposing the invention into independent technical elements.' },
-  { key: 'search',    rank: 1, name: 'Searching the corpus',
+    note: 'Extracting the claims verbatim, splitting them into their separate limitations, and condensing the document into a search brief.' },
+  { key: 'search',    rank: 1, name: 'Searching our corpus',
     note: LIVE_CORPUS_NOTE },
   { key: 'expand',    rank: 2, name: 'Expanding the candidate set',
-    note: 'Following citations, patent families and EN/DE equivalents outward from the seed hits.' },
-  { key: 'rounds',    rank: 3, name: 'Refinement rounds',
-    note: 'Re-querying on the elements that are still uncovered, until new families stop appearing.' },
-  { key: 'rerank',    rank: 4, name: 'Reranking and grounding',
-    note: 'A bge-reranker cross-encoder rescores the closest 25 references, then each claim-chart cell is grounded in real text.' },
-  { key: 'federate',  rank: 5, name: 'Wider search — external APIs',
-    note: 'Querying every configured external source in parallel, then fusing the results by reciprocal rank.' },
-  { key: 'done',      rank: 6, name: 'Report ready', note: '' }
+    note: 'Following citations, patent families and EN/DE equivalents outward from the seed hits, plus the query document\'s own text chunks and a drawing-image match against the corpus figure index.' },
+  { key: 'federate',  rank: 3, name: 'Every external source, in parallel',
+    note: 'BigQuery Google Patents (all 170M publications), SerpApi Google Patents, PQAI, EPO OPS, USPTO ODP, OpenAlex, HimmPat (CN/JP/KR with English full text), IP Australia, Lens.org and KIPRIS — whichever are configured — fused with the local results by reciprocal rank.' },
+  { key: 'rounds',    rank: 4, name: 'Refinement rounds',
+    note: 'Re-querying on the limitations that are still uncovered, until new families stop appearing.' },
+  { key: 'screen',    rank: 5, name: 'Screening the candidates',
+    note: 'Every candidate scored 0-100 from its title, abstract and first claims, to decide which are worth reading in full.' },
+  { key: 'read',      rank: 6, name: 'Reading references in full',
+    note: 'Each selected reference read end to end against every claim limitation and disclosure. Every cell carries a verbatim quote that must be found in the reference and located in a specific passage, then survive an independent refuter. This is the longest stage.' },
+  { key: 'rescue',    rank: 7, name: 'Going back for uncovered claims',
+    note: 'Any limitation still without prior art gets its own search, and what comes back is read in full against the same checklist.' },
+  { key: 'rerank',    rank: 8, name: 'Reranking and grounding',
+    note: 'A bge-reranker cross-encoder rescores the closest ' + (window.RERANK_TOP || 50) + ' references, then the page is ordered by rarity-weighted grounded evidence and by how many claims each reference answers.' },
+  { key: 'done',      rank: 9, name: 'Report ready', note: '' }
 ];
 const KIND_RANK = {
   elements: 1, search_progress: 1, seeded: 2, seed_progress: 2, partial: 2,
-  round: 3, round_progress: 3, reranking: 4, rerank_progress: 4,
-  federating: 5, done: 6
+  federating: 3, round: 4, round_progress: 4,
+  screen_start: 5, screen_progress: 5,
+  claim_reach_start: 6, claim_reach_progress: 6, chart_progress: 6, reread_start: 6,
+  batch_read_progress: 6,
+  rescue_start: 7, rescue_reread_start: 7, rescue_search_start: 7,
+  rescue_search_progress: 7, rescue_read_start: 7, rescue_read_progress: 7,
+  worldset_build_start: 7, worldset_built: 7, worldset_ingest_start: 7, limq_build_start: 7,
+  reranking: 8, rerank_progress: 8, done: 9
 };
-
 function createProgress(mount, opts){
   opts = opts || {};
   const wide = !!opts.wide;
   const stages = STAGES.filter(s => s.key !== 'federate' || wide);
-  const state = { rank: 0, detail: {}, since: Date.now(), started: Date.now(), msg: '' };
+  const DONE_RANK = STAGES[STAGES.length - 1].rank;   // was hardcoded 6; the list is longer now
+  const state = { rank: 0, detail: {}, since: Date.now(), started: Date.now(), msg: '',
+                  tokens: 0, elapsed: 0 };
   mount.innerHTML = '<ul class="stages">' + stages.map(s =>
     '<li data-rank="' + s.rank + '"><span class="ico" aria-hidden="true">✓</span>' +
     '<span class="txt"><span class="st-name">' + s.name + '</span>' +
@@ -1788,7 +1813,7 @@ function createProgress(mount, opts){
       const li = mount.querySelector('li[data-rank="' + s.rank + '"]');
       if (!li) return;
       li.classList.toggle('done', s.rank < state.rank);
-      li.classList.toggle('active', s.rank === state.rank && state.rank < 6);
+      li.classList.toggle('active', s.rank === state.rank && state.rank < DONE_RANK);
       const el = li.querySelector('.st-note');
       if (s.rank === state.rank){
         const bits = facts();
@@ -1796,7 +1821,7 @@ function createProgress(mount, opts){
         // shows movement. Finished stages fall back to their plain description — leaving a frozen
         // "Running 12s" on a completed row reads as a hang, which is the bug this replaced.
         el.textContent = s.note + (bits.length ? ' ' + bits.join(' · ') + '.' : '') +
-          (s.rank < 6 ? ' Running ' + fmtDur(Date.now() - state.since) + '.' : '');
+          (s.rank < DONE_RANK ? ' Running ' + fmtDur(Date.now() - state.since) + '.' : '');
       } else {
         el.textContent = s.note;
       }
@@ -1808,9 +1833,24 @@ function createProgress(mount, opts){
       live.textContent = cur.name + (bits.length ? ' — ' + bits.join(', ') : '');
     }
     const bar = document.getElementById('bar');
-    if (bar) bar.style.width = Math.min(97, (state.rank / 6) * 100 + 6).toFixed(0) + '%';
+    if (bar) bar.style.width = Math.min(97, (state.rank / DONE_RANK) * 100 + 6).toFixed(0) + '%';
     const el = document.getElementById('elapsed');
-    if (el) el.textContent = fmtDur(Date.now() - state.started) + ' elapsed';
+    if (el){
+      //  The server's own clock wins when it has one: this page may have been opened long after
+      //  the search started, and a client-side stopwatch would then read minutes short.
+      const secs = state.elapsed || Math.round((Date.now() - state.started) / 1000);
+      let txt = fmtDur(secs * 1000) + ' elapsed';
+      if (state.tokens > 0){
+        const t = state.tokens;
+        txt += ' · ~' + (t >= 1e6 ? (t / 1e6).toFixed(1) + 'M' :
+                         t >= 1e3 ? Math.round(t / 1e3) + 'k' : t) + ' tokens';
+      }
+      el.textContent = txt;
+      el.title = state.tokens > 0
+        ? 'Estimated model tokens spent by this search so far (prompt + completion). Approximate: '
+          + 'the counter is process-wide, so a second search running at the same time is counted here too.'
+        : '';
+    }
   }
   paint();
   const timer = setInterval(paint, 1000);
@@ -1820,6 +1860,8 @@ function createProgress(mount, opts){
       const r = KIND_RANK[ev.kind];
       if (r != null && r > state.rank){ state.rank = r; state.since = Date.now(); }
       if (ev.detail) Object.assign(state.detail, ev.detail);
+      if (typeof ev.tokens === 'number' && ev.tokens > state.tokens) state.tokens = ev.tokens;
+      if (typeof ev.elapsed_sec === 'number' && ev.elapsed_sec > state.elapsed) state.elapsed = ev.elapsed_sec;
       if (ev.msg) state.msg = ev.msg;
       paint();
     },
@@ -2199,3 +2241,165 @@ async function streamNewCards(){
   };
   setTimeout(tick, 3000);
 }
+
+/* ── the public link: publish, password, revoke ───────────────────────────────────────────────
+   The owner's control. Everything it does is one POST; the dialog exists so a password and a
+   revoke are not two more buttons on an already busy toolbar. */
+(function publishLink() {
+  var btn = document.getElementById('publishBtn');
+  var dlg = document.getElementById('publishDlg');
+  if (!btn || !dlg || !dlg.showModal) return;
+  var slug = btn.dataset.slug;
+  var url = (window.APP_BASE || '') + '/public-report/' + slug;
+  var out = document.getElementById('publishUrl');
+  var pw = document.getElementById('publishPw');
+  var pwState = document.getElementById('publishPwState');
+  var state = document.getElementById('publishState');
+  var save = document.getElementById('publishSave');
+  var revoke = document.getElementById('publishRevoke');
+  var clearPw = document.getElementById('publishClearPw');
+
+  function paint() {
+    var live = btn.dataset.published === 'true';
+    var hasPw = btn.dataset.haspassword === 'true';
+    out.value = live ? location.origin + url : '';
+    out.placeholder = live ? '' : 'not published yet';
+    save.textContent = live ? 'Update' : 'Publish';
+    revoke.hidden = !live;
+    clearPw.hidden = !(live && hasPw);
+    pwState.textContent = hasPw
+      ? 'A password is set. Type a new one to change it, or remove it below.'
+      : 'No password — anyone with the link can open it.';
+    state.textContent = live
+      ? 'Anyone with this link can read the report. No account needed, and nothing on the public page can change or re-run the search.'
+      : 'Publishing creates a link that opens without an account. Until then the address does not resolve at all.';
+    btn.textContent = live ? 'Public link ✓' : 'Export';
+  }
+
+  function post(body) {
+    return fetch((window.APP_BASE || '') + '/report/' + slug + '/publish', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.CSRF_TOKEN || ''},
+      body: JSON.stringify(Object.assign({csrf_token: window.CSRF_TOKEN || ''}, body))
+    }).then(function (r) { return r.json(); });
+  }
+
+  btn.addEventListener('click', function () { paint(); dlg.showModal(); });
+  save.addEventListener('click', function () {
+    save.disabled = true;
+    post({password: pw.value || ''}).then(function (d) {
+      save.disabled = false;
+      if (!d || !d.ok) { pwState.textContent = 'Could not publish. Try again.'; return; }
+      btn.dataset.published = 'true';
+      btn.dataset.haspassword = d.has_password ? 'true' : 'false';
+      pw.value = '';
+      paint();
+    }).catch(function () { save.disabled = false; });
+  });
+  clearPw.addEventListener('click', function () {
+    post({clear_password: true}).then(function (d) {
+      if (d && d.ok) { btn.dataset.haspassword = 'false'; paint(); }
+    });
+  });
+  revoke.addEventListener('click', function () {
+    if (!confirm('Revoke the public link? Anyone holding it will get a 404. The viewer log is kept.')) return;
+    post({revoke: true}).then(function (d) {
+      if (d && d.ok) { btn.dataset.published = 'false'; paint(); }
+    });
+  });
+  document.getElementById('publishCopy').addEventListener('click', function () {
+    if (!out.value) return;
+    out.select();
+    (navigator.clipboard ? navigator.clipboard.writeText(out.value) : Promise.reject())
+      .catch(function () { try { document.execCommand('copy'); } catch (e) {} });
+    var b = document.getElementById('publishCopy');
+    b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1400);
+  });
+})();
+
+/* ── what only the page can know about its reader ─────────────────────────────────────────────
+   The server already has the address, the user agent, the languages and the client hints. It
+   cannot have the screen, the timezone, the capabilities, or TIME ON PAGE — which is not a
+   property of a request at all. It is a property of a session, so it has to be measured while it
+   happens and sent as it ends.
+
+   A heartbeat every 15s while the page is VISIBLE, plus a final sendBeacon on pagehide. The server
+   keeps the largest reading it has been told, so a closed laptop or a killed tab leaves the last
+   good number rather than resetting it to zero. Visible-only, because a tab left open in the
+   background overnight is not four hundred minutes of reading. */
+(function publicVisitTelemetry() {
+  var meta = document.getElementById('publicVisit');
+  if (!meta) return;
+  var key = meta.dataset.visitKey, slug = meta.dataset.slug;
+  if (!key) return;
+  var url = (window.APP_BASE || '') + '/public-report/' + slug + '/beacon';
+  var visible = 0, last = Date.now(), maxScroll = 0, sent = 0;
+
+  function tickVisible() {
+    var now = Date.now();
+    if (document.visibilityState === 'visible') visible += (now - last) / 1000;
+    last = now;
+  }
+  function scrollPct() {
+    var h = document.documentElement;
+    var total = (h.scrollHeight - h.clientHeight);
+    if (total <= 0) return 100;
+    return Math.max(0, Math.min(100, Math.round((h.scrollTop || window.pageYOffset) / total * 100)));
+  }
+  function facts() {
+    var n = navigator || {}, s = screen || {};
+    var conn = n.connection || {};
+    var uad = n.userAgentData || {};
+    var nav0 = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || {};
+    return {
+      visit_key: key,
+      seconds_on_page: Math.round(visible),
+      max_scroll_pct: maxScroll,
+      screen_w: s.width, screen_h: s.height, avail_w: s.availWidth, avail_h: s.availHeight,
+      viewport_w: window.innerWidth, viewport_h: window.innerHeight,
+      color_depth: s.colorDepth, pixel_ratio: window.devicePixelRatio,
+      timezone: (Intl.DateTimeFormat().resolvedOptions() || {}).timeZone,
+      timezone_offset: new Date().getTimezoneOffset(),
+      languages: n.languages ? Array.prototype.slice.call(n.languages) : [],
+      language: n.language, platform: n.platform, vendor: n.vendor, user_agent: n.userAgent,
+      hardware_concurrency: n.hardwareConcurrency, device_memory: n.deviceMemory,
+      max_touch_points: n.maxTouchPoints,
+      connection: conn.effectiveType, downlink: conn.downlink, rtt: conn.rtt,
+      save_data: !!conn.saveData,
+      cookies_enabled: n.cookieEnabled, do_not_track: n.doNotTrack,
+      referrer: document.referrer,
+      page_load_ms: nav0.duration ? Math.round(nav0.duration) : null,
+      prefers_dark: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches,
+      prefers_reduced_motion: window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      orientation: (s.orientation || {}).type,
+      ua_brands: (uad.brands || []).map(function (b) { return b.brand + ' ' + b.version; }),
+      ua_platform: uad.platform, ua_mobile: uad.mobile,
+      history_length: history.length,
+      /* An honest self-report. Automation usually leaves it set, and a dashboard that cannot tell
+         a person from a link preview is counting an audience that was never there. */
+      webdriver: !!n.webdriver
+    };
+  }
+  function send(useBeacon) {
+    tickVisible();
+    maxScroll = Math.max(maxScroll, scrollPct());
+    var body = JSON.stringify(facts());
+    sent++;
+    if (useBeacon && navigator.sendBeacon) {
+      navigator.sendBeacon(url, new Blob([body], {type: 'application/json'}));
+      return;
+    }
+    fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: body, keepalive: true}).catch(function () {});
+  }
+
+  document.addEventListener('visibilitychange', tickVisible);
+  window.addEventListener('scroll', function () {
+    maxScroll = Math.max(maxScroll, scrollPct());
+  }, {passive: true});
+  /* First one immediately, so a visitor who closes the tab in three seconds is still a recorded
+     reading with a browser and a screen attached to it. */
+  setTimeout(function () { send(false); }, 900);
+  setInterval(function () { send(false); }, 15000);
+  window.addEventListener('pagehide', function () { send(true); });
+})();

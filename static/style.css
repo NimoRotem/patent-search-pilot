@@ -1831,3 +1831,82 @@ td.cell-unrelated .cmark{color:var(--bad)}td.cell-no-coord .cmark,td.cell-unchec
   .landmetrics>div{padding:15px}.refhead{gap:9px}.rthumb{display:none}.selcol{order:2}.rbody{order:1;width:100%}
   .footerbrand span{max-width:280px}.authcard{padding:23px 19px}
 }
+
+
+/* ---- claim chart: both axes sticky ---------------------------------------
+   The grid is now up to 40 references wide and as tall as the feature list, so
+   it can only be explored if the element column and the reference header stay
+   on screen while scrolling in either direction. The wrapper owns the scroll;
+   the header cells stick to its top, the first column to its left, and the
+   top-left corner needs the higher z-index or the column overlaps it. */
+.chart-sticky{overflow:auto;max-height:78vh;position:relative}
+.chart-sticky table{border-collapse:separate;border-spacing:0}
+.chart-sticky thead th{position:sticky;top:0;z-index:3;background:var(--card,#fff)}
+.chart-sticky tbody th{position:sticky;left:0;z-index:2;background:var(--card,#fff);
+  max-width:320px;white-space:normal;text-align:left}
+.chart-sticky thead th:first-child{left:0;z-index:4}
+.chart-sticky td,.chart-sticky th{border:1px solid var(--border,#ddd)}
+.elalso{color:var(--muted,#777)}
+@media print{.chart-sticky{max-height:none;overflow:visible}
+  .chart-sticky thead th,.chart-sticky tbody th{position:static}}
+
+
+/* ---- claim chart rows ----------------------------------------------------
+   A claim row carries the claim's own wording, which is a paragraph, not a
+   phrase. It is clamped to a few lines so forty claims still scroll, and the
+   full text is one click away in the cell popover. A row with no prior art at
+   all gets a marked left edge: that is the finding this table exists to
+   surface, and it must not look like an ordinary empty row. */
+.chart-sticky tbody th .clno{display:block;font-weight:600}
+.chart-sticky tbody th .indep{font-weight:400;font-size:.72rem;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--muted,#777)}
+.chart-sticky tbody th .cltext{display:block;font-weight:400;line-height:1.35;margin:.15rem 0;
+  max-height:5.4em;overflow:hidden;color:var(--fg,#222)}
+tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
+.gridwarnt{color:var(--warn,#c98a00)}
+
+
+/* ---- the claim ledger ----------------------------------------------------
+   Down the claims, not across the references. Status is the only colour that
+   carries meaning: green where art exists, amber where it does not, and the
+   anticipated marker for the one finding that ends a claim outright. */
+.ledgerblock{margin-bottom:1rem}
+.lclaim{border:1px solid var(--border,#ddd);border-radius:6px;margin:.6rem 0;overflow:hidden}
+.lchead{display:flex;gap:.5rem;align-items:baseline;flex-wrap:wrap;padding:.45rem .6rem;
+  background:var(--bg2,#fafafa);border-bottom:1px solid var(--border,#eee)}
+.lstatus{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;padding:.05rem .4rem;
+  border-radius:3px;background:var(--border,#eee)}
+.ls-anticipated{background:#1b7f4b;color:#fff}
+.ls-covered{background:#dff0e5;color:#155f38}
+.ls-partial{background:#fdf0d5;color:#7a5300}
+.ls-uncovered{background:#fbe3e3;color:#8a1f1f}
+.antic,.anticby{color:#1b7f4b;font-weight:600}
+.anticby{font-weight:400;font-size:.8rem}
+.llim{padding:.4rem .6rem;border-top:1px solid var(--border,#f0f0f0)}
+.ll-uncovered{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
+.lltext{line-height:1.4}
+.llev{margin:.25rem 0 0;padding-left:1rem;font-size:.86rem}
+.llev li{margin:.15rem 0}
+.llv{font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;margin:0 .3rem}
+.llv-disclosed{color:#155f38}.llv-partial{color:#7a5300}.llv-uncertain{color:#777}
+.llq{color:var(--muted,#666);font-style:italic}
+.llnone{color:var(--warn,#c98a00);font-size:.86rem;margin-top:.2rem}
+
+/* --- one smart search box --- */
+/*  The query box is now also the drop target and the place a patent link is recognised, so it
+    carries the affordances the separate dropzone used to: a dashed hover edge, an accent drag
+    state, and a busy state while a document is being read.  */
+#qbox{transition:border-color .12s ease, background .12s ease}
+#qbox.dragover{border-color:var(--accent);background:var(--accent-soft);
+  box-shadow:0 0 0 3px var(--accent-soft)}
+#qbox.is-busy{opacity:.7;cursor:progress}
+.qhint{margin-top:7px;display:block}
+.qhint .linklike{white-space:nowrap}
+
+/* --- pending sources and disabled post-search actions --- */
+.actions-pending .btn,.actions-pending .archivecompact,.actions-pending .inlineform{
+  pointer-events:none;opacity:.42;cursor:not-allowed;filter:grayscale(1)}
+.providerlist li.s-pending{opacity:.75}
+.providerlist li.s-pending .srcmark{animation:srcpulse 1.4s ease-in-out infinite}
+@keyframes srcpulse{0%,100%{opacity:.35}50%{opacity:1}}
+.chip.prov-local{background:var(--s2);border-color:var(--line2)}

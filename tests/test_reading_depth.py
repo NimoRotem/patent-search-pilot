@@ -55,7 +55,8 @@ def _stub(monkeypatch, answer_for):
     def chat(system, user, **kw):
         if "REFUTE" in system.upper():
             return {"checks": []}
-        payload = json.loads(user)
+        joined = user if isinstance(user, str) else "".join(s["text"] for s in user)
+        payload = json.loads(joined)
         feats = [f if isinstance(f, str) else f.get("item")
                  for f in (payload.get("subject_features") or payload.get("features") or [])]
         seen.append(feats)
@@ -143,7 +144,10 @@ def test_concept_expansions_are_sent_to_the_reader(monkeypatch):
     def chat(system, user, **kw):
         if "REFUTE" in system.upper():
             return {"checks": []}
-        payloads.append(json.loads(user))
+        #  The reader payload is now SEGMENTED (doc prefix / volatile tail) for the Anthropic
+        #  cache breakpoint; joined it is the same JSON string as before.
+        joined = user if isinstance(user, str) else "".join(s["text"] for s in user)
+        payloads.append(json.loads(joined))
         return {"features": [{"item": feats[0], "verdict": "absent", "quote": ""}]}
     monkeypatch.setattr(deep_analysis.llm, "chat_json", chat)
     monkeypatch.setattr(deep_analysis, "full_text", lambda pub, **kw: dict(REF, pub=pub))

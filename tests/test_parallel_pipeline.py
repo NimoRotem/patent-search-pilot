@@ -133,7 +133,7 @@ def test_load_doc_materials_missing_token_is_none():
     assert webapp._load_doc_materials("does-not-exist") is None
 
 
-def test_attach_query_document_is_upload_only():
+def test_attach_query_document_keeps_the_claims_of_an_upload():
     rep = {}
     webapp._attach_query_document(rep, {"source": "upload", "label": "claims.pdf",
                                   "title": "RFID lifter", "full_text": "Verbatim disclosure",
@@ -143,8 +143,38 @@ def test_attach_query_document_is_upload_only():
     assert rep["query_document"]["label"] == "claims.pdf"
     assert rep["query_document"]["n_claims"] == 1
     assert rep["query_document"]["disclosure_text"] == "Verbatim disclosure"
+    assert rep["query_document"]["source"] == "upload"
+
+
+def test_attach_query_document_keeps_the_claims_of_a_linked_patent():
+    """A LINK counts. This used to be asserted the other way round, and that assertion was the bug.
+
+    ``query_document`` is the only place the reading stage looks for the subject's claims
+    (``deep_rank.run`` reads ``report["query_document"]["claims"]`` and hands them to every
+    reader), so refusing to attach it for a link meant a search started from a patent URL had its
+    claims extracted, stashed and embedded for RETRIEVAL and then never put to a single reference.
+    The claim chart came back empty and the report read as "no prior art discloses these claims",
+    which is the opposite of "nobody looked".
+    """
+    rep = {}
+    claims = [{"claim_no": 1, "text": "a vacuum lifter", "independent": True},
+              {"claim_no": 2, "text": "the lifter of claim 1, wherein the seal is annular",
+               "independent": False}]
+    webapp._attach_query_document(rep, {"source": "link", "label": "US20260109053A1",
+                                        "publication_number": "US-20260109053-A1",
+                                        "claims": claims})
+    assert rep["query_document"]["n_claims"] == 2
+    assert rep["query_document"]["source"] == "link"
+    assert rep["query_document"]["publication_number"] == "US-20260109053-A1"
+    #  A link stashes no full text, and everything downstream treats the disclosure as optional.
+    assert rep["query_document"]["disclosure_text"] == ""
+
+
+def test_attach_query_document_refuses_a_document_with_nothing_in_it():
     untouched = {}
-    webapp._attach_query_document(untouched, {"source": "link", "claims": rep["query_document"]["claims"]})
+    webapp._attach_query_document(untouched, {"source": "link", "claims": [], "full_text": "  "})
+    assert "query_document" not in untouched
+    webapp._attach_query_document(untouched, None)
     assert "query_document" not in untouched
 
 
