@@ -101,7 +101,12 @@ def test_the_best_verdict_wins_when_a_pair_is_answered_twice(monkeypatch):
 
 
 def test_documents_lead_the_payload_so_requirements_share_a_cache_prefix(monkeypatch):
-    """83% of prompt tokens came from cache in the A/B, and only because of this ordering."""
+    """83% of prompt tokens came from cache in the A/B, and only because of this ordering.
+
+    The payload is now SEGMENTED (doc prefix / volatile tail) so Anthropic gets an explicit
+    cache breakpoint; joined, the segments must still read documents-first, and the document
+    segment — not the requirement — must be the one flagged for caching.
+    """
     _fake_loaded(monkeypatch, {"US-A": DOC_A})
     seen = {}
 
@@ -111,4 +116,8 @@ def test_documents_lead_the_payload_so_requirements_share_a_cache_prefix(monkeyp
 
     monkeypatch.setattr(BR.llm, "chat_json", capture)
     BR.read(["US-A"], ITEMS[:1], workers=1)
-    assert seen["user"].index('"references"') < seen["user"].index('"requirement"')
+    segs = seen["user"] if isinstance(seen["user"], list) else [{"text": seen["user"]}]
+    joined = "".join(s["text"] for s in segs)
+    assert joined.index('"references"') < joined.index('"requirement"')
+    assert segs[0].get("cache") and '"references"' in segs[0]["text"]
+    assert not segs[-1].get("cache") and '"requirement"' in segs[-1]["text"]

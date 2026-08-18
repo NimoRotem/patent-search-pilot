@@ -161,3 +161,17 @@ def test_analyse_reference_reuses_stored_chart(monkeypatch):
         with db.cursor() as cur:
             cur.execute("DELETE FROM evidence_charts WHERE publication_number=%s", (pub,))
             cur.execute("DELETE FROM evidence_cells WHERE publication_number=%s", (pub,))
+
+
+def test_ranked_tail_page_renders_every_ranked_family(app_client=None):
+    import webapp
+    webapp.app.config["TESTING"] = True
+    client = webapp.app.test_client()
+    slug = "grabo_gripper_novelty"                        # cached gold report in data/reports
+    r = client.get(f"/report/{slug}/ranked")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert "Full ranked list" in html and "ranked families" in html
+    #  Pagination clamps and never 500s on junk.
+    assert client.get(f"/report/{slug}/ranked?start=999999&n=abc").status_code == 200
+    assert client.get("/report/does-not-exist-zzz/ranked").status_code == 404

@@ -241,7 +241,8 @@
         <span class="runline">
           <span class="runfacts">
             <span><b>{{ v.cards|length }}</b> references</span>
-            <span><b>{{ '{:,}'.format(v.n_families or 0) }}</b> families</span>
+            <span><b>{{ '{:,}'.format(v.n_families or 0) }}</b> families{% if v.slug and not read_only %}
+              · <a href="{{ url_for('ranked_tail', slug=v.slug) }}">full ranked list</a>{% endif %}</span>
             <span><b>{{ v.elements|length }}</b> elements</span>
             <span>{{ v.mode.replace('_',' ')|title }}</span>
             <span>{{ 'Claims' if v.search_focus == 'claims' else 'All text' }}</span>

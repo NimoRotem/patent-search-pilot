@@ -2003,6 +2003,58 @@ def extract_revise():
                     "n_independent": rebuilt["n_independent"]})
 
 
+@app.route("/report/<slug>/ranked")
+def ranked_tail(slug):
+    """The FULL ranked list, paginated — every family the search ordered, not only the 60 cards.
+
+    The card page is a fixed-size view over `ranked_families`; this page is the list itself, so
+    a reference the pipeline found, read and ranked is never unreachable (the measured failure:
+    attorney references read cell-perfectly and ranked 103/247 were invisible). Cheap by
+    construction: one reps query, no LLM, no figures."""
+    if not _can_access_report(slug):
+        abort(404)
+    p = report_path(slug)
+    if not p.exists():
+        return render_template("notfound.html", slug=slug), 404
+    try:
+        rep = json.loads(p.read_text())
+    except Exception:
+        return render_template("notfound.html", slug=slug), 404
+    fams = list(rep.get("ranked_families") or [])
+    try:
+        start = max(0, int(request.args.get("start", "0")))
+        n = min(300, max(20, int(request.args.get("n", "120"))))
+    except ValueError:
+        start, n = 0, 120
+    window = fams[start:start + n]
+    deep = {}
+    try:
+        d = deep_analysis.result(slug, REPORTS) or {}
+        deep = d.get("by_pub") or {}
+    except Exception:
+        pass
+    rows = []
+    try:
+        with db.cursor() as cur:
+            reps = webview.resolve_family_reps(cur, window)
+    except Exception:
+        traceback.print_exc()
+        reps = {}
+    for i, fam in enumerate(window):
+        r = reps.get(fam) or {}
+        pub = r.get("publication_number") or fam
+        info = deep.get(pub) or {}
+        cells = info.get("covered")
+        rows.append({
+            "rank": start + i + 1, "pub": pub, "title": (r.get("title") or "")[:160],
+            "date": str(r.get("publication_date") or "")[:10],
+            "screen": info.get("screen"), "read": bool(info.get("read_in_full")),
+            "batched": bool(info.get("batched")),
+            "cells": (len(cells) if isinstance(cells, list) else cells) or ""})
+    return render_template("ranked.html", slug=slug, rows=rows, start=start, n=n,
+                           total=len(fams), page_size_note=_DISPLAY_TOP)
+
+
 @app.route("/report/<slug>")
 def report(slug):
     if not _can_access_report(slug):
@@ -2099,6 +2151,7 @@ def report(slug):
             traceback.print_exc()
     view["deep_analysis"] = deep_analysis.metadata(rep, view)
     view["archive"] = report_archive.metadata(slug, REPORTS)
+    view["slug"] = slug                       # the full-ranked-list link needs it
     return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
 
 
