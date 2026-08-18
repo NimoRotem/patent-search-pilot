@@ -37,6 +37,30 @@ from __future__ import annotations
 import re
 from collections import Counter
 
+#  Language guards, shared by the reader (deep_analysis._row), the batch tail (batch_reader)
+#  and the view (webview claim chart). Live here because grounding is the one module all three
+#  already import without cycles. Doc-level answers "is this text readable at all"; quote-level
+#  demands REPEATED foreign function words so an English quote mentioning 'mit' once is never
+#  flagged. Soft hyphens stripped: OCR'd German splits words with them.
+_EN_HINTS = (" the ", " of ", " and ", " to ", " in ", " is ", " for ", " with ")
+_XX_HINTS = (" der ", " die ", " das ", " und ", " mit ", " eine ", " einem ", " einer ",
+             " zum ", " dadurch ", " gekennzeichnet ", " les ", " dans ", " pour ",
+             " selon ", " une ", " est ")
+
+
+def mostly_english(text):
+    s = " " + (text or "")[:6000].lower().replace("\n", " ").replace("­", "") + " "
+    en = sum(s.count(w) for w in _EN_HINTS)
+    xx = sum(s.count(w) for w in _XX_HINTS)
+    return en >= xx
+
+
+def quote_is_english(quote):
+    s = " " + (quote or "").lower().replace("­", "") + " "
+    en = sum(s.count(w) for w in _EN_HINTS)
+    xx = sum(s.count(w) for w in _XX_HINTS)
+    return xx < 2 or en >= xx
+
 # Thresholds. Tuned on the audited rationale/cell sets - see MEASUREMENT.md. Kept as module
 # constants because tests pin webapp and claim_chart to the SAME numbers.
 MIN_SPAN = 0.70            # >=70% of the quote's distinct content words inside one local window

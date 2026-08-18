@@ -280,26 +280,8 @@ _SYS = (
 #  first rebuilt report via mixed-language documents (English abstract, original-language
 #  claims). A non-English quote demotes the cell to the teaches bar: the finding is kept, the
 #  unreadable quote is not.
-_EN_HINTS = (" the ", " of ", " and ", " to ", " in ", " is ", " for ", " with ")
-_XX_HINTS = (" der ", " die ", " das ", " und ", " mit ", " eine ", " einem ", " einer ",
-             " zum ", " dadurch ", " gekennzeichnet ", " les ", " dans ", " pour ",
-             " selon ", " une ", " est ")
-
-
-def mostly_english(text):
-    s = " " + (text or "")[:6000].lower().replace("\n", " ").replace("­", "") + " "
-    en = sum(s.count(w) for w in _EN_HINTS)
-    xx = sum(s.count(w) for w in _XX_HINTS)
-    return en >= xx
-
-
-def quote_is_english(quote):
-    """Short-string variant: demand REPEATED foreign function words before calling it foreign,
-    so an English quote mentioning 'mit' once is never demoted."""
-    s = " " + (quote or "").lower().replace("­", "") + " "
-    en = sum(s.count(w) for w in _EN_HINTS)
-    xx = sum(s.count(w) for w in _XX_HINTS)
-    return xx < 2 or en >= xx
+mostly_english = grounding.mostly_english
+quote_is_english = grounding.quote_is_english
 
 
 def _row(item, raw, ref, shown, kind):

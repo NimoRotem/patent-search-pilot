@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import json, re
 from datetime import date, datetime
-import db, embed, status as status_mod
+import db, embed, grounding, status as status_mod
 import enrich_display                       # office links + cached drawing provenance (local only)
 import ops_family                            # worldwide INPADOC family -> year/jurisdiction timeline
 import pubnorm                               # single link-builder: zero-padded Google/Espacenet URLs
@@ -458,7 +458,11 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
             if (row.get("grounding") in ("verified", "teaches-unquoted")
                     and row.get("verdict") in _VERDICT_GLYPH):
                 got[_row_item(row)] = row
-                if row.get("grounding") == "verified":
+                #  Strong = verified AND its quote is renderable English. Old deep.json files
+                #  carry German verified rows from before the read-time guard; they must not
+                #  count as verbatim coverage the page then refuses to show.
+                if (row.get("grounding") == "verified"
+                        and grounding.quote_is_english(row.get("quote") or "")):
                     hard.add(_row_item(row))
         grounded[ref["pub"]] = got
         strong[ref["pub"]] = hard
@@ -553,12 +557,24 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
             if not r:
                 out.append({"pub": pub, "covered": False})
                 continue
+            #  VIEW-LEVEL BELT for the quote-language guard: reports read before the guard
+            #  existed carry non-English verified quotes in their saved deep.json, and a saved
+            #  report must render clean without being re-read. Same rule as read time: the
+            #  finding stays on the weaker bar, the unreadable quote does not render.
+            quote = r.get("quote") or ""
+            bar = r.get("bar") or "discloses"
+            verdict = r["verdict"]
+            note = r.get("note") or ""
+            if quote and not grounding.quote_is_english(quote):
+                bar, verdict, note = "teaches", "partial", (
+                    f"(non-English passage at {r.get('location') or '?'}) " + note)[:400]
+                quote = ""
             out.append({
-                "pub": pub, "covered": True, "verdict": r["verdict"],
-                "bar": r.get("bar") or "discloses",
-                "verify": _VERDICT_GLYPH[r["verdict"]],
-                "quote": r.get("quote") or "", "location": r.get("location") or "",
-                "coord": r.get("location") or "", "note": r.get("note") or "",
+                "pub": pub, "covered": True, "verdict": verdict,
+                "bar": bar,
+                "verify": _VERDICT_GLYPH[verdict],
+                "quote": quote, "location": r.get("location") or "",
+                "coord": r.get("location") or "", "note": note,
                 "confidence": round(float(r.get("confidence") or 0.0), 2),
                 "score": round(float(r.get("confidence") or 0.0), 3),
                 "basis": "", "second_pass": bool(r.get("second_pass")),
