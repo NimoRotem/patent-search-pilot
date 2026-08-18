@@ -883,13 +883,20 @@ def _llm_spend(before):
     return out
 
 
-def run(report, reports_dir=None, slug=None, on_progress=None):
+def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
     """Screen wide, read deep, and return the authoritative ranking. Mutates `report`.
 
     Writes the charts in ``deep_analysis``'s own schema so the "What it discloses" tab and
     ``/analysis/<slug>`` render from THIS reading instead of starting a second, separate one.
+
+    depth="quick" is the interactive tier of the public split: screen + per-limitation batch
+    tail ONLY. No paid pre-screen enrichment, no full-document reads, no concept passes, no
+    rescue — every skipped stage is exactly what the deep escalation adds back. The scoring,
+    the ledger and the page machinery are identical, so a quick report is a subset of a deep
+    one, never a different product.
     """
     started = time.time()
+    quick = depth == "quick"
     #  WHAT THIS STAGE COSTS, measured rather than reconstructed afterwards. See llm.process_usage:
     #  the report's existing `llm_usage` is scoped to the agent and misses essentially all of it.
     usage_before = _spend_snapshot()
@@ -985,7 +992,9 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     #  itself which of these hold no claims and no paragraphs, in retrieval order, so the whole
     #  candidate list is offered and the budget picks the head of what is genuinely unreadable.
     prescreen_enriched = 0
-    if PRESCREEN_ENRICH_TOP > 0:
+    #  Quick tier: no paid text fetching — the screen judges what the corpus already holds, and
+    #  the escalation's deep run does the recovering.
+    if PRESCREEN_ENRICH_TOP > 0 and not quick:
         t_pre = time.time()
         emit("prescreen_enrich_start", n=len(rows))
         prescreen_enriched = _enrich_missing_text(rows, on_progress=emit,
@@ -1039,7 +1048,9 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
                 claim_items, rows, brief=brief, subject=_subject_for(report, qd),
                 mode=report.get("mode") or "novelty", retriever=_shared_retriever(), emit=emit)
             by_pub_row = {r["pub"]: r for r in rows}
-            for pub in claim_reach.quota(reach_map):
+            #  Quick tier: reach_map still feeds the batch tail, but nothing claims a
+            #  full-document read slot — there is no full-read wave to claim from.
+            for pub in ([] if quick else claim_reach.quota(reach_map)):
                 r = by_pub_row.get(pub)
                 if r is not None and pub not in seen:
                     chosen.append(r)
@@ -1052,7 +1063,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         except Exception:
             traceback.print_exc()
 
-    for i, r in enumerate(by_screen):
+    for i, r in enumerate([] if quick else by_screen):
         if len(chosen) >= CHART_TOP_MAX:
             break
         if i >= CHART_TOP and scores.get(r["pub"], -1) < CHART_MIN_SCREEN:
@@ -1061,13 +1072,13 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
             continue
         chosen.append(r)
         seen.add(r["pub"])
-    for r in rows[:ALWAYS_CHART_RETRIEVAL_HEAD]:
+    for r in ([] if quick else rows[:ALWAYS_CHART_RETRIEVAL_HEAD]):
         if r["pub"] not in seen:
             chosen.append(r)
             seen.add(r["pub"])
     #  before_read: everything the screen saw whose family is gold gets read, whatever it scored.
     #  This isolates reading and below from any screening error.
-    if orc.at("before_read") or orc.at("before_charting"):
+    if (orc.at("before_read") or orc.at("before_charting")) and not quick:
         goldset = set(orc.gold)
         added = 0
         for r in rows:
@@ -1083,7 +1094,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     #  candidate the screen could not see text for is read anyway if the retrieval ranked it
     #  inside BLIND_RESCUE. Bounded, and it is exactly the set that on-demand text can rescue.
     rescued = 0
-    for r in rows[:BLIND_RESCUE]:
+    for r in ([] if quick else rows[:BLIND_RESCUE]):
         if rescued >= BLIND_RESCUE_MAX:
             break
         if r["pub"] not in seen and not r.get("has_text"):
@@ -1105,14 +1116,16 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     #  words like sealing lip, gasket, resilient ring, Dichtlippe. Giving each reader the IDEA and
     #  the other words for it, before it decides "absent", is what turns a string comparison back
     #  into a reading.
-    emit("concepts_start", n=len(features))
-    try:
-        hints = deep_analysis.concept_expansions(
-            features, title=(qd.get("label") or qd.get("title") or ""), brief=brief)
-    except Exception:
-        traceback.print_exc()
-        hints = {}
-    print(f"[deep_rank] concept expansions for {len(hints)}/{len(features)} features", flush=True)
+    hints = {}
+    if not quick:                     # quick has no readers to hand the concept layer to
+        emit("concepts_start", n=len(features))
+        try:
+            hints = deep_analysis.concept_expansions(
+                features, title=(qd.get("label") or qd.get("title") or ""), brief=brief)
+        except Exception:
+            traceback.print_exc()
+        print(f"[deep_rank] concept expansions for {len(hints)}/{len(features)} features",
+              flush=True)
     emit("chart_start", n=len(chosen))
 
     done = [0]
@@ -1229,7 +1242,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
             ledger = None
 
     rescue = {"ran": False}
-    if RESCUE_CLAIMS and claim_items:
+    if RESCUE_CLAIMS and claim_items and not quick:
         t2 = time.time()
         try:
             rescued_refs, rescue = claim_rescue.run(
@@ -1472,6 +1485,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
         "screen_seconds": round(screen_seconds, 1),
         "chart_seconds": round(chart_seconds, 1),
         "seconds": round(time.time() - started, 1),
+        "depth": depth,
         "llm": _llm_spend(usage_before),
         "claim_reach": {"claims_searched": len(reach_map),
                         "claims_with_candidates": sum(1 for h in reach_map.values() if h),

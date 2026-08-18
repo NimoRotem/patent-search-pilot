@@ -158,10 +158,10 @@ def test_ensure_report_queues_when_gate_full(monkeypatch):
     slug = f"testq-{uuid.uuid4().hex[:12]}"
 
     class FullGate:
-        def try_begin(self):
+        def try_begin(self, depth="deep"):
             return False, "full"
 
-        def end(self):
+        def end(self, depth="deep"):
             pass
 
     monkeypatch.setattr(auth, "run_gate", FullGate())
@@ -192,10 +192,10 @@ def test_queued_run_starts_when_gate_frees(monkeypatch):
     ran = []
 
     class OpenGate:
-        def try_begin(self):
+        def try_begin(self, depth="deep"):
             return True, ""
 
-        def end(self):
+        def end(self, depth="deep"):
             pass
 
     monkeypatch.setattr(auth, "run_gate", OpenGate())
