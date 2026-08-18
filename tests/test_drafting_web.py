@@ -107,7 +107,23 @@ def draft_client(monkeypatch):
     monkeypatch.setattr(accounts, "get_search", lambda uid, slug: {
         "slug": slug, "title": "RFID lifter search", "status": "complete",
     })
-    monkeypatch.setattr(webapp, "report_path", lambda slug: type("P", (), {"exists": lambda self: True})())
+    #  The double must answer everything the hot path asks of a report file, not just exists().
+    #  _report_partial now stats the file to key its mtime cache and guards the missing-file case
+    #  with `except OSError`; a stub without .stat() raises AttributeError instead, which escapes
+    #  that guard and 502s the route under test for a reason that has nothing to do with drafting.
+    #  Raising FileNotFoundError is the honest stand-in for "no report on disk yet", which is
+    #  exactly the state this test puts the studio in.
+    class _NoReportFile:
+        def exists(self):
+            return True
+
+        def stat(self):
+            raise FileNotFoundError("no report written yet")
+
+        def read_text(self, *a, **k):
+            raise FileNotFoundError("no report written yet")
+
+    monkeypatch.setattr(webapp, "report_path", lambda slug: _NoReportFile())
     monkeypatch.setattr(webapp, "_drafting_service", lambda: service)
     monkeypatch.setattr(webapp, "_draft_report_loader",
                         lambda principal, slug, owner: {"query": "Detailed RFID lifter disclosure",
