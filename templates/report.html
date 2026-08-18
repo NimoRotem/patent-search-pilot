@@ -518,8 +518,8 @@
             <tbody>
               {% for row in v.claim_chart.rows %}
               <tr{% if reading and not row.asked %} class="rowunasked"{% elif reading and not row.df %} class="rowuncovered"{% endif %}>
-                <th class="elh" scope="row">{% if claimaxis %}<span class="clno">{{ row.element }}{% if row.independent %} <span class="indep" title="an independent claim — the claim the patent stands on">independent</span>{% endif %}</span>
-                  <span class="cltext">{{ row.claim_text or '' }}</span>{% else %}{{ row.element }}{% endif %}
+                <th class="elh" scope="row">{% if claimaxis %}<span class="clno" {% if row.claim_whole %}title="Limitation {{ row.element }} of the whole claim: {{ row.claim_whole }}"{% endif %}>{{ row.element }}{% if row.independent %} <span class="indep" title="an independent claim — the claim the patent stands on">independent</span>{% endif %}</span>
+                  <span class="cltext" {% if row.claim_whole %}title="Whole claim {{ row.claim_no }}: {{ row.claim_whole }}"{% endif %}>{{ row.claim_text or '' }}{% if row.claim_whole and row.claim_text and row.claim_whole[:60] != row.claim_text[:60] %} <span class="cc">(one limitation of claim {{ row.claim_no }} — hover for the whole claim)</span>{% endif %}</span>{% else %}{{ row.element }}{% endif %}
                   <span class="elcov">{% if reading %}{% if row.asked %}disclosed by {{ row.df }} of {{ row.n_charted }} read{% if row.n_also %} · <span class="elalso" title="{{ row.also|join(', ') }}">{{ row.n_also }} more not shown as columns: {{ row.also[:6]|join(', ') }}{% if row.n_also > 6 %} …{% endif %}</span>{% endif %}{% else %}not asked of any reference in this run{% endif %}{% else %}best {{ '%.3f'|format(row.coverage.get('best_score',0)) }} · {{ row.coverage.get('n_evidence',0) }} refs{% endif %}</span></th>
                 {% for cell in row.cells %}
                   {#  Colour encodes VERIFICATION STATE, not retrieval score. Green previously

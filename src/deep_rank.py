@@ -1164,12 +1164,26 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
         try:
             t2 = time.time()
             by_pub_row = {r["pub"]: r for r in rows}
-            tail_pubs = [p for p in claim_reach.quota(
-                             reach_map,
-                             per_claim=(BATCH_PER_LIM_QUICK if quick else BATCH_PER_LIM),
-                             exclude=seen,
-                             cap=(BATCH_TAIL_MAX_QUICK if quick else BATCH_TAIL_MAX))
-                         if (by_pub_row.get(p) or {}).get("has_text")]
+            #  ONE COLUMN PER FAMILY. The full-read wave dedupes by family through its rep
+            #  resolver; the first production tail did not, and three sibling DE filings of one
+            #  applicant rendered as three near-identical grid columns. Same rule here: a family
+            #  already read (or already in the tail) does not get a second member.
+            seen_fams = {(by_pub_row.get(p) or {}).get("fam") for p in seen} - {None}
+            tail_pubs, tail_fams = [], set()
+            for p in claim_reach.quota(
+                    reach_map,
+                    per_claim=(BATCH_PER_LIM_QUICK if quick else BATCH_PER_LIM),
+                    exclude=seen,
+                    cap=(BATCH_TAIL_MAX_QUICK if quick else BATCH_TAIL_MAX)):
+                row = by_pub_row.get(p) or {}
+                if not row.get("has_text"):
+                    continue
+                f = row.get("fam")
+                if f is not None and (f in seen_fams or f in tail_fams):
+                    continue
+                if f is not None:
+                    tail_fams.add(f)
+                tail_pubs.append(p)
             if tail_pubs:
                 emit("batch_tail_start", n=len(tail_pubs))
                 titles = {p: (by_pub_row.get(p) or {}).get("title") or "" for p in tail_pubs}

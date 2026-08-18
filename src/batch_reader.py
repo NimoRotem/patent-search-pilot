@@ -60,6 +60,24 @@ LOAD_WORKERS = int(os.environ.get("BATCH_READ_LOAD_WORKERS", "8"))
 
 _RANK = {"disclosed": 3, "partial": 2, "uncertain": 1, "absent": 0}
 
+#  ENGLISH TEXT ONLY. The deep read wave enriches a reference (fetches its English full text)
+#  before reading; this tail deliberately reads what the corpus already holds — and for DE/FR
+#  documents that is the ORIGINAL-language claims. The first production tail dutifully quoted
+#  them verbatim, grounded them (they ARE in the text) and put 47 German cells on an English
+#  report. A non-English reference is skipped here and named in the log; the deep tier's
+#  enrichment path is where it gets read properly.
+_EN_HINTS = (" the ", " of ", " and ", " to ", " in ", " is ", " for ", " with ")
+_XX_HINTS = (" der ", " die ", " das ", " und ", " mit ", " eine ", " einem ", " zum ",
+             " dadurch ", " gekennzeichnet ", " les ", " dans ", " pour ", " selon ",
+             " une ", " est ")
+
+
+def _mostly_english(text):
+    s = " " + (text or "")[:6000].lower().replace("\n", " ") + " "
+    en = sum(s.count(w) for w in _EN_HINTS)
+    xx = sum(s.count(w) for w in _XX_HINTS)
+    return en >= xx
+
 _SYS = (
     "You are a patent examiner. You are given ONE REQUIREMENT taken verbatim from a subject "
     "patent's claims, and SEVERAL prior-art references, each labelled with its publication "
@@ -105,8 +123,10 @@ _SYS = (
 
 
 def _load(pubs, log=print):
-    """{pub: (ref, shown)} — the same full text and rendering the per-document reader uses."""
+    """{pub: (ref, shown)} — the same full text and rendering the per-document reader uses.
+    Non-English documents are skipped (see _mostly_english) and counted in the log."""
     out, lock = {}, threading.Lock()
+    skipped_lang = [0]
 
     def one(pub):
         try:
@@ -114,6 +134,10 @@ def _load(pubs, log=print):
             if not ref.get("found") or not ref.get("passages"):
                 return
             shown = deep_analysis._rendered(ref)[:DOC_CAP]
+            if not _mostly_english(shown):
+                with lock:
+                    skipped_lang[0] += 1
+                return
             with lock:
                 out[pub] = (ref, shown)
         except Exception:
@@ -121,6 +145,9 @@ def _load(pubs, log=print):
 
     with ThreadPoolExecutor(max_workers=max(1, min(LOAD_WORKERS, len(pubs) or 1))) as ex:
         list(ex.map(one, list(pubs)))
+    if skipped_lang[0]:
+        log(f"[batch_read] skipped {skipped_lang[0]} non-English references — the tail must not "
+            f"quote what the page cannot read; the deep tier's enrichment path covers them")
     return out
 
 

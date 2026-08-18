@@ -443,22 +443,29 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
     #  Every reference that was actually READ, and what each of them grounded. Built
     #  before the columns are chosen, because the columns are now chosen to cover it.
     read_pubs = [r["pub"] for r in refs if r.get("method") == "llm"]
-    grounded = {}                      # pub -> {feature: row}
+    grounded = {}                      # pub -> {feature: row}   (both bars — what a cell RENDERS)
+    strong = {}                        # pub -> {feature}        (verified bar — what gets COUNTED)
     for ref in refs:
         if ref.get("method") != "llm":
             continue
-        got = {}
+        got, hard = {}, set()
         for row in (ref.get(row_key) or []):
             #  Both bars render; a teaches cell carries no quote and is marked by its `bar`
-            #  field so the grid can style it as the weaker standard.
+            #  field so the grid can style it as the weaker standard. But the COUNTS — df,
+            #  "disclosed by N", the also-list — are the strong bar only: counting asserted
+            #  teachings alongside verbatim disclosures produced "disclosed by 280 of 367",
+            #  a number no reader can argue from and the first thing reported as broken.
             if (row.get("grounding") in ("verified", "teaches-unquoted")
                     and row.get("verdict") in _VERDICT_GLYPH):
                 got[_row_item(row)] = row
+                if row.get("grounding") == "verified":
+                    hard.add(_row_item(row))
         grounded[ref["pub"]] = got
-    disclosers = {}                    # feature -> [pub, ...] in ranked order
+        strong[ref["pub"]] = hard
+    disclosers = {}                    # feature -> [pub, ...] in ranked order, STRONG bar only
     rank_of = {p: i for i, p in enumerate(order)}
-    for pub, got in grounded.items():
-        for feat in got:
+    for pub, hard in strong.items():
+        for feat in hard:
             disclosers.setdefault(feat, []).append(pub)
     for feat in disclosers:
         disclosers[feat].sort(key=lambda p: rank_of.get(p, 10 ** 6))
@@ -504,6 +511,15 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
                 asked.add(it)
     cells = {pub: grounded.get(pub, {}) for pub in cols}
 
+    #  The WHOLE claim each one-sentence limitation row belongs to, keyed by claim number, so a
+    #  row can say where its sentence comes from instead of reading as a truncated claim — the
+    #  second thing reported as broken on the first rebuilt reports.
+    whole_claims = {}
+    for i, c in enumerate((report or {}).get("query_document", {}).get("claims") or []):
+        s = str(c or "").strip()
+        m = re.match(r"\s*(\d+)\s*[.)]", s)
+        whole_claims[int(m.group(1)) if m else i + 1] = s
+
     rows = []
     #  Rarest first, because that is the order a novelty argument is made in — but anything the
     #  reading never put to a reference goes last, not first. Ranking an unanswered feature as the
@@ -525,6 +541,7 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
                 continue
             out.append({
                 "pub": pub, "covered": True, "verdict": r["verdict"],
+                "bar": r.get("bar") or "discloses",
                 "verify": _VERDICT_GLYPH[r["verdict"]],
                 "quote": r.get("quote") or "", "location": r.get("location") or "",
                 "coord": r.get("location") or "", "note": r.get("note") or "",
@@ -541,6 +558,7 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
         meta = claim_meta.get(feat) or {}
         rows.append({"element": feat, "cells": out,
                      "claim_text": claim_text.get(feat, ""),
+                     "claim_whole": (whole_claims.get(meta.get("claim_no")) or "")[:600],
                      "claim_no": meta.get("claim_no"),
                      "independent": bool(meta.get("independent")),
                      "idf": round(float(idf.get(feat, 0.0)), 3),
