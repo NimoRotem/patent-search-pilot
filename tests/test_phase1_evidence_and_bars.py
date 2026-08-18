@@ -16,6 +16,12 @@ import deep_analysis
 import evidence
 import limitations as limmod
 
+#  Import-time bindings of the REAL store functions: the suite-wide conftest fixture no-ops
+#  evidence saves and reuse for hermeticity, and these tests are exactly the ones that must
+#  exercise the real thing. Module import happens at collection, before any fixture patches.
+real_save_chart = evidence.save_chart
+real_save_cells = evidence.save_cells_from_chart
+
 
 def _ref(shown="the vacuum pump draws air from the suction chamber"):
     return {"found": True, "chars": len(shown), "n_claims": 1, "n_paragraphs": 1,
@@ -82,13 +88,14 @@ def test_teaches_cells_enter_ledger_but_never_anticipate():
     assert st == "anticipated" and ants == ["US-Z-A1"]
 
 
-def test_evidence_chart_roundtrip_and_gates():
+def test_evidence_chart_roundtrip_and_gates(monkeypatch):
+    monkeypatch.setattr(evidence, "REUSE", True)
     evidence.ensure_schema()
     pub = f"US-TEST{uuid.uuid4().hex[:8]}-A1"
     fp = evidence.subject_fp(["feat one"], [{"label": "claim 1", "text": "a pump"}])
     chart = {"pub": pub, "method": "llm", "features": [], "claims": [], "counts": {}}
     try:
-        evidence.save_chart(pub, fp, chart, run_slug="test")
+        real_save_chart(pub, fp, chart, run_slug="test")
         got = evidence.load_chart(pub, fp)
         assert got and got["pub"] == pub
         #  A different checklist is a different question: no hit.
@@ -114,7 +121,7 @@ def test_evidence_cells_roundtrip_and_known_disclosers():
         {"item": "claim 2", "verdict": "disclosed", "quote": "sealing lip", "location": "para 3",
          "grounding": "verified", "bar": "discloses", "confidence": 0.8}]}
     try:
-        n = evidence.save_cells_from_chart(chart, {"claim 2": lim_text}, run_slug="test")
+        n = real_save_cells(chart, {"claim 2": lim_text}, run_slug="test")
         assert n == 1
         got = evidence.known_disclosers(lim_text)
         assert got and got[0]["publication_number"] == pub and got[0]["bar"] == "discloses"
@@ -127,6 +134,10 @@ def test_evidence_cells_roundtrip_and_known_disclosers():
 
 
 def test_analyse_reference_reuses_stored_chart(monkeypatch):
+    #  Re-arm the real store: the suite-wide fixture disables it for every other test.
+    monkeypatch.setattr(evidence, "REUSE", True)
+    monkeypatch.setattr(evidence, "save_chart", real_save_chart)
+    monkeypatch.setattr(evidence, "save_cells_from_chart", real_save_cells)
     evidence.ensure_schema()
     pub = f"US-TEST{uuid.uuid4().hex[:8]}-A1"
     shown = "a suction plate with a peripheral sealing lip surrounds the chamber"

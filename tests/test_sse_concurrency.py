@@ -209,9 +209,24 @@ def test_concurrency_cap_is_enforced_and_released(monkeypatch, tmp_path):
 
     assert webapp.ensure_report("cap-a", query="a", mode="novelty")[0] == "running"
     time.sleep(0.3)
+    #  THE CONTRACT CHANGED WITH THE RUN QUEUE (rebuild phase 0): a search over the cap is no
+    #  longer bounced with "busy" — it is QUEUED, reported as running, and started by the
+    #  dispatcher when a slot frees. The dispatcher itself still sees "busy" so the row stays
+    #  queued rather than double-starting.
     st, why = webapp.ensure_report("cap-b", query="b", mode="novelty")
-    assert st == "busy" and "already running" in why
-    assert "cap-b" not in webapp._JOBS          # the rejected claim was released, not stuck
+    assert st == "running" and why is None
+    job_b = webapp._JOBS.get("cap-b")
+    assert job_b and job_b.get("queued") and "Queued" in job_b["msg"]
+    assert webapp._queue_launch("cap-b", {"query": "b", "mode": "novelty"}) == "busy"
+    import run_queue
+    import db
+    with db.cursor() as cur:
+        cur.execute("SELECT state FROM app_run_queue WHERE slug='cap-b'")
+        row = cur.fetchone()
+    assert row and row["state"] == "queued"
+    with db.cursor() as cur:
+        cur.execute("DELETE FROM app_run_queue WHERE slug='cap-b'")
+    webapp._JOBS.pop("cap-b", None)
     release.set()
     deadline = time.time() + 12
     while time.time() < deadline and webapp._JOBS.get("cap-a", {}).get("status") == "running":

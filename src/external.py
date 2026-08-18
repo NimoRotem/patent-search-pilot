@@ -334,13 +334,15 @@ def bulk(queries, timeout: float = TIMEOUT) -> dict:
     if os.environ.get("SOURCES_INPROC", "0") != "0":
         try:
             import sources as _sources
-            got = _sources.search(queries[:MAX_QUERIES])
-            d = got if isinstance(got, dict) else {"candidates": list(got or [])}
-            d.setdefault("ok", True)
-            d.setdefault("stats", {})
-            d["base_url"] = "in-process"
-            replay.put("bulk_search", body, d, raw="")
-            return d
+            #  sources.bulk() returns App A's exact /api/bulk_search envelope, by construction
+            #  (see SOURCES_PORT.md), so everything downstream is unchanged.
+            d = _sources.bulk(queries[:MAX_QUERIES], timeout=timeout)
+            if isinstance(d, dict):
+                d.setdefault("ok", True)
+                d["base_url"] = "in-process"
+                replay.put("bulk_search", body, d, raw="")
+                return d
+            last = "in-process sources: non-dict result"
         except Exception as e:
             last = f"in-process sources: {type(e).__name__}: {str(e)[:160]}"
     for base in [b for b in (INTERNAL_URL, BASE_URL) if b]:

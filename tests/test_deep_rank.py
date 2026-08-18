@@ -380,7 +380,8 @@ def test_the_reference_is_read_for_features_and_claims_separately(monkeypatch):
     asked = []
 
     def fake_chat(system, user, **kw):
-        payload = __import__("json").loads(user)
+        joined = user if isinstance(user, str) else "".join(s["text"] for s in user)
+        payload = __import__("json").loads(joined)
         asked.append((len(payload["subject_features"]), len(payload["subject_claims"])))
         return {"features": [], "claims": []}
 
