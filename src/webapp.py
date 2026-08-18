@@ -1104,6 +1104,14 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             elif stage == "rescue_search_progress":
                 _set_job(slug, kind="rescuing", detail=data,
                          msg=f"Claim-focused search: {data.get('done')} of {data.get('total')}…")
+            elif stage == "batch_tail_start":
+                _set_job(slug, kind="reading", detail=data,
+                         msg=f"Evidence sweep: reading {data.get('n', 0)} more references "
+                             f"against every requirement, in batches…")
+            elif stage == "batch_read_progress":
+                _set_job(slug, kind="reading", detail=data,
+                         msg=f"Evidence sweep: batch {data.get('done')} of "
+                             f"{data.get('total')}…")
             elif stage == "rescue_read_start":
                 _set_job(slug, kind="rescuing", detail=data,
                          msg=f"Reading {data.get('n', 0)} references found for the uncovered "

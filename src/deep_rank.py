@@ -144,6 +144,12 @@ CHART_MIN_SCREEN = int(os.environ.get("DEEP_RANK_CHART_MIN_SCREEN", "70"))
 BATCH_TAIL = os.environ.get("DEEP_RANK_BATCH_TAIL", "1") != "0"
 BATCH_PER_LIM = int(os.environ.get("DEEP_RANK_BATCH_PER_LIM", "12"))
 BATCH_TAIL_MAX = int(os.environ.get("DEEP_RANK_BATCH_TAIL_MAX", "240"))
+#  The quick tier's tail is half-width: measured on the first quick smoke run, the full-width
+#  tail put the whole run at ~35M prompt tokens (~$4-7 cached), which is the wrong class for an
+#  interactive search. Half the leads per limitation keeps the per-claim map and roughly halves
+#  the bill; the deep escalation runs the full width.
+BATCH_PER_LIM_QUICK = int(os.environ.get("DEEP_RANK_BATCH_PER_LIM_QUICK", "6"))
+BATCH_TAIL_MAX_QUICK = int(os.environ.get("DEEP_RANK_BATCH_TAIL_MAX_QUICK", "120"))
 #  Raised 350 -> 420, AND `_DISPLAY_TOP` was raised with it (webapp), because the measurement
 #  above is specifically that widening the read set while the PAGE stays a fixed size trades
 #  visible recall for invisible reading. The two have to move together or not at all. This also
@@ -1158,8 +1164,11 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
         try:
             t2 = time.time()
             by_pub_row = {r["pub"]: r for r in rows}
-            tail_pubs = [p for p in claim_reach.quota(reach_map, per_claim=BATCH_PER_LIM,
-                                                      exclude=seen, cap=BATCH_TAIL_MAX)
+            tail_pubs = [p for p in claim_reach.quota(
+                             reach_map,
+                             per_claim=(BATCH_PER_LIM_QUICK if quick else BATCH_PER_LIM),
+                             exclude=seen,
+                             cap=(BATCH_TAIL_MAX_QUICK if quick else BATCH_TAIL_MAX))
                          if (by_pub_row.get(p) or {}).get("has_text")]
             if tail_pubs:
                 emit("batch_tail_start", n=len(tail_pubs))
