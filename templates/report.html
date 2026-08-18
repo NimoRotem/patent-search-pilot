@@ -402,6 +402,7 @@
               {% for e in l.evidence %}
               <li><button type="button" class="pnlink" onclick="jumpRef('{{ e.pub }}')">{{ e.pub }}</button>
                 <span class="llv llv-{{ e.verdict }}">{{ e.verdict }}</span>
+                {% if e.bar == 'teaches' %}<span class="cc" title="Asserted teaching without a verbatim quotable passage — the weaker of the two bars; never counts toward anticipation.">teaches</span>{% endif %}
                 {% if e.location %}<span class="cc">{{ e.location }}</span>{% endif %}
                 {% if e.date %}<span class="cc">{{ e.date[:4] }}</span>{% endif %}
                 {% if e.quote %}<span class="llq">“{{ e.quote[:180] }}{% if e.quote|length > 180 %}…{% endif %}”</span>{% endif %}

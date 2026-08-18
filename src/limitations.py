@@ -378,14 +378,18 @@ class Ledger:
         self.evidence = {l["id"]: [] for l in self.limitations}
 
     # -- filling it in -----------------------------------------------------
-    def add(self, lim_id, pub, verdict, quote="", location="", date=None, confidence=0.0):
+    def add(self, lim_id, pub, verdict, quote="", location="", date=None, confidence=0.0,
+            bar=""):
         if lim_id not in self.evidence or verdict not in _W or _W[verdict] <= 0:
             return False
         if any(e["pub"] == pub for e in self.evidence[lim_id]):
             return False
         self.evidence[lim_id].append({
             "pub": pub, "verdict": verdict, "quote": quote[:400], "location": location,
-            "date": str(date or ""), "confidence": round(float(confidence or 0.0), 2)})
+            "date": str(date or ""), "confidence": round(float(confidence or 0.0), 2),
+            #  Which bar the cell sits on: "discloses" (verbatim, verified) or "teaches"
+            #  (asserted teaching, no quotable passage). Anticipation reads only the strong bar.
+            "bar": bar or ("discloses" if quote else "")})
         self.evidence[lim_id].sort(key=lambda e: (-_W.get(e["verdict"], 0), -e["confidence"]))
         return True
 
@@ -404,11 +408,16 @@ class Ledger:
                 continue
             pub = ref.get("pub")
             for row in (ref.get("claims") or []):
-                if row.get("grounding") != "verified":
+                #  Both bars are ledger evidence. A teaches cell arrives as verdict "partial"
+                #  (never better, enforced in deep_analysis._row), so `status()` can call the
+                #  limitation "partial" but never "covered" on teaching alone, and
+                #  `claim_status()` can never anticipate from it.
+                if row.get("grounding") not in ("verified", "teaches-unquoted"):
                     continue
                 if self.add(str(row.get("item") or ""), pub, row.get("verdict", "absent"),
                             row.get("quote") or "", row.get("location") or "",
-                            dates.get(pub), row.get("confidence") or 0.0):
+                            dates.get(pub), row.get("confidence") or 0.0,
+                            bar=row.get("bar") or ""):
                     n += 1
         return n
 

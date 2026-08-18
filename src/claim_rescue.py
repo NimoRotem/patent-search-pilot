@@ -151,12 +151,17 @@ def claim_matches(charts, labels):
         if ref.get("method") != "llm":
             continue
         for row in (ref.get("claims") or []):
-            if row.get("grounding") != "verified":
+            if row.get("grounding") not in ("verified", "teaches-unquoted"):
                 continue
             item = str(row.get("item") or "")
             if item not in got:
                 continue
-            if row.get("verdict") in _MATCH_VERDICTS:
+            #  A teaches-bar cell is WEAK support: it must not satisfy an orphaned limitation on
+            #  its own, or the rescue would stop searching for verbatim art the moment a reader
+            #  asserted an unquotable teaching.
+            if row.get("grounding") == "teaches-unquoted":
+                weak[item] += 1
+            elif row.get("verdict") in _MATCH_VERDICTS:
                 got[item] += 1
             elif row.get("verdict") == "uncertain":
                 weak[item] += 1

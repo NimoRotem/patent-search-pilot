@@ -81,8 +81,19 @@ def score(slug, gold, held):
         for k in (c.get("pub"), c.get("family")):
             if k and k not in card_pos:
                 card_pos[k] = i + 1
+    #  IN LEDGER: the reference is cited as kept evidence for at least one limitation. This is the
+    #  deliverable-level stage the 60-card page cut was hiding: a reference read cell-perfectly
+    #  and ranked 103 was invisible to the old funnel, while the claim ledger carried it the whole
+    #  time. Every ledger row is user-reachable (jumpRef falls back to the document panel).
+    ledger_pubs = {}
+    for lim in ((rep.get("ledger") or {}).get("limitations") or []):
+        for e in (lim.get("evidence") or []):
+            p = e.get("pub")
+            if p:
+                ledger_pubs.setdefault(p, []).append(lim.get("id") or "")
 
-    rows, tally = [], {"in_corpus": 0, "retrieved": 0, "screened": 0, "read": 0, "page": 0}
+    rows, tally = [], {"in_corpus": 0, "retrieved": 0, "screened": 0, "read": 0,
+                       "ledger": 0, "page": 0}
     for c in gold["citations"]:
         if c.get("findable_by_search") is False:
             rows.append((c["name"], c.get("pub") or "—", "not reachable by search (NPL)", None))
@@ -112,12 +123,19 @@ def score(slug, gold, held):
             tally["screened"] += 1
         if read:
             tally["read"] += 1
+        in_ledger = [m for m in kin if m in ledger_pubs]
+        if in_ledger:
+            tally["ledger"] += 1
         if page:
             tally["page"] += 1
         via = f" (via {stand_in})" if stand_in else ""
         rank = next((order[m] for m in kin if m in order), None)
         if page:
             where = f"ON THE PAGE (card {page}){via}"
+        elif in_ledger:
+            n_lims = len(ledger_pubs.get(in_ledger[0]) or [])
+            where = (f"IN THE LEDGER (evidence for {n_lims} limitation(s)), "
+                     f"ranked {rank} — below the card cut{via}")
         elif read:
             where = f"read, ranked {rank} — off the page{via}"
         elif retrieved and h["nc"] == 0 and h["np"] == 0:
@@ -156,7 +174,8 @@ def main(argv):
         print(f"\n=== {slug} — {gold['subject']['title']} ===")
         for name, pub, where, _ in rows:
             print(f"  {name:14} {str(pub):18} {where}")
-        print(f"  ---- {tally['page']}/{n} on the page · {tally['read']}/{n} read · "
+        print(f"  ---- {tally['page']}/{n} on the page · {tally['ledger']}/{n} in the ledger · "
+              f"{tally['read']}/{n} read · "
               f"{tally['screened']}/{n} screened · {tally['retrieved']}/{n} retrieved · "
               f"{tally['in_corpus']}/{n} in corpus")
         if base:

@@ -449,7 +449,10 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
             continue
         got = {}
         for row in (ref.get(row_key) or []):
-            if row.get("grounding") == "verified" and row.get("verdict") in _VERDICT_GLYPH:
+            #  Both bars render; a teaches cell carries no quote and is marked by its `bar`
+            #  field so the grid can style it as the weaker standard.
+            if (row.get("grounding") in ("verified", "teaches-unquoted")
+                    and row.get("verdict") in _VERDICT_GLYPH):
                 got[_row_item(row)] = row
         grounded[ref["pub"]] = got
     disclosers = {}                    # feature -> [pub, ...] in ranked order
@@ -632,7 +635,11 @@ def build_ledger_view(report):
             "n_uncovered": sum(1 for r in rows if r.get("status") == "uncovered"),
             "limitations": [{
                 "id": r.get("id"), "text": r.get("text") or "", "status": r.get("status"),
-                "evidence": (r.get("evidence") or [])[:4],
+                #  Twelve rows, not four: the ledger is the deliverable, and the attorney refs
+                #  this pipeline finds were measured to sit in kept evidence the page never
+                #  rendered (10,880 verified cells -> 544 kept -> 4 shown was the old funnel).
+                #  Every row is reachable — jumpRef falls back to the full-document panel.
+                "evidence": (r.get("evidence") or [])[:12],
                 "n_evidence": len(r.get("evidence") or []),
             } for r in rows],
         })

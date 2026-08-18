@@ -34,6 +34,7 @@ import library                                     # saved publications, across 
 #  "'function' object has no attribute 'ensure_schema'".
 import draft_figures                               # model-generated patent drawings for a draft
 import auth, accounts, notifications, rerank_pool
+import run_queue                                   # gate-full searches wait in Postgres, not bounce
 import drafting, draft_export, draft_worker
 #  Phase two: the drafting CONVERSATION. A Claude Code agent edits a workspace of files, a second
 #  agent reviews every iteration, and draft_uspto answers "can this be filed".
@@ -505,6 +506,7 @@ def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None,
     finally:
         if gated and auth.run_gate:
             auth.run_gate.end()
+        run_queue.mark_finished(slug, ok=report_path(slug).exists())
 
 
 # ---- document materials (multi-chunk + image channels) -------------------------------------
@@ -950,7 +952,17 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                                 input_claims=list((doc or {}).get("claims") or [])),
                 on_event=on_event)
             if wide:
-                futs["federated"] = ex.submit(_timed, "federated", _federate_block, query, mode)
+                #  PHASE 2a OF THE REBUILD: the App A /api/search channel is OFF by default.
+                #  Measured (2026-08-18 study): it ran App A's whole planner+cascade per call —
+                #  including 100 gemini-2.5-pro full-document reads, $2.34/call, 408-545s of every
+                #  fan-out — and its judged shortlist landed in a display-only side block while
+                #  its candidates re-entered anyway through the raw /api/bulk_search channel
+                #  below, which B screens and reads itself. Deleting the duplicate reader is the
+                #  single biggest per-search saving in the rebuild. FEDERATION_CHANNEL=1 restores
+                #  it exactly, for an A/B or if bulk reach ever measures short.
+                if os.environ.get("FEDERATION_CHANNEL", "0") != "0":
+                    futs["federated"] = ex.submit(_timed, "federated", _federate_block,
+                                                  query, mode)
                 futs["external"] = ex.submit(_timed, "external", _external_block, query, doc)
             if "docchunks" in parallel:
                 futs["docchunks"] = ex.submit(
@@ -1335,9 +1347,11 @@ def _espacenet_safe(pub, family_id=None):
 
 
 def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, wide=False,
-                  doc_token=None, search_focus="all_text"):
+                  doc_token=None, search_focus="all_text", from_queue=False):
     """Return ('ready'|'running'|'missing'|'busy', report_or_None). Kicks off background
-    generation if needed. 'busy' means the concurrency or daily spend cap is exhausted."""
+    generation if needed. A search that arrives while the gate is full is QUEUED (run_queue) and
+    reported as running; 'busy' is only returned to the dispatcher itself (`from_queue=True`),
+    which leaves the row queued and retries."""
     p = report_path(slug)
     if p.exists() and not regen:
         try:
@@ -1346,10 +1360,13 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
             pass
     # Atomically claim the slug: check-and-set under the lock so two concurrent requests for the
     # same new query can't both start a generation (the second sees "running" and just polls).
+    # A "queued" placeholder is claimable ONLY by the dispatcher — a user re-request must not
+    # jump the line, and the dispatcher must not be blocked by the placeholder it is serving.
     with _JOB_LOCK:
         job = _JOBS.get(slug)
         if job and job["status"] in ("running", "partial"):
-            return "running", None
+            if not (from_queue and job.get("queued")):
+                return "running", None
         if query is None:
             return "missing", None
         _JOBS[slug] = {"status": "running", "msg": "Queued…", "t0": time.time(),
@@ -1359,9 +1376,28 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
     if auth.run_gate:
         ok, why = auth.run_gate.try_begin()
         if not ok:
-            with _JOB_LOCK:
-                _JOBS.pop(slug, None)              # release the claim; nothing was started
-            return "busy", why
+            if from_queue:
+                with _JOB_LOCK:                    # restore the placeholder; row stays queued
+                    _JOBS[slug] = {"status": "running", "queued": True, "msg": "Queued…",
+                                   "t0": time.time(), "tok0": _tok_now()}
+                return "busy", why
+            try:
+                pos = run_queue.enqueue(slug, {
+                    "query": query, "subject": subject, "mode": mode, "wide": wide,
+                    "doc_token": doc_token, "search_focus": search_focus})
+                with _JOB_LOCK:
+                    _JOBS[slug] = {"status": "running", "queued": True,
+                                   "msg": (f"Queued behind {max(pos - 1, 0)} search(es) — "
+                                           "starts automatically, you can close this tab."),
+                                   "t0": time.time(), "tok0": _tok_now()}
+                return "running", None
+            except Exception:
+                #  The queue store being down must not turn into a lost search request:
+                #  fall back to the old refusal so the caller knows to retry.
+                traceback.print_exc()
+                with _JOB_LOCK:
+                    _JOBS.pop(slug, None)          # release the claim; nothing was started
+                return "busy", why
         gated = True
     try:
         subj_obj = _subject_obj(subject)
@@ -5460,9 +5496,45 @@ for _schema in (deliverables.ensure_schema, library.ensure_schema, draft_figures
         traceback.print_exc()
 draft_worker.init_app(app, _drafting_service)
 draft_studio_service.init_app(app, _turn_runner)
+def _report_is_finished(slug):
+    p = report_path(slug)
+    if not p.exists():
+        return False
+    try:
+        return not json.loads(p.read_text()).get("partial")
+    except Exception:
+        return False
+
+
+def _drop_partial_report(slug):
+    for suffix in (".json", ".view.json", ".detail-preview.json"):
+        (REPORTS / f"{slug}{suffix}").unlink(missing_ok=True)
+
+
+def _queue_launch(slug, payload):
+    """Dispatcher hook: start one queued run. -> 'started' | 'done' | 'busy' | 'gone'."""
+    try:
+        st, _ = ensure_report(
+            slug, query=payload.get("query"), subject=payload.get("subject"),
+            mode=payload.get("mode") or "novelty", wide=bool(payload.get("wide")),
+            doc_token=payload.get("doc_token"),
+            search_focus=payload.get("search_focus") or "all_text", from_queue=True)
+    except Exception:
+        traceback.print_exc()
+        return "gone"
+    return {"ready": "done", "running": "started", "busy": "busy"}.get(st, "gone")
+
+
 if "PYTEST_CURRENT_TEST" not in os.environ:
     recover_interrupted_searches()
     draft_studio_service.recover_interrupted_turns()
+    try:
+        run_queue.ensure_schema()
+        run_queue.requeue_orphans(report_finished=_report_is_finished,
+                                  drop_partial=_drop_partial_report)
+        run_queue.start_dispatcher(_queue_launch)
+    except Exception:                   # the queue store being down must not stop the app booting
+        traceback.print_exc()
 
 
 if __name__ == "__main__":

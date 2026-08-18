@@ -57,6 +57,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import db
 import claim_reach
+import batch_reader
 import claim_rescue
 import limitations as limmod
 import coverage_rank
@@ -135,6 +136,14 @@ CHART_TOP = int(os.environ.get("DEEP_RANK_CHART_TOP", "150"))
 #  Lowered 75 -> 70: the paragraph above records that "cited references the screen had rated 70
 #  were never read", and 70 is precisely where the old threshold sat. Read them.
 CHART_MIN_SCREEN = int(os.environ.get("DEEP_RANK_CHART_MIN_SCREEN", "70"))
+#  THE PASSAGE TAIL. The Aug-17 economy cut CHART_TOP 360 -> 150 and simply stopped reading the
+#  rest of the screen. batch_reader covers exactly that population at ~1/7 the effective token
+#  cost (one-requirement x many-documents calls, 83% measured cache hit), fed by the per-
+#  limitation candidates claim_reach already ranked — so every limitation gets its own tail of
+#  documents read against it instead of nothing. DEEP_RANK_BATCH_TAIL=0 restores the cut exactly.
+BATCH_TAIL = os.environ.get("DEEP_RANK_BATCH_TAIL", "1") != "0"
+BATCH_PER_LIM = int(os.environ.get("DEEP_RANK_BATCH_PER_LIM", "12"))
+BATCH_TAIL_MAX = int(os.environ.get("DEEP_RANK_BATCH_TAIL_MAX", "240"))
 #  Raised 350 -> 420, AND `_DISPLAY_TOP` was raised with it (webapp), because the measurement
 #  above is specifically that widening the read set while the PAGE stays a fixed size trades
 #  visible recall for invisible reading. The two have to move together or not at all. This also
@@ -563,10 +572,16 @@ def _enrich_missing_text(chosen, on_progress=None, limit=None):
 
 
 def _grounded_rows(ref, kind):
-    """The rows of one charted reference that carry real, located, verbatim evidence."""
+    """The rows of one charted reference that carry real evidence.
+
+    Two bars count: "verified" (verbatim quote, located) and "teaches-unquoted" (the reader
+    asserted a teaching it could not quote; kept at verdict "partial", capped confidence). The
+    weaker bar earns partial-strength score only — it can shape the ordering, never an
+    anticipation call, which stays verbatim-only in limitations.claim_status.
+    """
     return [r for r in (ref.get(kind) or [])
-            if r.get("grounding") == "verified" and r.get("verdict") in _W
-            and _W[r["verdict"]] > 0]
+            if r.get("grounding") in ("verified", "teaches-unquoted")
+            and r.get("verdict") in _W and _W[r["verdict"]] > 0]
 
 
 def rarity(charts, features, claims):
@@ -1123,6 +1138,36 @@ def run(report, reports_dir=None, slug=None, on_progress=None):
     with ThreadPoolExecutor(max_workers=min(CHART_WORKERS, max(1, len(chosen)))) as ex:
         charts = list(ex.map(one, chosen))
     chart_seconds = time.time() - t0
+
+    #  THE PASSAGE TAIL — read the screened-but-uncut population per limitation, in batches.
+    #  See the BATCH_TAIL knob for why this exists and what it replaces.
+    if BATCH_TAIL and claim_items and reach_map:
+        try:
+            t2 = time.time()
+            by_pub_row = {r["pub"]: r for r in rows}
+            tail_pubs = [p for p in claim_reach.quota(reach_map, per_claim=BATCH_PER_LIM,
+                                                      exclude=seen, cap=BATCH_TAIL_MAX)
+                         if (by_pub_row.get(p) or {}).get("has_text")]
+            if tail_pubs:
+                emit("batch_tail_start", n=len(tail_pubs))
+                titles = {p: (by_pub_row.get(p) or {}).get("title") or "" for p in tail_pubs}
+                tail_refs = batch_reader.charts(tail_pubs, claim_items, kind="claim",
+                                                titles=titles, emit=emit)
+                for ref in tail_refs:
+                    row = by_pub_row.get(ref["pub"]) or {}
+                    ref["screen"] = scores.get(ref["pub"])
+                    ref["retrieval_rank"] = row.get("rank")
+                    ref["family"] = row.get("fam")
+                    seen.add(ref["pub"])
+                charts.extend(tail_refs)
+                cells = sum(1 for ref in tail_refs for r in ref.get("claims") or []
+                            if r.get("grounding") in ("verified", "teaches-unquoted"))
+                print(f"[batch_tail] {len(tail_refs)} tail references read against "
+                      f"{len(claim_items)} limitations: {cells} evidence cells "
+                      f"({time.time() - t2:.0f}s)", flush=True)
+                chart_seconds += time.time() - t2
+        except Exception:
+            traceback.print_exc()
 
     #  SECOND LOOK at the head, feature by feature, on the concepts rather than the wording. Only
     #  the rows a first reading left empty are re-asked, and an upgrade still has to pass the same

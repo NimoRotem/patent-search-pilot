@@ -92,8 +92,15 @@ _SYS = (
     "simply words it differently.\n"
     "\n"
     "Answer for EVERY reference given, in the order given, using ONLY the text supplied.\n"
+    "\n"
+    "THE TWO BARS. A verbatim quote is the strong bar. When a reference GENUINELY TEACHES the "
+    "requirement but no single verbatim passage of at most 40 words supports it (the teaching "
+    "sits in a figure description, spans sentences, or is implicit in the mechanism), keep your "
+    "honest verdict, set \"teaches\": true, leave \"quote\" EMPTY, and say in \"note\" where the "
+    "teaching sits. NEVER stitch or invent a quote; a truthful quote-free teaching beats a "
+    "fabricated quote, which is discarded anyway.\n"
     'Return ONLY JSON: {"references":[{"pub":"<publication number>","verdict":"...",'
-    '"quote":"...","note":"...","confidence":0.0}]}'
+    '"quote":"...","note":"...","confidence":0.0,"teaches":false}]}'
 )
 
 
@@ -163,10 +170,12 @@ def read(pubs, items, kind="claim", emit=None, log=print, workers=WORKERS):
         #  DOCUMENTS FIRST. This is the cache prefix: every requirement asked of this batch reuses
         #  it. Putting the requirement first would forfeit the 83% cache hit rate this shape was
         #  measured at, exactly as `deep_analysis._ask` used to.
-        payload = {"references": [{"pub": p, "text": loaded[p][1]} for p in pubs_in],
-                   "requirement": texts.get(label) or label}
+        doc_part = json.dumps({"references": [{"pub": p, "text": loaded[p][1]}
+                                              for p in pubs_in]}, ensure_ascii=False)[:-1]
+        tail = ", " + json.dumps({"requirement": texts.get(label) or label},
+                                 ensure_ascii=False)[1:]
         try:
-            got = llm.chat_json(_SYS, json.dumps(payload, ensure_ascii=False),
+            got = llm.chat_json(_SYS, [{"text": doc_part, "cache": True}, {"text": tail}],
                                 tier="read", max_tokens=MAX_TOKENS) or {}
         except Exception:
             traceback.print_exc()
@@ -223,9 +232,11 @@ def charts(pubs, items, kind="claim", titles=None, emit=None, log=print):
     out = []
     for pub, by_label in cells.items():
         rows = [by_label[l] for l in labels if l in by_label]
+        #  method stays "llm" — the ledger, the rescue and the grid all gate on it — and
+        #  `batched` records how the cells were obtained.
         ref = {"pub": pub, "title": titles.get(pub, ""), "found": True,
                "features": [], "claims": rows if kind == "claim" else [],
-               "method": "llm-batched", "chars": 0, "refuted": 0}
+               "method": "llm", "batched": True, "chars": 0, "refuted": 0}
         if kind != "claim":
             ref["features"] = rows
         try:

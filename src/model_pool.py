@@ -156,6 +156,22 @@ class _Provider:
 _tl = threading.local()
 
 
+#  `user` may be a plain string or a list of SEGMENTS: [{"text": str, "cache": bool}, ...].
+#  Segments exist for one reason — Anthropic's prompt cache needs an explicit breakpoint at the
+#  end of the stable prefix (the document), while Vertex caches implicitly on the joined bytes.
+#  Joined, the segments MUST reproduce exactly the string the caller used to send, so a provider
+#  that ignores segmentation (Vertex, meta) behaves byte-identically to before.
+def _segments(user):
+    if isinstance(user, str):
+        return [{"text": user}]
+    return [{"text": str(s.get("text") or ""), "cache": bool(s.get("cache"))}
+            for s in user if isinstance(s, dict)]
+
+
+def _joined(user):
+    return user if isinstance(user, str) else "".join(s["text"] for s in _segments(user))
+
+
 def _vertex(model):
     def go(system, user, max_tokens):
         from google import genai
@@ -170,7 +186,7 @@ def _vertex(model):
             #  gemini-2.5-flash is a thinking model; thinking tokens eat the output budget and
             #  truncate the JSON. Off for these short structured tasks.
             thinking_config=ThinkingConfig(thinking_budget=0))
-        r = _tl.genai.models.generate_content(model=model, contents=user, config=cfg)
+        r = _tl.genai.models.generate_content(model=model, contents=_joined(user), config=cfg)
         um = getattr(r, "usage_metadata", None)
         #  CACHED PROMPT TOKENS, counted separately. `prompt_token_count` INCLUDES cached tokens, so
         #  it cannot tell you whether caching engaged — and after reordering the reader payload so
@@ -191,16 +207,42 @@ def _post(url, payload, headers):
         return json.loads(fh.read().decode())
 
 
-def _anthropic(model):
+def _anthropic(model, temperature=0.2, thinking_off=False):
     def go(system, user, max_tokens):
-        d = _post("https://api.anthropic.com/v1/messages",
-                  {"model": model, "max_tokens": max(max_tokens, 1024), "temperature": 0.2,
-                   "system": system, "messages": [{"role": "user", "content": user}]},
+        #  CACHE_CONTROL ON THE STABLE PREFIX. The reader sends the same document to the same
+        #  model a dozen times per reference; without an explicit breakpoint Anthropic bills the
+        #  full document on every call. The system prompt (stable per stage) always gets a
+        #  breakpoint; caller-flagged segments (the document) get up to three more — four is the
+        #  API's limit. Cached reads bill at ~0.1x, so this is most of the Anthropic bill.
+        segs = _segments(user)
+        content, marked = [], 0
+        for s in segs:
+            blk = {"type": "text", "text": s["text"]}
+            if s.get("cache") and marked < 3:
+                blk["cache_control"] = {"type": "ephemeral"}
+                marked += 1
+            content.append(blk)
+        payload = {"model": model, "max_tokens": max(max_tokens, 1024),
+                   "system": [{"type": "text", "text": system,
+                               "cache_control": {"type": "ephemeral"}}],
+                   "messages": [{"role": "user", "content": content}]}
+        #  Newer models (claude-sonnet-5 and up) reject sampling parameters with a 400.
+        if temperature is not None:
+            payload["temperature"] = temperature
+        if thinking_off:
+            payload["thinking"] = {"type": "disabled"}
+        d = _post("https://api.anthropic.com/v1/messages", payload,
                   {"x-api-key": os.environ["ANTHROPIC_API_KEY"],
                    "anthropic-version": "2023-06-01"})
         u = d.get("usage") or {}
+        cache_read = u.get("cache_read_input_tokens", 0) or 0
+        cache_write = u.get("cache_creation_input_tokens", 0) or 0
+        _note_cached(cache_read)
+        #  `input_tokens` EXCLUDES cache reads/writes on Anthropic; report the total submitted so
+        #  the spend line stays comparable with Vertex's inclusive `prompt_token_count`.
         return ("".join(b.get("text", "") for b in (d.get("content") or [])),
-                u.get("input_tokens", 0), u.get("output_tokens", 0))
+                (u.get("input_tokens", 0) or 0) + cache_read + cache_write,
+                u.get("output_tokens", 0))
     return go
 
 
@@ -212,7 +254,7 @@ def _meta(model):
         d = _post("https://api.meta.ai/v1/chat/completions",
                   {"model": model,
                    "messages": [{"role": "system", "content": system},
-                                {"role": "user", "content": user}],
+                                {"role": "user", "content": _joined(user)}],
                    "max_tokens": max(max_tokens, REASONING_MIN_TOKENS), "temperature": 0.2},
                   {"Authorization": f"Bearer {os.environ['META_API_KEY']}"})
         u = d.get("usage") or {}
@@ -233,6 +275,12 @@ _ALL = {
                       rate=0.99, note="reasoning model, 0.99 calls/s — capacity and diversity"),
     "sonnet": _Provider("sonnet", "strong", _anthropic("claude-sonnet-4-5-20250929"), 24,
                         env="ANTHROPIC_API_KEY", rate=3.0),
+    #  Claude Sonnet 5: rejects sampling params (temperature=None omits it) and thinks adaptively
+    #  by default, which is unwanted latency on short structured judgments — disabled explicitly.
+    #  Not in any tier by default; opt in with MODEL_POOL_STRONG=sonnet5,vertex-flash for an A/B.
+    "sonnet5": _Provider("sonnet5", "strong",
+                         _anthropic("claude-sonnet-5", temperature=None, thinking_off=True), 24,
+                         env="ANTHROPIC_API_KEY", rate=3.0),
     "vertex-pro": _Provider("vertex-pro", "strong", _vertex("gemini-2.5-pro"), 16, rate=2.0),
 }
 
