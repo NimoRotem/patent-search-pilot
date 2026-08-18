@@ -103,6 +103,18 @@ def _secret_key():
 
 app.secret_key = _secret_key()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+# TWO INSTANCES, ONE DOMAIN, ONE COOKIE NAME = MUTUAL LOGOUT. The fable bench and production
+# both live under rotem.ai; each checkout has its own .secret_key, and Flask's default cookie
+# ("session", path "/") meant every request to one instance overwrote a cookie the other could
+# not verify — with both tabs open the user was signed out of both mid-run. Each instance must
+# therefore own a distinctly NAMED cookie, path-scoped to its prefix. Defaults unchanged, so
+# production behavior is byte-identical unless the env says otherwise.
+_cookie_name = os.environ.get("SESSION_COOKIE_NAME", "").strip()
+if _cookie_name:
+    app.config["SESSION_COOKIE_NAME"] = _cookie_name
+_cookie_path = os.environ.get("SESSION_COOKIE_PATH", "").strip()
+if _cookie_path:
+    app.config["SESSION_COOKIE_PATH"] = _cookie_path
 # Hard ceiling on any request body. The document-upload route caps at 30 MB itself; this is a
 # belt-and-braces WSGI-level guard so an oversized body is refused (413) before it is buffered.
 app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_BYTES", str(32 * 1024 * 1024)))
