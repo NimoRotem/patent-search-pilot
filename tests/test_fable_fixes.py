@@ -47,6 +47,28 @@ def test_load_skips_non_english_documents(monkeypatch):
     assert any("non-English" in l for l in logs)
 
 
+def test_quote_language_guard_demotes_german_verbatim():
+    import deep_analysis
+    shown = ("ABSTRACT An apparatus for handling plates. CLAIMS Schr\u00f6pfvorrichtung mit einem "
+             "mit einer Saugglocke verbundenen energetisch angetriebenen Sauger und einer Pumpe")
+    ref = {"found": True, "chars": len(shown), "n_claims": 1, "n_paragraphs": 0,
+           "truncated": False,
+           "passages": [{"label": "claim 1", "kind": "claim", "text": shown,
+                         "coord": {"claim_no": 1}}]}
+    raw = {"verdict": "disclosed",
+           "quote": "Schr\u00f6pfvorrichtung mit einem mit einer Saugglocke verbundenen",
+           "note": "the suction bell", "confidence": 0.9}
+    row = deep_analysis._row("lim", raw, ref, shown, "claim")
+    #  Grounded and located, but unreadable on an English report: kept on the weaker bar.
+    assert row["bar"] == "teaches" and row["grounding"] == "teaches-unquoted"
+    assert row["quote"] == "" and row["verdict"] == "partial"
+    assert "non-English passage" in row["note"]
+    #  An English quote that merely mentions one foreign word is never demoted.
+    assert deep_analysis.quote_is_english("a plate provided mit a seal for the chamber")
+    assert not deep_analysis.quote_is_english(
+        "Vorrichtung mit einer Dichtung und einem Griff zum Verlegen der Platten")
+
+
 def _deep_fixture():
     """Two read references answering one limitation: one verbatim, one teaches-only."""
     lim = {"label": "claim 1[b]", "text": "a housing which has a grip portion", "claim_no": 1,
@@ -65,8 +87,10 @@ def _deep_fixture():
     report = {"deep_rank": {"order": ["US-A-B2", "US-B-B2"], "feature_idf": {},
                             "feature_df": {}},
               "query_document": {"claims": [
-                  "1. A grip unit comprising a housing which has a grip portion for gripping "
-                  "the grip unit, and an electrically operated vacuum generating device."]}}
+                  {"claim_no": 1,
+                   "text": "1. A grip unit comprising a housing which has a grip portion for "
+                           "gripping the grip unit, and an electrically operated vacuum "
+                           "generating device."}]}}
     return report, deep
 
 

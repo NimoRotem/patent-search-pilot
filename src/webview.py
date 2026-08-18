@@ -471,11 +471,19 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
         disclosers[feat].sort(key=lambda p: rank_of.get(p, 10 ** 6))
 
     cols = []
+    #  Strong-bar references first: a column whose every cell is an unquotable teaches assertion
+    #  crowds out one carrying verbatim evidence. Teaches-only references still qualify, behind.
     for pub in order:
-        if pub in grounded:
+        if strong.get(pub):
             cols.append(pub)
         if len(cols) >= max_cols:
             break
+    if len(cols) < max_cols:
+        for pub in order:
+            if pub in grounded and pub not in cols:
+                cols.append(pub)
+            if len(cols) >= max_cols:
+                break
     #  Now guarantee the grid can SHOW what its own counts claim: for any feature
     #  with evidence but no discloser among the columns, pull in its best discloser.
     #  Without this a row reads "disclosed by 2" beside ten empty cells, which is
@@ -516,9 +524,15 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
     #  second thing reported as broken on the first rebuilt reports.
     whole_claims = {}
     for i, c in enumerate((report or {}).get("query_document", {}).get("claims") or []):
-        s = str(c or "").strip()
+        #  Claims arrive as dicts ({claim_no, text}) from the extractor and as bare numbered
+        #  strings from older reports; both shapes carry a whole claim.
+        if isinstance(c, dict):
+            s = str(c.get("text") or "").strip()
+            no = c.get("claim_no")
+        else:
+            s, no = str(c or "").strip(), None
         m = re.match(r"\s*(\d+)\s*[.)]", s)
-        whole_claims[int(m.group(1)) if m else i + 1] = s
+        whole_claims[int(no) if no else (int(m.group(1)) if m else i + 1)] = s
 
     rows = []
     #  Rarest first, because that is the order a novelty argument is made in — but anything the

@@ -66,17 +66,8 @@ _RANK = {"disclosed": 3, "partial": 2, "uncertain": 1, "absent": 0}
 #  them verbatim, grounded them (they ARE in the text) and put 47 German cells on an English
 #  report. A non-English reference is skipped here and named in the log; the deep tier's
 #  enrichment path is where it gets read properly.
-_EN_HINTS = (" the ", " of ", " and ", " to ", " in ", " is ", " for ", " with ")
-_XX_HINTS = (" der ", " die ", " das ", " und ", " mit ", " eine ", " einem ", " zum ",
-             " dadurch ", " gekennzeichnet ", " les ", " dans ", " pour ", " selon ",
-             " une ", " est ")
-
-
 def _mostly_english(text):
-    s = " " + (text or "")[:6000].lower().replace("\n", " ") + " "
-    en = sum(s.count(w) for w in _EN_HINTS)
-    xx = sum(s.count(w) for w in _XX_HINTS)
-    return en >= xx
+    return deep_analysis.mostly_english(text)
 
 _SYS = (
     "You are a patent examiner. You are given ONE REQUIREMENT taken verbatim from a subject "
