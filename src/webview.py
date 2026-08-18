@@ -389,6 +389,20 @@ def _row_item(row):
     return ""
 
 
+CLAIM_WHOLE_CHARS = int(os.environ.get("CLAIM_WHOLE_DISPLAY_CHARS", "1200"))
+
+
+def _clip(text, limit=None):
+    """Cut long claim text for display, and SAY it was cut.
+
+    A silent slice is indistinguishable from a short claim, which is exactly the
+    complaint this row exists to answer.
+    """
+    t = str(text or "")
+    n = int(limit or CLAIM_WHOLE_CHARS)
+    return t if len(t) <= n else t[:n].rstrip() + " … [claim truncated for display]"
+
+
 def build_reading_chart(report, deep, max_cols=None, axis="features"):
     """The element x reference grid built from WHAT WAS READ, not from what was retrieved.
 
@@ -603,7 +617,11 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
                      #  from reading as a broken chart.
                      "preamble": _lt.endswith(("comprising", "consisting of", "comprises",
                                                "consisting essentially of", "including")),
-                     "claim_whole": (whole_claims.get(meta.get("claim_no")) or "")[:600],
+                     #  The claim the reader was actually given, not a shorter one. The cap
+                     #  matches claim_reach/deep_analysis (1200 chars) so the page can never
+                     #  show less of a claim than the model was asked about, and a cut is
+                     #  MARKED: a claim that just stops reads as a claim that is that short.
+                     "claim_whole": _clip(whole_claims.get(meta.get("claim_no")) or ""),
                      "claim_no": meta.get("claim_no"),
                      "independent": bool(meta.get("independent")),
                      "idf": round(float(idf.get(feat, 0.0)), 3),
