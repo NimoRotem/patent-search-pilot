@@ -156,8 +156,33 @@ def _failed(row, exc):
                         (row["user_id"], row.get("search_slug")))
 
 
+_NO_TRANSPORT_LOGGED = False
+
+
 def deliver_pending(limit=20):
-    """Deliver up to ``limit`` messages; returns counts and never raises on a bad message."""
+    """Deliver up to ``limit`` messages; returns counts and never raises on a bad message.
+
+    AN INSTANCE THAT CANNOT SEND MUST NOT CLAIM. The outbox is one table in a Postgres that more
+    than one instance of this app can share, and _claim_one leases the oldest due row to whichever
+    worker asks first. A deployment configured deliberately WITHOUT a transport (the fable fix
+    bench carries no MAIL_* on purpose) still runs this worker, wins that race for every row, and
+    fails it as TransportUnavailable, which is non-terminal by design and so retries for ever.
+    Observed 2026-08-18: outbox row 16 reached 53 attempts and no search notification had been
+    delivered since the second instance came up, while the instance that COULD send sat idle.
+
+    So a working transport is a precondition of CLAIMING, not a step inside delivery. It is
+    re-checked each pass rather than cached at import, because a local MTA can appear underneath
+    a running process.
+    """
+    global _NO_TRANSPORT_LOGGED
+    status = transport_status()
+    if not status.get("configured"):
+        if not _NO_TRANSPORT_LOGGED:
+            print("[mail] no transport on this instance (%s); leaving the outbox to an instance "
+                  "that can send" % status.get("detail"), flush=True)
+            _NO_TRANSPORT_LOGGED = True
+        return {"sent": 0, "failed": 0, "skipped": "no transport"}
+    _NO_TRANSPORT_LOGGED = False
     result = {"sent": 0, "failed": 0}
     for _ in range(max(0, min(int(limit), 100))):
         row = _claim_one()

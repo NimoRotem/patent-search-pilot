@@ -10,6 +10,15 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
+#  THE SUITE MUST NOT INHERIT A DEPLOYMENT'S COOKIE SCOPE. config.py loads the app's .env, and a
+#  second instance under the same domain sets SESSION_COOKIE_PATH to its own prefix
+#  (/patents-fable). Flask's test client honours that path, requests "/", is therefore never sent
+#  the session cookie back, and EVERY login-dependent web test fails on a checkout whose only sin
+#  is being deployed. 29 of 31 failures on 2026-08-18 were exactly this. python-dotenv does not
+#  override variables that already exist, so setting them here wins over the .env.
+os.environ.setdefault("SESSION_COOKIE_PATH", "/")
+os.environ.setdefault("SESSION_COOKIE_NAME", "session")
+
 
 def _det_vec(text, dim=768):
     """Deterministic unit-ish vector seeded by the text — same text -> same vector."""
