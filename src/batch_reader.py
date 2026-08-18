@@ -72,7 +72,9 @@ def _mostly_english(text):
 _SYS = (
     "You are a patent examiner. You are given ONE REQUIREMENT taken verbatim from a subject "
     "patent's claims, and SEVERAL prior-art references, each labelled with its publication "
-    "number.\n"
+    "number. When the payload also carries \"claim_context\" — the WHOLE claim the requirement "
+    "is one limitation of — construe the requirement's words within that claim, but answer ONLY "
+    "about the requirement itself, never about the rest of the claim.\n"
     "\n"
     "For EVERY reference supplied, decide what THAT reference discloses about THAT ONE "
     "requirement:\n"
@@ -170,6 +172,8 @@ def read(pubs, items, kind="claim", emit=None, log=print, workers=WORKERS):
     labels = [i["label"] if isinstance(i, dict) else str(i) for i in items]
     texts = {(i["label"] if isinstance(i, dict) else str(i)):
              (i.get("text") if isinstance(i, dict) else "") for i in items}
+    contexts = {(i["label"] if isinstance(i, dict) else str(i)):
+                (i.get("context") or "") for i in items if isinstance(i, dict)}
     loaded = _load(pubs, log=log)
     if not loaded or not labels:
         return {}
@@ -190,8 +194,13 @@ def read(pubs, items, kind="claim", emit=None, log=print, workers=WORKERS):
         #  measured at, exactly as `deep_analysis._ask` used to.
         doc_part = json.dumps({"references": [{"pub": p, "text": loaded[p][1]}
                                               for p in pubs_in]}, ensure_ascii=False)[:-1]
-        tail = ", " + json.dumps({"requirement": texts.get(label) or label},
-                                 ensure_ascii=False)[1:]
+        tail_obj = {"requirement": texts.get(label) or label}
+        ctx = contexts.get(label)
+        if ctx:
+            #  The whole claim the requirement is one limitation of — construe, then answer only
+            #  about the requirement. Volatile per requirement, so it lives in the tail segment.
+            tail_obj["claim_context"] = ctx[:1200]
+        tail = ", " + json.dumps(tail_obj, ensure_ascii=False)[1:]
         try:
             got = llm.chat_json(_SYS, [{"text": doc_part, "cache": True}, {"text": tail}],
                                 tier="read", max_tokens=MAX_TOKENS) or {}

@@ -81,16 +81,24 @@ MAX_CLAIM_CHARS = int(os.environ.get("CLAIM_REACH_CLAIM_CHARS", "1200"))
 MAX_BRIEF_CHARS = int(os.environ.get("CLAIM_REACH_BRIEF_CHARS", "400"))
 
 
-def _query(brief, claim_text):
-    """A short blurb plus the claim itself.
+def _query(brief, claim_text, focus=None):
+    """A short blurb plus the WHOLE claim, with the limitation named as the focus.
 
     The blurb is what keeps a claim query inside the invention's field: a dependent claim on its own
     ("wherein the maximum acceleration is greater...") retrieves control theory from every industry.
-    The claim is what makes the query specific. Neither alone is enough.
+    The claim is what makes the query specific. Neither alone is enough — and a LIMITATION alone is
+    worse still: "A vacuum handling apparatus comprising" embedded by itself matches everything in
+    the field equally (it did: 281 of 355 read references "disclosed" it). So when the caller has
+    the whole claim, the embedding carries blurb + whole claim + the focused limitation.
     """
     b = " ".join(str(brief or "").split())[:MAX_BRIEF_CHARS]
     c = " ".join(str(claim_text or "").split())[:MAX_CLAIM_CHARS]
-    return (b + "\n\n" + c).strip() if b else c
+    f = " ".join(str(focus or "").split())[:400]
+    if c and f:
+        body = c + "\nFocus of this search: " + f
+    else:
+        body = c or f
+    return (b + "\n\n" + body).strip() if b else body
 
 
 def reach(claim_items, rows, brief="", subject=None, mode="novelty", retriever=None,
@@ -105,8 +113,10 @@ def reach(claim_items, rows, brief="", subject=None, mode="novelty", retriever=N
         fk = r.get("fam")
         if fk is not None and fk not in fam_row:
             fam_row[fk] = r
-    specs = [(c["label"], _query(brief, c.get("text"))) for c in claim_items
-             if str(c.get("text") or "").strip()]
+    specs = [(c["label"],
+              _query(brief, c.get("context") or c.get("text"),
+                     focus=(c.get("text") if c.get("context") else None)))
+             for c in claim_items if str(c.get("text") or "").strip()]
     if not specs:
         return {}
     if emit:

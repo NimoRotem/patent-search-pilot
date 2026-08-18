@@ -248,6 +248,12 @@ _SYS = (
     "show something — it is not a failure, and it is much better than a guess. Do not state any "
     "conclusion about patentability, novelty, obviousness, validity or infringement.\n"
     "\n"
+    "CLAIM CONTEXT. A claims item may carry \"claim_context\": the WHOLE claim its text is one "
+    "limitation of. Construe the limitation's words within that claim — the same words mean "
+    "different things in different apparatus — but answer ONLY about the limitation itself: "
+    "whether THIS reference discloses THIS limitation as it is meant in that claim. Never mark "
+    "a limitation disclosed merely because the reference matches the rest of its claim.\n"
+    "\n"
     "THE TWO BARS. A verbatim quote is the strong bar: a cell backed by one exact passage of at "
     "most 40 words. Sometimes a reference GENUINELY TEACHES an item and yet no single verbatim "
     "passage supports it — the teaching sits in a drawing's description, is spread across several "
@@ -458,8 +464,14 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
         return result
 
     shown = _rendered(ref)
-    claim_payload = [{"item": c["label"], "text": c["text"]} for c in input_claims
-                     ][:MAX_INPUT_CLAIMS]
+    #  Each limitation travels WITH its whole claim: "a housing which has a grip portion" means
+    #  one thing inside claim 9's vacuum handling apparatus and another in the abstract. The
+    #  reader is told to construe the text within claim_context and still answer only about the
+    #  limitation itself.
+    claim_payload = [
+        {"item": c["label"], "text": c["text"],
+         **({"claim_context": str(c.get("context"))[:1200]} if c.get("context") else {})}
+        for c in input_claims][:MAX_INPUT_CLAIMS]
     hints = hints or {}
     #  The stable prefix every batch of this reference shares: the document, serialized once.
     #  json.dumps of a dict minus its closing brace, so prefix + ", " + rest-of-dict re-forms the

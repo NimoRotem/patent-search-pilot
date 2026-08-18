@@ -112,3 +112,106 @@ def test_grid_rows_carry_the_whole_claim():
     row = next(r for r in cc["rows"] if r["element"] == "claim 1[b]")
     assert row["claim_no"] == 1
     assert row["claim_whole"].startswith("1. A grip unit comprising")
+
+
+def test_claim_chart_rows_follow_document_order_not_df():
+    """The reported confusion: claim 9's preamble (disclosed by almost everything) sorted to the
+    top, so the chart 'started from claim 9'. Claims-axis rows follow the claims."""
+    lim1 = {"label": "claim 1[a]", "text": "a suction plate with a peripheral seal",
+            "claim_no": 1, "independent": True}
+    lim9 = {"label": "claim 9[a]", "text": "A vacuum handling apparatus comprising",
+            "claim_no": 9, "independent": True}
+    cell = {"kind": "claim", "verdict": "disclosed", "quote": "q", "location": "claim 1",
+            "coord": {}, "passage_kind": "claim", "confidence": 0.9, "grounding": "verified",
+            "refuted": None, "bar": "discloses"}
+    refs = []
+    #  claim 9[a] is disclosed by three references, claim 1[a] by one — df order would put 9 first.
+    for i, pub in enumerate(["US-A-B2", "US-B-B2", "US-C-B2"]):
+        rows = [dict(cell, item="claim 9[a]", quote="apparatus")]
+        if i == 0:
+            rows.append(dict(cell, item="claim 1[a]", quote="seal"))
+        refs.append({"pub": pub, "method": "llm", "features": [], "claims": rows})
+    deep = {"references": refs, "claims": [lim1, lim9], "features": []}
+    report = {"deep_rank": {"order": ["US-A-B2", "US-B-B2", "US-C-B2"], "feature_idf": {},
+                            "feature_df": {}},
+              "query_document": {"claims": [
+                  {"claim_no": 1, "text": "1. A grip unit comprising a suction plate."},
+                  {"claim_no": 9, "text": "9. A vacuum handling apparatus comprising a unit."}]}}
+    cc = webview.build_reading_chart(report, deep, axis="claims")
+    order = [r["element"] for r in cc["rows"]]
+    assert order.index("claim 1[a]") < order.index("claim 9[a]")
+    r9 = next(r for r in cc["rows"] if r["element"] == "claim 9[a]")
+    assert r9["preamble"] is True
+    r1 = next(r for r in cc["rows"] if r["element"] == "claim 1[a]")
+    assert r1["preamble"] is False
+
+
+def test_reach_query_carries_blurb_whole_claim_and_focus():
+    import claim_reach
+    q = claim_reach._query("a vacuum gripper for slabs",
+                           "9. A vacuum handling apparatus comprising a grip unit and a hose.",
+                           focus="A vacuum handling apparatus comprising")
+    assert q.startswith("a vacuum gripper for slabs")
+    assert "9. A vacuum handling apparatus comprising a grip unit" in q
+    assert "Focus of this search: A vacuum handling apparatus comprising" in q
+
+
+def test_reader_payload_carries_claim_context(monkeypatch):
+    import deep_analysis
+    import evidence as ev
+    monkeypatch.setattr(ev, "REUSE", False)
+    seen = []
+
+    def chat(system, user, **kw):
+        joined = user if isinstance(user, str) else "".join(s["text"] for s in user)
+        seen.append(joined)
+        return {"features": [], "claims": [], "overall": {"score": 1, "why": "w"}}
+
+    import llm
+    monkeypatch.setattr(llm, "chat_json", chat)
+    monkeypatch.setattr(deep_analysis, "full_text",
+                        lambda pub, max_chars=None: {"found": True, "chars": 5, "n_claims": 1,
+                                                     "n_paragraphs": 0, "truncated": False,
+                                                     "passages": [{"label": "claim 1",
+                                                                   "kind": "claim", "text": "t",
+                                                                   "coord": {"claim_no": 1}}]})
+    monkeypatch.setattr(deep_analysis, "_refute", lambda rows, pub, texts=None: 0)
+    deep_analysis.analyse_reference(
+        "US-1-A", ["f"], [{"label": "claim 9[a]", "text": "A vacuum handling apparatus comprising",
+                           "context": "9. A vacuum handling apparatus comprising a grip unit."}])
+    claims_calls = [s for s in seen if "claim 9[a]" in s]
+    assert claims_calls and all('"claim_context"' in s and "a grip unit" in s
+                                for s in claims_calls)
+
+
+def test_batch_reader_payload_carries_claim_context(monkeypatch):
+    seen = []
+
+    def chat(system, user, **kw):
+        joined = user if isinstance(user, str) else "".join(s["text"] for s in user)
+        seen.append(joined)
+        return {"references": []}
+
+    import llm
+    monkeypatch.setattr(llm, "chat_json", chat)
+    import deep_analysis
+    monkeypatch.setattr(deep_analysis, "full_text",
+                        lambda pub, max_chars=None: {"found": True, "chars": 200, "n_claims": 1,
+                                                     "n_paragraphs": 0, "truncated": False,
+                                                     "passages": [{"label": "claim 1",
+                                                                   "kind": "claim",
+                                                                   "text": ENGLISH,
+                                                                   "coord": {"claim_no": 1}}]})
+    monkeypatch.setattr(deep_analysis, "_rendered", lambda ref: ENGLISH)
+    batch_reader.read(["US-1-A"],
+                      [{"label": "claim 9[a]", "text": "the preamble",
+                        "context": "9. The whole claim with a grip unit."}],
+                      workers=1)
+    assert seen and '"claim_context"' in seen[0] and "whole claim with a grip unit" in seen[0]
+
+
+def test_subject_fp_distinguishes_context():
+    import evidence
+    a = evidence.subject_fp([], [{"label": "l", "text": "t"}])
+    b = evidence.subject_fp([], [{"label": "l", "text": "t", "context": "claim 9 whole"}])
+    assert a != b

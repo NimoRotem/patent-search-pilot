@@ -547,10 +547,19 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
     #  in, but this table is for exploring what the art teaches, and a reader opening
     #  it wants the heavily-taught features at the top. Features nobody was asked
     #  about still sort last: an unanswered feature is not a rare one.
-    for feat in sorted(features,
-                       key=lambda f: (f not in asked,
-                                      -len(disclosers.get(f, [])),
-                                      -float(idf.get(f, 0.0)), f)):
+    if row_key == "claims":
+        #  DOCUMENT ORDER for the claim chart: claim 1 first, its limitations in sequence. The
+        #  most-disclosed-first order put claim 9's PREAMBLE ("A vacuum handling apparatus
+        #  comprising", disclosed by nearly everything) at the very top of the page, which read
+        #  as the chart starting at claim 9. Most-disclosed-first stays for the feature axis,
+        #  where rows are not a numbered legal document.
+        def _row_order(f):
+            meta = claim_meta.get(f) or {}
+            return (f not in asked, meta.get("claim_no") or 10 ** 6, f)
+    else:
+        def _row_order(f):
+            return (f not in asked, -len(disclosers.get(f, [])), -float(idf.get(f, 0.0)), f)
+    for feat in sorted(features, key=_row_order):
         out = []
         for pub in cols:
             r = cells[pub].get(feat)
@@ -586,8 +595,14 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
         #  count can always be followed to the documents behind it.
         also = [p for p in all_disc if p not in set(cols)]
         meta = claim_meta.get(feat) or {}
+        _lt = (claim_text.get(feat, "") or "").rstrip(" :,").lower()
         rows.append({"element": feat, "cells": out,
                      "claim_text": claim_text.get(feat, ""),
+                     #  A preamble row ("...apparatus comprising") is disclosed by nearly every
+                     #  reference in the field; labelling it stops "disclosed by 281 of 355"
+                     #  from reading as a broken chart.
+                     "preamble": _lt.endswith(("comprising", "consisting of", "comprises",
+                                               "consisting essentially of", "including")),
                      "claim_whole": (whole_claims.get(meta.get("claim_no")) or "")[:600],
                      "claim_no": meta.get("claim_no"),
                      "independent": bool(meta.get("independent")),

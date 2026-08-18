@@ -114,6 +114,12 @@ def subject_fp(features, input_claims) -> str:
         h.update(_norm((c or {}).get("label")).encode())
         h.update(b"=")
         h.update(_norm((c or {}).get("text")).encode())
+        #  The whole-claim context is part of the question: the same limitation construed in a
+        #  different claim is a different ask, so it misses the cache on purpose.
+        ctx = (c or {}).get("context") or (c or {}).get("claim_context")
+        if ctx:
+            h.update(b"@")
+            h.update(_norm(ctx).encode())
     return h.hexdigest()
 
 

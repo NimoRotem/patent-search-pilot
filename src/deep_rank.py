@@ -952,6 +952,22 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
             #  The reader charts the limitations INSTEAD of the whole claims. Same machinery, same
             #  grounding and refutation gates; a better question. The label is the ledger key.
             claim_items = limmod.as_chart_items(lims)
+            #  EVERY LIMITATION CARRIES ITS WHOLE CLAIM as context, and every consumer downstream
+            #  uses it: claim_reach embeds blurb + whole claim (a preamble limitation like
+            #  "A vacuum handling apparatus comprising" is meaningless alone and was searched
+            #  alone), and the readers construe each limitation within its claim before judging.
+            #  Reported verbatim by the owner: "we must search based on the full claim in context
+            #  (invention blurb + claim[N])".
+            whole = {}
+            for c in (qd.get("claims") or []):
+                t = str((c.get("text") if isinstance(c, dict) else c) or "").strip()
+                no = c.get("claim_no") if isinstance(c, dict) else None
+                if t:
+                    whole[int(no) if no else len(whole) + 1] = t
+            for it in claim_items:
+                ctx = whole.get(it.get("claim_no"))
+                if ctx:
+                    it["context"] = ctx
     report["search_type"] = stype
     ranked = list(report.get("ranked_families") or [])
     #  ORACLE INJECTION, diagnostic only. Hands a stage the gold it never received so the stages
