@@ -445,13 +445,76 @@ def _stop_stage_heartbeat(slug):
         stop.set()
 
 
+#  Cheap, cached answers to "is the file on disk partial" and "what does the queue know about
+#  this slug" — both consulted on every /status poll and every SSE event, so neither may cost a
+#  full JSON parse or a DB round-trip each time. The partial check keys on mtime; the queue row
+#  keys on a short TTL.
+_PARTIAL_CACHE: dict = {}
+_QROW_CACHE: dict = {}
+
+
+def _report_partial(slug):
+    p = report_path(slug)
+    try:
+        mt = p.stat().st_mtime
+    except OSError:
+        return None                                    # no file at all
+    hit = _PARTIAL_CACHE.get(slug)
+    if hit and hit[0] == mt:
+        return hit[1]
+    try:
+        partial = bool(json.loads(p.read_text()).get("partial"))
+    except Exception:
+        partial = True                                 # unreadable = not a finished report
+    _PARTIAL_CACHE[slug] = (mt, partial)
+    return partial
+
+
+def _queue_row_cached(slug, ttl=5.0):
+    hit = _QROW_CACHE.get(slug)
+    now = time.time()
+    if hit and now - hit[0] < ttl:
+        return hit[1]
+    row = run_queue.get_row(slug)
+    _QROW_CACHE[slug] = (now, row)
+    return row
+
+
 def _job_event(slug, job):
     """The single wire shape shared by /status (poll) and /events (SSE), so the fallback path and
-    the streaming path can never disagree."""
+    the streaming path can never disagree.
+
+    THE RELOAD LOOP THIS MUST NEVER RECREATE: a run killed by a restart leaves a PARTIAL report
+    and no live job. Calling that state "done" made the report page reload onto the same partial
+    page forever. A partial file with no job is "interrupted" (done=False), and when the queue
+    holds the run it says so — restarting automatically, attempt N."""
     st = job.get("status", "unknown")
     exists = report_path(slug).exists()
+    qrow = _queue_row_cached(slug)
+    msg = job.get("msg", "")
+    done = st == "done"
+    if not job and exists:
+        partial = _report_partial(slug)
+        if not partial:
+            done = True
+        else:
+            st = "interrupted"
+            if qrow and qrow.get("state") in ("queued", "running"):
+                msg = ("This search was interrupted by a server restart and is restarting "
+                       f"automatically (attempt {int(qrow.get('attempts') or 0) + 1}). Reading "
+                       "already banked in the evidence store is reused, so the restart is far "
+                       "cheaper than the first pass. You can close this tab.")
+            else:
+                msg = ("This search was interrupted by a server restart and did not resume. "
+                       "Use Re-run to start it again; reading already banked in the evidence "
+                       "store is reused.")
+    attempt = int((qrow or {}).get("attempts") or 0) or (1 if job else 0)
+    t0_overall = (qrow or {}).get("t0_overall")
+    elapsed_total = int(max(0.0, time.time() - float(t0_overall))) if t0_overall else None
     return {"kind": job.get("kind", "progress"), "slug": slug, "status": st,
-            "msg": job.get("msg", ""),
+            "msg": msg,
+            "attempt": attempt,
+            "elapsed_total_sec": elapsed_total,
             # Structured counterpart to `msg`. The progress UI needs the NUMBERS (elements found,
             # families seen, which round) to render a narrative rather than re-parsing prose out of
             # the message string, and to keep showing the last known state during the long silent
@@ -465,8 +528,8 @@ def _job_event(slug, job):
             #  other running search, which is the accuracy the number is used at.
             "elapsed_sec": int(max(0.0, time.time() - float(job.get("t0") or 0))) if job.get("t0") else 0,
             "tokens": _job_tokens(job),
-            "ready": exists and (st in ("done", "partial") or not job),
-            "done": st == "done" or (exists and not job)}
+            "ready": exists and (st in ("done", "partial", "interrupted") or not job),
+            "done": done}
 
 
 def _job_tokens(job):
@@ -1435,6 +1498,13 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
                     _JOBS.pop(slug, None)          # release the claim; nothing was started
                 return "busy", why
         gated = True
+    #  EVERY start gets a queue row (see run_queue.record_started): a direct start that never
+    #  waited in line must still be requeue-able after a restart, and the row carries the run's
+    #  overall clock and attempt counter for the progress UI.
+    run_queue.record_started(slug, {
+        "query": query, "subject": subject, "mode": mode, "wide": wide,
+        "doc_token": doc_token, "search_focus": search_focus, "depth": depth})
+    _QROW_CACHE.pop(slug, None)
     try:
         subj_obj = _subject_obj(subject)
         if regen:

@@ -42,6 +42,10 @@ def ensure_schema():
             )""")
         cur.execute("CREATE INDEX IF NOT EXISTS ix_run_queue_state "
                     "ON app_run_queue (state, enqueued_at)")
+        #  How many times this run has actually STARTED. Attempt 2+ means a restart interrupted
+        #  it and the queue brought it back; the page says so instead of looking like a loop.
+        cur.execute("ALTER TABLE app_run_queue ADD COLUMN IF NOT EXISTS "
+                    "attempts int NOT NULL DEFAULT 0")
 
 
 def enqueue(slug, payload) -> int:
@@ -62,6 +66,42 @@ def enqueue(slug, payload) -> int:
                     (slug,))
         r = cur.fetchone()
     return int(r["n"] if isinstance(r, dict) else r[0]) or 1
+
+
+def record_started(slug, payload):
+    """EVERY run start lands here, queued or direct. The first production loss was exactly the
+    gap this closes: a run started while the gate had a free slot never entered the queue, a
+    deploy killed it, `requeue_orphans` had no row to requeue, and the page looped on the
+    partial report forever. The row doubles as the run's overall clock (enqueued_at survives
+    restarts) and its attempt counter."""
+    try:
+        with db.cursor() as cur:
+            cur.execute(
+                "INSERT INTO app_run_queue (slug, payload, state, started_at, attempts) "
+                "VALUES (%s, %s, 'running', now(), 1) "
+                "ON CONFLICT (slug) DO UPDATE SET "
+                "  payload = EXCLUDED.payload, state = 'running', started_at = now(), "
+                "  attempts = app_run_queue.attempts + 1, "
+                #  A re-run of a slug that finished earlier is a NEW run: its clock restarts.
+                "  enqueued_at = CASE WHEN app_run_queue.state IN ('done','failed') "
+                "                THEN now() ELSE app_run_queue.enqueued_at END, "
+                "  finished_at = NULL, error = NULL",
+                (slug, json.dumps(payload)))
+    except Exception:
+        traceback.print_exc()
+
+
+def get_row(slug):
+    """state / attempts / overall start for one slug, or None. Cheap single-row read."""
+    try:
+        with db.cursor() as cur:
+            cur.execute("SELECT state, attempts, "
+                        "extract(epoch FROM enqueued_at) AS t0_overall "
+                        "FROM app_run_queue WHERE slug=%s", (slug,))
+            r = cur.fetchone()
+        return dict(r) if r else None
+    except Exception:
+        return None
 
 
 def next_queued():

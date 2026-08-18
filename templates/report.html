@@ -974,22 +974,10 @@ window.REPORT_SAVED = {{ (v.account_search and v.account_search.saved)|default(f
   streamJob(window.SLUG, function(ev){
     p.apply(ev);
     const s = document.getElementById('refiningStage');
-    /* THE HEARTBEAT. Long stages (a claim-focused search, a 40-minute read wave) update their
-       counter every few minutes, and a frozen sentence reads as a hung server — it was reported
-       as exactly that twice. Elapsed time and tokens spent tick on every poll, so liveness is
-       visible even when the stage text is not moving. */
-    if (s && ev.msg && ev.msg !== 'done'){
-      let hb = '';
-      if (typeof ev.elapsed_sec === 'number' && ev.elapsed_sec > 0){
-        const m = Math.floor(ev.elapsed_sec / 60);
-        hb = ' · ' + (m > 0 ? (m + 'm') : (Math.round(ev.elapsed_sec) + 's')) + ' in';
-      }
-      if (typeof ev.tokens === 'number' && ev.tokens > 0)
-        hb += ' · ' + (ev.tokens >= 1e6 ? (ev.tokens / 1e6).toFixed(1) + 'M'
-                                             : Math.round(ev.tokens / 1e3) + 'k')
-            + ' tokens spent, still working';
-      s.textContent = ev.msg + hb;
-    }
+    /* The stage sentence stays plain: the overall clock, token count and attempt number are
+       rendered by createProgress's own .pgclock line just below, on every page that shows
+       progress — so a slow stage never reads as a hang and a restarted run says it restarted. */
+    if (s && ev.msg && ev.msg !== 'done') s.textContent = ev.msg;
     // Live re-sort to the authoritative listwise order as soon as it is known, so a strong hit
     // that arrived late in fusion order does not sit low until the reload. Cards move in place
     // (keyed by pub id) so lazily-loaded tab state is preserved.

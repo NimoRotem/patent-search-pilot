@@ -1791,11 +1791,15 @@ function createProgress(mount, opts){
   const stages = STAGES.filter(s => s.key !== 'federate' || wide);
   const DONE_RANK = STAGES[STAGES.length - 1].rank;   // was hardcoded 6; the list is longer now
   const state = { rank: 0, detail: {}, since: Date.now(), started: Date.now(), msg: '',
-                  tokens: 0, elapsed: 0 };
+                  tokens: 0, elapsed: 0, elapsedTotal: 0, attempt: 0 };
   mount.innerHTML = '<ul class="stages">' + stages.map(s =>
     '<li data-rank="' + s.rank + '"><span class="ico" aria-hidden="true">✓</span>' +
     '<span class="txt"><span class="st-name">' + s.name + '</span>' +
-    '<span class="st-note">' + s.note + '</span></span></li>').join('') + '</ul>';
+    '<span class="st-note">' + s.note + '</span></span></li>').join('') + '</ul>' +
+    /* The overall clock lives INSIDE the component: the generating page has its own #elapsed
+       footer, but most of a long run is watched from the report page's refining banner, which
+       had no counter at all — "no overall time and token counter" was reported verbatim. */
+    '<div class="pgclock cc" style="margin-top:6px" aria-live="off"></div>';
 
   function facts(){
     const d = state.detail, out = [];
@@ -1851,6 +1855,23 @@ function createProgress(mount, opts){
           + 'the counter is process-wide, so a second search running at the same time is counted here too.'
         : '';
     }
+    const clock = mount.querySelector('.pgclock');
+    if (clock){
+      const attemptSecs = state.elapsed || Math.round((Date.now() - state.started) / 1000);
+      const totalSecs = Math.max(state.elapsedTotal || 0, attemptSecs);
+      let txt = '⏱ ' + fmtDur(totalSecs * 1000) + ' overall';
+      if (state.attempt > 1 && attemptSecs < totalSecs)
+        txt += ' · this attempt ' + fmtDur(attemptSecs * 1000);
+      if (state.tokens > 0){
+        const t = state.tokens;
+        txt += ' · ~' + (t >= 1e6 ? (t / 1e6).toFixed(1) + 'M' :
+                         t >= 1e3 ? Math.round(t / 1e3) + 'k' : t) + ' tokens this attempt';
+      }
+      if (state.attempt > 1)
+        txt += ' · attempt ' + state.attempt +
+               ' (restarted by a server update — banked reading is reused)';
+      clock.textContent = txt;
+    }
   }
   paint();
   const timer = setInterval(paint, 1000);
@@ -1862,6 +1883,9 @@ function createProgress(mount, opts){
       if (ev.detail) Object.assign(state.detail, ev.detail);
       if (typeof ev.tokens === 'number' && ev.tokens > state.tokens) state.tokens = ev.tokens;
       if (typeof ev.elapsed_sec === 'number' && ev.elapsed_sec > state.elapsed) state.elapsed = ev.elapsed_sec;
+      if (typeof ev.elapsed_total_sec === 'number' && ev.elapsed_total_sec > state.elapsedTotal)
+        state.elapsedTotal = ev.elapsed_total_sec;
+      if (typeof ev.attempt === 'number' && ev.attempt > state.attempt) state.attempt = ev.attempt;
       if (ev.msg) state.msg = ev.msg;
       paint();
     },
