@@ -32,6 +32,31 @@
      data-listwise-reranked="{{ 'true' if v.listwise_reranked else 'false' }}"
      data-agent-rounds="{{ v.rounds or 0 }}">
 
+  {% if v.depth == 'quick' and not v.partial and not read_only %}
+  {#  THE ESCALATION. A quick report is the interactive tier: one retrieval round over the local
+      corpus, screening, and a per-limitation batch pass. The full attack (hundreds of documents
+      read in full, refuted, uncovered claims rescued) is a different spend class, so it is a
+      deliberate second click rather than the default. Same inputs, depth=deep, new report. #}
+  <div class="refining" id="escalateBanner" style="align-items:center">
+    <div style="min-width:0;flex:1">
+      <b>Quick search.</b>
+      <div class="rf-msg">One fast pass over the indexed corpus: retrieval, screening and a
+        per-requirement evidence sweep. The full claim-by-claim attack reads hundreds of
+        documents in full, challenges every cell and hunts art for uncovered claims — it runs
+        30–90 minutes and can email you when done.</div>
+    </div>
+    <form method="post" action="{{ request.script_root }}/run" style="margin:0">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="mode" value="{{ v.escalate.mode }}">
+      <input type="hidden" name="search_focus" value="{{ v.escalate.search_focus or 'all_text' }}">
+      <input type="hidden" name="doc_token" value="{{ v.escalate.doc_token or '' }}">
+      <input type="hidden" name="query" value="{{ v.escalate.query }}">
+      <input type="hidden" name="depth" value="deep">
+      <button class="btn sm" type="submit">Run the full claim-by-claim attack</button>
+    </form>
+  </div>
+  {% endif %}
+
   {% if v.partial %}
   <div class="refining" id="refiningBanner">
     <span class="spin" aria-hidden="true"></span>
@@ -949,7 +974,22 @@ window.REPORT_SAVED = {{ (v.account_search and v.account_search.saved)|default(f
   streamJob(window.SLUG, function(ev){
     p.apply(ev);
     const s = document.getElementById('refiningStage');
-    if (s && ev.msg && ev.msg !== 'done') s.textContent = ev.msg;
+    /* THE HEARTBEAT. Long stages (a claim-focused search, a 40-minute read wave) update their
+       counter every few minutes, and a frozen sentence reads as a hung server — it was reported
+       as exactly that twice. Elapsed time and tokens spent tick on every poll, so liveness is
+       visible even when the stage text is not moving. */
+    if (s && ev.msg && ev.msg !== 'done'){
+      let hb = '';
+      if (typeof ev.elapsed_sec === 'number' && ev.elapsed_sec > 0){
+        const m = Math.floor(ev.elapsed_sec / 60);
+        hb = ' · ' + (m > 0 ? (m + 'm') : (Math.round(ev.elapsed_sec) + 's')) + ' in';
+      }
+      if (typeof ev.tokens === 'number' && ev.tokens > 0)
+        hb += ' · ' + (ev.tokens >= 1e6 ? (ev.tokens / 1e6).toFixed(1) + 'M'
+                                             : Math.round(ev.tokens / 1e3) + 'k')
+            + ' tokens spent, still working';
+      s.textContent = ev.msg + hb;
+    }
     // Live re-sort to the authoritative listwise order as soon as it is known, so a strong hit
     // that arrived late in fusion order does not sit low until the reload. Cards move in place
     // (keyed by pub id) so lazily-loaded tab state is preserved.

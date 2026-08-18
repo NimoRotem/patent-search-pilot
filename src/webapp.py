@@ -359,12 +359,16 @@ def slugify(text):
     return "adhoc-" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
 
 
-def search_slug(query, mode, *, wide, search_focus, subject=None, doc_token=None):
-    """Stable cache identity for every input that can change retrieval/report content."""
-    return slugify("|".join((
-        query, mode, "wide" if wide else "narrow", search_focus,
-        f"subject:{subject or '-'}", f"document:{doc_token or '-'}",
-    )))
+def search_slug(query, mode, *, wide, search_focus, subject=None, doc_token=None, depth="deep"):
+    """Stable cache identity for every input that can change retrieval/report content.
+
+    `depth` joined ONLY when it is not "deep", so every pre-existing deep report keeps its slug —
+    the same backward-compatibility rule the "|wide" marker follows."""
+    parts = [query, mode, "wide" if wide else "narrow", search_focus,
+             f"subject:{subject or '-'}", f"document:{doc_token or '-'}"]
+    if depth != "deep":
+        parts.append(f"depth:{depth}")
+    return slugify("|".join(parts))
 
 
 def report_path(slug):
@@ -489,23 +493,25 @@ def _write_report(slug, rep):
 
 
 def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None,
-             search_focus="all_text"):
+             search_focus="all_text", depth="deep"):
     """Thread entrypoint: run the generation, then always release the reserved budget slot.
     Kept separate from _generate so _generate's signature stays purely about doing the work."""
     try:
-        # Only pass doc_token when there is one, so callers/tests that stub _generate with the
-        # pre-existing (slug, query, subject, mode, wide) signature keep working for typed queries.
+        # Only pass doc_token/depth when they deviate from the defaults, so callers/tests that
+        # stub _generate with the pre-existing (slug, query, subject, mode, wide) signature keep
+        # working for typed deep queries.
+        extra = {} if depth == "deep" else {"depth": depth}
         if doc_token is None and search_focus == "all_text":
             # Preserve the historical call shape for adapters/tests that wrap _generate.
-            _generate(slug, query, subject, mode, wide=wide)
+            _generate(slug, query, subject, mode, wide=wide, **extra)
         elif doc_token is None:
-            _generate(slug, query, subject, mode, wide=wide, search_focus=search_focus)
+            _generate(slug, query, subject, mode, wide=wide, search_focus=search_focus, **extra)
         else:
             _generate(slug, query, subject, mode, wide=wide, doc_token=doc_token,
-                      search_focus=search_focus)
+                      search_focus=search_focus, **extra)
     finally:
         if gated and auth.run_gate:
-            auth.run_gate.end()
+            auth.run_gate.end(depth=depth)
         run_queue.mark_finished(slug, ok=report_path(slug).exists())
 
 
@@ -800,9 +806,13 @@ def _drop_self_family(rep):
 
 
 def _generate(slug, query, subject, mode, wide=False, doc_token=None,
-              search_focus="all_text"):
+              search_focus="all_text", depth="deep"):
     """Run one report. Runs fully concurrently with other generations — the only serialized step is
-    the cross-encoder, which lives in its own child process (rerank_pool)."""
+    the cross-encoder, which lives in its own child process (rerank_pool).
+
+    depth="quick" is the interactive tier: one retrieval round, no external fan-out (the caller
+    already forces wide=False), and deep_rank stops after screen + per-limitation batch tail —
+    no full reads, no refuter tail, no rescue. Everything else is byte-identical to deep."""
     _set_job(slug, status="running", msg="Queued…", t0=time.time(), tok0=_tok_now())
     #  IMMUTABLE RUN MANIFEST, written BEFORE anything happens. No comparison between two runs is
     #  valid unless they shared a corpus snapshot, a commit, the same prompts and the same budgets,
@@ -946,7 +956,11 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             futs = {}
             futs["local"] = ex.submit(
                 _timed, "local", A.run, query, subject=subject, mode=mode,
-                cfg=AgentConfig(mode=mode, max_rounds=2, elements_per_round=3, ground=True,
+                #  Quick tier: ONE retrieval round. The second round's marginal families arrive
+                #  minutes later and feed a reading depth the quick tier does not have; the deep
+                #  escalation re-runs with the full two rounds.
+                cfg=AgentConfig(mode=mode, max_rounds=(1 if depth == "quick" else 2),
+                                elements_per_round=3, ground=True,
                                 search_config=("claim_agentic" if search_focus == "claims"
                                                else "agentic"),
                                 input_claims=list((doc or {}).get("claims") or [])),
@@ -1099,7 +1113,9 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                          msg=f"Reading rescued references: {data.get('done')} of "
                              f"{data.get('total')}…")
         try:
-            dr = deep_rank.run(rep, reports_dir=REPORTS, slug=slug, on_progress=_deep_event)
+            rep["depth"] = depth
+            dr = deep_rank.run(rep, reports_dir=REPORTS, slug=slug, on_progress=_deep_event,
+                               depth=depth)
             if dr:
                 print(f"[deep_rank {slug}] screened {dr['screened']}/{dr['n_candidates']} in "
                       f"{dr['screen_seconds']}s, read {dr['read_in_full']} in full "
@@ -1347,7 +1363,7 @@ def _espacenet_safe(pub, family_id=None):
 
 
 def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, wide=False,
-                  doc_token=None, search_focus="all_text", from_queue=False):
+                  doc_token=None, search_focus="all_text", from_queue=False, depth="deep"):
     """Return ('ready'|'running'|'missing'|'busy', report_or_None). Kicks off background
     generation if needed. A search that arrives while the gate is full is QUEUED (run_queue) and
     reported as running; 'busy' is only returned to the dispatcher itself (`from_queue=True`),
@@ -1374,7 +1390,7 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
     # Reserve a generation slot AFTER claiming the slug (so the claim can be released cleanly).
     gated = False
     if auth.run_gate:
-        ok, why = auth.run_gate.try_begin()
+        ok, why = auth.run_gate.try_begin(depth=depth)
         if not ok:
             if from_queue:
                 with _JOB_LOCK:                    # restore the placeholder; row stays queued
@@ -1384,7 +1400,7 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
             try:
                 pos = run_queue.enqueue(slug, {
                     "query": query, "subject": subject, "mode": mode, "wide": wide,
-                    "doc_token": doc_token, "search_focus": search_focus})
+                    "doc_token": doc_token, "search_focus": search_focus, "depth": depth})
                 with _JOB_LOCK:
                     _JOBS[slug] = {"status": "running", "queued": True,
                                    "msg": (f"Queued behind {max(pos - 1, 0)} search(es) — "
@@ -1406,7 +1422,8 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
             (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)
             (REPORTS / f"{slug}.detail-preview.json").unlink(missing_ok=True)
         threading.Thread(target=_run_job,
-                         args=(slug, query, subj_obj, mode, gated, wide, doc_token, search_focus),
+                         args=(slug, query, subj_obj, mode, gated, wide, doc_token, search_focus,
+                               depth),
                          daemon=True).start()
     except Exception:
         # Never leak the reserved slot or leave a phantom "running" claim if we fail to launch.
@@ -1723,6 +1740,23 @@ def run():
     #  silently replacing a result the user may have cited. Every pre-existing narrow report keeps
     #  its own slug, stays readable at its own URL, and is listed in /history.
     wide = True
+    #  THE TWO-TIER SPLIT (public-tool build-out). depth="quick" is the interactive product: one
+    #  retrieval round, local corpus only (no external fan-out, no paid enrichment), screen +
+    #  per-limitation batch tail, first report in minutes for well under a dollar. depth="deep"
+    #  is the full claim-by-claim attack (unchanged pipeline) and is what the quick report's
+    #  escalate button re-runs with. Defaults preserve today's behavior: deep unless asked, and
+    #  the gates below only bite when their env flags are set.
+    depth = request.form.get("depth", "").strip() or "deep"
+    if depth not in ("quick", "deep"):
+        return _error_response({"error": "unknown_depth", "depth": depth}, 400,
+                               f"Unknown search depth: {depth}")
+    if depth == "deep" and not user and os.environ.get("DEEP_REQUIRES_LOGIN", "0") != "0":
+        #  Public visitors get the quick tier; the multi-hour attack is for accounts. Forcing
+        #  quick (rather than a login wall) keeps the public flow alive and makes the escalate
+        #  button the login prompt.
+        depth = "quick"
+    if depth == "quick":
+        wide = False                       # local corpus only: no external APIs on the quick tier
     if not query:
         return redirect(url_for("index"))
     #  OUT-OF-DOMAIN: STILL DETECTED, NO LONGER A GATE.
@@ -1750,9 +1784,9 @@ def run():
     # anchor publication or uploaded-document token can return another search's report/claim grid
     # for the same visible query.
     slug = search_slug(query, mode, wide=wide, search_focus=search_focus,
-                       subject=subject, doc_token=doc_token)
+                       subject=subject, doc_token=doc_token, depth=depth)
     st, why = ensure_report(slug, query=query, subject=subject, mode=mode, wide=wide,
-                            doc_token=doc_token, search_focus=search_focus)
+                            doc_token=doc_token, search_focus=search_focus, depth=depth)
     if st == "busy":
         return _error_response({"error": "server busy", "detail": why}, 429,
                                f"The server is at capacity — {why}. Please retry shortly.")
@@ -1760,7 +1794,7 @@ def run():
     # document-chunk + image channels instead of degrading to text-only).
     (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
         {"query": query, "mode": mode, "subject": subject, "wide": wide, "ood": ood,
-         "doc_token": doc_token, "search_focus": search_focus}))
+         "doc_token": doc_token, "search_focus": search_focus, "depth": depth}))
     if user:
         notify = request.form.get("notify_email") == "1"
         try:
@@ -2066,6 +2100,7 @@ def report(slug):
     ood = None          # out-of-domain verdict recorded at search time, shown as a results banner
     doc_token = None     # document-search materials, so a live Re-run keeps the doc channels
     search_focus = "all_text"
+    depth = "deep"
     if slug in _GOLD:
         e = _GOLD[slug]
         query, subject, mode = e["query_text"], e.get("anchor_publication"), e["mode"]
@@ -2079,9 +2114,11 @@ def report(slug):
             ood = m.get("ood")
             doc_token = m.get("doc_token")
             search_focus = m.get("search_focus") or "all_text"
+            depth = m.get("depth") or "deep"
         title = "Ad-hoc search"
     status, rep = ensure_report(slug, query=query, subject=subject, mode=mode, regen=regen,
-                                wide=wide, doc_token=doc_token, search_focus=search_focus)
+                                wide=wide, doc_token=doc_token, search_focus=search_focus,
+                                depth=depth)
     if status == "missing":
         return render_template("notfound.html", slug=slug), 404
     if status == "busy":
@@ -2152,6 +2189,12 @@ def report(slug):
     view["deep_analysis"] = deep_analysis.metadata(rep, view)
     view["archive"] = report_archive.metadata(slug, REPORTS)
     view["slug"] = slug                       # the full-ranked-list link needs it
+    #  The tier this report was made at, and everything the escalate form needs to re-run the
+    #  same inputs at full depth.
+    view["depth"] = rep.get("depth") or depth
+    if view["depth"] == "quick":
+        view["escalate"] = {"query": query or rep.get("query") or "", "mode": mode,
+                            "doc_token": doc_token or "", "search_focus": search_focus}
     return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
 
 
@@ -5571,7 +5614,8 @@ def _queue_launch(slug, payload):
             slug, query=payload.get("query"), subject=payload.get("subject"),
             mode=payload.get("mode") or "novelty", wide=bool(payload.get("wide")),
             doc_token=payload.get("doc_token"),
-            search_focus=payload.get("search_focus") or "all_text", from_queue=True)
+            search_focus=payload.get("search_focus") or "all_text", from_queue=True,
+            depth=payload.get("depth") or "deep")
     except Exception:
         traceback.print_exc()
         return "gone"

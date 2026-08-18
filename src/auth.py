@@ -307,13 +307,23 @@ class RunGate:
       crash loop) can't be used to reset the meter.
     """
 
-    def __init__(self, max_concurrent, daily_cap, state_path=None):
+    def __init__(self, max_concurrent, daily_cap, state_path=None, quick_max=None,
+                 quick_daily_cap=None):
         self.max_concurrent = int(max_concurrent)
         self.daily_cap = int(daily_cap)
+        #  THE QUICK LANE (public two-tier split). Quick searches are local-corpus-only, no full
+        #  reads and no rescue — cents, not tens of dollars — so they get their own concurrency
+        #  slots and their own (much higher) daily budget. A queue of $0.50 searches must never
+        #  wait behind two multi-hour deep attacks, and a burst of public quick searches must
+        #  never exhaust the deep tier's spend cap.
+        self.quick_max = int(quick_max if quick_max is not None else max_concurrent)
+        self.quick_daily_cap = int(quick_daily_cap if quick_daily_cap is not None else daily_cap)
         self.state_path = Path(state_path) if state_path else None
-        self.active = 0
+        self.active = 0                    # deep lane, name kept for compatibility
+        self.active_quick = 0
         self.lock = threading.Lock()
         self.day, self.count = self._today(), 0
+        self.quick_count = 0
         self._load()
 
     @staticmethod
@@ -327,6 +337,7 @@ class RunGate:
             d = json.loads(self.state_path.read_text())
             if d.get("day") == self._today():
                 self.day, self.count = d["day"], int(d.get("count", 0))
+                self.quick_count = int(d.get("quick_count", 0))
         except Exception:
             pass
 
@@ -335,16 +346,30 @@ class RunGate:
             return
         try:
             self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            self.state_path.write_text(json.dumps({"day": self.day, "count": self.count}))
+            self.state_path.write_text(json.dumps({"day": self.day, "count": self.count,
+                                                   "quick_count": self.quick_count}))
         except Exception:
             pass
 
-    def try_begin(self):
-        """Reserve a slot. Returns (ok, reason). Caller MUST call end() if ok."""
+    def try_begin(self, depth="deep"):
+        """Reserve a slot in the lane for `depth`. Returns (ok, reason). Caller MUST call
+        end(depth=...) if ok. Each lane has its own concurrency and its own daily budget, so
+        cheap quick searches never wait behind deep attacks and never spend the deep budget."""
         with self.lock:
             today = self._today()
             if today != self.day:                        # UTC rollover
-                self.day, self.count = today, 0
+                self.day, self.count, self.quick_count = today, 0, 0
+            if depth == "quick":
+                if self.active_quick >= self.quick_max:
+                    return False, (f"Server is already running {self.active_quick} quick "
+                                   f"searches (limit {self.quick_max}). Try again in a minute.")
+                if self.quick_count >= self.quick_daily_cap:
+                    return False, (f"Daily quick-search budget reached "
+                                   f"({self.quick_daily_cap} runs). Resets at 00:00 UTC.")
+                self.active_quick += 1
+                self.quick_count += 1
+                self._save()
+                return True, ""
             if self.active >= self.max_concurrent:
                 return False, (f"Server is already running {self.active} searches "
                                f"(limit {self.max_concurrent}). Try again in a minute.")
@@ -356,14 +381,19 @@ class RunGate:
             self._save()
             return True, ""
 
-    def end(self):
+    def end(self, depth="deep"):
         with self.lock:
-            self.active = max(0, self.active - 1)
+            if depth == "quick":
+                self.active_quick = max(0, self.active_quick - 1)
+            else:
+                self.active = max(0, self.active - 1)
 
     def stats(self):
         with self.lock:
             return {"active": self.active, "max_concurrent": self.max_concurrent,
-                    "today": self.count, "daily_cap": self.daily_cap, "day": self.day}
+                    "today": self.count, "daily_cap": self.daily_cap, "day": self.day,
+                    "active_quick": self.active_quick, "quick_max": self.quick_max,
+                    "quick_today": self.quick_count, "quick_daily_cap": self.quick_daily_cap}
 
 
 run_gate = None
@@ -371,7 +401,9 @@ run_gate = None
 
 def init_run_gate(state_path):
     global run_gate
-    run_gate = RunGate(_num("MAX_CONCURRENT_RUNS", 2), _num("DAILY_RUN_CAP", 50), state_path)
+    run_gate = RunGate(_num("MAX_CONCURRENT_RUNS", 2), _num("DAILY_RUN_CAP", 50), state_path,
+                       quick_max=_num("MAX_CONCURRENT_QUICK", 3),
+                       quick_daily_cap=_num("QUICK_DAILY_CAP", 200))
     return run_gate
 
 

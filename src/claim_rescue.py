@@ -271,7 +271,7 @@ def plan(claims, brief="", title="", independents=(), description=""):
 # the search itself
 # ---------------------------------------------------------------------------
 def find_candidates(plans, subject, mode, exclude_pubs, exclude_families, retriever,
-                    per_claim=PER_CLAIM, cap=MAX_NEW, emit=None):
+                    per_claim=PER_CLAIM, cap=MAX_NEW, emit=None, texts=None):
     """Run the orphan queries and return new candidates, round-robin by claim.
 
     ROUND-ROBIN, NOT BEST-FIRST. Fusing every orphan claim's results into one list and taking the
@@ -328,6 +328,43 @@ def find_candidates(plans, subject, mode, exclude_pubs, exclude_families, retrie
                 cur = agg.get(fk)
                 if cur is None or rank < cur[0]:
                     agg[fk] = (rank, pid, sc)
+
+    #  THE GRAPH FIRST (evidence flywheel). A document an earlier run PROVED to hold evidence for
+    #  this limitation is a better lead than a fresh ANN hit, and it costs nothing. Injected at
+    #  rank -1 so it sits ahead of every search hit in that claim's queue; the round-robin and
+    #  the exclusions treat it like any other candidate. Only documents the local corpus holds
+    #  are injected — a graph row for an unheld pub is a lead for the acquisition, not a read.
+    if texts:
+        try:
+            import db
+            import evidence
+            graph_pubs = {}
+            for label in list(plans):
+                t = texts.get(label) or ""
+                if not t:
+                    continue
+                for e in evidence.known_disclosers(t, limit=6):
+                    graph_pubs.setdefault(e["publication_number"], []).append(label)
+            if graph_pubs:
+                with db.cursor() as cur:
+                    cur.execute(
+                        "SELECT publication_number, id, "
+                        "COALESCE(NULLIF(simple_family_id,''), publication_number) AS fam "
+                        "FROM publications WHERE publication_number = ANY(%s)",
+                        (list(graph_pubs),))
+                    held = cur.fetchall()
+                injected = 0
+                for r in held:
+                    for label in graph_pubs.get(r["publication_number"], []):
+                        agg = by_claim.setdefault(label, {})
+                        if r["fam"] not in agg:
+                            agg[r["fam"]] = (-1, r["id"], 1.0)
+                            injected += 1
+                if injected:
+                    print(f"[rescue] evidence graph supplied {injected} proven leads across "
+                          f"{len(graph_pubs)} documents before any search ran", flush=True)
+        except Exception:
+            traceback.print_exc()
 
     seen_fam = set(exclude_families or ())
     picked, order = [], []
@@ -516,7 +553,8 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
     cands = []
     try:
         cands = find_candidates(plans, subject, mode, exclude_pubs, exclude_families, retriever,
-                                emit=emit)
+                                emit=emit,
+                                texts={c["label"]: c.get("text") or "" for c in claim_items})
     except Exception:
         traceback.print_exc()
     summary["local_candidates"] = len(cands)
