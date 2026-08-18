@@ -1446,17 +1446,31 @@ def _espacenet_safe(pub, family_id=None):
 
 
 def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, wide=False,
-                  doc_token=None, search_focus="all_text", from_queue=False, depth="deep"):
+                  doc_token=None, search_focus="all_text", from_queue=False, depth="deep",
+                  restart_partial=False):
     """Return ('ready'|'running'|'missing'|'busy', report_or_None). Kicks off background
     generation if needed. A search that arrives while the gate is full is QUEUED (run_queue) and
     reported as running; 'busy' is only returned to the dispatcher itself (`from_queue=True`),
-    which leaves the row queued and retries."""
+    which leaves the row queued and retries.
+
+    `restart_partial` (dispatcher only): a PARTIAL file with no live job is an interrupted run,
+    and serving it as "ready" made the dispatcher mark re-queued runs done without ever running
+    them. The dispatcher passes True: the stale partial artifacts are dropped and the run starts
+    over. Viewer calls keep the default — a partial page must still render, with the
+    interrupted banner from _job_event saying what it is."""
     p = report_path(slug)
     if p.exists() and not regen:
         try:
-            return "ready", json.loads(p.read_text())
+            rep = json.loads(p.read_text())
         except Exception:
-            pass
+            rep = None
+        if rep is not None:
+            with _JOB_LOCK:
+                job = _JOBS.get(slug) or {}
+                job_live = job.get("status") in ("running", "partial") and not job.get("queued")
+            if not (restart_partial and rep.get("partial") and not job_live):
+                return "ready", rep
+            _drop_partial_report(slug)
     # Atomically claim the slug: check-and-set under the lock so two concurrent requests for the
     # same new query can't both start a generation (the second sees "running" and just polls).
     # A "queued" placeholder is claimable ONLY by the dispatcher — a user re-request must not
@@ -5705,7 +5719,7 @@ def _queue_launch(slug, payload):
             mode=payload.get("mode") or "novelty", wide=bool(payload.get("wide")),
             doc_token=payload.get("doc_token"),
             search_focus=payload.get("search_focus") or "all_text", from_queue=True,
-            depth=payload.get("depth") or "deep")
+            depth=payload.get("depth") or "deep", restart_partial=True)
     except Exception:
         traceback.print_exc()
         return "gone"

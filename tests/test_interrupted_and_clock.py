@@ -92,3 +92,48 @@ def test_event_carries_attempt_and_overall_clock(tmp_path, monkeypatch):
         import db
         with db.cursor() as cur:
             cur.execute("DELETE FROM app_run_queue WHERE slug=%s", (slug,))
+
+
+def test_dispatcher_restarts_an_interrupted_partial(tmp_path, monkeypatch):
+    """The final link of the loop: ensure_report served a PARTIAL file as 'ready', so the
+    dispatcher marked a re-queued interrupted run done without ever running it."""
+    import time as _t
+    import auth
+    run_queue.ensure_schema()
+    monkeypatch.setattr(webapp, "REPORTS", tmp_path)
+    slug = f"testq-{uuid.uuid4().hex[:12]}"
+    (tmp_path / f"{slug}.json").write_text(json.dumps({"partial": True}))
+    ran = []
+
+    class OpenGate:
+        def try_begin(self, depth="deep"):
+            return True, ""
+
+        def end(self, depth="deep"):
+            pass
+
+    monkeypatch.setattr(auth, "run_gate", OpenGate())
+    monkeypatch.setattr(webapp, "_generate", lambda *a, **k: ran.append(a[0] if a else k))
+    try:
+        #  A plain viewer call still renders the partial (no restart, no drop).
+        st, rep = webapp.ensure_report(slug)
+        assert st == "ready" and rep.get("partial")
+        assert (tmp_path / f"{slug}.json").exists()
+        #  The dispatcher call restarts it: partial dropped, generation launched.
+        run_queue.enqueue(slug, {"query": "q"})
+        st, rep = webapp.ensure_report(slug, query="q", mode="novelty",
+                                       from_queue=True, restart_partial=True)
+        assert st == "running" and rep is None
+        assert not (tmp_path / f"{slug}.json").exists()
+        for _ in range(100):
+            if ran:
+                break
+            _t.sleep(0.05)
+        assert ran, "the interrupted run never restarted"
+        row = run_queue.get_row(slug)
+        assert row and row["attempts"] >= 1
+    finally:
+        webapp._JOBS.pop(slug, None)
+        import db
+        with db.cursor() as cur:
+            cur.execute("DELETE FROM app_run_queue WHERE slug=%s", (slug,))
