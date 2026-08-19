@@ -267,9 +267,7 @@
           <span class="runfacts">
             <span><b>{{ v.cards|length }}</b> references</span>
             <span><b>{{ '{:,}'.format(v.n_families or 0) }}</b> families{% if v.slug and not read_only %}
-              · <a href="{{ url_for('ranked_tail', slug=v.slug) }}">full ranked list</a>{#  The evidence this search produced is already the substance of a 37 CFR 1.290
-            preissuance submission; this is the door to it. Hidden on a read-only share, like
-            every other route that spends. #} · <a href="{{ url_for('concise_descriptions', slug=v.slug) }}">concise descriptions (1.290)</a>{% endif %}</span>
+              · <a href="{{ url_for('ranked_tail', slug=v.slug) }}">full ranked list</a>{% endif %}</span>
             <span><b>{{ v.elements|length }}</b> elements</span>
             <span>{{ v.mode.replace('_',' ')|title }}</span>
             <span>{{ 'Claims' if v.search_focus == 'claims' else 'All text' }}</span>
@@ -326,6 +324,12 @@
         Disabled rather than hidden, so it is visible that they are coming.  #}
     <div class="actions{% if v.partial %} actions-pending{% endif %}"
          {% if v.partial %}aria-disabled="true" title="Available when the search finishes ranking"{% endif %}>
+      {#  THIRD-PARTY SUBMISSION. The evidence this search already produced is the substance of a
+          preissuance submission under 37 CFR 1.290, so this is a primary action on every finished
+          report, not a link buried in the run line — which is where it lived until 2026-08-19 and
+          why nobody found it. Owner only: it spends a model call per document. #}
+      {% if current_user and not read_only %}<a class="btn sm" href="{{ request.script_root }}/report/{{ v.slug }}/concise"
+         title="Build a concise description of relevance for each reference, ready to file as a third-party preissuance submission">Generate third-party submission{% if v.concise_built %} ({{ v.concise_built }}) ✓{% endif %}</a>{% endif %}
       {% if current_user and not read_only %}<form method="post" action="{{ request.script_root }}/drafts/start" class="inlineform directdraft">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="direct" value="1">

@@ -42,6 +42,14 @@
           <span class="badge">{{ e.mode.replace('_',' ') }}</span>
           {% if e.search_focus == 'claims' %}<span class="badge">claim search</span>{% endif %}
           {% if e.subject %}<span class="badge">subject {{ e.subject }}</span>{% endif %}
+          {#  A search that has already produced 37 CFR 1.290 papers. History is where you come back
+              to a search weeks later, so it has to say which ones have filing artefacts sitting
+              behind them — otherwise the only way to find out is to open each one. The badge links
+              straight to them. #}
+          {% if e.concise_built %}<a class="badge b-cached"
+             href="{{ request.script_root }}/report/{{ e.slug }}/concise"
+             title="{{ e.concise_built }} third-party submission document{{ '' if e.concise_built == 1 else 's' }} built for this search — open to download or rebuild"
+             >&#167; 1.290 &times;{{ e.concise_built }}</a>{% endif %}
           {% if e.ood %}<span class="badge b-warn" title="The detector judged this query to be outside the indexed field">outside indexed field</span>{% endif %}
           {#  'failed' is almost always a search that was still running when the server restarted:
               the work stops, the promised email never goes out, and the row would otherwise sit
