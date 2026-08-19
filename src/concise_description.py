@@ -442,12 +442,16 @@ def subject_facts(label):
     return out
 
 
-def build(deep, pubs, subject, start_at=1, do_phrase=True):
+def build(deep, pubs, subject, start_at=1, do_phrase=True, on_progress=None):
     """-> [document model] ready to render, one per requested publication."""
     claims = deep.get("claims") or []
     refs = {r.get("pub"): r for r in (deep.get("references") or [])}
     docs = []
     for i, pub in enumerate(pubs):
+        if on_progress:
+            #  Named, not just counted: "Reading US-11413727-B2" tells the user which document is
+            #  costing the wait, which matters when one reference is slow to enrich.
+            on_progress(i, "Reading %s (%d of %d)" % (pub, i + 1, len(pubs)))
         ref = refs.get(pub)
         if not ref:
             continue

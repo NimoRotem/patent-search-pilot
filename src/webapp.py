@@ -4309,6 +4309,45 @@ def _concise_deep(slug):
         return None
 
 
+#  Building a submission is minutes of work: a model call and an enrichment fetch per document,
+#  then the compliance pass, then two renderings each. It used to run inside the POST, so the
+#  browser sat on a dead page with nothing to show until every document was finished — which is
+#  indistinguishable from a click that never registered. The work runs in a thread now and the page
+#  polls this. In-process state is the right home for it: this app is one gunicorn worker with
+#  threads precisely so shared state like _JOBS and the run gate stays visible to every request.
+_CONCISE_JOBS: dict = {}
+_CONCISE_JOBS_LOCK = threading.Lock()
+
+
+def _concise_job(slug):
+    with _CONCISE_JOBS_LOCK:
+        j = _CONCISE_JOBS.get(slug)
+        return dict(j) if j else None
+
+
+def _concise_set(slug, **kw):
+    with _CONCISE_JOBS_LOCK:
+        j = _CONCISE_JOBS.get(slug)
+        if j is None:
+            return
+        j.update(kw)
+
+
+@app.route("/report/<slug>/concise/progress")
+def concise_progress(slug):
+    """Where the build has got to. Polled once a second, so it must stay a dict lookup."""
+    if not valid_slug(slug) or not _can_access_report(slug):
+        abort(404)
+    j = _concise_job(slug)
+    if not j:
+        return jsonify({"state": "idle"})
+    total, done = int(j.get("total") or 0), int(j.get("done") or 0)
+    return jsonify({"state": j.get("state"), "done": done, "total": total,
+                    "pct": round(100.0 * done / total, 1) if total else 0.0,
+                    "msg": j.get("msg") or "", "error": j.get("error"),
+                    "elapsed": int(time.time() - float(j.get("t0") or time.time()))})
+
+
 def _concise_may_read(slug):
     """May this request DOWNLOAD the 1.290 documents for `slug`?
 
@@ -4457,57 +4496,73 @@ def concise_descriptions(slug):
             "concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
             error=("None of the selected documents carry per-claim evidence in this report: %s"
                    % ", ".join(unknown[:5]))), 400
-    try:
-        docs = concise_description.build(deep, pubs, subject,
-                                         start_at=int(request.form.get("start_at") or 1))
-        #  COMPLIANCE. A concise description is filed into a live examination and is discarded, not
-        #  amended, if it argues the merits — so the checks are part of building it, not an optional
-        #  review step. Prior-art status against the target's real effective filing date, the
-        #  102(b)(2)(C) self-collision split, one document per family, argument stripped, every
-        #  quotation re-verified against the reference's own text, and non-English passages
-        #  translated with a note.
-        facts = concise_description.subject_facts(
-            (deep.get("subject_label") or "").strip())
-        if request.form.get("skip_compliance") != "1":
-            docs, blocked, family_notes = submission_compliance.apply(
-                docs, {"efd": facts.get("efd")},
-                source_text_for=_concise_source_text,
-                mode=(json.loads((REPORTS / ("%s.meta.json" % slug)).read_text()).get("mode")
-                      if (REPORTS / ("%s.meta.json" % slug)).exists() else "novelty") or "novelty",
-                target_assignees=facts.get("assignees") or [])
-        else:
-            blocked, family_notes = [], []
-    except Exception:
-        traceback.print_exc()
-        return render_template("concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
-                               error="Could not build the documents; the error is in the log."), 500
-
-    out = CONCISE_DIR / slug
-    out.mkdir(parents=True, exist_ok=True)
-    written = []
-    for d in docs:
-        for fmt, fn in (("pdf", concise_render.to_pdf), ("docx", concise_render.to_docx)):
-            try:
-                (out / concise_render.filename(d, fmt)).write_bytes(fn(d))
-            except Exception:
-                traceback.print_exc()
-        #  _safe_pub is a VALIDATOR and returns a bool; using it here named every provenance file
-        #  Doc1_True.model.json. The renderer already owns the filename rule, so reuse it.
+    #  EVERYTHING THE THREAD NEEDS IS CAPTURED HERE. The worker outlives this request, so it may
+    #  not touch `request` at all.
+    start_at = int(request.form.get("start_at") or 1)
+    skip_compliance = request.form.get("skip_compliance") == "1"
+    mode = "novelty"
+    meta_p = REPORTS / ("%s.meta.json" % slug)
+    if meta_p.exists():
         try:
-            (out / concise_render.filename(d, "md")).write_text(
-                concise_md.to_markdown(d), encoding="utf-8")
+            mode = json.loads(meta_p.read_text()).get("mode") or "novelty"
         except Exception:
+            pass
+
+    if (_concise_job(slug) or {}).get("state") == "running":
+        #  A second click must not start a second build over the same output directory.
+        return render_template("concise.html", slug=slug, cands=cands,
+                               docs=_concise_built(slug), subject=subject, error=None,
+                               blocked=[], family_notes=[], building=True)
+
+    with _CONCISE_JOBS_LOCK:
+        #  total counts one step per document for the build, one for the compliance pass, and one
+        #  per document for rendering — so the bar tracks work, not documents.
+        _CONCISE_JOBS[slug] = {"state": "running", "done": 0, "total": 2 * len(pubs) + 1,
+                               "msg": "Starting", "error": None, "t0": time.time()}
+
+    def _work():
+        try:
+            docs = concise_description.build(
+                deep, pubs, subject, start_at=start_at,
+                on_progress=lambda n, msg: _concise_set(slug, done=n, msg=msg))
+            blocked, family_notes = [], []
+            if not skip_compliance:
+                _concise_set(slug, done=len(pubs),
+                             msg="Checking prior-art status, families and quotations")
+                facts = concise_description.subject_facts(
+                    (deep.get("subject_label") or "").strip())
+                docs, blocked, family_notes = submission_compliance.apply(
+                    docs, {"efd": facts.get("efd")}, source_text_for=_concise_source_text,
+                    mode=mode, target_assignees=facts.get("assignees") or [])
+            out = CONCISE_DIR / slug
+            out.mkdir(parents=True, exist_ok=True)
+            for k, d in enumerate(docs, 1):
+                _concise_set(slug, done=len(pubs) + k,
+                             msg="Writing document %d of %d: %s" % (k, len(docs), d["pub"]))
+                for fmt, fn in (("pdf", concise_render.to_pdf), ("docx", concise_render.to_docx)):
+                    try:
+                        (out / concise_render.filename(d, fmt)).write_bytes(fn(d))
+                    except Exception:
+                        traceback.print_exc()
+                try:
+                    (out / concise_render.filename(d, "md")).write_text(
+                        concise_md.to_markdown(d), encoding="utf-8")
+                except Exception:
+                    traceback.print_exc()
+                (out / ("%s.model.json" % concise_render.filename(d, "x")[:-2])).write_text(
+                    json.dumps(d, ensure_ascii=False, indent=1))
+            n = len(docs)
+            _concise_set(slug, state="done", done=2 * len(pubs) + 1,
+                         msg="%d document%s ready" % (n, "" if n == 1 else "s"))
+        except Exception as exc:
             traceback.print_exc()
-        (out / ("%s.model.json" % concise_render.filename(d, "x")[:-2])).write_text(
-            json.dumps(d, ensure_ascii=False, indent=1))
-        written.append({"n": d["n"], "pub": d["pub"], "rows": len(d["rows"]),
-                        "label": d["biblio"]["label"],
-                        "pdf": concise_render.filename(d, "pdf"),
-                        "docx": concise_render.filename(d, "docx"),
-                        "md": concise_render.filename(d, "md")})
-    return render_template("concise.html", slug=slug, cands=cands, docs=written,
-                           subject=subject, error=None, blocked=blocked,
-                           family_notes=family_notes)
+            _concise_set(slug, state="failed",
+                         error="Could not build the documents: %s" % str(exc)[:200])
+
+    threading.Thread(target=_work, name="concise-build", daemon=True).start()
+    return render_template("concise.html", slug=slug, cands=cands, docs=_concise_built(slug),
+                           subject=subject, error=None, blocked=[], family_notes=[],
+                           building=True)
 
 
 def _concise_doc_paths(slug, n):

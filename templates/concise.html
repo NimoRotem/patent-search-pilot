@@ -13,6 +13,23 @@
   this search's per-claim evidence. <a href="{{ url_for('report', slug=slug) }}">back to the report</a>
 </p>
 
+{#  BUILD PROGRESS. A build is minutes of work — a model call and an enrichment fetch per
+    document, then the compliance pass, then two renderings each — and it used to run inside the
+    POST with nothing on screen, which reads exactly like a click that did not register. The bar is
+    driven by real step counts from the server, not a timer. #}
+<div id="cdProg" class="card" style="margin:1em 0;padding:.8em 1em" {% if not building|default(false) %}hidden{% endif %}>
+  <b id="cdProgTitle">Building the submission…</b>
+  <div class="exprogbar" style="margin:.5em 0 .3em"><div class="exprogfill" id="cdProgFill"></div></div>
+  <div class="exprogrow">
+    <span id="cdProgMsg">Starting</span>
+    <span id="cdProgCount" class="small muted"></span>
+    <span id="cdProgClock" class="small muted"></span>
+  </div>
+  <p class="small muted" style="margin:.4em 0 0">
+    You can leave this page; the build keeps going and the documents will be here when you return.
+  </p>
+</div>
+
 {% if error %}<div class="warn" style="margin:1em 0">{{ error }}</div>{% endif %}
 
 {#  What the compliance pass refused or merged. Shown BEFORE the download list on purpose: a
@@ -68,7 +85,7 @@
 {% endif %}
 
 {% if cands %}
-<form method="post" action="{{ url_for('concise_descriptions', slug=slug) }}">
+<form method="post" id="cdForm"{% if building|default(false) %} hidden{% endif %} action="{{ url_for('concise_descriptions', slug=slug) }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
   <div class="card" style="margin:1em 0;padding:1em">
@@ -115,4 +132,70 @@
 {% elif not error %}
 <p>No reference in this report carries verified per-claim evidence yet.</p>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var box = document.getElementById('cdProg');
+  if (!box) return;
+  var fill = document.getElementById('cdProgFill'),
+      msg  = document.getElementById('cdProgMsg'),
+      cnt  = document.getElementById('cdProgCount'),
+      clk  = document.getElementById('cdProgClock'),
+      ttl  = document.getElementById('cdProgTitle'),
+      form = document.getElementById('cdForm'),
+      url  = {{ url_for('concise_progress', slug=slug)|tojson }},
+      running = {{ (building|default(false))|tojson }},
+      timer = null;
+
+  function show(on) {
+    box.hidden = !on;
+    if (form) form.hidden = on;
+  }
+
+  function paint(d) {
+    //  The server counts real steps, so the bar never runs ahead of the work. It only ever moves
+    //  forward: a poll that races a step must not make it jump backwards.
+    var pct = Math.max(0, Math.min(100, d.pct || 0));
+    var now = parseFloat(fill.style.width) || 0;
+    fill.style.width = Math.max(now, pct).toFixed(1) + '%';
+    msg.textContent = d.msg || 'Working';
+    cnt.textContent = d.total ? ('step ' + d.done + ' of ' + d.total) : '';
+    clk.textContent = d.elapsed ? ('· ' + d.elapsed + 's') : '';
+  }
+
+  function poll() {
+    fetch(url, {credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.state === 'running') { paint(d); return; }
+        if (d.state === 'done') {
+          fill.style.width = '100%';
+          msg.textContent = d.msg || 'Ready';
+          ttl.textContent = 'Done';
+          clearInterval(timer);
+          //  Reload rather than patch the DOM: the finished page also carries the compliance
+          //  findings, the family merges and anything that was refused, and those are decisions
+          //  the practitioner has to see.
+          setTimeout(function () { location.reload(); }, 600);
+          return;
+        }
+        if (d.state === 'failed') {
+          clearInterval(timer);
+          ttl.textContent = 'Build failed';
+          msg.textContent = d.error || 'The error is in the server log.';
+          fill.style.background = 'var(--bad, #b00)';
+          if (form) form.hidden = false;
+          return;
+        }
+        clearInterval(timer);           // idle: nothing to watch
+        show(false);
+      })
+      .catch(function () { /* a dropped poll is not a failed build; the next tick retries */ });
+  }
+
+  if (running) { show(true); poll(); timer = setInterval(poll, 1000); }
+})();
+</script>
 {% endblock %}
