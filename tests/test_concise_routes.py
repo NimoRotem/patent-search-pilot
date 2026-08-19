@@ -41,7 +41,25 @@ def report(tmp_path, monkeypatch):
     monkeypatch.setattr(cd, "_display", lambda pub, allow_fetch=True: {
         "title": "Vacuum Gripper", "inventors": ["Nimrod Rotem"],
         "publication_date": "2022-08-16", "priority_date": "2018-05-09"})
+    monkeypatch.setattr(cd, "subject_facts", lambda label: {"efd": None, "assignees": []})
+    webapp._CONCISE_JOBS.clear()
     return slug
+
+
+import time
+
+
+def _finished(slug, timeout=25):
+    """Wait for the background build. The POST returns as soon as the work is queued now, so a
+    test that checks the output files has to wait for them the way the page does."""
+    import webapp as _w
+    end = time.time() + timeout
+    while time.time() < end:
+        j = _w._concise_job(slug) or {}
+        if j.get("state") in ("done", "failed"):
+            return j
+        time.sleep(0.05)
+    return _w._concise_job(slug) or {}
 
 
 def test_the_picker_lists_the_reference_and_its_claims(client, report):
@@ -74,12 +92,16 @@ def test_posting_builds_both_formats_and_offers_them(client, report):
                           "pub_no": "US 2025/0033224 A1", "title": "Portable vacuum gripper",
                           "inventor": "Nhon Hoa Nguyen"})
     assert r.status_code == 200
-    body = r.get_data(as_text=True)
-    assert "ConciseDescription_Doc1_US11413727B2.pdf" in body
-    assert "ConciseDescription_Doc1_US11413727B2.docx" in body
+    assert b'id="cdProg"' in r.data, "the POST should come back with the progress bar"
+    j = _finished(report)
+    assert j.get("state") == "done", j.get("error")
     out = webapp.CONCISE_DIR / report
     assert (out / "ConciseDescription_Doc1_US11413727B2.pdf").read_bytes()[:5] == b"%PDF-"
     assert (out / "ConciseDescription_Doc1_US11413727B2.docx").read_bytes()[:2] == b"PK"
+    #  And the finished page lists them.
+    body = client.get("/report/%s/concise" % report).get_data(as_text=True)
+    assert "ConciseDescription_Doc1_US11413727B2.pdf" in body
+    assert "ConciseDescription_Doc1_US11413727B2.docx" in body
 
 
 def test_a_publication_not_in_the_report_cannot_be_smuggled_in(client, report):
@@ -108,6 +130,7 @@ def test_the_download_route_never_serves_the_internal_model(client, report):
     """The .model.json holds the raw cells; the route serves filing artefacts only."""
     client.post("/report/%s/concise" % report,
                 data={"pubs": ["US-11413727-B2"], "app_no": "18/915,337"})
+    _finished(report)
     listed = [p.name for p in (webapp.CONCISE_DIR / report).iterdir()]
     model = [n for n in listed if n.endswith(".model.json")]
     assert model, "the model should be written for provenance"
