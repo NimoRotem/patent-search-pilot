@@ -15,6 +15,26 @@
 
 {% if error %}<div class="warn" style="margin:1em 0">{{ error }}</div>{% endif %}
 
+{#  What the compliance pass refused or merged. Shown BEFORE the download list on purpose: a
+    document that was dropped is a decision the practitioner has to agree with, and finding out
+    afterwards that a reference is missing is worse than being told why. #}
+{% if blocked %}
+<div class="warn" style="margin:1em 0">
+  <b>Not filed &mdash; these do not qualify as prior art against the target's effective filing date:</b>
+  <ul style="margin:.4em 0 0 1.1em">
+    {% for b in blocked %}<li><b>{{ b.pub }}</b> &mdash; {{ b.why }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% if family_notes %}
+<div class="card" style="margin:1em 0;padding:.7em 1em">
+  <b class="small">Family members merged</b>
+  <ul class="small muted" style="margin:.3em 0 0 1.1em">
+    {% for n in family_notes %}<li>{{ n }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 {% if docs %}
 <div class="card" style="margin:1em 0;padding:1em">
   <h2 style="margin-top:0">Ready to file</h2>
@@ -27,6 +47,7 @@
         <td>{{ d.label }}<br><span class="small muted">{{ d.pub }}</span></td>
         <td>{{ d.rows }} row{{ '' if d.rows == 1 else 's' }}</td>
         <td>
+          <a href="{{ url_for('concise_document', slug=slug, n=d.n) }}"><b>Preview &amp; edit</b></a> ·
           <a href="{{ url_for('concise_download', slug=slug, name=d.pdf) }}">PDF</a> ·
           <a href="{{ url_for('concise_download', slug=slug, name=d.docx) }}">DOCX</a>
         </td>
@@ -34,6 +55,10 @@
     {% endfor %}
     </tbody>
   </table>
+  <p style="margin:.6em 0">
+    <a class="btn sm" href="{{ url_for('concise_zip', slug=slug) }}">Download all as .zip</a>
+    <span class="small muted">PDFs and DOCXs only — the working files stay here.</span>
+  </p>
   <p class="small muted">
     PDF is the filing artefact; DOCX is the editable copy. Every coordinate on the page comes from
     the passage the reader actually read — nothing is written by a model. Check the biblio block

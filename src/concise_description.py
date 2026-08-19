@@ -387,6 +387,61 @@ def candidates(report, deep, limit=40):
     return out[:limit]
 
 
+def _bare(pub):
+    """US-2025/033224 A1, US-20250033224-A1, us 2025033224 a1 -> US20250033224A1."""
+    return re.sub(r"[^A-Z0-9]", "", str(pub or "").upper())
+
+
+def subject_facts(label):
+    """Effective filing date and owner of the application under examination, from the corpus.
+
+    The EFD is not cosmetic here: it is the line that decides whether a reference is prior art at
+    all, so it is read from the publications table rather than typed in and trusted.
+    """
+    out = {"efd": None, "assignees": [], "pub": label}
+    if not label:
+        return out
+    #  MATCH ON EVERY SPELLING OF THE SAME NUMBER. A US pre-grant publication is a 4-digit year
+    #  plus a 7-digit serial, but this corpus stores some rows with the serial's leading zero
+    #  dropped: the report calls the target US-20250033224-A1 and the publications table calls it
+    #  US-2025033224-A1. Matching one spelling silently returns no effective filing date, and a
+    #  missing EFD means the prior-art check cannot run at all and every document ships marked
+    #  "basis unknown" — which is exactly what happened on 2026-08-19 before this fix.
+    keys = {_bare(label)}
+    m = re.match(r"^US(\d{4})(\d{4,8})([A-Z]\d?)?$", _bare(label))
+    if m:
+        year, serial, kind = m.group(1), m.group(2), m.group(3) or ""
+        core = serial.lstrip("0") or "0"
+        #  The corpus drops SOME leading zeros, not all of them: the true serial 0033224 is stored
+        #  as 033224 here. So offer the serial at every plausible width rather than guessing which
+        #  one this row used.
+        for width in (5, 6, 7, 8):
+            if len(core) <= width:
+                keys.add("US%s%s%s" % (year, core.zfill(width), kind))
+        keys.add("US%s%s%s" % (year, core, kind))
+    try:
+        import db
+        with db.cursor() as cur:
+            cur.execute(
+                "SELECT earliest_priority_date, filing_date, publication_date, title "
+                "FROM publications WHERE replace(upper(publication_number),'-','') = ANY(%s) "
+                "LIMIT 1", (sorted(keys),))
+            row = cur.fetchone()
+        if row:
+            out["efd"] = row.get("earliest_priority_date") or row.get("filing_date")
+            out["title"] = row.get("title")
+    except Exception:
+        traceback.print_exc()
+    try:
+        disp = _display(label, allow_fetch=False)
+        out["assignees"] = [a for a in (disp.get("assignees") or []) if a]
+        if not out.get("title"):
+            out["title"] = disp.get("title")
+    except Exception:
+        pass
+    return out
+
+
 def build(deep, pubs, subject, start_at=1, do_phrase=True):
     """-> [document model] ready to render, one per requested publication."""
     claims = deep.get("claims") or []
@@ -405,6 +460,10 @@ def build(deep, pubs, subject, start_at=1, do_phrase=True):
         doc = {
             "n": start_at + i,
             "pub": pub,
+            #  Carried for the family collapse: two members of one DOCDB family are one
+            #  disclosure, and a submission that cites both spends two document slots to say one
+            #  thing.
+            "family_id": ref.get("family"),
             "biblio": b,
             "subject": subject,
             "summary": "",

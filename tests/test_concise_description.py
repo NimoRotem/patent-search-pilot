@@ -218,3 +218,28 @@ def test_filenames_are_stable_and_safe():
     n = cr.filename(_doc(), "pdf")
     assert n == "ConciseDescription_Doc1_US11413727B2.pdf"
     assert not re.search(r"[/\\\s]", n)
+"""Lock the leading-zero lookup: a missing EFD silently disables the whole prior-art check."""
+import concise_description as cd
+
+
+def test_every_spelling_of_a_us_pre_grant_number_finds_the_same_row():
+    """The report calls the target US-20250033224-A1; the corpus stores US-2025033224-A1.
+
+    Matching one spelling returns no effective filing date, and with no EFD the prior-art check
+    cannot run at all, so every document ships marked "basis unknown" and nothing is verified.
+    Observed 2026-08-19 on ten real documents before this was fixed.
+    """
+    want = cd.subject_facts("US-2025033224-A1").get("efd")
+    assert want, "fixture publication missing from the corpus"
+    for spelling in ("US-20250033224-A1", "US 2025/0033224 A1", "us20250033224a1",
+                     "US-2025033224-A1"):
+        assert cd.subject_facts(spelling).get("efd") == want, spelling
+
+
+def test_a_granted_number_still_resolves():
+    assert cd.subject_facts("US-11413727-B2").get("efd")
+
+
+def test_an_unknown_number_returns_no_date_rather_than_a_wrong_one():
+    assert cd.subject_facts("US-00000000-B2").get("efd") is None
+    assert cd.subject_facts("").get("efd") is None

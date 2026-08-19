@@ -57,6 +57,10 @@ def _left_cell(row, pub_no_label):
 def _right_bits(row):
     """(prose, [citations]) — the quotation is only used where a passage survived grounding."""
     prose = row.get("disclosure") or row.get("note") or ""
+    if row.get("quote_translated") and row.get("quote_original"):
+        #  1.290(d)(3) wants the translation; an examiner checking it wants the original. Both.
+        orig = " ".join(str(row["quote_original"]).split())
+        prose = "%s\n[original] \u201c%s\u201d" % (prose, orig[:400]) if prose else orig[:400]
     if row.get("strong") and row.get("quote"):
         #  The stored passage is capped mid-word by the reader's character budget. Filed text may
         #  be elided, but it may not look like a transcription error, so cut back to the last whole
@@ -73,6 +77,40 @@ def _right_bits(row):
             q = q.rstrip(" ,;:-") + " …"
         prose = "%s\n“%s”" % (prose, q) if prose else "“%s”" % q
     return prose, list(row.get("cites") or [])
+
+
+def filing_notes(doc_model):
+    """The lines a practitioner must read before signing this paper.
+
+    Deliberately ON the document rather than only in the UI: the paper is what gets reviewed and
+    the paper is what gets filed, so anything the machine changed or could not verify travels with
+    it. Everything here is about the SUBMISSION, not about patentability, so it is safe to leave in
+    place — but most of it should be checked and then the block deleted before filing.
+    """
+    c = doc_model.get("compliance") or {}
+    out = []
+    q = c.get("qualify") or {}
+    if q.get("note"):
+        out.append(("Prior-art basis", q["note"]))
+    sc = c.get("self_collision") or {}
+    if sc.get("note"):
+        out.append(("Common ownership", sc["note"]))
+    tr = c.get("translation") or {}
+    if tr.get("translated"):
+        out.append(("Translation", "%d relied-on passage%s machine-translated into English; the "
+                                   "original-language text is retained in the record. %s"
+                    % (tr["translated"], "" if tr["translated"] == 1 else "s",
+                       "A verified human translation may be required before filing.")))
+    elif tr.get("note"):
+        out.append(("Translation", tr["note"]))
+    qz = c.get("quotes") or {}
+    if qz.get("note"):
+        out.append(("Quotations", qz["note"]))
+    if c.get("neutralised"):
+        out.append(("Neutral language",
+                    "Argumentative phrasing was removed so the description states disclosure only, "
+                    "as 37 CFR 1.290 requires: %s." % "; ".join(c["neutralised"][:6])))
+    return out
 
 
 # --------------------------------------------------------------------------- PDF
@@ -161,6 +199,14 @@ def to_pdf(doc_model) -> bytes:
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
     story.append(tbl)
+    notes = filing_notes(doc_model)
+    if notes:
+        story.append(Paragraph("Filing notes", st["doc"]))
+        story.append(Paragraph(
+            "Prepared for the practitioner, not for the examiner. Confirm each line and delete "
+            "this block before filing.", st["run"]))
+        for label, text in notes:
+            story.append(Paragraph("<b>%s.</b> %s" % (_esc(label), _esc(text)), st["cite"]))
     tmpl.build(story)
     return buf.getvalue()
 
@@ -251,6 +297,19 @@ def to_docx(doc_model) -> bytes:
                 p.paragraph_format.space_after = Pt(2)
                 for run in p.runs:
                     run.font.size = Pt(10.5)
+
+    notes = filing_notes(doc_model)
+    if notes:
+        h = d.add_paragraph()
+        h.add_run("Filing notes").bold = True
+        sub = d.add_paragraph()
+        sub.add_run("Prepared for the practitioner, not for the examiner. Confirm each line and "
+                    "delete this block before filing.").italic = True
+        for label, text in notes:
+            p = d.add_paragraph()
+            p.paragraph_format.left_indent = Inches(0.14)
+            p.add_run("%s. " % label).bold = True
+            p.add_run(text)
 
     buf = io.BytesIO()
     d.save(buf)

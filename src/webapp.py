@@ -26,6 +26,8 @@ import query_set                                   # many short queries instead 
 import report_archive                              # automatic top-50 full-text Markdown ZIP
 import export_data, export_pdf, export_docx, export_xlsx, export_md, export_ids
 import public_report                             # public link, password gate, visitor log
+import submission_compliance                     # what must be true before a 1.290 paper ships
+import concise_md                                # the editable form of a 1.290 paper
 import deliverables                                # letterhead / matter / narrative + share links
 import library                                     # saved publications, across searches
 #  NOT `import figures`: this module already defines a route function called `figures`
@@ -1789,6 +1791,13 @@ def history():
             entries = []
     else:
         entries = _history_entries()
+    #  Which searches already have a third-party submission built. The history page is where you
+    #  come back to a search weeks later, so it has to say which ones already produced papers.
+    for e in entries:
+        try:
+            e["concise_built"] = _concise_count(e.get("slug") or "")
+        except Exception:
+            pass
     return render_template("history.html", entries=entries, gold=_gold_cards(),
                            named_account=bool(user), saved_only=request.args.get("saved") == "1",
                            corpus=corpus_facts.facts())
@@ -2299,6 +2308,7 @@ def report(slug):
     if view["depth"] == "quick":
         view["escalate"] = {"query": query or rep.get("query") or "", "mode": mode,
                             "doc_token": doc_token or "", "search_focus": search_focus}
+    view["concise_built"] = _concise_count(slug)
     return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
 
 
@@ -4291,6 +4301,27 @@ def _concise_deep(slug):
         return None
 
 
+def _concise_source_text(pub):
+    """The reference's own stored full text, for re-verifying quotations before filing."""
+    try:
+        return deep_analysis.full_text(pub) or ""
+    except Exception:
+        return ""
+
+
+def _concise_count(slug):
+    """How many 1.290 documents exist for this slug. Directory listing only — this is called once
+    per row on the history page, so it must not parse anything."""
+    try:
+        d = CONCISE_DIR / slug
+        if not d.is_dir():
+            return 0
+        return len([p for p in d.iterdir()
+                    if p.name.startswith("ConciseDescription_") and p.suffix == ".pdf"])
+    except Exception:
+        return 0
+
+
 def _concise_built(slug):
     """Documents already built for this slug, newest numbering first.
 
@@ -4400,6 +4431,23 @@ def concise_descriptions(slug):
     try:
         docs = concise_description.build(deep, pubs, subject,
                                          start_at=int(request.form.get("start_at") or 1))
+        #  COMPLIANCE. A concise description is filed into a live examination and is discarded, not
+        #  amended, if it argues the merits — so the checks are part of building it, not an optional
+        #  review step. Prior-art status against the target's real effective filing date, the
+        #  102(b)(2)(C) self-collision split, one document per family, argument stripped, every
+        #  quotation re-verified against the reference's own text, and non-English passages
+        #  translated with a note.
+        facts = concise_description.subject_facts(
+            (deep.get("subject_label") or "").strip())
+        if request.form.get("skip_compliance") != "1":
+            docs, blocked, family_notes = submission_compliance.apply(
+                docs, {"efd": facts.get("efd")},
+                source_text_for=_concise_source_text,
+                mode=(json.loads((REPORTS / ("%s.meta.json" % slug)).read_text()).get("mode")
+                      if (REPORTS / ("%s.meta.json" % slug)).exists() else "novelty") or "novelty",
+                target_assignees=facts.get("assignees") or [])
+        else:
+            blocked, family_notes = [], []
     except Exception:
         traceback.print_exc()
         return render_template("concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
@@ -4414,14 +4462,100 @@ def concise_descriptions(slug):
                 (out / concise_render.filename(d, fmt)).write_bytes(fn(d))
             except Exception:
                 traceback.print_exc()
-        (out / ("Doc%s_%s.model.json" % (d["n"], _safe_pub(d["pub"])))).write_text(
+        #  _safe_pub is a VALIDATOR and returns a bool; using it here named every provenance file
+        #  Doc1_True.model.json. The renderer already owns the filename rule, so reuse it.
+        try:
+            (out / concise_render.filename(d, "md")).write_text(
+                concise_md.to_markdown(d), encoding="utf-8")
+        except Exception:
+            traceback.print_exc()
+        (out / ("%s.model.json" % concise_render.filename(d, "x")[:-2])).write_text(
             json.dumps(d, ensure_ascii=False, indent=1))
         written.append({"n": d["n"], "pub": d["pub"], "rows": len(d["rows"]),
                         "label": d["biblio"]["label"],
                         "pdf": concise_render.filename(d, "pdf"),
-                        "docx": concise_render.filename(d, "docx")})
+                        "docx": concise_render.filename(d, "docx"),
+                        "md": concise_render.filename(d, "md")})
     return render_template("concise.html", slug=slug, cands=cands, docs=written,
-                           subject=subject, error=None)
+                           subject=subject, error=None, blocked=blocked,
+                           family_notes=family_notes)
+
+
+def _concise_doc_paths(slug, n):
+    """The four files that make up one document: model, markdown, and the two renderings."""
+    d = CONCISE_DIR / slug
+    if not d.is_dir():
+        return None
+    for p in sorted(d.glob("ConciseDescription_Doc%d_*.md" % n)):
+        stem = p.name[:-3]
+        return {"dir": d, "stem": stem, "md": p,
+                "model": d / ("%s.model.json" % stem),
+                "pdf": d / ("%s.pdf" % stem), "docx": d / ("%s.docx" % stem)}
+    return None
+
+
+@app.route("/report/<slug>/concise/doc/<int:n>", methods=["GET", "POST"])
+def concise_document(slug, n):
+    """Preview one document, edit its markdown, and re-render the PDF and DOCX from the edit.
+
+    The markdown is the editable form and the JSON model is the record; an edit rebuilds the model
+    from the markdown so what is filed is what was reviewed. A markdown file that no longer matches
+    the grammar is REFUSED rather than parsed loosely, because a loose parse silently drops rows.
+    """
+    if not valid_slug(slug) or not _can_access_report(slug):
+        abort(404)
+    paths = _concise_doc_paths(slug, n)
+    if not paths:
+        abort(404)
+    if request.method == "POST" and auth.current_user():
+        auth.require_csrf()
+    err = saved = None
+    if request.method == "POST":
+        md = request.form.get("markdown") or ""
+        try:
+            base = json.loads(paths["model"].read_text())
+            doc = concise_md.from_markdown(md, base)
+            paths["md"].write_text(md, encoding="utf-8")
+            paths["pdf"].write_bytes(concise_render.to_pdf(doc))
+            paths["docx"].write_bytes(concise_render.to_docx(doc))
+            paths["model"].write_text(json.dumps(doc, ensure_ascii=False, indent=1))
+            saved = True
+        except concise_md.MarkdownShapeError as e:
+            err = str(e)
+        except Exception:
+            traceback.print_exc()
+            err = "Could not re-render from that markdown; the error is in the log."
+    return render_template("concise_doc.html", slug=slug, n=n, stem=paths["stem"],
+                           markdown=paths["md"].read_text(encoding="utf-8"),
+                           error=err, saved=saved)
+
+
+@app.route("/report/<slug>/concise.zip")
+def concise_zip(slug):
+    """Every filing artefact for this search in one archive.
+
+    The model and markdown are working files, not filing artefacts, so the archive carries the
+    PDFs and DOCXs only — what actually goes to the Office.
+    """
+    if not valid_slug(slug) or not _can_access_report(slug):
+        abort(404)
+    d = CONCISE_DIR / slug
+    if not d.is_dir():
+        abort(404)
+    import io as _io
+    import zipfile
+    buf = _io.BytesIO()
+    n = 0
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for p in sorted(d.iterdir()):
+            if p.name.startswith("ConciseDescription_") and p.suffix in (".pdf", ".docx"):
+                z.write(p, arcname=p.name)
+                n += 1
+    if not n:
+        abort(404)
+    buf.seek(0)
+    return Response(buf.getvalue(), mimetype="application/zip", headers={
+        "Content-Disposition": 'attachment; filename="third-party-submission-%s.zip"' % slug})
 
 
 @app.route("/report/<slug>/concise/<path:name>")
