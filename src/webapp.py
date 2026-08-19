@@ -1287,8 +1287,11 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                         degraded=failclosed.summary())
         try:
             accounts.mark_search_failed(slug)
+            #  Silence is the worst answer here: to the person waiting it is identical to a search
+            #  still running, and identical to mail being broken.
+            notifications.queue_search_failure(slug, reason=f"{type(e).__name__}: {e}")
         except Exception:
-            pass
+            traceback.print_exc()
         _set_job(slug, kind="error", status="error", msg=str(e)[:300])
     finally:
         # A crash mid-rerank must not leave a thread ticking progress onto a dead job.
@@ -3226,7 +3229,7 @@ def api_ref_batch(slug):
     """Return already-built tab text for the visible result cards in one cheap request."""
     if not valid_slug(slug):
         return jsonify({"error": "invalid slug"}), 400
-    if not _can_access_report(slug):
+    if not _may_read_report(slug):
         abort(404)
     path = REPORTS / f"{slug}.detail-preview.json"
     if not path.exists():
@@ -3252,7 +3255,7 @@ def api_ref(pub):
     # Query strings bypass the route converter, so vet it here.
     if slug and not valid_slug(slug):
         return jsonify({"error": "invalid slug"}), 400
-    if slug and not _can_access_report(slug):
+    if slug and not _may_read_report(slug):
         abort(404)
     disp = enrich_display.enrich_for_display(pub)
     # DB sections + matched coordinate (for highlighting)
@@ -4348,13 +4351,18 @@ def concise_progress(slug):
                     "elapsed": int(time.time() - float(j.get("t0") or time.time()))})
 
 
-def _concise_may_read(slug):
-    """May this request DOWNLOAD the 1.290 documents for `slug`?
+def _may_read_report(slug):
+    """May this request read `slug`'s CONTENT — its references, figures and filing artefacts?
 
-    Deliberately wider than `_can_access_report`, and deliberately narrower than public: the papers
-    are the deliverable of the report, so anyone who has been given the report and answered its
-    password may take them. Building and editing stay owner-only, because those spend money and
-    change what would be filed.
+    Wider than `_can_access_report`, narrower than public: whoever has been given the report and
+    answered its password may read what the report is made of. Anything that writes, or that
+    changes what would be filed, stays owner-only.
+
+    It began as a gate for the 1.290 downloads, but the principle is the report's. On 2026-08-19
+    figures were missing from a shared link while the owner saw them all: /api/figs is disk-only
+    and ungated, so a figure appears only once something has DOWNLOADED it — and the endpoints
+    that do the downloading were owner-only. The owner's own browsing filled the cache, so the
+    page looked complete to the one person who could not see the bug.
     """
     if _can_access_report(slug):
         return True
@@ -4621,7 +4629,7 @@ def concise_zip(slug):
     The model and markdown are working files, not filing artefacts, so the archive carries the
     PDFs and DOCXs only — what actually goes to the Office.
     """
-    if not valid_slug(slug) or not _concise_may_read(slug):
+    if not valid_slug(slug) or not _may_read_report(slug):
         abort(404)
     d = CONCISE_DIR / slug
     if not d.is_dir():
@@ -4644,7 +4652,7 @@ def concise_zip(slug):
 
 @app.route("/report/<slug>/concise/<path:name>")
 def concise_download(slug, name):
-    if not valid_slug(slug) or not _concise_may_read(slug):
+    if not valid_slug(slug) or not _may_read_report(slug):
         abort(404)
     #  `name` is user-supplied and about to become a path. Only ever serve a file this feature
     #  wrote, matched by exact basename, so no traversal is possible.
@@ -6066,6 +6074,13 @@ def recover_interrupted_searches():
                 settled["completed"] += 1
             else:
                 accounts.mark_search_failed(slug)
+                #  Interrupted by a restart and not recoverable. The user asked to be told when it
+                #  was done; being told it is NOT done is the same promise.
+                try:
+                    notifications.queue_search_failure(
+                        slug, reason="the search was interrupted and could not be resumed")
+                except Exception:
+                    traceback.print_exc()
                 settled["failed"] += 1
         except Exception:
             traceback.print_exc()

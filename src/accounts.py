@@ -484,6 +484,50 @@ def queue_completion_notifications(slug, report_url):
     return queued
 
 
+def queue_failure_notifications(slug, report_url, reason=""):
+    """Tell the people who asked to be told that the search did NOT finish.
+
+    A search that raises marked itself failed and queued NOTHING, so anyone who ticked "email me"
+    waited for a message that was never going to come — the same silence as a search still running.
+    From the user's side that is indistinguishable from mail being broken, and it is what "emails
+    are still not sent" turned out to mean on 2026-08-19: the searches that succeeded had all been
+    delivered; the one that failed said nothing.
+
+    Deliberately a different dedupe key and kind from the completion message, so a search that
+    fails, is re-run and then succeeds sends both, in that order, and neither suppresses the other.
+    """
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("SELECT * FROM app_saved_searches WHERE slug=%s", (slug,))
+        rows = [dict(r) for r in cur.fetchall()]
+    queued = []
+    for row in rows:
+        if not row.get("notify_email") or row.get("notification_status") == "sent":
+            continue
+        user = get_user(row["user_id"])
+        if not user or not user.get("is_active"):
+            continue
+        query = re.sub(r"\s+", " ", row.get("query") or "").strip()
+        preview = query[:180] + ("…" if len(query) > 180 else "")
+        why = (" (%s)" % re.sub(r"\s+", " ", str(reason))[:160]) if reason else ""
+        mail = enqueue_mail(
+            to_email=user["email"], user_id=user["id"], search_slug=slug,
+            kind="search_failed", dedupe_key=f"search-failed:{user['id']}:{slug}",
+            subject="Your patent prior-art search did not finish",
+            body_text=(f"Hello {user['full_name']},\n\nYour prior-art search stopped before it "
+                       f"finished{why}.\n\nSearch: {preview}\n\n"
+                       f"Open the report and re-run it:\n{report_url}\n\n"
+                       "Whatever the search had already found is on that page. Nothing was "
+                       "charged for the part that did not run.\n"))
+        queued.append(mail)
+        with db.cursor() as cur:
+            cur.execute("UPDATE app_saved_searches SET notification_status=%s "
+                        "WHERE user_id=%s AND slug=%s",
+                        ("sent" if mail.get("status") == "sent" else "queued",
+                         user["id"], slug))
+    return queued
+
+
 def create_password_reset(email: str, ttl_minutes=60):
     """Return (opaque_token, public_user), or (None, None) without revealing account existence."""
     row = get_user_by_email(email)

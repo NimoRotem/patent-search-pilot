@@ -238,6 +238,15 @@ def queue_search_completion(slug):
     return rows
 
 
+def queue_search_failure(slug, reason=""):
+    """The message a failed search owes the person who asked to be emailed about it."""
+    report_url = f"{PUBLIC_BASE_URL}/report/{slug}"
+    rows = accounts.queue_failure_notifications(slug, report_url, reason=reason)
+    if rows:
+        kick()
+    return rows
+
+
 def queue_draft_completion(user, project, version):
     """Queue one durable message for a newly published immutable draft version."""
     if not user or not user.get("is_active") or not user.get("email_on_completion", True):
