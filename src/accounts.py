@@ -455,6 +455,26 @@ def enqueue_mail(*, to_email, kind, subject, body_text, dedupe_key,
         return dict(cur.fetchone())
 
 
+def _search_label(row, limit=64):
+    """A short, human identifier for one search, for the subject line.
+
+    EVERY NOTIFICATION USED THE SAME SUBJECT. Sixteen of them between 1 and 19 August all read
+    "Your patent prior-art search is ready", from the same sender. Gmail threads on subject plus
+    participants, so they were one conversation — and a conversation that has ever been muted or
+    archived swallows every later message: it is not in the inbox and it is not in spam, which is
+    precisely how this was reported. A distinct subject per search is both the fix and the more
+    useful line to read in a mailbox.
+    """
+    subj = re.sub(r"\s+", " ", str(row.get("subject") or "")).strip()
+    title = re.sub(r"\s+", " ", str(row.get("title") or "")).strip()
+    query = re.sub(r"\s+", " ", str(row.get("query") or "")).strip()
+    bits = [b for b in (subj, title or query) if b]
+    label = " — ".join(bits) if len(bits) > 1 else (bits[0] if bits else "")
+    if not label:
+        return str(row.get("slug") or "").replace("adhoc-", "")
+    return label[:limit].rstrip(" ,;.—-") + ("…" if len(label) > limit else "")
+
+
 def queue_completion_notifications(slug, report_url):
     """Durably queue one completion message per opted-in user/search pair."""
     rows = mark_search_complete(slug)
@@ -470,7 +490,7 @@ def queue_completion_notifications(slug, report_url):
         mail = enqueue_mail(
             to_email=user["email"], user_id=user["id"], search_slug=slug,
             kind="search_complete", dedupe_key=f"search-complete:{user['id']}:{slug}",
-            subject="Your patent prior-art search is ready",
+            subject=f"Prior-art search ready: {_search_label(row)}",
             body_text=(f"Hello {user['full_name']},\n\nYour prior-art search is ready.\n\n"
                        f"Search: {preview}\n\nOpen the report:\n{report_url}\n\n"
                        "The report includes ranked references, grounded relevance explanations, "
@@ -513,7 +533,7 @@ def queue_failure_notifications(slug, report_url, reason=""):
         mail = enqueue_mail(
             to_email=user["email"], user_id=user["id"], search_slug=slug,
             kind="search_failed", dedupe_key=f"search-failed:{user['id']}:{slug}",
-            subject="Your patent prior-art search did not finish",
+            subject=f"Prior-art search did not finish: {_search_label(row)}",
             body_text=(f"Hello {user['full_name']},\n\nYour prior-art search stopped before it "
                        f"finished{why}.\n\nSearch: {preview}\n\n"
                        f"Open the report and re-run it:\n{report_url}\n\n"
