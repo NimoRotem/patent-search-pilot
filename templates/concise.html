@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Concise descriptions of relevance — {{ slug }}{% endblock %}
+{% block body %}
+{#
+  The picker for 37 CFR 1.290 submissions. Deliberately shows what the evidence actually supports
+  BEFORE anything is generated: how many claims each reference speaks to, and how many of those
+  rest on a verbatim passage rather than a characterisation. A document with no strong rows can
+  still be filed, but the practitioner should know that before it goes in the envelope.
+#}
+<h1 style="margin-bottom:.2em">Concise descriptions of relevance</h1>
+<p class="small muted" style="margin-top:0">
+  Third-party preissuance submission under 37 CFR § 1.290 — one document per reference, built from
+  this search's per-claim evidence. <a href="{{ url_for('report', slug=slug) }}">back to the report</a>
+</p>
+
+{% if error %}<div class="warn" style="margin:1em 0">{{ error }}</div>{% endif %}
+
+{% if docs %}
+<div class="card" style="margin:1em 0;padding:1em">
+  <h2 style="margin-top:0">Ready to file</h2>
+  <table class="tbl">
+    <thead><tr><th>#</th><th>Document</th><th>Claims addressed</th><th>Download</th></tr></thead>
+    <tbody>
+    {% for d in docs %}
+      <tr>
+        <td>{{ d.n }}</td>
+        <td>{{ d.label }}<br><span class="small muted">{{ d.pub }}</span></td>
+        <td>{{ d.rows }} row{{ '' if d.rows == 1 else 's' }}</td>
+        <td>
+          <a href="{{ url_for('concise_download', slug=slug, name=d.pdf) }}">PDF</a> ·
+          <a href="{{ url_for('concise_download', slug=slug, name=d.docx) }}">DOCX</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="small muted">
+    PDF is the filing artefact; DOCX is the editable copy. Every coordinate on the page comes from
+    the passage the reader actually read — nothing is written by a model. Check the biblio block
+    and the application identification before filing.
+  </p>
+</div>
+{% endif %}
+
+{% if cands %}
+<form method="post" action="{{ url_for('concise_descriptions', slug=slug) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card" style="margin:1em 0;padding:1em">
+    <h2 style="margin-top:0">The application under examination</h2>
+    <p class="small muted" style="margin-top:0">
+      Named on every page. The search may have been run from a family member or an uploaded draft,
+      so these are editable.
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:.6em">
+      <label>Application No.<br><input name="app_no" value="{{ subject.app_no }}" placeholder="18/915,337" style="width:100%"></label>
+      <label>Publication No.<br><input name="pub_no" value="{{ subject.pub_no }}" placeholder="US 2025/0033224 A1" style="width:100%"></label>
+      <label>Title<br><input name="title" value="{{ subject.title }}" placeholder="Portable vacuum gripper" style="width:100%"></label>
+      <label>First named inventor<br><input name="inventor" value="{{ subject.inventor }}" placeholder="Nhon Hoa Nguyen" style="width:100%"></label>
+    </div>
+    <label class="small" style="display:block;margin-top:.6em">Number the first document as
+      <input name="start_at" value="1" size="3"></label>
+  </div>
+
+  <div class="card" style="margin:1em 0;padding:1em">
+    <h2 style="margin-top:0">Documents</h2>
+    <p class="small muted" style="margin-top:0">
+      Ranked by how much verified evidence each carries. <b>Strong</b> counts rows backed by a
+      verbatim passage; the rest are characterisations, which are filed without quotation marks.
+    </p>
+    <table class="tbl">
+      <thead><tr><th></th><th>Reference</th><th>Claims</th><th>Rows</th><th>Strong</th></tr></thead>
+      <tbody>
+      {% for c in cands %}
+        <tr>
+          <td><input type="checkbox" name="pubs" value="{{ c.pub }}" {% if loop.index <= 6 %}checked{% endif %}></td>
+          <td>{{ c.pub }}<br><span class="small muted">{{ c.title[:80] }}</span></td>
+          <td class="small">{{ c.claims|join(', ') }}</td>
+          <td>{{ c.n_rows }}</td>
+          <td>{{ c.n_strong }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <button type="submit" style="margin-top:.8em">Build the concise descriptions</button>
+    <span class="small muted">One model call per document to phrase the disclosure column; the
+      citations are attached from the record.</span>
+  </div>
+</form>
+{% elif not error %}
+<p>No reference in this report carries verified per-claim evidence yet.</p>
+{% endif %}
+{% endblock %}

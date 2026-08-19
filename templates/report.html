@@ -267,7 +267,9 @@
           <span class="runfacts">
             <span><b>{{ v.cards|length }}</b> references</span>
             <span><b>{{ '{:,}'.format(v.n_families or 0) }}</b> families{% if v.slug and not read_only %}
-              · <a href="{{ url_for('ranked_tail', slug=v.slug) }}">full ranked list</a>{% endif %}</span>
+              · <a href="{{ url_for('ranked_tail', slug=v.slug) }}">full ranked list</a>{#  The evidence this search produced is already the substance of a 37 CFR 1.290
+            preissuance submission; this is the door to it. Hidden on a read-only share, like
+            every other route that spends. #} · <a href="{{ url_for('concise_descriptions', slug=v.slug) }}">concise descriptions (1.290)</a>{% endif %}</span>
             <span><b>{{ v.elements|length }}</b> elements</span>
             <span>{{ v.mode.replace('_',' ')|title }}</span>
             <span>{{ 'Claims' if v.search_focus == 'claims' else 'All text' }}</span>

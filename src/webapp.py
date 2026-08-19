@@ -4268,6 +4268,133 @@ def shared_report_logo(token):
 
 
 # ---- export selected references -> PDF / DOCX (the headline) --------------------------------
+#  ---------------------------------------------------------------- 37 CFR 1.290 submissions
+#
+#  A finished search already holds what a preissuance submission is made of: per-limitation
+#  verdicts with the passage that supports each one and the coordinate it sits at. These routes
+#  pivot that onto the filing's axis (one document, its claims in order) and hand back the
+#  two-column paper an attorney files. See concise_description.py for the three rules that govern
+#  what may appear on it; the important one is that no citation is ever written by a model.
+
+CONCISE_DIR = REPORTS / "concise"
+
+
+def _concise_deep(slug):
+    """The deep-read block for a slug, or None. That block IS the evidence; without it there is
+    nothing to describe and the caller should say so rather than render an empty table."""
+    p = REPORTS / ("%s.deep.json" % slug)
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return None
+
+
+def _concise_subject(slug, form=None):
+    """Identify the application under examination.
+
+    The submission names the application it is filed in, which is NOT always the document that was
+    searched: the search may have been run from a family member or an uploaded draft. So the fields
+    are editable and default to what the report knows.
+    """
+    form = form or {}
+    meta = {}
+    try:
+        meta = json.loads((REPORTS / ("%s.meta.json" % slug)).read_text())
+    except Exception:
+        pass
+    deep = _concise_deep(slug) or {}
+    label = (deep.get("subject_label") or meta.get("subject") or "").strip()
+    pub_no = label
+    try:
+        import concise_description
+        pretty, _kind = concise_description._us_style(label)
+        if pretty and "Publication No." in pretty:
+            pub_no = pretty.split("Publication No.", 1)[1].strip()
+    except Exception:
+        pass
+    return {
+        "app_no": (form.get("app_no") or "").strip(),
+        "pub_no": (form.get("pub_no") or pub_no or "").strip(),
+        "title": (form.get("title") or "").strip(),
+        "inventor": (form.get("inventor") or "").strip(),
+    }
+
+
+@app.route("/report/<slug>/concise", methods=["GET", "POST"])
+def concise_descriptions(slug):
+    if not valid_slug(slug):
+        abort(404)
+    if not _can_access_report(slug):
+        abort(404)
+    #  Building costs a model call per document, so it is gated like every other route that spends.
+    if request.method == "POST" and auth.current_user():
+        auth.require_csrf()
+    deep = _concise_deep(slug)
+    if not deep or not (deep.get("references") or []):
+        return render_template("concise.html", slug=slug, cands=[], docs=[],
+                               subject=_concise_subject(slug), error=(
+                                   "This report has no full-text reading stage, so there is no "
+                                   "per-claim evidence to describe. Re-run the search at depth "
+                                   "'deep' first."))
+    import concise_description
+    import concise_render
+    cands = concise_description.candidates({}, deep, limit=40)
+    subject = _concise_subject(slug, request.form if request.method == "POST" else None)
+    if request.method == "GET":
+        return render_template("concise.html", slug=slug, cands=cands, docs=[],
+                               subject=subject, error=None)
+
+    pubs = [p.strip() for p in request.form.getlist("pubs") if p.strip()]
+    if not pubs:
+        return render_template("concise.html", slug=slug, cands=cands, docs=[], subject=subject,
+                               error="Select at least one document."), 400
+    known = {c["pub"] for c in cands}
+    pubs = [p for p in pubs if p in known]
+    try:
+        docs = concise_description.build(deep, pubs, subject,
+                                         start_at=int(request.form.get("start_at") or 1))
+    except Exception:
+        traceback.print_exc()
+        return render_template("concise.html", slug=slug, cands=cands, docs=[], subject=subject,
+                               error="Could not build the documents; the error is in the log."), 500
+
+    out = CONCISE_DIR / slug
+    out.mkdir(parents=True, exist_ok=True)
+    written = []
+    for d in docs:
+        for fmt, fn in (("pdf", concise_render.to_pdf), ("docx", concise_render.to_docx)):
+            try:
+                (out / concise_render.filename(d, fmt)).write_bytes(fn(d))
+            except Exception:
+                traceback.print_exc()
+        (out / ("Doc%s_%s.model.json" % (d["n"], _safe_pub(d["pub"])))).write_text(
+            json.dumps(d, ensure_ascii=False, indent=1))
+        written.append({"n": d["n"], "pub": d["pub"], "rows": len(d["rows"]),
+                        "label": d["biblio"]["label"],
+                        "pdf": concise_render.filename(d, "pdf"),
+                        "docx": concise_render.filename(d, "docx")})
+    return render_template("concise.html", slug=slug, cands=cands, docs=written,
+                           subject=subject, error=None)
+
+
+@app.route("/report/<slug>/concise/<path:name>")
+def concise_download(slug, name):
+    if not valid_slug(slug) or not _can_access_report(slug):
+        abort(404)
+    #  `name` is user-supplied and about to become a path. Only ever serve a file this feature
+    #  wrote, matched by exact basename, so no traversal is possible.
+    d = CONCISE_DIR / slug
+    if not d.is_dir():
+        abort(404)
+    base = os.path.basename(name)
+    target = d / base
+    if not target.is_file() or base.endswith(".model.json"):
+        abort(404)
+    return send_from_directory(str(d), base, as_attachment=True)
+
+
 @app.route("/export", methods=["POST"])
 def export():
     slug = request.form.get("slug", "").strip()
