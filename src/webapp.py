@@ -4350,8 +4350,17 @@ def concise_descriptions(slug):
     if not pubs:
         return render_template("concise.html", slug=slug, cands=cands, docs=[], subject=subject,
                                error="Select at least one document."), 400
+    #  Only a publication this report actually read can be described: `pubs` is user input that
+    #  becomes a document lookup and a filename. Filtering it silently, though, hands back a
+    #  success page with nothing on it and no reason, so an unknown one is named and refused.
     known = {c["pub"] for c in cands}
+    unknown = [p for p in pubs if p not in known]
     pubs = [p for p in pubs if p in known]
+    if not pubs:
+        return render_template(
+            "concise.html", slug=slug, cands=cands, docs=[], subject=subject,
+            error=("None of the selected documents carry per-claim evidence in this report: %s"
+                   % ", ".join(unknown[:5]))), 400
     try:
         docs = concise_description.build(deep, pubs, subject,
                                          start_at=int(request.form.get("start_at") or 1))
