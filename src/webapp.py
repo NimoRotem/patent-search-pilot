@@ -4291,6 +4291,36 @@ def _concise_deep(slug):
         return None
 
 
+def _concise_built(slug):
+    """Documents already built for this slug, newest numbering first.
+
+    Without this the page only ever showed what the CURRENT request produced, so coming back to
+    collect the files meant rebuilding them — a model call per document to regenerate a paper that
+    was already on disk. The .model.json beside each pair is the provenance record and is never
+    listed; it is not a filing artefact.
+    """
+    d = CONCISE_DIR / slug
+    if not d.is_dir():
+        return []
+    by_stem = {}
+    for p in sorted(d.iterdir()):
+        if not p.name.startswith("ConciseDescription_") or p.suffix not in (".pdf", ".docx"):
+            continue
+        stem = p.name[:-len(p.suffix)]
+        row = by_stem.setdefault(stem, {"n": 0, "pub": "", "label": stem, "rows": None})
+        row[p.suffix.lstrip(".")] = p.name
+        bits = stem.split("_", 2)
+        if len(bits) == 3 and bits[1].startswith("Doc"):
+            try:
+                row["n"] = int(bits[1][3:])
+            except ValueError:
+                pass
+            row["pub"] = bits[2]
+    out = [r for r in by_stem.values() if r.get("pdf") or r.get("docx")]
+    out.sort(key=lambda r: r["n"])
+    return out
+
+
 def _concise_subject(slug, form=None):
     """Identify the application under examination.
 
@@ -4343,12 +4373,12 @@ def concise_descriptions(slug):
     cands = concise_description.candidates({}, deep, limit=40)
     subject = _concise_subject(slug, request.form if request.method == "POST" else None)
     if request.method == "GET":
-        return render_template("concise.html", slug=slug, cands=cands, docs=[],
-                               subject=subject, error=None)
+        return render_template("concise.html", slug=slug, cands=cands,
+                               docs=_concise_built(slug), subject=subject, error=None)
 
     pubs = [p.strip() for p in request.form.getlist("pubs") if p.strip()]
     if not pubs:
-        return render_template("concise.html", slug=slug, cands=cands, docs=[], subject=subject,
+        return render_template("concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
                                error="Select at least one document."), 400
     #  Only a publication this report actually read can be described: `pubs` is user input that
     #  becomes a document lookup and a filename. Filtering it silently, though, hands back a
@@ -4364,7 +4394,7 @@ def concise_descriptions(slug):
     pubs = [p for p in pubs if p in known]
     if not pubs:
         return render_template(
-            "concise.html", slug=slug, cands=cands, docs=[], subject=subject,
+            "concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
             error=("None of the selected documents carry per-claim evidence in this report: %s"
                    % ", ".join(unknown[:5]))), 400
     try:
@@ -4372,7 +4402,7 @@ def concise_descriptions(slug):
                                          start_at=int(request.form.get("start_at") or 1))
     except Exception:
         traceback.print_exc()
-        return render_template("concise.html", slug=slug, cands=cands, docs=[], subject=subject,
+        return render_template("concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
                                error="Could not build the documents; the error is in the log."), 500
 
     out = CONCISE_DIR / slug
