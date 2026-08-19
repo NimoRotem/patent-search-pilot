@@ -128,13 +128,46 @@ def _source_tags(report, n_local):
 
     fed = report.get("federation")
     if not fed:
-        #  NO FEDERATION BLOCK YET means the external fan-out has not landed, which is the normal
-        #  state for most of a live search — not evidence that nothing else is being searched.
-        #  Returning here used to leave the panel reading "Sources 1 · Local corpus", which is the
-        #  single most misleading thing the page says: a dozen providers are configured and running
-        #  at that moment. List them as PENDING so the panel shows the real scope from the start
-        #  and fills in counts as each one reports.
-        if report.get("wide", True):
+        #  NO FEDERATION BLOCK is no longer the same fact it used to be.
+        #
+        #  It once meant "the external fan-out has not landed yet", which is the normal state for
+        #  most of a live search, so every provider was listed as PENDING to show the real scope
+        #  while counts filled in. Since the rebuild turned App A's /api/search channel off by
+        #  default (FEDERATION_CHANNEL=0), the block is never written at all — and a FINISHED
+        #  report was still rendering "PQAI: searching now", for ever, on a search that completed
+        #  hours earlier and in which PQAI returned 1,919 hits. Reported from the public link on
+        #  2026-08-19.
+        #
+        #  The external fan-out that DID run records its own per-source counts, so prefer those.
+        ext = report.get("external") or {}
+        per = ext.get("per_source") if isinstance(ext.get("per_source"), dict) else {}
+        landed = bool(per) or ext.get("ok") is not None
+        if landed:
+            catalogue = {(x.get("name") or x.get("id")): x
+                         for x in (_engine_sources() or []) if (x.get("name") or x.get("id"))}
+            err = " ".join(str(ext.get("error") or "").split())[:160]
+            for sid in list(per.keys()) + [k for k in catalogue if k not in per]:
+                x = catalogue.get(sid) or {}
+                if not x.get("enabled", True):
+                    tags.append({"id": sid, "label": x.get("label") or _src_label(sid),
+                                 "state": "off", "n": 0,
+                                 "note": "Not configured for this deployment.",
+                                 "why": "Not configured for this deployment."})
+                    continue
+                n = int(per.get(sid) or 0)
+                if n:
+                    st, why = "used", ""
+                elif err:
+                    st, why = "failed", err
+                else:
+                    #  A configured source that returned nothing is "no results", not "searching":
+                    #  the fan-out is over.
+                    st, why = "none", ""
+                tags.append({"id": sid, "label": x.get("label") or _src_label(sid),
+                             "state": st, "n": n, "note": why, "why": why})
+            return _mark_provider_fallbacks(tags)
+        #  Nothing has landed. Only a report that is STILL RUNNING may say a source is searching.
+        if report.get("wide", True) and report.get("partial"):
             for x in (_engine_sources() or []):
                 sid = x.get("name") or x.get("id")
                 if not sid:

@@ -2308,7 +2308,10 @@ def report(slug):
     if view["depth"] == "quick":
         view["escalate"] = {"query": query or rep.get("query") or "", "mode": mode,
                             "doc_token": doc_token or "", "search_focus": search_focus}
-    view["concise_built"] = _concise_count(slug)
+    #  The filing artefacts belong on the report itself, not only on a share of it: the owner is
+    #  the one who builds them and the most likely person to come back for them.
+    view["concise_docs"] = _concise_built(slug)
+    view["concise_built"] = len(view["concise_docs"])
     return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
 
 
@@ -4116,6 +4119,7 @@ def shared_report(token):
     view["report_doc"] = doc
     view["share_token"] = token
     view["read_only"] = True
+    view["concise_docs"] = _concise_built(slug)
     return render_template("report.html", v=view, read_only=True, share_token=token,
                            ood=None, corpus=corpus_facts.facts())
 
@@ -4200,6 +4204,10 @@ def public_report_page(slug):
         view["report_doc"] = None
     view["read_only"] = True
     view["public"] = None
+    #  The filing artefacts are part of what was shared: a recipient opening the public link is
+    #  usually the person who needs the papers, and hiding them behind an account defeats the
+    #  point of publishing the report at all.
+    view["concise_docs"] = _concise_built(slug)
     visit_key = public_report.record_visit(slug, request, unlocked=_public_unlocked(slug))
     resp = make_response(render_template(
         "report.html", v=view, read_only=True, layout="base_public.html", share_token=None,
@@ -4299,6 +4307,27 @@ def _concise_deep(slug):
         return json.loads(p.read_text())
     except Exception:
         return None
+
+
+def _concise_may_read(slug):
+    """May this request DOWNLOAD the 1.290 documents for `slug`?
+
+    Deliberately wider than `_can_access_report`, and deliberately narrower than public: the papers
+    are the deliverable of the report, so anyone who has been given the report and answered its
+    password may take them. Building and editing stay owner-only, because those spend money and
+    change what would be filed.
+    """
+    if _can_access_report(slug):
+        return True
+    try:
+        pub = public_report.get(slug) or {}
+        if not pub.get("published"):
+            return False
+        #  A link with no password is readable by anyone holding it, so its papers are too. A link
+        #  WITH a password must have been answered in this session, exactly like the report page.
+        return (not public_report.needs_password(slug)) or _public_unlocked(slug)
+    except Exception:
+        return False
 
 
 def _concise_source_text(pub):
@@ -4537,7 +4566,7 @@ def concise_zip(slug):
     The model and markdown are working files, not filing artefacts, so the archive carries the
     PDFs and DOCXs only — what actually goes to the Office.
     """
-    if not valid_slug(slug) or not _can_access_report(slug):
+    if not valid_slug(slug) or not _concise_may_read(slug):
         abort(404)
     d = CONCISE_DIR / slug
     if not d.is_dir():
@@ -4560,7 +4589,7 @@ def concise_zip(slug):
 
 @app.route("/report/<slug>/concise/<path:name>")
 def concise_download(slug, name):
-    if not valid_slug(slug) or not _can_access_report(slug):
+    if not valid_slug(slug) or not _concise_may_read(slug):
         abort(404)
     #  `name` is user-supplied and about to become a path. Only ever serve a file this feature
     #  wrote, matched by exact basename, so no traversal is possible.

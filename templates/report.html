@@ -322,6 +322,29 @@
         Rename, Re-run and the ZIP all read the FINAL ordering; clicked mid-search they either
         capture a half-ranked page or start work that the still-running search invalidates.
         Disabled rather than hidden, so it is visible that they are coming.  #}
+    {#  THE FILING ARTEFACTS. Shown to every reader of the report, including a read-only share and
+        the public link, because the papers are the deliverable — the person the report was shared
+        with is usually the one who needs them. Building and editing stay owner-only below. #}
+    {% if v.concise_docs %}
+    <section class="card" style="margin:.8em 0;padding:.7em 1em">
+      <b>Third-party preissuance submission under 37 CFR &sect; 1.290</b>
+      <span class="small muted">&mdash; {{ v.concise_docs|length }} document{{ '' if v.concise_docs|length == 1 else 's' }}
+        built from this search's per-claim evidence</span>
+      <ul style="margin:.45em 0 .2em 1.1em">
+        {% for d in v.concise_docs %}
+        <li class="small"><b>Document {{ d.n }}</b> &mdash; {{ d.pub }}
+          {% if d.pdf %}<a href="{{ request.script_root }}/report/{{ v.slug }}/concise/{{ d.pdf }}">PDF</a>{% endif %}
+          {% if d.docx %} · <a href="{{ request.script_root }}/report/{{ v.slug }}/concise/{{ d.docx }}">DOCX</a>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}/concise.zip">Download all as .zip</a>
+      {% if current_user and not read_only %}
+      <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}/concise">Manage / rebuild</a>
+      {% endif %}
+    </section>
+    {% endif %}
+
     <div class="actions{% if v.partial %} actions-pending{% endif %}"
          {% if v.partial %}aria-disabled="true" title="Available when the search finishes ranking"{% endif %}>
       {#  THIRD-PARTY SUBMISSION. The evidence this search already produced is the substance of a
