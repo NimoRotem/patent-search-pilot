@@ -4353,7 +4353,13 @@ def concise_descriptions(slug):
     #  Only a publication this report actually read can be described: `pubs` is user input that
     #  becomes a document lookup and a filename. Filtering it silently, though, hands back a
     #  success page with nothing on it and no reason, so an unknown one is named and refused.
-    known = {c["pub"] for c in cands}
+    #
+    #  The gate is "this reference carries verified evidence in this report", NOT "it is in the
+    #  picker's top 40". The two differ and the difference matters: the reference an attorney most
+    #  wants described is often not the one with the most rows. Measured on adhoc-0a80ecb18aa6,
+    #  where US 6,419,291 and US 7,240,935 are both references a practitioner actually filed
+    #  against this application and both sit outside the top 40 by row count.
+    known = {c["pub"] for c in concise_description.candidates({}, deep, limit=10000)}
     unknown = [p for p in pubs if p not in known]
     pubs = [p for p in pubs if p in known]
     if not pubs:
