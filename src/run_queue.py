@@ -17,6 +17,7 @@ process, not to coordinate several of them.
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 import traceback
@@ -104,18 +105,48 @@ def get_row(slug):
         return None
 
 
-def next_queued():
+#  How far down the queue the dispatcher may look past a row it cannot start. See
+#  `next_queued_batch` for why looking past it at all is the whole point.
+LOOKAHEAD = int(os.environ.get("RUN_QUEUE_LOOKAHEAD", "12"))
+
+
+def _rows(limit):
     with db.cursor() as cur:
         cur.execute("SELECT slug, payload FROM app_run_queue WHERE state='queued' "
-                    "ORDER BY enqueued_at LIMIT 1")
-        r = cur.fetchone()
-    if not r:
-        return None
-    slug = r["slug"] if isinstance(r, dict) else r[0]
-    payload = r["payload"] if isinstance(r, dict) else r[1]
-    if isinstance(payload, str):
-        payload = json.loads(payload)
-    return {"slug": slug, "payload": payload or {}}
+                    "ORDER BY enqueued_at LIMIT %s", (int(limit),))
+        rows = cur.fetchall() or []
+    out = []
+    for r in rows:
+        slug = r["slug"] if isinstance(r, dict) else r[0]
+        payload = r["payload"] if isinstance(r, dict) else r[1]
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        out.append({"slug": slug, "payload": payload or {}})
+    return out
+
+
+def next_queued():
+    """The oldest queued run, or None. Kept for callers that only want the head."""
+    rows = _rows(1)
+    return rows[0] if rows else None
+
+
+def next_queued_batch(limit=None):
+    """The oldest queued runs, in order, so the dispatcher can look PAST one it cannot start.
+
+    THE GATE HAS TWO LANES AND THE QUEUE USED TO UNDO THEM. Quick and deep have separate
+    concurrency and separate daily budgets precisely so that a cents-class interactive search never
+    waits behind two multi-hour attacks. But the dispatcher only ever fetched the single oldest
+    queued row, so a queued DEEP run — one that cannot start because the deep lane is full — was
+    retried every tick for ever while every quick run behind it sat untouched with its own lane
+    completely free. Measured 2026-08-19: deep lane full, quick lane empty, a quick run queued
+    behind one deep run never started at all.
+
+    FIFO still holds WITHIN a lane, because the rows come back in enqueue order and the dispatcher
+    tries them in that order. A later quick run overtaking an earlier deep one is not unfairness,
+    it is what having two lanes means.
+    """
+    return _rows(limit or LOOKAHEAD)
 
 
 def mark(slug, state, error=None):
@@ -197,18 +228,24 @@ def start_dispatcher(launch):
         while True:
             time.sleep(POLL_SECONDS)
             try:
-                row = next_queued()
-                if not row:
-                    continue
-                res = launch(row["slug"], row["payload"])
-                if res == "started":
-                    mark(row["slug"], "running")
-                elif res == "done":
-                    mark(row["slug"], "done")
-                elif res == "gone":
-                    #  The payload can no longer start a run (e.g. its stashed document expired).
-                    mark(row["slug"], "failed", error="could not be started after restart")
-                #  'busy': the gate is still full — leave it queued and try again next tick.
+                #  Walk the queue rather than staring at its head: a row that is 'busy' is busy in
+                #  ITS OWN lane, and the next row may be in a lane that is free. Stop at the first
+                #  one that starts, so one tick starts one run and the loop stays predictable.
+                for row in next_queued_batch():
+                    res = launch(row["slug"], row["payload"])
+                    if res == "started":
+                        mark(row["slug"], "running")
+                        break
+                    if res == "done":
+                        mark(row["slug"], "done")
+                        break
+                    if res == "gone":
+                        #  The payload can no longer start a run (e.g. its stashed document
+                        #  expired).
+                        mark(row["slug"], "failed",
+                             error="could not be started after restart")
+                        break
+                    #  'busy': this lane is full. Leave the row queued and try the next one.
             except Exception:
                 traceback.print_exc()
 
