@@ -266,7 +266,7 @@ def secret_art_note(country, forum="US") -> str:
     c = str(country or "?").upper()
     if str(forum or "US").upper() == "US":
         return ("This document published AFTER the target's effective filing date, so it can only "
-                "be reached as 35 U.S.C. 102(a)(2) art — and 102(a)(2) reaches US patents, US "
+                "be reached as 35 U.S.C. 102(a)(2) art, and 102(a)(2) reaches US patents, US "
                 "pre-grant publications and PCT applications designating the United States. A %s "
                 "national publication is not among them, so it is not prior art in the United "
                 "States on these dates." % c)

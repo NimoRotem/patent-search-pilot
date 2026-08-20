@@ -419,7 +419,13 @@ def candidates(report, deep, limit=40, collapse_families=True):
     applied, considered = set(), set()
     mined = ((report or {}).get("prosecution") or {}).get("mined") or {}
     for a in (mined.get("applied") or []):
-        if a.get("pub"):
+        #  DOUBLE PATENTING IS NOT A PRIOR-ART GROUND. An examiner citing the applicant's own
+        #  earlier patent under obviousness-type double patenting has not said it is prior art,
+        #  and it usually is not: on the measured subject US 12,115,659 is the patent this very
+        #  application is a continuation of, with the SAME priority date. Giving it the
+        #  examiner-applied boost put the applicant's own parent at the top of a package of art
+        #  to file against them.
+        if a.get("pub") and "double" not in str(a.get("statute") or "").lower():
             applied.add(a["pub"])
     considered = set(mined.get("considered") or []) - applied
     indep = {c.get("label") for c in claims

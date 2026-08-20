@@ -62,6 +62,7 @@ import claim_rescue
 import limitations as limmod
 import coverage_rank
 import deep_analysis
+import search_modes
 import llm
 import oracle
 
@@ -390,6 +391,38 @@ def _seed_families(cur, report, families, reps):
     except Exception:
         traceback.print_exc()
         return list(families), []
+
+    #  THE WRAPPER SAYS WHAT TO LOOK AT. IT DOES NOT EXEMPT A DOCUMENT FROM BEING PRIOR ART.
+    #  Two gates, both learned from the first validation run:
+    #    * the subject's OWN family, which `_drop_self_family` had already removed. The examiner
+    #      cites it for obviousness-type double patenting, which is not a prior-art ground, and it
+    #      came back in at rank 1 of a prior-art report.
+    #    * anything that is not prior art on the dates, judged by the same engine every other
+    #      candidate is judged by.
+    import webview                      # module-level import would cycle: webview imports db
+    self_fam = str(((report or {}).get("self_family_excluded") or {}).get("family") or "")
+    efd = webview.subject_efd_of(report)
+    subj = search_modes.Subject(number="subject", efd=efd) if efd else None
+    skipped = []
+    for pub in list(rows):
+        r = rows[pub]
+        why = ""
+        if self_fam and str(r["fam"]) == self_fam:
+            why = "the subject's own family"
+        elif subj is not None:
+            basis = search_modes.classify_basis(
+                {"publication_date": r["publication_date"],
+                 "earliest_priority_date": r["earliest_priority_date"],
+                 "filing_date": r["filing_date"]}, subj)
+            if basis == search_modes.Basis.NOT_PRIOR_ART:
+                why = "not prior art on the dates"
+        if why:
+            skipped.append("%s (%s)" % (pub, why))
+            rows.pop(pub)
+    if skipped:
+        print(f"[prosecution] {len(skipped)} wrapper reference(s) NOT read as prior art: "
+              f"{', '.join(skipped)}", flush=True)
+
     have = list(families)
     known = set(have)
     seed_fams, extra = [], []
@@ -398,12 +431,16 @@ def _seed_families(cur, report, families, reps):
         if not r:
             continue
         fam = r["fam"]
-        reps[fam] = r                       # read the document the Office named, not a sibling
+        #  FIRST SEED PER FAMILY WINS, and `seeds` is ordered applied-first. Overwriting let a
+        #  merely-considered sibling displace the document the examiner actually applied: US
+        #  11,413,727 lost family 66624664 to US 2020/0338695 A1 out of the same 1449 list.
+        #  The alternates are still named, by webview.family_alternates.
+        if fam not in seed_fams:
+            reps[fam] = r               # read the document the Office named, not a sibling
+            seed_fams.append(fam)
         if fam not in known:
             known.add(fam)
             extra.append(fam)
-        if fam not in seed_fams:
-            seed_fams.append(fam)
     if extra:
         print(f"[prosecution] {len(extra)} wrapper reference(s) were not in the retrieval ranking "
               f"at all and were added to the candidate list", flush=True)

@@ -165,3 +165,22 @@ def test_the_route_gate_does_not_collapse_families():
 def test_selection_still_works_with_no_ledger_and_no_wrapper():
     got = cd.candidates({}, _deep(), limit=10)
     assert len(got) == 3 and all(c["anticipates"] == [] for c in got)
+
+
+def test_a_double_patenting_citation_does_not_get_the_examiner_boost():
+    """An examiner citing the applicant's own earlier patent under obviousness-type double
+    patenting has not said it is prior art, and on the measured subject it was not: US 12,115,659
+    is the patent that application is a continuation of, same priority date. It led the package."""
+    rep = _report_with_ledger()
+    rep["prosecution"]["mined"]["applied"] = [
+        {"pub": "EXAMINER", "statute": "obviousness-type double patenting", "claims": "1-20"}]
+    got = {c["pub"]: c for c in cd.candidates(rep, _deep(), limit=10)}
+    assert got["EXAMINER"]["office"] != "applied"
+
+
+def test_a_102_citation_still_gets_it():
+    rep = _report_with_ledger()
+    rep["prosecution"]["mined"]["applied"] = [
+        {"pub": "EXAMINER", "statute": "102(a)(2)", "claims": "1-3"}]
+    got = {c["pub"]: c for c in cd.candidates(rep, _deep(), limit=10)}
+    assert got["EXAMINER"]["office"] == "applied"

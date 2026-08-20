@@ -865,8 +865,8 @@ def _attach_prosecution(rep, slug=None):
     if rep["prosecution_seeds"] and slug:
         _set_job(slug, kind="screening",
                  msg=f"The USPTO file wrapper for this family names "
-                     f"{len(rep['prosecution_seeds'])} references the Office already cited — "
-                     f"reading those too…")
+                     f"{len(rep['prosecution_seeds'])} references the Office already "
+                     f"cited. Reading those too…")
     return rep
 
 
