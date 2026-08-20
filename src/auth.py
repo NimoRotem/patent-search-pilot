@@ -525,6 +525,33 @@ def _safe_next(raw):
     return raw
 
 
+# Sibling apps on this domain that send a signed-out visitor HERE to sign in, then expect to be
+# sent back. Their `next` is already a whole site path, so prefixing it with our own SCRIPT_NAME
+# would produce /patents/patentlookup/ and 404. Anything not in this list keeps the old behaviour:
+# it came from inside this app and is relative to our prefix.
+_SIBLING_PREFIXES = tuple(
+    p.strip() for p in (os.environ.get(
+        "SHARED_LOGIN_PREFIXES",
+        "/patentlookup,/patentobservations,/submitpatents,/patents-engine") or "").split(",")
+    if p.strip().startswith("/"))
+
+
+def _is_site_absolute(path, root):
+    """True if `path` already names a full site path rather than one relative to our prefix."""
+    for pref in ((root,) if root else ()) + _SIBLING_PREFIXES:
+        # Segment-exact: /patents must not match /patentsomethingelse.
+        if path == pref or path.startswith(pref + "/") or path.startswith(pref + "?"):
+            return True
+    return False
+
+
+def _after_login_target(nxt):
+    root = request.script_root or ""
+    if not root or _is_site_absolute(nxt, root):
+        return nxt
+    return root + nxt
+
+
 # Shown instead of raw JSON when a BROWSER (not a fetch/XHR caller) trips a rate limit.
 _TOOMANY_HTML = """<!doctype html><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
@@ -573,7 +600,7 @@ def login():
                                     "email": user["email"]})
                 nxt = _safe_next(request.form.get("next") or request.args.get("next"))
                 if nxt:
-                    return redirect((request.script_root or "") + nxt)
+                    return redirect(_after_login_target(nxt))
                 return redirect(url_for("index"))
             if not error:
                 error = "Email or password is incorrect."
