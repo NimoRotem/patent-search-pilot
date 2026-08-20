@@ -388,6 +388,20 @@ def can_access_search(user_id, slug) -> bool:
     return get_search(user_id, slug) is not None
 
 
+def mark_search_running(slug):
+    """Put a saved search back into `running`. -> rows touched.
+
+    Only ever moves a row OUT of a settled state and into the state the pipeline is actually in.
+    Startup recovery marks stale rows failed and the dispatcher then restarts them; without this
+    the history keeps saying failed while the search runs to completion.
+    """
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("UPDATE app_saved_searches SET status='running', completed_at=NULL, "
+                    "updated_at=now() WHERE slug=%s AND status <> 'complete'", (slug,))
+        return cur.rowcount
+
+
 def mark_search_complete(slug):
     ensure_schema()
     with db.cursor() as cur:

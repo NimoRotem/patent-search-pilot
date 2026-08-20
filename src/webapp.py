@@ -8,7 +8,7 @@ endpoint; the agent report is cached to data/reports/<slug>.json and never block
 Per-card drawings/PDF/sections/rationale are enriched lazily via /api/ref.
 """
 from __future__ import annotations
-import difflib, json, os, re, queue, secrets, threading, hashlib, time, traceback
+import difflib, json, os, re, queue, secrets, sys, threading, hashlib, time, traceback
 from pathlib import Path
 from flask import (Flask, Response, render_template, request, jsonify, redirect, url_for,
                    send_from_directory, send_file, abort, stream_with_context, make_response, session)
@@ -929,6 +929,13 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
     already forces wide=False), and deep_rank stops after screen + per-limitation batch tail —
     no full reads, no refuter tail, no rescue. Everything else is byte-identical to deep."""
     _set_job(slug, status="running", msg="Queued…", t0=time.time(), tok0=_tok_now())
+    #  AND SAY SO IN SEARCH HISTORY. Startup recovery marks every stale row failed, correctly, and
+    #  the dispatcher then restarts the run; without this the history keeps saying failed while the
+    #  search runs. Never fatal: a search must not die because the accounts store is unavailable.
+    try:
+        accounts.mark_search_running(slug)
+    except Exception:
+        traceback.print_exc()
     #  IMMUTABLE RUN MANIFEST, written BEFORE anything happens. No comparison between two runs is
     #  valid unless they shared a corpus snapshot, a commit, the same prompts and the same budgets,
     #  and nothing recorded that: runs taken hours apart, with the corpus being written to and
@@ -6266,7 +6273,20 @@ def _queue_launch(slug, payload):
     return {"ready": "done", "running": "started", "busy": "busy"}.get(st, "gone")
 
 
-if "PYTEST_CURRENT_TEST" not in os.environ:
+def _is_import_for_test():
+    """True when this module is being imported BY a test run, including during collection.
+
+    `PYTEST_CURRENT_TEST` is set per test, not at import, so a guard on it alone is open for
+    exactly the moment the module body executes. The block below reconciles the live database and
+    starts the queue dispatcher; running either from a pytest process is a production mutation.
+    On 2026-08-20 a suite run marked two live searches failed that way.
+    """
+    return ("PYTEST_CURRENT_TEST" in os.environ
+            or os.environ.get("PATENTS_NO_STARTUP") == "1"
+            or "pytest" in sys.modules)
+
+
+if not _is_import_for_test():
     recover_interrupted_searches()
     draft_studio_service.recover_interrupted_turns()
     try:
