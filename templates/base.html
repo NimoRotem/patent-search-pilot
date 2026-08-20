@@ -9,6 +9,10 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23175cd3'/><path d='M9 8h10l4 4v12H9zM19 8v5h5M12 18h8M12 22h6' fill='none' stroke='white' stroke-width='1.8'/></svg>">
 <script>
 window.APP_BASE = {{ request.script_root|tojson }};
+  //  The lookup ENGINE is a sibling app at the root of this domain, not under our prefix. It
+  //  shares this app's session cookie (path "/"), so the browser calls it directly with
+  //  credentials:'same-origin' and no token is minted or forwarded.
+  window.LOOKUP_BASE = {{ lookup_base|tojson }};
 /* The progress narrative uses the same live/cached corpus fact as the footer.  Never bake a
    publication count into app.js: ingestion changes it while the UI asset remains cached. */
 window.CORPUS_PUBLICATIONS = {{ (corpus.publications if corpus and corpus.publications else 0)|tojson }};
@@ -36,6 +40,7 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
       <nav class="primarynav appnav" aria-label="Primary navigation">
         <a href="{{ request.script_root }}/" class="navitem{% if endpoint == 'index' %} active{% endif %}"{% if endpoint == 'index' %} aria-current="page"{% endif %}>Search</a>
         <a href="{{ request.script_root }}/history" class="navitem{% if endpoint == 'history' %} active{% endif %}"{% if endpoint == 'history' %} aria-current="page"{% endif %}>History</a>
+        <a href="{{ request.script_root }}/patentlookup" class="navitem{% if endpoint == 'patent_lookup' %} active{% endif %}"{% if endpoint == 'patent_lookup' %} aria-current="page"{% endif %}>Lookup</a>
         {% if current_user %}
           <a href="{{ request.script_root }}/library" class="navitem{% if endpoint == 'library' %} active{% endif %}"{% if endpoint == 'library' %} aria-current="page"{% endif %}>Library</a>
           <a href="{{ request.script_root }}/drafts" class="navitem navdraft{% if endpoint.startswith('draft') %} active{% endif %}"{% if endpoint.startswith('draft') %} aria-current="page"{% endif %}>Drafting</a>

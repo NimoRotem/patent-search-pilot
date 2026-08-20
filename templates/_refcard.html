@@ -87,6 +87,13 @@
                  23 of 34 of these used to 404. #}
               <span class="pdflink" data-pub="{{ c.pub }}" aria-disabled="true"
                     title="Checking for a cached PDF…">PDF</span>
+              {#  THE WHOLE FILE, from the register rather than from our corpus. The lookup engine
+                  owns the adapters for USPTO ODP, EPO OPS, Google Patents and DPMAregister; this
+                  asks it whether the file is already held (one cheap call, no work) and offers to
+                  pull it if not. It is the answer for every document Google Patents does not have,
+                  which is most recent national filings. #}
+              <button type="button" class="filelink" data-pub="{{ c.pub }}"
+                      title="Legal events, deadlines, family and the documents themselves, from the registers">Full file</button>
             </div>
             {% if c.assignees or c.inventors %}
             <div class="rsub">

@@ -2427,3 +2427,189 @@ async function streamNewCards(){
   setInterval(function () { send(false); }, 15000);
   window.addEventListener('pagehide', function () { send(true); });
 })();
+
+
+/* ---------------------------------------------------------------------------
+   THE WHOLE FILE, on any reference card.
+
+   The search corpus knows what a document SAYS. It does not know what has happened to it: whether
+   it was granted, opposed, abandoned, whether a renewal fee is due, what the examiner posted, or
+   whether a 1.290 window is still open. That lives in the registers, and the lookup engine at
+   window.LOOKUP_BASE already owns the adapters for all four of them (USPTO ODP, EPO OPS, Google
+   Patents, DPMAregister) plus a pacer for OPS's burst detection and a document store.
+
+   So this does not fetch anything itself. On card open it asks the engine ONE cheap question —
+   is this file already held? — and shows the file if so, or a button if not. A deep fetch costs
+   register calls and tens of megabytes, so it never starts unasked.
+
+   The engine authenticates on this app's own session cookie (same domain, cookie path "/"), which
+   is why these are plain same-origin fetches with no token anywhere.
+--------------------------------------------------------------------------- */
+(function () {
+  var LB = window.LOOKUP_BASE || '/patentlookup';
+  var OPEN = {};      // pub -> true while a panel is open, so a re-render does not stack streams
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; });
+  }
+  function pretty(d) {
+    var m = /^(\d{4})(\d{2})(\d{2})$/.exec(String(d || ''));
+    return m ? m[1] + '-' + m[2] + '-' + m[3] : esc(d || '');
+  }
+  function api(path, opts) {
+    opts = opts || {};
+    opts.credentials = 'same-origin';
+    opts.headers = Object.assign({'Accept': 'application/json'}, opts.headers || {});
+    return fetch(LB + path, opts).then(function (r) {
+      if (r.status === 401) throw new Error('Session expired — reload and sign in again.');
+      if (!r.ok) throw new Error('The lookup service answered ' + r.status + '.');
+      return r.json();
+    });
+  }
+
+  function panelFor(btn) {
+    var pub = btn.dataset.pub;
+    var id = 'filepanel-' + pub.replace(/[^A-Za-z0-9]/g, '');
+    var el = document.getElementById(id);
+    if (!el) {
+      el = document.createElement('div');
+      el.id = id;
+      el.className = 'filepanel';
+      /*  Appended to the card, not to the meta line: this is a block of tables and it must not
+          reflow the title row it was launched from. */
+      (btn.closest('.rmain') || btn.parentNode).appendChild(el);
+    }
+    return el;
+  }
+
+  function table(title, cols, rows, raw) {
+    if (!rows || !rows.length) return '';
+    var h = ['<div class="fpsec"><b>' + esc(title) + '</b> <span class="cc">' + rows.length + '</span>',
+             '<div style="overflow-x:auto"><table class="tbl fptbl"><thead><tr>'];
+    cols.forEach(function (c) { h.push('<th>' + esc(c) + '</th>'); });
+    h.push('</tr></thead><tbody>');
+    rows.forEach(function (r) {
+      h.push('<tr>');
+      r.forEach(function (cell) { h.push('<td>' + (raw ? cell : esc(cell)) + '</td>'); });
+      h.push('</tr>');
+    });
+    h.push('</tbody></table></div></div>');
+    return h.join('');
+  }
+
+  function render(el, rec, pub) {
+    var d = (rec && rec.dossier) || {}, c = (rec && rec.confirm) || {};
+    var h = ['<div class="fphead"><b>' + esc(d.title || (rec && rec.title) || pub) + '</b>'];
+    if (rec && rec.headline) h.push(' <span class="stag t-info">' + esc(rec.headline) + '</span>');
+    h.push(' <a class="pn" href="' + window.APP_BASE + '/patentlookup?number='
+           + encodeURIComponent(pub) + '" target="_blank" rel="noopener">open in Lookup ↗</a></div>');
+    if (c.note) h.push('<p class="small">' + esc(c.note) + '</p>');
+    if (d.summary) h.push('<p class="small">' + esc(d.summary) + '</p>');
+    var meta = [];
+    if ((d.applicants || []).length) meta.push('Applicant: ' + esc(d.applicants.join('; ')));
+    if ((d.inventors || []).length) meta.push('Inventors: ' + esc(d.inventors.slice(0, 4).join('; ')));
+    if ((d.classifications || []).length) meta.push('CPC: ' + esc(d.classifications.slice(0, 6).join(' · ')));
+    if ((c.sources || []).length) meta.push('Sources: ' + esc(c.sources.join(', ')));
+    if (meta.length) h.push('<p class="small muted">' + meta.join(' &nbsp;·&nbsp; ') + '</p>');
+    if (c.google && c.google.present === false)
+      h.push('<p class="small muted">Not on Google Patents'
+             + (c.google.reason ? ' (' + esc(c.google.reason) + ')' : '') + '.</p>');
+
+    h.push(table('Legal events', ['Date', 'Code', 'What happened'],
+      (d.events || []).map(function (e) { return [pretty(e.date), e.code || '', e.description || '']; })));
+    h.push(table('Deadlines and open windows', ['Date', 'What', 'Basis'],
+      (d.deadlines || []).map(function (e) { return [pretty(e.date), e.name || '', e.basis || e.law || '']; })));
+    h.push(table('Family', ['Member', 'Country', 'Kind', 'Published'],
+      (d.members || []).map(function (m) {
+        var r = m.ref || {};
+        return [m.id || '', r.country || '', r.kind || '', pretty(m.publication_date || '')];
+      })));
+    var docs = (rec && rec.docs) || [];
+    if (docs.length) {
+      h.push(table('Documents', ['Document', 'Kind', 'Source', 'Date'], docs.map(function (x) {
+        return ['<a href="' + LB + '/api/doc/' + encodeURIComponent(x.id)
+                + '" target="_blank" rel="noopener">' + esc(x.title || x.filename || x.id) + '</a>',
+                esc(x.category || ''), esc(x.source || ''), pretty(x.doc_date || '')];
+      }), true));
+    }
+    if (!(d.events || []).length && !docs.length)
+      h.push('<p class="small muted">The registers returned no events or documents for this '
+             + 'publication.</p>');
+    el.innerHTML = h.join('');
+  }
+
+  function follow(el, lid, pub) {
+    var settled = false;
+    function finish() {
+      if (settled) return;
+      settled = true;
+      api('/api/lookup/' + encodeURIComponent(lid))
+        .then(function (rec) { render(el, rec, pub); })
+        .catch(function (e) { el.innerHTML = '<p class="small warn">' + esc(e.message) + '</p>'; });
+    }
+    var es;
+    try { es = new EventSource(LB + '/api/lookup/' + encodeURIComponent(lid) + '/stream'); }
+    catch (e) { return finish(); }
+    es.onmessage = function (ev) {
+      var j; try { j = JSON.parse(ev.data); } catch (e) { return; }
+      var m = j.message || j.msg || j.phase || '';
+      if (m && !settled) el.innerHTML = '<p class="small muted"><span class="spin" aria-hidden="true"></span> '
+        + esc(m) + '</p>';
+      if (j.done) { try { es.close(); } catch (e) {} finish(); }
+    };
+    es.onerror = function () { try { es.close(); } catch (e) {} finish(); };
+  }
+
+  function start(el, pub, refresh) {
+    el.innerHTML = '<p class="small muted"><span class="spin" aria-hidden="true"></span> '
+      + 'Pulling the file from the registers. This takes a minute or two and is kept, so it is '
+      + 'instant next time.</p>';
+    api('/api/file', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                      body: JSON.stringify({number: pub, refresh: !!refresh})})
+      .then(function (d) {
+        if (d.phase === 'error') {
+          el.innerHTML = '<p class="small warn">'
+            + esc((d.confirm && (d.confirm.error || d.confirm.note))
+                  || 'The registers could not resolve this number.') + '</p>';
+          return;
+        }
+        if (d.reused && !d.running)
+          return api('/api/lookup/' + encodeURIComponent(d.id))
+            .then(function (rec) { render(el, rec, pub); });
+        follow(el, d.id, pub);
+      })
+      .catch(function (e) { el.innerHTML = '<p class="small warn">' + esc(e.message) + '</p>'; });
+  }
+
+  function open(btn) {
+    var pub = btn.dataset.pub, el = panelFor(btn);
+    if (OPEN[pub]) { el.hidden = !el.hidden; btn.setAttribute('aria-expanded', String(!el.hidden)); return; }
+    OPEN[pub] = true;
+    el.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    el.innerHTML = '<p class="small muted">Asking the registers whether this file is already held…</p>';
+    /*  The cheap question first. A deep fetch costs register calls and tens of megabytes; it does
+        not start because somebody opened a panel. */
+    api('/api/file?number=' + encodeURIComponent(pub))
+      .then(function (d) {
+        if (d.found && !d.running)
+          return api('/api/lookup/' + encodeURIComponent(d.id))
+            .then(function (rec) { render(el, rec, pub); });
+        if (d.found && d.running) return follow(el, d.id, pub);
+        el.innerHTML = '<p class="small muted">No file held for this publication yet. '
+          + 'Pulling it reads USPTO ODP, the EPO register and DPMAregister, takes a minute or two, '
+          + 'and is kept afterwards.</p>'
+          + '<button type="button" class="btn sm fpgo">Pull the file</button>';
+        el.querySelector('.fpgo').addEventListener('click', function () { start(el, pub, false); });
+      })
+      .catch(function (e) { el.innerHTML = '<p class="small warn">' + esc(e.message) + '</p>'; });
+  }
+
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target.closest && ev.target.closest('.filelink');
+    if (!btn) return;
+    ev.preventDefault();
+    open(btn);
+  });
+})();

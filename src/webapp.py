@@ -1833,6 +1833,30 @@ def _account_history_entries(user_id, *, saved_only=False, limit=300):
     return out
 
 
+#  The lookup engine's base URL, exposed to every template so one constant is edited in one
+#  place if the sibling app ever moves. Root-relative on purpose: it is NOT under this app's
+#  prefix, and an absolute origin would break the same-origin cookie the engine authenticates on.
+LOOKUP_BASE = os.environ.get("LOOKUP_BASE", "/patentlookup")
+
+
+@app.context_processor
+def _inject_lookup_base():
+    return {"lookup_base": LOOKUP_BASE}
+
+
+@app.route("/patentlookup")
+def patent_lookup():
+    """The register lookup, inside the search app.
+
+    The page is served here; the work is done by the lookup engine, which the browser calls
+    directly at LOOKUP_BASE. It signs in with this app's own session cookie, so a signed-in reader
+    needs nothing further, and a signed-out one is redirected to this app's login by the engine.
+    """
+    if not auth.auth_enabled(app) or auth.current_user() or auth.is_loopback():
+        return render_template("patentlookup.html", title="Patent lookup")
+    return redirect(url_for("auth.login", next=request.script_root + "/patentlookup"))
+
+
 @app.route("/history")
 def history():
     """Search history + the frozen gold-set examples, clearly separated.
@@ -4686,6 +4710,20 @@ def concise_descriptions(slug):
                     mode=mode, target_assignees=facts.get("assignees") or [])
             out = CONCISE_DIR / slug
             out.mkdir(parents=True, exist_ok=True)
+            #  THE PREVIOUS PACKAGE GOES FIRST. Document numbers are assigned per build, so a
+            #  rebuild that selects a different set leaves a stale file wearing a number this one
+            #  has reused — twelve files for a ten-document package, two of them "Document 7",
+            #  and the zip carries both. Measured on adhoc-8dcf2436929a.
+            for stale in out.glob("ConciseDescription_*"):
+                try:
+                    stale.unlink()
+                except OSError:
+                    traceback.print_exc()
+            for stale in out.glob("*.model.json"):
+                try:
+                    stale.unlink()
+                except OSError:
+                    traceback.print_exc()
             for k, d in enumerate(docs, 1):
                 _concise_set(slug, done=len(pubs) + k,
                              msg="Writing document %d of %d: %s" % (k, len(docs), d["pub"]))
