@@ -72,9 +72,23 @@ def search_type(report_or_doc) -> str:
 # ---------------------------------------------------------------------------
 # splitting a claim into what it actually requires
 # ---------------------------------------------------------------------------
+#  WHICH CLAIM THIS ONE HANGS OFF, in the languages this corpus actually holds. English only was
+#  not a simplification: a German claim set produced NO `depends_on` at all, so every claim looked
+#  independent, `claim_chains` had nothing to walk, and the 112(d) rule withheld anticipation on
+#  the whole document. Two of the four patents in one batch on 2026-08-20 were German.
 _DEP = re.compile(
     r"\b(?:of|in|according to|as claimed in|as set forth in|as recited in)\s+"
-    r"(?:any\s+(?:one\s+)?of\s+)?claims?\s+(\d+)", re.I)
+    r"(?:any\s+(?:one\s+)?of\s+)?claims?\s+(\d+)"
+    r"|\b(?:nach|gem(?:ä|ae)ß)\s+(?:\w+\s+){0,3}?anspr(?:uch|ü?che[nm]?)\s+(\d+)"
+    r"|\bselon\s+(?:l\w+\s+)?revendications?\s+(\d+)", re.I)
+#  "nach dem vorherigen Anspruch" / "according to the preceding claim": a back-reference with no
+#  number, meaning the claim immediately before this one. Extremely common in German drafting.
+_DEP_PREV = re.compile(
+    r"\b(?:nach|gem(?:ä|ae)ß)\s+(?:dem|einem\s+der)\s+(?:vorherig|vorhergehend|"
+    r"vorstehend|vorangehend)\w*\s+anspr"
+    r"|\baccording\s+to\s+(?:the\s+)?(?:any\s+(?:one\s+)?of\s+the\s+)?"
+    r"(?:preceding|previous|foregoing)\s+claims?"
+    r"|\bselon\s+(?:l\w+\s+)?revendications?\s+pr(?:é|e)c(?:é|e)dente", re.I)
 #  Clause boundaries a drafter actually uses. Semicolons separate limitations; "wherein",
 #  "further comprising" and "characterised in that" introduce them.
 _SPLIT = re.compile(
@@ -84,9 +98,26 @@ _SPLIT = re.compile(
 _PREAMBLE = re.compile(r"\bcompris(?:ing|es)\b|\bconsisting of\b|\bincluding\b|:", re.I)
 
 
-def parent_of(text) -> int | None:
-    m = _DEP.search(str(text or ""))
-    return int(m.group(1)) if m else None
+def parent_of(text, claim_no=None) -> int | None:
+    """The claim number this claim depends from, or None.
+
+    `claim_no` lets a numberless back-reference resolve: "nach dem vorherigen Anspruch" means the
+    claim immediately before this one, and without knowing which claim we are reading there is
+    nothing to point at.
+    """
+    t = str(text or "")
+    m = _DEP.search(t)
+    if m:
+        got = next((g for g in m.groups() if g), None)
+        if got:
+            return int(got)
+    if _DEP_PREV.search(t):
+        try:
+            n = int(claim_no)
+        except (TypeError, ValueError):
+            return None
+        return n - 1 if n > 1 else None
+    return None
 
 
 def _clauses(text):
@@ -331,7 +362,7 @@ def split_claims(claim_items, use_llm=True, log=print):
             source = "structural"
         dep = got.get("depends_on")
         if dep is None:
-            dep = parent_of(c["text"])
+            dep = parent_of(c["text"], c.get("claim_no"))
         exact_flags = got.get("_exact") or []
         for j, text in enumerate(lims):
             out.append({

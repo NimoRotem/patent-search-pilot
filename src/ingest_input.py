@@ -728,6 +728,35 @@ def extract_link(raw: str, on_stage=None) -> dict:
     if ds:
         notes.append(f"drawings source: {ds}")
 
+    #  NOTHING KNOWS THIS DOCUMENT'S TEXT — SO READ THE DOCUMENT. A recent national publication can
+    #  be absent from Google Patents entirely and outside the EPO full-text service, which covers
+    #  EP and WO only. Measured on DE 10 2024 133 318 A1 (published 2026-05-21): Google 404, OPS
+    #  /claims CLIENT.InvalidCountryCode, extractor verdict "no usable text extracted", and the
+    #  search ran on a vision description of four drawings — it called a vacuum tube lifter "a
+    #  robotic arm end effector system". OPS does serve the printed pages, and the claims are on
+    #  them. See facsimile_text: the transcription is corroborated against the official abstract
+    #  and discarded outright if it does not match, because an invented claim set is worse than
+    #  none.
+    if not (abstract or claims_list):
+        try:
+            import facsimile_text
+            fx = facsimile_text.read(pub)
+        except Exception:
+            traceback.print_exc()
+            fx = {}
+        if fx and fx.get("claims"):
+            title = title or fx.get("title") or ""
+            abstract = abstract or fx.get("abstract") or ""
+            claims_list = [c["text"] for c in fx["claims"]]
+            claims_txt = "\n".join(claims_list)
+            text = "\n\n".join(x for x in (title, abstract, claims_txt) if x).strip()
+            c = fx.get("corroboration") or {}
+            notes.append(
+                "no text source held this publication; %d claim(s) read from its own %d printed "
+                "page(s) and corroborated against the official abstract (%s of %s distinctive "
+                "words)" % (len(fx["claims"]), fx.get("n_pages") or 0, c.get("matched"),
+                            c.get("of")))
+
     # Same three materials as the upload path, so the review panel behaves identically whichever
     # way the document arrived.
     #
