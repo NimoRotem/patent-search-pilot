@@ -104,9 +104,66 @@ def _us_style(pub):
     return (pub or "").replace("-", " ").strip(), "foreign"
 
 
+def corpus_dates(pub):
+    """The three dates from the publications table, or {}. THE FILING DECISION USES THESE.
+
+    `_display` reads an enrichment cache built for the COVER BLOCK: a title, an inventor, a date to
+    print. It is not the date engine's source and it is not always right. Measured 2026-08-20 on
+    US 2022/0331993 A1, offered against a target whose effective filing date is 2021-08-02:
+
+        cache   publication_date 2022-04-20   priority ''   filing ''
+        corpus  publication_date 2022-10-20   priority 2021-04-20   filing 2022-04-20
+
+    The cache had put the FILING date in the publication field and dropped the priority date
+    entirely, so `classify_basis` saw no priority at all, called the document NOT_PRIOR_ART and
+    the compliance pass refused to file it. It is 102(a)(2) art: earlier-filed, later-published.
+
+    `subject_facts` already reads the target's effective filing date from this table for exactly
+    this reason. The reference's dates decide the same question and come from the same place, so
+    the search and the filing cannot disagree about what is prior art.
+    """
+    keys = _corpus_keys(pub)
+    if not keys:
+        return {}
+    try:
+        import db
+        with db.cursor() as cur:
+            cur.execute(
+                "SELECT publication_date, earliest_priority_date, filing_date, country "
+                "FROM publications WHERE replace(upper(publication_number),'-','') = ANY(%s) "
+                "LIMIT 1", (sorted(keys),))
+            row = cur.fetchone()
+    except Exception:
+        traceback.print_exc()
+        return {}
+    if not row:
+        return {}
+    return {"publication_date": str(row["publication_date"] or "") or "",
+            "priority_date": str(row["earliest_priority_date"] or "") or "",
+            "filing_date": str(row["filing_date"] or "") or "",
+            "country": (row["country"] or "").upper()}
+
+
+def _corpus_keys(pub):
+    """Every spelling of `pub` this corpus might have stored, via the shared normaliser."""
+    bare = _bare(pub)
+    if not bare:
+        return set()
+    keys = {bare}
+    try:
+        import pubnorm
+        keys |= {re.sub(r"[^A-Z0-9]", "", c.upper()) for c in pubnorm.mongo_candidates(pub)}
+    except Exception:
+        pass
+    return {k for k in keys if k}
+
+
 def biblio(pub):
     disp = _display(pub)
     label, kind = _us_style(pub)
+    #  THE CORPUS WINS ON DATES. See corpus_dates: these three fields decide whether the document
+    #  may be filed at all, and the display cache is not the date engine's source.
+    dates = corpus_dates(pub)
     return {
         "pub": pub,
         "label": label,
@@ -114,12 +171,17 @@ def biblio(pub):
         "title": (disp.get("title") or "").strip(),
         #  The issuing office, because the date alone does not decide availability: 102(a)(2)
         #  reaches only US and PCT publications. See submission_compliance.qualify.
-        "country": (disp.get("country") or "").strip().upper() or _bare(pub)[:2],
+        "country": (dates.get("country") or (disp.get("country") or "").strip().upper()
+                    or _bare(pub)[:2]),
         "inventor": _first_inventor(disp),
         "assignee": ", ".join([a for a in (disp.get("assignees") or []) if a][:2]),
-        "publication_date": (disp.get("publication_date") or "").strip(),
-        "priority_date": (disp.get("priority_date") or "").strip(),
-        "filing_date": (disp.get("filing_date") or "").strip(),
+        "publication_date": (dates.get("publication_date")
+                             or (disp.get("publication_date") or "").strip()),
+        "priority_date": (dates.get("priority_date")
+                          or (disp.get("priority_date") or "").strip()),
+        "filing_date": (dates.get("filing_date") or (disp.get("filing_date") or "").strip()),
+        #  Recorded so a reader can see WHICH source dated the document that was, or was not, filed.
+        "dates_source": "corpus" if dates else "enrichment cache",
         "abstract": (disp.get("abstract") or "").strip(),
     }
 
