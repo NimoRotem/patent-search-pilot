@@ -97,6 +97,7 @@
               <span class="stag t-{{ c.status.tone }}"{% if c.status.note %} title="{{ c.status.note }}"{% endif %}>{{ c.status.label }}</span>
               {% if c.basis=='public_prior_art' %}<span class="bbadge b-public" title="Published before the subject's effective filing date, so it is citable against both novelty and inventive step — EPC Art. 54(2).">◆ public prior art</span>
               {% elif c.basis=='secret_prior_art' %}<span class="bbadge b-secret" title="Filed before the subject's effective date but published after it. Citable for NOVELTY ONLY under EPC Art. 54(3); it cannot be combined with other art for an inventive-step attack.">🔒 secret prior art</span>
+              {% if c.forum_bar %}<span class="bbadge b-interval" title="{{ c.forum_bar }}">not US prior art</span>{% endif %}
               {% elif c.basis=='priority_interval' %}<span class="bbadge b-interval" title="Published inside the priority interval — between the subject's earliest priority date and its filing date. Whether it is prior art depends on whether the priority claim is valid for this subject matter.">priority interval</span>{% endif %}
               {% for ch in c.channels[:3] %}<span class="chip ch">{{ ch }}</span>{% endfor %}
               {# per-result source provenance: which channel/API found this reference (item 5).

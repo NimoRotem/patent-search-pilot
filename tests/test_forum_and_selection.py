@@ -184,3 +184,11 @@ def test_a_102_citation_still_gets_it():
         {"pub": "EXAMINER", "statute": "102(a)(2)", "claims": "1-3"}]
     got = {c["pub"]: c for c in cd.candidates(rep, _deep(), limit=10)}
     assert got["EXAMINER"]["office"] == "applied"
+
+
+def test_the_card_carries_the_forum_bar_for_a_later_published_foreign_document():
+    """Said on the card, not only at filing time: that is where a practitioner decides what to
+    rely on. Counsel's example was a JP 2026 publication credited with anticipating a claim."""
+    import webview
+    assert webview.search_modes.secret_art_note("JP", "US")
+    assert webview.search_modes.secret_art_note("US", "US") == ""

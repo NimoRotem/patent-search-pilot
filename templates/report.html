@@ -59,11 +59,27 @@
 
   {% if v.partial %}
   <div class="refining" id="refiningBanner">
-    <span class="spin" aria-hidden="true"></span>
+    <span class="spin" id="refiningSpin" aria-hidden="true"></span>
     <div style="min-width:0;flex:1">
-      <b>Showing the first matches.</b>
+      <b id="refiningTitle">Showing the first matches.</b>
       <div class="rf-msg" id="refiningStage">The agent is still refining these results.</div>
       <div class="vh" role="status" aria-live="polite" data-progress-live></div>
+      {#  A run killed by a restart is not a slow run, and a spinner that never stops is the
+          worst way to say so. Reported 2026-08-20 as a report sitting on its first phase for
+          76 minutes. The form posts the SAME inputs, so it lands on this very URL. #}
+      <form method="post" action="{{ url_for('run') }}" id="refiningRestart" hidden
+            style="margin-top:.5em">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="query" value="{{ v.query }}">
+        <input type="hidden" name="mode" value="{{ v.mode or 'novelty' }}">
+        <input type="hidden" name="depth" value="{{ v.depth or 'deep' }}">
+        <input type="hidden" name="search_focus" value="{{ v.search_focus or 'all_text' }}">
+        <input type="hidden" name="doc_token" value="{{ v.doc_token or '' }}">
+        <input type="hidden" name="notify_email" value="1">
+        <button class="btn sm" type="submit">Restart this search</button>
+        <span class="small muted">Reading already banked in the evidence store is reused, so the
+          restart is much cheaper than the first pass.</span>
+      </form>
     </div>
   </div>
   <div id="refiningStages" hidden></div>
@@ -1094,6 +1110,19 @@ window.REPORT_SAVED = {{ (v.account_search and v.account_search.saved)|default(f
        rendered by createProgress's own .pgclock line just below, on every page that shows
        progress — so a slow stage never reads as a hang and a restarted run says it restarted. */
     if (s && ev.msg && ev.msg !== 'done') s.textContent = ev.msg;
+    /*  INTERRUPTED IS TERMINAL. A run killed by a server restart leaves a partial report and no
+        job; polling it forever showed a spinner and the last stage sentence, which reads as a
+        very slow search rather than a dead one. Stop, say so, and offer the restart. */
+    if (ev.status === 'interrupted' && !(ev.attempt && ev.msg && /restarting/.test(ev.msg))){
+      p.stop();
+      const spin = document.getElementById('refiningSpin');
+      const title = document.getElementById('refiningTitle');
+      const form = document.getElementById('refiningRestart');
+      if (spin) spin.hidden = true;
+      if (title) title.textContent = 'This search stopped before it finished.';
+      if (form) form.hidden = false;
+      return true;
+    }
     // Live re-sort to the authoritative listwise order as soon as it is known, so a strong hit
     // that arrived late in fusion order does not sit low until the reload. Cards move in place
     // (keyed by pub id) so lazily-loaded tab state is preserved.

@@ -400,7 +400,11 @@ def _seed_families(cur, report, families, reps):
     #    * anything that is not prior art on the dates, judged by the same engine every other
     #      candidate is judged by.
     import webview                      # module-level import would cycle: webview imports db
-    self_fam = str(((report or {}).get("self_family_excluded") or {}).get("family") or "")
+    #  `self_family` is set whenever the subject resolves, whether or not anything was dropped;
+    #  `self_family_excluded` is only set when the early filter actually removed something, and
+    #  reading that one made this gate inert on exactly the runs where it was needed.
+    self_fam = str((report or {}).get("self_family")
+                   or ((report or {}).get("self_family_excluded") or {}).get("family") or "")
     efd = webview.subject_efd_of(report)
     subj = search_modes.Subject(number="subject", efd=efd) if efd else None
     skipped = []
@@ -1105,6 +1109,19 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
     finally:
         conn.close()
     rows = [r for r in rows if not deep_analysis._same_pub(subject_pub, r["pub"])]
+    #  AND THE SUBJECT'S WHOLE FAMILY, not just the exact number it was searched under. A DOCDB
+    #  family runs to thirty members across a dozen offices, and the applicant's own sibling
+    #  publication is the single best "prior art" any similarity measure will ever find for their
+    #  own application. Measured: US 2022/0331993 A1, same family and same priority date as
+    #  US 2025/0033224 A1, came back at rank 1 and was the only claim the ledger called
+    #  anticipated. See webapp._drop_self_family, which records the family for this.
+    self_fam = str((report or {}).get("self_family") or "")
+    if self_fam:
+        kept = [r for r in rows if str(r.get("fam")) != self_fam]
+        if len(kept) != len(rows):
+            print(f"[self-family] dropped {len(rows) - len(kept)} candidate(s) from the subject's "
+                  f"own family {self_fam} before reading", flush=True)
+            rows = kept
     if not rows:
         return None
 
@@ -1593,6 +1610,10 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
         if f not in seenfam:
             seenfam.add(f)
             fam_order.append(f)
+    #  Last gate on the way out: this list is what the page, the export and every later stage read
+    #  as "the art". Nothing that reached it by any route may be the subject's own family.
+    if self_fam:
+        fam_order = [f for f in fam_order if str(f) != self_fam]
     report["ranked_families"] = fam_order
 
     result = {

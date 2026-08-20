@@ -906,6 +906,11 @@ def _drop_self_family(rep):
     if not row or not row["fam"]:
         return rep
     fam = row["fam"]
+    #  RECORDED WHETHER OR NOT ANYTHING WAS DROPPED. Filtering the list here only cleans what
+    #  retrieval has produced SO FAR; claim_reach, the orphan rescue and the reading top-up all
+    #  search again afterwards, and deep_rank rewrites `ranked_families` from what it charted.
+    #  The fact that must survive all of that is the family id, so the later stages can enforce it.
+    rep["self_family"] = fam
     before = rep.get("ranked_families") or []
     rep["ranked_families"] = [f for f in before if f != fam]
     dropped = len(before) - len(rep["ranked_families"])
@@ -1500,11 +1505,13 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
     reported as running; 'busy' is only returned to the dispatcher itself (`from_queue=True`),
     which leaves the row queued and retries.
 
-    `restart_partial` (dispatcher only): a PARTIAL file with no live job is an interrupted run,
-    and serving it as "ready" made the dispatcher mark re-queued runs done without ever running
-    them. The dispatcher passes True: the stale partial artifacts are dropped and the run starts
-    over. Viewer calls keep the default — a partial page must still render, with the
-    interrupted banner from _job_event saying what it is."""
+    `restart_partial`: a PARTIAL file with no live job is an interrupted run, and serving it as
+    "ready" made the dispatcher mark re-queued runs done without ever running them. The dispatcher
+    passes True, and so does a POST to /run, because both are requests to RUN the search: the
+    stale partial artifacts are dropped and the run starts over. VIEWER calls keep the default, so
+    a partial page still renders with the interrupted banner from _job_event saying what it is.
+    Reported 2026-08-20 as a report stuck on its first phase for 76 minutes, whose own status
+    endpoint said "Use Re-run to start it again" while no Re-run could."""
     p = report_path(slug)
     if p.exists() and not regen:
         try:
@@ -1943,8 +1950,13 @@ def run():
     # for the same visible query.
     slug = search_slug(query, mode, wide=wide, search_focus=search_focus,
                        subject=subject, doc_token=doc_token, depth=depth)
+    #  restart_partial=True: this is a POST to /run, an explicit request to RUN this search. If
+    #  all that is on disk is a partial left by an interrupted run, the honest answer is to start
+    #  it again, not to hand back the page that stopped. Viewing the report is a GET and keeps the
+    #  default, so a partial still renders with its interrupted banner.
     st, why = ensure_report(slug, query=query, subject=subject, mode=mode, wide=wide,
-                            doc_token=doc_token, search_focus=search_focus, depth=depth)
+                            doc_token=doc_token, search_focus=search_focus, depth=depth,
+                            restart_partial=True)
     if st == "busy":
         return _error_response({"error": "server busy", "detail": why}, 429,
                                f"The server is at capacity — {why}. Please retry shortly.")
@@ -2300,6 +2312,9 @@ def report(slug):
     #  Carried so "Refine and search again" keeps the uploaded document's chunk + image channels
     #  instead of silently degrading the new search to text-only.
     view["doc_token"] = doc_token or ""
+    #  `depth` is part of the slug hash, so the Restart control on an interrupted run has to post
+    #  it back or the restart mints a NEW slug and the user's url still never finishes.
+    view["depth"] = depth
     try:
         _write_detail_preview(slug, view)
     except Exception:

@@ -13,6 +13,7 @@ import db, embed, grounding, status as status_mod
 import enrich_display                       # office links + cached drawing provenance (local only)
 import ops_family                            # worldwide INPADOC family -> year/jurisdiction timeline
 import pubnorm                               # single link-builder: zero-padded Google/Espacenet URLs
+import search_modes                          # the forum rule: which offices 102(a)(2) reaches
 from search_modes import Subject, Mode, classify_basis, Basis
 from config import DATA
 
@@ -1765,6 +1766,14 @@ def build_view(report, top_n=25, deep=None):
             "rank": rank, "family": fam, **b,
             "match_score": round(m["score"], 3), "match_coord": _coord_str(m["coord"]),
             "match_kind": m["kind"], "basis": basis,
+            #  A card can be right on the dates and still unavailable in the office the search is
+            #  being run for. 35 U.S.C. 102(a)(2) reaches US patents, US pre-grant publications
+            #  and PCT applications designating the United States; a JP, CN, DE or EP national
+            #  publication that published AFTER the subject's effective filing date is not US
+            #  prior art however early it was filed. Said on the card, not only at filing time,
+            #  because that is where a practitioner decides what to rely on.
+            "forum_bar": (search_modes.secret_art_note(b.get("country"), "US")
+                          if basis == "secret_prior_art" else ""),
             "relevancy": _relevancy(m["score"]),         # 0-100 best-passage semantic match
             "status": st,
             "sfid": rep.get("simple_family_id") or None,
