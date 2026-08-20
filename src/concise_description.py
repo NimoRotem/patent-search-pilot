@@ -112,6 +112,9 @@ def biblio(pub):
         "label": label,
         "kind": kind,
         "title": (disp.get("title") or "").strip(),
+        #  The issuing office, because the date alone does not decide availability: 102(a)(2)
+        #  reaches only US and PCT publications. See submission_compliance.qualify.
+        "country": (disp.get("country") or "").strip().upper() or _bare(pub)[:2],
         "inventor": _first_inventor(disp),
         "assignee": ", ".join([a for a in (disp.get("assignees") or []) if a][:2]),
         "publication_date": (disp.get("publication_date") or "").strip(),
@@ -370,21 +373,102 @@ def phrase(doc, tier="strong"):
 # --------------------------------------------------------------------------- public
 
 
-def candidates(report, deep, limit=40):
-    """References worth offering, best first: most claims spoken to, strong bar first."""
+def _ledger_weights(report):
+    """pub -> what the ledger says this reference kills. -> ({pub: {...}}, n_claims)
+
+    Read through `limitations.Ledger.from_stored` rather than off the stored summary, so an old
+    report is weighed under the 112(d) rule too and a dependent claim's "anticipated" does not
+    buy a document a place it has not earned.
+    """
+    led = (report or {}).get("ledger") or {}
+    if not led.get("limitations"):
+        return {}, 0
+    try:
+        import limitations as _lim
+        claims = _lim.Ledger.from_stored(led).summary().get("claims") or {}
+    except Exception:
+        traceback.print_exc()
+        return {}, 0
+    out = {}
+    for label, m in claims.items():
+        for pub in (m.get("anticipated_by") or []):
+            out.setdefault(pub, {"anticipates": [], "adds": []})["anticipates"].append(label)
+        for pub in (m.get("adds_disclosed_by") or []):
+            if label not in (out.get(pub, {}).get("anticipates") or []):
+                out.setdefault(pub, {"anticipates": [], "adds": []})["adds"].append(label)
+    return out, len(claims)
+
+
+def candidates(report, deep, limit=40, collapse_families=True):
+    """References worth offering, ORDERED BY WHAT THEY DO TO THE CLAIMS, not by row count.
+
+    Counsel, 2026-08-20: "the 10-document package contains none of the references the ledger
+    credits with anticipation. What's the selection logic?" It was `n_strong` then `n_rows` then
+    retrieval rank — a measure of how much a reference SAYS, which is not the same as how much it
+    kills, and it is systematically wrong for the references worth filing. A document that
+    discloses every limitation of one independent claim beats one that touches thirty limitations
+    across twenty claims and completes none of them, and it loses on row count every time.
+
+    The order now is: what the ledger says it anticipates, then whether the Office itself applied
+    it against this family, then whole dependent additions, then evidence on the independent
+    claims, and only then breadth. One document per DOCDB family, because two members of one
+    family are one disclosure and a submission that cites both spends two slots to say one thing.
+    """
     claims = deep.get("claims") or []
+    weights, _ = _ledger_weights(report)
+    applied, considered = set(), set()
+    mined = ((report or {}).get("prosecution") or {}).get("mined") or {}
+    for a in (mined.get("applied") or []):
+        if a.get("pub"):
+            applied.add(a["pub"])
+    considered = set(mined.get("considered") or []) - applied
+    indep = {c.get("label") for c in claims
+             if isinstance(c, dict) and c.get("independent")}
+
     out = []
     for ref in (deep.get("references") or []):
         rows = rows_for_reference(ref, claims)
         if not rows:
             continue
-        strong = sum(1 for r in rows if r["strong"])
-        out.append({"pub": ref.get("pub"), "title": ref.get("title") or "",
-                    "n_rows": len(rows), "n_strong": strong,
-                    "claims": sorted({r["claim_no"] for r in rows}),
-                    "rank": ref.get("rank") or 9999})
-    out.sort(key=lambda d: (-d["n_strong"], -d["n_rows"], d["rank"]))
-    return out[:limit]
+        pub = ref.get("pub")
+        w = weights.get(pub) or {}
+        strong_indep = sum(1 for c in (ref.get("claims") or [])
+                           if isinstance(c, dict) and c.get("item") in indep
+                           and (c.get("bar") or "") == "discloses")
+        out.append({
+            "pub": pub, "title": ref.get("title") or "",
+            "family": ref.get("family"),
+            "n_rows": len(rows), "n_strong": sum(1 for r in rows if r["strong"]),
+            "claims": sorted({r["claim_no"] for r in rows}),
+            "anticipates": sorted(w.get("anticipates") or [], key=_claim_no),
+            "adds": sorted(w.get("adds") or [], key=_claim_no),
+            "strong_indep": strong_indep,
+            #  Authority, not similarity: an examiner used this document against this family.
+            "office": ("applied" if pub in applied else
+                       "considered" if pub in considered else ""),
+            "rank": ref.get("rank") or 9999,
+        })
+    out.sort(key=lambda d: (-len(d["anticipates"]), d["office"] != "applied",
+                            -len(d["adds"]), -d["strong_indep"], d["office"] != "considered",
+                            -d["n_strong"], -d["n_rows"], d["rank"]))
+    #  FAMILY COLLAPSE AT SELECTION, not after building. Building a document costs a model call and
+    #  an enrichment fetch, so a sibling dropped later is money already spent on a page nobody
+    #  files. Siblings are named on the survivor so the choice stays visible.
+    #
+    #  `collapse_families=False` is for the ROUTE'S GATE, which asks "does this publication carry
+    #  verified evidence in this report" of a pub the user typed. Collapsing there would refuse a
+    #  sibling somebody deliberately chose, which is the opposite of the point.
+    if not collapse_families:
+        return out[:limit]
+    kept, seen_fam = [], {}
+    for d in out:
+        fam = str(d.get("family") or d["pub"])
+        if fam in seen_fam:
+            seen_fam[fam].setdefault("family_siblings", []).append(d["pub"])
+            continue
+        seen_fam[fam] = d
+        kept.append(d)
+    return kept[:limit]
 
 
 def _bare(pub):
@@ -442,16 +526,152 @@ def subject_facts(label):
     return out
 
 
-def build(deep, pubs, subject, start_at=1, do_phrase=True, on_progress=None):
-    """-> [document model] ready to render, one per requested publication."""
+#  A wrapper document is offered under this id rather than a publication number, because it is not
+#  a publication and must never be looked up as one.
+OA_PREFIX = "OA:"
+
+
+def _claims_listed(text):
+    """"1-3, 5-9, 11-12 and 14-15" -> [1,2,3,5,6,7,8,9,11,12,14,15]."""
+    out = []
+    for part in re.split(r"[,;]|\band\b", str(text or "")):
+        m = re.match(r"\s*(\d+)\s*(?:[-–—]\s*(\d+))?\s*$", part)
+        if not m:
+            continue
+        a = int(m.group(1))
+        b = int(m.group(2) or a)
+        if b < a or b - a > 200:
+            continue
+        out.extend(range(a, b + 1))
+    return sorted(set(out))
+
+
+def office_action_candidates(report):
+    """The family's office actions, offered as documents in their own right. -> [candidate]
+
+    Counsel's own Document 6 was the examiner's Non-Final Rejection from the abandoned parent
+    application. It is not prior art and no search engine can produce it: it lives in a file
+    wrapper, it is non-patent literature, and finding it requires knowing the parent exists. What
+    it IS, is a printed publication under 37 CFR 1.290(a) in which a USPTO examiner has already
+    made limitation-by-limitation findings on substantially these claims — so the examiner's
+    analysis does the arguing that 1.290(b) forbids the submitter from doing.
+    """
+    mined = ((report or {}).get("prosecution") or {}).get("mined") or {}
+    out = []
+    for d in (mined.get("documents") or []):
+        applied = [a for a in (d.get("applied") or []) if a.get("number")]
+        if d.get("code") not in ("CTNF", "CTFR") or not applied:
+            continue
+        claims = sorted({n for a in applied for n in _claims_listed(a.get("claims"))})
+        out.append({
+            "pub": "%s%s/%s" % (OA_PREFIX, d.get("app"), d.get("date")),
+            "title": "%s, U.S. Application No. %s, %s" % (
+                d.get("description") or "Office Action", _pretty_app(d.get("app")),
+                _pretty_date(d.get("date"))),
+            "family": None, "kind": "office_action", "office": "applied",
+            "n_rows": len(applied), "n_strong": len(applied), "strong_indep": 0,
+            "claims": claims, "anticipates": [], "adds": [], "rank": 0,
+            "summary": d.get("summary") or "", "applied": applied, "date": d.get("date"),
+            "app": d.get("app"), "pdf": d.get("pdf") or "",
+        })
+    return out
+
+
+def _pretty_app(app):
+    """"17724791" -> "17/724,791", the way an application number is written on a filing."""
+    a = re.sub(r"\D", "", str(app or ""))
+    if len(a) != 8:
+        return app or ""
+    return "%s/%s,%s" % (a[:2], a[2:5], a[5:])
+
+
+def office_action_doc(cand, subject, n=1):
+    """One office action as a filing document model. No model call: the facts are already facts.
+
+    Every row states what the document SAYS — which claims an examiner rejected, over what, under
+    which section. That is a description of the document, which is what 1.290(d)(2) asks for, and
+    it is not an argument about patentability, which is what 1.290 forbids.
+    """
+    where_doc = "%s mailed %s in U.S. Application No. %s" % (
+        (cand.get("title") or "Office Action").split(",")[0], _pretty_date(cand.get("date")),
+        _pretty_app(cand.get("app")))
+    rows = []
+    for a in (cand.get("applied") or []):
+        listed = _claims_listed(a.get("claims"))
+        statute = str(a.get("statute") or "").strip()
+        where = "claim%s %s" % ("s" if len(listed) != 1 else "", a.get("claims") or "")
+        #  Prefer the number the corpus resolved: a form prints "11,413,727" as often as
+        #  "US 11,413,727", and a filing document should carry the full one either way.
+        ref, _kind = _us_style(a.get("pub") or "")
+        ref = ref or str(a.get("number") or "").strip()
+        rows.append({
+            "claim_no": (listed or [0])[0],
+            "label": where.strip(),
+            "quote_claim": False,
+            "claim_text": "",
+            "claim_paraphrase": where.strip(),
+            "verdict": "disclosed", "bar": "discloses", "strong": True,
+            "quote": "",
+            #  Factual and attributed: the examiner did this, on this date, in this application.
+            #  It states what the document SAYS, which 1.290(d)(2) asks for; it does not argue that
+            #  the pending claims are unpatentable, which 1.290(b) forbids.
+            "note": ("The examiner rejected %s over %s%s."
+                     % (where.strip(), ref,
+                        " under 35 U.S.C. %s" % statute if statute and "double" not in
+                        statute.lower() else
+                        " on the ground of nonstatutory double patenting" if statute else "")),
+            "cites": [where_doc],
+            "confidence": 1.0,
+            "claims_listed": listed,
+        })
+    return {
+        "n": n,
+        "pub": cand["pub"],
+        "kind": "office_action",
+        "family_id": None,
+        "biblio": {
+            "pub": cand["pub"],
+            "label": where_doc,
+            "kind": "", "country": "US",
+            "title": cand.get("title") or "Office Action",
+            "inventor": "", "assignee": "United States Patent and Trademark Office",
+            "publication_date": cand.get("date") or "", "priority_date": "", "filing_date": "",
+            "issue_date_pretty": _pretty_date(cand.get("date")),
+            "priority_date_pretty": "",
+            "abstract": cand.get("summary") or "",
+        },
+        "subject": subject,
+        "summary": (cand.get("summary") or "").strip() or
+                   "This document is an Office action issued by the United States Patent and "
+                   "Trademark Office in a related application.",
+        "rows": rows,
+        "pdf_url": cand.get("pdf") or "",
+        #  Not prior art and not claiming to be: it is a printed publication whose content is an
+        #  examiner's findings. The compliance pass must not date-check it as a reference.
+        "not_prior_art_document": True,
+    }
+
+
+def build(deep, pubs, subject, start_at=1, do_phrase=True, on_progress=None, report=None):
+    """-> [document model] ready to render, one per requested publication.
+
+    A `pub` prefixed `OA:` is a file-wrapper document, not a publication: it is built from the
+    prosecution record on `report` and never looked up in the corpus.
+    """
     claims = deep.get("claims") or []
     refs = {r.get("pub"): r for r in (deep.get("references") or [])}
+    oas = {c["pub"]: c for c in office_action_candidates(report)}
     docs = []
     for i, pub in enumerate(pubs):
         if on_progress:
             #  Named, not just counted: "Reading US-11413727-B2" tells the user which document is
             #  costing the wait, which matters when one reference is slow to enrich.
             on_progress(i, "Reading %s (%d of %d)" % (pub, i + 1, len(pubs)))
+        if str(pub).startswith(OA_PREFIX):
+            cand = oas.get(pub)
+            if cand:
+                docs.append(office_action_doc(cand, subject, n=start_at + i))
+            continue
         ref = refs.get(pub)
         if not ref:
             continue

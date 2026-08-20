@@ -358,6 +358,60 @@ def abstract_is_trustworthy(abstract, title, claim_text) -> bool:
     return bool(a & ref)
 
 
+def _seed_families(cur, report, families, reps):
+    """Put the file wrapper's references into the candidate list, as themselves.
+
+    -> (families, seed_families). Two things happen here and both matter:
+
+    * a seed whose family is ALREADY ranked has its family representative REPLACED by the seed
+      publication. The representative is chosen on dates and text, which is right for a document
+      nobody has named; it is wrong for one an examiner applied by number, where the whole value is
+      that this specific document was used against these claims.
+    * a seed whose family retrieval never ranked is PREPENDED, so it is screened and read at all.
+
+    Measured on US 2025/0033224 A1: US 11,413,727 sat in a family retrieval ranked 28th of 6,215,
+    and the reading still charted a different member of it. The examiner had used '727 to anticipate
+    thirteen claims.
+    """
+    seeds = [p for p in ((report or {}).get("prosecution_seeds") or []) if p]
+    if not seeds:
+        return list(families), []
+    try:
+        cur.execute(
+            "SELECT p.id, p.publication_number, p.kind_code, p.country, p.title, p.abstract, "
+            "       p.publication_date, p.filing_date, p.earliest_priority_date, "
+            "       p.simple_family_id, p.tier, p.facsimile_path, "
+            "       COALESCE(NULLIF(p.simple_family_id,''), p.publication_number) AS fam, "
+            "       (SELECT count(*) FROM claims c WHERE c.publication_id=p.id) AS n_claims, "
+            "       (SELECT count(*) FROM chunks ch WHERE ch.publication_id=p.id "
+            "        AND ch.embedding IS NOT NULL) AS n_emb "
+            "FROM publications p WHERE p.publication_number = ANY(%s)", (list(seeds),))
+        rows = {r["publication_number"]: r for r in cur.fetchall()}
+    except Exception:
+        traceback.print_exc()
+        return list(families), []
+    have = list(families)
+    known = set(have)
+    seed_fams, extra = [], []
+    for pub in seeds:
+        r = rows.get(pub)
+        if not r:
+            continue
+        fam = r["fam"]
+        reps[fam] = r                       # read the document the Office named, not a sibling
+        if fam not in known:
+            known.add(fam)
+            extra.append(fam)
+        if fam not in seed_fams:
+            seed_fams.append(fam)
+    if extra:
+        print(f"[prosecution] {len(extra)} wrapper reference(s) were not in the retrieval ranking "
+              f"at all and were added to the candidate list", flush=True)
+    #  Prepended: these are the highest-authority candidates in the run, and the rank they get here
+    #  is also the order the reading budget is spent in.
+    return extra + have, seed_fams
+
+
 def _candidate_rows(cur, families, reps, limit):
     """[{pub, fam, title, text, rank}] for the screen, best retrieval rank first."""
     rows, pids = [], []
@@ -1002,8 +1056,15 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
     conn.autocommit = True
     try:
         cur = conn.cursor()
-        reps = webview.resolve_family_reps(cur, ranked[:SCREEN_TOP])
-        rows = _candidate_rows(cur, ranked[:SCREEN_TOP], reps, SCREEN_TOP)
+        #  The cutoff the whole search already runs against decides WHICH member of each
+        #  family is read, quoted and ultimately cited. See webview.resolve_family_reps.
+        reps = webview.resolve_family_reps(cur, ranked[:SCREEN_TOP],
+                                           subject_efd=webview.subject_efd_of(report))
+        #  THE EXAMINER'S OWN REFERENCES GO IN AS THEMSELVES. See _seed_families: the family
+        #  representative is chosen on dates and text, but a document an examiner APPLIED is the
+        #  document to read, not whichever sibling the ordering prefers.
+        families, seed_fams = _seed_families(cur, report, ranked[:SCREEN_TOP], reps)
+        rows = _candidate_rows(cur, families, reps, SCREEN_TOP + len(seed_fams))
     finally:
         conn.close()
     rows = [r for r in rows if not deep_analysis._same_pub(subject_pub, r["pub"])]
@@ -1029,7 +1090,8 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
                 conn2 = db.connect()
                 conn2.autocommit = True
                 try:
-                    rebuilt = _candidate_rows(conn2.cursor(), ranked[:SCREEN_TOP], reps, SCREEN_TOP)
+                    rebuilt = _candidate_rows(conn2.cursor(), families, reps,
+                                              SCREEN_TOP + len(seed_fams))
                 finally:
                     conn2.close()
                 fresh = {r["pub"]: r for r in rebuilt}
@@ -1111,6 +1173,27 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
             added += 1
         report[oracle.REPORT_KEY] = orc.stamp()
         print(f"[oracle] forced {added} gold references into the read set", flush=True)
+    #  THE FILE WRAPPER'S REFERENCES ARE READ WHATEVER THE SCREEN SAID. A reference a USPTO
+    #  examiner applied to reject substantially these claims, or that the applicant disclosed and
+    #  the examiner considered, has already passed a better filter than a similarity score. On the
+    #  measured subject the screen ranked one of them 253rd; the examiner had anticipated thirteen
+    #  claims with it.
+    if seed_fams and not quick:
+        forced = 0
+        by_fam = {}
+        for r in rows:
+            by_fam.setdefault(r.get("fam"), r)
+        for fam in seed_fams:
+            r = by_fam.get(fam)
+            if r is None or r["pub"] in seen:
+                continue
+            chosen.append(r)
+            seen.add(r["pub"])
+            forced += 1
+        if forced:
+            print(f"[prosecution] {forced} reference(s) from the USPTO file wrapper forced into "
+                  f"the read set", flush=True)
+
     #  A low score from a screener that was shown NOTHING is not evidence of irrelevance, it is
     #  the absence of evidence, and it must not be the reason a reference is never read. Any
     #  candidate the screen could not see text for is read anyway if the retrieval ranked it

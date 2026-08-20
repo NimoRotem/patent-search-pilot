@@ -227,6 +227,54 @@ def usable_for(basis: Basis, mode: Mode) -> bool:
     return False
 
 
+#  Which offices' later-published applications count as secret prior art IN A GIVEN FORUM.
+#  Dates alone do not decide this and the classification above is deliberately date-only, so the
+#  jurisdiction question is asked separately and by whoever knows the forum.
+#
+#  US, 35 U.S.C. 102(a)(2): "an application for patent, published or deemed published under
+#  section 122(b)" plus patents issued under 151. That is a US patent, a US pre-grant publication,
+#  and a PCT application designating the United States (deemed published under 122(b); the AIA
+#  dropped the pre-AIA 102(e) requirement that it be in English). It is NOT a JP, CN, DE, EP or KR
+#  national publication: those are prior art in the US only if they PUBLISHED before the subject's
+#  effective filing date, which makes them 102(a)(1) art and not this.
+#
+#  EPO, EPC Art. 54(3): only a European patent application filed before and published after. A US
+#  or JP later-published application is not Art. 54(3) art at all.
+_SECRET_ART_FORUM = {
+    "US": {"US", "WO"},
+    "EP": {"EP", "WO"},          # a Euro-PCT entering the EP phase is an Art. 54(3) right
+}
+
+
+def secret_art_reaches(country, forum="US") -> bool:
+    """Is a later-published application from `country` secret prior art in `forum`?
+
+    Only asked of a candidate already classified SECRET_PRIOR_ART on the dates. A candidate that is
+    PUBLIC_PRIOR_ART published before the subject's effective filing date is prior art everywhere
+    and this question does not arise.
+    """
+    allowed = _SECRET_ART_FORUM.get(str(forum or "US").upper())
+    if allowed is None:
+        return True                                     # unknown forum: do not invent a bar
+    return str(country or "").upper() in allowed
+
+
+def secret_art_note(country, forum="US") -> str:
+    """Why a later-published application from `country` is unavailable in `forum`, or ""."""
+    if secret_art_reaches(country, forum):
+        return ""
+    c = str(country or "?").upper()
+    if str(forum or "US").upper() == "US":
+        return ("This document published AFTER the target's effective filing date, so it can only "
+                "be reached as 35 U.S.C. 102(a)(2) art — and 102(a)(2) reaches US patents, US "
+                "pre-grant publications and PCT applications designating the United States. A %s "
+                "national publication is not among them, so it is not prior art in the United "
+                "States on these dates." % c)
+    return ("This document published after the target's effective filing date. Secret prior art in "
+            "the %s forum does not extend to a %s national publication."
+            % (str(forum).upper(), c))
+
+
 # --- Inventive-step combination scaffold (jurisdiction-neutral) -----------------------------
 @dataclass
 class ElementMapping:

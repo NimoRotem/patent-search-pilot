@@ -36,6 +36,10 @@ import os
 import re
 import traceback
 
+#  Module level, not inside qualify(): the forum rule below is read after the date block, so a
+#  name bound only on the success path of a try is a NameError waiting for the first odd input.
+import search_modes
+
 MACHINE_TRANSLATION_NOTE = ("Machine translation of the relied-on passage; the original-language "
                             "text is reproduced above it.")
 
@@ -85,11 +89,29 @@ def _as_date(v):
         return None
 
 
-def qualify(doc, subject_efd, mode="novelty"):
-    """Is this reference prior art against the target's effective filing date?
+def _country_of(b):
+    """Two-letter office code for a reference, from the field or from the number itself."""
+    c = str(b.get("country") or "").strip().upper()
+    if len(c) == 2:
+        return c
+    m = re.match(r"^\s*([A-Z]{2})", str(b.get("pub") or b.get("publication_number") or "").upper())
+    return m.group(1) if m else ""
+
+
+def qualify(doc, subject_efd, mode="novelty", forum="US"):
+    """Is this reference prior art against the target's effective filing date, IN THIS FORUM?
 
     Delegates to the app's own date engine so a document can never be filed on a basis the search
     itself would not have used. NOT_PRIOR_ART blocks the document outright.
+
+    The dates are only half the question and the other half is the office. 35 U.S.C. 102(a)(2)
+    reaches US patents, US pre-grant publications and PCT applications designating the United
+    States — nothing else. A JP, CN, DE or EP national publication that published AFTER the
+    target's effective filing date is therefore not prior art in the United States at all, however
+    early it was filed. Reported by counsel on 2026-08-20 against a real report: claim 10 of
+    US-2026/0070232 was credited to JP-2026-002795-A, published 2026-01-08 against a target whose
+    effective filing date is 2024-09-09. Right on the dates, unavailable at the USPTO, and a
+    submission that relies on it is answering a question nobody asked.
     """
     b = doc["biblio"]
     efd = _as_date(subject_efd)
@@ -98,7 +120,6 @@ def qualify(doc, subject_efd, mode="novelty"):
                 "note": "The target's effective filing date was not supplied, so prior-art status "
                         "could not be checked. Confirm it before filing."}
     try:
-        import search_modes
         s = search_modes.Subject(number="target", efd=efd)
         basis = search_modes.classify_basis(
             {"publication_date": _as_date(b.get("publication_date")),
@@ -109,13 +130,22 @@ def qualify(doc, subject_efd, mode="novelty"):
         traceback.print_exc()
         return {"basis": "unknown", "blocked": False,
                 "note": "Prior-art status could not be computed; confirm it before filing."}
-    out = {"basis": basis.value, "blocked": basis.value == "not_prior_art"}
+    out = {"basis": basis.value, "blocked": basis.value == "not_prior_art", "forum": forum}
     if basis.value == "not_prior_art":
         out["note"] = ("This document does not predate the target's effective filing date of %s "
                        "and is not prior art against it." % efd.isoformat())
     elif basis.value == "secret_prior_art":
-        out["note"] = ("Earlier-filed, later-published. Available under 35 U.S.C. 102(a)(2) / EPC "
-                       "Art. 54(3) for novelty only, not for obviousness or inventive step.")
+        country = _country_of(b)
+        if not search_modes.secret_art_reaches(country, forum):
+            #  Blocked, not merely footnoted: it is not prior art in this forum, and the rule the
+            #  document would be filed under does not reach it.
+            out["blocked"] = True
+            out["forum_bar"] = country
+            out["note"] = search_modes.secret_art_note(country, forum)
+        else:
+            out["note"] = ("Earlier-filed, later-published. Available under 35 U.S.C. 102(a)(2) / "
+                           "EPC Art. 54(3) for novelty only, not for obviousness or inventive "
+                           "step.")
     elif basis.value == "priority_interval":
         out["note"] = ("Published inside the target's priority interval; it becomes prior art only "
                        "if the priority claim fails. Flagged rather than relied on.")
@@ -365,12 +395,32 @@ def translate_rows(doc, tier="strong"):
 # --------------------------------------------------------------------------- driver
 
 
-def apply(docs, subject, source_text_for, mode="novelty", target_assignees=None):
-    """Run every check over a built document set. -> (docs_to_file, blocked, family_notes)."""
+def apply(docs, subject, source_text_for, mode="novelty", target_assignees=None, forum="US"):
+    """Run every check over a built document set. -> (docs_to_file, blocked, family_notes).
+
+    `forum` decides which office's rules the date check answers to. A 1.290 submission goes to the
+    USPTO, so it defaults there, and a reference available only as later-published secret art from
+    an office 102(a)(2) does not reach is blocked rather than footnoted.
+    """
     kept, blocked = [], []
     for d in docs:
         c = d.setdefault("compliance", {})
-        c["qualify"] = qualify(d, subject.get("efd"), mode=mode)
+        #  A FILE-WRAPPER DOCUMENT IS NOT PRIOR ART AND IS NOT OFFERED AS ANY. An office action is
+        #  a printed publication under 1.290(a) whose content is an examiner's findings on this
+        #  very family; date-checking it against the target's own filing date would block the one
+        #  document whose whole value is that it POSTDATES the application and discusses it.
+        if d.get("not_prior_art_document"):
+            c["qualify"] = {
+                "basis": "not_a_reference", "blocked": False, "forum": forum,
+                "note": ("This is an Office document from the file wrapper of a related "
+                         "application, submitted as a printed publication under 37 CFR 1.290(a). "
+                         "It is not offered as prior art, so the effective-filing-date comparison "
+                         "does not apply to it.")}
+            c["quotes"] = {"checked": 0, "note": "No quotation from a reference to verify."}
+            c["translation"] = {"translated": 0}
+            kept.append(d)
+            continue
+        c["qualify"] = qualify(d, subject.get("efd"), mode=mode, forum=forum)
         if c["qualify"].get("blocked"):
             blocked.append({"pub": d["pub"], "why": c["qualify"]["note"]})
             continue

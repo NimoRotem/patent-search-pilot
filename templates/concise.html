@@ -107,16 +107,28 @@
   <div class="card" style="margin:1em 0;padding:1em">
     <h2 style="margin-top:0">Documents</h2>
     <p class="small muted" style="margin-top:0">
-      Ranked by how much verified evidence each carries. <b>Strong</b> counts rows backed by a
-      verbatim passage; the rest are characterisations, which are filed without quotation marks.
+      Ranked by <b>what each document does to the claims</b>: what the ledger computes it
+      anticipates first, then whether a USPTO examiner applied it against this family, then whole
+      dependent additions, then evidence on the independent claims, and only then breadth. One
+      document per patent family. <b>Strong</b> counts rows backed by a verbatim passage; the rest
+      are characterisations, which are filed without quotation marks.
     </p>
     <table class="tbl">
-      <thead><tr><th></th><th>Reference</th><th>Claims</th><th>Rows</th><th>Strong</th></tr></thead>
+      <thead><tr><th></th><th>Reference</th><th>What it does</th><th>Claims</th><th>Rows</th><th>Strong</th></tr></thead>
       <tbody>
       {% for c in cands %}
         <tr>
           <td><input type="checkbox" name="pubs" value="{{ c.pub }}" {% if loop.index <= 6 %}checked{% endif %}></td>
-          <td>{{ c.pub }}<br><span class="small muted">{{ c.title[:80] }}</span></td>
+          <td>{% if c.kind == 'office_action' %}<b>Office action</b>{% else %}{{ c.pub }}{% endif %}
+            <br><span class="small muted">{{ c.title[:90] }}</span>
+            {% if c.family_siblings %}<br><span class="small muted">also published as {{ c.family_siblings[:3]|join(', ') }}{% if c.family_siblings|length > 3 %} and {{ c.family_siblings|length - 3 }} more{% endif %}. One member is filed; the family is one disclosure</span>{% endif %}</td>
+          <td class="small">
+            {% if c.anticipates %}<b>anticipates {{ c.anticipates|join(', ') }}</b><br>{% endif %}
+            {% if c.office == 'applied' %}<b>applied by the examiner</b><br>
+            {% elif c.office == 'considered' %}considered by the Office<br>{% endif %}
+            {% if c.adds %}discloses what {{ c.adds[:4]|join(', ') }} adds<br>{% endif %}
+            {% if c.strong_indep %}{{ c.strong_indep }} on the independent claims{% endif %}
+          </td>
           <td class="small">{{ c.claims|join(', ') }}</td>
           <td>{{ c.n_rows }}</td>
           <td>{{ c.n_strong }}</td>

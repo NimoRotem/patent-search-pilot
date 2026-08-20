@@ -299,7 +299,13 @@ def test_extend_to_tops_up_from_families_the_cards_do_not_cover():
         def close(self):
             pass
 
-    def fake_reps(cur, keys):
+    seen_efd = {}
+
+    def fake_reps(cur, keys, subject_efd=None):
+        #  The cutoff has to REACH here: it decides which member of each family is read, quoted
+        #  and cited. A stage that drops it silently downgrades every family it resolves from
+        #  102(a)(1) art to 102(a)(2). See webview.resolve_family_reps.
+        seen_efd["efd"] = subject_efd
         return {k: {"publication_number": "P" + k[1:], "title": k} for k in keys}
 
     import webview as wv
@@ -313,6 +319,7 @@ def test_extend_to_tops_up_from_families_the_cards_do_not_cover():
     assert pubs[:2] == ["P3", "P1"]
     #  F3 and F1 are already covered, so the top-up is F2, F4, F5 — never F3 again
     assert set(pubs[2:]) == {"P2", "P4", "P5"}
+    assert "efd" in seen_efd, "the reading top-up resolved families without the subject's date"
     assert len(pubs) == len(set(pubs))
 
 

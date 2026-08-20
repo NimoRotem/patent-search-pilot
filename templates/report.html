@@ -424,6 +424,65 @@
         documents that carry it with a quote, a location and a date. The element grid below still
         answers the other question (what does THIS reference teach) and is the only view a
         disclosure-only search has. #}
+    {% if v.prosecution and v.prosecution.available %}
+    <details class="tail ledgerblock" open>
+      <summary><span class="th">What the Office already decided</span>
+        <span class="ts">{% if v.prosecution.subject_app %}application {{ v.prosecution.subject_app }} · {% endif %}
+          {{ v.prosecution.family|length }} relative(s) ·
+          {{ v.prosecution.documents|length }} file-wrapper document(s) read
+          {% if v.prosecution.applied %} · <b class="antic">{{ v.prosecution.applied|length }} rejection(s) already on record</b>{% endif %}</span></summary>
+      <div class="tailin">
+        <p class="gridline">The USPTO file wrapper for this family, read directly. This is not a
+          search result and it ranks nothing: it is what an examiner has already done to
+          substantially these claims, which no prior-art search can produce because it lives in a
+          file history rather than in a patent corpus. An Office action here is itself a printed
+          publication that may be filed under 37 CFR 1.290, and the examiner's findings do the
+          arguing that 1.290(b) forbids a submitter from doing.</p>
+        {% if v.prosecution.applied %}
+        <div class="lclaim">
+          <div class="lchead"><b>Applied in a rejection</b></div>
+          {% for a in v.prosecution.applied %}
+          <div class="llim">
+            <div class="lltext"><button type="button" class="pnlink" onclick="jumpRef('{{ a.pub }}')">{{ a.pub }}</button>
+              <span class="lstatus ls-anticipated">{{ a.statute or 'rejection' }}</span>
+              {% if a.claims %}<span class="cc">claims {{ a.claims|join('; ') }}</span>{% endif %}
+              {% if a.sources %}<span class="cc">{{ a.sources[0] }}</span>{% endif %}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if v.prosecution.family %}
+        <div class="lclaim">
+          <div class="lchead"><b>Family</b>
+            {% if v.prosecution.abandoned %}<span class="cc">{{ v.prosecution.abandoned|length }} abandoned after an office action</span>{% endif %}</div>
+          {% for f in v.prosecution.family %}
+          <div class="llim"><div class="lltext">{{ f.app }} <span class="cc">{{ f.relation or f.direction }}</span>
+            {% if f.patent %}<span class="cc">US {{ f.patent }}</span>{% endif %}
+            <span class="cc">{{ f.status }}</span></div></div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if v.prosecution.documents %}
+        <div class="lclaim">
+          <div class="lchead"><b>Documents read</b></div>
+          {% for d in v.prosecution.documents %}
+          <div class="llim"><div class="lltext"><b>{{ d.description }}</b>
+            <span class="cc">{{ d.app }} · {{ d.date }}</span>
+            {% if d.pdf %}<a class="pnlink" href="{{ d.pdf }}" target="_blank" rel="noopener">PDF</a>{% endif %}</div>
+            {% if d.summary %}<div class="llq" style="margin-top:.2rem">{{ d.summary }}</div>{% endif %}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if v.prosecution.considered %}
+        <p class="gridline"><b>Cited or considered by the Office ({{ v.prosecution.considered|length }}):</b>
+          {% for p in v.prosecution.considered %}<button type="button" class="pnlink" onclick="jumpRef('{{ p }}')">{{ p }}</button> {% endfor %}
+          <br><span class="cc">All {{ v.prosecution.n_seeds }} were given a reading slot in this search whatever the screen scored them.</span></p>
+        {% endif %}
+        {% if v.prosecution.error %}<p class="gridline"><b>Partial:</b> {{ v.prosecution.error }}</p>{% endif %}
+      </div>
+    </details>
+    {% endif %}
+
     {% if v.ledger and v.ledger.available %}
     <details class="tail ledgerblock" open>
       <summary><span class="th">Claim ledger</span>
@@ -431,24 +490,41 @@
           {{ v.ledger.counts.get('covered', 0) }} covered ·
           {{ v.ledger.counts.get('partial', 0) }} partial ·
           <b class="{% if v.ledger.counts.get('uncovered', 0) %}gridwarnt{% endif %}">{{ v.ledger.counts.get('uncovered', 0) }} with no art</b>
-          {% if v.ledger.anticipated %} · <b class="antic">{{ v.ledger.anticipated|length }} anticipated</b>{% endif %}</span></summary>
+          {% if v.ledger.anticipated %} · <b class="antic">{{ v.ledger.anticipated|length }} anticipated</b>{% endif %}
+          {% if v.ledger.adds_only %} · <b>{{ v.ledger.adds_only|length }} with their addition disclosed</b>{% endif %}</span></summary>
       <div class="tailin">
         <p class="gridline">One row per <b>requirement</b>, not per claim: a claim is a conjunction,
           so a document teaching one of its three requirements is correctly "absent" for the whole
           thing and the search has to track them separately. A requirement counts as covered once
           <b>{{ v.ledger.cover_min }}</b> references disclose it. A claim is
           <b class="antic">anticipated</b> when a <b>single</b> document discloses every one of its
-          requirements — that is computed from the reading, never asserted.
+          requirements <b>and every requirement it inherits</b>: a dependent claim carries all of
+          its parent's limitations under 35 U.S.C. 112(d), so nothing anticipates claim 3 unless it
+          also anticipates claim 1. That is computed from the reading, never asserted.
           {% if not v.ledger.done %}<b>This search is not finished:</b> the requirements marked
           below have no art against them yet.{% endif %}</p>
+        {% if v.ledger.n_corrected_112d %}
+        <p class="gridline"><b>{{ v.ledger.n_corrected_112d }} claim(s) in this stored report were
+          marked anticipated over their added requirements only.</b> They are shown below under the
+          construed claim instead: the document that discloses everything the claim <i>adds</i> is
+          named as such, which is a §103 combination candidate rather than a §102 anticipation.</p>
+        {% endif %}
         {% for c in v.ledger.claims %}
         <div class="lclaim lc-{{ c.status }}">
           <div class="lchead"><b>{{ c.label }}</b>
             {% if c.independent %}<span class="indep">independent</span>{% endif %}
             {% if c.depends_on %}<span class="indep">depends on claim {{ c.depends_on }}</span>{% endif %}
+            {% if c.chain and c.chain|length > 1 %}<span class="cc" title="Under 35 U.S.C. 112(d) this claim incorporates every limitation of the claims above it, and anticipation is tested against all of them together.">construed as {{ c.chain|reverse|join(' + ') }}</span>{% endif %}
             <span class="lstatus ls-{{ c.status }}">{{ c.status }}</span>
             {% if c.anticipated_by %}<span class="anticby">by {{ c.anticipated_by[:3]|join(', ') }}</span>{% endif %}
+            {% if not c.chain_complete %}<span class="cc" title="This claim names a parent the ledger does not hold, so what it inherits cannot be checked and anticipation is withheld rather than guessed.">parent not in ledger</span>{% endif %}
           </div>
+          {% if c.adds_disclosed_by and not c.anticipated_by %}
+          <div class="ladds">Discloses everything this claim <b>adds</b> to {{ c.depends_on and ('claim ' ~ c.depends_on) or 'its parent' }}:
+            {% for p in c.adds_disclosed_by[:4] %}<button type="button" class="pnlink" onclick="jumpRef('{{ p }}')">{{ p }}</button>{% endfor %}
+            <span class="cc">a §103 combination candidate, not a §102 anticipation: the parent's requirements still have to be met by something.</span>
+          </div>
+          {% endif %}
           {% for l in c.limitations %}
           <div class="llim ll-{{ l.status }}">
             <div class="lltext">{{ l.text }}</div>

@@ -837,6 +837,39 @@ def _attach_fed_family_sources(rep):
                 srcs.append(s)
 
 
+def _attach_prosecution(rep, slug=None):
+    """Read the subject's US file wrapper onto the report. -> rep. Never raises.
+
+    Stores `prosecution` = {"dossier", "mined"} and `prosecution_seeds`, the corpus publications an
+    examiner applied or considered against this family. deep_rank reads the seeds and gives them a
+    reading slot whatever the screen thought of them: a reference a USPTO examiner APPLIED in a
+    rejection of substantially these claims does not have to win a similarity contest to be worth
+    reading.
+    """
+    qd = (rep or {}).get("query_document") or {}
+    pub = qd.get("publication_number") or rep.get("subject") or qd.get("label") or ""
+    if not pub:
+        return rep
+    try:
+        import prosecution
+        got = prosecution.for_subject(pub)
+    except Exception:
+        traceback.print_exc()
+        return rep
+    rep["prosecution"] = got
+    mined = got.get("mined") or {}
+    rep["prosecution_seeds"] = list(mined.get("seeds") or [])
+    note = prosecution.summarise(mined)
+    if note:
+        print(f"[prosecution {slug or ''}] {note}", flush=True)
+    if rep["prosecution_seeds"] and slug:
+        _set_job(slug, kind="screening",
+                 msg=f"The USPTO file wrapper for this family names "
+                     f"{len(rep['prosecution_seeds'])} references the Office already cited — "
+                     f"reading those too…")
+    return rep
+
+
 def _drop_self_family(rep):
     """Remove the searcher's OWN patent family from the results.
 
@@ -1129,6 +1162,15 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
         if _ORACLE_PLAN:
             rep["_oracle"] = dict(_ORACLE_PLAN)
         _drop_self_family(rep)
+
+        # ---- WHAT THE OFFICE ALREADY DECIDED (prosecution) --------------------------------
+        # Runs before the reading, because what it finds changes what gets read. A US application
+        # under examination has a file wrapper, and the wrapper holds the examiner's own
+        # rejections and the reference lists a professional who read the application chose. On
+        # US 2025/0033224 A1 that is US 11,413,727 applied under 102(a)(2) to thirteen claims,
+        # plus every one of the five references counsel independently filed. Fail-soft and off
+        # without a key: an unreachable USPTO costs its own findings and nothing else.
+        _attach_prosecution(rep, slug=slug)
 
         # ---- SCREEN WIDE, READ DEEP, RANK ON THE EVIDENCE (deep_rank) ----------------------
         # This is the stage that decides the order of the report. Retrieval hands over a couple of
@@ -2527,6 +2569,75 @@ def _build_view_cached(slug, rep, regen=False):
                 # Freezing that would leave a report permanently claiming its sources failed.
                 view["source_tags"] = webview._source_tags(
                     rep, view.get("n_local", len(view.get("cards") or [])))
+                # THE CLAIM LEDGER IS RE-DERIVED ON EVERY CACHE HIT, not backfilled once.
+                # It is computed from the stored limitation rows alone — no DB, no LLM — and it is
+                # the one part of the view that carries a legal assertion, so it must always be
+                # the answer the CURRENT rule gives rather than the one frozen at run time. Every
+                # report written before 2026-08-20 marked dependent claims ANTICIPATED under a
+                # parent that nothing anticipated, which 112(d) makes impossible; re-deriving here
+                # is what withdraws it from the 660 reports already on disk.
+                try:
+                    fresh = webview.build_ledger_view(rep)
+                    if fresh != view.get("ledger"):
+                        view["ledger"] = fresh
+                        vp.write_text(json.dumps(view, default=str))
+                except Exception:
+                    pass
+                # The prosecution block likewise: it is read off the report, and a cache written
+                # before the file wrapper was mined simply does not have it.
+                try:
+                    pros = webview.build_prosecution_view(rep)
+                    if pros != view.get("prosecution"):
+                        view["prosecution"] = pros
+                        vp.write_text(json.dumps(view, default=str))
+                except Exception:
+                    pass
+                # THE CLAIM LEDGER IS RE-DERIVED ON EVERY CACHE HIT, not backfilled once.
+                # It is computed from the stored limitation rows alone — no DB, no LLM — and it is
+                # the one part of the view that carries a legal assertion, so it must always be
+                # the answer the CURRENT rule gives rather than the one frozen at run time. Every
+                # report written before 2026-08-20 marked dependent claims ANTICIPATED under a
+                # parent that nothing anticipated, which 112(d) makes impossible; re-deriving here
+                # is what withdraws it from the 660 reports already on disk.
+                try:
+                    fresh = webview.build_ledger_view(rep)
+                    if fresh != view.get("ledger"):
+                        view["ledger"] = fresh
+                        vp.write_text(json.dumps(view, default=str))
+                except Exception:
+                    pass
+                # The prosecution block likewise: it is read off the report, and a cache written
+                # before the file wrapper was mined simply does not have it.
+                try:
+                    pros = webview.build_prosecution_view(rep)
+                    if pros != view.get("prosecution"):
+                        view["prosecution"] = pros
+                        vp.write_text(json.dumps(view, default=str))
+                except Exception:
+                    pass
+                # THE CLAIM LEDGER IS RE-DERIVED ON EVERY CACHE HIT, not backfilled once.
+                # It is computed from the stored limitation rows alone — no DB, no LLM — and it is
+                # the one part of the view that carries a legal assertion, so it must always be
+                # the answer the CURRENT rule gives rather than the one frozen at run time. Every
+                # report written before 2026-08-20 marked dependent claims ANTICIPATED under a
+                # parent that nothing anticipated, which 112(d) makes impossible; re-deriving here
+                # is what withdraws it from the 660 reports already on disk.
+                try:
+                    fresh = webview.build_ledger_view(rep)
+                    if fresh != view.get("ledger"):
+                        view["ledger"] = fresh
+                        vp.write_text(json.dumps(view, default=str))
+                except Exception:
+                    pass
+                # The prosecution block likewise: it is read off the report, and a cache written
+                # before the file wrapper was mined simply does not have it.
+                try:
+                    pros = webview.build_prosecution_view(rep)
+                    if pros != view.get("prosecution"):
+                        view["prosecution"] = pros
+                        vp.write_text(json.dumps(view, default=str))
+                except Exception:
+                    pass
                 # Backfill the Feature-1 family timeline onto caches written before it existed
                 # (cheap one-query DB pass, no rerank/LLM) so old reports render the strip too.
                 try:
@@ -4477,7 +4588,14 @@ def concise_descriptions(slug):
                                    "'deep' first."))
     import concise_description
     import concise_render
-    cands = concise_description.candidates({}, deep, limit=40)
+    #  The REPORT, not {}: the picker ranks on what the ledger says each reference kills and on
+    #  whether the Office itself applied it, and neither is in the deep block.
+    rep_for_pick = _load_report(slug) or {}
+    #  The family's own office actions come FIRST in the picker. They are not prior art and no
+    #  search can produce them; they are an examiner's findings on substantially these claims, and
+    #  1.290(b) forbids the submitter from making the argument they already make.
+    cands = (concise_description.office_action_candidates(rep_for_pick)
+             + concise_description.candidates(rep_for_pick, deep, limit=40))
     subject = _concise_subject(slug, request.form if request.method == "POST" else None)
     if request.method == "GET":
         return render_template("concise.html", slug=slug, cands=cands,
@@ -4496,7 +4614,9 @@ def concise_descriptions(slug):
     #  wants described is often not the one with the most rows. Measured on adhoc-0a80ecb18aa6,
     #  where US 6,419,291 and US 7,240,935 are both references a practitioner actually filed
     #  against this application and both sit outside the top 40 by row count.
-    known = {c["pub"] for c in concise_description.candidates({}, deep, limit=10000)}
+    known = {c["pub"] for c in concise_description.candidates(
+        rep_for_pick, deep, limit=10000, collapse_families=False)}
+    known |= {c["pub"] for c in concise_description.office_action_candidates(rep_for_pick)}
     unknown = [p for p in pubs if p not in known]
     pubs = [p for p in pubs if p in known]
     if not pubs:
@@ -4531,7 +4651,7 @@ def concise_descriptions(slug):
     def _work():
         try:
             docs = concise_description.build(
-                deep, pubs, subject, start_at=start_at,
+                deep, pubs, subject, start_at=start_at, report=rep_for_pick,
                 on_progress=lambda n, msg: _concise_set(slug, done=n, msg=msg))
             blocked, family_notes = [], []
             if not skip_compliance:

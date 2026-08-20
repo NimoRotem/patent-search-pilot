@@ -304,11 +304,66 @@ def _join_key(pub):
 
 
 # ---- family -> representative publication --------------------------------------------------
-def resolve_family_reps(cur, family_keys):
-    """Map each family_key to its best representative publication row. Prefer a member with
-    full-text claims, then US, then most-recent. One query for all keys."""
+def subject_efd_of(report):
+    """The subject's effective filing date as a `date`, or None. -> for resolve_family_reps.
+
+    One definition, because three stages resolve family representatives (the screen, the reading
+    top-up and the orphan rescue) and a stage that quietly passes None reads a different document
+    from its neighbours — with a different date, and therefore a different statutory basis.
+    """
+    import datetime
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", str((report or {}).get("date_cutoff") or ""))
+    if not m:
+        return None
+    try:
+        return datetime.date(*[int(x) for x in m.groups()])
+    except ValueError:
+        return None
+
+
+def resolve_family_reps(cur, family_keys, subject_efd=None):
+    """Map each family_key to its best representative publication row. One query for all keys.
+
+    THE REPRESENTATIVE IS THE DOCUMENT THAT GETS READ, QUOTED AND CITED, so which member wins is a
+    legal question and not only a text-quality one. Without a subject date this cannot be asked, so
+    the original ordering stands: full text, then US, then the most embedded text, then the newest.
+
+    With `subject_efd` — the date the whole search is already cut against — the order changes at
+    one place, and it is the place that matters. A member published BEFORE the subject's effective
+    filing date is prior art under 35 U.S.C. 102(a)(1) / EPC Art. 54(2): unconditional, no
+    exception can reach it, and its date needs no proving. A member published AFTER is available
+    only under 102(a)(2) / Art. 54(3): novelty only, never for obviousness, and disqualified
+    outright in the US by the 102(b)(2)(C) common-ownership exception. Same family, same
+    disclosure, much weaker instrument.
+
+    `publication_date DESC` chose the newest member, which is systematically the weakest one.
+    Measured on adhoc-0a80ecb18aa6 (US-20250033224-A1, EFD 2021-04-20): of 402 references read in
+    full, 101 were citable only as secret prior art, and 44 of those had a sibling in their own
+    family published before the cutoff — 27 of them a US document with claims and full text. The
+    reported case is one of the 44: counsel's US-11,413,727-B2 (published 2022-08-16, 102(a)(2)
+    only) came back as US-11,999,030-B2 (published 2024-06-04, also 102(a)(2)) when the same family
+    holds US-2020/0338695-A1, published 2020-10-29 — five months before the target's priority date,
+    and therefore unconditional 102(a)(1) art.
+    """
     if not family_keys:
         return {}
+    #  Readability is a HARD gate before any of this: a member with no claims and no embedded text
+    #  cannot be read, quoted or charted, and the strongest date in the world is no use on a
+    #  document the pipeline cannot open.
+    order = ("(n_claims > 0) DESC, (n_emb > 0) DESC, "
+             "(country='US') DESC, n_emb DESC, publication_date DESC NULLS LAST")
+    params = [list(family_keys)]
+    if subject_efd:
+        order = ("(n_claims > 0) DESC, (n_emb > 0) DESC, "
+                 #  the whole point: unconditional prior art before conditional
+                 "(publication_date < %s) DESC, "
+                 "(country='US') DESC, "
+                 #  a stub record (abstract only) loses to a real one, but a big text does not buy
+                 #  its way past the date, which is why this is a floor and not `n_emb DESC`
+                 "(n_emb >= 20) DESC, "
+                 #  among equals the earliest publication is the safest citation
+                 "publication_date ASC NULLS LAST")
+        params = [list(family_keys), subject_efd]
     cur.execute(
         """
         WITH cand AS (
@@ -323,15 +378,55 @@ def resolve_family_reps(cur, family_keys):
                publication_date, filing_date, earliest_priority_date, title, abstract,
                simple_family_id, tier, facsimile_path, n_claims, n_emb
         FROM cand
-        ORDER BY fam,
-                 (n_claims > 0) DESC,
-                 (country='US') DESC,
-                 n_emb DESC,
-                 publication_date DESC NULLS LAST
-        """,
-        (list(family_keys),),
+        ORDER BY fam, """ + order,
+        tuple(params),
     )
     return {r["fam"]: r for r in cur.fetchall()}
+
+
+def family_alternates(cur, pubs, subject_efd=None, limit=6):
+    """pub -> the OTHER members of its family, so a reader can see what else it published as.
+
+    A submission cites one member of a family, but which member is a choice with consequences: the
+    date decides the statutory basis, the country decides whether a translation has to go in the
+    box, and at the USPTO a 102(a)(2) reference has to be a US or PCT publication at all. Naming
+    the alternatives lets that choice be made rather than inherited from a ranking.
+    """
+    if not pubs:
+        return {}
+    bare = [str(p or "").replace("-", "").upper() for p in pubs if p]
+    cur.execute(
+        """
+        WITH me AS (
+          SELECT p.publication_number,
+                 COALESCE(NULLIF(p.simple_family_id,''), p.publication_number) AS fam
+          FROM publications p
+          WHERE replace(upper(p.publication_number),'-','') = ANY(%s)
+        )
+        SELECT me.publication_number AS asked, q.publication_number, q.country, q.kind_code,
+               q.publication_date, q.earliest_priority_date, q.filing_date,
+               (SELECT count(*) FROM claims c WHERE c.publication_id=q.id) AS n_claims,
+               (SELECT count(*) FROM chunks ch WHERE ch.publication_id=q.id) AS n_chunks
+        FROM me
+        JOIN publications q
+          ON COALESCE(NULLIF(q.simple_family_id,''), q.publication_number) = me.fam
+        WHERE q.publication_number <> me.publication_number
+        ORDER BY me.publication_number, q.publication_date ASC NULLS LAST
+        """, (bare,))
+    out = {}
+    for r in cur.fetchall():
+        row = {"pub": r["publication_number"], "country": r["country"], "kind": r["kind_code"],
+               "publication_date": str(r["publication_date"] or "") or None,
+               "priority_date": str(r["earliest_priority_date"] or "") or None,
+               "n_claims": r["n_claims"], "n_chunks": r["n_chunks"]}
+        if subject_efd and r["publication_date"]:
+            row["public_prior_art"] = r["publication_date"] < subject_efd
+        out.setdefault(r["asked"], []).append(row)
+    #  Earliest first, and the ones that are unconditional prior art ahead of the ones that are not.
+    for k, v in out.items():
+        v.sort(key=lambda x: (not x.get("public_prior_art", False), x["publication_date"] or "9999"))
+        out[k] = v[:limit]
+    return out
 
 
 def biblio(cur, pid):
@@ -702,6 +797,85 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
     }
 
 
+def build_prosecution_view(report):
+    """What the USPTO file wrapper already says about this family, or None.
+
+    This is not a retrieval result and it does not rank anything. It answers the question no search
+    can: has an examiner already rejected substantially these claims, and over what. On the subject
+    counsel benchmarked, the answer named every reference they had independently filed.
+    """
+    p = (report or {}).get("prosecution") or {}
+    dossier = p.get("dossier") or {}
+    mined = p.get("mined") or {}
+    if not dossier and not mined:
+        return None
+    docs = mined.get("documents") or []
+    applied = [a for a in (mined.get("applied") or []) if a.get("pub")]
+    if not (dossier.get("family") or docs or applied):
+        return None
+    #  Collapse the same reference applied in several actions to one row per (pub, statute), with
+    #  the claim strings joined — the same document applied twice is one finding, not two.
+    merged = {}
+    for a in applied:
+        k = (a["pub"], a.get("statute") or "")
+        m = merged.setdefault(k, {"pub": a["pub"], "statute": a.get("statute") or "",
+                                  "claims": [], "sources": []})
+        if a.get("claims"):
+            m["claims"].append(a["claims"])
+        if a.get("source"):
+            m["sources"].append(a["source"])
+    return {
+        "available": True,
+        "subject_app": (dossier.get("subject") or {}).get("app") or "",
+        "subject_status": (dossier.get("subject") or {}).get("status") or "",
+        "family": dossier.get("family") or [],
+        "abandoned": [f for f in (dossier.get("family") or [])
+                      if "abandon" in str(f.get("status") or "").lower()],
+        "siblings_granted": dossier.get("siblings_granted") or [],
+        "documents": docs,
+        "applied": sorted(merged.values(), key=lambda m: (m["statute"], m["pub"])),
+        "considered": mined.get("considered") or [],
+        "n_seeds": len(mined.get("seeds") or []),
+        "error": dossier.get("error") or mined.get("error") or "",
+    }
+
+
+def _reledger(led, stored_claims):
+    """Re-derive per-claim status from the stored rows under 112(d). -> (claims, n_corrected).
+
+    Never ADDS an anticipator: the stored evidence is capped per limitation, so a recomputation
+    sees at most what the run saw. It only withdraws the ones the construed claim does not support,
+    which is the whole point.
+    """
+    try:
+        import limitations as _lim
+        fresh = _lim.Ledger.from_stored(led).summary().get("claims") or {}
+    except Exception:
+        return stored_claims, 0
+    out, corrected = {}, 0
+    for label, was in (stored_claims or {}).items():
+        now = fresh.get(label)
+        if not now:
+            out[label] = was
+            continue
+        keep = [p for p in (now.get("anticipated_by") or [])
+                if p in set(was.get("anticipated_by") or [])]
+        merged = dict(was, **now)
+        merged["anticipated_by"] = keep
+        if not keep and now["status"] == "anticipated":
+            merged["status"] = "partial"
+        if (was.get("status") == "anticipated") and not keep:
+            corrected += 1
+            #  The old flag was measuring something real — one document disclosing everything the
+            #  claim ADDS — so it is carried across rather than dropped, under the name that
+            #  describes it. See limitations.Ledger.claim_detail.
+            merged.setdefault("adds_disclosed_by", was.get("anticipated_by") or [])
+        out[label] = merged
+    for label, now in fresh.items():
+        out.setdefault(label, now)
+    return out, corrected
+
+
 def build_ledger_view(report):
     """The limitation ledger, as the report's primary answer for a Type B search.
 
@@ -713,7 +887,14 @@ def build_ledger_view(report):
     So this renders down the claims rather than across the references: every limitation, its
     status, and the two or three documents that carry it with their quote, location and date. A
     claim marked ANTICIPATED is the §102 kill and is computed by the ledger from one document
-    covering every one of its limitations, never asserted.
+    covering every one of its limitations AND every limitation it inherits under 35 U.S.C. 112(d),
+    never asserted.
+
+    THE STORED SUMMARY IS RE-DERIVED, not trusted. Every report written before 2026-08-20 carries
+    the pre-112(d) answer, which stamped dependent claims ANTICIPATED under a parent that nothing
+    anticipated. `limitations.Ledger.from_stored` asks the corrected code the same question over
+    the same rows, so an old report reads correctly the next time it is opened instead of needing a
+    rewrite it will never get.
 
     Returns None when the search has no ledger, and the page falls back to the grid.
     """
@@ -726,6 +907,7 @@ def build_ledger_view(report):
     for l in lims:
         by_claim.setdefault(l.get("claim_label") or "?", []).append(l)
     claim_meta = summary.get("claims") or {}
+    claim_meta, repaired = _reledger(led, claim_meta)
 
     def claim_key(label):
         #  Anticipated first — that is the finding a reader opens this for — then the claims with
@@ -744,6 +926,12 @@ def build_ledger_view(report):
             "label": label,
             "status": meta.get("status") or "unknown",
             "anticipated_by": meta.get("anticipated_by") or [],
+            #  One document disclosing everything this claim ADDS. Not anticipation — the parent's
+            #  requirements are carried in under 112(d) and something else has to meet those — but
+            #  it is the second half of a §103 combination and the reason to read the reference.
+            "adds_disclosed_by": meta.get("adds_disclosed_by") or [],
+            "chain": meta.get("chain") or [label],
+            "chain_complete": meta.get("chain_complete", True),
             "independent": any(r.get("independent") for r in rows),
             "depends_on": next((r.get("depends_on") for r in rows if r.get("depends_on")), None),
             "n_uncovered": sum(1 for r in rows if r.get("status") == "uncovered"),
@@ -766,7 +954,14 @@ def build_ledger_view(report):
         "cover_min": summary.get("cover_min") or 2,
         "counts": counts,
         "done": bool(summary.get("done")),
-        "anticipated": summary.get("anticipated") or [],
+        #  Recomputed, not read off the stored summary, so an old report cannot keep publishing a
+        #  claim as anticipated after the 112(d) rule has withdrawn it.
+        "anticipated": sorted((c["label"] for c in claims if c["status"] == "anticipated"),
+                              key=_claim_no),
+        "adds_only": sorted((c["label"] for c in claims
+                             if c["status"] != "anticipated" and c["adds_disclosed_by"]),
+                            key=_claim_no),
+        "n_corrected_112d": repaired,
         "claims": claims,
     }
 
@@ -1644,6 +1839,7 @@ def build_view(report, top_n=25, deep=None):
         #  The ledger is the answer for a Type B search; the grid stays for exploring the art and
         #  as the only view a Type A search has.
         "ledger": build_ledger_view(report),
+        "prosecution": build_prosecution_view(report),
         "cards": cards,
         "n_local": n_local,
         "substance_filter": {k: v for k, v in subs_stats.items() if k != "titleonly_ids"},

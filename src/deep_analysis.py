@@ -888,7 +888,8 @@ def _extend_to(cards, report, top_n):
         conn.autocommit = True
         cur = conn.cursor()
         try:
-            reps = webview.resolve_family_reps(cur, tail)
+            reps = webview.resolve_family_reps(
+                cur, tail, subject_efd=webview.subject_efd_of(report))
         finally:
             conn.close()
     except Exception:

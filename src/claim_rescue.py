@@ -404,7 +404,8 @@ def find_candidates(plans, subject, mode, exclude_pubs, exclude_families, retrie
         conn.autocommit = True
         try:
             with conn.cursor() as cur:
-                reps = webview.resolve_family_reps(cur, order)
+                reps = webview.resolve_family_reps(
+                    cur, order, subject_efd=getattr(subject, 'efd', None))
         finally:
             conn.close()
     except Exception:
