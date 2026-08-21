@@ -122,9 +122,19 @@ _CONCEPT = Profile(
              "then reads the strongest references in full. No claims exist yet, so there is no "
              "claim-by-claim chart."),
     unit="technical concept",
-    #  From the measured no-claims run plus the stage cuts above. Quoted as a range because the
-    #  spread on measured runs of one kind is 2-3x.
-    eta_low=8 * 60, eta_high=25 * 60,
+    #  MEASURED, not projected from the cuts. First concept run under this budget
+    #  (adhoc-f51e70282e85, 2026-08-21): 900 screened, 90 read in full, 1 round, screen 16.8 s,
+    #  charting 38.1 s. Its 3,033 s wall clock is NOT usable, because a 14-hour `CREATE INDEX
+    #  ix_chunks_hnsw_half` on `chunks` was holding the lock the text-recovery stage writes
+    #  through and that stage alone waited ~2,270 s on it.
+    #
+    #  So the floor comes from the stages that were not blocked: local retrieval 678 s, external
+    #  fan-out 75 s in parallel with it, screen + chart + concept pass ~60 s, and an enrichment of
+    #  50 references which measured 63-167 s at ~390 references before the lock. That is ~13
+    #  minutes, and the low end is set just under it rather than at the 8 minutes the cuts alone
+    #  suggested -- retrieval on its own was 11.3 minutes, so no honest quote starts below that.
+    #  RE-MEASURE once the index build is done and tighten this from real end-to-end runs.
+    eta_low=12 * 60, eta_high=30 * 60,
     rounds=1,
     budget={
         "SCREEN_TOP": 900,
