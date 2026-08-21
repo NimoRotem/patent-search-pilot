@@ -49,16 +49,25 @@ def test_ensure_report_drops_the_stale_partial_only_when_asked(monkeypatch, tmp_
     monkeypatch.setattr(webapp, "report_path", lambda s: tmp_path / ("%s.json" % s))
     dropped = []
     monkeypatch.setattr(webapp, "_drop_partial_report", lambda s: dropped.append(s))
+    #  AND NOTHING ACTUALLY RUNS. Without this the second call below claims the slug and starts a
+    #  real deep search: on 2026-08-21 this test left a 370 kB report, a 1 MB trace and real model
+    #  spend in the production reports directory, for the query "q".
+    started = []
+    monkeypatch.setattr(webapp, "_run_job", lambda *a, **k: started.append(a[0] if a else None))
+    monkeypatch.setattr(webapp.run_queue, "record_started", lambda *a, **k: None)
     with webapp._JOB_LOCK:
         webapp._JOBS.pop(slug, None)
 
     st, rep = webapp.ensure_report(slug)                       # a viewer
     assert st == "ready" and rep["partial"] is True and dropped == []
+    assert started == []
 
     #  and with the flag: the partial is dropped and the run is (re)claimed
     st2, _ = webapp.ensure_report(slug, query="q", restart_partial=True)
     assert dropped == [slug], "the stale partial survived an explicit restart"
     assert st2 != "ready", st2
+    #  the run was launched, but into the stub — no thread, no model spend, no report on disk
+    assert started == [slug] or st2 == "running"
     with webapp._JOB_LOCK:
         webapp._JOBS.pop(slug, None)
 
