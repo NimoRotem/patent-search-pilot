@@ -54,6 +54,7 @@ import retrieval                                  # search_doc_chunks (parallel 
 import img_search                                 # patent-drawing image-similarity channel
 import rerank_listwise                            # listwise agentic reranker (in-context, several at a time)
 from search_modes import require_available, ModeNotAvailable, available_modes
+import search_profile                              # concept search vs claim attack: kind + budget
 from retrieval import Retriever
 from agent import CoverageAgent, AgentConfig
 from config import DATA, ROOT
@@ -1040,6 +1041,17 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
         #   (d) image: the query document's drawings matched against the corpus figure index.
         # A typed (no-document) query simply has no (c)/(d); (a) and (b) still run in parallel.
         doc = _load_doc_materials(doc_token)
+        #  WHICH SEARCH THIS IS, decided from the input before a single stage is budgeted.
+        #  A description with no claims is a concept search; a document that brought its claims
+        #  is a claim attack. They were running the same pipeline at the same price. See
+        #  search_profile for the measured cost of that and for what each budget cuts.
+        profile = search_profile.for_input((doc or {}).get("claims"))
+        run_budget = search_profile.budget_for(profile, depth=depth)
+        rep_profile = search_profile.describe(profile, depth=depth)
+        _set_job(slug, kind="profile", detail=rep_profile,
+                 msg=f"{rep_profile['label']} — {rep_profile['eta_text']}.")
+        print(f"[profile {slug}] {profile.kind} depth={depth} rounds={profile.rounds} "
+              f"budget={run_budget or 'full'}", flush=True)
         #  A LINK OR UPLOAD SEARCH NAMES NO SUBJECT, so until now it ran with no date cutoff and
         #  no self-exclusion at all. Both are wrong, and measurably so: on the EP 3 707 092
         #  benchmark the subject's OWN family came back at rank 1 of its own results, and because
@@ -1090,7 +1102,12 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 #  Quick tier: ONE retrieval round. The second round's marginal families arrive
                 #  minutes later and feed a reading depth the quick tier does not have; the deep
                 #  escalation re-runs with the full two rounds.
-                cfg=AgentConfig(mode=mode, max_rounds=(1 if depth == "quick" else 2),
+                #  ROUNDS COME FROM THE PROFILE. The second round re-searches the elements the
+                #  first round left thin, which is what a claim ledger asks for; 8-12 concept
+                #  phrases have no ledger asking, and the round was measured at half the local
+                #  channel's 958 s. Quick is one round whatever the kind.
+                cfg=AgentConfig(mode=mode,
+                                max_rounds=(1 if depth == "quick" else profile.rounds),
                                 elements_per_round=3, ground=True,
                                 search_config=("claim_agentic" if search_focus == "claims"
                                                else "agentic"),
@@ -1137,6 +1154,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                   f"({v.get('end', v['start'])-v['start']:.2f}s)", flush=True)
 
         rep["partial"] = False
+        rep["search_profile"] = rep_profile
         rep["search_focus"] = search_focus
         rep["domain"] = verdict.to_dict() if verdict is not None else None
         if wide:
@@ -1263,7 +1281,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
         try:
             rep["depth"] = depth
             dr = deep_rank.run(rep, reports_dir=REPORTS, slug=slug, on_progress=_deep_event,
-                               depth=depth)
+                               depth=depth, budget=run_budget)
             if dr:
                 print(f"[deep_rank {slug}] screened {dr['screened']}/{dr['n_candidates']} in "
                       f"{dr['screen_seconds']}s, read {dr['read_in_full']} in full "
@@ -2065,9 +2083,15 @@ def run():
                                f"The server is at capacity — {why}. Please retry shortly.")
     # remember adhoc meta for the report page title (doc_token persisted so a live Re-run keeps the
     # document-chunk + image channels instead of degrading to text-only).
+    #  WHAT KIND OF SEARCH THIS IS, on the meta, at the moment it starts. `_generate` decides
+    #  the same thing from the same input, but it does so on a background thread minutes later;
+    #  the page that says "this will take about X" is rendered now.
+    _kind_doc = _load_doc_materials(doc_token)
+    _profile = search_profile.for_input((_kind_doc or {}).get("claims"))
     (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
         {"query": query, "mode": mode, "subject": subject, "wide": wide, "ood": ood,
-         "doc_token": doc_token, "search_focus": search_focus, "depth": depth}))
+         "doc_token": doc_token, "search_focus": search_focus, "depth": depth,
+         "search_profile": search_profile.describe(_profile, depth=depth)}))
     if user:
         notify = request.form.get("notify_email") == "1"
         try:
@@ -2374,6 +2398,7 @@ def report(slug):
     doc_token = None     # document-search materials, so a live Re-run keeps the doc channels
     search_focus = "all_text"
     depth = "deep"
+    kind_profile = None
     if slug in _GOLD:
         e = _GOLD[slug]
         query, subject, mode = e["query_text"], e.get("anchor_publication"), e["mode"]
@@ -2388,6 +2413,7 @@ def report(slug):
             doc_token = m.get("doc_token")
             search_focus = m.get("search_focus") or "all_text"
             depth = m.get("depth") or "deep"
+            kind_profile = m.get("search_profile")
         title = "Ad-hoc search"
     status, rep = ensure_report(slug, query=query, subject=subject, mode=mode, regen=regen,
                                 wide=wide, doc_token=doc_token, search_focus=search_focus,
@@ -2404,14 +2430,25 @@ def report(slug):
                 active_search = accounts.get_search(user["id"], slug)
             except Exception:
                 pass
+        #  A run started before this existed has no recorded kind. Derive it rather than
+        #  showing nothing: the same input rule gives the same answer.
+        if not kind_profile:
+            _d = _load_doc_materials(doc_token)
+            kind_profile = search_profile.describe(
+                search_profile.for_input((_d or {}).get("claims")), depth=depth)
         return render_template("generating.html", slug=slug, title=title,
                                query=(query or "")[:400], mode=mode, wide=wide,
-                               search_focus=search_focus, active_search=active_search)
+                               search_focus=search_focus, active_search=active_search,
+                               profile=kind_profile)
     view = _build_view_cached(slug, rep, regen)
     view["slug"] = slug
     view["title"] = title
     view["is_gold"] = slug in _GOLD
     view["search_focus"] = rep.get("search_focus") or search_focus
+    #  WHAT KIND OF SEARCH PRODUCED THIS REPORT. On the page for the same reason the corpus
+    #  disclosure is: somebody deciding what a result means has to know a concept search was
+    #  read to a shallower depth than a claim attack.
+    view["search_profile"] = rep.get("search_profile") or kind_profile
     #  Carried so "Refine and search again" keeps the uploaded document's chunk + image channels
     #  instead of silently degrading the new search to text-only.
     view["doc_token"] = doc_token or ""
@@ -6251,6 +6288,17 @@ def draft_filing_download(project_id, fmt):
             mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     except drafting.DraftingError as exc:
         return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
+
+
+@app.route("/api/search-kinds")
+def api_search_kinds():
+    """What the two searches are, what each costs and how long each takes.
+
+    Beside /api/modes for the same reason that one exists: the page must not hard-code a list
+    the engine can change, and a claim that a search takes twelve minutes has to come from the
+    same place the budget does."""
+    return jsonify({"kinds": search_profile.catalogue(),
+                    "enabled": search_profile.ENABLED})
 
 
 @app.route("/api/modes")

@@ -594,13 +594,62 @@ def screen(rows, brief, on_progress=None, sys_prompt=None, header="TARGET INVENT
     return scores
 
 
-def _enrich_missing_text(chosen, on_progress=None, limit=None):
+#  Which environment variable pins each knob. Needed because the profile budget must NOT outrank
+#  an operator who set one: `DEEP_RANK_CHART_TOP=360 CLAIM_REACH=0` is how this repo restores a
+#  previous pipeline for an A/B, and a budget that quietly overrode it would make that A/B a lie.
+_ENV_KNOB = {
+    "SCREEN_TOP": "DEEP_RANK_SCREEN_TOP",
+    "CHART_TOP": "DEEP_RANK_CHART_TOP",
+    "CHART_TOP_MAX": "DEEP_RANK_CHART_TOP_MAX",
+    "ENRICH_TOP": "DEEP_RANK_ENRICH_TOP",
+    "PRESCREEN_ENRICH_TOP": "DEEP_RANK_PRESCREEN_ENRICH",
+    "ALWAYS_CHART_RETRIEVAL_HEAD": "DEEP_RANK_HEAD",
+    "BLIND_RESCUE": "DEEP_RANK_BLIND_RESCUE",
+    "BLIND_RESCUE_MAX": "DEEP_RANK_BLIND_RESCUE_MAX",
+    "CONCEPT_PASS_TOP": "DEEP_RANK_CONCEPT_PASS_TOP",
+}
+
+
+def _budget(overrides):
+    """Resolve this run's depth knobs: the module constant unless the search profile cut it.
+
+    ONE LOOKUP, NOT A SECOND CONFIG SURFACE. `overrides` arrives only when `search_profile`
+    decided the input was a concept search rather than a claim attack. An explicitly SET
+    environment variable beats it, for the reason in `_ENV_KNOB` above.
+
+    Returned as a plain dict so the caller can put it on the report: a run whose depth was cut
+    has to be able to say by how much, or the next person comparing two reports is comparing two
+    different pipelines without knowing it.
+    """
+    base = {"SCREEN_TOP": SCREEN_TOP, "CHART_TOP": CHART_TOP, "CHART_TOP_MAX": CHART_TOP_MAX,
+            "ENRICH_TOP": ENRICH_TOP, "PRESCREEN_ENRICH_TOP": PRESCREEN_ENRICH_TOP,
+            "ALWAYS_CHART_RETRIEVAL_HEAD": ALWAYS_CHART_RETRIEVAL_HEAD,
+            "BLIND_RESCUE": BLIND_RESCUE, "BLIND_RESCUE_MAX": BLIND_RESCUE_MAX,
+            "CONCEPT_PASS_TOP": CONCEPT_PASS_TOP}
+    applied = set()
+    for k, v in (overrides or {}).items():
+        if k not in base or v is None:
+            continue
+        if os.environ.get(_ENV_KNOB.get(k, "")):     # the operator pinned this one; leave it
+            continue
+        base[k] = int(v)
+        applied.add(k)
+    #  BLIND_RESCUE defaults to the screen depth, so a cut screen has to carry it down or the
+    #  rescue would reach past the candidates the screen actually looked at.
+    if "SCREEN_TOP" in applied and "BLIND_RESCUE" not in applied \
+            and not os.environ.get(_ENV_KNOB["BLIND_RESCUE"]):
+        base["BLIND_RESCUE"] = min(base["BLIND_RESCUE"], base["SCREEN_TOP"])
+    return base
+
+
+def _enrich_missing_text(chosen, on_progress=None, limit=None, enrich_top=None):
     """Fetch and persist full text for the chosen references the corpus holds nothing readable for.
 
     Returns the number of references that gained text. Never fatal: a quota-exhausted or
     unreachable source leaves the reference exactly as it was, to be listed rather than read.
     """
-    if ENRICH_TOP <= 0 or not chosen:
+    enrich_top = ENRICH_TOP if enrich_top is None else int(enrich_top)
+    if enrich_top <= 0 or not chosen:
         return 0
     try:
         import enrich
@@ -636,7 +685,7 @@ def _enrich_missing_text(chosen, on_progress=None, limit=None):
         if cl == 0 and pa == 0:
             thin.append(pub)
     thin.sort(key=lambda p: order.get(p, 10 ** 6))
-    thin = thin[:(limit or ENRICH_TOP)]
+    thin = thin[:(limit or enrich_top)]
     if not thin:
         return 0
     if on_progress:
@@ -984,7 +1033,7 @@ def _llm_spend(before):
     return out
 
 
-def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
+def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", budget=None):
     """Screen wide, read deep, and return the authoritative ranking. Mutates `report`.
 
     Writes the charts in ``deep_analysis``'s own schema so the "What it discloses" tab and
@@ -995,9 +1044,15 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
     rescue — every skipped stage is exactly what the deep escalation adds back. The scoring,
     the ledger and the page machinery are identical, so a quick report is a subset of a deep
     one, never a different product.
+
+    `budget` is the depth cut a CONCEPT search gets (search_profile.budget_for). A description
+    with no claims owes coverage of an invention, not an answer for every limitation of every
+    claim, and it was being read to the second standard at the second price. Empty or None runs
+    the full budget, which is what a document with claims always gets.
     """
     started = time.time()
     quick = depth == "quick"
+    B = _budget(budget)
     #  WHAT THIS STAGE COSTS, measured rather than reconstructed afterwards. See llm.process_usage:
     #  the report's existing `llm_usage` is scoped to the agent and misses essentially all of it.
     usage_before = _spend_snapshot()
@@ -1099,13 +1154,13 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
         cur = conn.cursor()
         #  The cutoff the whole search already runs against decides WHICH member of each
         #  family is read, quoted and ultimately cited. See webview.resolve_family_reps.
-        reps = webview.resolve_family_reps(cur, ranked[:SCREEN_TOP],
+        reps = webview.resolve_family_reps(cur, ranked[:B["SCREEN_TOP"]],
                                            subject_efd=webview.subject_efd_of(report))
         #  THE EXAMINER'S OWN REFERENCES GO IN AS THEMSELVES. See _seed_families: the family
         #  representative is chosen on dates and text, but a document an examiner APPLIED is the
         #  document to read, not whichever sibling the ordering prefers.
-        families, seed_fams = _seed_families(cur, report, ranked[:SCREEN_TOP], reps)
-        rows = _candidate_rows(cur, families, reps, SCREEN_TOP + len(seed_fams))
+        families, seed_fams = _seed_families(cur, report, ranked[:B["SCREEN_TOP"]], reps)
+        rows = _candidate_rows(cur, families, reps, B["SCREEN_TOP"] + len(seed_fams))
     finally:
         conn.close()
     rows = [r for r in rows if not deep_analysis._same_pub(subject_pub, r["pub"])]
@@ -1131,11 +1186,12 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
     prescreen_enriched = 0
     #  Quick tier: no paid text fetching — the screen judges what the corpus already holds, and
     #  the escalation's deep run does the recovering.
-    if PRESCREEN_ENRICH_TOP > 0 and not quick:
+    if B["PRESCREEN_ENRICH_TOP"] > 0 and not quick:
         t_pre = time.time()
         emit("prescreen_enrich_start", n=len(rows))
         prescreen_enriched = _enrich_missing_text(rows, on_progress=emit,
-                                                  limit=PRESCREEN_ENRICH_TOP)
+                                                  limit=B["PRESCREEN_ENRICH_TOP"],
+                                                  enrich_top=B["ENRICH_TOP"])
         if prescreen_enriched:
             #  Rebuild the candidate text so the screener sees what was just fetched. One query
             #  set over the same pids — the alternative is tracking which rows changed, and a row
@@ -1145,7 +1201,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
                 conn2.autocommit = True
                 try:
                     rebuilt = _candidate_rows(conn2.cursor(), families, reps,
-                                              SCREEN_TOP + len(seed_fams))
+                                              B["SCREEN_TOP"] + len(seed_fams))
                 finally:
                     conn2.close()
                 fresh = {r["pub"]: r for r in rebuilt}
@@ -1202,15 +1258,15 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
             traceback.print_exc()
 
     for i, r in enumerate([] if quick else by_screen):
-        if len(chosen) >= CHART_TOP_MAX:
+        if len(chosen) >= B["CHART_TOP_MAX"]:
             break
-        if i >= CHART_TOP and scores.get(r["pub"], -1) < CHART_MIN_SCREEN:
+        if i >= B["CHART_TOP"] and scores.get(r["pub"], -1) < CHART_MIN_SCREEN:
             break
         if r["pub"] in seen:
             continue
         chosen.append(r)
         seen.add(r["pub"])
-    for r in ([] if quick else rows[:ALWAYS_CHART_RETRIEVAL_HEAD]):
+    for r in ([] if quick else rows[:B["ALWAYS_CHART_RETRIEVAL_HEAD"]]):
         if r["pub"] not in seen:
             chosen.append(r)
             seen.add(r["pub"])
@@ -1253,8 +1309,8 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
     #  candidate the screen could not see text for is read anyway if the retrieval ranked it
     #  inside BLIND_RESCUE. Bounded, and it is exactly the set that on-demand text can rescue.
     rescued = 0
-    for r in ([] if quick else rows[:BLIND_RESCUE]):
-        if rescued >= BLIND_RESCUE_MAX:
+    for r in ([] if quick else rows[:B["BLIND_RESCUE"]]):
+        if rescued >= B["BLIND_RESCUE_MAX"]:
             break
         if r["pub"] not in seen and not r.get("has_text"):
             chosen.append(r)
@@ -1363,12 +1419,12 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
     #  grounding and location gates plus the refuter — a second look widens what the reader
     #  RECOGNISES, never what it is allowed to assert.
     reread_changed = reread_refs = 0
-    if CONCEPT_PASS_TOP > 0 and hints:
+    if B["CONCEPT_PASS_TOP"] > 0 and hints:
         prelim = sorted(
             [c for c in charts if c.get("method") == "llm"],
             key=lambda c: (-(int((c.get("overall") or {}).get("score") or 0)),
                            -(c.get("screen") if c.get("screen") is not None else -1),
-                           c.get("retrieval_rank") or 10 ** 6))[:CONCEPT_PASS_TOP]
+                           c.get("retrieval_rank") or 10 ** 6))[:B["CONCEPT_PASS_TOP"]]
 
         def second(ref):
             try:
@@ -1666,6 +1722,12 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
         "chart_seconds": round(chart_seconds, 1),
         "seconds": round(time.time() - started, 1),
         "depth": depth,
+        #  THE DEPTH THIS RUN ACTUALLY GOT. Two reports of the same subject are only comparable
+        #  if they were read to the same depth, and a concept search is read to a shallower one
+        #  on purpose. Recording the resolved budget is what stops the difference being invisible
+        #  — the same reason `manifest` records the corpus snapshot and the commit.
+        "budget": dict(B),
+        "budget_cut": sorted(k for k in B if k in (budget or {})),
         "llm": _llm_spend(usage_before),
         "claim_reach": {"claims_searched": len(reach_map),
                         "claims_with_candidates": sum(1 for h in reach_map.values() if h),
