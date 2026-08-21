@@ -19,6 +19,17 @@ from config import SEED_CPC
 
 RRF_K = 40             # smaller K sharpens the rank-1 advantage of a strong channel
 CHUNK_FETCH = 4000     # chunks pulled before aggregating to publications
+#  How many of the query's longest lexemes the general lexical channel ORs together.
+#
+#  MEASURED 2026-08-21 on the live corpus, one pass, same 1000-publication cap: 18 terms took
+#  33.6 s and 8 took 8.5 s, both filling the cap. A deep run makes up to 39 passes and this channel
+#  was 54% of each one, so the term count was worth about 22 minutes of a 112-minute search — more
+#  than the entire vector side of retrieval, which is 0.01 s per ANN query.
+#
+#  The operator stays OR. Requiring all terms of a long query-by-example returns nothing: 18 AND
+#  measured 0 publications, 4 AND measured 4. `channel_claim_bm25` can require AND because it is a
+#  precision channel beside a broad one; this is the broad one.
+BM25_TERMS = int(os.environ.get("BM25_TERMS", "8"))
 PUB_CAP = 1000         # per-channel publication cap (the spec's ~1000 width)
 
 # ---- funnel width -------------------------------------------------------------------------
@@ -347,8 +358,9 @@ class Retriever:
         if not q or not q.strip():
             return []
         dc, dp = _date_clause(subject, mode)
-        # OR the query's lexemes (AND would match nothing for a long query-by-example), capped to
-        # the ~22 most specific (longest) lexemes, and restricted to non-paragraph chunks
+        # OR the query's lexemes (AND would match nothing for a long query-by-example), capped
+        # to BM25_TERMS of the most specific (longest) ones, and restricted to non-paragraph
+        # chunks
         # (abstract/claims/whole carry the key terms; excluding descriptions keeps the match set
         # and the ts_rank_cd GROUP BY bounded -> fast).
         # Rank publications by the COUNT of matching non-paragraph chunks (how many of the
@@ -356,7 +368,7 @@ class Retriever:
         # count(*) is far cheaper than density ranking, and RRF fuses by rank anyway.
         sql = (f"WITH tq AS (SELECT to_tsquery('english', NULLIF(array_to_string(ARRAY("
                f"  SELECT w FROM unnest(tsvector_to_array(to_tsvector('english', %s))) w "
-               f"  ORDER BY length(w) DESC LIMIT 18), ' | '), '')) q) "
+               f"  ORDER BY length(w) DESC LIMIT {BM25_TERMS}), ' | '), '')) q) "
                f"SELECT c.publication_id, count(*) AS score "
                f"FROM chunks c JOIN publications p ON p.id=c.publication_id, tq "
                f"WHERE tq.q IS NOT NULL AND c.kind <> 'paragraph' AND c.tsv @@ tq.q {dc} "
