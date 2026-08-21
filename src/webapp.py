@@ -1863,6 +1863,19 @@ def _inject_lookup_base():
     return {"lookup_base": LOOKUP_BASE}
 
 
+@app.route("/corpus")
+def corpus_page():
+    """What is in our own database, measured.
+
+    The out-of-domain notice is the only place the scope was ever stated, and it says what the
+    corpus is NOT. This says what it is: size, coverage, offices, classifications, embeddings, the
+    machines, and what a second field would cost. Cheap to render — catalogue reads plus two
+    cached files; the counts that take minutes are snapshotted by `corpus_profile.snapshot`.
+    """
+    import corpus_profile
+    return render_template("corpus.html", title="Corpus", p=corpus_profile.profile())
+
+
 @app.route("/patentlookup")
 def patent_lookup():
     """The register lookup, inside the search app.
