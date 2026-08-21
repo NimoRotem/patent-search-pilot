@@ -131,10 +131,30 @@
     <input type="hidden" name="mode" value="novelty">
     <input type="hidden" name="search_focus" id="search-focus" value="all_text">
 
+    {#  WHICH SEARCH THIS WILL BE, before it is started.
+
+        Two very different searches leave from this one button. A description with no claims is a
+        CONCEPT search: the invention is broken into its distinct technical concepts and each one
+        is searched. A patent that arrives with its claims is a CLAIM ATTACK: every claim is split
+        into its separate requirements and each requirement is searched, read for and rescued.
+        Measured, the second takes an hour to two hours and the first takes minutes — and until
+        now the page described both as "several minutes", so somebody who typed a paragraph had no
+        way to know they had started the expensive one.
+
+        The badge is driven by the same fact the engine uses (does the input carry claims), so it
+        cannot disagree with what actually runs. Server-rendered default, flipped by the extract
+        step the moment a document turns out to have claims.  #}
+    <div class="kindbadge" id="kindBadge" data-kind="concept">
+      <span class="kindname" id="kindName">Concept search</span>
+      <span class="kindeta" id="kindEta">about 8-25 minutes</span>
+      <span class="kindwhat small muted" id="kindWhat">Breaks the description into its distinct
+        technical concepts and searches each one, then reads the strongest references in full.</span>
+    </div>
+
     <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <button class="btn" type="submit" id="gobtn">Search prior art</button>
       <span class="small muted">Searches the local corpus and external patent APIs. First matches
-        usually appear within a minute; full refinement can take several minutes. Cached afterwards.</span>
+        usually appear within a minute. Cached afterwards.</span>
     </div>
 
     {% if current_user %}
@@ -210,6 +230,33 @@ window.addEventListener('pageshow', () => {
 
   const $ = id => document.getElementById(id);
 
+  /*  THE SEARCH-KIND BADGE.
+      Fetched from /api/search-kinds rather than written into this file, so the label, the summary
+      and the quoted time come from the same module that sets the budget. If the fetch fails the
+      server-rendered default stands, which is the honest fallback: a typed description IS a
+      concept search.                                                                            */
+  let KINDS = null;
+  fetch(B + '/api/search-kinds', {credentials:'same-origin'})
+    .then(r => r.json()).then(d => { KINDS = d && d.kinds ? d.kinds : null; setKind(currentKind()); })
+    .catch(() => {});
+
+  //  The same rule the engine uses: claims present -> claim attack, otherwise concept search.
+  //  `currentClaims()` reads the review panel, so correcting or deleting the extracted claims
+  //  changes the badge before the search is started, exactly as it changes the search.
+  function currentKind(){
+    return (doc && currentClaims().length) ? 'claims' : 'concept';
+  }
+  function setKind(kind){
+    const badge = $('kindBadge');
+    if(!badge) return;
+    badge.dataset.kind = kind;
+    const k = (KINDS || []).find(x => x.kind === kind);
+    if(!k) return;
+    $('kindName').textContent = k.label;
+    $('kindEta').textContent = k.eta_text;
+    $('kindWhat').textContent = k.summary;
+  }
+
   function claimRow(c, i){
     const row = document.createElement('div');
     row.className = 'exclaim' + (c.independent ? ' indep' : '');
@@ -243,6 +290,9 @@ window.addEventListener('pageshow', () => {
     $('exClaimsMeta').textContent = rows.length
       ? `${rows.length} claim${rows.length===1?'':'s'}, ${ind} independent`
       : 'none found — add one if the document has claims';
+    //  Deleting the last claim turns a claim attack back into a concept search, and the badge
+    //  has to say so BEFORE the button is pressed, not an hour later on the report.
+    setKind(currentKind());
   }
 
   function currentClaims(){
@@ -316,6 +366,7 @@ window.addEventListener('pageshow', () => {
     $('exNotesMeta').textContent = notes.length + ' step' + (notes.length===1?'':'s');
 
     pristine = snapshot();
+    setKind(currentKind());
     preview.hidden = false;
     // AFTER unhiding: a hidden textarea reports scrollHeight 0, so sizing it while the panel is
     // still hidden collapses every claim to two lines and hides the text the user is here to check.

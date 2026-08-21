@@ -104,6 +104,18 @@
   <!-- ── compact header ──────────────────────────────────────────────────── -->
   <div class="rhead">
     <h1 id="reportTitle">{{ (v.account_search.title if v.account_search and v.account_search.title else v.title) }}</h1>
+    {#  WHICH SEARCH PRODUCED THIS REPORT.
+
+        A concept search and a claim attack answer different questions and are read to different
+        depths, on purpose. Somebody reading a thin result set has to be able to tell which one
+        they are looking at, for the same reason the corpus scope is disclosed here and not only
+        on /about: this is the page where a person decides what a result means.  #}
+    {% if v.search_profile %}
+    <div class="kindbadge onreport" data-kind="{{ v.search_profile.kind }}">
+      <span class="kindname">{{ v.search_profile.label }}</span>
+      <span class="kindwhat small muted">{{ v.search_profile.summary }}</span>
+    </div>
+    {% endif %}
     {#  WHAT WAS SEARCHED, in full. The header used to hard-truncate at 280 characters with an
         ellipsis and no way back — for a document/patent-link search the query IS a multi-paragraph
         brief, so the operator could not see what the agent actually ran. The whole string is now in

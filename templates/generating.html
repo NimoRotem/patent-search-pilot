@@ -4,6 +4,17 @@
 <div class="wrap">
   <div class="panel gen">
     <h2>Searching the prior art</h2>
+    {#  WHICH SEARCH IS RUNNING, and roughly how long it takes. The stage narrative below says
+        what is happening right now; this says what the whole thing is and when it ends, which is
+        the question somebody deciding whether to wait is actually asking. Measured ranges, from
+        search_profile — not a spinner's worth of optimism.  #}
+    {% if profile %}
+    <div class="kindbadge running" data-kind="{{ profile.kind }}">
+      <span class="kindname">{{ profile.label }}</span>
+      <span class="kindeta">{{ profile.eta_text }}</span>
+      <span class="kindwhat small muted">{{ profile.summary }}</span>
+    </div>
+    {% endif %}
     <p class="genq">“{{ query }}” · {{ mode.replace('_',' ') }} mode ·
       {{ 'claims-focused search' if search_focus == 'claims' else 'all patent text' }}</p>
     {% if current_user %}

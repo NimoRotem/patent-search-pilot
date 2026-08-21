@@ -1012,6 +1012,27 @@ details.tail.pending>summary::before,details.tail[data-state="pending"]>summary:
   border-radius:6px;padding:9px 11px}
 .ex-snip.ex-brief{color:var(--ink)}
 
+/* ── which search this is, and roughly how long it takes ─────────────────────────────────────
+   Two searches leave from one button and they differ by an order of magnitude in time and cost.
+   The badge is a statement of fact, not a warning, so it is quiet: one accent rule down the side,
+   the name, the measured range, and one line of what it does. The claim attack is the expensive
+   one and gets the warm rule; nothing here shouts. */
+.kindbadge{margin:14px 0 4px;padding:9px 13px;border:1px solid var(--line);
+  border-left:3px solid var(--accent);border-radius:var(--r-sm);background:var(--s1);
+  display:grid;grid-template-columns:auto auto 1fr;gap:4px 10px;align-items:baseline}
+.kindbadge[data-kind="claims"]{border-left-color:var(--warn);background:var(--warn-soft)}
+.kindbadge .kindname{font-weight:650;font-size:13.5px;color:var(--ink)}
+.kindbadge .kindeta{font-size:12px;color:var(--muted);padding:1px 8px;border-radius:var(--r-pill);
+  border:1px solid var(--line2);background:var(--s2);white-space:nowrap}
+.kindbadge .kindwhat{grid-column:1 / -1;line-height:1.5}
+.kindbadge.onreport{margin:8px 0 2px;background:transparent;border:0;border-left:3px solid var(--accent);
+  padding:2px 0 2px 11px;border-radius:0}
+.kindbadge.onreport[data-kind="claims"]{background:transparent;border-left-color:var(--warn)}
+@media (max-width:560px){
+  .kindbadge{grid-template-columns:1fr}
+  .kindbadge .kindeta{justify-self:start}
+}
+
 /* ── upload progress: the real phase the server is in, never a timer ─────────────────────── */
 .exprog{margin-top:11px}
 .exprogbar{height:5px;border-radius:var(--r-pill);background:var(--s2);overflow:hidden}
