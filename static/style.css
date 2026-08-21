@@ -1905,6 +1905,22 @@ tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
 .fptbl th{text-align:left;font-weight:600;color:var(--muted,#666);white-space:nowrap}
 .fptbl td{vertical-align:top;padding:.12rem .5rem .12rem 0}
 
+/* --- history: the details a row could not hold --- */
+/*  The list clamps a query to two lines and said nothing about cost. This opens under the row,
+    quiet, and never pushes the rows around: it is hidden until asked for.  */
+.histmore{font:inherit;font-size:.74rem;background:none;border:1px solid var(--border,#ddd);
+  border-radius:3px;padding:0 .35rem;cursor:pointer;color:var(--muted,#666);margin-left:.2rem}
+.histmore:hover,.histmore[aria-expanded="true"]{border-color:var(--accent);color:var(--fg,#222)}
+.histdetail{grid-column:1/-1;margin:.45rem 0 .1rem;padding:.55rem .7rem;
+  background:var(--bg2,#fafafa);border:1px solid var(--border,#eee);border-radius:4px;
+  font-size:.84rem}
+.histdetail .hxq{margin:.15rem 0 .4rem}
+.histdetail .hxqt{margin-top:.15rem;white-space:pre-wrap;line-height:1.45}
+.histdetail .hxgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+  gap:.25rem .9rem;margin:.35rem 0}
+.histdetail .hxnote{margin:.3rem 0 0;line-height:1.4}
+
+
 .llim{padding:.4rem .6rem;border-top:1px solid var(--border,#f0f0f0)}
 .ll-uncovered{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
 .lltext{line-height:1.4}

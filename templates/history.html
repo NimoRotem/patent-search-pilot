@@ -62,7 +62,16 @@
           {% if e.notify_email and e.notification_status == 'pending' %}<span class="badge">email requested</span>{% endif %}
           {% if e.notification_status in ('queued','sent') %}<span class="badge">email {{ e.notification_status }}</span>{% endif %}
           <span>{{ e.when }}</span>
+          {#  EXPAND. The row is a two-line clamp of a query that can run to four hundred
+              characters, and what a search cost was never on this page at all. Both are loaded on
+              demand: the receipt is a small sidecar, but a report that predates it has to be read
+              to derive one, and doing that for three hundred rows on every page load is not a
+              page load. #}
+          <button type="button" class="histmore" data-slug="{{ e.slug }}"
+                  aria-expanded="false" aria-controls="hx-{{ e.slug }}"
+                  title="The full search, the patent it started from, and what it cost">details</button>
         </span>
+        <div class="histdetail" id="hx-{{ e.slug }}" hidden></div>
       </li>
       {% endfor %}
     </ul>
@@ -110,6 +119,77 @@
   q.addEventListener('input', apply); status.addEventListener('change', apply);
   document.getElementById('historyReset').addEventListener('click', reset);
   document.getElementById('historyEmptyReset').addEventListener('click', reset);
+
+  /*  THE DETAILS PANEL.
+
+      Three things this list could not say. The query is clamped to two lines and can run to four
+      hundred characters. If the search started from a patent, the number was only in the report.
+      And what a search cost — how long, how many calls, how many tokens — was live-only and died
+      with the process, so it was nowhere at all.
+
+      Loaded per row, on click. The receipt is a small sidecar file, but a report written before
+      the receipt existed has to be READ to derive one, and reading three hundred multi-megabyte
+      reports is not a page load. */
+  const B = window.APP_BASE || '', LB = window.LOOKUP_BASE || '/patentlookup';
+  const seen = {};
+
+  function esc(x){ return String(x==null?'':x).replace(/[&<>"]/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  function fact(k, v){ return v ? '<div><span class="fldl">'+esc(k)+'</span> '+v+'</div>' : ''; }
+
+  function draw(el, d){
+    const st = d.stats || {}, sum = d.summary || {};
+    const h = [];
+    if (d.query) h.push('<div class="hxq"><span class="fldl">Full search</span>'
+      + '<div class="hxqt">'+esc(d.query)+'</div></div>');
+    /*  The patent it started from, linked into the register lookup rather than to Google: that is
+        where the legal events, the file and the open windows are. */
+    if (st.subject_pub) {
+      h.push('<div class="hxq"><span class="fldl">Started from</span> '
+        + '<a class="pn" href="'+B+'/patentlookup?number='+encodeURIComponent(st.subject_pub)+'">'
+        + esc(st.subject_pub)+' &#8599;</a>'
+        + (st.subject_title ? ' <span class="cc">'+esc(st.subject_title)+'</span>' : '')
+        + (st.n_claims ? ' <span class="cc">'+st.n_claims+' claims</span>' : '')
+        + '</div>');
+    }
+    const cost = [];
+    cost.push(fact('Time', sum.time ? esc(sum.time) : null));
+    cost.push(fact('Model calls', sum.calls ? esc(sum.calls) : null));
+    cost.push(fact('Tokens', sum.tokens ? esc(sum.tokens) : null));
+    cost.push(fact('Read in full', st.read_in_full ? st.read_in_full.toLocaleString()
+      + (st.chars_read ? ' refs, '+(st.chars_read/1e6).toFixed(1)+'M chars' : ' refs') : null));
+    cost.push(fact('Screened', st.screened ? st.screened.toLocaleString()+' candidates' : null));
+    cost.push(fact('Families found', st.n_families ? st.n_families.toLocaleString() : null));
+    cost.push(fact('External queries', st.external_queries || null));
+    const body = cost.filter(Boolean).join('');
+    if (body) h.push('<div class="hxgrid">'+body+'</div>');
+    (sum.notes || []).forEach(n => h.push('<p class="cc hxnote">'+esc(n)+'</p>'));
+    if (!h.length) h.push('<p class="cc">Nothing was recorded for this search.</p>');
+    el.innerHTML = h.join('');
+  }
+
+  document.addEventListener('click', ev => {
+    const btn = ev.target.closest && ev.target.closest('.histmore');
+    if (!btn) return;
+    ev.preventDefault();
+    const slug = btn.dataset.slug, el = document.getElementById('hx-'+slug);
+    if (!el) return;
+    if (seen[slug]) {
+      el.hidden = !el.hidden;
+      btn.setAttribute('aria-expanded', String(!el.hidden));
+      return;
+    }
+    seen[slug] = true;
+    el.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    el.innerHTML = '<p class="cc">Reading this search\u2019s record\u2026</p>';
+    fetch(B+'/api/search/'+encodeURIComponent(slug)+'/stats', {credentials:'same-origin'})
+      .then(r => { if(!r.ok) throw new Error('That search\u2019s record could not be read.');
+                   return r.json(); })
+      .then(d => draw(el, d))
+      .catch(e => { el.innerHTML = '<p class="cc">'+esc(e.message)+'</p>'; });
+  });
 })();
 </script>{% endif %}
 {% endblock %}

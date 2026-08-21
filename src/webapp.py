@@ -22,6 +22,7 @@ import failclosed                                  # degrade loudly, or not at a
 import manifest                                    # immutable record of what produced a run
 import trace                                       # one row per candidate, one terminal stage
 import deep_rank                                   # screen wide, read deep, rank on the evidence
+import run_stats                                   # what one search cost: time, calls, tokens
 import query_set                                   # many short queries instead of one long brief
 import report_archive                              # automatic top-50 full-text Markdown ZIP
 import export_data, export_pdf, export_docx, export_xlsx, export_md, export_ids
@@ -936,6 +937,14 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
         accounts.mark_search_running(slug)
     except Exception:
         traceback.print_exc()
+    #  THE RUN'S OWN WINDOW. Everything about what a search cost was live-only and died with the
+    #  process; see run_stats. `_JOBS` is read here and again at the end so the receipt can say
+    #  whether another search shared the worker, which is what makes the token figure an upper
+    #  bound rather than this search's own cost.
+    _stats_t0 = time.time()
+    _stats_tok0 = _tok_now()
+    with _JOB_LOCK:
+        _stats_alone = [s for s in _JOBS if s != slug]
     #  IMMUTABLE RUN MANIFEST, written BEFORE anything happens. No comparison between two runs is
     #  valid unless they shared a corpus snapshot, a commit, the same prompts and the same budgets,
     #  and nothing recorded that: runs taken hours apart, with the corpus being written to and
@@ -1330,6 +1339,16 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                         n_ranked_families=len(rep.get("ranked_families") or []),
                         n_displayed=len((view or {}).get("cards") or []),
                         degraded=degraded)
+        #  The receipt, written before the notification so a user who opens the mail and clicks
+        #  straight through finds the cost already on the page.
+        try:
+            with _JOB_LOCK:
+                shared = bool(_stats_alone) or bool([s for s in _JOBS if s != slug])
+            run_stats.record(REPORTS, slug, seconds=time.time() - _stats_t0,
+                             tokens=max(0, _tok_now() - _stats_tok0),
+                             shared_process=shared, report=rep)
+        except Exception:
+            traceback.print_exc()
         if "PYTEST_CURRENT_TEST" not in os.environ:
             try:
                 notifications.queue_search_completion(slug)
@@ -1855,6 +1874,46 @@ def patent_lookup():
     if not auth.auth_enabled(app) or auth.current_user() or auth.is_loopback():
         return render_template("patentlookup.html", title="Patent lookup")
     return redirect(url_for("auth.login", next=request.script_root + "/patentlookup"))
+
+
+@app.route("/api/search/<slug>/stats")
+def api_search_stats(slug):
+    """What this search was and what it cost. Read on EXPAND, never for a whole list.
+
+    The receipt is a small sidecar; a report that predates it is derived from the report itself,
+    which is megabytes, so this is one slug at a time and never three hundred.
+    """
+    if not valid_slug(slug):
+        abort(404)
+    if not _may_read_report(slug):
+        abort(404)
+    seconds = None
+    user = auth.current_user()
+    if user:
+        try:
+            row = accounts.get_search(user["id"], slug) or {}
+            a, b = row.get("created_at"), row.get("completed_at")
+            if a and b:
+                seconds = max(0.0, (b - a).total_seconds())
+        except Exception:
+            traceback.print_exc()
+    p = run_stats.path_for(REPORTS, slug)
+    rep = None if os.path.exists(p) else _load_report(slug)
+    st = run_stats.load(REPORTS, slug, report=rep, seconds=seconds)
+    meta = {}
+    try:
+        mp = REPORTS / ("%s.meta.json" % slug)
+        if mp.exists():
+            meta = json.loads(mp.read_text())
+    except Exception:
+        pass
+    return jsonify({
+        "slug": slug,
+        "query": (meta.get("query") or (rep or {}).get("query") or ""),
+        "stats": st,
+        "summary": run_stats.summarise(st),
+        "concise_built": _concise_count(slug),
+    })
 
 
 @app.route("/history")
