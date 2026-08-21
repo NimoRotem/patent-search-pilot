@@ -18,6 +18,10 @@ from email.message import EmailMessage
 from pathlib import Path
 import hashlib
 
+import json
+import urllib.error
+import urllib.request
+
 import accounts
 import db
 
@@ -47,10 +51,22 @@ def _sendmail_path():
     return None
 
 
+def _resend_key():
+    return (os.environ.get("RESEND_API_KEY") or "").strip()
+
+
 def transport_status():
     """Non-secret status for the admin page and health checks."""
     if MAIL_TRANSPORT == "capture":
         return {"configured": True, "transport": "capture", "detail": "test capture"}
+    #  RESEND, DIRECTLY. On instance-3 this app handed mail to a host-local per-domain gateway on
+    #  127.0.0.1:2530 which relayed to Resend. That gateway is a whole webmail tenant with its own
+    #  database, inbound forwarding and digest rules — not something to fork onto a second box just
+    #  so an outbound notification can leave. Sending straight to Resend removes the cross-host
+    #  dependency entirely, which is the point of giving the patents stack its own machine.
+    if MAIL_TRANSPORT == "resend" or (MAIL_TRANSPORT == "auto" and _resend_key()):
+        return {"configured": bool(_resend_key()), "transport": "resend",
+                "detail": "Resend API" if _resend_key() else "RESEND_API_KEY is missing"}
     smtp_host = (os.environ.get("SMTP_HOST") or "").strip()
     if MAIL_TRANSPORT == "smtp" or (MAIL_TRANSPORT == "auto" and smtp_host):
         return {"configured": bool(smtp_host), "transport": "smtp",
@@ -75,6 +91,26 @@ def _deliver(row):
     if MAIL_TRANSPORT == "capture":
         _CAPTURED.append({"to": row["to_email"], "subject": row["subject"],
                           "body": row["body_text"]})
+        return
+
+    if MAIL_TRANSPORT == "resend" or (MAIL_TRANSPORT == "auto" and _resend_key()):
+        key = _resend_key()
+        if not key:
+            raise TransportUnavailable("RESEND_API_KEY is not configured")
+        payload = {"from": MAIL_FROM, "to": [str(row["to_email"])],
+                   "subject": str(row["subject"])[:240], "text": row["body_text"]}
+        req = urllib.request.Request(
+            "https://api.resend.com/emails", data=json.dumps(payload).encode(), method="POST",
+            #  Resend 403s the default urllib User-Agent. Learned the hard way; a real one is not
+            #  optional.
+            headers={"Authorization": "Bearer %s" % key, "Content-Type": "application/json",
+                     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) rotem-patents/1.0"})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as fh:
+                fh.read()
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")[:300]
+            raise RuntimeError("Resend returned %s: %s" % (e.code, detail))
         return
 
     smtp_host = (os.environ.get("SMTP_HOST") or "").strip()
