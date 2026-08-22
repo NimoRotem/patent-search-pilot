@@ -7,7 +7,6 @@ These guard the two serving-layer fixes:
     in its own child process instead.
 """
 import json
-import queue
 import threading
 import time
 import pytest
@@ -20,30 +19,11 @@ GOLD = "grabo_gripper_novelty"
 
 
 # ---- helpers --------------------------------------------------------------------------------
-def _drain(resp, deadline=10.0):
-    """Consume an SSE response in a background thread; return the parsed data frames."""
-    out, q = [], queue.Queue()
-
-    def reader():
-        try:
-            for chunk in resp.response:
-                q.put(chunk)
-        except Exception:
-            pass
-        finally:
-            q.put(None)
-
-    t = threading.Thread(target=reader, daemon=True)
-    t.start()
-    buf, end = b"", time.time() + deadline
+def _drain(resp):
+    """Consume a terminal SSE response on the thread that opened its Flask context."""
+    out, buf = [], b""
     try:
-        while time.time() < end:
-            try:
-                chunk = q.get(timeout=0.25)
-            except queue.Empty:
-                continue
-            if chunk is None:
-                break
+        for chunk in resp.response:
             buf += chunk
             while b"\n\n" in buf:
                 frame, buf = buf.split(b"\n\n", 1)
@@ -51,12 +31,6 @@ def _drain(resp, deadline=10.0):
                 if frame.startswith("data:"):
                     out.append(json.loads(frame[5:].strip()))
     finally:
-        # The request and its context originate on this thread. Once the reader has exhausted the
-        # terminal generator, close here so Flask resets this thread's context token. Closing only
-        # inside the reader leaves `g` shared with later test-client requests.
-        t.join(timeout=1.0)
-        if t.is_alive():
-            raise AssertionError("the SSE reader did not terminate before its deadline")
         resp.close()
     return out
 
@@ -108,20 +82,22 @@ def test_sse_streams_progress_then_terminates(app_client, monkeypatch, tmp_path)
         webapp._JOBS[slug] = {"status": "running", "msg": "Queued…"}
 
     resp = app_client.get(f"/events/{slug}")
-    got = []
-    done = threading.Event()
+    published = threading.Event()
 
-    def reader():
-        got.extend(_drain(resp, deadline=8.0))
-        done.set()
+    def publisher():
+        time.sleep(0.4)                               # let the listener subscribe
+        webapp._set_job(slug, kind="elements", msg="Decomposed into 5 elements…")
+        time.sleep(0.2)
+        (tmp_path / f"{slug}.json").write_text("{}")  # the report now exists on disk
+        webapp._set_job(slug, kind="done", status="done", msg="done")
+        published.set()
 
-    threading.Thread(target=reader, daemon=True).start()
-    time.sleep(0.4)                                   # let the listener subscribe
-    webapp._set_job(slug, kind="elements", msg="Decomposed into 5 elements…")
-    time.sleep(0.2)
-    (tmp_path / f"{slug}.json").write_text("{}")      # the report now exists on disk
-    webapp._set_job(slug, kind="done", status="done", msg="done")
-    done.wait(timeout=9)
+    writer = threading.Thread(target=publisher, daemon=True)
+    writer.start()
+    got = _drain(resp)
+    writer.join(timeout=9)
+    assert published.is_set(), "the progress publisher did not reach its terminal event"
+    assert not has_request_context(), "the progress stream leaked its Flask request context"
 
     msgs = [f["msg"] for f in got]
     assert any("Decomposed into 5 elements" in m for m in msgs), msgs
