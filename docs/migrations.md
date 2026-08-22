@@ -47,37 +47,30 @@ An empty ledger does **not** mean an empty database. The runner probes each migr
 objects it creates and classifies it `all`, `none` or `partial`, then:
 
 * everything `none`: a genuinely fresh database, apply normally.
-* everything `all`: `BootstrapRequired`. Adopting is right, but a human asks for it.
+* everything `all`: `BootstrapRequired`. The operator must invoke `adopt` explicitly.
 * a mixture: `BootstrapUndecidable`. Report which migration fell on which side and stop.
 
 Replaying is not a safe fallback, for two measured reasons. `007_figure_compiler.sql` ends in a
 bare `CREATE TRIGGER`, which has no `IF NOT EXISTS` form here, so a second run **raises**. And
 `002_indexes.sql` builds `ix_chunks_hnsw`, which measures **94 GB** on the live box.
 
-### Measured pre-adoption state of the live corpus database, 2026-08-22
+### Live corpus database ledger, 2026-08-22
 
 ```
-ledger exists: False
-001  all        003  all        005  all        007  all        009  all
-002  PARTIAL    004  all        006  all        008  all
+adopted: 001 003 004 005 006 007 008 009
+pending: 002
+009 checksum: 954e4ec3af83774db8da9af40581e392b62337e8031f1493d6b2db485a3633eb
 ```
 
-`002` is partial for a real reason: `ix_chunks_hnsw` and `ix_chunks_tsv` exist, but
+The adoption ran from committed integration checkpoint `dbe01d7`. Every selected migration probed
+`all`; the runner recorded the files and checksums without executing their DDL. A subsequent
+`migrate.py status` reports those eight versions applied and only 002 pending.
+
+`002` remains pending for a real reason: `ix_chunks_hnsw` and `ix_chunks_tsv` exist, but
 `ix_bench1024_hnsw` and `ix_bench3072_hnsw` do not. Those index the dimension sweep benchmark
-tables, which hold 1,308 rows each and were evidently never indexed on purpose.
-
-So the live database is **undecidable by the rule above, and the tool will refuse it**. That is the
-correct answer, not an obstacle. The resolution is a human decision recorded explicitly:
-
-```
-migrate.py adopt --only 001 003 004 005 006 007 008 009
-```
-
-then decide `002` on its merits. Either build the two benchmark indexes so it becomes fully
-present, or revise the not-yet-adopted legacy baseline so optional benchmark indexes are represented
-separately. The runner will refuse to adopt partial `002`. **Do not insert a ledger row by hand or
-run a bare `adopt`**, because that would record `002` as complete when two of its four indexes do
-not exist, which is the exact lie the ledger exists to prevent.
+tables, which hold 1,308 rows each. Do not adopt partial 002 or insert a ledger row by hand. Apply
+it through the runner only after the active corpus backfill stops competing for database resources,
+or split the optional benchmark indexes into a later migration before 002 is recorded.
 
 ## Sentinels
 
