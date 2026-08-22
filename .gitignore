@@ -6,6 +6,7 @@ secrets.*
 .venv/
 data/pdfs/
 data/embed_batches/
+data/niche-objects/
 data/coverage/*.csv
 __pycache__/
 *.pyc
