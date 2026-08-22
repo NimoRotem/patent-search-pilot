@@ -40,9 +40,10 @@ MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
 FIGURE_PROMPT_VERSION = "figure-v3-geometry-only"
-SEMANTIC_PROMPT_VERSION = "figure-semantic-v6-independent-constraint-consensus"
+SEMANTIC_PROMPT_VERSION = "figure-semantic-v7-consensus-pixel-grounded"
 LEADER_PROMPT_VERSION = "figure-leader-v3-independent-consensus"
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
+PIXEL_ANCHOR_VERSION = "pixel-anchor-v1-exterior-connectivity"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "3")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 3
 MAX_OCR_CLEAN_RETRIES = 2
@@ -173,6 +174,11 @@ SEMANTIC_GEOMETRY_RULES = (
     "numerals must not share coordinates or converge on one unrelated point. For surfaces, "
     "spaces, and boundaries, choose separate visible locations on the corresponding geometry."
 )
+
+_EMPTY_ANCHOR_PART_RE = re.compile(
+    r"\b(?:aperture|cavity|chamber|channel|clearance|gap|opening|passage|plenum|port|slot|"
+    r"space|void)\b", re.IGNORECASE)
+_MAX_ANCHOR_SNAP = 220
 
 _SCHEMA = (
     """CREATE TABLE IF NOT EXISTS app_draft_figures (
@@ -837,8 +843,115 @@ def semantic_consensus(expected, results) -> dict:
     return consensus
 
 
-def current_semantic_audit(value) -> bool:
-    """Accept only a successful audit produced by the current semantic consensus gate."""
+def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = _MAX_ANCHOR_SNAP
+                              ) -> tuple[list[dict], dict]:
+    """Keep object leaders out of exterior paper even when vision coordinates drift."""
+    from math import sqrt
+    import numpy as np
+    from PIL import Image, ImageDraw, ImageOps
+
+    repaired = [dict(item) for item in anchors or ()]
+    parts = {item["numeral"]: item["part"] for item in numeral_entries(numerals)}
+    try:
+        source = Image.open(io.BytesIO(png)).convert("RGB")
+        gray = np.asarray(ImageOps.grayscale(source))
+    except Exception as exc:
+        return repaired, {
+            "ok": False, "inspected": False, "version": PIXEL_ANCHOR_VERSION,
+            "adjusted": [], "allowed_spaces": [],
+            "ungrounded": [{"numeral": "", "reason": str(exc)[:300]}],
+        }
+    height, width = gray.shape
+    ink = gray < 225
+    binary = Image.fromarray(np.where(ink, 0, 255).astype("uint8"), mode="L")
+    padded = ImageOps.expand(binary, border=1, fill=255)
+    ImageDraw.floodfill(padded, (0, 0), 128, thresh=0)
+    exterior = np.asarray(padded)[1:height + 1, 1:width + 1] == 128
+    ink_y, ink_x = np.nonzero(ink)
+    if len(ink_x):
+        ink_norm_x = ink_x * 1000.0 / max(1, width - 1)
+        ink_norm_y = ink_y * 1000.0 / max(1, height - 1)
+    else:
+        ink_norm_x = ink_norm_y = np.asarray([], dtype=float)
+
+    adjusted, allowed_spaces, ungrounded = [], [], []
+    occupied: dict[tuple[int, int], str] = {}
+    for item in repaired:
+        numeral = _clean_numeral(item.get("numeral"))
+        if not numeral or not item.get("visible"):
+            continue
+        try:
+            x = min(1000, max(0, int(item.get("x"))))
+            y = min(1000, max(0, int(item.get("y"))))
+        except (TypeError, ValueError, OverflowError):
+            ungrounded.append({"numeral": numeral, "reason": "invalid anchor coordinates"})
+            continue
+        pixel_x = min(width - 1, max(0, round(x * (width - 1) / 1000)))
+        pixel_y = min(height - 1, max(0, round(y * (height - 1) / 1000)))
+        part = parts.get(numeral, "")
+        if exterior[pixel_y, pixel_x]:
+            if _EMPTY_ANCHOR_PART_RE.search(part):
+                allowed_spaces.append({"numeral": numeral, "part": part, "x": x, "y": y})
+            elif len(ink_x):
+                distance_sq = ((ink_norm_x - x) ** 2) + ((ink_norm_y - y) ** 2)
+                nearest = int(np.argmin(distance_sq))
+                distance = sqrt(float(distance_sq[nearest]))
+                if distance <= max_snap:
+                    new_x = round(float(ink_norm_x[nearest]))
+                    new_y = round(float(ink_norm_y[nearest]))
+                    item["x"], item["y"] = new_x, new_y
+                    adjusted.append({
+                        "numeral": numeral, "part": part,
+                        "from_x": x, "from_y": y, "to_x": new_x, "to_y": new_y,
+                        "distance": round(distance, 1),
+                    })
+                    x, y = new_x, new_y
+                else:
+                    ungrounded.append({
+                        "numeral": numeral, "part": part,
+                        "reason": f"nearest visible geometry is {distance:.1f} units away",
+                    })
+            else:
+                ungrounded.append({
+                    "numeral": numeral, "part": part,
+                    "reason": "the drawing contains no visible geometry",
+                })
+        coordinate = (int(item.get("x") or 0), int(item.get("y") or 0))
+        prior = occupied.get(coordinate)
+        if prior and prior != numeral:
+            ungrounded.append({
+                "numeral": numeral, "part": part,
+                "reason": f"anchor converges with numeral {prior}",
+            })
+        else:
+            occupied[coordinate] = numeral
+    return repaired, {
+        "ok": not ungrounded,
+        "inspected": True,
+        "version": PIXEL_ANCHOR_VERSION,
+        "adjusted": adjusted,
+        "allowed_spaces": allowed_spaces,
+        "ungrounded": ungrounded,
+    }
+
+
+def _apply_pixel_grounding(png: bytes, numerals, semantic: dict) -> dict:
+    out = dict(semantic or {})
+    anchors, audit = _ground_anchors_to_pixels(png, numerals, out.get("anchors") or [])
+    out["anchors"] = anchors
+    out["pixel_anchor_audit"] = audit
+    if not audit.get("ok"):
+        out["ok"] = False
+        errors = list(out.get("errors") or [])
+        errors.extend(
+            f"Numeral {item.get('numeral') or '?'} anchor is not grounded: {item.get('reason')}"
+            for item in audit.get("ungrounded") or [])
+        out["errors"] = errors
+    return out
+
+
+def _current_semantic_model_audit(value) -> bool:
+    """Validate the independent model traces before deterministic pixel grounding."""
     if isinstance(value, str):
         try:
             value = json.loads(value)
@@ -854,6 +967,21 @@ def current_semantic_audit(value) -> bool:
         value.get("ok") and value.get("inspected") and
         value.get("prompt_version") == SEMANTIC_PROMPT_VERSION and
         review_count == SEMANTIC_REVIEW_COUNT)
+
+
+def current_semantic_audit(value) -> bool:
+    """Accept semantic consensus only when its coordinates also pass the pixel gate."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return False
+    if not isinstance(value, dict) or not _current_semantic_model_audit(value):
+        return False
+    pixel = value.get("pixel_anchor_audit") or {}
+    return bool(
+        isinstance(pixel, dict) and pixel.get("ok") and pixel.get("inspected") and
+        pixel.get("version") == PIXEL_ANCHOR_VERSION)
 
 
 def leader_audit(expected, result) -> dict:
@@ -1000,7 +1128,7 @@ def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict
     if cached is not None:
         cached["specification_hash"] = spec_hash
         cached["prompt_version"] = SEMANTIC_PROMPT_VERSION
-        if current_semantic_audit(cached):
+        if _current_semantic_model_audit(cached):
             _audit_log(
                 request_id=str(uuid.uuid4()), provider="vertex", model=model, stage="semantic",
                 prompt_version=SEMANTIC_PROMPT_VERSION, latency_ms=0, cache_hit=True,
@@ -1792,7 +1920,9 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
         semantic = inspect_semantics(
             raw_png, label=label, caption=caption, numerals=numerals)
         if semantic.get("ok"):
-            break
+            semantic = _apply_pixel_grounding(raw_png, numerals, semantic)
+            if semantic.get("ok"):
+                break
         problems = list(semantic.get("errors") or [])
         if semantic.get("missing"):
             missing_parts = [part_by_numeral.get(_clean_numeral(value), "component")
@@ -1836,6 +1966,8 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
             raw_png = _cached_generate(clean_prompt, None)
             semantic = inspect_semantics(
                 raw_png, label=label, caption=caption, numerals=numerals)
+            if semantic.get("ok"):
+                semantic = _apply_pixel_grounding(raw_png, numerals, semantic)
             if not semantic.get("ok"):
                 continue
             png, labels, leaders, anchors = _compose_checked_sheet(

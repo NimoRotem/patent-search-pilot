@@ -4,7 +4,7 @@ import json
 import re
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 import draft_figures
 
@@ -30,8 +30,24 @@ def accepted_semantic_audit(**values):
         "ok": True, "inspected": True,
         "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
         "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "pixel_anchor_audit": {
+            "ok": True, "inspected": True,
+            "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        },
         **values,
     }
+
+
+def accept_pixel_grounding(monkeypatch):
+    monkeypatch.setattr(
+        draft_figures, "_apply_pixel_grounding",
+        lambda _png, _numerals, semantic: {
+            **semantic,
+            "pixel_anchor_audit": {
+                "ok": True, "inspected": True,
+                "version": draft_figures.PIXEL_ANCHOR_VERSION,
+            },
+        })
 
 
 def test_semantic_response_schema_is_inline_for_vertex():
@@ -145,11 +161,62 @@ def test_only_the_current_two_trace_semantic_review_is_accepted():
         "ok": True, "inspected": True,
         "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
         "review_count": 2,
+        "pixel_anchor_audit": {
+            "ok": True, "inspected": True,
+            "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        },
     }
     assert draft_figures.current_semantic_audit(current) is True
     assert draft_figures.current_semantic_audit({**current, "review_count": 1}) is False
     assert draft_figures.current_semantic_audit({**current, "prompt_version": "old"}) is False
+    assert draft_figures.current_semantic_audit({**current, "pixel_anchor_audit": {}}) is False
     assert draft_figures.current_semantic_audit({"ok": True}) is False
+
+
+def test_pixel_grounding_snaps_an_exterior_object_anchor_to_visible_ink():
+    image = Image.new("RGB", (1000, 1000), "white")
+    ImageDraw.Draw(image).rectangle((200, 200, 800, 600), outline="black", width=8)
+    out = io.BytesIO()
+    image.save(out, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        out.getvalue(), ["10 = base"], [{
+            "numeral": "10", "x": 500, "y": 780, "visible": True,
+            "evidence": "the base body",
+        }])
+
+    assert audit["ok"] is True and audit["adjusted"][0]["numeral"] == "10"
+    assert 495 <= anchors[0]["x"] <= 505 and 590 <= anchors[0]["y"] <= 610
+
+
+def test_pixel_grounding_keeps_enclosed_bodies_and_intentional_empty_spaces():
+    image = Image.new("RGB", (1000, 1000), "white")
+    ImageDraw.Draw(image).rectangle((200, 200, 800, 600), outline="black", width=8)
+    out = io.BytesIO()
+    image.save(out, format="PNG")
+    original = [
+        {"numeral": "10", "x": 500, "y": 400, "visible": True,
+         "evidence": "inside the base"},
+        {"numeral": "12", "x": 500, "y": 780, "visible": True,
+         "evidence": "open clearance"},
+    ]
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        out.getvalue(), ["10 = base", "12 = clearance"], original)
+
+    assert audit["ok"] is True and audit["adjusted"] == []
+    assert [(item["x"], item["y"]) for item in anchors] == [(500, 400), (500, 780)]
+
+
+def test_pixel_grounding_fails_closed_when_an_object_has_no_nearby_geometry():
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        blank_png(1000, 1000), ["10 = base"], [{
+            "numeral": "10", "x": 500, "y": 500, "visible": True,
+            "evidence": "claimed base",
+        }])
+
+    assert anchors[0]["x"] == 500
+    assert audit["ok"] is False and audit["ungrounded"][0]["numeral"] == "10"
 
 
 def test_leader_audit_rejects_converged_or_wrong_endpoints():
@@ -308,6 +375,7 @@ def test_render_refuses_to_store_a_semantically_wrong_drawing(monkeypatch):
 
 
 def test_render_refuses_to_store_a_sheet_with_a_misplaced_leader(monkeypatch):
+    accept_pixel_grounding(monkeypatch)
     monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
     monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
         "ok": True, "anchors": [{"numeral": "10", "x": 200, "y": 300,
@@ -330,6 +398,7 @@ def test_render_refuses_to_store_a_sheet_with_a_misplaced_leader(monkeypatch):
 
 
 def test_render_automatically_moves_a_rejected_leader_to_the_reviewed_feature(monkeypatch):
+    accept_pixel_grounding(monkeypatch)
     raw = blank_png()
     initial = [{"numeral": "10", "x": 200, "y": 300,
                 "visible": True, "evidence": "body"}]
@@ -392,6 +461,7 @@ def test_text_contaminated_geometry_retries_from_a_clean_canvas(monkeypatch):
 
 
 def test_ocr_detected_geometry_text_regenerates_from_a_clean_canvas(monkeypatch):
+    accept_pixel_grounding(monkeypatch)
     generated = []
 
     def generate(prompt, previous=None):
@@ -428,6 +498,7 @@ def test_ocr_detected_geometry_text_regenerates_from_a_clean_canvas(monkeypatch)
 
 
 def test_render_stores_only_after_semantic_and_ocr_gates_pass(monkeypatch):
+    accept_pixel_grounding(monkeypatch)
     events = []
     monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
     monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
@@ -459,6 +530,7 @@ def test_render_stores_only_after_semantic_and_ocr_gates_pass(monkeypatch):
 
 
 def test_render_increases_deterministic_label_size_until_ocr_is_exact(monkeypatch):
+    accept_pixel_grounding(monkeypatch)
     scales = []
     original = draft_figures.annotate_png
     monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())

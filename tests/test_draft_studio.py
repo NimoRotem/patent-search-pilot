@@ -9,6 +9,7 @@ that thing and nothing else.
 """
 import json
 import re
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -679,6 +680,10 @@ def checked_figures(*labels):
                 "ok": True, "inspected": True, "specification_hash": digest,
                 "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
                 "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+                "pixel_anchor_audit": {
+                    "ok": True, "inspected": True,
+                    "version": draft_figures.PIXEL_ANCHOR_VERSION,
+                },
             }}]})
     return out
 
@@ -1252,6 +1257,118 @@ def test_retry_preparation_uses_the_durable_checked_candidate_instead_of_publish
     assert values["sections"] == candidate_sections
     assert values["qa_report"] == candidate_report
     assert context["previous_sections"] == GOOD
+
+
+def test_new_turn_preparation_uses_the_latest_failed_turn_candidate(
+        monkeypatch, tmp_path):
+    candidate_sections = {**GOOD, "summary": "Best unpublished candidate."}
+    candidate_report = {
+        "status": "complete", "verdict": "fail", "summary": "Finish claim repair.",
+        "checks": [{"name": "Claims", "status": "fail", "items": ["claim 1"]}],
+        "findings": [],
+    }
+    repository = Mock()
+    repository.documents.return_value = []
+    repository.messages.return_value = []
+    repository.latest_qa.return_value = {"summary": "stale published review"}
+    repository.retry_candidate.return_value = None
+    repository.latest_retry_candidate.return_value = {
+        "turn_id": 32,
+        "snapshot": {"sections": candidate_sections, "numerals": NUMERALS,
+                     "figures": FIGURES},
+        "qa_report": candidate_report,
+    }
+    workspace = Mock()
+    workspace.build.return_value = tmp_path
+    runner = draft_studio.TurnRunner(repository, Mock(), workspace=workspace)
+    monkeypatch.setattr(runner, "_load", lambda _project_id: {
+        "project": {"id": 7, "user_id": 91, "input_kind": "description"},
+        "references": [{"publication_number": ALLOWED[0]}],
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES,
+    })
+
+    context = runner.prepare({"id": 33, "project_id": 7, "attempts": 1,
+                              "user_message": "Finish automatically."})
+
+    values = workspace.build.call_args.kwargs
+    assert values["sections"] == candidate_sections
+    assert values["qa_report"] == candidate_report
+    repository.latest_retry_candidate.assert_called_once_with(7, before_turn_id=33)
+    assert context["resuming_candidate"] is True
+    assert context["previous_sections"] == GOOD
+
+
+def test_an_agent_budget_stop_checkpoints_the_valid_workspace_for_retry(monkeypatch, tmp_path):
+    repository = Mock()
+    repository.documents.return_value = []
+    agent = Mock()
+    agent.DRAFT_MODEL = "draft-model"
+    agent.DRAFT_TIMEOUT = 60
+    agent.new_session_id.return_value = "new-session"
+    agent.run.return_value = draft_agent.AgentRun(
+        ok=False, session_id="session", model="draft-model",
+        error="Reached maximum budget ($12)")
+    workspace = Mock()
+    workspace.snapshot.return_value = {
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, qa=draft_qa, workspace=workspace)
+    monkeypatch.setattr(runner, "prepare", lambda _turn: {
+        "workspace": tmp_path, "project": {"user_id": 91, "agent_session_id": "",
+                                             "latest_version_no": 0,
+                                             "disclosure_text": "disclosure"},
+        "references": [{"publication_number": ALLOWED[0]}], "documents": [],
+        "seeded": False, "had_version": False,
+        "previous_sections": {},
+    })
+
+    with pytest.raises(draft_studio.StudioError, match="maximum budget"):
+        runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
+                    "turn_no": 1, "kind": "initial"})
+
+    snapshot = repository.save_retry_candidate.call_args.kwargs["snapshot"]
+    report = repository.save_retry_candidate.call_args.kwargs["report"]
+    assert snapshot["sections"] == GOOD
+    assert report["verdict"] == "fail"
+    assert "continue" in report["summary"].lower()
+
+
+def test_terminal_failure_retains_candidate_until_a_project_completes(monkeypatch):
+    queries = []
+
+    class Cursor:
+        def execute(self, query, params=()):
+            queries.append((query, params))
+
+        def fetchone(self):
+            return {
+                "id": 33, "project_id": 7, "turn_no": 4,
+                "attempts": 3, "max_attempts": 3, "status": "failed",
+            }
+
+    @contextmanager
+    def cursor_factory(**_kwargs):
+        yield Cursor()
+
+    repository = draft_studio.StudioRepository(cursor_factory, migrate=False)
+    turn = {
+        "id": 33, "project_id": 7, "turn_no": 4,
+        "attempts": 3, "max_attempts": 3, "status": "running",
+    }
+    monkeypatch.setattr(repository, "_verify", lambda *_args: turn)
+
+    result = repository.fail_turn(33, "lease", "budget stopped", retryable=True)
+
+    assert result["status"] == "failed"
+    assert not any("DELETE FROM app_draft_turn_candidates" in query for query, _ in queries)
+
+    queries.clear()
+    repository.complete_turn(
+        33, "lease", result={}, session_id="session", cost_usd=1,
+        duration_ms=1000, model_name="model")
+    cleanup = next(query for query, _ in queries
+                   if "DELETE FROM app_draft_turn_candidates" in query)
+    assert "USING app_draft_turns" in cleanup and "t.project_id" in cleanup
 
 
 def test_invalid_workspace_is_automatic_repair_input_not_a_failed_turn(monkeypatch, tmp_path):

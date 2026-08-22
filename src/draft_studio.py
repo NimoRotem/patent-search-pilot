@@ -723,7 +723,26 @@ class StudioRepository:
             row = cur.fetchone()
         if not row:
             return None
-        return {"snapshot": _json(row.get("snapshot"), {}),
+        return {"turn_id": int(turn_id),
+                "snapshot": _json(row.get("snapshot"), {}),
+                "qa_report": _json(row.get("qa_report"), {})}
+
+    def latest_retry_candidate(self, project_id: int, *, before_turn_id: int
+                               ) -> dict[str, Any] | None:
+        """Return the newest unpublished candidate from an earlier turn in this project."""
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT c.turn_id,c.snapshot,c.qa_report "
+                "FROM app_draft_turn_candidates c JOIN app_draft_turns t ON t.id=c.turn_id "
+                "WHERE t.project_id=%s AND c.turn_id<%s "
+                "ORDER BY t.turn_no DESC,c.updated_at DESC LIMIT 1",
+                (int(project_id), int(before_turn_id)))
+            row = cur.fetchone()
+        if not row:
+            return None
+        return {"turn_id": int(row["turn_id"]),
+                "snapshot": _json(row.get("snapshot"), {}),
                 "qa_report": _json(row.get("qa_report"), {})}
 
     def discard_retry_candidate(self, turn_id: int) -> None:
@@ -897,7 +916,9 @@ class StudioRepository:
                  round(float(cost_usd or 0), 4), int(duration_ms or 0), str(model_name)[:180],
                  str(transcript_path)[:500], turn["id"]))
             out = self._turn(dict(cur.fetchone()))
-            cur.execute("DELETE FROM app_draft_turn_candidates WHERE turn_id=%s", (int(turn_id),))
+            cur.execute(
+                "DELETE FROM app_draft_turn_candidates c USING app_draft_turns t "
+                "WHERE c.turn_id=t.id AND t.project_id=%s", (int(turn["project_id"]),))
             cur.execute(
                 "UPDATE app_drafting_projects SET status='ready',agent_session_id=%s,"
                 "agent_turn_no=%s,updated_at=now() WHERE id=%s",
@@ -924,9 +945,6 @@ class StudioRepository:
                     "last_error=%s,updated_at=now() WHERE id=%s RETURNING *",
                     (str(error)[:4000], turn["id"]))
             out = self._turn(dict(cur.fetchone()))
-            if not will_retry:
-                cur.execute("DELETE FROM app_draft_turn_candidates WHERE turn_id=%s",
-                            (int(turn_id),))
             cur.execute(
                 "UPDATE app_drafting_projects SET status=CASE WHEN %s THEN 'queued' "
                 "WHEN latest_version_no>0 THEN 'ready' ELSE 'active' END,updated_at=now() "
@@ -1020,18 +1038,23 @@ class TurnRunner:
         seeded = False
         retry_snapshot = None
 
+        candidate = None
         if int(turn.get("attempts") or 0) > 1:
             candidate = self.repository.retry_candidate(int(turn["id"]))
-            if candidate:
-                try:
-                    retry_snapshot = validate_snapshot(
-                        candidate.get("snapshot") or {},
-                        allowed_reference_keys(loaded["references"], documents))
-                except drafting.DraftingError:
-                    self.repository.discard_retry_candidate(int(turn["id"]))
-                else:
-                    sections = retry_snapshot["sections"]
-                    latest_qa = candidate.get("qa_report") or latest_qa
+        if not candidate:
+            candidate = self.repository.latest_retry_candidate(
+                project_id, before_turn_id=int(turn["id"]))
+        if candidate:
+            try:
+                retry_snapshot = validate_snapshot(
+                    candidate.get("snapshot") or {},
+                    allowed_reference_keys(loaded["references"], documents))
+            except drafting.DraftingError:
+                self.repository.discard_retry_candidate(
+                    int(candidate.get("turn_id") or turn["id"]))
+            else:
+                sections = retry_snapshot["sections"]
+                latest_qa = candidate.get("qa_report") or latest_qa
 
         if sections is None and retry_snapshot is None:
             # First turn.  If the user brought a draft, pre-split it so the agent improves a
@@ -1057,6 +1080,7 @@ class TurnRunner:
             qa_report=latest_qa)
         return {"workspace": workspace, "project": project, "references": loaded["references"],
                 "documents": documents, "seeded": seeded, "had_version": loaded["sections"] is not None,
+                "resuming_candidate": retry_snapshot is not None,
                 "previous_sections": loaded["sections"] or {}}
 
     # -- the turn --------------------------------------------------------------------------------
@@ -1078,6 +1102,41 @@ class TurnRunner:
             raise (drafting.DraftingConflict("Stopped at your request.") if run.cancelled
                    else StudioError(run.error or "The drafting agent did not finish."))
         return run
+
+    def _checkpoint_interrupted_agent(self, *, turn_id: int, lease: str, workspace: Path,
+                                      allowed: Sequence[str], error: Exception) -> None:
+        """Keep structurally valid edits when an agent stops before its structured answer."""
+        try:
+            snapshot = validate_snapshot(self.workspace.snapshot(workspace), allowed)
+        except Exception:
+            return
+        detail = str(error)[:1200]
+        check = {
+            "name": "Drafting run completed",
+            "status": "fail",
+            "severity": "error",
+            "detail": detail,
+            "items": ["Continue from this saved candidate and finish every remaining section."],
+        }
+        report = {
+            "status": "failed",
+            "verdict": "fail",
+            "summary": "The drafting run stopped after saving valid edits. Continue from this "
+                       "candidate instead of rebuilding the published version.",
+            "checks": [check],
+            "findings": [],
+            "counts": draft_qa.counts_for([check], []),
+            "cost_usd": 0.0,
+            "duration_ms": 0,
+            "model_name": "",
+            "last_error": detail,
+        }
+        self.repository.save_retry_candidate(
+            turn_id, lease, snapshot=snapshot, report=report)
+        try:
+            self.workspace._write_review(workspace, report)
+        except Exception:
+            pass
 
     def _ensure_figures(self, *, turn_id: int, project_id: int, user_id: int,
                         sections: Mapping[str, str], numerals: Sequence[Mapping[str, str]],
@@ -1106,8 +1165,9 @@ class TurnRunner:
         allowed = allowed_reference_keys(context["references"], context["documents"])
 
         kind = str(turn.get("kind") or "revise")
-        first = not context["had_version"]
-        prompt = build_prompt("initial" if first else kind, seeded=context["seeded"])
+        first = not context["had_version"] and not context.get("resuming_candidate")
+        prompt_kind = "initial" if first else ("revise" if kind == "initial" else kind)
+        prompt = build_prompt(prompt_kind, seeded=context["seeded"])
         transcript = workspace / ".agent" / f"turn-{turn['turn_no']:04d}.jsonl"
 
         #  Whether to RESUME and which prompt to send are separate decisions, and conflating them
@@ -1115,10 +1175,15 @@ class TurnRunner:
         #  that answered a question without producing a version would make the next turn pass an
         #  existing id as if it were new. Continue the thread whenever there is one.
         prior_session = str(project.get("agent_session_id") or "")
-        run = self._run_agent(
-            turn_id=turn_id, lease=lease, workspace=workspace, prompt=prompt,
-            session_id=prior_session or self.agent.new_session_id(), resume=bool(prior_session),
-            transcript=transcript, stage="drafting")
+        try:
+            run = self._run_agent(
+                turn_id=turn_id, lease=lease, workspace=workspace, prompt=prompt,
+                session_id=prior_session or self.agent.new_session_id(), resume=bool(prior_session),
+                transcript=transcript, stage="drafting")
+        except StudioError as exc:
+            self._checkpoint_interrupted_agent(
+                turn_id=turn_id, lease=lease, workspace=workspace, allowed=allowed, error=exc)
+            raise
         runs = [run]
         result = human_text(dict(run.result))
         action = str(result.get("action") or "revised")
@@ -1145,10 +1210,16 @@ class TurnRunner:
         sections: dict[str, str] = {}
         for review_index in range(MAX_FINALIZATION_ROUNDS):
             if review_index:
-                repair = self._run_agent(
-                    turn_id=turn_id, lease=lease, workspace=workspace,
-                    prompt=FINALIZE_PROMPT, session_id=runs[-1].session_id,
-                    resume=True, transcript=transcript, stage="repairing the draft")
+                try:
+                    repair = self._run_agent(
+                        turn_id=turn_id, lease=lease, workspace=workspace,
+                        prompt=FINALIZE_PROMPT, session_id=runs[-1].session_id,
+                        resume=True, transcript=transcript, stage="repairing the draft")
+                except StudioError as exc:
+                    self._checkpoint_interrupted_agent(
+                        turn_id=turn_id, lease=lease, workspace=workspace,
+                        allowed=allowed, error=exc)
+                    raise
                 runs.append(repair)
                 result = human_text(dict(repair.result))
                 action = "revised"
