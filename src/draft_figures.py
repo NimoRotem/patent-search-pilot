@@ -45,7 +45,7 @@ SEMANTIC_PROMPT_VERSION = (
 LEADER_PROMPT_VERSION = (
     "figure-leader-v7-high-accuracy-routing-only-independent-consensus")
 MARKED_ANCHOR_PROMPT_VERSION = (
-    "figure-anchor-v7-local-part-marked-crop-consensus-with-correction")
+    "figure-anchor-v8-local-part-three-trace-majority-with-correction")
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v1-exterior-connectivity"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
@@ -58,7 +58,7 @@ SEMANTIC_THINKING_BUDGET = 2048
 MARKED_ANCHOR_THINKING_BUDGET = 2048
 SEMANTIC_REVIEW_COUNT = 2
 LEADER_REVIEW_COUNT = 2
-MARKED_ANCHOR_REVIEW_COUNT = 2
+MARKED_ANCHOR_REVIEW_COUNT = 3
 MIN_OCR_CONFIDENCE = float(os.environ.get("PATENT_FIGURE_OCR_CONFIDENCE", "0.85"))
 
 
@@ -1282,12 +1282,13 @@ def marked_anchor_audit(expected, result) -> dict:
 
 
 def marked_anchor_consensus(expected, results) -> dict:
-    """Require both marked-crop reviews to approve every exact endpoint center."""
+    """Require a majority of three marked-crop traces for every exact endpoint center."""
     reviews = [marked_anchor_audit(expected, result) for result in results or []]
     expected_values = sorted(
         {item["numeral"] for item in numeral_entries(expected)}, key=_numeral_order)
     combined_labels = []
     consensus_errors = []
+    required_votes = (len(reviews) // 2) + 1
     for numeral in expected_values:
         records = []
         for review in reviews:
@@ -1298,30 +1299,66 @@ def marked_anchor_consensus(expected, results) -> dict:
         if len(records) != len(reviews):
             consensus_errors.append(
                 f"Not every independent marked-endpoint review returned numeral {numeral}.")
-        rejected = next((item for item in records if not item.get("correct")), None)
-        selected = next((item for item in records
-                         if not item.get("correct") and item.get("repairable")), None)
-        selected = selected or rejected or (records[0] if records else {})
+        approved = [item for item in records if item.get("correct") and
+                    str(item.get("evidence") or "").strip()]
+        rejected = [item for item in records if item not in approved]
+        correct = bool(records and len(records) == len(reviews) and
+                       len(approved) >= required_votes)
+        corrections = []
+        for item in rejected:
+            if not item.get("repairable"):
+                continue
+            try:
+                x, y = int(item.get("suggested_x")), int(item.get("suggested_y"))
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if 0 <= x <= 1000 and 0 <= y <= 1000:
+                corrections.append((x, y))
+        if correct:
+            suggested_x, suggested_y, repairable = 500, 500, True
+        elif corrections:
+            xs = sorted(value[0] for value in corrections)
+            ys = sorted(value[1] for value in corrections)
+            middle = len(corrections) // 2
+            if len(corrections) % 2:
+                suggested_x, suggested_y = xs[middle], ys[middle]
+            else:
+                suggested_x = round((xs[middle - 1] + xs[middle]) / 2)
+                suggested_y = round((ys[middle - 1] + ys[middle]) / 2)
+            repairable = True
+        else:
+            suggested_x, suggested_y, repairable = 500, 500, False
         evidence = " | ".join(dict.fromkeys(
             str(item.get("evidence") or "").strip() for item in records
             if str(item.get("evidence") or "").strip()))
-        combined_labels.append({
+        combined = {
             "numeral": numeral,
-            "correct": bool(len(records) == len(reviews) and records and
-                            all(item.get("correct") and
-                                str(item.get("evidence") or "").strip() for item in records)),
-            "evidence": evidence or (str((rejected or {}).get("evidence") or "").strip()) or
+            "correct": correct,
+            "evidence": evidence or
             "An independent marked-endpoint review did not return visual evidence.",
-            "repairable": bool(selected.get("repairable")),
-            "suggested_x": selected.get("suggested_x", 500),
-            "suggested_y": selected.get("suggested_y", 500),
-        })
-    for review in reviews:
-        for error in review.get("errors") or []:
-            if error not in consensus_errors:
-                consensus_errors.append(error)
+            "repairable": repairable,
+            "suggested_x": suggested_x,
+            "suggested_y": suggested_y,
+            "correct_votes": len(approved),
+            "incorrect_votes": len(rejected),
+        }
+        combined_labels.append(combined)
+        if not correct and len(records) == len(reviews):
+            consensus_errors.append(
+                f"A majority of marked-endpoint reviews rejected numeral {numeral}: " +
+                combined["evidence"][:400])
+    for index, review in enumerate(reviews, 1):
+        if not review.get("inspected"):
+            consensus_errors.append(
+                f"Marked-endpoint review {index} did not return an inspection result.")
+        for key in ("missing", "unexpected", "duplicates"):
+            if review.get(key):
+                consensus_errors.append(
+                    f"Marked-endpoint review {index} returned {key}: " +
+                    ", ".join(review[key]))
     payload = {
-        "matches_spec": bool(reviews and all(review.get("ok") for review in reviews)),
+        "matches_spec": bool(reviews and not consensus_errors and
+                             all(item.get("correct") for item in combined_labels)),
         "summary": " | ".join(dict.fromkeys(
             str(review.get("summary") or "").strip() for review in reviews
             if str(review.get("summary") or "").strip()))[:2000],
@@ -1335,7 +1372,7 @@ def marked_anchor_consensus(expected, results) -> dict:
 
 
 def current_marked_anchor_audit(value, *, specification_hash: str = "") -> bool:
-    """Accept only the current two-review marked-endpoint gate for the same sheet spec."""
+    """Accept only the current three-trace marked-endpoint gate for the same sheet spec."""
     if isinstance(value, str):
         try:
             value = json.loads(value)
@@ -1426,24 +1463,56 @@ def _leader_routing_spec(label: str, numerals) -> str:
 
 
 def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
-    """Give endpoint reviewers one local definition per part, never whole-sheet layout."""
-    chunks = re.split(r"(?<=[.!?])\s+|[\r\n]+", str(caption or ""))
+    """Give endpoint reviewers each local part definition and its explicit target."""
+    entries = numeral_entries(numerals)
+    raw = str(caption or "")
+    blocks = re.split(r"(?m)^\s*[-*]\s+", raw)
+
+    def clean(value: str) -> str:
+        value = re.sub(r"^\s*[-*#]+\s*", "", re.sub(r"\s+", " ", value)).strip()
+        return re.sub(r"[*_`]", "", value).strip()
+
+    def sentences(value: str) -> list[str]:
+        return [clean(chunk) for chunk in re.split(r"(?<=[.!?])\s+|[\r\n]+", value)
+                if clean(chunk)]
+
+    target_marker = re.compile(
+        r"\b(?:identif(?:ied|ies|ying)|endpoint|leader(?:\s+line)?(?:\s+ends?)?)\b",
+        re.IGNORECASE)
+    all_numerals = [entry["numeral"] for entry in entries]
     parts = []
-    for entry in numeral_entries(numerals):
+    for entry in entries:
         numeral = entry["numeral"]
         part = str(entry["part"] or "").strip()
         numeral_pattern = re.compile(
             r"(?<![A-Za-z0-9])" + re.escape(numeral) + r"(?![A-Za-z0-9])")
-        candidates = [
-            re.sub(r"^\s*[-*#]+\s*", "", re.sub(r"\s+", " ", chunk)).strip()
-            for chunk in chunks
-            if numeral_pattern.search(chunk) and part.lower() in chunk.lower() and
-            not _ANNOTATION_ONLY.search(chunk) and not _ANNOTATION_PLACEMENT.search(chunk)
-        ]
+        block = next((value for value in blocks
+                      if numeral_pattern.search(value) and part.lower() in value.lower()), raw)
+        local = sentences(block)
+        definition_index = next((index for index, chunk in enumerate(local)
+                                 if numeral_pattern.search(chunk) and
+                                 part.lower() in chunk.lower() and
+                                 not _ANNOTATION_ONLY.search(chunk) and
+                                 not target_marker.search(chunk)), None)
+        definition = (local[definition_index] if definition_index is not None else part)[:800]
+        explicit_targets = [
+            chunk for chunk in local if target_marker.search(chunk) and
+            not _ANNOTATION_ONLY.search(chunk) and
+            (numeral_pattern.search(chunk) or part.lower() in chunk.lower())]
+        target = explicit_targets[0] if explicit_targets else ""
+        if not target and definition_index is not None and definition_index + 1 < len(local):
+            following = local[definition_index + 1]
+            mentions_other = any(
+                re.search(r"(?<![A-Za-z0-9])" + re.escape(value) + r"(?![A-Za-z0-9])",
+                          following)
+                for value in all_numerals if value != numeral)
+            if target_marker.search(following) and not mentions_other:
+                target = following
         parts.append({
             "numeral": numeral,
             "part": part,
-            "definition": (candidates[0] if candidates else part)[:800],
+            "definition": definition,
+            "target": (target or f"On the visible {part} geometry.")[:800],
         })
     return json.dumps({
         "figure_label": canonical_figure_label(label),
@@ -1651,6 +1720,8 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
         "at the center of the red ring. The ring, red ticks, panel borders, and headers are audit "
         "overlays and are not filing artwork. For every expected numeral, decide whether that "
         "exact center lands on the named geometry at the location required by the specification. "
+        "Each part's target field is authoritative for the endpoint location. Follow that local "
+        "target even when the part name also denotes a larger assembly or adjacent structure. "
         "Near is not enough. A boundary endpoint must be on the required boundary line, a space "
         "endpoint must be inside the required bounded white space, and a body endpoint must be "
         "inside or on the specifically requested body or surface. Reject a center on neighboring "
@@ -1672,6 +1743,9 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
         ("marked_anchors_adversarial",
          "ADVERSARIAL LOCAL TRACE: Try to prove each center belongs to a neighboring feature. "
          "Pay special attention to dense section hatching and shared contact boundaries."),
+        ("marked_anchors_tiebreak",
+         "INDEPENDENT TIEBREAK TRACE: Judge each crop from its pixels and named part alone. "
+         "Do not presume either approval or rejection; identify the center feature first."),
     )
     payloads = []
     for stage, review_instruction in review_modes:
