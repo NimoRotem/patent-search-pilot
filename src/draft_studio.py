@@ -291,7 +291,9 @@ def figures_for_qa(project_id: int, user_id: int,
         # continue, but it must carry a blocking, visible inspection result rather than a false pass.
         return [{**dict(item), "numerals": [], "drawn": False,
                  "numeral_audit": {"inspected": False,
-                                     "error": "The drawing store could not be read."}}
+                                     "error": "The drawing store could not be read."},
+                 "leader_audit": {"inspected": False,
+                                    "errors": ["The drawing store could not be read."]}}
                 for item in figure_specs]
 
     def key(value):
@@ -312,11 +314,13 @@ def figures_for_qa(project_id: int, user_id: int,
                            int(image.get("active_version") or 0)), None) or {}
             audit = active.get("numeral_audit") or {}
             semantic = active.get("semantic_audit") or {}
+            leaders = active.get("leader_audit") or {}
             item["drawn"] = bool(active)
             if audit.get("inspected"):
                 item["numerals"] = list(active.get("detected_numerals") or [])
             item["numeral_audit"] = dict(audit)
             item["semantic_audit"] = dict(semantic)
+            item["leader_audit"] = dict(leaders)
         out.append(item)
     # Stored sheets whose figure specification disappeared are still real pixels. Include them so
     # an unexpected numeral or obsolete drawing cannot vanish from QA merely because the text side
@@ -327,11 +331,13 @@ def figures_for_qa(project_id: int, user_id: int,
                        int(image.get("active_version") or 0)), None) or {}
         audit = active.get("numeral_audit") or {}
         semantic = active.get("semantic_audit") or {}
+        leaders = active.get("leader_audit") or {}
         out.append({"label": image.get("figure_label"), "caption": image.get("caption") or "",
                     "numerals": (list(active.get("detected_numerals") or [])
                                  if audit.get("inspected") else []),
                     "drawn": bool(active), "orphan": True, "numeral_audit": dict(audit)})
         out[-1]["semantic_audit"] = dict(semantic)
+        out[-1]["leader_audit"] = dict(leaders)
     return out
 
 
@@ -1173,7 +1179,7 @@ class TurnRunner:
                     if not generated.get("ok"):
                         failures = [str(item) for item in generated.get("errors") or ()]
                         raise DrawingInspectionError(failures or [
-                            "One or more sheets did not pass semantic and OCR inspection."])
+                            "One or more sheets did not pass geometry, leader, and OCR inspection."])
                     self.repository.heartbeat(turn_id, lease, stage="independent review")
                     report = self.evaluate(
                         project_id, version_no=int(project.get("latest_version_no") or 0) + 1,
@@ -1182,7 +1188,7 @@ class TurnRunner:
                         review_index=review_index)
                 except DrawingInspectionError as exc:
                     check = {
-                        "name": "Every drawing sheet passes semantic and OCR inspection",
+                        "name": "Every drawing sheet passes geometry, leader, and OCR inspection",
                         "status": "fail", "severity": "error",
                         "detail": (f"{len(exc.errors)} sheet(s) failed. Each failure is listed "
                                    "below so the next repair can address the full set."),

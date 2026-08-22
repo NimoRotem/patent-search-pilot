@@ -354,16 +354,24 @@
     if (!figure.drawn) return '';
     const audit = figure.numeral_audit || {};
     const semantic = figure.semantic_audit || {};
+    const leaders = figure.leader_audit || {};
     if (!semantic.inspected || !semantic.ok) {
       const reasons = (semantic.errors || []).join('; ') ||
         'The image has not passed the automatic specification review.';
       return `<div class="fignumaudit bad"><b>Drawing content check failed.</b>
         ${esc(reasons)}</div>`;
     }
+    if (!leaders.inspected || !leaders.ok) {
+      const reasons = (leaders.errors || []).join('; ') ||
+        'The printed leaders have not been traced to the named drawing features.';
+      return `<div class="fignumaudit bad"><b>Leader placement check failed.</b>
+        ${esc(reasons)}</div>`;
+    }
     if (!audit.inspected) return `<div class="fignumaudit warn"><b>Numeral check unavailable.</b>
       ${esc(audit.error || 'Run an AI redraw or re-save the drawing to inspect it again.')}</div>`;
     if (audit.ok) return `<div class="fignumaudit good"><b>Drawing passed.</b>
-      Its visible structure matches the specification, and every label is exact and unique.</div>`;
+      Its visible structure matches the specification, every leader reaches the named feature,
+      and every label is exact and unique.</div>`;
     const issues = [];
     if (audit.missing && audit.missing.length) issues.push(`missing: ${audit.missing.join(', ')}`);
     if (audit.unexpected && audit.unexpected.length) {

@@ -463,6 +463,7 @@ class StudioService:
             expected = list(spec.get("numerals") or [])
             audit = dict(active.get("numeral_audit") or {})
             semantic = dict(active.get("semantic_audit") or {})
+            leaders = dict(active.get("leader_audit") or {})
             detected = list(active.get("detected_numerals") or [])
             out.append({"label": spec.get("label"), "caption": spec.get("caption"),
                         # QA reads the detected pixels when inspection succeeded. Expected stays
@@ -470,6 +471,7 @@ class StudioService:
                         "numerals": detected if audit.get("inspected") else expected,
                         "expected_numerals": expected, "detected_numerals": detected,
                         "numeral_audit": audit, "semantic_audit": semantic,
+                        "leader_audit": leaders,
                         "drawn": bool(image),
                         "figure_id": (image or {}).get("id"),
                         "active_version": (image or {}).get("active_version"),
@@ -486,6 +488,7 @@ class StudioService:
                         "detected_numerals": list(active.get("detected_numerals") or []),
                         "numeral_audit": dict(active.get("numeral_audit") or {}),
                         "semantic_audit": dict(active.get("semantic_audit") or {}),
+                        "leader_audit": dict(active.get("leader_audit") or {}),
                         "drawn": True, "figure_id": orphan.get("id"),
                         "active_version": orphan.get("active_version"),
                         "n_versions": orphan.get("n_versions") or 0,

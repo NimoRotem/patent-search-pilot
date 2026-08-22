@@ -228,6 +228,9 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
         if not (active.get("semantic_audit") or {}).get("ok"):
             live_drawing_failures.append(
                 f"{label}: semantic drawing inspection did not pass")
+        if not (active.get("leader_audit") or {}).get("ok"):
+            live_drawing_failures.append(
+                f"{label}: leader placement inspection did not pass")
         spec = specs_by_key.get(draft_figures.figure_key(label))
         if not spec:
             live_drawing_failures.append(f"{label}: no specification exists in this version")
@@ -239,6 +242,10 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
                     "specification_hash") != expected_hash:
                 live_drawing_failures.append(
                     f"{label}: inspection belongs to a different drawing specification")
+            if (active.get("leader_audit") or {}).get(
+                    "specification_hash") != expected_hash:
+                live_drawing_failures.append(
+                    f"{label}: leader inspection belongs to a different drawing specification")
     if live_drawing_failures:
         blockers.append({
             "title": "One or more active drawings have not passed live inspection",

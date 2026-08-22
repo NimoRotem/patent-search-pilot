@@ -534,6 +534,7 @@ def _figure_checks(sections: Mapping[str, str],
         tracks_pixels = any("drawn" in figure for figure in figures)
         if tracks_pixels:
             semantic_failures = []
+            leader_failures = []
             for figure in figures:
                 if not figure.get("drawn"):
                     continue
@@ -543,6 +544,12 @@ def _figure_checks(sections: Mapping[str, str],
                     semantic_failures.append(
                         f"{figure.get('label') or 'drawing'}: " +
                         (detail[:220] or "semantic pixel inspection did not pass"))
+                leader = figure.get("leader_audit") or {}
+                if not leader.get("inspected") or not leader.get("ok"):
+                    detail = "; ".join(str(item) for item in leader.get("errors") or [])
+                    leader_failures.append(
+                        f"{figure.get('label') or 'drawing'}: " +
+                        (detail[:220] or "leader endpoint inspection did not pass"))
             if semantic_failures:
                 out.append(_check(
                     "Drawing content matches its specification", "fail",
@@ -553,6 +560,16 @@ def _figure_checks(sections: Mapping[str, str],
                 out.append(_check(
                     "Drawing content matches its specification", "pass",
                     "Every stored drawing passed the independent semantic pixel review."))
+            if leader_failures:
+                out.append(_check(
+                    "Drawing leaders identify the named features", "fail",
+                    "A final-pixel vision review could not trace every printed leader to the "
+                    "part, surface, opening, chamber, space, or boundary named by its numeral.",
+                    severity="error", items=leader_failures))
+            else:
+                out.append(_check(
+                    "Drawing leaders identify the named features", "pass",
+                    "Every printed leader was traced to its named feature on the final sheet."))
         labels = {figure_number(f.get("label")) for f in figures
                   if not tracks_pixels or f.get("drawn")}
         extra = sorted((label for label in labels if label and label not in described),

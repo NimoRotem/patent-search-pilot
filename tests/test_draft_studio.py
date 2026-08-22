@@ -222,6 +222,24 @@ def test_qa_fails_closed_when_drawing_geometry_does_not_match_the_spec(monkeypat
     assert checks["Drawing content matches its specification"]["status"] == "fail"
 
 
+def test_qa_fails_closed_when_a_printed_leader_does_not_reach_its_named_feature(monkeypatch):
+    import draft_figures
+    monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [{
+        "figure_label": "FIG. 1", "active_version": 2,
+        "versions": [{"version_no": 2, "detected_numerals": ["10"],
+                      "numeral_audit": {"inspected": True, "ok": True},
+                      "semantic_audit": {"inspected": True, "ok": True},
+                      "leader_audit": {"inspected": True, "ok": False,
+                                         "errors": ["10 ends in blank space"]}}],
+    }])
+    merged = draft_studio.figures_for_qa(
+        7, 91, [{"label": "FIG. 1", "caption": "view", "numerals": ["10 body"]}])
+    checks = {item["name"]: item for item in draft_qa.run_checks(
+        sections=GOOD, numerals=NUMERALS, figures=merged, allow_remote=False)}
+    assert checks["Drawing leaders identify the named features"]["status"] == "fail"
+    assert "blank space" in checks["Drawing leaders identify the named features"]["items"][0]
+
+
 def test_qa_fails_closed_when_the_drawing_store_is_unavailable(monkeypatch):
     import draft_figures
 
@@ -649,11 +667,11 @@ def checked_figures(*labels):
         spec = next(item for item in FIGURES
                     if draft_figures.figure_key(item["label"]) == draft_figures.figure_key(label))
         expected = draft_figures.expected_entries(spec, NUMERALS)
+        digest = draft_figures.specification_hash(spec["label"], spec["caption"], expected)
         out.append({"figure_label": label, "active_version": 1, "versions": [{
             "version_no": 1, "numeral_audit": {"ok": True},
-            "semantic_audit": {"ok": True, "specification_hash":
-                               draft_figures.specification_hash(
-                                   spec["label"], spec["caption"], expected)}}]})
+            "leader_audit": {"ok": True, "specification_hash": digest},
+            "semantic_audit": {"ok": True, "specification_hash": digest}}]})
     return out
 
 
@@ -716,6 +734,17 @@ def test_readiness_rechecks_the_active_drawing_instead_of_trusting_old_qa():
         qa=clean_qa(), figures=figures)
     assert not report["ready"]
     assert any("active drawings" in item["title"] for item in report["blockers"])
+
+
+def test_readiness_blocks_a_sheet_without_final_leader_placement_approval():
+    figures = checked_figures()
+    figures[0]["versions"][0]["leader_audit"] = {
+        "inspected": True, "ok": False, "errors": ["12 points to the body"]}
+    report = draft_uspto.readiness(
+        project={"inventors": "Dana", "applicant": "Example"},
+        version=clean_version(), qa=clean_qa(), figures=figures)
+    assert not report["ready"]
+    assert any("leader placement" in item["items"] for item in report["blockers"])
 
 
 def test_readiness_requires_review_for_the_exact_exported_version():

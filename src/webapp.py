@@ -6266,9 +6266,10 @@ def _filing_figure_images(project):
                        if int(row.get("version_no") or 0) ==
                        int(figure.get("active_version") or 0)), None) or {}
         if not ((active.get("numeral_audit") or {}).get("ok") and
-                (active.get("semantic_audit") or {}).get("ok")):
+                (active.get("semantic_audit") or {}).get("ok") and
+                (active.get("leader_audit") or {}).get("ok")):
             raise drafting.DraftingValidationError(
-                f"{figure.get('figure_label') or 'A drawing'} has not passed both drawing checks.")
+                f"{figure.get('figure_label') or 'A drawing'} has not passed all drawing checks.")
         _mime, png = draft_figures.png_bytes(
             figure["id"], project["user_id"], int(figure.get("active_version") or 0))
         if not png:
