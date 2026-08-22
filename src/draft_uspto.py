@@ -228,9 +228,9 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
         if not (active.get("semantic_audit") or {}).get("ok"):
             live_drawing_failures.append(
                 f"{label}: semantic drawing inspection did not pass")
-        if not (active.get("leader_audit") or {}).get("ok"):
+        if not draft_figures.current_leader_audit(active.get("leader_audit") or {}):
             live_drawing_failures.append(
-                f"{label}: leader placement inspection did not pass")
+                f"{label}: current leader placement consensus did not pass")
         spec = specs_by_key.get(draft_figures.figure_key(label))
         if not spec:
             live_drawing_failures.append(f"{label}: no specification exists in this version")

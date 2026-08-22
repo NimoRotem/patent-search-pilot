@@ -38,6 +38,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import draft_agent
 import draft_cite
+import draft_figures
 import draft_workspace
 
 # Sections in which a prior-art citation belongs.  US practice discusses the art in the Background
@@ -545,11 +546,11 @@ def _figure_checks(sections: Mapping[str, str],
                         f"{figure.get('label') or 'drawing'}: " +
                         (detail[:220] or "semantic pixel inspection did not pass"))
                 leader = figure.get("leader_audit") or {}
-                if not leader.get("inspected") or not leader.get("ok"):
+                if not draft_figures.current_leader_audit(leader):
                     detail = "; ".join(str(item) for item in leader.get("errors") or [])
                     leader_failures.append(
                         f"{figure.get('label') or 'drawing'}: " +
-                        (detail[:220] or "leader endpoint inspection did not pass"))
+                        (detail[:220] or "current leader endpoint consensus did not pass"))
             if semantic_failures:
                 out.append(_check(
                     "Drawing content matches its specification", "fail",

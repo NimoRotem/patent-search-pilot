@@ -670,7 +670,11 @@ def checked_figures(*labels):
         digest = draft_figures.specification_hash(spec["label"], spec["caption"], expected)
         out.append({"figure_label": label, "active_version": 1, "versions": [{
             "version_no": 1, "numeral_audit": {"ok": True},
-            "leader_audit": {"ok": True, "specification_hash": digest},
+            "leader_audit": {
+                "ok": True, "inspected": True, "specification_hash": digest,
+                "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
+                "review_count": draft_figures.LEADER_REVIEW_COUNT,
+            },
             "semantic_audit": {"ok": True, "specification_hash": digest}}]})
     return out
 
@@ -745,6 +749,16 @@ def test_readiness_blocks_a_sheet_without_final_leader_placement_approval():
         version=clean_version(), qa=clean_qa(), figures=figures)
     assert not report["ready"]
     assert any("leader placement" in item["items"] for item in report["blockers"])
+
+
+def test_readiness_rejects_a_leader_review_from_an_older_gate():
+    figures = checked_figures()
+    figures[0]["versions"][0]["leader_audit"]["prompt_version"] = "old"
+    report = draft_uspto.readiness(
+        project={"inventors": "Dana", "applicant": "Example"},
+        version=clean_version(), qa=clean_qa(), figures=figures)
+    assert not report["ready"]
+    assert any("leader" in item["items"] for item in report["blockers"])
 
 
 def test_readiness_requires_review_for_the_exact_exported_version():
