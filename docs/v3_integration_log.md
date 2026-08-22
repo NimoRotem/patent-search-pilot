@@ -94,6 +94,17 @@ version, and 001 through 009 still lead. Defect injected three ways to prove it 
 | rename `009_durable_runs.sql` to `019_` | fails at the adopted-prefix assertion |
 | add `sql/9_dup.sql` beside `009_` | fails on the duplicate numeric alias |
 
+### State of the branch after the above, 2026-08-22 15:23 UTC
+
+```
+~/v3run '~/v3/bin/pt ~/v3/H-integration -q -p no:randomly'
+1 failed, 1695 passed, 94 skipped, 9 warnings in 485.69s (0:08:05)
+```
+
+Green. The one failure is the recorded pre-existing one. Passing count is up 14 on the baseline,
+which is `drafting-ready`'s new drawing tests. `v3/H-integration` is safe to branch from and safe
+to merge into.
+
 ## Open, and what each is waiting on
 
 | Branch | Ahead of base | Ready? |
@@ -137,6 +148,14 @@ committed. The full assignment table is in `docs/migrations.md`.
 
 A's branch adds `sql/012_run_admission.sql` without touching `tests/test_migrate.py`, so
 `test_the_repo_migrations_are_discoverable_and_include_figure_images` fails on A's branch today.
+Run, not assumed:
+
+```
+~/v3run '~/v3/bin/pt ~/v3/A-durable tests/test_migrate.py -q -p no:randomly'
+FAILED tests/test_migrate.py::test_the_repo_migrations_are_discoverable_and_include_figure_images
+1 failed, 17 passed, 11 skipped in 0.23s        (tests/test_migrate.py:371)
+```
+
 `511a2490` on this branch fixes the test, so the failure disappears the moment A rebases on, or is
 merged into, integration. Nothing for A to do beyond knowing why it is red.
 
