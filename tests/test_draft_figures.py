@@ -25,7 +25,18 @@ def accepted_leader_audit(**values):
     }
 
 
+def accepted_marked_anchor_audit(**values):
+    return {
+        "ok": True, "inspected": True,
+        "prompt_version": draft_figures.MARKED_ANCHOR_PROMPT_VERSION,
+        "review_count": draft_figures.MARKED_ANCHOR_REVIEW_COUNT,
+        **values,
+    }
+
+
 def accepted_semantic_audit(**values):
+    marked_values = ({"specification_hash": values["specification_hash"]}
+                     if values.get("specification_hash") else {})
     return {
         "ok": True, "inspected": True,
         "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
@@ -34,6 +45,7 @@ def accepted_semantic_audit(**values):
             "ok": True, "inspected": True,
             "version": draft_figures.PIXEL_ANCHOR_VERSION,
         },
+        "marked_anchor_audit": accepted_marked_anchor_audit(**marked_values),
         **values,
     }
 
@@ -53,6 +65,9 @@ def accept_pixel_grounding(monkeypatch):
     monkeypatch.setattr(
         draft_figures, "_ground_anchors_to_pixels",
         lambda _png, _numerals, anchors: ([dict(item) for item in anchors], dict(accepted)))
+    monkeypatch.setattr(
+        draft_figures, "inspect_marked_anchors",
+        lambda *args, **kwargs: accepted_marked_anchor_audit())
 
 
 def test_semantic_response_schema_is_inline_for_vertex():
@@ -62,6 +77,8 @@ def test_semantic_response_schema_is_inline_for_vertex():
         "properties"]["numeral"]["type"] == "string"
     leader = json.dumps(draft_figures.LEADER_RESPONSE_SCHEMA)
     assert '"$ref"' not in leader and '"$defs"' not in leader
+    marked = json.dumps(draft_figures.MARKED_ANCHOR_RESPONSE_SCHEMA)
+    assert '"$ref"' not in marked and '"$defs"' not in marked
 
 
 def test_verbose_visual_evidence_does_not_abort_an_otherwise_valid_review():
@@ -178,6 +195,48 @@ def test_semantic_consensus_fails_when_the_constraint_trace_disagrees():
     assert "four rings" in consensus["errors"][0]
 
 
+def test_marked_anchor_consensus_rejects_a_dot_on_neighboring_hatching():
+    expected = ["26 = bearing face", "36 = covering element"]
+    primary = {
+        "matches_spec": True, "summary": "both centers match", "errors": [],
+        "labels": [
+            {"numeral": "26", "correct": True, "evidence": "center is on the boundary"},
+            {"numeral": "36", "correct": True, "evidence": "center is within the band"},
+        ],
+    }
+    adversarial = {
+        "matches_spec": False, "summary": "26 is inside the neighboring band",
+        "errors": ["The center for 26 is inside hatching, not on the bearing-face boundary."],
+        "labels": [
+            {"numeral": "26", "correct": False,
+             "evidence": "the marked center lies below the required boundary"},
+            {"numeral": "36", "correct": True, "evidence": "center is within the band"},
+        ],
+    }
+
+    audit = draft_figures.marked_anchor_consensus(expected, [primary, adversarial])
+
+    assert audit["ok"] is False
+    assert audit["incorrect"] == ["26"]
+    assert audit["review_count"] == 2
+
+
+def test_marked_anchor_montage_preserves_the_endpoint_pixel_inside_a_red_ring():
+    image = Image.new("RGB", (400, 400), "white")
+    ImageDraw.Draw(image).point((200, 200), fill="black")
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    montage = Image.open(io.BytesIO(draft_figures._marked_anchor_montage(
+        raw.getvalue(), [{"numeral": "26", "x": 501, "y": 501, "visible": True}],
+        ["26 = bearing face"]))).convert("RGB")
+
+    center_x = 16 + (420 - 360) // 2 + 360 // 2
+    center_y = 16 + 58 + 360 // 2
+    assert all(channel < 80 for channel in montage.getpixel((center_x, center_y)))
+    assert montage.getpixel((center_x + 19, center_y))[0] > 180
+
+
 def test_only_the_current_two_trace_semantic_review_is_accepted():
     current = {
         "ok": True, "inspected": True,
@@ -187,11 +246,13 @@ def test_only_the_current_two_trace_semantic_review_is_accepted():
             "ok": True, "inspected": True,
             "version": draft_figures.PIXEL_ANCHOR_VERSION,
         },
+        "marked_anchor_audit": accepted_marked_anchor_audit(),
     }
     assert draft_figures.current_semantic_audit(current) is True
     assert draft_figures.current_semantic_audit({**current, "review_count": 1}) is False
     assert draft_figures.current_semantic_audit({**current, "prompt_version": "old"}) is False
     assert draft_figures.current_semantic_audit({**current, "pixel_anchor_audit": {}}) is False
+    assert draft_figures.current_semantic_audit({**current, "marked_anchor_audit": {}}) is False
     assert draft_figures.current_semantic_audit({"ok": True}) is False
 
 
@@ -433,6 +494,36 @@ def test_render_refuses_to_store_a_sheet_with_a_misplaced_leader(monkeypatch):
     with pytest.raises(draft_figures.FigureError, match="leader placement"):
         draft_figures.render_figure(
             7, 91, label="FIG. 1", caption="side view of body", numerals=["10 = body"])
+
+
+def test_render_refuses_a_false_positive_when_marked_endpoint_is_on_neighboring_geometry(
+        monkeypatch):
+    accept_pixel_grounding(monkeypatch)
+    monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
+    monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
+        "ok": True, "anchors": [{"numeral": "26", "x": 220, "y": 650,
+                                    "visible": True, "evidence": "bearing face"}]})
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["26"], "figure_label": "FIG. 2",
+        "other_text": [], "confidence": 0.99})
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [],
+        "labels": [{"numeral": "26", "correct": True,
+                    "evidence": "the black leader appears plausible"}]})
+    monkeypatch.setattr(draft_figures, "inspect_marked_anchors", lambda *a, **k: {
+        "ok": False, "inspected": True,
+        "prompt_version": draft_figures.MARKED_ANCHOR_PROMPT_VERSION,
+        "review_count": draft_figures.MARKED_ANCHOR_REVIEW_COUNT,
+        "errors": ["The marked center is inside the lower band."],
+        "incorrect": ["26"], "missing": [], "labels": []})
+    monkeypatch.setattr(
+        draft_figures, "create_figure",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not persist")))
+
+    with pytest.raises(draft_figures.FigureError, match="marked endpoint"):
+        draft_figures.render_figure(
+            7, 91, label="FIG. 2", caption="bearing face at the upper boundary of the band",
+            numerals=["26 = bearing face"])
 
 
 def test_render_automatically_moves_a_rejected_leader_to_the_reviewed_feature(monkeypatch):

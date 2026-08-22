@@ -684,6 +684,11 @@ def checked_figures(*labels):
                     "ok": True, "inspected": True,
                     "version": draft_figures.PIXEL_ANCHOR_VERSION,
                 },
+                "marked_anchor_audit": {
+                    "ok": True, "inspected": True, "specification_hash": digest,
+                    "prompt_version": draft_figures.MARKED_ANCHOR_PROMPT_VERSION,
+                    "review_count": draft_figures.MARKED_ANCHOR_REVIEW_COUNT,
+                },
             }}]})
     return out
 
