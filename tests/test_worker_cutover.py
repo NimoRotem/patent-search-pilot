@@ -69,7 +69,7 @@ def durable_db(pw, monkeypatch):
     dsn = dict(ADMIN, dbname=TESTDB, password=pw)
     boot = psycopg.connect(autocommit=True, row_factory=dict_row, **dsn)
     with boot.cursor() as cur:
-        for fn in ("009_durable_runs.sql", "012_run_admission.sql"):
+        for fn in ("009_durable_runs.sql", "012_run_admission.sql", "013_run_side_effects.sql"):
             cur.execute(open(os.path.join(ROOT, "sql", fn), encoding="utf-8").read())
     boot.close()
 

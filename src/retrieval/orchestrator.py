@@ -40,6 +40,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 import embed
+import runctx                          # the durable run this search belongs to, if any (else no-op)
 
 from . import base as _base
 from .base import RetrieverBase
@@ -234,6 +235,16 @@ def _run_phase(tasks, bound, wide=None):
     Every task is submitted BEFORE any result is collected. Submitting one and blocking on it
     before submitting the next is sequential execution wearing a thread pool, and the barrier
     tests in `test_retrieval_concurrency` exist to make that impossible to ship by accident.
+
+    UNDER A DURABLE RUN, TWO MORE THINGS HAPPEN, and neither changes the answer.
+
+    * A channel an earlier attempt COMPLETED is restored from `retrieval_hits` instead of being
+      re-run. The restored list is the same publication ids in the same rank order, and fusion
+      consumes nothing else, so a resumed run fuses to the identical ranking. A checkpoint whose
+      digest does not match what the ledger holds is treated as absent and the channel runs.
+    * Cancellation is checked BEFORE a task is submitted and again on the worker thread just
+      before the channel body runs, so a run whose lease was reaped while it queued behind the
+      concurrency gate stops there rather than issuing the query.
     """
     if not tasks:
         return {}
@@ -241,26 +252,69 @@ def _run_phase(tasks, bound, wide=None):
     #  Captured HERE, at task creation, from the search that is submitting. Reading it inside the
     #  task would read whatever another overlapping request had most recently set.
     captured = _base.active_wide() if wide is None else bool(wide)
+    #  Captured here for the same reason, and re-applied inside the task: the pool's threads are
+    #  process-wide and outlive a search, so a thread-local left behind would attribute the next
+    #  run's work, and its cancellation, to the previous one.
+    ctx = runctx.active()
+    if ctx is not None:
+        ctx.check_cancelled("retrieval fan-out")
 
-    def guarded(fn):
+    def guarded(name, fn):
         def run():
-            with gate, _base.profile_context(captured):
+            with gate, _base.profile_context(captured), runctx.adopt(ctx):
+                #  Inside the gate: a channel that waited here while the lease was reaped must not
+                #  then go and query for it.
+                runctx.check_cancelled(f"channel:{name}")
                 return fn()
         return run
 
+    #  RESUME FIRST, SUBMIT WHAT IS LEFT. Ordering is preserved because the results dict is
+    #  assembled in task order below, not in the order things finished or were restored.
+    results, errors, restored = {}, {}, []
+    pending = []
+    for name, fn in tasks:
+        banked = ctx.channel_hits(name) if ctx is not None else None
+        if banked is not None:
+            results[name] = banked
+            restored.append(name)
+        else:
+            pending.append((name, fn))
+    if restored:
+        print(f"[resume] {len(restored)} retrieval channel(s) reloaded from the hit ledger "
+              f"instead of re-run: {', '.join(restored)}", flush=True)
+
     pool = _pool()
-    futures = [(name, pool.submit(guarded(fn))) for name, fn in tasks]   # all submitted first
+    futures = [(name, pool.submit(guarded(name, fn))) for name, fn in pending]  # all submitted first
 
     #  DRAIN FIRST, decide afterwards. Raising on the first failed future leaves its siblings
     #  still executing against the database while the caller already has the exception, so the
     #  search "returns" with queries in flight, and on the next request they are competing with
     #  it for the same bounded connections. Every future is waited on before anything is raised.
-    results, errors = {}, {}
     for name, fut in futures:                                           # collected in task order
         try:
             results[name] = fut.result()
         except Exception as exc:                                        # noqa: BLE001
             errors[name] = exc
+
+    #  A CANCELLED RUN IS NOT A DEGRADED CHANNEL. Every failure below either raises or is recorded
+    #  as a source outage; a lease that was reaped is neither, and must reach the worker as itself.
+    for name, _fn in tasks:
+        exc = errors.get(name)
+        if isinstance(exc, runctx.RunCancelled):
+            raise exc
+
+    #  CHECKPOINT WHAT ACTUALLY RAN, before the phase returns. A channel is only recorded when it
+    #  produced a result: a failed channel has no checkpoint, so the retry runs it again.
+    if ctx is not None:
+        for name, _fn in pending:
+            if name in results:
+                try:
+                    ctx.channel_done(name, results[name])
+                except Exception:                                       # noqa: BLE001
+                    #  A checkpoint that will not persist costs the retry its saving, never the
+                    #  search its answer.
+                    import traceback as _tb
+                    _tb.print_exc()
 
     if errors:
         #  Deterministic: the FIRST failure in task order, never whichever thread lost the race,
@@ -328,6 +382,9 @@ class Retriever(DenseMixin, LexicalMixin, ExactMixin, CpcMixin, CitationMixin, Q
         """`wide=True` runs the funnel at the seed profile (see SEED_CHUNK_FETCH). Reserved for
         whole-invention passes: it roughly doubles the pass and there are ~20 element passes."""
         mode = as_mode(mode)
+        #  BEFORE THE QUERY IS EMBEDDED. The agent issues ~20 of these passes; a run whose lease
+        #  was reaped during pass three must not pay for passes four to twenty.
+        runctx.check_cancelled("retrieval.search")
         if not query or not query.strip():          # degenerate: an empty query has no signal
             return Result(ranked_pubs=[], family_ranked=[], channel_hits={}, query=query or "")
         #  The width THIS call decided on, captured once. `self._wide` is still maintained for
@@ -415,6 +472,10 @@ class Retriever(DenseMixin, LexicalMixin, ExactMixin, CpcMixin, CitationMixin, Q
         fam = self.dedup_family(fused)
 
         do_rerank = (config == "hybrid_rerank") if do_rerank is None else do_rerank
+        #  The cross-encoder head is the single most expensive call in this function (56.4 s
+        #  measured) and it is the last thing before the answer. Nothing about it is worth paying
+        #  for on a run somebody else now owns.
+        runctx.check_cancelled("retrieval.rerank")
         if do_rerank and fam:
             fam = self.rerank_families(query, fam, top=min(RERANK_TOP, len(fam)))
         return Result(ranked_pubs=[(p, s, pr) for _, p, s, pr in fam][:topk],

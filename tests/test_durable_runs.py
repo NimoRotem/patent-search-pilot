@@ -214,10 +214,12 @@ def test_worker_settles_success_before_stopping_its_heartbeat(monkeypatch):
     """No reaper window may open between producing the report and settling the owned run."""
     from runner import worker
 
-    #  run_once now verifies the admission schema and sweeps before it claims, so that a worker
-    #  can never fall back to claiming unadmitted rows on a 009 database. This test is about
-    #  heartbeat settlement, not schema, and it runs against a store that predates 012.
+    #  run_once now verifies the admission and side-effect schemas and sweeps before it claims, so
+    #  that a worker can never fall back to claiming unadmitted rows on a 009 database or perform
+    #  a side effect it cannot record exactly once. This test is about heartbeat settlement, not
+    #  schema, and it runs against a store that predates both.
     monkeypatch.setattr(worker.runstore, "require_admission_schema", lambda: None)
+    monkeypatch.setattr(worker.runstore, "require_side_effect_schema", lambda: None)
     monkeypatch.setattr(worker, "sweep", lambda lanes=None: {})
 
     events = []
@@ -236,13 +238,15 @@ def test_worker_settles_success_before_stopping_its_heartbeat(monkeypatch):
     monkeypatch.setattr(runstore, "Heartbeat", lambda *_args, **_kwargs: Heartbeat())
     monkeypatch.setattr(worker, "execute", lambda *_args, **_kwargs: events.append("execute"))
 
-    def finish(*_args, **_kwargs):
-        events.append("finish")
-        return True
+    def settle(*_args, **_kwargs):
+        #  The terminal state and the run's once-per-run charge commit together, so this one call
+        #  is the whole settlement and there is no window between them for the reaper.
+        events.append("settle")
+        return True, ["charge"]
 
-    monkeypatch.setattr(runstore, "finish", finish)
+    monkeypatch.setattr(runstore, "settle", settle)
     assert worker.run_once("worker-a", lanes=["quick"]) == "run-1"
-    assert events == ["heartbeat-start", "execute", "finish", "heartbeat-stop"]
+    assert events == ["heartbeat-start", "execute", "settle", "heartbeat-stop"]
 
 
 def test_a_core_checkpoint_failure_fails_closed(monkeypatch):
@@ -395,17 +399,26 @@ def test_a_shard_lease_is_taken_refreshed_and_reaped(slug):
 # ------------------------------------------------------------------ the ingest queue
 def test_repeat_demand_for_one_publication_bumps_the_count(slug):
     """A publication four searches wanted is worth more to the next corpus release than one that
-    one search wanted, and that ranking has to come from the data."""
+    one search wanted, and that ranking has to come from the data.
+
+    THE QUEUE IS SHARED AND IT IS NOT EMPTY. The demand-fetch workstream writes into the same
+    table on the same database: 459 rows at priority 80 while this was written. A test that asked
+    for the first fifty pending rows and expected its own to be among them was really asserting
+    that nobody else had queued anything, and it went red the day somebody did. This one takes the
+    ordering it is testing seriously instead: `priority` is the first sort key, so a row at
+    priority 1 is the head of the queue whatever else is waiting, and claiming exactly one row
+    cannot take work belonging to another workstream.
+    """
     rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
     pub = f"US-{uuid.uuid4().hex[:8].upper()}-A1"
     try:
         a = runstore.queue_for_ingest(pub, run_id=rid, reason="no claims in corpus",
-                                      source="epo:ops", scratch_ref=f"sources_docstore:{pub}")
-        b = runstore.queue_for_ingest(pub, run_id=rid, reason="no claims in corpus")
+                                      source="epo:ops", scratch_ref=f"sources_docstore:{pub}",
+                                      priority=1)
+        b = runstore.queue_for_ingest(pub, run_id=rid, reason="no claims in corpus", priority=1)
         assert a["request_count"] == 1 and b["request_count"] == 2
-        assert any(r["publication_number"] == pub for r in runstore.pending_ingest(limit=50))
-        claimed = [r["publication_number"] for r in runstore.claim_ingest(limit=50)]
-        assert pub in claimed
+        assert runstore.pending_ingest(limit=1)[0]["publication_number"] == pub
+        assert [r["publication_number"] for r in runstore.claim_ingest(limit=1)] == [pub]
         assert runstore.mark_ingested([pub], corpus_release="test") == 1
     finally:
         import db

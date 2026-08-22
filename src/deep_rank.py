@@ -671,6 +671,72 @@ def _budget(overrides):
     return base
 
 
+def read_wave(chosen, features, claim_items, hints, scores, slug, emit=None, workers=None):
+    """Read every chosen reference in full, checkpointing each one AS IT LANDS. -> the charts.
+
+    THE MOST EXPENSIVE THING THE SYSTEM DOES: 150 to 700 whole documents, each one up to fourteen
+    READ-tier prompts carrying the document itself. A restart used to re-read all of them, because
+    the run recorded that it had read a reference and never consulted the record. Now each chart is
+    written to a digest-checked artifact keyed by (run, publication) the moment it comes back, and
+    a resumed attempt reads only what is missing.
+
+    A banked chart is reloaded only when it answers THIS checklist: `checklist_fp` fingerprints the
+    features and claim labels, so a resumed run built on a different disclosure list re-reads
+    rather than charting an answer to a question nobody asked.
+
+    Its own function, and not a closure, because this is the stage the durability claim is about
+    and it has to be drivable by a test without a corpus, a report and a screen behind it.
+    """
+    emit = emit or (lambda *_a, **_k: None)
+    done, reused = [0], [0]
+    lock = threading.Lock()
+    read_fp = deep_analysis.checklist_fp(features, claim_items)
+    #  Captured on this thread and re-applied inside the wave: the pool's threads are not the
+    #  thread that started the stage, so they cannot see its ambient run.
+    _ctx = runctx.current(slug)
+
+    def one(row):
+        with runctx.adopt(_ctx):
+            pub = row["pub"]
+            #  ALREADY READ, ON AN EARLIER ATTEMPT OF THIS RUN.
+            ref = runctx.reference_payload(slug, pub, fp=read_fp)
+            fresh = ref is None
+            if fresh:
+                try:
+                    ref = deep_analysis.analyse_reference(pub, features, claim_items,
+                                                          row.get("title"), hints=hints)
+                except runctx.RunCancelled:
+                    #  NOT an unreadable reference. A cancelled run must reach the worker as
+                    #  itself; swallowing it here would chart 700 "error" rows and then settle.
+                    raise
+                except Exception as exc:
+                    ref = {"pub": pub, "title": row.get("title"), "found": False, "features": [],
+                           "claims": [], "method": "error", "error": str(exc)[:200], "chars": 0}
+            ref["screen"] = (scores or {}).get(pub)
+            ref["retrieval_rank"] = row.get("rank")
+            ref["family"] = row.get("fam")
+            #  EACH reference analysis, persisted the moment it lands rather than at the end of
+            #  the wave, which is what makes a killed run's progress answerable without re-reading
+            #  anything.
+            if fresh:
+                runctx.reference_done(slug, pub, ref, fp=read_fp)
+            with lock:
+                done[0] += 1
+                if not fresh:
+                    reused[0] += 1
+                if done[0] % 5 == 0 or done[0] == len(chosen):
+                    emit("chart_progress", done=done[0], total=len(chosen), pub=pub)
+            return ref
+
+    n = min(int(workers or CHART_WORKERS), max(1, len(chosen)))
+    with ThreadPoolExecutor(max_workers=n) as ex:
+        charts = list(ex.map(one, chosen))
+    if reused[0]:
+        print(f"[resume {slug}] {reused[0]} of {len(chosen)} references reloaded from this run's "
+              f"own read checkpoints; only {len(chosen) - reused[0]} were read again", flush=True)
+    return charts
+
+
 def _enrich_missing_text(chosen, on_progress=None, limit=None, enrich_top=None):
     """Fetch and persist full text for the chosen references the corpus holds nothing readable for.
 
@@ -724,15 +790,25 @@ def _enrich_missing_text(chosen, on_progress=None, limit=None, enrich_top=None):
             pass
     done = [0]
     lock = threading.Lock()
+    #  Captured here and re-applied in the pool, same as the reading wave: these threads are
+    #  created per call and have no ambient run of their own.
+    _ctx = runctx.active()
 
     def one(pub):
-        try:
-            r = enrich.enrich_publication(pub, reembed=False)
-            ok = bool(r and r.get("ok") and (r.get("added_claims") or
-                                              r.get("added_paragraphs") or
-                                              r.get("added_chunks")))
-        except Exception:
-            ok = False
+        with runctx.adopt(_ctx):
+            try:
+                #  A METERED EXTERNAL FETCH IS A UNIT OF WORK. Each of these is a SerpApi credit
+                #  against a 30,000/month plan, so a run whose lease was reaped must stop here
+                #  rather than after the whole enrichment wave.
+                runctx.check_cancelled(f"enrich:{pub}")
+                r = enrich.enrich_publication(pub, reembed=False)
+                ok = bool(r and r.get("ok") and (r.get("added_claims") or
+                                                 r.get("added_paragraphs") or
+                                                 r.get("added_chunks")))
+            except runctx.RunCancelled:
+                raise
+            except Exception:
+                ok = False
         with lock:
             done[0] += 1
             if on_progress and (done[0] % 10 == 0 or done[0] == len(thin)):
@@ -1389,40 +1465,21 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
         print(f"[deep_rank] concept expansions for {len(hints)}/{len(features)} features",
               flush=True)
     emit("chart_start", n=len(chosen))
-
-    done = [0]
-    lock = threading.Lock()
-
-    def one(row):
-        try:
-            ref = deep_analysis.analyse_reference(row["pub"], features, claim_items, row["title"],
-                                                  hints=hints)
-        except Exception as exc:
-            ref = {"pub": row["pub"], "title": row["title"], "found": False, "features": [],
-                   "claims": [], "method": "error", "error": str(exc)[:200], "chars": 0}
-        ref["screen"] = scores.get(row["pub"])
-        ref["retrieval_rank"] = row["rank"]
-        ref["family"] = row["fam"]
-        #  EACH reference analysis, persisted the moment it lands rather than at the end of the
-        #  wave. The chart itself is already durable in evidence_charts; this is the run's own
-        #  ledger of which references IT read, which is what makes a killed run's progress
-        #  answerable without re-reading anything.
-        runctx.reference_done(slug, row["pub"], ref)
-        with lock:
-            done[0] += 1
-            if done[0] % 5 == 0 or done[0] == len(chosen):
-                emit("chart_progress", done=done[0], total=len(chosen), pub=row["pub"])
-        return ref
-
+    #  Captured on this thread and re-applied inside every pool below: their threads are not the
+    #  thread that started the stage, so they cannot see its ambient run on their own.
+    _ctx = runctx.current(slug)
     t0 = time.time()
-    with ThreadPoolExecutor(max_workers=min(CHART_WORKERS, max(1, len(chosen)))) as ex:
-        charts = list(ex.map(one, chosen))
+    charts = read_wave(chosen, features, claim_items, hints, scores, slug, emit=emit)
     chart_seconds = time.time() - t0
 
     #  THE PASSAGE TAIL , read the screened-but-uncut population per limitation, in batches.
     #  See the BATCH_TAIL knob for why this exists and what it replaces.
     if BATCH_TAIL and claim_items and reach_map:
         try:
+            #  A whole extra reading wave. Nothing here is worth paying for on a run somebody
+            #  else now owns, and the handler below re-raises so the stop is not mistaken for a
+            #  tail that merely failed.
+            runctx.check_cancelled("batch tail")
             t2 = time.time()
             by_pub_row = {r["pub"]: r for r in rows}
             #  ONE COLUMN PER FAMILY. The full-read wave dedupes by family through its rep
@@ -1463,6 +1520,8 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
                       f"{len(claim_items)} limitations: {cells} evidence cells "
                       f"({time.time() - t2:.0f}s)", flush=True)
                 chart_seconds += time.time() - t2
+        except runctx.RunCancelled:
+            raise
         except Exception:
             traceback.print_exc()
 
@@ -1480,7 +1539,9 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
 
         def second(ref):
             try:
-                n = deep_analysis.reread_absent(ref["pub"], ref.get("features") or [], hints=hints)
+                with runctx.adopt(_ctx):
+                    n = deep_analysis.reread_absent(ref["pub"], ref.get("features") or [],
+                                                    hints=hints)
                 if n:
                     #  Refute ONLY what the second pass changed. The dicts are shared with
                     #  ref["features"], so the downgrade lands on the chart itself.
@@ -1489,6 +1550,10 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
                     ref["counts"] = deep_analysis._counts(
                         (ref.get("features") or []) + (ref.get("claims") or []))
                 return n
+            except runctx.RunCancelled:
+                #  A stop is not "this reference gained nothing". Swallowing it would let the
+                #  whole concept pass run to completion for a run somebody else owns.
+                raise
             except Exception:
                 return 0
 
@@ -1542,13 +1607,16 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
                 ledger=ledger, emit=emit)
             if rescued_refs:
                 charts.extend(rescued_refs)
+        except runctx.RunCancelled:
+            raise
         except Exception:
             traceback.print_exc()
-        #  EACH rescue round, persisted. claim_rescue reports the rounds it ran in its own summary;
-        #  one search_stages row per round is what turns "the rescue took 1h51m" into which round
-        #  cost what.
-        for _i, _r in enumerate((rescue or {}).get("rounds") or [rescue or {}], 1):
-            runctx.rescue_round(slug, _i, _r if isinstance(_r, dict) else {"round": _r})
+        #  THE ROUNDS THEMSELVES ARE CHECKPOINTED INSIDE claim_rescue, where they happen, because
+        #  a round has to be RESUMABLE and not merely reported: recording them here, after the
+        #  whole rescue returned, could only ever describe work that had already been repeated.
+        #  This row closes the phase off with the summary the operator reads.
+        runctx.rescue_round(slug, "summary", {k: v for k, v in (rescue or {}).items()
+                                              if k != "rounds"})
         chart_seconds += time.time() - t2
         #  Re-ingest so the stored ledger is the FINAL state. Without this the report ships the
         #  coverage the rescue was launched to fix, which is the one number it must not show.

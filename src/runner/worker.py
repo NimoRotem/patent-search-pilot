@@ -13,15 +13,35 @@ search. Restarting the worker costs at most the current resumable stage.
 
 INTEGRATION STATUS
 ------------------
-This worker is not enabled. The current web route and status stream still use the legacy
-in-process dispatcher. They must be cut over to runstore before the Supervisor template is
-enabled, and every recorded stage must be consulted on resume before the durability claim is
-complete.
+This worker is not enabled, and the route is not cut over: the production web route and status
+stream still use the legacy in-process dispatcher, and no Supervisor worker is running. That
+cutover is a coordinated step and is deliberately not taken here.
+
+WHAT IS NOW COMPLETE, and was the open half of the durability claim: EVERY RECORDED STAGE IS
+CONSULTED ON RESUME. `runstore.resume_point` is no longer read and printed. Each stage reloads its
+own checkpoint, at the granularity the money is spent at:
+
+    fuse                webapp._generate reloads the fused candidate set, digest-checked
+    retrieve:<channel>  retrieval.orchestrator._run_phase restores a completed channel's hit set
+                        from retrieval_hits instead of re-querying it; fusion is identical
+    screen              deep_rank reuses the screening scores when they cover the same candidates
+    read:<pub>          deep_rank and claim_rescue reload each reference's chart, digest-checked
+    rescue:<round>      claim_rescue re-enters at the first round it has not finished
+    report              the worker verifies the published report against its recorded digest
+
+and every checkpointed artifact carries a content digest, so a truncated one is treated as absent
+and redone rather than trusted.
+
+CANCELLATION. The heartbeat publishes a lost lease to `runctx.RunContext`, and the retrieval
+fan-out, every LLM batch in the reading, the enrichment fetches and the rescue rounds all check it
+between units of work. A run whose lease is stolen mid-read stops issuing provider calls instead of
+spending to the end and then discovering it cannot settle.
 
 THE LOOP
 --------
     reap expired leases  ->  claim one run (FOR UPDATE SKIP LOCKED)  ->  heartbeat thread on
-    ->  execute with a RunContext bound  ->  finish / fail (retry) / release
+    ->  execute with a RunContext bound  ->  verify the published report
+    ->  settle + charge in ONE transaction / fail (retry) / release
 
 Two workers never claim the same run: the claim is a single UPDATE ... FROM (SELECT ... FOR UPDATE
 SKIP LOCKED LIMIT 1), so the loser of a race skips the locked row instead of waiting on it.
@@ -97,6 +117,36 @@ def _signal(signum, _frame):
     print(f"[worker] signal {signum}: draining, will not claim another run", flush=True)
 
 
+def verify_report(run_id, slug, webapp):
+    """The published report agrees with a run about to be marked done. -> the digest it verified.
+
+    Raises otherwise. A reader must never see a run marked done whose report is absent, partial or
+    not the bytes the run's own checkpoint recorded, and "the file exists" answers none of those:
+    the pipeline writes a PARTIAL snapshot to the same path the moment the seed search returns, so
+    a run that died after the partial and before the finished report leaves a file that exists, is
+    valid JSON, and is not the answer.
+    """
+    import runartifact
+
+    path = webapp.report_path(slug)
+    if not path.exists():
+        raise RuntimeError("the pipeline finished without writing a report")
+    ck = runstore.completed_stages(run_id).get("report") or {}
+    recorded = ck.get("sha256") if isinstance(ck, dict) else None
+    if recorded and not runartifact.verify(path, recorded):
+        raise RuntimeError(
+            f"the report at {path} is not the artifact this run checkpointed; refusing to settle "
+            f"it done rather than publish a report nobody produced")
+    body = runartifact.read(path, recorded)
+    if body is None:
+        raise RuntimeError(f"the report at {path} could not be read back as the finished artifact")
+    if body.get("partial"):
+        raise RuntimeError(
+            "the report on disk is still the partial snapshot; a run marked done must not point "
+            "at one")
+    return recorded or runartifact.digest_of(path)
+
+
 def execute(run, worker, heartbeat):
     """Run one claimed search. Raises on failure; the caller decides retry vs fail."""
     import webapp  # heavy: imported once, on first run
@@ -104,11 +154,19 @@ def execute(run, worker, heartbeat):
     inp = run.get("input") or {}
     slug = run["slug"]
     ctx = runctx.RunContext(run["run_id"], slug, attempt=run.get("attempts") or 1,
-                            worker=worker, heartbeat=heartbeat)
+                            worker=worker, heartbeat=heartbeat,
+                            #  Where the per-reference and per-round checkpoint artifacts live.
+                            #  Under the reports directory, in a folder named for the RUN, so two
+                            #  runs of one slug can never read each other's reading.
+                            artifact_root=webapp.REPORTS)
     runctx.bind(slug, ctx)
     try:
         resume_stage, done = runstore.resume_point(run["run_id"])
         if done:
+            #  CONSULTED, NOT MERELY PRINTED. Every stage in `done` is reloaded by the stage that
+            #  owns it: `fuse` by webapp._generate, `screen` and each `read:<pub>` by deep_rank,
+            #  each `retrieve:<channel>` by the retrieval fan-out, each `rescue:<round>` by
+            #  claim_rescue. The line below is the operator's view of the same fact.
             print(f"[worker] {run['run_id']} attempt {ctx.attempt}: resuming at "
                   f"{resume_stage} ({len(done)} stage(s) already done: "
                   f"{', '.join(sorted(done))})", flush=True)
@@ -117,12 +175,14 @@ def execute(run, worker, heartbeat):
                          wide=bool(inp.get("wide")), doc_token=inp.get("doc_token"),
                          search_focus=inp.get("search_focus") or "all_text",
                          depth=inp.get("depth") or "deep")
-        ok = webapp.report_path(slug).exists()
-        runstore.progress(run["run_id"], {"kind": "done", "status": "done" if ok else "error",
-                                          "msg": "done" if ok else "no report was produced",
-                                          "done": ok})
-        if not ok:
-            raise RuntimeError("the pipeline finished without writing a report")
+        try:
+            digest = verify_report(run["run_id"], slug, webapp)
+        except Exception as exc:
+            runstore.progress(run["run_id"], {"kind": "done", "status": "error",
+                                              "msg": str(exc)[:300], "done": False})
+            raise
+        runstore.progress(run["run_id"], {"kind": "done", "status": "done", "msg": "done",
+                                          "done": True, "report_sha256": digest})
     finally:
         runctx.unbind(slug)
         runstore.release_shards(run["run_id"])
@@ -160,11 +220,21 @@ def sweep(lanes=None):
     return out
 
 
+#  Settled in the SAME transaction as the run's terminal state, so there is no window in which a
+#  run is done and its charge is not recorded. `charge` is the debit receipt for the run; a run
+#  retried three times produces exactly one of these rows because (run_id, kind) is a primary key.
+SETTLE_SIDE_EFFECTS = ("charge",)
+
+
 def run_once(worker, lanes=None):
     """Claim and execute at most one run. -> the run_id executed, or None."""
     #  BEFORE any sweep or claim. DURABLE_WORKER_ENABLED=1 must never degrade into claiming
     #  unadmitted rows on a 009 database: the real worker refuses instead.
     runstore.require_admission_schema()
+    #  And before any spend, for the same reason: a worker that cannot record a side effect
+    #  exactly once cannot promise to do it exactly once, and finding that out after an hour of
+    #  reading is finding it out too late.
+    runstore.require_side_effect_schema()
     sweep(lanes)
     #  Explicit, right after the guard above: no second catalog probe, and the safety of
     #  this call is readable here rather than inferred from a global.
@@ -178,9 +248,24 @@ def run_once(worker, lanes=None):
     t0 = time.time()
     try:
         execute(run, worker, hb)
-        if not runstore.finish(rid, worker, "done"):
+        settled, claimed = runstore.settle(rid, worker, "done",
+                                           side_effects=SETTLE_SIDE_EFFECTS,
+                                           attempt=int(run.get("attempts") or 1))
+        if not settled:
             raise runstore.LeaseLost(
                 f"{rid} could not be settled because worker ownership was lost")
+        if "charge" in claimed:
+            print(f"[worker] {rid} charged once, on attempt {run.get('attempts')}", flush=True)
+        else:
+            print(f"[worker] {rid} was already charged by an earlier attempt; not charging again",
+                  flush=True)
+    except runctx.RunCancelled as exc:
+        #  A cancelled run is a lease we no longer hold, detected by the pipeline itself rather
+        #  than at the settle. Logged apart from the generic case because it is the good outcome:
+        #  it means the reading stopped instead of spending to the end of a run somebody else owns.
+        print(f"[worker] {rid}: cancelled after {time.time() - t0:.0f}s ({exc.reason}); the "
+              f"pipeline stopped spending and the run was NOT settled", flush=True)
+        return rid
     except runstore.LeaseLost:
         #  Somebody else owns this run now. Do NOT settle it: that would overwrite their state.
         print(f"[worker] {rid}: lease lost after {time.time() - t0:.0f}s, dropping it", flush=True)

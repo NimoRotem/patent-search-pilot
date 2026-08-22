@@ -596,13 +596,15 @@ def _tok_now():
 
 
 def _write_json_atomic(path, payload, *, indent=None):
-    """Replace one JSON artifact atomically, never exposing a crash-truncated checkpoint."""
-    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        tmp.write_text(json.dumps(payload, default=str, indent=indent))
-        os.replace(tmp, path)
-    finally:
-        tmp.unlink(missing_ok=True)
+    """Replace one JSON artifact atomically and durably. -> the sha256 of the bytes on disk.
+
+    One implementation, in `runartifact`, so the digest a checkpoint records and the digest a
+    resume recomputes can never come from two different serialisations. It writes a sibling temp
+    file, fsyncs it, `os.replace`s it into place and fsyncs the directory, which is the difference
+    between "the rename is in the page cache" and "the rename survived the power going out".
+    """
+    import runartifact
+    return runartifact.write(path, payload, indent=indent)
 
 
 def _fused_checkpoint_path(slug):
@@ -638,7 +640,18 @@ def _final_candidate_rows(deep_result):
 
 
 def _write_report(slug, rep):
-    _write_json_atomic(report_path(slug), rep, indent=1)
+    """Publish the report. -> the sha256 of exactly what a reader will now see.
+
+    ATOMIC, ALWAYS. `report_path(slug)` is the file the page, the exporters and the durable
+    worker's own completion check all read, and it is rewritten several times during a run: a
+    partial snapshot the moment the seed search returns, then the finished report, then again with
+    the degraded summary. Every one of those goes through a sibling temp file and `os.replace`, so
+    there is no instant at which a reader can open a half-written one.
+
+    The digest is returned rather than re-read from disk, so the checkpoint records the bytes THIS
+    call published rather than whatever the next write may already have replaced them with.
+    """
+    sha = _write_json_atomic(report_path(slug), rep, indent=1)
     (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)   # force the view to rebuild from this
     (REPORTS / f"{slug}.detail-preview.json").unlink(missing_ok=True)
     # A rerun can reuse the same slug with a different uploaded document.  Never let its old
@@ -647,6 +660,7 @@ def _write_report(slug, rep):
         query_claim_grid.invalidate(slug, REPORTS)
     except Exception:
         traceback.print_exc()
+    return sha
 
 
 def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None,
@@ -1319,8 +1333,18 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
         _fused_path = _fused_checkpoint_path(slug)
         _ck = runctx.stage_payload(slug, "fuse") or {}
         if _ck.get("report_path"):
-            try:
-                rep = json.loads(Path(_ck["report_path"]).read_text())
+            #  DIGEST-CHECKED, NOT MERELY PRESENT. A fused checkpoint truncated by the very crash
+            #  that made this a retry parses as valid JSON often enough to matter, and reloading a
+            #  fragment would mean screening, reading and publishing a report built on a candidate
+            #  set nobody produced. A mismatch is treated as no checkpoint: the retrieval re-runs.
+            import runartifact
+            rep = runartifact.read(_ck["report_path"], _ck.get("sha256"))
+            if rep is None:
+                print(f"[resume {slug}] the fused checkpoint at {_ck['report_path']} is missing "
+                      f"or does not match its recorded digest; the retrieval phase is re-run",
+                      flush=True)
+                run_budget = None
+            else:
                 run_budget = _ck.get("budget")
                 _set_job(slug, kind="resumed", detail={"stage": "fuse",
                                                        "families": len(rep.get("ranked_families") or [])},
@@ -1328,14 +1352,12 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                              f"candidate families already retrieved, going straight to screening…")
                 print(f"[resume {slug}] loaded the fused candidate set from "
                       f"{_ck['report_path']}; the retrieval phase is not repeated", flush=True)
-            except Exception:
-                traceback.print_exc()
-                rep, run_budget = None, None
         if rep is None:
             rep, run_budget = _retrieve_and_fuse()
             if runctx.current(slug) is not None:
-                _write_json_atomic(_fused_path, rep)
+                _fused_sha = _write_json_atomic(_fused_path, rep)
                 runctx.checkpoint(slug, "fuse", {"report_path": str(_fused_path),
+                                                 "sha256": _fused_sha,
                                                  "budget": run_budget},
                                   n_out=len(rep.get("ranked_families") or []))
         runctx.check_lease(slug)
@@ -1506,7 +1528,10 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
         #  degraded afterwards instead of being read as a clean result.
         degraded = failclosed.summary()
         rep["degraded"] = degraded
-        _write_report(slug, rep)
+        #  THE PUBLICATION. Atomic, and its digest is what the checkpoint records, so the worker's
+        #  completion check compares the run's terminal state against the exact bytes this call
+        #  put on disk rather than against "a file exists".
+        report_sha = _write_report(slug, rep)
         manifest.finish(run_manifest, status="completed",
                         n_ranked_families=len(rep.get("ranked_families") or []),
                         n_displayed=len((view or {}).get("cards") or []),
@@ -1514,8 +1539,8 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
         final_path = report_path(slug)
         runctx.checkpoint(
             slug, "report",
-            {"report_path": str(final_path),
-             "sha256": hashlib.sha256(final_path.read_bytes()).hexdigest()},
+            {"report_path": str(final_path), "sha256": report_sha,
+             "partial": bool(rep.get("partial"))},
             n_out=len(rep.get("ranked_families") or []))
         _set_job(slug, kind="done", status="done", msg="done")
         #  The receipt, written before the notification so a user who opens the mail and clicks
@@ -1530,7 +1555,16 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             traceback.print_exc()
         if "PYTEST_CURRENT_TEST" not in os.environ:
             try:
-                notifications.queue_search_completion(slug)
+                #  ONCE PER RUN, NOT ONCE PER ATTEMPT. A run that is retried three times owes the
+                #  person who asked ONE "your search is ready". The claim is a row keyed on run_id
+                #  with a uniqueness constraint, so the attempt that already sent it can be a
+                #  different process on a different day and this one still knows. True with no
+                #  durable run bound, which is what keeps the gold set and warm_reports unchanged.
+                if runctx.once(slug, "notify_complete"):
+                    notifications.queue_search_completion(slug)
+                else:
+                    print(f"[{slug}] the completion mail for this run was already sent by an "
+                          f"earlier attempt; not repeating it", flush=True)
             except Exception:
                 traceback.print_exc()
     except Exception as e:

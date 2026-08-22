@@ -50,6 +50,7 @@ import claim_chart
 import db
 import grounding
 import llm
+import runctx                       # the durable run this reading belongs to, if any (else no-op)
 
 #  3: caches written by the pre-deep_rank path were built against a PARTIAL, pre-listwise
 #  ordering and were never invalidated, so they charted a list the page no longer showed.
@@ -420,6 +421,21 @@ def _refute(rows, pub, texts=None):
     return downgraded
 
 
+def checklist_fp(features, input_claims):
+    """What a reference was read AGAINST, in 32 hex characters.
+
+    Two readings with the same fingerprint answered the same question about the same document; two
+    with different ones did not, and a resumed run must not reuse a chart across that line. Same
+    discipline as `evidence.subject_fp`, computed here because the durable checkpoint needs it
+    before it ever calls into the evidence store.
+    """
+    import runartifact
+    payload = {"features": list(features or [])[:MAX_FEATURES],
+               "claims": [(c.get("label") if isinstance(c, dict) else str(c))
+                          for c in (input_claims or [])][:MAX_INPUT_CLAIMS]}
+    return runartifact.digest_bytes(runartifact.serialise(payload))[:32]
+
+
 def analyse_reference(pub, features, input_claims, title="", hints=None):
     """Read ONE reference in full and chart it against the features and the subject claims.
 
@@ -428,6 +444,11 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
     subject's vocabulary looks like in OTHER people's patents before it decides "absent".
     """
     started = time.time()
+    #  BEFORE THE EVIDENCE STORE IS EVEN ASKED. This function is called 150 to 700 times per run
+    #  and each call is up to fourteen READ-tier prompts carrying the whole document, so it is
+    #  where a run whose lease was reaped burns its money. Cooperative and prompt: raised at the
+    #  start of a reference and again before each batch, never mid-write.
+    runctx.check_cancelled(f"read:{pub}")
     #  THE FLYWHEEL: a reference already charted against this EXACT checklist (same features, same
     #  claim texts, same read pool, inside the TTL) is served from the evidence store instead of
     #  being re-read. Benchmark arms and re-runs ask identical checklists; before this, every one
@@ -549,9 +570,18 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
     jobs = ([("features", b, []) for b in feature_batches]
             + [("claims", [], b) for b in claim_batches])
 
+    #  Captured on THIS thread and re-applied inside the batch pool below: a nested pool's threads
+    #  are not the thread that started the reference, so they cannot see its ambient run.
+    _ctx = runctx.active()
+
     def _run(job):
         kind, fb, cb = job
-        return kind, _ask(fb, cb)
+        with runctx.adopt(_ctx):
+            #  ONE UNIT OF WORK IS ONE BATCH, so this is the granularity cancellation has to
+            #  reach. Checking only between references would leave up to fourteen full-document
+            #  prompts in flight for a run somebody else already owns.
+            runctx.check_cancelled(f"read:{pub}:{kind}")
+            return kind, _ask(fb, cb)
 
     if len(jobs) > 1 and BATCH_WORKERS > 1:
         #  WARM THE CACHE ON ONE CALL BEFORE FANNING OUT THE REST.
@@ -782,6 +812,9 @@ def reread_absent(pub, rows, hints=None, ref=None, max_features=FEATURE_BATCH, k
     against the same text. A row is only ever upgraded on a quote that passes the same grounding
     and location gates as the first pass, so a second look cannot lower the evidential bar.
     """
+    #  The second look is a STRONG-tier call per reference and there are hundreds of them, so it
+    #  is a spending unit of work and gets the same check as the first reading.
+    runctx.check_cancelled(f"reread:{pub}")
     targets = [r for r in rows
                if r.get("verdict") == "absent" and r.get("grounding") in
                ("model-absent", "dropped-ungrounded-quote", "dropped-unlocatable-quote",

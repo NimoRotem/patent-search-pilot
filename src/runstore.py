@@ -9,9 +9,11 @@ because a re-queued run started again from zero.
 
 INTEGRATION STATUS
 ------------------
-This module and its standalone worker are a dormant foundation. The production web route and SSE
-stream still use `run_queue` and `_JOBS`; no Supervisor worker is enabled. Route cutover, durable
-status streaming and complete stage-resume wiring must land together before this replaces them.
+The production web route and SSE stream still use `run_queue` and `_JOBS`, and no Supervisor
+worker is enabled: the route cutover is a coordinated step and has not been taken. Stage resume is
+no longer part of that backlog. Every recorded stage is consulted on resume, at the granularity of
+one retrieval channel, one reference read and one rescue round, and every checkpointed artifact
+carries a content digest that is verified before it is trusted. See `runner.worker`.
 
 This module provides the durable store. Eight tables (sql/009_durable_runs.sql):
 
@@ -37,11 +39,19 @@ workers can never claim the same run and neither ever waits on the other's row l
 
 RESUME
 ------
-`Stage` is the resumable unit exposed by this store. It returns an existing checkpoint instead of
-running a completed body again. The current pipeline actively reloads the fused-candidate file;
-other stage rows are recorded but are not all consulted yet. Complete cutover must make a worker
-killed after screening restart at reading rather than at decomposition. Outputs too large for a
-row checkpoint a reference to an atomic file plus its digest.
+`Stage` is the resumable unit exposed by this store, and `substage` is the same thing one level
+down: `retrieve:<channel>`, `read:<publication>`, `rescue:<round>`. Each returns an existing
+checkpoint instead of running a completed body again, and every one of them is consulted by the
+stage that owns it, so a worker killed after screening restarts at reading rather than at
+decomposition, and one killed halfway through the reading re-reads only what is missing. Outputs
+too large for a row checkpoint a reference to an atomic file plus its digest (`runartifact`); a
+digest that does not match is treated as no checkpoint at all.
+
+SIDE EFFECTS
+------------
+Charging a run and mailing its owner are per RUN, not per ATTEMPT. `run_side_effects`
+(sql/013_run_side_effects.sql) is the ledger, keyed (run_id, kind) with a primary key, and
+`settle()` writes the row in the same transaction that makes the run terminal.
 """
 from __future__ import annotations
 
@@ -75,6 +85,9 @@ REQUIRED_TABLES = (
     "search_runs", "search_stages", "search_queries", "retrieval_hits",
     "search_candidates", "provider_usage", "shard_leases", "corpus_ingest_queue",
 )
+
+#  013. The once-per-run ledger for side effects that must not repeat across attempts.
+SIDE_EFFECT_TABLE = "run_side_effects"
 
 TERMINAL = ("done", "failed", "cancelled")
 
@@ -153,6 +166,35 @@ def admission_capable():
                     "AND column_name = ANY(%s)",
                     (list(REQUIRED_RUN_COLUMNS),))
         return int((cur.fetchone() or {}).get("n") or 0) == len(REQUIRED_RUN_COLUMNS)
+
+
+def side_effects_capable():
+    """Whether THIS database carries the once-per-run side-effect ledger (013). RAISES on failure.
+
+    NOT CACHED, for the same reason `admission_capable` is not: a cached answer is keyed by
+    nothing, and one process that retargets its connection would then reuse a 013 answer against a
+    database that does not have the table, which is precisely how a side effect gets performed
+    twice.
+    """
+    with db.cursor(autocommit=True, readonly=True) as cur:
+        cur.execute("SELECT to_regclass(%s) AS t", (SIDE_EFFECT_TABLE,))
+        return (cur.fetchone() or {}).get("t") is not None
+
+
+def require_side_effect_schema():
+    """Refuse a once-per-run side effect when 013 has not been applied.
+
+    Scoped like `require_admission_schema`, and for the same reason: refusing every durable
+    feature on a database that carries 009 and 012 but not 013 is a bigger outage than the bug it
+    prevents. The hazard is real though. Without the table there is nothing keyed on run_id with a
+    uniqueness constraint, so "have I already charged this run" is answerable only from memory,
+    and memory is a different process on the retry.
+    """
+    ensure_schema()
+    if not side_effects_capable():
+        raise RuntimeError(
+            f"once-per-run side effects need the {SIDE_EFFECT_TABLE} table, which is not present. "
+            "Apply sql/013_run_side_effects.sql through the migration runner.")
 
 
 def require_admission_schema():
@@ -585,6 +627,79 @@ def cancel(run_id, reason="cancelled by request"):
 
 
 # ---------------------------------------------------------------------------------------------
+# once-per-run side effects (013)
+# ---------------------------------------------------------------------------------------------
+#  WHY THIS IS A TABLE AND NOT A FLAG
+#  A run is retried. Charging a user's quota and sending "your search is ready" are per RUN, not
+#  per ATTEMPT, and the attempt that already did it is usually a different process on a different
+#  day. The only thing both attempts can see is the row, so the row is the authority: a primary key
+#  on (run_id, kind) makes the second claim lose, in Postgres, without anybody having to remember.
+def claim_side_effect(run_id, kind, *, attempt=1, detail=None):
+    """Claim the right to perform `kind` for this run. -> True for the ONE owner, else False.
+
+    False is not an error: it means another attempt already did it and this one must not.
+    """
+    require_side_effect_schema()
+    with _cur() as cur:
+        cur.execute(f"""INSERT INTO {SIDE_EFFECT_TABLE} (run_id, kind, attempt, detail)
+                        VALUES (%s,%s,%s,%s)
+                        ON CONFLICT (run_id, kind) DO NOTHING
+                        RETURNING kind""",
+                    (run_id, kind, int(attempt), json.dumps(detail or {}, default=str)))
+        return cur.fetchone() is not None
+
+
+def side_effects_of(run_id):
+    """{kind: row} for every side effect already performed for this run."""
+    require_side_effect_schema()
+    with _cur() as cur:
+        cur.execute(f"SELECT * FROM {SIDE_EFFECT_TABLE} WHERE run_id=%s ORDER BY kind", (run_id,))
+        return {r["kind"]: _row(r) for r in cur.fetchall() or []}
+
+
+def settle(run_id, worker=None, status="done", error=None, side_effects=(), attempt=1,
+           detail=None):
+    """Settle a run AND claim its once-per-run side effects, in ONE transaction.
+
+    -> (settled: bool, claimed: [kind, ...])
+
+    The single transaction is the point. Settling in one transaction and recording the charge in
+    another leaves a window in which the run is terminal and the charge is not written, and a
+    worker that dies inside that window either charges twice or never. Here the terminal state and
+    the receipt commit together or neither does.
+
+    `claimed` names the kinds THIS attempt owns and must therefore perform. A kind that is absent
+    from it was already done by an earlier attempt and must not be repeated.
+    """
+    kinds = [k for k in (side_effects or ()) if k]
+    if not kinds:
+        return finish(run_id, worker=worker, status=status, error=error), []
+    require_side_effect_schema()
+    claimed = []
+    with _cur(autocommit=False) as cur:
+        cur.execute("""UPDATE search_runs
+                          SET status=%s, error=%s, finished_at=now(), updated_at=now(),
+                              worker_id=NULL, lease_expires_at=NULL,
+                              event_seq = search_runs.event_seq + 1
+                        WHERE run_id=%s AND (%s::text IS NULL OR worker_id=%s)
+                        RETURNING run_id""",
+                    (status, (str(error)[:4000] if error else None), run_id, worker, worker))
+        if cur.fetchone() is None:
+            #  Ownership was lost. Claim NOTHING: the worker that owns the run now is the one
+            #  entitled to charge it and to send its mail.
+            return False, []
+        for kind in kinds:
+            cur.execute(f"""INSERT INTO {SIDE_EFFECT_TABLE} (run_id, kind, attempt, detail)
+                            VALUES (%s,%s,%s,%s)
+                            ON CONFLICT (run_id, kind) DO NOTHING
+                            RETURNING kind""",
+                        (run_id, kind, int(attempt), json.dumps(detail or {}, default=str)))
+            if cur.fetchone() is not None:
+                claimed.append(kind)
+    return True, claimed
+
+
+# ---------------------------------------------------------------------------------------------
 # reads
 # ---------------------------------------------------------------------------------------------
 def _row(row):
@@ -856,6 +971,47 @@ def record_hits(run_id, channel, hits, query_id=None, shard=""):
     return len(rows)
 
 
+def replace_hits(run_id, channel, hits, query_id=None, shard=""):
+    """Record this channel's raw hit set, REPLACING whatever an earlier attempt left. -> count.
+
+    `record_hits` appends, which is right for a ledger of everything that was ever issued and
+    wrong for a resume: a channel re-run after an interruption would leave two interleaved copies
+    of itself, and reading them back would hand fusion a hit list with every rank duplicated. The
+    delete and the insert are one transaction, so a reader never sees the channel empty.
+    """
+    rows = []
+    for i, h in enumerate(hits or []):
+        pub = h.get("publication_number") or h.get("pub")
+        if pub is None or pub == "":
+            continue
+        rows.append((run_id, query_id, channel, h.get("rank", i + 1), str(pub),
+                     h.get("family_id"), h.get("score"), shard or h.get("shard") or "",
+                     json.dumps(h.get("meta") or {}, default=str)))
+    with _cur(autocommit=False) as cur:
+        cur.execute("DELETE FROM retrieval_hits WHERE run_id=%s AND channel=%s",
+                    (run_id, channel))
+        if rows:
+            cur.executemany("""INSERT INTO retrieval_hits (run_id, query_id, channel, rank,
+                                                           publication_number, family_id, score,
+                                                           shard, meta)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""", rows)
+    return len(rows)
+
+
+def channel_hits(run_id, channel):
+    """This channel's recorded hits, in the rank order they were recorded in.
+
+    Ordered by `rank` and then by insertion id, so a channel that recorded no ranks still comes
+    back in the order it was written. Fusion consumes rank order and nothing else, which is what
+    makes a resumed run's ranking identical to an uninterrupted one's.
+    """
+    with _cur() as cur:
+        cur.execute("SELECT publication_number, rank, score, family_id, shard, meta "
+                    "FROM retrieval_hits WHERE run_id=%s AND channel=%s "
+                    "ORDER BY rank NULLS LAST, id", (run_id, channel))
+        return [_row(r) for r in cur.fetchall() or []]
+
+
 _CANDIDATE_FIELDS = ("family_id", "channels", "fused_rank", "fused_score", "screen_score",
                      "screen_verdict", "read_score", "read_status", "final_rank", "final_score",
                      "stage", "detail")
@@ -1051,6 +1207,11 @@ class Heartbeat:
 
     `lost` is set the moment a heartbeat comes back False, which is the worker's signal to stop:
     the reaper has already handed the run to somebody else.
+
+    DETECTING THE LOSS WAS NEVER THE PROBLEM. Nothing downstream heard it: a run whose lease had
+    been reaped kept issuing provider calls until the pipeline finished on its own and only then
+    discovered it could not settle. `on_lost` is how the detection reaches the threads that are
+    spending. Callbacks run on THIS thread, must not block, and are called exactly once.
     """
 
     def __init__(self, run_id, worker, interval=None, lease_seconds=None):
@@ -1060,6 +1221,37 @@ class Heartbeat:
         self.lost = threading.Event()
         self._stop = threading.Event()
         self._t = None
+        self._on_lost = []
+        self._cb_lock = threading.Lock()
+
+    def on_lost(self, callback):
+        """Call `callback` the moment this run's lease is gone.
+
+        Registering AFTER the loss fires immediately, so a context built during a slow start
+        cannot miss the one edge it exists to observe.
+        """
+        with self._cb_lock:
+            self._on_lost.append(callback)
+            already = self.lost.is_set()
+        if already:
+            self._fire(callback)
+        return self
+
+    @staticmethod
+    def _fire(callback):
+        try:
+            callback()
+        except Exception:                                            # noqa: BLE001
+            #  A listener that raises must not stop the others, and must not take down the
+            #  heartbeat thread: the lease is already lost, which is the important fact.
+            traceback.print_exc()
+
+    def _publish_lost(self):
+        self.lost.set()
+        with self._cb_lock:
+            callbacks = list(self._on_lost)
+        for cb in callbacks:
+            self._fire(cb)
 
     def start(self):
         self._t = threading.Thread(target=self._loop, name=f"hb-{self.run_id}", daemon=True)
@@ -1072,7 +1264,7 @@ class Heartbeat:
                 if not heartbeat(self.run_id, self.worker, self.lease_seconds):
                     print(f"[runstore] LEASE LOST for {self.run_id}; another worker owns it now",
                           flush=True)
-                    self.lost.set()
+                    self._publish_lost()
                     return
                 heartbeat_shards(self.run_id)
             except Exception:
