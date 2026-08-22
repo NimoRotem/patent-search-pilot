@@ -492,10 +492,16 @@ def test_a_valid_numeral_table_may_carry_extra_audit_columns(tmp_path):
 
 
 def test_figures_round_trip(tmp_path):
+    figures = tmp_path / "figures"
+    figures.mkdir()
+    (figures / "agent-created.svg").write_text("<svg/>", encoding="utf-8")
+    (figures / "rendered-stale.png").write_bytes(b"stale")
     draft_workspace.write_figures(tmp_path, FIGURES)
     out = draft_workspace.read_figures(tmp_path)
     assert [f["label"] for f in out] == ["FIG. 1", "FIG. 2"]
     assert out[1]["numerals"] == ["16 sealing ring", "18 groove", "20 passage"]
+    assert not (figures / "agent-created.svg").exists()
+    assert not (figures / "rendered-stale.png").exists()
 
 
 def test_an_existing_draft_is_split_on_its_headings():

@@ -182,8 +182,9 @@ def read_numerals(workspace: Path) -> list[dict[str, str]]:
 def write_figures(workspace: Path, figures: Sequence[Mapping[str, Any]]) -> None:
     directory = Path(workspace) / "figures"
     directory.mkdir(parents=True, exist_ok=True)
-    for existing in directory.glob("*.md"):
-        existing.unlink()
+    for existing in directory.iterdir():
+        if existing.is_file() or existing.is_symlink():
+            existing.unlink()
     for index, figure in enumerate(figures, 1):
         label = _clean(figure.get("label") or f"FIG. {index}", 60)
         slug = re.sub(r"[^A-Za-z0-9]+", "-", label).strip("-").upper() or f"FIG-{index}"
