@@ -60,6 +60,19 @@ class StudioError(drafting.DraftingError):
     pass
 
 
+def human_text(value: Any) -> Any:
+    """Remove a disallowed punctuation mark from every model-written human-facing string."""
+    if isinstance(value, str):
+        return re.sub(r"\s*\u2014\s*", " - ", value)
+    if isinstance(value, Mapping):
+        return {key: human_text(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [human_text(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(human_text(item) for item in value)
+    return value
+
+
 # =============================================================================================
 # The drafting prompt
 # =============================================================================================
@@ -102,7 +115,8 @@ No placeholder, drafting note, TODO, TBD, blank field, instruction to a draftspe
 the inventor, or request for confirmation may appear anywhere in draft/, draft/numerals.md, or
 figures/. Resolve each issue conservatively from the disclosure or omit the unsupported optional
 detail. Return `questions` as an empty array. The automatic review will reject the entire turn if
-one unfinished marker remains.
+one unfinished marker remains. Use commas, colons, full stops, or ordinary hyphens; never use an
+em dash.
 
 WORKING AROUND THE PRIOR ART
 Read prior_art/INDEX.md and then every reference file before you write. For each one, work out
@@ -327,7 +341,7 @@ def validate_sections(sections: Mapping[str, str],
     missing: list[str] = []
     total = 0
     for key, _name, heading in draft_workspace.SECTION_FILES:
-        value = str(sections.get(key) or "").replace("\x00", "").strip()
+        value = str(human_text(sections.get(key) or "")).replace("\x00", "").strip()
         if not value:
             missing.append(heading)
         out[key] = value
@@ -370,8 +384,8 @@ def validate_snapshot(snapshot: Mapping[str, Any],
                       allowed_references: Sequence[str] = ()) -> dict[str, Any]:
     """Validate every agent-owned filing artifact before any image call or version save."""
     sections = validate_sections(snapshot.get("sections") or {}, allowed_references)
-    numerals = [dict(item) for item in (snapshot.get("numerals") or ())]
-    figures = [dict(item) for item in (snapshot.get("figures") or ())]
+    numerals = [human_text(dict(item)) for item in (snapshot.get("numerals") or ())]
+    figures = [human_text(dict(item)) for item in (snapshot.get("figures") or ())]
     markers = []
     markers.extend(draft_qa.placeholders_in_text(
         "Reference numeral table", json.dumps(numerals, ensure_ascii=False)))
@@ -1032,7 +1046,7 @@ class TurnRunner:
             session_id=prior_session or self.agent.new_session_id(), resume=bool(prior_session),
             transcript=transcript, stage="drafting")
         runs = [run]
-        result = dict(run.result)
+        result = human_text(dict(run.result))
         action = str(result.get("action") or "revised")
 
         #  Only an explicit question on an existing application may complete without a filing
@@ -1062,7 +1076,7 @@ class TurnRunner:
                     prompt=FINALIZE_PROMPT, session_id=runs[-1].session_id,
                     resume=True, transcript=transcript, stage="repairing the draft")
                 runs.append(repair)
-                result = dict(repair.result)
+                result = human_text(dict(repair.result))
                 action = "revised"
 
             self.repository.heartbeat(turn_id, lease, stage="checking the draft")
@@ -1136,7 +1150,7 @@ class TurnRunner:
 
         total_cost = sum(item.cost_usd for item in runs)
         total_duration = sum(item.duration_ms for item in runs)
-        steps = [step for item in runs for step in item.steps][-80:]
+        steps = human_text([step for item in runs for step in item.steps][-80:])
         self.repository.add_message(
             project_id, "agent",
             str(result.get("answer") or result.get("summary") or "")[:MAX_MESSAGE_CHARS],
@@ -1199,7 +1213,7 @@ class TurnRunner:
             "model_name": outcome.get("model") or "",
             "last_error": outcome.get("error") or "",
         }
-        return report
+        return human_text(report)
 
     def _publish_review(self, project_id: int, *, turn_id: int | None,
                         version_no: int | None, workspace: Path,

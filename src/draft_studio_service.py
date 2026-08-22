@@ -718,6 +718,7 @@ def process_one() -> dict[str, Any] | None:
 
 def _fail(runner: draft_studio.TurnRunner, claimed: Mapping[str, Any], error: str, *,
           retryable: bool) -> dict[str, Any] | None:
+    error = str(draft_studio.human_text(str(error)))
     try:
         runner.restore_figures(int(claimed["id"]))
     except Exception:

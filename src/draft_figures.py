@@ -620,6 +620,7 @@ def _audit_log(*, request_id: str, provider: str, model: str, stage: str,
 
 def semantic_audit(expected, result) -> dict:
     """Compute the semantic verdict ourselves; never trust the model's boolean alone."""
+    result = _human_text(dict(result or {}))
     expected_values = [item["numeral"] for item in numeral_entries(expected)]
     expected_set = set(expected_values)
     anchors = [dict(item) for item in (result or {}).get("anchors") or []
@@ -644,6 +645,16 @@ def semantic_audit(expected, result) -> dict:
         "missing": missing, "unexpected": unexpected, "duplicates": duplicates,
         "errors": errors, "unexpected_text": unexpected_text, "anchors": anchors,
     }
+
+
+def _human_text(value):
+    if isinstance(value, str):
+        return re.sub(r"\s*\u2014\s*", " - ", value)
+    if isinstance(value, dict):
+        return {key: _human_text(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_human_text(item) for item in value]
+    return value
 
 
 def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict:

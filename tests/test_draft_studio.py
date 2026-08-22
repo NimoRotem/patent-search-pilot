@@ -581,6 +581,17 @@ def test_placeholders_outside_the_sections_are_refused_before_save(field, value)
         draft_studio.validate_snapshot(snapshot, ALLOWED)
 
 
+def test_agent_filing_artifacts_are_normalized_for_human_facing_text():
+    snapshot = {
+        "sections": {**GOOD, "summary": GOOD["summary"] + " One view\u2014shown below."},
+        "numerals": [{"numeral": "10", "part": "base\u2014plate"}],
+        "figures": [{"label": "FIG. 1", "caption": "base\u2014plate view", "numerals": ["10"]}],
+    }
+    clean = draft_studio.validate_snapshot(snapshot, ALLOWED)
+    assert "\u2014" not in json.dumps(clean, ensure_ascii=False)
+    assert "One view - shown below." in clean["sections"]["summary"]
+
+
 def test_a_citation_in_the_detailed_description_is_allowed_here():
     """Incorporation by reference is real practice; the reviewer judges it, the validator does not
     throw fifteen minutes of drafting away over it."""

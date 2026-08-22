@@ -80,6 +80,16 @@ def test_semantic_audit_requires_one_grounded_anchor_per_expected_part():
     assert audit["ok"] is False and audit["missing"] == ["12"]
 
 
+def test_semantic_audit_normalizes_model_written_human_text():
+    audit = draft_figures.semantic_audit(["10 = body"], {
+        "matches_spec": False, "summary": "body\u2014wrong view",
+        "errors": ["relationship\u2014not shown"], "unexpected_text": [],
+        "anchors": [{"numeral": "10", "x": 200, "y": 300, "visible": True,
+                     "evidence": "body\u2014visible"}],
+    })
+    assert "\u2014" not in json.dumps(audit, ensure_ascii=False)
+
+
 def test_labels_are_overlaid_deterministically_after_geometry_review():
     output = draft_figures.annotate_png(blank_png(), "FIG. 3 - side view", [
         {"numeral": "10", "x": 200, "y": 300, "visible": True, "evidence": "body"},

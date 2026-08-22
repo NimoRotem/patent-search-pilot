@@ -5290,7 +5290,8 @@ def _draft_error_status(exc):
 
 
 def _draft_error_redirect(project_id, exc):
-    return redirect(url_for("draft_detail", project_id=project_id, error=str(exc)[:300]))
+    error = str(draft_studio.human_text(str(exc)))
+    return redirect(url_for("draft_detail", project_id=project_id, error=error[:300]))
 
 
 def _draft_report_choices(user, limit=300):
@@ -5701,14 +5702,16 @@ def _turn_runner():
 
 
 def _studio_error(exc):
-    return jsonify({"ok": False, "error": str(exc)}), _draft_error_status(exc)
+    error = str(draft_studio.human_text(str(exc)))
+    return jsonify({"ok": False, "error": error}), _draft_error_status(exc)
 
 
 def _figure_compiler_error(exc):
     status = 409 if isinstance(
         exc, (figure_compiler.ApprovalRequired, figure_compiler.CompilationBlocked)) else \
         _draft_error_status(exc)
-    return jsonify({"ok": False, "error": str(exc)}), status
+    error = str(draft_studio.human_text(str(exc)))
+    return jsonify({"ok": False, "error": error}), status
 
 
 def _uploads_from_request(default_kind="prior_art"):
