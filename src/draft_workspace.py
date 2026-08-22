@@ -433,6 +433,8 @@ def _write_review(workspace: Path, qa_report: Mapping[str, Any] | None) -> None:
         for check in checks:
             lines.append(f"- **{check.get('name')}** ({check.get('status')}): "
                          f"{_clean(check.get('detail'), 2000)}")
+            for item in list(check.get("items") or ())[:60]:
+                lines.append(f"  - {_clean(item, 2000)}")
         lines.append("")
     if findings:
         lines += ["## Reviewer findings", ""]

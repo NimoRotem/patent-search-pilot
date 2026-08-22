@@ -60,6 +60,12 @@ class StudioError(drafting.DraftingError):
     pass
 
 
+class DrawingInspectionError(StudioError):
+    def __init__(self, errors: Sequence[str]):
+        self.errors = [str(item)[:2000] for item in errors if str(item).strip()]
+        super().__init__(f"{len(self.errors)} drawing sheet(s) did not pass inspection.")
+
+
 def human_text(value: Any) -> Any:
     """Remove a disallowed punctuation mark from every model-written human-facing string."""
     if isinstance(value, str):
@@ -1108,16 +1114,29 @@ class TurnRunner:
                         disclosure=str(project.get("disclosure_text") or ""), workspace=workspace)
                     if not generated.get("ok"):
                         failures = [str(item) for item in generated.get("errors") or ()]
-                        raise StudioError(
-                            "Drawing inspection failed: " +
-                            ("; ".join(failures) if failures else
-                             "one or more sheets did not pass semantic and OCR inspection."))
+                        raise DrawingInspectionError(failures or [
+                            "One or more sheets did not pass semantic and OCR inspection."])
                     self.repository.heartbeat(turn_id, lease, stage="independent review")
                     report = self.evaluate(
                         project_id, version_no=int(project.get("latest_version_no") or 0) + 1,
                         workspace=workspace, allowed=allowed, sections=sections,
                         numerals=snapshot["numerals"], figures=snapshot["figures"],
                         review_index=review_index)
+                except DrawingInspectionError as exc:
+                    check = {
+                        "name": "Every drawing sheet passes semantic and OCR inspection",
+                        "status": "fail", "severity": "error",
+                        "detail": (f"{len(exc.errors)} sheet(s) failed. Each failure is listed "
+                                   "below so the next repair can address the full set."),
+                        "items": exc.errors,
+                    }
+                    report = {
+                        "status": "failed", "verdict": "fail",
+                        "summary": f"{len(exc.errors)} drawing sheet(s) require automatic repair.",
+                        "checks": [check], "findings": [],
+                        "counts": draft_qa.counts_for([check], []), "cost_usd": 0.0,
+                        "duration_ms": 0, "model_name": "", "last_error": str(exc),
+                    }
                 except drafting.DraftingConflict:
                     raise
                 except Exception as exc:                         # a failed gate becomes repair input

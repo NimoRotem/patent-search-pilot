@@ -1014,12 +1014,16 @@ def test_the_previous_review_reaches_the_next_iteration(tmp_path, monkeypatch):
         project={"id": 5, "title": "t", "disclosure_text": "d" * 60},
         qa_report={"verdict": "fail", "summary": "numeral 22 is undefined",
                    "checks": [{"name": "Every numeral in the text is defined", "status": "fail",
-                               "detail": "22 is not in the table", "items": ["22"]}],
+                               "detail": "22 is not in the table",
+                               "items": ["FIG. 2: wrong fastener axis",
+                                         "FIG. 7: missing process arrow"]}],
                    "findings": [{"severity": "critical", "title": "Claim 1 unsupported",
                                  "where": "claims", "detail": "no support", "fix": "add support"}]})
     review = (workspace / "review" / "previous-qa.md").read_text()
     assert "numeral 22 is undefined" in review and "Claim 1 unsupported" in review
     assert "add support" in review
+    assert "FIG. 2: wrong fastener axis" in review
+    assert "FIG. 7: missing process arrow" in review
 
 
 def test_figure_labels_match_across_spellings():
@@ -1118,11 +1122,13 @@ def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, t
         "seeded": False, "had_version": False,
         "previous_sections": {},
     })
-    monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {"ok": True})
+    drawing_runs = iter([
+        {"ok": False, "errors": ["FIG. 2: wrong fastener axis",
+                                    "FIG. 7: missing process arrow"]},
+        {"ok": True},
+    ])
+    monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: next(drawing_runs))
     reports = iter([
-        {"status": "complete", "verdict": "fail", "summary": "fix claim support",
-         "checks": [{"name": "Claims", "status": "fail"}], "findings": [],
-         "counts": {}, "cost_usd": 0, "duration_ms": 1, "model_name": "review"},
         {"status": "complete", "verdict": "pass", "summary": "ready",
          "checks": [{"name": "Claims", "status": "pass"}], "findings": [],
          "counts": {}, "cost_usd": 0, "duration_ms": 1, "model_name": "review"},
@@ -1139,6 +1145,8 @@ def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, t
     assert len(repository.saved_reports) == 1
     assert repository.saved_reports[0]["report"]["verdict"] == "pass"
     assert all(message[0] != "qa" or message[1] == "ready" for message in repository.messages)
+    assert workspace.review_reports[0]["checks"][0]["items"] == [
+        "FIG. 2: wrong fastener axis", "FIG. 7: missing process arrow"]
     assert out["version"]["version_no"] == 1
 
 
