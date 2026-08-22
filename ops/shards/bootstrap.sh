@@ -178,7 +178,11 @@ SHARD_TANTIVY_INDEX=/opt/patents-shard/tantivy/index
 SHARD_TANTIVY_LIB=/opt/patents-shard/lib
 ENV
 
-install -d -m 0755 /opt/patents-shard/bin /opt/patents-shard/tantivy /opt/patents-shard/lib
+install -d -m 0755 /opt/patents-shard/bin /opt/patents-shard/lib
+#  The Tantivy index directory belongs to `postgres`, which is the user the lexical server runs as
+#  and the user a loader will be writing the index with. Root owned, the server can read an index
+#  it can never be given, and the first symptom is a permission error at the end of a long build.
+install -d -m 0755 -o postgres -g postgres /opt/patents-shard/tantivy
 install -m 0755 "$PAYLOAD/shard_agent.py"     /opt/patents-shard/bin/shard_agent.py
 install -m 0755 "$PAYLOAD/prewarm.py"         /opt/patents-shard/bin/prewarm.py
 install -m 0755 "$PAYLOAD/tantivy_serve.sh"   /opt/patents-shard/bin/tantivy_serve.sh

@@ -329,6 +329,17 @@ class SyntheticShardManager(shard_manager.ShardManagerBackend):
 
     def release(self, domain, conn):
         sh = self.shards.get(domain)
+        #  A CONNECTION THIS FLEET NEVER HANDED OUT IS NOT THIS FLEET'S TO COUNT. `cold.run`
+        #  abandons a task that blew the tier budget without cancelling it, on purpose, because
+        #  the task owns the connection and abandoning that would leak it on the real shard. The
+        #  abandoned task finishes seconds later and runs its own `finally: release(...)`, by
+        #  which time the NEXT test has installed a different fleet under the same domain name.
+        #  Counting the straggler there made `leaked_connections()` report `{'B66C': -1}` for a
+        #  shard that had handed out and taken back exactly one connection, in whichever run the
+        #  two happened to overlap. Identity, not the domain name, says whose connection this is.
+        if sh is not None and conn is not None and getattr(conn, "shard", sh) is not sh:
+            conn.close()
+            return
         with self._lock:
             if sh is not None:
                 sh.released += 1

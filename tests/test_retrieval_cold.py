@@ -459,3 +459,26 @@ def test_retrieval_exports_the_new_seams():
     assert retrieval.cold is cold
     assert retrieval.channels is channels
     assert callable(retrieval.channel_weight)
+
+
+def test_a_straggler_from_an_earlier_fleet_is_not_counted_against_this_one():
+    """REGRESSION. `test_the_tier_budget_stops_a_hung_shard_from_hanging_the_search` abandons a
+    task on purpose: the task owns its connection and cancelling it would leak the connection on a
+    real shard, so it is left to finish and release in its own `finally`. It finishes seconds
+    later, when the NEXT test has installed a different fleet under the same domain name, and the
+    straggler's release used to be counted there: `leaked_connections()` reported `{'B66C': -1}`
+    for a fleet that had handed out and taken back exactly one connection. Observed in a full-suite
+    run on 2026-08-22 and not reproducible on its own, which is what makes it worth a test."""
+    old_fleet = testing.shard("B66C", docs=[(1, "F1")])
+    new_fleet = testing.shard("B66C", docs=[(2, "F2")])
+    mgr = testing.SyntheticShardManager(shards={"B66C": new_fleet})
+
+    conn = mgr.connection("B66C")                      # this fleet's own, opened and released
+    mgr.release("B66C", conn)
+    assert mgr.leaked_connections() == {}
+
+    straggler = testing.FakeConnection(old_fleet)      # the abandoned task, finishing late
+    mgr.release("B66C", straggler)
+    assert straggler.closed, "the straggler's connection was not closed"
+    assert mgr.leaked_connections() == {}, mgr.leaked_connections()
+    assert mgr.open_connections == 0

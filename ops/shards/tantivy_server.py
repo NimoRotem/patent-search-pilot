@@ -42,6 +42,12 @@ INDEX_DIR = os.environ.get("SHARD_TANTIVY_INDEX", "/opt/patents-shard/tantivy/in
 #  The index is opened once and reopened only when the directory changes underneath us, because
 #  opening an index is not free and the manager polls health once a second during a wake.
 RELOAD_SECONDS = float(os.environ.get("SHARD_TANTIVY_RELOAD_SECONDS", "10"))
+#  The fields /search falls back to when the index's schema names no default search field. These
+#  are the `chunks.kind` values from docs/lexical_interface.md; a field the index does not have is
+#  ignored by the parser, so naming more than exist is safe and naming none is not.
+FIELDS = [f for f in os.environ.get(
+    "SHARD_TANTIVY_FIELDS",
+    "text,abstract,claim_own,claim_resolved,whole,paragraph,title,figure_caption").split(",") if f]
 
 try:
     import tantivy                                                     # noqa: F401
@@ -131,10 +137,11 @@ def search(query, limit=20):
         try:
             q = index.parse_query(query)
         except Exception:
-            #  A schema with no default search fields needs them named. The field names belong to
-            #  whoever built the index, so take them from the schema rather than guessing.
-            fields = [f for f in getattr(index.schema, "field_names", lambda: [])()]
-            q = index.parse_query(query, fields)
+            #  A schema with no default search fields needs them named, and tantivy's Schema does
+            #  not expose its field names, so they cannot be discovered. SHARD_TANTIVY_FIELDS is
+            #  how whoever built the index says what they are; the default is the `chunks.kind`
+            #  values docs/lexical_interface.md lists, which is what a shard index should hold.
+            q = index.parse_query(query, FIELDS)
         hits = []
         for score, address in searcher.search(q, int(limit)).hits:
             try:

@@ -169,6 +169,13 @@ def main(argv=None):
             runstore.release_shards(run_id)
         except Exception:
             pass
+        #  The run row exists only so `shard_leases.run_id` has something to reference. Leaving it
+        #  `queued` would put a search nobody asked for in front of the durable worker the first
+        #  time one is enabled.
+        try:
+            runstore.cancel(run_id, reason="shard lifecycle proof, not a real search")
+        except Exception:
+            pass
         if not a.keep:
             print(f"  stopping {shard.vm}", flush=True)
             backend.stop(shard)
