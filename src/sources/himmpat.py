@@ -58,6 +58,8 @@ from typing import Optional
 
 import httpx
 
+import realtime_only
+
 from .schema import Candidate, SubQuery, iso_date, normalize_pub, best_source_url
 from .base import Adapter, CACHE
 
@@ -252,7 +254,10 @@ class HimmPat(Adapter):
         return w
 
     def enabled(self) -> bool:
-        return bool(self.key)
+        #  Two layers, and the second one is the load-bearing one. This makes the bar visible in
+        #  /api/health and in the cascade's startup banner; `_post` refuses regardless, so a
+        #  caller that ignores this still cannot spend a unit.
+        return bool(self.key) and realtime_only.allowed(self.name)
 
     def search_available(self) -> bool:
         # One search plus a minimal hydrate has to fit, or there is no point
@@ -260,6 +265,8 @@ class HimmPat(Adapter):
         return self.enabled() and _affordable(2)
 
     def disabled_reason(self) -> str:
+        if not realtime_only.allowed(self.name):
+            return realtime_only.blocked_reason(self.name)
         if not self.key:
             return ("HIMMPAT_API_KEY not set (himmpat.com — global patent search with "
                     "English full text for CN/JP/KR)")
@@ -292,11 +299,16 @@ class HimmPat(Adapter):
         Raises HimmPatError for anything else — the executor turns that into a
         visible source_error rather than a silent empty result.
         """
+        #  THE BAR. Before the cache, before the key check, before the ledger: a process that
+        #  is not a live search has no business holding any part of this allowance, and putting
+        #  the check at the one boundary every billed call passes through is what makes it a
+        #  property of the code rather than of the cascade's configuration.
+        realtime_only.check(self.name)
         if cache_key:
             hit = await CACHE.get(cache_key)
             if hit is not None:
                 return hit
-        if not self.enabled():
+        if not self.key:
             raise HimmPatError(101, "HIMMPAT_API_KEY not set")
         if not _affordable(units):
             u = usage()

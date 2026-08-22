@@ -63,6 +63,13 @@ from config import DATA, ROOT
 import base64, uuid
 import concurrent.futures as _cf
 
+#  THIS PROCESS IS A LIVE SEARCH. `realtime_only` defaults to deny, so HimmPat's 250 units a day
+#  are unreachable from every offline process in the tree (the acquisition worker, ops/, cron, the
+#  test suite) and reachable from here, which is what the allowance is for. See
+#  src/realtime_only.py and docs/cjk_acquisition.md.
+import realtime_only
+realtime_only.enable("web search process (webapp)")
+
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 
 

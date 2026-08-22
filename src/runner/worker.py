@@ -167,6 +167,10 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     corpus_guard.arm("search worker")
+    #  ...and this process IS the live search, so the real-time-only providers are
+    #  reachable here and nowhere else. See src/realtime_only.py.
+    import realtime_only
+    realtime_only.enable("durable search worker")
     signal.signal(signal.SIGTERM, _signal)
     signal.signal(signal.SIGINT, _signal)
 

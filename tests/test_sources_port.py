@@ -25,6 +25,7 @@ import httpx
 import sources
 from sources import base as sbase
 from sources import gpatents_direct as G
+import realtime_only
 from sources import himmpat as H
 from sources import openalex as OA
 from sources import pqai as PQ
@@ -46,6 +47,11 @@ def isolate_sources_state(monkeypatch, tmp_path):
     and keep the REAL ~/.patents ledgers out of reach so tests never spend or
     corrupt the shared per-host quota files."""
     monkeypatch.setattr(H, "_STATE_FILE", str(tmp_path / "himmpat_usage.json"))
+    #  This module exercises the LIVE SEARCH fan-out, which is the one caller HimmPat exists for.
+    #  `realtime_only` defaults to deny (see src/realtime_only.py), so declaring the role here is
+    #  what the web process does at startup, not a bypass: `tests/test_cjk_acquisition.py` owns
+    #  the assertions that a process which has NOT declared it is refused.
+    realtime_only.enable("test suite: sources fan-out stands in for a live search")
     monkeypatch.setattr(PQ, "_MED_CALLS_FILE", str(tmp_path / "pqai_mediator_calls.json"))
     monkeypatch.setattr(PQ, "_QUOTA_FILE", str(tmp_path / "pqai_search_quota.json"))
     monkeypatch.setattr(PQ, "_QUOTA_STATE", {})
@@ -57,6 +63,7 @@ def isolate_sources_state(monkeypatch, tmp_path):
     sbase.CACHE.clear()
     sources.reset_adapters()
     yield
+    realtime_only.disable()
     G.reset_cooldown()
     sbase.CACHE.clear()
     sources.reset_adapters()

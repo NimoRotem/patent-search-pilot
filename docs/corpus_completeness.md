@@ -162,23 +162,41 @@ measurement that justifies funding it.
 
 ## 6. What has to be acquired, and from where
 
-`best_source` on each record names the cheapest rung of `src/sources/fulltext.py` that can serve
+`best_source` on each record names the cheapest rung of the acquisition cascade that can serve
 that family.
 
-| best_source | families | what it means |
-|---|--:|---|
-| `himmpat` | **900,463** | CN, JP or KR only. Metered at 250/day |
-| `gpatents_direct` | 240,482 | every other office. Rate limited, self-disabling, ScrapingBee at scale |
-| `pqai` | 220,532 | a US member exists. Free and not quota counted |
-| `none_needed` | 168,645 | nothing is missing |
-| `epo_ops` | 71,375 | an EP or WO member exists. Free inside 4 GB/week |
-| `local:family_member` | 6,005 | a sibling already holds the text here. A join, not a fetch |
-
-**62.6% of the niche's missing text is behind HimmPat's 250 a day.** At that rate 900,463 families
-is about 3,600 days, so the CN/JP/KR share of this niche cannot be acquired through that adapter and
-needs a different route: this is a hard blocker for workstream C, not a throughput problem.
-`gpatents_direct` plus ScrapingBee reaches every office including CN, so the realistic plan for the
-Chinese share is ScrapingBee volume, and it should be sized before it is started.
+> **CORRECTED 2026-08-22 (workstream K). The table below is what this section said before the
+> HimmPat rung was removed, and it is kept because the correction is the point.**
+>
+> | best_source (superseded) | families | what it said |
+> |---|--:|---|
+> | `himmpat` | **900,463** | CN, JP or KR only. Metered at 250/day |
+> | `gpatents_direct` | 240,482 | every other office |
+> | `pqai` | 220,532 | a US member exists. Free and not quota counted |
+> | `none_needed` | 168,645 | nothing is missing |
+> | `epo_ops` | 71,375 | an EP or WO member exists. Free inside 4 GB/week |
+> | `local:family_member` | 6,005 | a sibling already holds the text here. A join, not a fetch |
+>
+> **"62.6% of the niche is behind HimmPat's 250 a day, about 3,600 days" was an artefact of
+> `corpus_niche.SOURCE_LADDER`, not a measurement of the cascade.** That tuple named `himmpat`
+> for any family whose members are all CN, JP or KR, so `best_source` stamped 900,463 families
+> with a rung `src/acquire/providers.py` has never asked first: it asks Google Patents four rungs
+> earlier, and Google Patents serves CJK documents in English machine translation.
+>
+> Measured on the live acquisition pool over the three hours to 18:56 UTC on 2026-08-22:
+> `serp_self` answered **9,359 of 9,360 CN publications (99.99%)** with a mean of 23,049
+> characters of description and 5,366 of claims, KR 4,569 of 4,657 (98.1%), JP 375 of 393
+> (95.4%), TW 70 of 85 (82.4%), at 4,498 to 5,320 documents an hour with two workers and free.
+> HimmPat answered **45** publications in the whole run. So the CJK share is about **7.5 days**,
+> not 3,600, and the ladder now routes CJK to `gpatents_direct` like every other office.
+>
+> HimmPat is now barred from every bulk path structurally, not by convention: `src/realtime_only.py`
+> refuses the call at the adapter's HTTP boundary unless the process has declared itself a live
+> search, and `acquire.providers.BARRED` refuses to build the rung at all. The real remaining risk
+> is that Google Patents is one provider on one IP with no contract, and there is no free
+> non-Google route to CJK full text. **`docs/cjk_acquisition.md` is the evidence for every number
+> in this note, provider by provider, including the two that look promising and are not
+> (BigQuery holds no CJK full text at all; MAREC's 8.1M JP records are abstracts).**
 
 The `pqai` and `epo_ops` rungs together are 291,907 families and both are free, which is where an
 acquisition run should start.

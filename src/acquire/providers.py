@@ -3,18 +3,34 @@
     0. corpus        we may already hold the disclosure under another publication in the same
                      family. Free, one indexed read, and it answers 22,099 of the 52,176 starved
                      niche publications (42.4%, measured on the live corpus 2026-08-22).
-    1. marec         EP/WO bulk XML, from a configured mirror. Inert until one exists.
-    2. uspto_bulk    the USPTO's own PTGRXML / APPXML full-text bulk products, same mirror shape.
-    3. epo_ops       the official EPO API. EP and WO only (verified 2026-08-14: US, DE, CN and JP
-                     all 404 on /claims and /description). Free inside the 4 GB/week tier, which
-                     is of the order of 200,000 documents a week.
-    4. pqai          free, US only, and its per-publication route is NOT quota counted.
-    5. serp_self     Google Patents fetched from our own IP. Every jurisdiction, already in
+    1. bq_cjk        BigQuery `patents-public-data`, through a clustered cache we own. CN / JP /
+                     KR / TW English TITLE AND ABSTRACT, never claims or description: measured
+                     2026-08-22, no BigQuery snapshot from 201710 to 202511 carries a single CJK
+                     claim or description. It answers 93.2% of the pending CJK work list at
+                     $0.0000033 a document, with no rate limit at all.
+    2. marec         EP/WO bulk XML, from a configured mirror. Inert until one exists.
+    3. uspto_bulk    the USPTO's own PTGRXML / APPXML full-text bulk products, same mirror shape.
+    4. epo_ops       the official EPO API. EP and WO only (re-verified live 2026-08-22: CN, JP
+                     and KR return CLIENT.InvalidCountryCode on /claims and /description, which
+                     is a refusal by office, not a missing document). Free inside the 4 GB/week
+                     tier, which is of the order of 200,000 documents a week.
+    5. pqai          free, US only, and its per-publication route is NOT quota counted.
+    6. serp_self     Google Patents fetched from our own IP. Every jurisdiction, already in
                      English, free, and the one rung that can get this box cut off, so it is
-                     paced at 2 in flight with 0.7 s between calls and it self-disables.
-    6. scrapingbee   the same pages through somebody else's IPs. 15 credits a page.
-    7. himmpat       CN / JP / KR / TW translations, metered trial key.
+                     paced at 2 in flight with 0.7 s between calls and it self-disables. It is
+                     also THE rung that answers the CJK half of the niche: measured on the live
+                     pool 2026-08-22, 9,359 of 9,360 CN attempts (99.99%) returned English full
+                     text averaging 23,049 characters of description.
+    7. scrapingbee   the same pages through somebody else's IPs. 15 credits a page.
     8. serpapi       paid, and LAST.
+
+NO HIMMPAT RUNG, AND `build()` REFUSES TO MAKE ONE. HimmPat is the only adapter here with
+machine-translated English full text for CN/JP/KR/TW, and its ledger is 250 units a day against
+about 48 for one deep search. Bulk acquisition against it is not slow, it is arithmetically
+impossible: 900,463 families at 250 a day is about 3,600 days, and every unit a bulk job takes is
+a unit a live search does not have. The rung is gone, the cap is gone, and `src/realtime_only.py`
+refuses the call at the adapter's own HTTP boundary so a bulk path written later cannot reach it
+either. It contributed 45 hits to the live pool before this, against serp_self's 16,392.
 
 ORDER NOTE, deliberate and measured. The brief lists SerpApi at rung 5 and "the other adapters" at
 rung 6, while also calling SerpApi the last resort. Those cannot both hold, so cost decides.
@@ -156,6 +172,18 @@ class Provider:
     def covers(self, pub: str) -> bool:
         return True
 
+    async def prefetch(self, pubs, client: httpx.AsyncClient) -> None:
+        """Optional: warm this rung for a whole leased batch in one round trip.
+
+        A no-op for every rung that is already one call per publication. It exists for the rungs
+        whose upstream charges per QUERY rather than per row: a BigQuery lookup bills a 10 MB
+        minimum however few keys it carries, so 24 separate point queries cost 24 times what one
+        24-key query costs for the identical answer. The worker calls it once per lease batch and
+        ignores any failure, because a rung that could not warm itself must still be allowed to
+        miss rather than take the batch down with it.
+        """
+        return None
+
     async def fetch(self, pub: str, client: httpx.AsyncClient):
         raise NotImplementedError
 
@@ -269,6 +297,182 @@ class CorpusProvider(Provider):
             abstract=found.get("abstract", ""), title=found.get("title", ""),
             claims_lang=found.get("claims_lang", ""), desc_lang=found.get("desc_lang", ""),
             meta=meta, raw=b"", raw_ext="")
+
+
+# ---------------------------------------------------------------------------------------------
+# 1. BigQuery patents-public-data, through a cache we cluster ourselves
+# ---------------------------------------------------------------------------------------------
+_BQ_TAG = None
+
+
+def _clean_bq_text(text: str) -> str:
+    """Undo the markup BigQuery ships inside an abstract string.
+
+    The JPO abstracts arrive as `&lt;P&gt;PROBLEM TO BE SOLVED: ...&lt;P&gt;SOLUTION: ...`, which
+    is an escaped `<P>` and not a stray angle bracket: left alone it is indexed as the literal
+    tokens `lt` and `gt` on every Japanese abstract in the corpus. Entities are unescaped first,
+    then the tags they turn into are replaced by the paragraph break they always meant.
+    """
+    global _BQ_TAG
+    import html
+    import re as _re
+    if _BQ_TAG is None:
+        _BQ_TAG = _re.compile(r"</?[A-Za-z][A-Za-z0-9]{0,7}\s*/?>")
+    out = html.unescape(str(text or ""))
+    out = _BQ_TAG.sub("\n", out)
+    return "\n".join(line.strip() for line in out.split("\n") if line.strip())
+
+
+class BigQueryCjkProvider(Provider):
+    """English title and abstract for CN / JP / KR / TW, at a scale nothing else here approaches.
+
+    WHAT IT HOLDS, AND WHAT IT DOES NOT. `patents-public-data.patents.publications` carries
+    `claims_localized` and `description_localized` for the United States and for NOBODY ELSE.
+    Censused 2026-08-22 over the whole table: 21,993,541 US descriptions and 18,760,680 US claims
+    against exactly ZERO for CN, JP, KR, TW, EP, WO and DE, and the same query against the
+    `publications_201710` snapshot returns zero as well, so this is not a regression to work
+    around by reading an older release. What it does hold for CJK is Google's own English
+    machine-translated ABSTRACT, and it holds it almost everywhere:
+
+        CN  54,729,311 English abstracts of 54,743,394 publications   (100.0%)
+        JP  12,770,474 of 28,175,668                                   (45.3%)
+        KR   3,227,226 of  8,027,935                                   (40.2%)
+        TW   1,682,074 of  2,595,882                                   (64.8%)
+
+    So this rung can never satisfy `complete()` for a CJK publication and is not meant to: it is
+    the rung that guarantees a CJK document is at least READABLE and therefore retrievable, in
+    English, before the cascade goes on to spend a Google Patents fetch on its full text.
+
+    WHY A CACHE TABLE AND NOT THE PUBLIC ONE. A single publication-number lookup against
+    `patents-public-data.patents.publications` dry-runs at 228 GB, because the table is neither
+    partitioned nor clustered on the number: $1.43 to read one abstract. `ops/bq_cjk_cache.py`
+    builds `nimo-gpt.patents_cache.cjk_text` once, CLUSTERED BY the normalised publication number,
+    and a lookup then prunes to the blocks that can contain the keys. MEASURED on the live pool
+    2026-08-22: a 24-key batch bills BigQuery's 10 MB per-query minimum ($0.000079, $0.0000033 a
+    publication) and a 4,000-key batch bills 864 MB ($0.0000014 a publication). At 24 keys a
+    batch the whole 898,377-family CJK job is about $2.94.
+
+    THE FIRST FEW QUERIES AFTER A BUILD ARE NOT THE COST. Immediately after the CTAS the same
+    6-key lookup billed 334 MB and then 10.5 MB once the table had settled, which is a 32-fold
+    difference and exactly the kind of number that gets a provider rejected on a cold reading.
+    Splitting a mixed batch into one query per office is also WORSE, not better: measured, four
+    single-office queries bill 4 x 10.5 MB against one mixed query's 10.5 MB, because the floor
+    is per query. One query per batch, offices mixed.
+
+    HIT RATE against the real work list, 2026-08-22, a random 4,000 of the pending CJK rows
+    (`ORDER BY md5(publication_number)`, not a LIMIT, which on this pool returns one physically
+    clustered block and reads 20 points low): 93.2% overall, CN 2,857/2,857 (100.0%),
+    JP 542/664 (81.6%), KR 299/433 (69.1%), TW 29/46 (63.0%). The JP, KR and TW shortfall is age,
+    not format: that tail is pre-2000 and Google has no English abstract for it either.
+    """
+    name = "bq_cjk"
+    concurrency = int(os.environ.get("FULLTEXT_BQ_CONCURRENCY", "4"))
+    timeout = float(os.environ.get("FULLTEXT_BQ_TIMEOUT", "90"))
+    #  Billed in MEGABYTES SCANNED, not documents, because megabytes are what BigQuery charges
+    #  for and a budget denominated in anything else would not be a budget. The reservation below
+    #  is an ESTIMATE per publication; what the ledger records is the megabytes the batch query
+    #  actually billed, divided over the keys it carried, so the two can be compared. MEASURED
+    #  2026-08-22 on a settled table: 12.6 MB for a 24-key batch (0.53 MB a publication, near the
+    #  10 MB per-query floor), 864 MB for 4,000 keys (0.22 MB each), 1,016 MB for 5,000 (0.20 MB
+    #  each). The floor dominates small batches, so 8 MB a publication is a deliberately
+    #  pessimistic reservation.
+    credits = float(os.environ.get("FULLTEXT_BQ_MB_PER_PUB", "8"))
+    budget_key = "bq_cjk"
+    COUNTRIES = ("CN", "JP", "KR", "TW")
+    #  Bounded so a long-running worker cannot grow a cache the size of the pool.
+    MAX_CACHED = int(os.environ.get("FULLTEXT_BQ_MAX_CACHED", "20000"))
+
+    def __init__(self, table: str = ""):
+        super().__init__()
+        self.table = table or os.environ.get("BQ_CJK_TABLE",
+                                             "nimo-gpt.patents_cache.cjk_text")
+        self.project = os.environ.get("GCP_PROJECT", "nimo-gpt")
+        self._cache: dict = {}
+        self._cost_mb: dict = {}
+        self._client = None
+        self._client_err = ""
+        self.bytes_billed = 0
+
+    # -- plumbing ------------------------------------------------------------------------------
+    @staticmethod
+    def _key(pub: str) -> str:
+        """The same normalisation the cache table was built with: strip punctuation, upper-case.
+        `CN-101234567-A` and `CN101234567A` are one key, which is the whole point: BigQuery
+        publishes the hyphenated form and the pool holds the compact one."""
+        return "".join(ch for ch in str(pub or "") if ch.isalnum()).upper()
+
+    def _bq(self):
+        if self._client is None and not self._client_err:
+            try:
+                from google.cloud import bigquery
+                self._client = bigquery.Client(project=self.project)
+            except Exception as exc:  # pragma: no cover - exercised only without the SDK
+                self._client_err = f"{type(exc).__name__}: {str(exc)[:160]}"
+        return self._client
+
+    def available(self):
+        if os.environ.get("FULLTEXT_BQ_DISABLED", "").lower() in ("1", "true", "yes"):
+            return False, "FULLTEXT_BQ_DISABLED is set"
+        if self._bq() is None:
+            return False, (self._client_err or
+                           "no BigQuery client: google-cloud-bigquery is not importable")
+        return True, ""
+
+    def covers(self, pub: str) -> bool:
+        return _country(pub) in self.COUNTRIES
+
+    # -- the batch round trip ------------------------------------------------------------------
+    def _query(self, keys: list) -> dict:
+        from google.cloud import bigquery
+        cli = self._bq()
+        if cli is None:
+            return {}
+        sql = (f"SELECT pn_key, publication_number, country, title_en, abstract_en, src_lang "
+               f"FROM `{self.table}` WHERE pn_key IN UNNEST(@k)")
+        job = cli.query(sql, job_config=bigquery.QueryJobConfig(
+            query_parameters=[bigquery.ArrayQueryParameter("k", "STRING", keys)]))
+        rows = list(job.result())
+        billed = int(job.total_bytes_billed or 0)
+        self.bytes_billed += billed
+        return billed, {r["pn_key"]: {"publication_number": r["publication_number"],
+                                      "country": r["country"], "title": r["title_en"] or "",
+                                      "abstract": r["abstract_en"] or "",
+                                      "src_lang": r["src_lang"] or ""} for r in rows}
+
+    async def prefetch(self, pubs, client: httpx.AsyncClient) -> None:
+        """One query for the whole leased batch. 24 point queries would cost 24 minimums."""
+        want = [self._key(p) for p in pubs if self.covers(p)]
+        want = [k for k in dict.fromkeys(want) if k and k not in self._cache]
+        if not want or self._bq() is None:
+            return
+        if len(self._cache) > self.MAX_CACHED:
+            self._cache.clear()
+            self._cost_mb.clear()
+        billed, found = await asyncio.to_thread(self._query, want)
+        per_key = billed / 1e6 / max(1, len(want))
+        for k in want:
+            #  A key that is absent is cached as a MISS, so a retry of the same batch does not
+            #  buy the same nothing twice.
+            self._cache[k] = found.get(k)
+            self._cost_mb[k] = per_key
+
+    async def fetch(self, pub: str, client: httpx.AsyncClient):
+        key = self._key(pub)
+        if key not in self._cache:
+            await self.prefetch([pub], client)
+        row = self._cache.get(key)
+        cost = float(self._cost_mb.get(key, 0.0))
+        if not row:
+            #  REACHED. BigQuery answered "this publication has no English abstract here", which
+            #  is an answer, not an outage.
+            return FetchResult(provider=self.name, reached=True, credits=cost)
+        return FetchResult(
+            provider=self.name, title=_clean_bq_text(row["title"]),
+            abstract=_clean_bq_text(row["abstract"]), claims_lang="", desc_lang="",
+            meta={"bq_table": self.table, "source_language": row["src_lang"],
+                  "text_is_machine_translation": True},
+            raw=json.dumps(row, ensure_ascii=False).encode("utf-8"), raw_ext="json",
+            credits=cost)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -595,43 +799,7 @@ class ScrapingBeeProvider(Provider):
 
 
 # ---------------------------------------------------------------------------------------------
-# 7. HimmPat: CN / JP / KR / TW
-# ---------------------------------------------------------------------------------------------
-class HimmPatProvider(Provider):
-    name = "himmpat"
-    concurrency = 2
-    min_interval = 0.5
-    timeout = 60.0
-    credits = 1.0
-    budget_key = "himmpat"
-
-    def __init__(self):
-        super().__init__()
-        self.adapter = _adapter("himmpat")
-
-    def available(self):
-        return (self.adapter.enabled(), self.adapter.disabled_reason())
-
-    def covers(self, pub: str) -> bool:
-        return _country(pub) in ("CN", "JP", "KR", "TW")
-
-    async def fetch(self, pub: str, client: httpx.AsyncClient):
-        d = await self.adapter.details(pub, client)
-        if not d:
-            return None
-        out = FetchResult(provider=self.name, claims=d.get("claims", "") or "",
-                          description=d.get("description", "") or "",
-                          abstract=d.get("abstract", "") or "", title=d.get("title", "") or "",
-                          claims_lang=d.get("claims_lang", "") or "",
-                          desc_lang=d.get("description_lang", "") or "",
-                          raw=json.dumps(d, ensure_ascii=False, default=str).encode("utf-8"),
-                          raw_ext="json")
-        out.credits = self.credits
-        return out
-
-
-# ---------------------------------------------------------------------------------------------
-# 8. SerpApi: paid, capped, last
+# 7. SerpApi: paid, capped, last
 # ---------------------------------------------------------------------------------------------
 class SerpApiProvider(Provider):
     """The backstop that makes every rung above it optional rather than load-bearing, and the
@@ -679,15 +847,29 @@ class SerpApiProvider(Provider):
 # ---------------------------------------------------------------------------------------------
 # assembly
 # ---------------------------------------------------------------------------------------------
-DEFAULT_ORDER = ["corpus", "marec", "uspto_bulk", "epo_ops", "pqai", "serp_self",
-                 "scrapingbee", "himmpat", "serpapi"]
+DEFAULT_ORDER = ["corpus", "bq_cjk", "marec", "uspto_bulk", "epo_ops", "pqai", "serp_self",
+                 "scrapingbee", "serpapi"]
+
+#  Providers this module refuses to build at all, whatever an operator puts in FULLTEXT_CASCADE,
+#  with the reason a caller sees. Removing a name from DEFAULT_ORDER only changes a default;
+#  `FULLTEXT_CASCADE=corpus,himmpat` would have put the rung straight back, which is the exact
+#  shape of accident this is here to make impossible. `src/realtime_only.py` refuses the call at
+#  the adapter's HTTP boundary as well, so this is the outer of two independent doors.
+BARRED = {
+    "himmpat": ("HimmPat is reserved for real-time use during a search: 250 units a day against "
+                "about 48 for one deep search. A bulk cascade may not have a rung on it. See "
+                "src/realtime_only.py and docs/cjk_acquisition.md"),
+}
 
 #  Per-provider hard caps for one calendar month, enforced by ledger.reserve(). Names are the
-#  provider names; units are that provider's own credits.
+#  provider names; units are that provider's own credits. `bq_cjk` is denominated in megabytes
+#  scanned, which is what BigQuery bills: 2,000,000 MB is 2 TB, $12.50 at $6.25/TB, and the
+#  first 1 TB of every calendar month is free. At the measured 0.42 MB a publication that is
+#  the whole 898,377-family CJK job several times over.
 DEFAULT_CAPS = {
     "serpapi": float(os.environ.get("FULLTEXT_SERPAPI_BUDGET", "2000")),
     "scrapingbee": float(os.environ.get("FULLTEXT_SCRAPINGBEE_BUDGET", "300000")),
-    "himmpat": float(os.environ.get("FULLTEXT_HIMMPAT_BUDGET", "200")),
+    "bq_cjk": float(os.environ.get("FULLTEXT_BQ_BUDGET", "2000000")),
 }
 
 
@@ -699,8 +881,12 @@ def build(order=None) -> list:
     made = []
     for n in names:
         n = n.strip()
+        if n in BARRED:
+            raise ValueError(f"{n} may not be a rung of a bulk cascade: {BARRED[n]}")
         if n == "corpus":
             made.append(CorpusProvider())
+        elif n == "bq_cjk":
+            made.append(BigQueryCjkProvider())
         elif n == "marec":
             made.append(BulkXmlProvider("marec", "MAREC_ROOT", countries=("EP", "WO")))
         elif n == "uspto_bulk":
@@ -713,8 +899,6 @@ def build(order=None) -> list:
             made.append(SelfSerpProvider())
         elif n == "scrapingbee":
             made.append(ScrapingBeeProvider())
-        elif n == "himmpat":
-            made.append(HimmPatProvider())
         elif n == "serpapi":
             made.append(SerpApiProvider())
         else:

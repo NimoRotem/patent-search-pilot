@@ -180,8 +180,12 @@ def test_text_state_uses_the_fetchers_own_floors():
     (["US"], "pqai"),
     (["EP", "DE"], "epo_ops"),
     (["WO"], "epo_ops"),
-    (["CN"], "himmpat"),
-    (["JP", "KR"], "himmpat"),
+    #  THERE IS NO HIMMPAT RUNG. It used to be named here for any CJK-only family, which put
+    #  900,463 families (62.6% of the job) behind a 250-a-day ledger on paper while the cascade
+    #  was already answering them from Google Patents at 99.99%. See docs/cjk_acquisition.md.
+    (["CN"], "gpatents_direct"),
+    (["JP", "KR"], "gpatents_direct"),
+    (["TW"], "gpatents_direct"),
     (["DE"], "gpatents_direct"),
     (["FR", "GB"], "gpatents_direct"),
     ([], "gpatents_direct"),

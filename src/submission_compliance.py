@@ -348,10 +348,14 @@ def translate_rows(doc, tier="strong"):
     lang = source_language(doc.get("pub"))
     targets = [r for r in doc["rows"] if r.get("quote") and needs_translation(r["quote"])]
     if not targets:
-        #  The corpus already stores English full text for CN/JP/KR via the HimmPat source, so
-        #  there is nothing to translate — but what is quoted is still a translation of a
+        #  The corpus already stores English text for CN/JP/KR, so there is nothing to
+        #  translate here. It is Google's machine translation, fetched by the `serp_self` rung
+        #  and, for the abstract, by `bq_cjk`; NOT HimmPat, which is barred from every bulk path
+        #  (src/realtime_only.py). Measured 2026-08-22, 97.5% of the CJK-only niche families have
+        #  no member outside CJK anywhere in the world, so for them a machine translation is the
+        #  only English text that exists. What is quoted is therefore still a translation of a
         #  foreign-language document, and 1.290(d)(3) wants that stated rather than left for the
-        #  examiner to infer from the country code.
+        #  examiner to infer from the country code. See docs/cjk_acquisition.md section 6.
         if lang:
             return {"translated": 0, "pre_translated": True,
                     "note": ("This is a %s-language document. The passages relied on are quoted "

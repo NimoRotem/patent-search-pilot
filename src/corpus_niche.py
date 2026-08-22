@@ -44,14 +44,23 @@ try:  # pragma: no cover - the real package; the constant is duplicated for a ba
 except Exception:  # pragma: no cover
     UNCLASSIFIED = "unclassified"
 
-#  The rungs of the ladder in `src/sources/fulltext.py`, in the order that module tries them, and
-#  the jurisdictions each one actually serves. `best_source` names the cheapest rung that can
-#  serve a family; C may fall further down the ladder but should never fall up it.
+#  The rungs of the acquisition cascade, in the order it tries them, and the jurisdictions each
+#  one actually serves. `best_source` names the cheapest rung that can serve a family; C may fall
+#  further down the ladder but should never fall up it.
+#
+#  THERE IS NO HIMMPAT RUNG, AND ITS ABSENCE IS THE POINT. This tuple used to route any family
+#  with a CN, JP or KR member to `himmpat`, which put 900,463 of the 1,438,957 families needing
+#  text (62.6%) behind a 250-a-day ledger and produced the "about 3,600 days" figure in
+#  docs/corpus_completeness.md. That figure was an artefact of this list, not a measurement of the
+#  cascade: `src/acquire/providers.py` has always tried Google Patents BEFORE HimmPat, and
+#  measured on the live pool 2026-08-22 it answered 9,359 of 9,360 CN publications (99.99%) with
+#  English full text averaging 23,049 characters, at 5,518 documents an hour, free. HimmPat
+#  answered 45 in the same run. CJK therefore routes to `gpatents_direct` like every other office
+#  the free rungs do not name. See docs/cjk_acquisition.md.
 SOURCE_LADDER = (
     ("pqai", ("US",)),
     ("epo_ops", ("EP", "WO")),
-    ("himmpat", ("CN", "JP", "KR")),
-    ("gpatents_direct", ()),          # every jurisdiction, the catch-all rung
+    ("gpatents_direct", ()),          # every jurisdiction, the catch-all rung, CJK included
 )
 LOCAL_MEMBER = "local:family_member"
 

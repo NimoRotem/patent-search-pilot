@@ -50,6 +50,20 @@ def log(msg: str) -> None:
     print(f"[fulltext {time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
 
 
+def _partial_size(res) -> int:
+    """How much readable text an INCOMPLETE result carries, for picking the best of them.
+
+    Title and abstract count, because for a CJK publication they are frequently all that will
+    ever exist in English: measured 2026-08-22, no BigQuery snapshot holds a single CJK claim or
+    description, and 97.5% of the CJK-only niche families have no non-CJK member anywhere in the
+    world DOCDB family to borrow one from.
+    """
+    if res is None:
+        return 0
+    return (len(res.claims or "") + len(res.description or "")
+            + len(res.abstract or "") + len(res.title or ""))
+
+
 class Worker:
     def __init__(self, shard: int = 0, of: int = 1, cascade=None, *, dry_run: bool = False,
                  partitions=None, manifests=None):
@@ -143,9 +157,10 @@ class Worker:
         """
         deadline = time.monotonic() + PUBLICATION_DEADLINE
         settled: set = set()
+        best = None
         for prov in self.cascade:
             if self.stopping.is_set() or time.monotonic() > deadline:
-                return None
+                return best
             if prov.upstream and prov.upstream in settled:
                 events.append({"worker": self.id, "partition_id": task["partition_id"],
                                "publication_number": pub, "provider": prov.name,
@@ -156,9 +171,11 @@ class Worker:
             res = await self._try(prov, pub, task, client, events)
             if res is not None and res.complete():
                 return res
+            if res is not None and _partial_size(res) > _partial_size(best):
+                best = res
             if res is not None and res.reached and prov.upstream:
                 settled.add(prov.upstream)
-        return None
+        return best
 
     # -- storage -------------------------------------------------------------------------------
     async def store(self, pub: str, res, client, events: list, task: dict) -> dict:
@@ -204,6 +221,26 @@ class Worker:
                            "detail": f"{type(exc).__name__}: {str(exc)[:160]}"})
         return uris
 
+    # -- warming the batch ---------------------------------------------------------------------
+    async def prefetch_batch(self, batch: list, client) -> None:
+        """Give every rung one chance to warm itself for the whole leased batch.
+
+        The rungs that charge per QUERY rather than per document are the reason this exists.
+        BigQuery bills a 10 MB minimum per query however few keys it carries, so 24 point lookups
+        cost 24 minimums for the same answer one 24-key lookup gives: measured 2026-08-22, 10 MB
+        either way, which is $0.00007 for the batch instead of $0.0017.
+
+        A rung that cannot warm itself must still be allowed to miss. Failures are swallowed on
+        purpose: the whole batch going down because a cache table was renamed is exactly the
+        fragility the cascade exists to avoid.
+        """
+        pubs = [t["publication_number"] for t in batch]
+        for prov in self.cascade:
+            try:
+                await asyncio.wait_for(prov.prefetch(pubs, client), timeout=prov.gate.timeout)
+            except Exception as exc:
+                log(f"prefetch {prov.name}: {type(exc).__name__}: {str(exc)[:160]}")
+
     # -- one publication -----------------------------------------------------------------------
     async def handle(self, task: dict, client, events: list) -> None:
         pub = task["publication_number"]
@@ -212,6 +249,25 @@ class Worker:
         except Exception:
             traceback.print_exc()
             res = None
+        if res is not None and not res.complete():
+            #  NOT FULL TEXT, BUT NOT NOTHING. `bq_cjk` answers a Chinese publication with
+            #  Google's English title and abstract and can never reach the completeness floor,
+            #  and a Google Patents page with no body section still carries a title. Before this,
+            #  every one of those was discarded and the row went to `missing` holding literally
+            #  nothing: measured on the live pool 2026-08-22, 1,341 publications. The row is
+            #  still `missing`, because no full text was found and the next pass should try
+            #  again; what changes is that the readable stub is kept.
+            uris = await self.store(pub, res, client, events, task)
+            ok = await asyncio.to_thread(
+                tasks.complete, pub, self.id, state="missing", provider=res.provider,
+                claims_chars=len(res.claims), desc_chars=len(res.description),
+                raw_uri=uris["raw_uri"], parsed_uri=uris["parsed_uri"],
+                error=f"no full text; kept {res.provider} title/abstract "
+                      f"({len(res.title)}+{len(res.abstract)} chars)")
+            self.held.discard(pub)
+            if ok:
+                self.missed += 1
+            return
         if res is None:
             ok = await asyncio.to_thread(
                 tasks.complete, pub, self.id, state="missing",
@@ -298,6 +354,7 @@ class Worker:
                         continue
                     self.held = {t["publication_number"] for t in batch}
                     events: list = []
+                    await self.prefetch_batch(batch, client)
                     sem = asyncio.Semaphore(IN_FLIGHT)
 
                     async def one(t):
