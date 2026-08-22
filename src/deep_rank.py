@@ -65,6 +65,7 @@ import deep_analysis
 import search_modes
 import llm
 import oracle
+import runctx                       # the durable run this search belongs to, if any (else no-op)
 
 VERSION = 1
 
@@ -109,12 +110,12 @@ SCREEN_WORKERS = int(os.environ.get("DEEP_RANK_SCREEN_WORKERS", "6"))
 #  NOW 150, AND THIS IS A DELIBERATE OVERRIDE OF THE GUARD ABOVE, not an oversight.
 #
 #  What the measurement actually costs us, priced: the last run read 549 references in full to fill
-#  a 60-card page, and reading is 97% of the bill — 72.8M of 112M prompt tokens went on the main
+#  a 60-card page, and reading is 97% of the bill , 72.8M of 112M prompt tokens went on the main
 #  read alone. Depth past the page is the single largest line item in the whole system.
 #
 #  What both frozen expert sets say about whether that depth is buying anything: on the Nguyen set
 #  every reference the attorney filed was in the corpus, retrieved, screened, and four of five were
-#  READ IN FULL — and one reached the page. They were lost at RANKING, at positions 85 to 288. Depth
+#  READ IN FULL , and one reached the page. They were lost at RANKING, at positions 85 to 288. Depth
 #  did not fail to find them; it found them and then could not show them. Reading deeper buys more
 #  of the same.
 #
@@ -140,7 +141,7 @@ CHART_MIN_SCREEN = int(os.environ.get("DEEP_RANK_CHART_MIN_SCREEN", "70"))
 #  THE PASSAGE TAIL. The Aug-17 economy cut CHART_TOP 360 -> 150 and simply stopped reading the
 #  rest of the screen. batch_reader covers exactly that population at ~1/7 the effective token
 #  cost (one-requirement x many-documents calls, 83% measured cache hit), fed by the per-
-#  limitation candidates claim_reach already ranked — so every limitation gets its own tail of
+#  limitation candidates claim_reach already ranked , so every limitation gets its own tail of
 #  documents read against it instead of nothing. DEEP_RANK_BATCH_TAIL=0 restores the cut exactly.
 BATCH_TAIL = os.environ.get("DEEP_RANK_BATCH_TAIL", "1") != "0"
 BATCH_PER_LIM = int(os.environ.get("DEEP_RANK_BATCH_PER_LIM", "12"))
@@ -531,7 +532,7 @@ def screen(rows, brief, on_progress=None, sys_prompt=None, header="TARGET INVENT
     has no screen score and falls back to its retrieval rank.
 
     `sys_prompt` and `header` exist so a caller can ask a DIFFERENT question of the same machinery
-    — limitation_query screens candidates against one claim requirement rather than against the
+    , limitation_query screens candidates against one claim requirement rather than against the
     whole invention. The batching below is the part that must not be duplicated: it is the fix for
     a measured calibration defect, and a second screener with its own batching would reintroduce
     it silently.
@@ -726,7 +727,7 @@ def _grounded_rows(ref, kind):
 
     Two bars count: "verified" (verbatim quote, located) and "teaches-unquoted" (the reader
     asserted a teaching it could not quote; kept at verdict "partial", capped confidence). The
-    weaker bar earns partial-strength score only — it can shape the ordering, never an
+    weaker bar earns partial-strength score only , it can shape the ordering, never an
     anticipation call, which stays verbatim-only in limitations.claim_status.
     """
     return [r for r in (ref.get(kind) or [])
@@ -758,7 +759,7 @@ def rarity(charts, features, claims):
 
 
 def _claim_leaders(charts, rar, depth=LEAD_DEPTH):
-    """{pub: [(claim label, idf)]} — the rare CLAIMS each reference is among the best disclosures of.
+    """{pub: [(claim label, idf)]} , the rare CLAIMS each reference is among the best disclosures of.
 
     The same credit `leaders` gives for a rare feature, for a rare claim. It matters more here: a
     claim disclosed by two references out of five hundred is the claim an attorney builds an
@@ -788,7 +789,7 @@ def _claim_leaders(charts, rar, depth=LEAD_DEPTH):
 
 
 def leaders(charts, rar, depth=LEAD_DEPTH):
-    """{pub: [(feature, idf)]} — the RARE features each reference is among the best disclosures of.
+    """{pub: [(feature, idf)]} , the RARE features each reference is among the best disclosures of.
 
     "Rare" is measured, not declared: a feature whose idf is at or above the median across the
     features of this search. Only `depth` references per feature qualify, so this promotes the
@@ -862,7 +863,7 @@ def score_reference(ref, rar, lead=()):
     coverage = 100.0 * pct
     #  Blend in the reader's holistic verdict, but ONLY for a reference that was actually read AND
     #  grounded at least one quote. An ungrounded or text-less document scores on coverage alone,
-    #  which is 0 — that is the gate that keeps a title-only record out of the head.
+    #  which is 0 , that is the gate that keeps a title-only record out of the head.
     overall = (ref.get("overall") or {}).get("score")
     #  "Read in full" has to mean the corpus HELD more than an abstract. 84% of this corpus is
     #  abstract-only, and charting twelve features against forty words is not a reading: it
@@ -1041,7 +1042,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
 
     depth="quick" is the interactive tier of the public split: screen + per-limitation batch
     tail ONLY. No paid pre-screen enrichment, no full-document reads, no concept passes, no
-    rescue — every skipped stage is exactly what the deep escalation adds back. The scoring,
+    rescue , every skipped stage is exactly what the deep escalation adds back. The scoring,
     the ledger and the page machinery are identical, so a quick report is a subset of a deep
     one, never a different product.
 
@@ -1081,14 +1082,14 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
             claim_items.append({"label": f"claim {c.get('claim_no') or len(claim_items) + 1}",
                                 "claim_no": c.get("claim_no") or len(claim_items) + 1,
                                 #  Carried through because an INDEPENDENT claim with no prior art
-                                #  is the most serious hole a search can leave — it is the claim
-                                #  the patent stands on — and both the rescue's priority order and
+                                #  is the most serious hole a search can leave , it is the claim
+                                #  the patent stands on , and both the rescue's priority order and
                                 #  the chart's row labels need to know which ones those are.
                                 "independent": bool(c.get("independent")),
                                 "text": text})
     #  TYPE A vs TYPE B. A disclosure with no claims is a concept search; a patent WITH claims is
     #  an attack, and its unit of work is the limitation, not the claim and not the invention. See
-    #  limitations.py — the two objectives disagree constantly and sharing one was measurably
+    #  limitations.py , the two objectives disagree constantly and sharing one was measurably
     #  wrong: three references an attorney cited were read in full, grounded 0/0/1 of 28 invention
     #  features, and were ranked 253/346/152 because each answers exactly one requirement.
     stype = limmod.search_type(report)
@@ -1184,7 +1185,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
     #  itself which of these hold no claims and no paragraphs, in retrieval order, so the whole
     #  candidate list is offered and the budget picks the head of what is genuinely unreadable.
     prescreen_enriched = 0
-    #  Quick tier: no paid text fetching — the screen judges what the corpus already holds, and
+    #  Quick tier: no paid text fetching , the screen judges what the corpus already holds, and
     #  the escalation's deep run does the recovering.
     if B["PRESCREEN_ENRICH_TOP"] > 0 and not quick:
         t_pre = time.time()
@@ -1194,7 +1195,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
                                                   enrich_top=B["ENRICH_TOP"])
         if prescreen_enriched:
             #  Rebuild the candidate text so the screener sees what was just fetched. One query
-            #  set over the same pids — the alternative is tracking which rows changed, and a row
+            #  set over the same pids , the alternative is tracking which rows changed, and a row
             #  that silently keeps its old empty text is the exact defect being fixed.
             try:
                 conn2 = db.connect()
@@ -1219,8 +1220,25 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
 
     emit("screen_start", n=len(rows), batches=(len(rows) + SCREEN_BATCH - 1) // SCREEN_BATCH)
     t0 = time.time()
-    scores = screen(rows, brief,
-                    on_progress=lambda d, t: emit("screen_progress", done=d, total=t))
+    #  THE SCREEN IS CHECKPOINTED. It is a whole pass of FAST-tier calls over the head of the
+    #  candidate list, and a worker killed during the reading used to buy it a second time. The
+    #  checkpoint is keyed to the candidate set it scored: if the resumed run built a different
+    #  set (different budget, different corpus), the stored scores are discarded and it screens
+    #  again rather than scoring the wrong documents. No-op with no durable run bound.
+    scores = None
+    _ck = runctx.stage_payload(slug, "screen") or {}
+    if _ck.get("scores") and set(_ck["scores"]) >= {r["pub"] for r in rows}:
+        scores = {k: v for k, v in _ck["scores"].items()}
+        print(f"[resume {slug}] reusing {len(scores)} screening scores from the interrupted "
+              f"attempt; the screen is not re-run", flush=True)
+        emit("screen_progress", done=len(rows), total=len(rows))
+    if scores is None:
+        scores = screen(rows, brief,
+                        on_progress=lambda d, t: emit("screen_progress", done=d, total=t))
+        runctx.checkpoint(slug, "screen", {"scores": scores}, n_in=len(rows),
+                          n_out=len(scores or {}))
+    runctx.note_candidates([{"pub": p, "screen_score": s, "stage": "screened"}
+                            for p, s in (scores or {}).items()])
     screen_seconds = time.time() - t0
 
     #  Choose what to read: the head of the screen, plus the head of the RETRIEVAL order no matter
@@ -1243,7 +1261,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
                 mode=report.get("mode") or "novelty", retriever=_shared_retriever(), emit=emit)
             by_pub_row = {r["pub"]: r for r in rows}
             #  Quick tier: reach_map still feeds the batch tail, but nothing claims a
-            #  full-document read slot — there is no full-read wave to claim from.
+            #  full-document read slot , there is no full-read wave to claim from.
             for pub in ([] if quick else claim_reach.quota(reach_map)):
                 r = by_pub_row.get(pub)
                 if r is not None and pub not in seen:
@@ -1356,6 +1374,11 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
         ref["screen"] = scores.get(row["pub"])
         ref["retrieval_rank"] = row["rank"]
         ref["family"] = row["fam"]
+        #  EACH reference analysis, persisted the moment it lands rather than at the end of the
+        #  wave. The chart itself is already durable in evidence_charts; this is the run's own
+        #  ledger of which references IT read, which is what makes a killed run's progress
+        #  answerable without re-reading anything.
+        runctx.reference_done(slug, row["pub"], ref)
         with lock:
             done[0] += 1
             if done[0] % 5 == 0 or done[0] == len(chosen):
@@ -1367,7 +1390,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
         charts = list(ex.map(one, chosen))
     chart_seconds = time.time() - t0
 
-    #  THE PASSAGE TAIL — read the screened-but-uncut population per limitation, in batches.
+    #  THE PASSAGE TAIL , read the screened-but-uncut population per limitation, in batches.
     #  See the BATCH_TAIL knob for why this exists and what it replaces.
     if BATCH_TAIL and claim_items and reach_map:
         try:
@@ -1416,7 +1439,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
 
     #  SECOND LOOK at the head, feature by feature, on the concepts rather than the wording. Only
     #  the rows a first reading left empty are re-asked, and an upgrade still has to pass the same
-    #  grounding and location gates plus the refuter — a second look widens what the reader
+    #  grounding and location gates plus the refuter , a second look widens what the reader
     #  RECOGNISES, never what it is allowed to assert.
     reread_changed = reread_refs = 0
     if B["CONCEPT_PASS_TOP"] > 0 and hints:
@@ -1450,8 +1473,8 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
               f"{reread_refs} of {len(prelim)} references ({time.time() - t1:.0f}s)", flush=True)
         chart_seconds += time.time() - t1
 
-    #  THE ORPHAN-CLAIM RESCUE. Runs HERE — after the whole search and reading are finished, before
-    #  anything is scored or ordered — so the references it brings back compete on the same
+    #  THE ORPHAN-CLAIM RESCUE. Runs HERE , after the whole search and reading are finished, before
+    #  anything is scored or ordered , so the references it brings back compete on the same
     #  evidence as the rest of the report rather than being listed beside it. See claim_rescue.
     #  THE LEDGER. One row per limitation, filled only from grounded, located, refuter-survived
     #  cells, and it is the stopping rule for a Type B search: a budget that expires while claim 7
@@ -1467,7 +1490,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
             print(f"[ledger] {s['n_limitations']} limitations across {s['n_claims']} claims: "
                   f"{s['counts']['covered']} covered, {s['counts']['partial']} partial, "
                   f"{s['counts']['uncovered']} with nothing ({n} cells)"
-                  + (f" — ANTICIPATED: {', '.join(s['anticipated'])}" if s["anticipated"] else ""),
+                  + (f" , ANTICIPATED: {', '.join(s['anticipated'])}" if s["anticipated"] else ""),
                   flush=True)
         except Exception:
             traceback.print_exc()
@@ -1492,6 +1515,11 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
                 charts.extend(rescued_refs)
         except Exception:
             traceback.print_exc()
+        #  EACH rescue round, persisted. claim_rescue reports the rounds it ran in its own summary;
+        #  one search_stages row per round is what turns "the rescue took 1h51m" into which round
+        #  cost what.
+        for _i, _r in enumerate((rescue or {}).get("rounds") or [rescue or {}], 1):
+            runctx.rescue_round(slug, _i, _r if isinstance(_r, dict) else {"round": _r})
         chart_seconds += time.time() - t2
         #  Re-ingest so the stored ledger is the FINAL state. Without this the report ships the
         #  coverage the rescue was launched to fix, which is the one number it must not show.
@@ -1503,7 +1531,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
                 print(f"[ledger] after the rescue: {s2['counts']['covered']} covered, "
                       f"{s2['counts']['partial']} partial, {s2['counts']['uncovered']} with "
                       f"nothing; done={s2['done']}"
-                      + (f" — ANTICIPATED: {', '.join(s2['anticipated'])}"
+                      + (f" , ANTICIPATED: {', '.join(s2['anticipated'])}"
                          if s2["anticipated"] else ""), flush=True)
             except Exception:
                 traceback.print_exc()
@@ -1572,7 +1600,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
 
     #  EVERY CLAIM'S BEST DISCLOSER GETS A SLOT. Greedy coverage maximises total mass, so a claim
     #  disclosed once, weakly, by a document that covers nothing else is the very last thing it
-    #  picks — which is exactly the document an attorney needs and exactly the one that was at
+    #  picks , which is exactly the document an attorney needs and exactly the one that was at
     #  rank 253 of 498. This promotes it into the window the page actually renders. It is a
     #  reordering only: nothing is added, nothing is dropped.
     if claim_items and order:
@@ -1602,7 +1630,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
             _claims = sorted({coverage_rank.claim_of(c["label"]) for c in claim_items})
             #  PAGE MEMBERSHIP BEFORE PAGE ORDER, and OFF by default. `claim_first` below can only
             #  sort the window it is handed, so a reference at rank 103 with grounded evidence can
-            #  never reach the page however it is sorted — which is exactly what both expert sets
+            #  never reach the page however it is sorted , which is exactly what both expert sets
             #  showed. `claim_quota` reserves slots per claim from the whole order and fixes that
             #  mechanically; it just did not measure well enough to switch on. See
             #  coverage_rank.RESERVE_PER_CLAIM for the sweep.
@@ -1725,7 +1753,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
         #  THE DEPTH THIS RUN ACTUALLY GOT. Two reports of the same subject are only comparable
         #  if they were read to the same depth, and a concept search is read to a shallower one
         #  on purpose. Recording the resolved budget is what stops the difference being invisible
-        #  — the same reason `manifest` records the corpus snapshot and the commit.
+        #  , the same reason `manifest` records the corpus snapshot and the commit.
         "budget": dict(B),
         "budget_cut": sorted(k for k in B if k in (budget or {})),
         "llm": _llm_spend(usage_before),
@@ -1775,7 +1803,7 @@ def _subject_for(report, qd):
 def _subject_description(report, qd):
     """The invention's own description, as context for restating a dependent claim.
 
-    An upload carries its full text on the report. A LINK does not — only the claims are stashed —
+    An upload carries its full text on the report. A LINK does not , only the claims are stashed ,
     so the description is read back out of the corpus, which is where the search found the document
     in the first place.
     """

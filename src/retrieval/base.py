@@ -69,7 +69,7 @@ def worker_conn(wide=False):
     """
     conn = getattr(_TLS, "conn", None)
     if conn is None or getattr(conn, "closed", False):
-        conn = db.connect(autocommit=True)
+        conn = db.connect(autocommit=True, readonly=True)
         _TLS.conn = conn
         _TLS.wide = None
     if getattr(_TLS, "wide", None) != bool(wide):
@@ -94,7 +94,7 @@ class RetrieverBase:
     """Connection ownership, ANN width and the chunk->publication aggregation every channel uses."""
 
     def __init__(self, family_map=None):
-        self.conn = db.connect()
+        self.conn = db.connect(readonly=True)
         self.conn.autocommit = True
         self._wide = False
         self.scan_profile(wide=False)

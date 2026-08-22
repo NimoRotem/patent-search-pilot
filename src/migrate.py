@@ -1,11 +1,11 @@
 """Apply sql/ migrations once, in order, and record what was applied.
 
 Why this exists. `run.sh` applies exactly two files, `001_schema.sql` and `002_indexes.sql`, with
-a raw `psql -f`. Files 003 through 008 have no applier at all, and `figure_images.sql` has no
-version number. There is no record anywhere of what has run against which database, so the
-numbering is decorative: three workstreams independently wrote a `009_*.sql` in the same week and
-nothing noticed. On top of that the live corpus database already HAS the objects from 001 to 008
-and has no ledger, so the first thing any new runner must do is not make things worse.
+a raw `psql -f`, while files 003 through 008 had no applier. There was no record of what had run
+against which database, so three workstreams independently wrote a `009_*.sql` in the same week
+and nothing noticed. The live corpus database already had the objects from 001 through 008 with
+no ledger, so the first thing any new runner must do is not make things worse. The formerly
+unversioned `figure_images.sql` schema now lives in the legacy `001_schema.sql` baseline.
 
 The design follows from that last point. Everything here is arranged so the tool refuses rather
 than guesses:
@@ -318,23 +318,30 @@ def _validate_adoption(conn, pending):
         "Create or verify the missing objects first. Do not record a partial migration as applied.")
 
 
-def apply(conn, sql_dir, dry_run=False, adopt=False, only=None):
+def apply(conn, sql_dir, dry_run=False, adopt=False, only=None, exclude=None):
     """Apply every pending migration, one transaction per file.
 
     `dry_run` touches nothing at all, not even the ledger. `adopt` records migrations as applied
     WITHOUT executing them, which is the only correct move on a database that predates the ledger.
     """
     migrations = discover(sql_dir)
-    if only is not None:
-        if not only:
-            raise MigrationError("--only requires at least one migration version")
-        requested = set(only)
+    if only is not None and exclude is not None:
+        raise MigrationError("--only and --exclude are mutually exclusive")
+    selection = only if only is not None else exclude
+    if selection is not None:
+        flag = "--only" if only is not None else "--exclude"
+        if not selection:
+            raise MigrationError(f"{flag} requires at least one migration version")
+        requested = set(selection)
         available = {m.version for m in migrations}
         unknown = sorted(requested - available, key=lambda v: (int(v) if v.isdigit() else 0, v))
         if unknown:
             raise MigrationError(
-                "--only names migration versions that do not exist: " + ", ".join(unknown))
-        migrations = [m for m in migrations if m.version in requested]
+                f"{flag} names migration versions that do not exist: " + ", ".join(unknown))
+        if only is not None:
+            migrations = [m for m in migrations if m.version in requested]
+        else:
+            migrations = [m for m in migrations if m.version not in requested]
     res = Result()
 
     if dry_run:
@@ -449,12 +456,13 @@ def main(argv=None):
     p.add_argument("--sql-dir", default=os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sql"))
     p.add_argument("--only", nargs="+", help="restrict to these versions")
+    p.add_argument("--exclude", nargs="+", help="apply every version except these")
     a = p.parse_args(argv)
 
     conn = _connect()
     try:
         if a.command in ("status", "plan"):
-            res = apply(conn, a.sql_dir, dry_run=True)
+            res = apply(conn, a.sql_dir, dry_run=True, only=a.only, exclude=a.exclude)
             for m in res.already:
                 print(f"  applied  {m.version}  {m.filename}")
             for m in res.would_apply:
@@ -462,7 +470,8 @@ def main(argv=None):
             if not res.would_apply:
                 print("nothing pending")
             return 0
-        res = apply(conn, a.sql_dir, adopt=(a.command == "adopt"), only=a.only)
+        res = apply(conn, a.sql_dir, adopt=(a.command == "adopt"), only=a.only,
+                    exclude=a.exclude)
         for m in res.applied:
             print(f"  applied  {m.version}  {m.filename}")
         for m in res.adopted:

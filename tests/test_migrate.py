@@ -199,6 +199,28 @@ def test_only_refuses_unknown_and_empty_version_sets(monkeypatch, sqldir):
         migrate.apply(object(), str(sqldir), dry_run=True, only=[])
 
 
+def test_exclude_is_exact_and_cannot_mix_with_only(monkeypatch, sqldir):
+    write(sqldir, "001_schema.sql", "CREATE TABLE a(id int);")
+    write(sqldir, "002_indexes.sql", "CREATE INDEX a_id ON a(id);")
+    monkeypatch.setattr(migrate, "_ledger_exists", lambda _conn: False)
+    monkeypatch.setattr(migrate, "presence", lambda _conn, _migration: "none")
+    result = migrate.apply(object(), str(sqldir), dry_run=True, exclude=["002"])
+    assert [m.version for m in result.would_apply] == ["001"]
+    with pytest.raises(migrate.MigrationError):
+        migrate.apply(object(), str(sqldir), dry_run=True, exclude=["099"])
+    with pytest.raises(migrate.MigrationError):
+        migrate.apply(object(), str(sqldir), dry_run=True, only=["001"], exclude=["002"])
+
+
+def test_run_sh_uses_the_migration_runner_without_a_password_literal():
+    with open(os.path.join(ROOT, "run.sh"), encoding="utf-8") as run_script:
+        script = run_script.read()
+    assert "PGPASSWORD=" not in script
+    assert "src/migrate.py apply --exclude 002" in script
+    assert "src/migrate.py apply --only 002" in script
+    assert 'PY="$ROOT/.venv/bin/python"' in script
+
+
 def test_one_transaction_per_file_rolls_back_the_whole_file(db, sqldir):
     """A file that half applies leaves a schema nobody can reason about."""
     write(sqldir, "001_ok.sql", "CREATE TABLE t_ok (id int);")
@@ -342,12 +364,13 @@ def test_never_replays_001_or_002_blindly_on_an_unrecorded_database(db, sqldir):
 
 # --------------------------------------------------------------------------- the real repo
 
-def test_the_repo_migrations_are_discoverable_once_figure_images_is_versioned():
-    """The repo as it stands has an unversioned file, so discover() must refuse it. This test
-    pins the current, real state rather than a hoped-for one."""
+def test_the_repo_migrations_are_discoverable_and_include_figure_images():
+    """Every schema asset must have one deterministic place in the numbered history."""
     real = os.path.join(ROOT, "sql")
-    with pytest.raises(migrate.UnversionedFile):
-        migrate.discover(real)
+    migrations = migrate.discover(real)
+    assert [m.version for m in migrations] == [f"{n:03d}" for n in range(1, 10)]
+    first = next(m for m in migrations if m.version == "001")
+    assert ("table", "figure_images") in migrate.sentinels(first.sql)
 
 
 def test_sentinels_are_found_for_every_numbered_repo_migration():

@@ -4,10 +4,11 @@
 
 ## Why it exists
 
-`run.sh` applies exactly two files, `001_schema.sql` and `002_indexes.sql`, with a raw `psql -f`.
-Files 003 through 008 have **no applier at all**, and `figure_images.sql` has no version number.
-Nothing anywhere recorded what had run against which database, so the numbering was decorative:
-three workstreams independently wrote a `009_*.sql` in the same week and nothing noticed.
+`run.sh` historically applied exactly two files, `001_schema.sql` and `002_indexes.sql`, with raw
+`psql -f`, while files 003 through 008 had no applier. Nothing recorded what ran against which
+database, so the numbering was decorative: three workstreams independently wrote a `009_*.sql`
+in the same week and nothing noticed. The image schema that used to be unversioned now belongs to
+the unadopted legacy `001_schema.sql` baseline, so discovery is deterministic.
 
 ## Commands
 
@@ -17,6 +18,7 @@ migrate.py plan            same thing
 migrate.py apply           apply pending migrations, one transaction per file
 migrate.py adopt           record fully present migrations WITHOUT executing them
 migrate.py adopt --only 001 003 004    the same, for named versions
+migrate.py apply --exclude 002         apply everything except the heavy index migration
 ```
 
 Connection comes from `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, or from a file
@@ -34,10 +36,10 @@ and the literal outlives every rotation.
 | No concurrent deploys | the session lock is acquired before ledger creation and released before `apply()` returns |
 | No silent edits | filename and sha256 are checked; editing or renaming applied history is `ChecksumDrift` |
 | No duplicate versions | two numeric aliases such as `009` and `9` are the same version and a hard error |
-| No unversioned files | `figure_images.sql` is a hard error, not a skip |
+| No unversioned files | image-table DDL is part of 001; any future unnumbered SQL is a hard error |
 | Dry run is dry | `status` and `plan` do not even create the ledger, and they report legacy ambiguity instead of calling present DDL pending |
 | Adoption is truthful | every selected migration must probe `all`; `partial`, `none` and `unknown` are refused |
-| Selection is exact | an empty or unknown `--only` set is refused instead of becoming a successful no-op |
+| Selection is exact | empty or unknown `--only` and `--exclude` sets are refused; the flags are mutually exclusive |
 
 ## The legacy database, and why it is not a fresh install
 
@@ -52,11 +54,11 @@ Replaying is not a safe fallback, for two measured reasons. `007_figure_compiler
 bare `CREATE TRIGGER`, which has no `IF NOT EXISTS` form here, so a second run **raises**. And
 `002_indexes.sql` builds `ix_chunks_hnsw`, which measures **94 GB** on the live box.
 
-### Measured state of the live corpus database, 2026-08-22, read only
+### Measured pre-adoption state of the live corpus database, 2026-08-22
 
 ```
 ledger exists: False
-001  all        003  all        005  all        007  all
+001  all        003  all        005  all        007  all        009  all
 002  PARTIAL    004  all        006  all        008  all
 ```
 
@@ -68,7 +70,7 @@ So the live database is **undecidable by the rule above, and the tool will refus
 correct answer, not an obstacle. The resolution is a human decision recorded explicitly:
 
 ```
-migrate.py adopt --only 001 003 004 005 006 007 008
+migrate.py adopt --only 001 003 004 005 006 007 008 009
 ```
 
 then decide `002` on its merits. Either build the two benchmark indexes so it becomes fully
@@ -93,25 +95,22 @@ triggers. Two details that are not obvious:
 
 ## Integration renumbering map
 
-Three unmerged branches each wrote a `sql/009_*.sql`. None is applied anywhere. At integration:
+Three workstreams each started with a `sql/009_*.sql`. The assigned integration versions are:
 
 | Branch | File today | Becomes | Contents |
 |---|---|---|---|
-| `rebuild/v3-durable` | `sql/009_durable_runs.sql` | **`sql/009_durable_runs.sql`** (unchanged) | `search_runs`, `search_stages`, `search_queries`, `retrieval_hits`, `search_candidates`, `provider_usage`, `shard_leases`, `corpus_ingest_queue` |
+| durable execution | `sql/009_durable_runs.sql` | **`sql/009_durable_runs.sql`** (unchanged) | `search_runs`, `search_stages`, `search_queries`, `retrieval_hits`, `search_candidates`, `provider_usage`, `shard_leases`, `corpus_ingest_queue` |
 | `rebuild/v3-corpus` | `sql/009_corpus_release.sql` | **`sql/010_corpus_release.sql`** | `corpus_niche_definition`, `corpus_release`, `corpus_release_active`, `corpus_release_member`, `corpus_release_shard`, `chunks_release`, `corpus_fetch_ledger` |
 | `rebuild/v3-eval` | `sql/009_eval_gold_xy.sql` | **`sql/011_eval_gold_xy.sql`** | `eval_gold_set`, `eval_gold_subject`, `eval_gold_pair`, `eval_scorecard` |
 
 Order is durable, then corpus, then eval, because the corpus release tables are the landing zone
 the backfill already writes into and eval's gold set is the last thing to depend on either.
 
-**This map is documentation only. No other worktree was edited to produce it**, and renaming the
-files is an integration step. Once renamed, `discover()` enforces the rest: a fourth `009` becomes
-a hard error instead of a coincidence nobody notices.
+The durable migration is now integrated at 009. Corpus and evaluation files must be renamed at
+their own integration points. Once renamed, `discover()` enforces the rest: another numeric alias
+becomes a hard error instead of a coincidence nobody notices.
 
-Also outstanding, and not fixed here because it is a product change rather than migration safety:
-
-* `sql/figure_images.sql` has no version. It must be numbered or moved out of `sql/`, or
-  `discover()` refuses the whole directory. It is currently refused.
-* `run.sh` still carries the corpus Postgres password as a literal on two lines, and still applies
-  only 001 and 002 by hand. Replacing those two `psql -f` calls with `migrate.py apply` removes
-  both problems at once.
+`run.sh` now invokes the runner with an absolute virtual-environment path. It applies all light
+migrations through `apply --exclude 002`, performs corpus construction, then applies only 002 at
+the deliberate heavy-index step. Database credentials come from the configured migration
+environment file; no password is embedded in the script.
