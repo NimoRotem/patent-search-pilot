@@ -1054,6 +1054,7 @@ def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, t
         def __init__(self):
             self.saved_versions = []
             self.saved_reports = []
+            self.retry_candidates = []
             self.messages = []
 
         def heartbeat(self, *_args, **_kwargs):
@@ -1066,6 +1067,9 @@ def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, t
         def save_qa(self, _project_id, **kwargs):
             self.saved_reports.append(kwargs)
             return {"id": 4, **kwargs["report"]}
+
+        def save_retry_candidate(self, _turn_id, _lease, *, snapshot, report):
+            self.retry_candidates.append((snapshot, report))
 
         def add_message(self, _project_id, role, body, **kwargs):
             self.messages.append((role, body, kwargs))
@@ -1149,7 +1153,44 @@ def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, t
     assert all(message[0] != "qa" or message[1] == "ready" for message in repository.messages)
     assert workspace.review_reports[0]["checks"][0]["items"] == [
         "FIG. 2: wrong fastener axis", "FIG. 7: missing process arrow"]
+    assert repository.retry_candidates[0][0]["sections"] == GOOD
+    assert repository.retry_candidates[0][1]["verdict"] == "fail"
     assert out["version"]["version_no"] == 1
+
+
+def test_retry_preparation_uses_the_durable_checked_candidate_instead_of_published_text(
+        monkeypatch, tmp_path):
+    candidate_sections = {**GOOD, "summary": "Repaired candidate summary."}
+    candidate_report = {
+        "status": "complete", "verdict": "fail", "summary": "Fix claim wording.",
+        "checks": [{"name": "Claims", "status": "fail", "items": ["claim 1"]}],
+        "findings": [],
+    }
+    repository = Mock()
+    repository.documents.return_value = []
+    repository.messages.return_value = []
+    repository.latest_qa.return_value = {"summary": "stale published review"}
+    repository.retry_candidate.return_value = {
+        "snapshot": {"sections": candidate_sections, "numerals": NUMERALS,
+                     "figures": FIGURES},
+        "qa_report": candidate_report,
+    }
+    workspace = Mock()
+    workspace.build.return_value = tmp_path
+    runner = draft_studio.TurnRunner(repository, Mock(), workspace=workspace)
+    monkeypatch.setattr(runner, "_load", lambda _project_id: {
+        "project": {"id": 7, "user_id": 91, "input_kind": "description"},
+        "references": [{"publication_number": ALLOWED[0]}],
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES,
+    })
+
+    context = runner.prepare({"id": 33, "project_id": 7, "attempts": 2,
+                              "user_message": "Finish automatically."})
+
+    values = workspace.build.call_args.kwargs
+    assert values["sections"] == candidate_sections
+    assert values["qa_report"] == candidate_report
+    assert context["previous_sections"] == GOOD
 
 
 def test_invalid_workspace_is_automatic_repair_input_not_a_failed_turn(monkeypatch, tmp_path):
