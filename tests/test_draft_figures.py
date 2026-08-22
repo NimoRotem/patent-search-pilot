@@ -208,6 +208,22 @@ def test_pixel_grounding_keeps_enclosed_bodies_and_intentional_empty_spaces():
     assert [(item["x"], item["y"]) for item in anchors] == [(500, 400), (500, 780)]
 
 
+def test_pixel_grounding_snaps_an_enclosed_line_feature_to_its_stroke():
+    image = Image.new("RGB", (1000, 1000), "white")
+    ImageDraw.Draw(image).rectangle((200, 200, 800, 600), outline="black", width=8)
+    out = io.BytesIO()
+    image.save(out, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        out.getvalue(), ["10 = handle"], [{
+            "numeral": "10", "x": 500, "y": 400, "visible": True,
+            "evidence": "inside the handle arch",
+        }])
+
+    assert audit["ok"] is True and audit["adjusted"][0]["numeral"] == "10"
+    assert anchors[0]["y"] <= 210 or anchors[0]["y"] >= 590
+
+
 def test_pixel_grounding_fails_closed_when_an_object_has_no_nearby_geometry():
     anchors, audit = draft_figures._ground_anchors_to_pixels(
         blank_png(1000, 1000), ["10 = base"], [{

@@ -178,6 +178,9 @@ SEMANTIC_GEOMETRY_RULES = (
 _EMPTY_ANCHOR_PART_RE = re.compile(
     r"\b(?:aperture|cavity|chamber|channel|clearance|gap|opening|passage|plenum|port|slot|"
     r"space|void)\b", re.IGNORECASE)
+_LINE_ANCHOR_PART_RE = re.compile(
+    r"\b(?:attachment formation|bearing face|boundary|cable|cord|edge|electrical supply|"
+    r"first side|handle|line|loop|path|pulling element|ring|second side)\b", re.IGNORECASE)
 _MAX_ANCHOR_SNAP = 220
 
 _SCHEMA = (
@@ -889,22 +892,26 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         pixel_x = min(width - 1, max(0, round(x * (width - 1) / 1000)))
         pixel_y = min(height - 1, max(0, round(y * (height - 1) / 1000)))
         part = parts.get(numeral, "")
-        if exterior[pixel_y, pixel_x]:
-            if _EMPTY_ANCHOR_PART_RE.search(part):
-                allowed_spaces.append({"numeral": numeral, "part": part, "x": x, "y": y})
-            elif len(ink_x):
+        is_exterior = bool(exterior[pixel_y, pixel_x])
+        is_empty_space = bool(_EMPTY_ANCHOR_PART_RE.search(part))
+        requires_ink = bool(_LINE_ANCHOR_PART_RE.search(part)) and not is_empty_space
+        if is_exterior and is_empty_space:
+            allowed_spaces.append({"numeral": numeral, "part": part, "x": x, "y": y})
+        elif is_exterior or requires_ink:
+            if len(ink_x):
                 distance_sq = ((ink_norm_x - x) ** 2) + ((ink_norm_y - y) ** 2)
                 nearest = int(np.argmin(distance_sq))
                 distance = sqrt(float(distance_sq[nearest]))
                 if distance <= max_snap:
                     new_x = round(float(ink_norm_x[nearest]))
                     new_y = round(float(ink_norm_y[nearest]))
-                    item["x"], item["y"] = new_x, new_y
-                    adjusted.append({
-                        "numeral": numeral, "part": part,
-                        "from_x": x, "from_y": y, "to_x": new_x, "to_y": new_y,
-                        "distance": round(distance, 1),
-                    })
+                    if (new_x, new_y) != (x, y):
+                        item["x"], item["y"] = new_x, new_y
+                        adjusted.append({
+                            "numeral": numeral, "part": part,
+                            "from_x": x, "from_y": y, "to_x": new_x, "to_y": new_y,
+                            "distance": round(distance, 1),
+                        })
                     x, y = new_x, new_y
                 else:
                     ungrounded.append({
