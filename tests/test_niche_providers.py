@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 
@@ -8,8 +9,8 @@ import pytest
 from corpus.niche.limits import PaidBudget, PaidLimits
 from corpus.niche.models import Completeness, FetchRequest, ProviderResult
 from corpus.niche.providers.base import BaseProvider, ProviderTemporaryError
-from corpus.niche.providers.firecrawl import FirecrawlProvider
 from corpus.niche.providers.epo import EPOProvider
+from corpus.niche.providers.firecrawl import FirecrawlProvider
 from corpus.niche.providers.scrapingbee import ScrapingBeeProvider
 from corpus.niche.providers.uspto import USPTOProvider
 from corpus.niche.storage import FileObjectStore, GCSObjectStore
@@ -83,6 +84,51 @@ def test_provider_fallback_order_is_explicit_and_stable():
         "scrapingbee",
         "serpapi",
     ]
+
+
+def test_scaled_acquisition_reuses_firecrawl_before_scrapingbee(monkeypatch):
+    from acquire import providers as acquisition
+    from sources import gpatents_direct
+
+    seen = []
+
+    def fake_scrape(_provider, request):
+        seen.append(request.publication_number)
+        return ProviderResult(
+            provider="firecrawl",
+            content=b"<html>full patent</html>",
+            media_type="text/html",
+            source_url="https://patents.google.com/patent/US1234567A1/en",
+            http_status=200,
+            credits_used=1,
+        )
+
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "test-only")
+    monkeypatch.setattr(FirecrawlProvider, "fetch", fake_scrape)
+    monkeypatch.setattr(
+        gpatents_direct,
+        "parse_document",
+        lambda _html, _publication: {
+            "claims": "A complete claim " * 20,
+            "description": "A complete description " * 50,
+        },
+    )
+
+    cascade = acquisition.build(["firecrawl", "scrapingbee"])
+
+    assert [provider.name for provider in cascade] == ["firecrawl", "scrapingbee"]
+
+    async def fetch():
+        import httpx
+
+        async with httpx.AsyncClient() as client:
+            return await cascade[0].fetch("US1234567A1", client)
+
+    result = asyncio.run(fetch())
+    assert seen == ["US1234567A1"]
+    assert result.complete()
+    assert result.credits == 1
+    assert result.source_url.endswith("/US1234567A1/en")
 
 
 def test_provider_waterfall_stops_at_first_complete_result():

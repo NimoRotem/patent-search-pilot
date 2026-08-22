@@ -22,6 +22,67 @@ CHUNK_COLUMNS = (
     "source_location",
     "content_hash",
 )
+MAX_EMBED_CHUNK_BYTES = 6000
+
+
+def _segments(text: str, max_bytes: int = MAX_EMBED_CHUNK_BYTES) -> list[str]:
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return []
+    if len(cleaned.encode("utf-8")) <= max_bytes:
+        return [cleaned]
+    segments = []
+    current = []
+    current_bytes = 0
+    for word in cleaned.split():
+        word_bytes = len(word.encode("utf-8"))
+        separator = 1 if current else 0
+        if current and current_bytes + separator + word_bytes > max_bytes:
+            segments.append(" ".join(current))
+            current, current_bytes = [], 0
+        if word_bytes <= max_bytes:
+            current.append(word)
+            current_bytes += (1 if current_bytes else 0) + word_bytes
+            continue
+        piece = ""
+        piece_bytes = 0
+        for character in word:
+            size = len(character.encode("utf-8"))
+            if piece and piece_bytes + size > max_bytes:
+                segments.append(piece)
+                piece, piece_bytes = "", 0
+            piece += character
+            piece_bytes += size
+        if piece:
+            current, current_bytes = [piece], piece_bytes
+    if current:
+        segments.append(" ".join(current))
+    return segments
+
+
+def _append_segments(
+    chunks: list[dict],
+    parsed: dict,
+    kind: str,
+    text: str,
+    source_location: str,
+    *,
+    claim_number=None,
+    language: str = "",
+) -> None:
+    segments = _segments(text)
+    for index, segment in enumerate(segments, 1):
+        location = (
+            f"{source_location};part:{index}" if len(segments) > 1 else source_location
+        )
+        chunks.append(_chunk(
+            parsed,
+            kind,
+            segment,
+            location,
+            claim_number=claim_number,
+            language=language,
+        ))
 
 
 def _chunk(
@@ -57,32 +118,32 @@ def build_chunks(parsed: dict) -> list[dict]:
     chunks = []
     abstract = str(parsed.get("abstract") or "").strip()
     if abstract:
-        chunks.append(_chunk(parsed, "abstract", abstract, "abstract"))
+        _append_segments(chunks, parsed, "abstract", abstract, "abstract")
     for claim in parsed.get("claims") or []:
         number = claim.get("number")
         language = claim.get("language") or parsed.get("language") or ""
         own = str(claim.get("raw_text") or claim.get("text") or "").strip()
         if own:
-            chunks.append(_chunk(
-                parsed, "claim_own", own, f"claim:{number}",
+            _append_segments(
+                chunks, parsed, "claim_own", own, f"claim:{number}",
                 claim_number=number, language=language,
-            ))
+            )
         resolved = str(claim.get("resolved_text") or "").strip()
         if resolved and claim.get("chain_complete"):
-            chunks.append(_chunk(
-                parsed, "claim_resolved", resolved, f"claim:{number};resolved",
+            _append_segments(
+                chunks, parsed, "claim_resolved", resolved, f"claim:{number};resolved",
                 claim_number=number, language=language,
-            ))
+            )
     for paragraph in parsed.get("description_paragraphs") or []:
         text = str(paragraph.get("text") or "").strip()
         if text:
-            chunks.append(_chunk(
-                parsed,
+            _append_segments(
+                chunks, parsed,
                 "description",
                 text,
                 str(paragraph.get("source_location") or f"paragraph:{paragraph.get('id', '')}"),
                 language=str(paragraph.get("language") or parsed.get("language") or ""),
-            ))
+            )
     for index, caption in enumerate(parsed.get("figure_captions") or [], 1):
         if isinstance(caption, dict):
             text = str(caption.get("text") or caption.get("caption") or "")
@@ -91,7 +152,9 @@ def build_chunks(parsed: dict) -> list[dict]:
         else:
             text, location, language = str(caption), f"figure:{index}", str(parsed.get("language") or "")
         if text.strip():
-            chunks.append(_chunk(parsed, "figure_caption", text, location, language=language))
+            _append_segments(
+                chunks, parsed, "figure_caption", text, location, language=language
+            )
     return chunks
 
 

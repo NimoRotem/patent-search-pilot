@@ -10,7 +10,7 @@ import html as html_module
 import json
 import re
 import xml.etree.ElementTree as ET
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 from .identifiers import normalize_classification, normalize_publication_number
 
@@ -509,19 +509,48 @@ def _split_plain_paragraphs(text: str, language: str) -> list[dict]:
     ]
 
 
+def _split_plain_claims(text: str) -> list[dict]:
+    """Group line-oriented acquisition text at explicit numbered claim boundaries."""
+    claims = []
+    number = None
+    parts = []
+    for raw_line in str(text or "").splitlines():
+        line = _clean_text(raw_line)
+        if not line:
+            continue
+        match = re.match(r"^(\d{1,4})\s*[.)。]\s*(.*)$", line)
+        if match:
+            if number is not None and parts:
+                claims.append({"number": number, "text": " ".join(parts)})
+            number = int(match.group(1))
+            parts = [match.group(2)] if match.group(2) else []
+        elif number is not None:
+            parts.append(line)
+    if number is not None and parts:
+        claims.append({"number": number, "text": " ".join(parts)})
+    if claims:
+        return claims
+    cleaned = _clean_text(text)
+    return [{"number": 1, "text": cleaned}] if cleaned else []
+
+
 def _parse_json(raw: bytes, publication_number: str, provider: str, media_type: str) -> dict:
     data = json.loads(raw.decode("utf-8"))
     publication = normalize_publication_number(
         data.get("publication_number") or data.get("pub_number") or publication_number
     )
     language = str(data.get("language") or data.get("claims_lang") or data.get("desc_lang") or "")
+    claims_language = str(data.get("claims_lang") or language)
+    description_language = str(data.get("desc_lang") or language)
     raw_claims = data.get("claims") or []
     if isinstance(raw_claims, str):
-        raw_claims = [line for line in raw_claims.splitlines() if _clean_text(line)]
-    claims = normalize_claims(raw_claims, language)
+        raw_claims = _split_plain_claims(raw_claims)
+    claims = normalize_claims(raw_claims, claims_language)
     paragraphs = data.get("description_paragraphs") or []
     if not paragraphs:
-        paragraphs = _split_plain_paragraphs(str(data.get("description") or ""), language)
+        paragraphs = _split_plain_paragraphs(
+            str(data.get("description") or ""), description_language
+        )
     normalized_paragraphs = []
     for index, paragraph in enumerate(paragraphs, 1):
         if isinstance(paragraph, str):
@@ -537,11 +566,29 @@ def _parse_json(raw: bytes, publication_number: str, provider: str, media_type: 
             "text": text,
             "section": str(paragraph.get("section") or ""),
             "page": page,
-            "language": str(paragraph.get("language") or language),
+            "language": str(paragraph.get("language") or description_language),
             "source_location": location,
         })
-    source = dict(data.get("source") or {})
+    raw_source = data.get("source")
+    source = dict(raw_source) if isinstance(raw_source, Mapping) else {}
+    if raw_source and not isinstance(raw_source, Mapping):
+        source["upstream_provider"] = str(raw_source)
     source.update(provider=provider, media_type=media_type, content_hash=hashlib.sha256(raw).hexdigest())
+    raw_dates = data.get("dates")
+    dates = dict(raw_dates) if isinstance(raw_dates, Mapping) else {}
+    if data.get("date") and not dates.get("publication_date"):
+        dates["publication_date"] = str(data["date"])
+    raw_completeness = data.get("completeness")
+    completeness = dict(raw_completeness) if isinstance(raw_completeness, Mapping) else {
+        "has_title": bool(data.get("title")),
+        "has_abstract": bool(data.get("abstract")),
+        "has_claims": bool(claims),
+        "has_complete_claims": bool(claims),
+        "has_description": bool(normalized_paragraphs),
+        "has_complete_description": bool(normalized_paragraphs),
+        "has_figures": bool(data.get("figure_captions")),
+        "has_citations": bool(data.get("citations")),
+    }
     return {
         "publication_number": publication,
         "publication_id": str(data.get("publication_id") or publication),
@@ -555,18 +602,9 @@ def _parse_json(raw: bytes, publication_number: str, provider: str, media_type: 
         "citations": [normalize_publication_number(value) for value in data.get("citations", []) if value],
         "cpc": [normalize_classification(value) for value in data.get("cpc", []) if value],
         "ipc": [normalize_classification(value) for value in data.get("ipc", []) if value],
-        "dates": dict(data.get("dates") or {}),
+        "dates": dates,
         "source": source,
-        "completeness": dict(data.get("completeness") or {
-            "has_title": bool(data.get("title")),
-            "has_abstract": bool(data.get("abstract")),
-            "has_claims": bool(claims),
-            "has_complete_claims": bool(claims),
-            "has_description": bool(normalized_paragraphs),
-            "has_complete_description": bool(normalized_paragraphs),
-            "has_figures": bool(data.get("figure_captions")),
-            "has_citations": bool(data.get("citations")),
-        }),
+        "completeness": completeness,
     }
 
 

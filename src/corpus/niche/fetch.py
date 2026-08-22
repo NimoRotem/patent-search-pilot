@@ -12,6 +12,14 @@ from .parse import merge_parsed, parse_source
 from .waterfall import PipelineFatalError
 
 
+class FetchLeaseLost(RuntimeError):
+    pass
+
+
+class FetchWorkerCancelled(RuntimeError):
+    pass
+
+
 def _record_completeness(record) -> Completeness:
     return Completeness(**{
         key: bool(getattr(record, key, False))
@@ -59,6 +67,7 @@ class FetchWorker:
         heartbeat_seconds: int = 30,
         chunks_format: str = "parquet",
         logger: Callable[[dict], None] | None = None,
+        stop_event: threading.Event | None = None,
     ):
         self.queue = queue
         self.repository = repository
@@ -69,8 +78,15 @@ class FetchWorker:
         self.heartbeat_seconds = max(1, min(int(heartbeat_seconds), self.lease_seconds // 2))
         self.chunks_format = chunks_format
         self.logger = logger or (lambda event: print(json.dumps(event, sort_keys=True), flush=True))
+        self.stop_event = stop_event or threading.Event()
         self._parsed_accumulator = None
         self._cached_providers: set[str] = set()
+
+    def _check_active(self, lease_lost: threading.Event) -> None:
+        if self.stop_event.is_set():
+            raise FetchWorkerCancelled("worker shutdown")
+        if lease_lost.is_set():
+            raise FetchLeaseLost("fetch lease lost")
 
     def _failure_status(self, job) -> str:
         return (
@@ -105,10 +121,11 @@ class FetchWorker:
                 f"cached parse persistence failed: {type(exc).__name__}: {exc}"
             ) from exc
 
-    def _try_cached(self, record) -> dict | None:
+    def _try_cached(self, record, lease_lost: threading.Event) -> dict | None:
         sources = self.repository.cached_sources(record.publication_id)
         readable_sources = 0
         for source in sources:
+            self._check_active(lease_lost)
             try:
                 content = self.object_store.read(source["raw_object_uri"])
                 readable_sources += 1
@@ -143,20 +160,43 @@ class FetchWorker:
                 })
                 continue
             self._cached_providers.add(str(source["provider"]))
+            self._check_active(lease_lost)
             if _parsed_completeness(parsed).full_text_complete:
                 return parsed
         if sources and not readable_sources:
             raise PipelineFatalError("all registered raw source objects are unreadable")
         return None
 
-    def _heartbeat_loop(self, job, stopped: threading.Event):
+    def _heartbeat_loop(
+        self,
+        job,
+        stopped: threading.Event,
+        lease_lost: threading.Event,
+    ):
         while not stopped.wait(self.heartbeat_seconds):
-            if not self.queue.heartbeat(
-                job.job_id, self.worker_id, self.lease_seconds
-            ):
+            try:
+                owned = self.queue.heartbeat(
+                    job.job_id, self.worker_id, self.lease_seconds
+                )
+            except Exception as exc:  # noqa: BLE001 - loss is the fail-closed outcome
+                lease_lost.set()
+                self.logger({
+                    "publication": job.publication_id,
+                    "provider": "heartbeat",
+                    "attempt": job.attempt,
+                    "latency_ms": 0,
+                    "credits": 0,
+                    "bytes": 0,
+                    "result": "error",
+                    "error_class": type(exc).__name__,
+                })
+                return
+            if not owned:
+                lease_lost.set()
                 return
 
-    def _process(self, job) -> bool:
+    def _process(self, job, lease_lost: threading.Event) -> bool:
+        self._check_active(lease_lost)
         record = self.repository.get_publication(job.publication_id)
         if record is None:
             self.queue.fail(job.job_id, self.worker_id, job.attempt, "manifest row missing")
@@ -165,8 +205,9 @@ class FetchWorker:
         self._parsed_accumulator = None
         self._cached_providers = set()
 
-        cached = self._try_cached(record)
+        cached = self._try_cached(record, lease_lost)
         if cached and _parsed_completeness(cached).full_text_complete:
+            self._check_active(lease_lost)
             lease_owned = self.queue.complete(job.job_id, self.worker_id)
             if lease_owned:
                 self.repository.mark_fetch_status(record.publication_id, "completed")
@@ -221,6 +262,7 @@ class FetchWorker:
                 ) from exc
 
         def validate(_request, result):
+            self._check_active(lease_lost)
             parsed = parse_source(
                 result.content, result.media_type, record.publication_number, result.provider
             )
@@ -232,11 +274,15 @@ class FetchWorker:
                 raise PipelineFatalError(
                     f"parsed source persistence failed: {type(exc).__name__}: {exc}"
                 ) from exc
+            self._check_active(lease_lost)
             return replace(result, completeness=_parsed_completeness(persisted))
 
         self.waterfall.on_result = store_result
         self.waterfall.validator = validate
-        outcome = self.waterfall.fetch(request)
+        outcome = self.waterfall.fetch(
+            request,
+            cancelled=lambda: self.stop_event.is_set() or lease_lost.is_set(),
+        )
         for attempt in outcome.attempts:
             self.repository.record_attempt(record.publication_id, attempt)
             self.logger({
@@ -249,6 +295,7 @@ class FetchWorker:
                 "result": attempt.status,
                 **({"error_class": attempt.error_class} if attempt.error_class else {}),
             })
+        self._check_active(lease_lost)
         if outcome.status in {"completed", "already_complete"}:
             if self.queue.complete(job.job_id, self.worker_id):
                 self.repository.mark_fetch_status(
@@ -269,15 +316,39 @@ class FetchWorker:
         if job is None:
             return False
         stopped = threading.Event()
+        lease_lost = threading.Event()
         heartbeat = threading.Thread(
             target=self._heartbeat_loop,
-            args=(job, stopped),
+            args=(job, stopped, lease_lost),
             name=f"niche-heartbeat-{self.worker_id}",
             daemon=True,
         )
         heartbeat.start()
         try:
-            return self._process(job)
+            return self._process(job, lease_lost)
+        except FetchWorkerCancelled as exc:
+            released = self.queue.cancel(job, self.worker_id, str(exc))
+            self.logger({
+                "publication": job.publication_id,
+                "provider": "worker",
+                "attempt": job.attempt,
+                "latency_ms": 0,
+                "credits": 0,
+                "bytes": 0,
+                "result": "cancelled" if released else "lease_lost",
+            })
+            return True
+        except FetchLeaseLost:
+            self.logger({
+                "publication": job.publication_id,
+                "provider": "worker",
+                "attempt": job.attempt,
+                "latency_ms": 0,
+                "credits": 0,
+                "bytes": 0,
+                "result": "lease_lost",
+            })
+            return True
         except Exception as exc:  # noqa: BLE001 - worker boundary must return the lease to retry
             error = f"{type(exc).__name__}: {exc}"
             if self.queue.fail(

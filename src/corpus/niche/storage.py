@@ -287,6 +287,7 @@ class GCSObjectStore:
         elif fmt == "parquet":
             import pyarrow as pa
             import pyarrow.parquet as pq
+
             from .chunks import chunks_arrow_table
 
             sink = pa.BufferOutputStream()

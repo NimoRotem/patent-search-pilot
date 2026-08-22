@@ -73,7 +73,12 @@ class ProviderWaterfall:
         self.on_result = on_result
         self.validator = validator
 
-    def fetch(self, request: FetchRequest) -> FetchOutcome:
+    def fetch(
+        self,
+        request: FetchRequest,
+        *,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> FetchOutcome:
         if (
             request.completeness.full_text_complete or not request.missing_fields
         ) and not request.require_artifact:
@@ -82,6 +87,8 @@ class ProviderWaterfall:
         attempts = []
         artifacts = []
         for provider in self.providers:
+            if cancelled and cancelled():
+                return FetchOutcome("cancelled", None, tuple(attempts), tuple(artifacts))
             if (
                 (request.local_only and provider.name != "local")
                 or provider.name in request.skip_providers
@@ -107,12 +114,40 @@ class ProviderWaterfall:
                 if result is None or not result.content:
                     attempts.append(FetchAttempt(provider.name, "empty", latency_ms=latency,
                                                  credits_used=actual))
+                    if cancelled and cancelled():
+                        return FetchOutcome(
+                            "cancelled", None, tuple(attempts), tuple(artifacts)
+                        )
                     continue
                 artifacts.append(result)
                 if self.on_result:
                     self.on_result(request, result)
+                if cancelled and cancelled():
+                    attempts.append(FetchAttempt(
+                        provider.name,
+                        "cancelled",
+                        latency_ms=result.latency_ms or latency,
+                        http_status=result.http_status,
+                        credits_used=result.credits_used,
+                        bytes_received=len(result.content),
+                    ))
+                    return FetchOutcome(
+                        "cancelled", None, tuple(attempts), tuple(artifacts)
+                    )
                 if self.validator:
                     result = self.validator(request, result)
+                if cancelled and cancelled():
+                    attempts.append(FetchAttempt(
+                        provider.name,
+                        "cancelled",
+                        latency_ms=result.latency_ms or latency,
+                        http_status=result.http_status,
+                        credits_used=result.credits_used,
+                        bytes_received=len(result.content),
+                    ))
+                    return FetchOutcome(
+                        "cancelled", None, tuple(attempts), tuple(artifacts)
+                    )
                 status = "success" if _satisfies(request, result) else "partial"
                 attempts.append(FetchAttempt(
                     provider.name,
@@ -144,5 +179,9 @@ class ProviderWaterfall:
                 if isinstance(exc, PipelineFatalError):
                     return FetchOutcome(
                         "fatal", None, tuple(attempts), tuple(artifacts)
+                    )
+                if cancelled and cancelled():
+                    return FetchOutcome(
+                        "cancelled", None, tuple(attempts), tuple(artifacts)
                     )
         return FetchOutcome("missing", None, tuple(attempts), tuple(artifacts))

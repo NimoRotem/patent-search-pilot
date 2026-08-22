@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 from corpus.niche.fetch import FetchWorker
@@ -220,6 +221,140 @@ def test_worker_that_lost_its_lease_cannot_mark_manifest_completed(tmp_path):
 
     assert worker.run_once() is True
     assert not any(status == "completed" for status, _fields in repository.statuses)
+
+
+def test_fetch_heartbeat_loss_caches_response_then_stops_before_next_provider(tmp_path):
+    heartbeat_called = threading.Event()
+
+    class LostLeaseQueue(_Queue):
+        def heartbeat(self, *_args):
+            heartbeat_called.set()
+            return False
+
+    class Repository(_Repository):
+        def __init__(self, record):
+            super().__init__(record, None)
+            self.sources = []
+
+        def record_source(self, publication_id, result, stored):
+            self.sources.append((publication_id, result, stored))
+
+    class FirstProvider(BaseProvider):
+        name = "first"
+
+        def fetch(self, _request):
+            assert heartbeat_called.wait(1)
+            return ProviderResult(
+                provider=self.name,
+                content=b"<patent-document><claims><claim num='1'>A claim.</claim></claims></patent-document>",
+                media_type="application/xml",
+                source_url="https://example.test/first",
+                completeness=Completeness(
+                    has_claims=True,
+                    has_complete_claims=True,
+                ),
+            )
+
+    class SecondProvider(BaseProvider):
+        name = "second"
+
+        def fetch(self, _request):
+            raise AssertionError("lease loss must stop before the next provider")
+
+    record = PublicationRecord(publication_number="US1234567A1", priority=1)
+    repository = Repository(record)
+    job = FetchJob(1, record.publication_id, 1, "leased", worker_id="worker", attempt=1)
+    queue = LostLeaseQueue(job)
+    worker = FetchWorker(
+        queue=queue,
+        repository=repository,
+        waterfall=ProviderWaterfall(
+            [FirstProvider(), SecondProvider()], PaidBudget({})
+        ),
+        object_store=FileObjectStore(tmp_path),
+        worker_id="worker",
+        lease_seconds=60,
+        heartbeat_seconds=5,
+        chunks_format="jsonl",
+        logger=lambda _event: None,
+    )
+    worker.heartbeat_seconds = 0.01
+
+    assert worker.run_once() is True
+    assert len(repository.sources) == 1
+    assert queue.completed == []
+    assert queue.failed == []
+    assert not any(
+        status in {"completed", "failed"} for status, _fields in repository.statuses
+    )
+
+
+def test_fetch_graceful_shutdown_caches_response_and_returns_owned_lease(tmp_path):
+    stopping = threading.Event()
+
+    class Queue(_Queue):
+        def __init__(self, job):
+            super().__init__(job)
+            self.cancelled = []
+
+        def cancel(self, job, worker_id, reason="worker shutdown"):
+            self.cancelled.append((job.job_id, worker_id, reason))
+            return True
+
+    class Repository(_Repository):
+        def __init__(self, record):
+            super().__init__(record, None)
+            self.sources = []
+
+        def record_source(self, publication_id, result, stored):
+            self.sources.append((publication_id, result, stored))
+
+    class FirstProvider(BaseProvider):
+        name = "first"
+
+        def fetch(self, _request):
+            stopping.set()
+            return ProviderResult(
+                provider=self.name,
+                content=b"<patent-document><claims><claim num='1'>A claim.</claim></claims></patent-document>",
+                media_type="application/xml",
+                source_url="https://example.test/first",
+                completeness=Completeness(
+                    has_claims=True,
+                    has_complete_claims=True,
+                ),
+            )
+
+    class SecondProvider(BaseProvider):
+        name = "second"
+
+        def fetch(self, _request):
+            raise AssertionError("shutdown must stop before the next provider")
+
+    record = PublicationRecord(publication_number="US1234567A1", priority=1)
+    repository = Repository(record)
+    job = FetchJob(1, record.publication_id, 1, "leased", worker_id="worker", attempt=1)
+    queue = Queue(job)
+    worker = FetchWorker(
+        queue=queue,
+        repository=repository,
+        waterfall=ProviderWaterfall(
+            [FirstProvider(), SecondProvider()], PaidBudget({})
+        ),
+        object_store=FileObjectStore(tmp_path),
+        worker_id="worker",
+        lease_seconds=60,
+        heartbeat_seconds=5,
+        chunks_format="jsonl",
+        logger=lambda _event: None,
+        stop_event=stopping,
+    )
+
+    assert worker.run_once() is True
+    assert len(repository.sources) == 1
+    assert queue.cancelled == [(1, "worker", "worker shutdown")]
+    assert queue.completed == []
+    assert queue.failed == []
 
 
 def test_unreadable_cached_raw_stops_before_paid_refetch(tmp_path):

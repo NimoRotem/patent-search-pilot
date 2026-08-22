@@ -7,7 +7,10 @@ The GCS JSON API is one authenticated POST, and the VM's service account token c
 metadata server, so this needs nothing that is not already here.
 
 LAYOUT
-    raw/{publication}/{provider}.{ext}.gz    exactly what the provider returned, gzipped
+    raw/{publication}/{provider}/{sha256}.{ext}.gz
+                                             immutable, deterministic gzip of provider bytes
+    raw/{publication}/{provider}/{sha256}.metadata.json
+                                             sanitized provenance for the stored bytes
     parsed/{publication}/{provider}.json     the normalised record, plain JSON so a reader needs
                                              no decompression step
 
@@ -15,20 +18,22 @@ WHY RAW AS WELL AS PARSED. Every parser in this tree has been wrong at least onc
 had never seen (OPS `exchange-documents`, the ODP field prefixes). Keeping the bytes means a parser
 fix is a re-parse rather than a re-fetch, and a re-fetch is the part that costs money and quota.
 
-FAILURE IS NOT FATAL. A GCS outage must not lose text we have already paid for. An upload failure
-is recorded in the ledger as an error event and the record still goes to `sources_docstore` and
-`corpus_ingest_queue`; the task row simply carries no `raw_uri`, which is how a later pass finds
-what to re-upload.
+ISOLATED FACTORY FAILURE MODE. When `NICHE_FACTORY_ISOLATED=1`, a GCS or handoff failure fails the
+fetch attempt closed. The factory never falls through to the legacy source or production-ingest
+stores. The durable acquisition job retries after backoff, so paid bytes are not silently lost.
+Legacy acquisition keeps its existing best-effort behavior when isolated mode is not enabled.
 """
 from __future__ import annotations
 
 import asyncio
 import gzip
+import hashlib
 import json
 import os
 import subprocess
 import time
 import urllib.parse
+from datetime import datetime, timezone
 
 import httpx
 
@@ -62,8 +67,13 @@ def _lock():
 def _gcloud_token() -> str:
     """Off GCE (the builder box, a laptop) there is no metadata server. `gcloud` already holds a
     credential there, so shell out rather than fail."""
-    out = subprocess.run(["gcloud", "auth", "print-access-token"], capture_output=True,
-                         text=True, timeout=30)
+    out = subprocess.run(
+        ["gcloud", "auth", "print-access-token"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
     if out.returncode != 0:
         raise RuntimeError(f"gcloud auth print-access-token failed: {out.stderr.strip()[:160]}")
     return out.stdout.strip()
@@ -83,7 +93,7 @@ async def token(client: httpx.AsyncClient) -> str:
             j = r.json()
             _TOKEN = j["access_token"]
             _TOKEN_EXP = time.monotonic() + int(j.get("expires_in", 3000))
-        except Exception:
+        except (httpx.HTTPError, KeyError, TypeError, ValueError):
             _TOKEN = await asyncio.to_thread(_gcloud_token)
             _TOKEN_EXP = time.monotonic() + 1800
         return _TOKEN
@@ -94,36 +104,101 @@ def gs_uri(name: str, bucket: str = "") -> str:
 
 
 async def put(client: httpx.AsyncClient, name: str, data: bytes, content_type: str,
-              *, bucket: str = "", timeout: float = 60.0) -> str:
+              *, bucket: str = "", timeout: float = 60.0,
+              write_once: bool = False) -> str:
     """Upload one object. Returns its gs:// URI, or "" when no bucket is configured."""
     bucket = bucket or bucket_name()
     if not bucket:
         return ""
     tok = await token(client)
+    params = {"uploadType": "media", "name": name}
+    if write_once:
+        params["ifGenerationMatch"] = "0"
     r = await client.post(
         UPLOAD.format(bucket=urllib.parse.quote(bucket, safe="")),
-        params={"uploadType": "media", "name": name},
+        params=params,
         headers={"Authorization": f"Bearer {tok}", "Content-Type": content_type},
         content=data, timeout=timeout)
-    r.raise_for_status()
+    if not (write_once and r.status_code == 412):
+        r.raise_for_status()
     return gs_uri(name, bucket)
 
 
-async def put_raw(client: httpx.AsyncClient, publication: str, provider: str, data,
-                  ext: str = "json", **kw) -> str:
-    """`raw/{publication}/{provider}.{ext}.gz`. Gzipped: a Google Patents page is ~115 KB and
-    compresses to roughly a fifth of that, and at 50,000 publications that difference is real."""
+def raw_bytes(data) -> bytes:
+    """Return the exact deterministic bytes stored for a raw provider response."""
     if isinstance(data, str):
         data = data.encode("utf-8", "replace")
-    blob = gzip.compress(data, 6)
-    return await put(client, f"raw/{publication}/{provider}.{ext}.gz", blob,
-                     "application/gzip", **kw)
+    return gzip.compress(bytes(data), compresslevel=6, mtime=0)
+
+
+def parsed_bytes(record: dict) -> bytes:
+    """Return the exact bytes used by the mutable provider parsed-object key."""
+    return json.dumps(record, ensure_ascii=False, default=str).encode("utf-8")
+
+
+async def put_raw(
+    client: httpx.AsyncClient,
+    publication: str,
+    provider: str,
+    data,
+    ext: str = "json",
+    *,
+    http_status: int | None = None,
+    headers=None,
+    source_url: str = "",
+    **kw,
+) -> str:
+    """Store immutable provider bytes and sanitized metadata with write-once keys."""
+    source = data.encode("utf-8", "replace") if isinstance(data, str) else bytes(data)
+    blob = raw_bytes(source)
+    digest = hashlib.sha256(blob).hexdigest()
+    base = f"raw/{publication}/{provider}/{digest}"
+    raw_uri = await put(
+        client,
+        f"{base}.{ext}.gz",
+        blob,
+        "application/gzip",
+        write_once=True,
+        **kw,
+    )
+    from corpus.niche.storage import sanitize_http_headers, sanitize_source_url
+
+    media_types = {
+        "html": "text/html",
+        "htm": "text/html",
+        "json": "application/json",
+        "pdf": "application/pdf",
+        "xml": "application/xml",
+    }
+    metadata = {
+        "publication_number": str(publication),
+        "provider": str(provider),
+        "fetched_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "content_hash": hashlib.sha256(source).hexdigest(),
+        "stored_content_hash": digest,
+        "media_type": media_types.get(str(ext).lower(), "application/octet-stream"),
+        "compression": "gzip",
+        "http_status": http_status,
+        "http_headers": sanitize_http_headers(headers or {}),
+        "source_url": sanitize_source_url(source_url),
+        "size_bytes": len(source),
+        "stored_size_bytes": len(blob),
+    }
+    await put(
+        client,
+        f"{base}.metadata.json",
+        json.dumps(metadata, sort_keys=True, ensure_ascii=False).encode("utf-8"),
+        "application/json; charset=utf-8",
+        write_once=True,
+        **kw,
+    )
+    return raw_uri
 
 
 async def put_parsed(client: httpx.AsyncClient, publication: str, provider: str, record: dict,
                      **kw) -> str:
     """`parsed/{publication}/{provider}.json`, uncompressed so a consumer can read it directly."""
-    blob = json.dumps(record, ensure_ascii=False, default=str).encode("utf-8")
+    blob = parsed_bytes(record)
     return await put(client, f"parsed/{publication}/{provider}.json", blob,
                      "application/json; charset=utf-8", **kw)
 

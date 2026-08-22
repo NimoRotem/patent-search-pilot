@@ -2,14 +2,22 @@ from __future__ import annotations
 
 import csv
 import json
+import os
+import subprocess
 from dataclasses import asdict
+from pathlib import Path
 
 import pytest
 
-from corpus.niche.providers.local import guard_read_only_sql
 from corpus.niche.manifest import PublicationRecord
+from corpus.niche.providers.local import guard_read_only_sql
 from corpus.niche.repository import PostgresNicheRepository
-from corpus.niche.status import build_status_report, write_status_artifacts
+from corpus.niche.status import (
+    DATABASE_FAMILY_SQL,
+    DATABASE_SUMMARY_SQL,
+    build_status_report,
+    write_status_artifacts,
+)
 
 
 def test_no_active_corpus_writes_guard_allows_reads_and_rejects_mutation():
@@ -24,6 +32,93 @@ def test_no_active_corpus_writes_guard_allows_reads_and_rejects_mutation():
     ):
         with pytest.raises(ValueError, match="read-only"):
             guard_read_only_sql(statement)
+
+
+def test_staging_writer_launchers_export_the_durable_database_identity():
+    root = Path(__file__).parents[1]
+    for name in (
+        "run-niche-discovery.sh",
+        "run-niche-embed.sh",
+        "run-niche-fetch.sh",
+        "run-niche-parse.sh",
+        "run-niche-status.sh",
+    ):
+        script = (root / "ops" / name).read_text()
+        assert 'export NICHE_EXPECTED_DATABASE="niche_full_v1"' in script
+        assert 'export NICHE_DATABASE_FINGERPRINT="niche-full-v1-20260822"' in script
+
+
+def test_discovery_launcher_accepts_an_explicit_nonempty_range(tmp_path):
+    root = Path(__file__).parents[1]
+    factory = tmp_path / "factory"
+    executable = factory / ".venv" / "bin" / "python"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\n")
+    executable.chmod(0o750)
+    (factory / ".source.env").write_text(
+        "PGHOST=source-host\nPGPORT=5432\nPGDATABASE=patents\n"
+        "PGUSER=reader\nPGPASSWORD=test-only\n"
+    )
+    (factory / ".niche-db-password").write_text("test-only\n")
+
+    completed = subprocess.run(
+        [str(root / "ops" / "run-niche-discovery.sh"), "100-200"],
+        env={**os.environ, "NICHE_FACTORY_ROOT": str(factory)},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.splitlines() == [
+        "-u",
+        "-m",
+        "src.corpus.niche.discover",
+        "--id-start",
+        "100",
+        "--id-end",
+        "200",
+        "--batch-size",
+        "1000",
+        "--max-batches",
+        "0",
+        "--db-read-delay",
+        "1.0",
+    ]
+
+
+def test_discovery_launcher_tail_starts_after_the_completed_snapshot(tmp_path):
+    root = Path(__file__).parents[1]
+    factory = tmp_path / "factory"
+    executable = factory / ".venv" / "bin" / "python"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\n")
+    executable.chmod(0o750)
+    (factory / ".source.env").write_text(
+        "PGHOST=source-host\nPGPORT=5432\nPGDATABASE=patents\n"
+        "PGUSER=reader\nPGPASSWORD=test-only\n"
+    )
+    (factory / ".niche-db-password").write_text("test-only\n")
+
+    completed = subprocess.run(
+        [str(root / "ops" / "run-niche-discovery.sh"), "tail"],
+        env={
+            **os.environ,
+            "NICHE_FACTORY_ROOT": str(factory),
+            "NICHE_DISCOVERY_TAIL_ONCE": "1",
+        },
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.splitlines()[3:7] == [
+        "--id-start",
+        "6436391",
+        "--id-end",
+        "0",
+    ]
 
 
 def test_status_report_includes_publication_and_family_completeness():
@@ -109,6 +204,30 @@ def test_status_report_includes_publication_and_family_completeness():
     assert report["discovery"]["source_scan_complete"] is False
 
 
+def test_discovery_progress_unions_resharded_ranges_without_double_counting():
+    from corpus.niche.status import _discovery_progress
+
+    in_progress = _discovery_progress({
+        "publication_id:0:100": 40,
+        "source_max_publication_id:0:100": 100,
+        "publication_id:40:70": 55,
+        "source_max_publication_id:40:70": 70,
+        "publication_id:70:100": 70,
+        "source_max_publication_id:70:100": 100,
+    })
+
+    assert in_progress["source_scan_progress_pct"] == 55.0
+    assert in_progress["source_scan_complete"] is False
+
+    complete = _discovery_progress({
+        **in_progress["watermarks"],
+        "publication_id:40:70": 70,
+        "publication_id:70:100": 100,
+    })
+    assert complete["source_scan_progress_pct"] == 100.0
+    assert complete["source_scan_complete"] is True
+
+
 def test_status_artifacts_are_json_and_csv(tmp_path):
     report = build_status_report([], [], [])
 
@@ -120,6 +239,16 @@ def test_status_artifacts_are_json_and_csv(tmp_path):
     assert b"\r\n" not in csv_path.read_bytes()
     rows = list(csv.DictReader(csv_path.open()))
     assert any(row["metric"] == "total_publications" and row["value"] == "0" for row in rows)
+
+
+def test_database_status_uses_aggregate_sql_instead_of_materializing_manifest():
+    summary = " ".join(DATABASE_SUMMARY_SQL.upper().split())
+    families = " ".join(DATABASE_FAMILY_SQL.upper().split())
+
+    assert "COUNT(*) FILTER" in summary
+    assert "SELECT *" not in summary
+    assert "BOOL_OR" in families
+    assert "GROUP BY" in families
 
 
 def test_saving_parsed_content_does_not_complete_manifest_before_lease_commit():

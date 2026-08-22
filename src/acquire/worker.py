@@ -2,9 +2,9 @@
 
 DURABILITY. Nothing lives in a process global. The pool is a table, the lease is a column with an
 expiry, and progress is a state transition committed before the next publication starts. Kill this
-worker at any point and the rows it held come back to the pool when `tasks.reap()` next runs; the
-text it had already stored is already in `sources_docstore`, which merges rather than overwrites,
-so the repeat costs nothing but the fetch it did not finish.
+worker at any point and the rows it held come back to the pool when `tasks.reap()` next runs. In
+isolated-factory mode returned source bytes are already in content-addressed GCS; legacy mode uses
+`sources_docstore`. A lost heartbeat cancels the remaining provider waterfall immediately.
 
 SAFETY. `corpus_guard.arm()` is called before anything else. From that point every connection this
 process opens refuses a statement that writes `publications`, `chunks`, `claims`, `paragraphs`,
@@ -22,6 +22,7 @@ deadline, so a publication cannot absorb the sum of every rung's timeout.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import signal
@@ -62,6 +63,7 @@ class Worker:
         self.manifests = list(manifests) if manifests else None
         self.stopping = asyncio.Event()
         self.held = set()
+        self.cancelled = set()
         self.fetched = 0
         self.missed = 0
         self.started = time.time()
@@ -102,7 +104,7 @@ class Worker:
                                latency_ms=int((time.monotonic() - t0) * 1000),
                                detail=f"exceeded {prov.gate.timeout:.0f}s"))
             return None
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - provider failures are isolated by rung
             prov.gate.note_fail(type(exc).__name__)
             if reserved:
                 await asyncio.to_thread(ledger.refund, prov.budget_key, reserved)
@@ -144,7 +146,11 @@ class Worker:
         deadline = time.monotonic() + PUBLICATION_DEADLINE
         settled: set = set()
         for prov in self.cascade:
-            if self.stopping.is_set() or time.monotonic() > deadline:
+            if (
+                self.stopping.is_set()
+                or pub in self.cancelled
+                or time.monotonic() > deadline
+            ):
                 return None
             if prov.upstream and prov.upstream in settled:
                 events.append({"worker": self.id, "partition_id": task["partition_id"],
@@ -156,52 +162,104 @@ class Worker:
             res = await self._try(prov, pub, task, client, events)
             if res is not None and res.complete():
                 return res
+            if pub in self.cancelled:
+                return None
             if res is not None and res.reached and prov.upstream:
                 settled.add(prov.upstream)
         return None
 
     # -- storage -------------------------------------------------------------------------------
     async def store(self, pub: str, res, client, events: list, task: dict) -> dict:
-        """GCS raw + GCS parsed + sources_docstore + corpus_ingest_queue. Nothing else, ever."""
+        """Persist acquisition outputs and optionally signal the isolated niche parse queue."""
         uris = {"raw_uri": "", "parsed_uri": ""}
         rec = res.record()
+        stored_record = dict(rec, publication_number=pub, fetched_at=time.time())
+        raw_blob = blobstore.raw_bytes(res.raw) if res.raw else b""
+        parsed_blob = blobstore.parsed_bytes(stored_record)
         if self.dry_run:
             return uris
+
+        isolated = os.environ.get("NICHE_FACTORY_ISOLATED", "").strip().lower() in {
+            "1", "true", "yes",
+        }
+        if isolated:
+            required = (
+                "NICHE_PARSE_DATABASE_URL",
+                "NICHE_EXPECTED_DATABASE",
+                "NICHE_DATABASE_FINGERPRINT",
+            )
+            missing = [name for name in required if not os.environ.get(name)]
+            if missing or not blobstore.enabled():
+                detail = ", ".join(missing or ["FULLTEXT_GCS_BUCKET"])
+                raise RuntimeError(f"isolated niche fetch is missing durable output: {detail}")
 
         if blobstore.enabled():
             try:
                 if res.raw:
                     uris["raw_uri"] = await blobstore.put_raw(
                         client, pub, res.provider.replace(":", "_"), res.raw,
-                        ext=res.raw_ext or "bin")
+                        ext=res.raw_ext or "bin",
+                        http_status=res.http_status,
+                        headers=res.response_headers,
+                        source_url=res.source_url,
+                    )
                 uris["parsed_uri"] = await blobstore.put_parsed(
                     client, pub, res.provider.replace(":", "_"),
-                    dict(rec, publication_number=pub, fetched_at=time.time()))
+                    stored_record)
             except Exception as exc:
                 #  Do not lose text we have already paid for because a bucket is unhappy. The
                 #  empty raw_uri on the task row is what a later re-upload pass looks for.
                 events.append({"worker": self.id, "partition_id": task["partition_id"],
                                "publication_number": pub, "provider": "gcs", "outcome": "error",
                                "detail": f"{type(exc).__name__}: {str(exc)[:160]}"})
+                if isolated:
+                    raise
 
-        from sources import docstore
-        await asyncio.to_thread(docstore._put_sync, pub, rec)
+        if not isolated:
+            from sources import docstore
+            await asyncio.to_thread(docstore._put_sync, pub, rec)
 
-        import runstore
-        try:
-            await asyncio.to_thread(
-                lambda: runstore.queue_for_ingest(
-                    pub,
-                    reason=f"niche acquisition ({task.get('manifest') or 'manifest'})",
-                    source=res.provider, scratch_ref=f"sources_docstore:{pub}",
-                    payload={"claims_chars": len(res.claims), "desc_chars": len(res.description),
-                             "raw_uri": uris["raw_uri"], "parsed_uri": uris["parsed_uri"]},
-                    priority=INGEST_PRIORITY))
-        except Exception as exc:
-            events.append({"worker": self.id, "partition_id": task["partition_id"],
-                           "publication_number": pub, "provider": "ingest_queue",
-                           "outcome": "error",
-                           "detail": f"{type(exc).__name__}: {str(exc)[:160]}"})
+            import runstore
+            try:
+                await asyncio.to_thread(
+                    lambda: runstore.queue_for_ingest(
+                        pub,
+                        reason=f"niche acquisition ({task.get('manifest') or 'manifest'})",
+                        source=res.provider, scratch_ref=f"sources_docstore:{pub}",
+                        payload={"claims_chars": len(res.claims),
+                                 "desc_chars": len(res.description),
+                                 "raw_uri": uris["raw_uri"],
+                                 "parsed_uri": uris["parsed_uri"]},
+                        priority=INGEST_PRIORITY))
+            except Exception as exc:  # noqa: BLE001 - legacy handoff is best effort
+                events.append({"worker": self.id, "partition_id": task["partition_id"],
+                               "publication_number": pub, "provider": "ingest_queue",
+                               "outcome": "error",
+                               "detail": f"{type(exc).__name__}: {str(exc)[:160]}"})
+
+        source_uri = uris["raw_uri"] or uris["parsed_uri"]
+        if source_uri and os.environ.get("NICHE_PARSE_DATABASE_URL"):
+            try:
+                from . import niche_handoff
+
+                generation_material = raw_blob if uris["raw_uri"] else parsed_blob
+                await asyncio.to_thread(
+                    niche_handoff.enqueue,
+                    publication_number=pub,
+                    family_id=str(task.get("family_id") or rec.get("family_id") or ""),
+                    authority=str(task.get("country") or pub[:2]),
+                    source_uri=source_uri,
+                    source_generation="sha256:" + hashlib.sha256(generation_material).hexdigest(),
+                )
+            except Exception as exc:
+                events.append({"worker": self.id, "partition_id": task["partition_id"],
+                               "publication_number": pub, "provider": "niche_handoff",
+                               "outcome": "error",
+                               "detail": f"{type(exc).__name__}: {str(exc)[:160]}"})
+                if isolated:
+                    raise
+        elif isolated:
+            raise RuntimeError("isolated niche fetch did not produce a durable source URI")
         return uris
 
     # -- one publication -----------------------------------------------------------------------
@@ -209,10 +267,13 @@ class Worker:
         pub = task["publication_number"]
         try:
             res = await self.cascade_for(pub, task, client, events)
-        except Exception:
+        except Exception:  # noqa: BLE001 - one publication must not stop the worker
             traceback.print_exc()
             res = None
         if res is None:
+            if pub in self.cancelled:
+                self.held.discard(pub)
+                return
             ok = await asyncio.to_thread(
                 tasks.complete, pub, self.id, state="missing",
                 error="no provider in the cascade returned complete text")
@@ -225,6 +286,10 @@ class Worker:
                 self.missed += 1
             return
         uris = await self.store(pub, res, client, events, task)
+        if pub in self.cancelled:
+            self.held.discard(pub)
+            log(f"lease lost for {pub} after fetch; source cached, completion skipped")
+            return
         ok = await asyncio.to_thread(
             tasks.complete, pub, self.id, state="done", provider=res.provider,
             claims_chars=len(res.claims), desc_chars=len(res.description),
@@ -249,12 +314,13 @@ class Worker:
                 continue
             try:
                 still = set(await asyncio.to_thread(tasks.renew, list(self.held), self.id))
-            except Exception:
+            except Exception:  # noqa: BLE001 - heartbeat retries after transient DB errors
                 traceback.print_exc()
                 continue
             lost = self.held - still
             if lost:
                 log(f"lost the lease on {len(lost)} publication(s): {sorted(lost)[:5]}")
+                self.cancelled.update(lost)
                 self.held = still
 
     async def run(self, max_publications: int = 0, max_batches: int = 0) -> dict:
@@ -278,7 +344,7 @@ class Worker:
                 while not self.stopping.is_set():
                     try:
                         reaped = await asyncio.to_thread(tasks.reap)
-                    except Exception:
+                    except Exception:  # noqa: BLE001 - reaper retries on the next loop
                         traceback.print_exc()
                         reaped = {}
                     if reaped.get("requeued") or reaped.get("failed"):
@@ -297,20 +363,21 @@ class Worker:
                         await self._sleep(IDLE_SLEEP)
                         continue
                     self.held = {t["publication_number"] for t in batch}
+                    self.cancelled.difference_update(self.held)
                     events: list = []
                     sem = asyncio.Semaphore(IN_FLIGHT)
 
-                    async def one(t):
-                        async with sem:
+                    async def one(t, semaphore=sem, batch_events=events):
+                        async with semaphore:
                             if self.stopping.is_set():
                                 return
-                            await self.handle(t, client, events)
+                            await self.handle(t, client, batch_events)
 
                     await asyncio.gather(*[one(t) for t in batch])
                     if events:
                         try:
                             await asyncio.to_thread(ledger.record_many, events)
-                        except Exception:
+                        except Exception:  # noqa: BLE001 - ledger retries from durable events
                             traceback.print_exc()
                     self.held = set()
                     batches += 1
@@ -325,7 +392,7 @@ class Worker:
             if self.held:
                 try:
                     await asyncio.to_thread(tasks.release, list(self.held), self.id)
-                except Exception:
+                except Exception:  # noqa: BLE001 - lease expiry remains the crash fallback
                     traceback.print_exc()
         return {"worker": self.id, "fetched": self.fetched, "missed": self.missed,
                 "batches": batches, "seconds": round(time.time() - self.started, 1)}
@@ -342,8 +409,15 @@ def run(shard: int = 0, of: int = 1, *, max_publications: int = 0, max_batches: 
     """Arm the corpus guard, then run. Arming FIRST is the point: it is a property of every
     connection this process opens from here on, not a rule somebody remembered."""
     import corpus_guard
-    corpus_guard.arm("full-text acquisition worker: writes only sources_docstore, "
-                     "corpus_ingest_queue and GCS")
+    isolated = os.environ.get("NICHE_FACTORY_ISOLATED", "").strip().lower() in {
+        "1", "true", "yes",
+    }
+    reason = (
+        "isolated niche factory: writes only acquisition queue tables, GCS, and niche_corpus"
+        if isolated
+        else "full-text acquisition worker: writes only sources_docstore, corpus_ingest_queue and GCS"
+    )
+    corpus_guard.arm(reason)
 
     w = Worker(shard, of, dry_run=dry_run)
 

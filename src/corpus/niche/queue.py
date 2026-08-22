@@ -144,6 +144,35 @@ class InMemoryFetchQueue:
             job.lease_until = None
             return True
 
+    def cancel(
+        self,
+        job: FetchJob,
+        worker_id: str,
+        reason: str = "worker shutdown",
+        *,
+        now=None,
+    ) -> bool:
+        """Return an owned lease immediately without consuming a retry attempt."""
+        now = now or utcnow()
+        with self._lock:
+            current = self._by_id.get(int(job.job_id))
+            if (
+                not current
+                or current.status != "leased"
+                or current.worker_id != worker_id
+                or current.lease_until is None
+                or current.lease_until <= now
+            ):
+                return False
+            current.status = "pending"
+            current.worker_id = ""
+            current.lease_until = None
+            current.heartbeat_at = now
+            current.next_attempt_at = now
+            current.attempt = max(0, int(current.attempt) - 1)
+            current.last_error = str(reason)[:2000]
+            return True
+
     def fail(self, job_id: int, worker_id: str, error: str, *, now=None) -> bool:
         now = now or utcnow()
         with self._lock:
@@ -301,6 +330,41 @@ class PostgresFetchQueue:
         with self.connection_factory() as connection, connection.cursor() as cursor:
             cursor.execute(sql, (job_id, worker_id))
             return cursor.rowcount == 1
+
+    def cancel(
+        self,
+        job: FetchJob,
+        worker_id: str,
+        reason: str = "worker shutdown",
+    ) -> bool:
+        """Return an owned job immediately and synchronize its manifest status."""
+        sql = """
+        WITH cancelled AS (
+            UPDATE niche_corpus.corpus_fetch_jobs
+               SET status='pending', worker_id=NULL, lease_until=NULL,
+                   heartbeat_at=now(), next_attempt_at=now(),
+                   attempt=GREATEST(0, attempt - 1), last_error=%s
+             WHERE job_id=%s AND status='leased' AND worker_id=%s
+               AND lease_until > now()
+            RETURNING publication_id
+        ), synchronized AS (
+            UPDATE niche_corpus.niche_publications AS publications
+               SET fetch_status=CASE WHEN publications.fetch_status='completed'
+                                     THEN 'completed' ELSE 'pending' END,
+                   last_error=CASE WHEN publications.fetch_status='completed'
+                                   THEN publications.last_error ELSE %s END,
+                   updated_at=now()
+              FROM cancelled
+             WHERE publications.publication_id=cancelled.publication_id
+            RETURNING publications.publication_id
+        )
+        SELECT EXISTS(SELECT 1 FROM cancelled) AS cancelled
+        """
+        message = str(reason)[:2000]
+        with self.connection_factory() as connection, connection.cursor() as cursor:
+            cursor.execute(sql, (message, int(job.job_id), worker_id, message))
+            row = cursor.fetchone() or {}
+            return bool(row.get("cancelled"))
 
     def fail(self, job_id: int, worker_id: str, attempt: int, error: str) -> bool:
         terminal = int(attempt) >= self.max_attempts

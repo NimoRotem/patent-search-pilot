@@ -12,7 +12,15 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-MIGRATION = ROOT / "sql" / "niche" / "001_fetch_queue.sql"
+MIGRATIONS = tuple(
+    ROOT / "sql" / "niche" / name
+    for name in (
+        "001_fetch_queue.sql",
+        "002_streaming_embedding.sql",
+        "003_manifest_stream.sql",
+        "004_search_build.sql",
+    )
+)
 DEFAULT_ARTIFACTS = ROOT / "artifacts"
 
 
@@ -25,7 +33,7 @@ def _common_database(parser):
     parser.add_argument(
         "--init-schema",
         action="store_true",
-        help="apply sql/niche/001_fetch_queue.sql to the isolated niche database before running",
+        help="apply all sql/niche migrations to the verified isolated database before running",
     )
 
 
@@ -36,8 +44,34 @@ def _factory(dsn, variable, application_name):
 
 def _initialize_if_requested(args, factory):
     if args.init_schema:
-        from .database import apply_schema
-        apply_schema(factory, MIGRATION)
+        from .database import (
+            apply_schema,
+            initialize_staging_identity,
+            validate_database_target,
+        )
+
+        expected = str(os.environ.get("NICHE_EXPECTED_DATABASE") or "").strip()
+        fingerprint = str(os.environ.get("NICHE_DATABASE_FINGERPRINT") or "").strip()
+        if not expected:
+            raise RuntimeError("NICHE_EXPECTED_DATABASE is required before schema initialization")
+        if not fingerprint:
+            raise RuntimeError(
+                "NICHE_DATABASE_FINGERPRINT is required before schema initialization"
+            )
+        validate_database_target(factory, expected)
+        for migration in MIGRATIONS:
+            apply_schema(factory, migration)
+        initialize_staging_identity(factory, expected, fingerprint)
+
+
+def _require_staging(factory):
+    from .database import validate_staging_database
+
+    validate_staging_database(
+        factory,
+        str(os.environ.get("NICHE_EXPECTED_DATABASE") or "").strip(),
+        str(os.environ.get("NICHE_DATABASE_FINGERPRINT") or "").strip(),
+    )
 
 
 def _load_seed_records(paths):
@@ -113,6 +147,7 @@ def run_discover(argv=None) -> int:
     niche_factory = _factory(args.niche_dsn, "NICHE_DATABASE_URL", "niche-discover")
     source_factory = _factory(args.source_dsn, "NICHE_SOURCE_DATABASE_URL", "niche-source-read")
     _initialize_if_requested(args, niche_factory)
+    _require_staging(niche_factory)
     repository = PostgresNicheRepository(niche_factory)
     source = LocalDiscoverySource(
         source_factory,
@@ -217,6 +252,7 @@ def run_fetch(argv=None) -> int:
         if args.source_dsn else None
     )
     _initialize_if_requested(args, niche_factory)
+    _require_staging(niche_factory)
     max_attempts = _max_attempts()
     queue = PostgresFetchQueue(niche_factory, max_attempts=max_attempts)
     queue.reclaim_expired()
@@ -247,6 +283,7 @@ def run_fetch(argv=None) -> int:
             lease_seconds=args.lease_seconds,
             heartbeat_seconds=args.heartbeat_seconds,
             chunks_format=args.chunk_format,
+            stop_event=stop,
         )
         processed = 0
         while not stop.is_set() and job_budget.acquire():
@@ -283,6 +320,18 @@ def _parse_parser():
     )
     parser.add_argument("--limit", type=int, default=1000)
     parser.add_argument("--chunk-format", choices=("jsonl", "parquet"), default="parquet")
+    parser.add_argument("--stream", action="store_true", help="consume the durable parse queue")
+    parser.add_argument("--source-dsn", default=os.environ.get("NICHE_SOURCE_DATABASE_URL", ""))
+    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--lease-seconds", type=int, default=300)
+    parser.add_argument("--heartbeat-seconds", type=int, default=30)
+    parser.add_argument("--poll-seconds", type=float, default=5.0)
+    parser.add_argument("--once", action="store_true")
+    parser.add_argument("--max-jobs", type=int, default=0)
+    parser.add_argument("--enqueue-gcs", action="store_true")
+    parser.add_argument("--enqueue-local", action="store_true")
+    parser.add_argument("--input-bucket", default=os.environ.get("NICHE_INPUT_BUCKET", ""))
+    parser.add_argument("--input-prefix", default=os.environ.get("NICHE_INPUT_PREFIX", "parsed/"))
     return parser
 
 
@@ -294,7 +343,60 @@ def run_parse(argv=None) -> int:
 
     factory = _factory(args.niche_dsn, "NICHE_DATABASE_URL", "niche-parse")
     _initialize_if_requested(args, factory)
+    _require_staging(factory)
     repository = PostgresNicheRepository(factory)
+    if args.stream or args.enqueue_gcs or args.enqueue_local:
+        from .embedding import EmbeddingSettings
+        from .storage import build_object_store
+        from .stream import (
+            PostgresParseQueue,
+            enqueue_gcs_backfill,
+            enqueue_local_backfill,
+            run_parse_pool,
+        )
+
+        settings = EmbeddingSettings.from_env(os.environ)
+        queue = PostgresParseQueue(factory, max_attempts=_max_attempts())
+        output = {}
+        if args.enqueue_gcs:
+            if not args.input_bucket:
+                raise RuntimeError("NICHE_INPUT_BUCKET is required for --enqueue-gcs")
+            output["gcs"] = enqueue_gcs_backfill(
+                factory,
+                queue,
+                bucket_name=args.input_bucket,
+                prefix=args.input_prefix,
+                max_objects=args.max_jobs,
+            )
+        if args.enqueue_local:
+            output["local"] = enqueue_local_backfill(
+                factory, queue, max_publications=args.max_jobs
+            )
+        if args.stream:
+            if not args.source_dsn:
+                raise RuntimeError("NICHE_SOURCE_DATABASE_URL is required for parse streaming")
+            canonical_uri = str(
+                args.object_root or os.environ.get("NICHE_CANONICAL_OBJECT_URI") or ""
+            ).strip()
+            if not canonical_uri.startswith("gs://"):
+                raise RuntimeError("NICHE_CANONICAL_OBJECT_URI must be an explicit gs:// URI")
+            output["stream"] = run_parse_pool(
+                queue=queue,
+                repository=repository,
+                source_connection_factory=_factory(
+                    args.source_dsn, "NICHE_SOURCE_DATABASE_URL", "niche-parse-source-read"
+                ),
+                canonical_store=build_object_store(canonical_uri),
+                settings=settings,
+                workers=args.workers,
+                lease_seconds=args.lease_seconds,
+                heartbeat_seconds=args.heartbeat_seconds,
+                poll_seconds=args.poll_seconds,
+                once=args.once,
+                max_jobs=args.max_jobs,
+            )
+        print(json.dumps(output, sort_keys=True))
+        return 0
     store = _object_store(args.object_root)
     processed = complete = errors = 0
     for row in repository.iter_publications():
@@ -329,6 +431,11 @@ def _status_parser():
         description="Write and display niche corpus completeness status.",
     )
     _common_database(parser)
+    parser.add_argument(
+        "--source-dsn",
+        default=os.environ.get("NICHE_SOURCE_DATABASE_URL", ""),
+        help="optional read-only acquisition-ledger DSN",
+    )
     parser.add_argument("--artifacts-dir", default=str(DEFAULT_ARTIFACTS))
     parser.add_argument("--json", action="store_true", help="print the full JSON report")
     return parser
@@ -336,18 +443,16 @@ def _status_parser():
 
 def run_status(argv=None) -> int:
     args = _status_parser().parse_args(argv)
-    from .repository import PostgresNicheRepository
-    from .status import build_status_report, write_status_artifacts
+    from .status import build_database_status, write_status_artifacts
 
     factory = _factory(args.niche_dsn, "NICHE_DATABASE_URL", "niche-status")
     _initialize_if_requested(args, factory)
-    repository = PostgresNicheRepository(factory)
-    report = build_status_report(
-        list(repository.iter_publications()),
-        list(repository.iter_attempts()),
-        list(repository.iter_jobs()),
-        watermarks=repository.load_watermarks(),
+    _require_staging(factory)
+    source_factory = (
+        _factory(args.source_dsn, "NICHE_SOURCE_DATABASE_URL", "niche-status-source-read")
+        if args.source_dsn else None
     )
+    report = build_database_status(factory, source_factory=source_factory)
     paths = write_status_artifacts(report, args.artifacts_dir)
     if args.json:
         print(json.dumps(report, sort_keys=True, indent=2, default=str))

@@ -1,7 +1,10 @@
 """PostgreSQL persistence confined to the niche_corpus staging schema."""
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterable, Mapping
+from contextlib import contextmanager
 from dataclasses import fields
 
 from .manifest import PublicationRecord, choose_family_fetch_targets
@@ -17,11 +20,25 @@ def _date(value):
     return text[:10] if len(text) >= 10 else None
 
 
+def local_parse_jobs(records: Iterable[PublicationRecord]) -> list[tuple[str, str, str, str]]:
+    return [
+        (
+            record.publication_id,
+            "local",
+            f"local://{record.publication_number}",
+            "",
+        )
+        for record in records
+        if record.has_complete_claims and record.has_complete_description
+    ]
+
+
 class PostgresNicheRepository:
     def __init__(self, connection_factory):
         self.connection_factory = connection_factory
 
     def upsert_publications(self, records: Iterable[PublicationRecord]) -> None:
+        records = list(records)
         sql = """
         INSERT INTO niche_corpus.niche_publications (
             publication_id, publication_number, family_id, authority, kind_code,
@@ -105,6 +122,18 @@ class PostgresNicheRepository:
             return
         with self.connection_factory() as connection, connection.cursor() as cursor:
             cursor.executemany(sql, values)
+            jobs = local_parse_jobs(records)
+            if jobs:
+                cursor.executemany(
+                    """
+                    INSERT INTO niche_corpus.niche_parse_jobs
+                        (publication_id, source_kind, source_uri, source_generation)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (source_uri, source_generation) DO UPDATE
+                       SET publication_id = EXCLUDED.publication_id
+                    """,
+                    jobs,
+                )
 
     def load_watermarks(self, source: str = "local") -> dict[str, int]:
         with self.connection_factory() as connection, connection.cursor() as cursor:
@@ -147,6 +176,84 @@ class PostgresNicheRepository:
             if values.get(key) is not None:
                 values[key] = str(values[key])
         return PublicationRecord(**values)
+
+    @contextmanager
+    def publication_lock(self, publication_id: str):
+        """Serialize canonical replacement for one publication across parse VMs."""
+        with self.connection_factory() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_advisory_lock(hashtextextended(%s, 0))",
+                (str(publication_id),),
+            )
+            try:
+                yield
+            finally:
+                cursor.execute(
+                    "SELECT pg_advisory_unlock(hashtextextended(%s, 0))",
+                    (str(publication_id),),
+                )
+
+    def merge_parsed_source(
+        self,
+        publication_id: str,
+        source_uri: str,
+        source_generation: str,
+        parsed: dict,
+    ) -> dict:
+        """Replace one source version, then merge every active source deterministically."""
+        from psycopg.types.json import Jsonb
+
+        from .parse import merge_parsed
+
+        payload = json.dumps(
+            parsed, sort_keys=True, ensure_ascii=False, default=str, separators=(",", ":")
+        ).encode("utf-8")
+        digest = hashlib.sha256(payload).hexdigest()
+        with self.connection_factory() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT publication_id FROM niche_corpus.niche_publications "
+                "WHERE publication_id=%s FOR UPDATE",
+                (str(publication_id),),
+            )
+            if not cursor.fetchone():
+                raise LookupError("parsed source manifest row is missing")
+            cursor.execute(
+                "UPDATE niche_corpus.niche_parsed_sources "
+                "SET active=false, updated_at=now() "
+                "WHERE source_uri=%s AND source_generation<>%s AND active",
+                (str(source_uri), str(source_generation or "")),
+            )
+            cursor.execute(
+                """
+                INSERT INTO niche_corpus.niche_parsed_sources
+                    (publication_id,source_uri,source_generation,parsed_content_hash,parsed,active)
+                VALUES (%s,%s,%s,%s,%s,true)
+                ON CONFLICT (source_uri,source_generation) DO UPDATE SET
+                    publication_id=EXCLUDED.publication_id,
+                    parsed_content_hash=EXCLUDED.parsed_content_hash,
+                    parsed=EXCLUDED.parsed,
+                    active=true,
+                    updated_at=now()
+                """,
+                (
+                    str(publication_id),
+                    str(source_uri),
+                    str(source_generation or ""),
+                    digest,
+                    Jsonb(parsed),
+                ),
+            )
+            cursor.execute(
+                "SELECT parsed FROM niche_corpus.niche_parsed_sources "
+                "WHERE publication_id=%s AND active "
+                "ORDER BY source_uri,source_generation,parsed_source_id",
+                (str(publication_id),),
+            )
+            sources = [dict(row["parsed"]) for row in cursor.fetchall()]
+        merged = None
+        for source in sources:
+            merged = merge_parsed(merged, source)
+        return merged or parsed
 
     def cached_sources(self, publication_id: str) -> list[dict]:
         with self.connection_factory() as connection, connection.cursor() as cursor:

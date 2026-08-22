@@ -78,6 +78,22 @@ def test_sigkill_reclaim_does_not_lose_the_publication():
     assert recovered.attempt == 2
 
 
+def test_graceful_cancel_returns_owned_fetch_lease_without_consuming_attempt():
+    queue = InMemoryFetchQueue(max_attempts=3)
+    queued = queue.enqueue("US123A1", priority=1, now=T0)
+    leased = queue.claim("worker-a", 60, now=T0)
+
+    assert leased is not None
+    assert leased.job_id == queued.job_id
+    assert leased.attempt == 1
+    assert queue.cancel(leased, "worker-a", "worker shutdown", now=T0) is True
+
+    reclaimed = queue.claim("worker-b", 60, now=T0)
+    assert reclaimed is not None
+    assert reclaimed.job_id == queued.job_id
+    assert reclaimed.attempt == 1
+
+
 def test_heartbeat_extends_only_the_current_workers_lease():
     queue = InMemoryFetchQueue(max_attempts=4)
     queue.enqueue("US1", now=T0)
