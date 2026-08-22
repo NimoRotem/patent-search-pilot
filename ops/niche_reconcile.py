@@ -458,11 +458,17 @@ def _tally(values) -> dict:
 #
 #  INSIDE a band the order is the evidence measured by `classify_gap`, strongest first, then
 #  their own discovery priority (1 strongest to 4 weakest) as the tiebreak. The whole offset is
-#  at most 4*10 + 4 = 44, and the two bands are 100 apart, so the ordering can never lift a
-#  `graph_only` publication above a `b_boundary` one in the other band. That matters because
-#  2,864 of the 4,615 have no evidence beyond having been reached: they are worth fetching, they
-#  are not worth fetching first.
-GAP_BAND_STEP = 10
+#  at most 4*4 + 4 = 20 and the two bands are 100 apart, so the ordering can never lift a
+#  `graph_only` publication above a `b_boundary` one in the other band.
+#
+#  WHY THE STEP IS 4 AND NOT 10. The offset only has to order these 4,615 among themselves, and
+#  a step of 10 spread them from 61 to 93. That put every one of them behind a 275,338 row bulk
+#  seed at priority 60 that another session added to the pool while this was being measured, so
+#  the whole gap would have waited about 72 hours at the observed 4,800 publications an hour. A
+#  step of 4 packs them into 55 to 70 instead, which is where they belong: 3,903 rows is 1% of
+#  the queue, they are the only rows in it that NO boundary in this repo reaches, and the cost to
+#  the seed they now precede is under an hour. Nothing about the band rule changes.
+GAP_BAND_STEP = 4
 
 
 def seed_rows(new_path: str):
@@ -505,6 +511,42 @@ def cmd_seed_file(args) -> int:
     return 0
 
 
+# ------------------------------------------------------------------------------------------------
+# reprioritise
+# ------------------------------------------------------------------------------------------------
+def cmd_reprioritise(args) -> int:
+    """Apply the seed file's priorities to rows ALREADY in the pool.
+
+    `tasks.seed` is `ON CONFLICT DO NOTHING`, which is the right contract: re-seeding must never
+    disturb a row somebody is working. So a change to the banding after a seed needs this, and
+    it is a command rather than a hand written UPDATE because the numbers have to come from the
+    same `seed_rows()` that produced them in the first place.
+
+    Bounded three ways: one named manifest, `state = 'pending'` only, and only the publications
+    the seed file names. A leased, done, missing or failed row is never touched, and a row the
+    worker is about to lease is simply skipped for one batch by `FOR UPDATE SKIP LOCKED`.
+    """
+    import db
+    rows = seed_rows(args.new)
+    by_priority = {}
+    for row in rows:
+        by_priority.setdefault(row["priority"], []).append(row["publication_number"])
+    updated = 0
+    with db.cursor() as cur:
+        for priority, pubs in sorted(by_priority.items()):
+            for i in range(0, len(pubs), 2000):
+                cur.execute(
+                    "UPDATE fulltext_fetch_task SET priority = %s "
+                    " WHERE manifest = %s AND state = 'pending' "
+                    "   AND priority <> %s AND publication_number = ANY(%s)",
+                    (priority, args.manifest, priority, pubs[i:i + 2000]))
+                updated += max(0, cur.rowcount or 0)
+    print(json.dumps({"manifest": args.manifest, "entries": len(rows), "updated": updated,
+                      "priorities": _tally(str(r["priority"]) for r in rows)},
+                     indent=2, sort_keys=True))
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -523,6 +565,12 @@ def main(argv=None) -> int:
     r.add_argument("--report", default="data/niche_reconcile/report.json")
     r.add_argument("--out-new", default="data/niche_reconcile/new.jsonl")
     r.set_defaults(func=cmd_reconcile)
+
+    p = sub.add_parser("reprioritise",
+                       help="apply the seed file's priorities to pending rows already pooled")
+    p.add_argument("--new", default="data/niche_reconcile/new.jsonl")
+    p.add_argument("--manifest", default="jsonl:patentdata-gap")
+    p.set_defaults(func=cmd_reprioritise)
 
     s = sub.add_parser("seed-file", help="write the JSONL that fulltext_acquire.py seed consumes")
     s.add_argument("--new", default="data/niche_reconcile/new.jsonl")

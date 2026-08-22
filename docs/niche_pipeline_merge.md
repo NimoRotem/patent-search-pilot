@@ -34,6 +34,31 @@ publication their discovery found that B's boundary rule admits, B already holds
 is complete with respect to its own rule, and the disagreement between the two is entirely a
 disagreement about where the boundary is, not about who enumerated it properly.
 
+### Where the gap went in the queue
+
+`ops/niche_reconcile.py seed-file` writes the manifest and `ops/fulltext_acquire.py seed` puts it
+in the pool. Offered 4,615, **added 3,903**; the other 712 were already in the pool under another
+manifest and `ON CONFLICT DO NOTHING` left them exactly as they were, which is the contract.
+
+C owns the two priority bands and this workstream does not cross them: a publication with no
+texted family sibling stays in front of every publication that has one. Inside a band the order is
+the measured evidence, strongest first. The offset is at most 20 against bands 100 apart, so it
+cannot lift a `graph_only` publication over a stronger one in the other band.
+
+The step was reduced from 10 to 4 after the first seed, which is the one place a number here was
+chosen rather than measured, so the reasoning is recorded. A step of 10 spread the gap from
+priority 61 to 93 and put all of it behind a 275,338 row bulk seed at priority 60 that another
+session added to the pool while this was being measured: about 72 hours at the observed 4,800
+publications an hour. A step of 4 puts it at 55 to 69, behind C's own priority 50 band and ahead
+of that bulk seed. 3,903 rows is 1% of the queue, they are the only rows in it that no boundary in
+this repo reaches, and the cost to the seed they now precede is under an hour. Measured after the
+change: 75,116 pending rows ahead of the strongest gap row.
+
+`niche_reconcile.py reprioritise` is how that was applied to rows already pooled, because
+`tasks.seed` is `ON CONFLICT DO NOTHING` and must stay that way. It is bounded to one named
+manifest, to `state = 'pending'`, and to the publications the seed file names, and it is
+idempotent: the second run updates 0 rows.
+
 ## The judgement, per area
 
 | Area | Theirs | Ours | Taken | Why |
