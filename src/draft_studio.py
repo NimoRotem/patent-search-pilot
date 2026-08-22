@@ -240,6 +240,15 @@ false positive, make the draft unambiguous enough that the check passes without 
 invention. Keep the reference-numeral table, drawing descriptions, detailed description, claims,
 and every file in figures/ synchronized.
 
+Generated pixels are never authority for the invention. The authority order is the inventor's
+disclosure and conversation, then the patent text, then the figure briefs, then the rendered
+sheets. Never change the claims, description, numeral table, or disclosed embodiments merely to
+excuse geometry, an object, or a leader endpoint that the image model drew incorrectly. Never add
+an implementation detail or embodiment because it appeared in a generated image. For a drawing
+finding, preserve the authoritative invention, strengthen the figure brief, and regenerate the
+sheet from the authoritative text until the pixels conform. A stubborn rendering artifact remains
+a drawing defect; it does not become part of the invention.
+
 Leave no note, placeholder, question, or instruction for a person. Return the structured answer
 with `action` set to "revised" and `questions` as an empty array."""
 

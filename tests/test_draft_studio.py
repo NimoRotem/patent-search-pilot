@@ -1032,6 +1032,24 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "broadest statement of the invention that the description fully supports" in system
 
 
+def test_drawing_repairs_can_never_change_the_invention_to_match_bad_pixels():
+    prompt = draft_studio.FINALIZE_PROMPT
+    normalized = " ".join(prompt.split())
+    assert "Generated pixels are never authority for the invention" in prompt
+    assert "Never change the claims, description, numeral table, or disclosed embodiments" \
+        in prompt
+    assert "regenerate the sheet from the authoritative text" in normalized
+
+
+def test_the_independent_reviewer_checks_source_fidelity_before_internal_consistency():
+    system = draft_qa.REVIEW_SYSTEM
+    normalized = " ".join(system.split())
+    assert "DISCLOSURE FIDELITY" in system
+    assert "input/disclosure.md" in system
+    assert "generated drawing artifact" in normalized
+    assert "disclosure_fidelity" in json.dumps(draft_qa.REVIEW_SCHEMA)
+
+
 # =============================================================================================
 # The workspace is a cache, not the record
 # =============================================================================================
