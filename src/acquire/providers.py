@@ -595,6 +595,84 @@ class ScrapingBeeProvider(Provider):
 
 
 # ---------------------------------------------------------------------------------------------
+# 6b. Firecrawl: the same pages again, a third set of IPs
+# ---------------------------------------------------------------------------------------------
+class FirecrawlProvider(Provider):
+    """Ported from the `patentdata` session's `corpus/niche/providers/firecrawl.py`, which is the
+    one provider adapter this cascade did not have, and then MEASURED AND REJECTED as a route to
+    Google Patents. It is kept, registered and off, so that nobody spends the same credits again.
+
+    WHAT WAS MEASURED, 2026-08-22, `ops/firecrawl_probe.py`, 10 credits in total.
+    Firecrawl returns the patents.google.com Angular SHELL, not the server-rendered document.
+    596,384 bytes of HTML containing no `itemprop=` attribute at all, so no `itemprop="claims"`
+    and no `itemprop="description"` section, which is the only thing `gpatents_direct` can parse
+    and the only thing the page carries the text in. Nine pool publications returned 0 claim
+    characters and 0 description characters each, including three the pool has already fetched
+    in full through another rung, so the zero is Firecrawl's and not the documents'. Retried with
+    `waitFor: 5000` (same), with `formats: ["markdown"]` (102,030 bytes, all of it the Google
+    Patents search-help chrome, none of it the document) and with `proxy: "stealth"` (same). It
+    is not a degraded route to that page, it does not reach that page.
+
+    So this is NOT a substitute for `serp_self`, `scrapingbee` or `serpapi`, all three of which
+    do get the rendered sections. If it is ever enabled it would have to be against a different
+    upstream than Google Patents, and then `upstream` below must change with it: leaving it as
+    `google_patents` while pointing it somewhere else would let the settle rule skip a rung that
+    reads a different document.
+
+    `upstream = "google_patents"` is correct as long as the URL above is the target: the settle
+    rule in `worker.cascade_for` then skips it outright once any rung has reached that page, so
+    even switched on it cannot repeat the 15,480-credit double-buy.
+
+    NOT IN `DEFAULT_ORDER`, and on this evidence it should not be. Enable with `FULLTEXT_CASCADE`
+    only if the measurement above is redone and comes back different.
+    """
+    name = "firecrawl"
+    upstream = "google_patents"
+    endpoint = "https://api.firecrawl.dev/v2/scrape"
+    concurrency = int(os.environ.get("FULLTEXT_FIRECRAWL_CONCURRENCY", "4"))
+    timeout = 120.0
+    credits = 1.0
+    budget_key = "firecrawl"
+
+    def available(self):
+        return (bool(os.environ.get("FIRECRAWL_API_KEY", "")), "FIRECRAWL_API_KEY not set")
+
+    async def fetch(self, pub: str, client: httpx.AsyncClient):
+        key = os.environ.get("FIRECRAWL_API_KEY", "")
+        if not key:
+            return None
+        r = await client.post(
+            self.endpoint,
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={"url": f"https://patents.google.com/patent/{pub}/en",
+                  "formats": ["rawHtml"], "onlyMainContent": False, "proxy": "basic",
+                  "timeout": int(self.timeout * 1000)},
+            timeout=self.timeout + 5)
+        #  429 and 5xx are the upstream refusing us, not the document being absent. `reached`
+        #  stays False so the settle rule does not conclude anything about the page from them.
+        if r.status_code == 429 or r.status_code >= 500:
+            return FetchResult(provider=self.name, reached=False)
+        if r.status_code < 200 or r.status_code >= 300:
+            return FetchResult(provider=self.name, reached=False, credits=self.credits)
+        payload = r.json() or {}
+        data = payload.get("data") or {}
+        if not payload.get("success", True):
+            return FetchResult(provider=self.name, reached=False, credits=self.credits)
+        html = data.get("rawHtml") or data.get("html") or ""
+        spent = float((data.get("metadata") or {}).get("creditsUsed")
+                      or payload.get("creditsUsed") or self.credits)
+        if not html:
+            return FetchResult(provider=self.name, reached=True, credits=spent)
+        from sources.gpatents_direct import parse_document
+        rec = parse_document(html, pub)
+        if not rec:
+            return FetchResult(provider=self.name, reached=True, credits=spent)
+        out = _from_gpatents(self.name, rec, html)
+        out.credits = spent
+        return out
+
+
+# ---------------------------------------------------------------------------------------------
 # 7. HimmPat: CN / JP / KR / TW
 # ---------------------------------------------------------------------------------------------
 class HimmPatProvider(Provider):
@@ -679,6 +757,7 @@ class SerpApiProvider(Provider):
 # ---------------------------------------------------------------------------------------------
 # assembly
 # ---------------------------------------------------------------------------------------------
+#  `firecrawl` is registered in build() but deliberately NOT here: see FirecrawlProvider.
 DEFAULT_ORDER = ["corpus", "marec", "uspto_bulk", "epo_ops", "pqai", "serp_self",
                  "scrapingbee", "himmpat", "serpapi"]
 
@@ -688,6 +767,7 @@ DEFAULT_CAPS = {
     "serpapi": float(os.environ.get("FULLTEXT_SERPAPI_BUDGET", "2000")),
     "scrapingbee": float(os.environ.get("FULLTEXT_SCRAPINGBEE_BUDGET", "300000")),
     "himmpat": float(os.environ.get("FULLTEXT_HIMMPAT_BUDGET", "200")),
+    "firecrawl": float(os.environ.get("FULLTEXT_FIRECRAWL_BUDGET", "500")),
 }
 
 
@@ -713,6 +793,8 @@ def build(order=None) -> list:
             made.append(SelfSerpProvider())
         elif n == "scrapingbee":
             made.append(ScrapingBeeProvider())
+        elif n == "firecrawl":
+            made.append(FirecrawlProvider())
         elif n == "himmpat":
             made.append(HimmPatProvider())
         elif n == "serpapi":

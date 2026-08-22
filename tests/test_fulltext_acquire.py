@@ -315,6 +315,91 @@ def _run_cascade(cascade, pub="ZZ0000001A"):
     return res, events
 
 
+class _FakeResponse:
+    def __init__(self, status, payload):
+        self.status_code = status
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class _FakePoster:
+    """Stands in for httpx.AsyncClient for the one method FirecrawlProvider calls."""
+
+    def __init__(self, response):
+        self.response = response
+        self.calls = []
+
+    async def post(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        return self.response
+
+
+_SHELL = "<!DOCTYPE html><html><body><div>google patents app shell</div></body></html>"
+_RENDERED = (
+    '<section itemprop="claims"><div class="claim-text">1. A vacuum gripper comprising '
+    + "a suction cup and a venturi ejector, " * 30
+    + '</div></section>'
+    '<section itemprop="description"><div class="description-paragraph">'
+    + "The invention relates to handling apparatus. " * 60
+    + "</div></section>"
+)
+
+
+def _firecrawl(html, status=200, success=True, credits=1):
+    return _FakeResponse(status, {"success": success,
+                                  "data": {"rawHtml": html, "metadata": {"creditsUsed": credits}}})
+
+
+def test_firecrawl_is_registered_but_stays_out_of_the_measured_default_order():
+    """Ported from the `patentdata` session, then measured and rejected. See the class docstring:
+    10 credits, 0 claim characters, 0 description characters, including on publications the pool
+    already holds in full. It must stay reachable by `FULLTEXT_CASCADE` and out of the default."""
+    assert "firecrawl" not in providers.DEFAULT_ORDER
+    built = providers.build(["firecrawl"])
+    assert [p.name for p in built] == ["firecrawl"]
+    #  Same upstream as serp_self / scrapingbee / serpapi, so `cascade_for`'s settle rule covers
+    #  it and it can never repeat the 15,480-credit double-buy.
+    assert built[0].upstream == "google_patents"
+    assert built[0].budget_key == "firecrawl"
+    assert "firecrawl" in providers.DEFAULT_CAPS
+
+
+def test_firecrawl_reports_no_text_for_the_shell_page_it_actually_receives(monkeypatch):
+    #  Set explicitly: without a key `fetch()` returns None before it ever posts, and the test
+    #  would pass for the wrong reason on a machine with no .env.
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "unit-key")
+    rung = providers.FirecrawlProvider()
+    client = _FakePoster(_firecrawl(_SHELL))
+    res = asyncio.run(rung.fetch("ZZ0000001A", client))
+    assert res is not None and res.reached is True
+    assert not res.complete(), "the Angular shell was read as a document"
+    assert res.claims == "" and res.description == ""
+    assert res.credits == 1
+
+
+def test_firecrawl_parses_a_rendered_page_so_the_zero_is_the_providers_not_the_ports(monkeypatch):
+    """The control. The port is not broken: given the sections the page would carry if Firecrawl
+    returned them, it produces text. What it never returns is those sections."""
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "unit-key")
+    rung = providers.FirecrawlProvider()
+    client = _FakePoster(_firecrawl(_RENDERED))
+    res = asyncio.run(rung.fetch("ZZ0000001A", client))
+    assert res.complete(), "a rendered page with itemprop sections produced no text"
+    assert len(res.description) >= providers.MIN_DESC_CHARS
+
+
+def test_firecrawl_treats_a_throttle_as_unreached_so_nothing_is_settled_from_it(monkeypatch):
+    """429 and 5xx are the upstream refusing us, not the document being absent. `reached` must
+    stay False or `cascade_for` would skip every other Google Patents rung on a rate limit."""
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "unit-key")
+    for status in (429, 503):
+        rung = providers.FirecrawlProvider()
+        res = asyncio.run(rung.fetch("ZZ0000001A", _FakePoster(_firecrawl("", status=status))))
+        assert res.reached is False, f"HTTP {status} was reported as having reached the page"
+
+
 def test_cascade_stops_at_the_first_complete_answer():
     a = FakeProvider("cheap", result=_full("cheap"))
     b = FakeProvider("expensive", result=_full("expensive"))

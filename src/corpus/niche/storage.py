@@ -193,6 +193,12 @@ class GCSObjectStore:
         self.bucket_name = parsed.netloc
         self.prefix = parsed.path.strip("/")
         if client is None:
+            #  Imported here, not at module scope, and NOT in requirements.txt.
+            #  `google-cloud-storage` is deliberately absent from the shared virtualenv:
+            #  production `patent-results` runs from that venv, so installing a package into it
+            #  is a dependency resolution against a live service. `acquire.blobstore` does the
+            #  same job over the GCS JSON API with no new dependency and has stored every one of
+            #  the publications the pool has fetched. Nothing on the live path reaches this line.
             from google.cloud import storage
             client = storage.Client()
         self.client = client
