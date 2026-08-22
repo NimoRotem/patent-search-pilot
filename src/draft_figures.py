@@ -1,41 +1,33 @@
-"""Patent figures for a draft application: generate them, then change them.
+"""Generate filing-gated patent drawing sheets directly from the application text.
 
-A US application needs drawings, and a drafted specification already contains the text that
-describes them — "Brief Description of the Drawings" names each figure, and the detailed
-description numbers every part. Turning that into an actual figure was the one step of the
-drafting workflow with no support at all here: the draft said "FIG. 1 is a side elevation view of
-the vacuum lifter" and then produced nothing.
+The Brief Description of the Drawings defines the required sheets. The detailed description and
+reference numeral table define the components each sheet must show. For every described figure,
+this module generates geometry-only line art, uses an independent vision model to verify the
+visible components and relationships, adds reference numerals and leaders deterministically, and
+uses Cloud Vision OCR to prove that every expected label appears exactly once. A changed
+specification invalidates the stored semantic hash and redraws the sheet automatically.
 
-What this does:
-
-  * **reads the figures out of the draft** rather than asking the user to describe them again.
-    The "Brief Description of the Drawings" section is the list of figures; the detailed
-    description supplies the parts and their reference numerals;
-  * **generates one figure at a time** with an instruction tuned for patent drawings — uniform
-    black line art, no shading, no colour, reference numerals with lead lines, a figure label;
-  * **edits by re-generating with the previous figure as input**, so "make the pump smaller and
-    add the sealing lip at 12" changes THAT drawing instead of producing an unrelated one;
-  * **keeps every version**, because the useful workflow is generate → look → adjust → compare,
-    and a version that is thrown away the moment the next one arrives cannot be compared.
-
-**What it is not.** These are drafting aids, not formal drawings. 37 CFR 1.84 governs paper size,
-margins, line weight, shading, numbering and lettering, and nothing here checks any of that. The
-UI and the export both say so. A model also miscounts and duplicates reference numerals — it did
-on the first figure this was tested with — which is exactly why the numerals used are extracted
-from the draft and listed beside the figure for checking.
+Only a sheet that passes semantic and OCR inspection becomes active. Obsolete and duplicate sheets
+are archived instead of entering the filing package, and every accepted version remains available
+for audit. The drafting turn cannot publish its text until the complete checked drawing set and an
+independent review of the actual rendered pixels both pass.
 """
 from __future__ import annotations
 
+import base64
 from collections import Counter
 import hashlib
 import io
 import json
 import os
+from pathlib import Path
 import re
 import random
 import threading
 import time
+import uuid
 
+import config
 import db
 import llm
 from pydantic import BaseModel, Field
@@ -47,22 +39,71 @@ MAX_PNG_BYTES = 8 * 1024 * 1024
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
-DEFAULT_IMAGE_MODEL = "gemini-2.5-flash-image"
-FIGURE_PROMPT_VERSION = "figure-v2-numeral-audit"
+FIGURE_PROMPT_VERSION = "figure-v3-geometry-only"
+SEMANTIC_PROMPT_VERSION = "figure-semantic-v2-overlay-aware"
+OCR_PROMPT_VERSION = "google-vision-document-text-v1"
+MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "3")), 4))
+MIN_OCR_CONFIDENCE = float(os.environ.get("PATENT_FIGURE_OCR_CONFIDENCE", "0.85"))
 
 
 class _NumeralInspection(BaseModel):
     numerals: list[str] = Field(default_factory=list, max_length=120)
 
 
+class _PartAnchor(BaseModel):
+    numeral: str
+    x: int = Field(ge=0, le=1000)
+    y: int = Field(ge=0, le=1000)
+    visible: bool
+    evidence: str = Field(max_length=500)
+
+
+class _SemanticInspection(BaseModel):
+    matches_spec: bool
+    summary: str = Field(max_length=2000)
+    errors: list[str] = Field(default_factory=list, max_length=30)
+    unexpected_text: list[str] = Field(default_factory=list, max_length=30)
+    anchors: list[_PartAnchor] = Field(default_factory=list, max_length=120)
+
+
+# Vertex accepts standard inline JSON Schema for structured vision output, but rejects the
+# `$defs` and `$ref` structure produced by Pydantic for nested models. Keep this wire schema
+# explicit and validate the response with Pydantic after it returns.
+SEMANTIC_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "matches_spec": {"type": "boolean"},
+        "summary": {"type": "string"},
+        "errors": {"type": "array", "items": {"type": "string"}},
+        "unexpected_text": {"type": "array", "items": {"type": "string"}},
+        "anchors": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "numeral": {"type": "string"},
+                    "x": {"type": "integer"},
+                    "y": {"type": "integer"},
+                    "visible": {"type": "boolean"},
+                    "evidence": {"type": "string"},
+                },
+                "required": ["numeral", "x", "y", "visible", "evidence"],
+            },
+        },
+    },
+    "required": ["matches_spec", "summary", "errors", "unexpected_text", "anchors"],
+}
+
+
 def image_model() -> str:
     """Deployment-selected image role. Model ids do not belong in feature code."""
-    return os.environ.get("PATENT_FIGURE_IMAGE_MODEL", DEFAULT_IMAGE_MODEL).strip() or \
-        DEFAULT_IMAGE_MODEL
+    return os.environ.get("PATENT_FIGURE_IMAGE_MODEL",
+                          str(config.PATENT_FIGURE_IMAGE_MODEL)).strip()
 
 
 def vision_model() -> str:
-    return os.environ.get("PATENT_FIGURE_VISION_MODEL", llm.AGENT_MODEL).strip() or llm.AGENT_MODEL
+    return os.environ.get("PATENT_FIGURE_VISION_MODEL",
+                          str(config.PATENT_FIGURE_VISION_MODEL)).strip()
 
 #  The instruction that makes the difference between a product render and a patent figure. Stated
 #  as prohibitions because that is what the model gets wrong by default: it reaches for shading,
@@ -72,14 +113,11 @@ DRAWING_SYSTEM = (
     "Output ONE figure as a black-and-white LINE DRAWING on a plain white background. "
     "Uniform-weight black outlines only. NO shading, NO hatching except conventional section "
     "hatching where a sectional view is requested, NO greyscale fills, NO colour, NO "
-    "photorealism, NO drop shadows, NO background scenery, NO text other than the reference "
-    "numerals and the figure label. "
-    "Label each identified part with a straight lead line touching the part, ending at the "
-    "REFERENCE NUMERAL ALONE. Write the numeral and nothing else — never the part's name, never "
-    "an equals sign, never a description. The list you are given maps each numeral to the part it "
-    "names so you know WHERE to put it; those words must not appear in the drawing. Use only the "
-    "numerals given, use each exactly once, and do not invent numerals. "
-    "Place the figure label centred beneath the drawing."
+    "photorealism, NO drop shadows, and NO background scenery. Draw GEOMETRY ONLY. Include no "
+    "letters, words, digits, dimensions, reference numerals, figure labels, legends, logos, or "
+    "watermarks. Leave clear white space around every component. A deterministic compositor adds "
+    "the exact reference numerals, leader lines, and figure label only after a separate vision "
+    "review confirms that the geometry matches the specification."
 )
 
 _SCHEMA = (
@@ -110,18 +148,38 @@ _SCHEMA = (
     "CREATE INDEX IF NOT EXISTS app_draft_figure_versions_fig_idx "
     "ON app_draft_figure_versions (figure_id, version_no DESC)",
     "ALTER TABLE app_draft_figures ADD COLUMN IF NOT EXISTS active_version integer NOT NULL DEFAULT 0",
+    "ALTER TABLE app_draft_figures ADD COLUMN IF NOT EXISTS archived_at timestamptz",
     "ALTER TABLE app_draft_figure_versions ADD COLUMN IF NOT EXISTS detected_numerals "
     "jsonb NOT NULL DEFAULT '[]'::jsonb",
     "ALTER TABLE app_draft_figure_versions ADD COLUMN IF NOT EXISTS numeral_audit "
     "jsonb NOT NULL DEFAULT '{}'::jsonb",
     "ALTER TABLE app_draft_figure_versions ADD COLUMN IF NOT EXISTS source_kind "
     "text NOT NULL DEFAULT 'generated'",
+    "ALTER TABLE app_draft_figure_versions ADD COLUMN IF NOT EXISTS semantic_audit "
+    "jsonb NOT NULL DEFAULT '{}'::jsonb",
+    "ALTER TABLE app_draft_figure_versions ADD COLUMN IF NOT EXISTS base_png bytea",
     """CREATE TABLE IF NOT EXISTS app_draft_figure_cache (
          cache_key char(64) PRIMARY KEY,
          model_name text NOT NULL,
          prompt_version text NOT NULL,
          png bytea NOT NULL,
          created_at timestamptz NOT NULL DEFAULT now())""",
+    """CREATE TABLE IF NOT EXISTS app_draft_figure_analysis_cache (
+         cache_key char(64) PRIMARY KEY,
+         stage text NOT NULL,
+         provider text NOT NULL,
+         model_name text NOT NULL,
+         prompt_version text NOT NULL,
+         result jsonb NOT NULL,
+         created_at timestamptz NOT NULL DEFAULT now())""",
+    """CREATE TABLE IF NOT EXISTS app_draft_figure_turn_checkpoints (
+         turn_id bigint PRIMARY KEY,
+         project_id bigint NOT NULL,
+         user_id bigint NOT NULL,
+         figure_state jsonb NOT NULL DEFAULT '[]'::jsonb,
+         accepted_at timestamptz,
+         created_at timestamptz NOT NULL DEFAULT now())""",
+    "ALTER TABLE app_draft_figure_turn_checkpoints ADD COLUMN IF NOT EXISTS accepted_at timestamptz",
 )
 
 _SCHEMA_READY = False
@@ -146,12 +204,83 @@ def reset_schema_cache_for_tests() -> None:
     _SCHEMA_READY = False
 
 
+def checkpoint_project_figures(turn_id: int, project_id: int, user_id: int) -> None:
+    """Persist the pre-turn active drawing set so a failed turn can restore it exactly."""
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("SELECT id,active_version,archived_at FROM app_draft_figures "
+                    "WHERE project_id=%s AND user_id=%s ORDER BY id",
+                    (int(project_id), int(user_id)))
+        state = []
+        for row in cur.fetchall():
+            archived = row.get("archived_at")
+            state.append({"id": int(row["id"]),
+                          "active_version": int(row.get("active_version") or 0),
+                          "archived_at": archived.isoformat() if archived else None})
+        cur.execute(
+            "INSERT INTO app_draft_figure_turn_checkpoints "
+            "(turn_id,project_id,user_id,figure_state) VALUES (%s,%s,%s,%s::jsonb) "
+            "ON CONFLICT (turn_id) DO NOTHING",
+            (int(turn_id), int(project_id), int(user_id), json.dumps(state)))
+
+
+def commit_project_figure_checkpoint(turn_id: int) -> None:
+    """Mark the checked drawing set accepted before completing the durable turn."""
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("UPDATE app_draft_figure_turn_checkpoints SET accepted_at=now() "
+                    "WHERE turn_id=%s",
+                    (int(turn_id),))
+
+
+def discard_project_figure_checkpoint(turn_id: int) -> None:
+    """Remove an accepted checkpoint after the turn itself is durably complete."""
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("DELETE FROM app_draft_figure_turn_checkpoints WHERE turn_id=%s "
+                    "AND accepted_at IS NOT NULL", (int(turn_id),))
+
+
+def restore_project_figure_checkpoint(turn_id: int) -> bool:
+    """Undo active, archived, and newly created sheets after a turn fails or is superseded."""
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("SELECT project_id,user_id,figure_state "
+                    "FROM app_draft_figure_turn_checkpoints WHERE turn_id=%s "
+                    "AND accepted_at IS NULL FOR UPDATE",
+                    (int(turn_id),))
+        row = cur.fetchone()
+        if not row:
+            return False
+        state = row.get("figure_state") or []
+        if isinstance(state, str):
+            state = json.loads(state)
+        original_ids = [int(item["id"]) for item in state]
+        for item in state:
+            cur.execute("UPDATE app_draft_figures SET active_version=%s,archived_at=%s,"
+                        "updated_at=now() WHERE id=%s AND project_id=%s AND user_id=%s",
+                        (int(item.get("active_version") or 0), item.get("archived_at"),
+                         int(item["id"]), int(row["project_id"]), int(row["user_id"])))
+        if original_ids:
+            cur.execute("UPDATE app_draft_figures SET archived_at=coalesce(archived_at,now()),"
+                        "updated_at=now() WHERE project_id=%s AND user_id=%s "
+                        "AND NOT (id = ANY(%s))",
+                        (int(row["project_id"]), int(row["user_id"]), original_ids))
+        else:
+            cur.execute("UPDATE app_draft_figures SET archived_at=coalesce(archived_at,now()),"
+                        "updated_at=now() WHERE project_id=%s AND user_id=%s",
+                        (int(row["project_id"]), int(row["user_id"])))
+        cur.execute("DELETE FROM app_draft_figure_turn_checkpoints WHERE turn_id=%s",
+                    (int(turn_id),))
+        return True
+
+
 # ---------------------------------------------------------------------------
 # reading the figure list out of the draft itself
 # ---------------------------------------------------------------------------
 _FIG_LINE = re.compile(
     r"(?im)^\W*(FIG(?:URE)?S?\.?\s*\d+[A-Za-z]?(?:\s*(?:and|,|-|–|to)\s*\d+[A-Za-z]?)*)\s*"
-    r"(?:is|are|shows?|illustrates?|depicts?|:|—|-)?\s*(.{0,400})$")
+    r"(?:is|are|shows?|illustrates?|depicts?|:|\u2014|-)?\s*(.{0,400})$")
 _NUMERAL = re.compile(r"\b([A-Za-z]?\d{1,4}[A-Za-z]?)\b")
 #  Words that can precede a part name but are not part of it. Trimmed from the FRONT only, so
 #  "flexible sealing lip" survives intact while "and a rechargeable battery" becomes the battery.
@@ -161,6 +290,49 @@ _STOPWORDS = frozenset((
     "further", "comprising", "including", "having", "carries", "drives", "monitors", "powers",
     "draws", "shows", "illustrates", "depicts", "provides", "defines", "receives", "between",
     "wherein", "whereby", "also", "may", "can", "be", "as", "its", "their", "this", "these"))
+
+_FIGURE_ID_RE = re.compile(r"\bFIG(?:URE)?S?\.?\s*([0-9]+[A-Za-z]?)\b", re.IGNORECASE)
+
+
+def canonical_figure_label(value) -> str:
+    """The filing label named by a verbose or truncated figure heading."""
+    match = _FIGURE_ID_RE.search(str(value or ""))
+    return f"FIG. {match.group(1).upper()}" if match else str(value or "").strip()[:40]
+
+
+def figure_key(value) -> str:
+    """Stable figure identity that does not depend on a caption surviving a DB length limit."""
+    label = canonical_figure_label(value)
+    match = _FIGURE_ID_RE.search(label)
+    if match:
+        return "fig-" + match.group(1).lower()
+    return re.sub(r"[^0-9a-z]+", "-", label.lower()).strip("-")
+
+
+def numeral_entries(values) -> list[dict[str, str]]:
+    """Normalise `10`, `10 body`, and `10 = body` into one typed list."""
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for value in values or ():
+        text = str(value or "").strip()
+        numeral = _clean_numeral(text)
+        if not numeral or numeral in seen:
+            continue
+        tail = re.sub(r"^\s*[A-Za-z]?\d{1,4}[A-Za-z]?\s*(?:=|:|-)?\s*", "", text).strip()
+        out.append({"numeral": numeral, "part": tail})
+        seen.add(numeral)
+    return out
+
+
+def specification_hash(label, caption, numerals) -> str:
+    """Stable identity for the geometry that an approved sheet actually represents."""
+    payload = {
+        "figure": canonical_figure_label(label),
+        "caption": re.sub(r"\s+", " ", str(caption or "")).strip(),
+        "parts": numeral_entries(numerals),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
 
 def figures_from_draft(sections):
@@ -192,7 +364,7 @@ def numerals_for(sections, caption="", disclosure=""):
     """Reference numerals the draft actually uses, with the words they attach to.
 
     Taken from the detailed description, where "a suction cup 10" establishes the numeral, AND
-    from the inventor's own disclosure — which is the only source that exists before the
+    from the inventor's own disclosure - which is the only source that exists before the
     specification has been generated, and is where the numbering usually originates.
 
     Passing these to the image model instead of letting it choose is the whole point. Measured
@@ -222,28 +394,22 @@ def numerals_for(sections, caption="", disclosure=""):
 
 def build_prompt(label, caption, numerals, instruction="", spec_context=""):
     """Assemble the text handed to the image model for one figure."""
-    parts = [f"{label} — {caption}".strip(" —")]
+    parts = [f"Drawing specification for {canonical_figure_label(label)}: {caption}".strip()]
     if spec_context:
         parts.append("Context from the specification: " + spec_context[:1200])
     if numerals:
-        #  Phrased as prose, not "10 = suction cup": given the equals form the model copied the
-        #  whole string onto the drawing, so the figure read "10 = suction cup" instead of "10".
-        lines = []
-        for entry in numerals[:30]:
-            num, _, term = str(entry).partition(" = ")
-            lines.append(f"place numeral {num.strip()} on the {term.strip()}" if term
-                         else str(entry))
-        parts.append("Where each reference numeral goes (write ONLY the numeral on the drawing):"
-                     "\n- " + "\n- ".join(lines))
+        entries = numeral_entries(numerals)
+        lines = [f"the {entry['part']}" for entry in entries if entry["part"]]
+        parts.append(
+            "The following disclosed components must be visibly present and distinguishable so a "
+            "later compositor can label them. Do not draw their names or numbers:\n- " +
+            "\n- ".join(lines))
     else:
-        #  With no numerals established anywhere in the draft, an invented set would be worse
-        #  than none: it would have to be renumbered by hand against the specification later.
-        parts.append("The specification establishes no reference numerals yet. Draw the structure "
-                     "WITHOUT any reference numerals or lead lines.")
+        parts.append("Draw the disclosed structure without any text, labels, or lead lines.")
     if instruction:
-        parts.append("CHANGE REQUESTED — apply this to the drawing supplied, keeping everything "
+        parts.append("CHANGE REQUESTED - apply this to the drawing supplied, keeping everything "
                      "else the same: " + instruction[:1000])
-    parts.append(f"Place the label \"{label}\" centred beneath the drawing.")
+    parts.append("Return geometry only. Do not render the figure label or any other text.")
     return "\n\n".join(parts)[:MAX_PROMPT_CHARS]
 
 
@@ -398,6 +564,353 @@ def _clean_numeral(value) -> str:
     return match.group(1).upper() if match else ""
 
 
+def _analysis_cache_key(stage: str, payload: bytes, context: str, model: str,
+                        prompt_version: str) -> str:
+    digest = hashlib.sha256()
+    for value in (stage, model, prompt_version, context):
+        digest.update(str(value).encode("utf-8"))
+        digest.update(b"\0")
+    digest.update(payload)
+    return digest.hexdigest()
+
+
+def _analysis_cache_get(key: str) -> dict | None:
+    try:
+        ensure_schema()
+        with db.cursor() as cur:
+            cur.execute("SELECT result FROM app_draft_figure_analysis_cache WHERE cache_key=%s",
+                        (key,))
+            row = cur.fetchone()
+        value = (row or {}).get("result")
+        if isinstance(value, str):
+            value = json.loads(value)
+        return dict(value) if isinstance(value, dict) else None
+    except Exception:
+        return None
+
+
+def _analysis_cache_put(key: str, *, stage: str, provider: str, model: str,
+                        prompt_version: str, result: dict) -> None:
+    try:
+        with db.cursor() as cur:
+            cur.execute(
+                "INSERT INTO app_draft_figure_analysis_cache "
+                "(cache_key,stage,provider,model_name,prompt_version,result) "
+                "VALUES (%s,%s,%s,%s,%s,%s::jsonb) ON CONFLICT (cache_key) DO NOTHING",
+                (key, stage, provider, model, prompt_version, json.dumps(result)))
+    except Exception:
+        pass
+
+
+def _audit_log(*, request_id: str, provider: str, model: str, stage: str,
+               prompt_version: str, latency_ms: int, cache_hit: bool, success: bool,
+               input_tokens: int = 0, output_tokens: int = 0,
+               fallback_reason: str = "") -> None:
+    print(json.dumps({
+        "event": "draft_figure_analysis", "timestamp": time.time(),
+        "request_id": request_id, "provider": provider, "model": model, "stage": stage,
+        "input_tokens": int(input_tokens or 0), "output_tokens": int(output_tokens or 0),
+        "cached_tokens": 0, "latency_ms": int(latency_ms), "cost_usd_actual": None,
+        "cost_usd_projected": None, "cache_hit": bool(cache_hit), "batch_id": None,
+        "fallback_from": None, "fallback_reason": fallback_reason or None,
+        "schema_version": "1", "prompt_version": prompt_version,
+        "success": bool(success),
+    }), flush=True)
+
+
+def semantic_audit(expected, result) -> dict:
+    """Compute the semantic verdict ourselves; never trust the model's boolean alone."""
+    result = _human_text(dict(result or {}))
+    expected_values = [item["numeral"] for item in numeral_entries(expected)]
+    expected_set = set(expected_values)
+    anchors = [dict(item) for item in (result or {}).get("anchors") or []
+               if isinstance(item, dict)]
+    visible = [_clean_numeral(item.get("numeral")) for item in anchors
+               if item.get("visible") and str(item.get("evidence") or "").strip()]
+    visible = [value for value in visible if value]
+    counts = Counter(visible)
+    missing = sorted(expected_set - set(visible), key=_numeral_order)
+    unexpected = sorted(set(visible) - expected_set, key=_numeral_order)
+    duplicates = sorted((value for value, count in counts.items() if count > 1),
+                        key=_numeral_order)
+    raw_errors = [str(item)[:500] for item in (result or {}).get("errors") or []
+                  if str(item).strip()]
+    ignored_overlay_feedback = [item for item in raw_errors if _overlay_feedback_only(item)]
+    errors = [item for item in raw_errors if not _overlay_feedback_only(item)]
+    unexpected_text = [str(item)[:200] for item in (result or {}).get("unexpected_text") or []
+                       if str(item).strip()]
+    inspected = bool(result) and "matches_spec" in result
+    overlay_only_rejection = bool(raw_errors and ignored_overlay_feedback and not errors)
+    geometry_matches = bool(result.get("matches_spec") or overlay_only_rejection)
+    ok = bool(inspected and geometry_matches and not missing and not unexpected and
+              not duplicates and not errors and not unexpected_text)
+    return {
+        "ok": ok, "inspected": inspected, "summary": str((result or {}).get("summary") or "")[:2000],
+        "expected": sorted(expected_set, key=_numeral_order), "visible": visible,
+        "missing": missing, "unexpected": unexpected, "duplicates": duplicates,
+        "errors": errors, "ignored_overlay_feedback": ignored_overlay_feedback,
+        "unexpected_text": unexpected_text, "anchors": anchors,
+    }
+
+
+def _human_text(value):
+    if isinstance(value, str):
+        return re.sub(r"\s*\u2014\s*", " - ", value)
+    if isinstance(value, dict):
+        return {key: _human_text(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_human_text(item) for item in value]
+    return value
+
+
+def _overlay_feedback_only(error: str) -> bool:
+    """Labels and leaders are absent by design until the deterministic overlay phase."""
+    text = re.sub(r"\s+", " ", str(error or "")).strip().lower()
+    if not text or any(term in text for term in (
+            "unexpected text", "contains text", "visible text", "contains digits")):
+        return False
+    geometry_problem = any(term in text for term in (
+        "not visible", "not depicted", "not present", "wrong axis", "instead of", "instead,",
+        "wrong position", "wrong relationship", "not connected", "not attached",
+    ))
+    if geometry_problem:
+        return False
+    if (("reference numeral" in text or "reference number" in text) and
+            any(term in text for term in ("lack", "missing", "absent", "not shown", "no "))):
+        return True
+    if any(term in text for term in ("view legend", "figure legend", "figure label")):
+        return True
+    return bool(("leader" in text or "callout" in text) and
+                any(term in text for term in ("called out", "call out", "lack", "missing", "no ")))
+
+
+def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict:
+    """A structured vision-LLM review of geometry before any labels are composited."""
+    from google.genai.types import GenerateContentConfig, Part, ThinkingConfig
+    entries = numeral_entries(numerals)
+    specification = json.dumps({
+        "figure": canonical_figure_label(label), "caption": str(caption or "")[:4000],
+        "parts": entries,
+    }, ensure_ascii=False, sort_keys=True)
+    spec_hash = specification_hash(label, caption, numerals)
+    model = vision_model()
+    key = _analysis_cache_key("semantic", png, specification, model, SEMANTIC_PROMPT_VERSION)
+    cached = _analysis_cache_get(key)
+    request_id = str(uuid.uuid4())
+    if cached is not None:
+        cached["specification_hash"] = spec_hash
+        _audit_log(request_id=request_id, provider="vertex", model=model, stage="semantic",
+                   prompt_version=SEMANTIC_PROMPT_VERSION, latency_ms=0, cache_hit=True,
+                   success=bool(cached.get("inspected")))
+        return cached
+    instruction = (
+        "Inspect this unlabeled utility-patent line drawing against the JSON specification below. "
+        "Check the requested view, every visible component, and every stated spatial or functional "
+        "relationship. The image must contain no text or digits. For each expected part that is "
+        "visibly present, return one anchor at the centre of that part using x/y coordinates from "
+        "0 to 1000 and quote concise visual evidence. Never infer a hidden part. Set matches_spec "
+        "false for an absent component, wrong relationship, wrong view, contradictory geometry, "
+        "or visible text. Reference numerals, the FIG. label, legends, callouts, and leader lines "
+        "are deliberately absent at this stage and are added later. Do not report their absence "
+        "as an error.\n\nSPECIFICATION:\n" + specification)
+    started, last_error = time.time(), None
+    for attempt in range(3):
+        try:
+            response = llm._client().models.generate_content(
+                model=model,
+                contents=[Part.from_bytes(data=png, mime_type="image/png"), instruction],
+                config=GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_json_schema=SEMANTIC_RESPONSE_SCHEMA,
+                    temperature=0, max_output_tokens=5000,
+                    thinking_config=ThinkingConfig(thinking_budget=0)))
+            usage = getattr(response, "usage_metadata", None)
+            prompt_tokens = getattr(usage, "prompt_token_count", 0) if usage else 0
+            output_tokens = getattr(usage, "candidates_token_count", 0) if usage else 0
+            llm._record_usage(prompt_tokens, output_tokens)
+            parsed = getattr(response, "parsed", None)
+            payload = (parsed.model_dump() if isinstance(parsed, _SemanticInspection) else
+                       _SemanticInspection.model_validate_json(
+                           str(getattr(response, "text", "") or "{}")).model_dump())
+            result = semantic_audit(numerals, payload)
+            result["specification_hash"] = spec_hash
+            _analysis_cache_put(key, stage="semantic", provider="vertex", model=model,
+                                prompt_version=SEMANTIC_PROMPT_VERSION, result=result)
+            _audit_log(request_id=request_id, provider="vertex", model=model, stage="semantic",
+                       prompt_version=SEMANTIC_PROMPT_VERSION,
+                       latency_ms=int((time.time() - started) * 1000), cache_hit=False,
+                       success=result["inspected"], input_tokens=prompt_tokens,
+                       output_tokens=output_tokens)
+            return result
+        except Exception as exc:
+            last_error = exc
+            if attempt < 2:
+                time.sleep((0.3 * (2 ** attempt)) + random.uniform(0, 0.15))
+    result = {"ok": False, "inspected": False, "expected": [e["numeral"] for e in entries],
+              "visible": [], "missing": [e["numeral"] for e in entries], "unexpected": [],
+              "duplicates": [], "errors": [f"Semantic inspection failed: {str(last_error)[:180]}"],
+              "unexpected_text": [], "anchors": [], "summary": "",
+              "specification_hash": spec_hash}
+    _audit_log(request_id=request_id, provider="vertex", model=model, stage="semantic",
+               prompt_version=SEMANTIC_PROMPT_VERSION,
+               latency_ms=int((time.time() - started) * 1000), cache_hit=False, success=False,
+               fallback_reason="transport_error")
+    return result
+
+
+def _font(size: int):
+    from PIL import ImageFont
+    candidates = (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+    )
+    for path in candidates:
+        if Path(path).exists():
+            return ImageFont.truetype(path, size=size)
+    return ImageFont.load_default(size=size)
+
+
+def _spread_y(items: list[dict], height: int, *, top: int, bottom: int) -> list[tuple[dict, int]]:
+    if not items:
+        return []
+    items = sorted(items, key=lambda item: int(item.get("y") or 0))
+    usable = max(1, bottom - top)
+    if len(items) == 1:
+        return [(items[0], top + usable // 2)]
+    return [(item, top + round(index * usable / (len(items) - 1)))
+            for index, item in enumerate(items)]
+
+
+def annotate_png(png: bytes, label: str, anchors, *, scale: float = 1.0) -> bytes:
+    """Add exact numerals and leaders with Pillow, never with a text-generating model."""
+    from PIL import Image, ImageDraw, ImageOps
+    source = Image.open(io.BytesIO(png)).convert("RGB")
+    source.thumbnail((1400, 1100))
+    # Filing drawings are monochrome. This also removes faint colour or grey texture an image
+    # model may have returned despite the prompt.
+    source = ImageOps.grayscale(source).point(lambda value: 255 if value > 205 else 0).convert("RGB")
+    entries = [dict(item) for item in anchors or () if item.get("visible") and
+               _clean_numeral(item.get("numeral"))]
+    left_items = [item for item in entries if int(item.get("x") or 0) < 500]
+    right_items = [item for item in entries if item not in left_items]
+    font_size = max(24, round(26 * float(scale)))
+    row = font_size + 10
+    needed_height = max(source.height, (max(len(left_items), len(right_items), 1) * row) + 70)
+    side = max(170, font_size * 5)
+    top = 25
+    bottom = max(90, font_size * 3)
+    canvas = Image.new("RGB", (source.width + side * 2, needed_height + top + bottom), "white")
+    source_x = side
+    source_y = top + (needed_height - source.height) // 2
+    canvas.paste(source, (source_x, source_y))
+    draw = ImageDraw.Draw(canvas)
+    font = _font(font_size)
+    for side_name, group in (("left", left_items), ("right", right_items)):
+        for item, y in _spread_y(group, needed_height, top=top + row // 2,
+                                 bottom=top + needed_height - row // 2):
+            numeral = _clean_numeral(item.get("numeral"))
+            target_x = source_x + round(int(item.get("x") or 0) * source.width / 1000)
+            target_y = source_y + round(int(item.get("y") or 0) * source.height / 1000)
+            box = draw.textbbox((0, 0), numeral, font=font)
+            width = box[2] - box[0]
+            text_x = 28 if side_name == "left" else canvas.width - 28 - width
+            text_y = y - font_size // 2
+            line_x = text_x + width + 8 if side_name == "left" else text_x - 8
+            draw.line((line_x, y, target_x, target_y), fill="black", width=max(2, font_size // 10))
+            draw.ellipse((target_x - 2, target_y - 2, target_x + 2, target_y + 2), fill="black")
+            draw.text((text_x, text_y), numeral, fill="black", font=font)
+    filing_label = canonical_figure_label(label)
+    label_box = draw.textbbox((0, 0), filing_label, font=font)
+    label_width = label_box[2] - label_box[0]
+    draw.text(((canvas.width - label_width) // 2, top + needed_height + font_size // 2),
+              filing_label, fill="black", font=font)
+    out = io.BytesIO()
+    canvas.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
+
+
+def parse_ocr_response(payload: dict) -> dict:
+    """Normalize Google Cloud Vision OCR while preserving duplicate reference numerals."""
+    response = ((payload or {}).get("responses") or [{}])[0]
+    if response.get("error"):
+        return {"ok": False, "numerals": [], "figure_label": "", "other_text": [],
+                "confidence": 0.0, "error": str(response["error"])[:300]}
+    annotation = response.get("fullTextAnnotation") or {}
+    text = str(annotation.get("text") or "")
+    if not text:
+        annotations = response.get("textAnnotations") or []
+        text = str((annotations[0] if annotations else {}).get("description") or "")
+    figure_match = _FIGURE_ID_RE.search(text)
+    figure_label = canonical_figure_label(figure_match.group(0)) if figure_match else ""
+    without_label = (text[:figure_match.start()] + text[figure_match.end():]
+                     if figure_match else text)
+    numerals = [_clean_numeral(match.group(0)) for match in
+                re.finditer(r"(?<![A-Za-z0-9])(?:[A-Za-z]?\d{1,4}[A-Za-z]?)(?![A-Za-z0-9])",
+                            without_label)]
+    numerals = [value for value in numerals if value]
+    stripped = re.sub(r"(?<![A-Za-z0-9])(?:[A-Za-z]?\d{1,4}[A-Za-z]?)(?![A-Za-z0-9])", " ",
+                      without_label)
+    other_text = re.findall(r"[A-Za-z]{2,}", stripped)
+    confidences = []
+    for page in annotation.get("pages") or []:
+        for block in page.get("blocks") or []:
+            for paragraph in block.get("paragraphs") or []:
+                for word in paragraph.get("words") or []:
+                    if word.get("confidence") is not None:
+                        confidences.append(float(word["confidence"]))
+    confidence = sum(confidences) / len(confidences) if confidences else (1.0 if text else 0.0)
+    return {"ok": bool(text), "numerals": numerals, "figure_label": figure_label,
+            "other_text": other_text, "confidence": confidence, "raw_text": text[:2000]}
+
+
+def inspect_labels(png: bytes, label: str = "") -> dict:
+    """Read the final pixels with Google Cloud Vision OCR, independently of the LLM reviewer."""
+    model = "DOCUMENT_TEXT_DETECTION"
+    context = canonical_figure_label(label)
+    key = _analysis_cache_key("ocr", png, context, model, OCR_PROMPT_VERSION)
+    cached = _analysis_cache_get(key)
+    request_id = str(uuid.uuid4())
+    if cached is not None:
+        _audit_log(request_id=request_id, provider="google_vision", model=model, stage="ocr",
+                   prompt_version=OCR_PROMPT_VERSION, latency_ms=0, cache_hit=True,
+                   success=bool(cached.get("ok")))
+        return cached
+    started = time.time()
+    try:
+        import google.auth
+        from google.auth.transport.requests import AuthorizedSession
+        credentials, _project = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        response = AuthorizedSession(credentials).post(
+            "https://vision.googleapis.com/v1/images:annotate",
+            json={"requests": [{
+                "image": {"content": base64.b64encode(png).decode("ascii")},
+                "features": [{"type": model}],
+                "imageContext": {"languageHints": ["en"]},
+            }]}, timeout=45)
+        response.raise_for_status()
+        result = parse_ocr_response(response.json())
+        _analysis_cache_put(key, stage="ocr", provider="google_vision", model=model,
+                            prompt_version=OCR_PROMPT_VERSION, result=result)
+        _audit_log(request_id=request_id, provider="google_vision", model=model, stage="ocr",
+                   prompt_version=OCR_PROMPT_VERSION,
+                   latency_ms=int((time.time() - started) * 1000), cache_hit=False,
+                   success=bool(result.get("ok")))
+        return result
+    except Exception as exc:
+        result = {"ok": False, "numerals": [], "figure_label": "", "other_text": [],
+                  "confidence": 0.0, "error": f"Could not OCR drawing labels: {str(exc)[:180]}"}
+        _audit_log(request_id=request_id, provider="google_vision", model=model, stage="ocr",
+                   prompt_version=OCR_PROMPT_VERSION,
+                   latency_ms=int((time.time() - started) * 1000), cache_hit=False,
+                   success=False, fallback_reason="transport_error")
+        return result
+
+
+def _numeral_order(value: str) -> tuple[int, str]:
+    return int(re.sub(r"\D", "", str(value)) or 0), str(value)
+
+
 def numeral_audit(expected, detected) -> dict:
     expected_values = [_clean_numeral(value) for value in (expected or [])]
     detected_values = [_clean_numeral(value) for value in (detected or [])]
@@ -405,49 +918,37 @@ def numeral_audit(expected, detected) -> dict:
     detected_values = [value for value in detected_values if value]
     expected_set, detected_set = set(expected_values), set(detected_values)
     counts = Counter(detected_values)
-    missing = sorted(expected_set - detected_set, key=lambda n: (int(re.sub(r"\D", "", n) or 0), n))
-    unexpected = sorted(detected_set - expected_set,
-                        key=lambda n: (int(re.sub(r"\D", "", n) or 0), n))
+    missing = sorted(expected_set - detected_set, key=_numeral_order)
+    unexpected = sorted(detected_set - expected_set, key=_numeral_order)
     duplicates = sorted((n for n, count in counts.items() if count > 1),
-                        key=lambda n: (int(re.sub(r"\D", "", n) or 0), n))
+                        key=_numeral_order)
     return {"ok": not missing and not unexpected and not duplicates,
             "expected": sorted(expected_set), "detected": detected_values,
             "missing": missing, "unexpected": unexpected, "duplicates": duplicates}
 
 
+def ocr_audit(expected, inspection: dict, label: str) -> dict:
+    audit = numeral_audit(expected, (inspection or {}).get("numerals") or [])
+    expected_label = canonical_figure_label(label)
+    detected_label = canonical_figure_label((inspection or {}).get("figure_label"))
+    correct_label = bool(expected_label and detected_label == expected_label)
+    other_text = [str(item)[:100] for item in (inspection or {}).get("other_text") or []]
+    confidence = float((inspection or {}).get("confidence") or 0.0)
+    audit.update({
+        "inspected": bool((inspection or {}).get("ok")), "expected_figure_label": expected_label,
+        "detected_figure_label": detected_label, "correct_figure_label": correct_label,
+        "other_text": other_text, "confidence": confidence,
+    })
+    if (inspection or {}).get("error"):
+        audit["error"] = str(inspection["error"])[:300]
+    audit["ok"] = bool(audit["ok"] and audit["inspected"] and correct_label and not other_text and
+                       confidence >= MIN_OCR_CONFIDENCE)
+    return audit
+
+
 def inspect_numerals(png: bytes) -> dict:
-    """Vision-read actual labels from the returned pixels; never infer from the prompt."""
-    from google.genai.types import GenerateContentConfig, Part, ThinkingConfig
-    instruction = (
-        "Inspect this patent drawing pixel by pixel. Return JSON with one key, numerals, whose "
-        "value is every visible REFERENCE NUMERAL in reading order, including duplicates. Exclude "
-        "the figure number in labels such as FIG. 1, dimensions, page numbers, and other text. "
-        "Do not infer a number that is not visibly printed. Example: {\"numerals\":[\"10\",\"12\"]}.")
-    last_error = None
-    for attempt in range(3):
-        try:
-            response = llm._client().models.generate_content(
-                model=vision_model(),
-                contents=[Part.from_bytes(data=png, mime_type="image/png"), instruction],
-                config=GenerateContentConfig(
-                    response_mime_type="application/json", response_schema=_NumeralInspection,
-                    temperature=0,
-                    max_output_tokens=300, thinking_config=ThinkingConfig(thinking_budget=0)))
-            usage = getattr(response, "usage_metadata", None)
-            llm._record_usage(getattr(usage, "prompt_token_count", 0) if usage else 0,
-                              getattr(usage, "candidates_token_count", 0) if usage else 0)
-            parsed = getattr(response, "parsed", None)
-            payload = parsed if isinstance(parsed, _NumeralInspection) else \
-                _NumeralInspection.model_validate_json(
-                    str(getattr(response, "text", "") or "{}"))
-            values = [_clean_numeral(value) for value in payload.numerals]
-            return {"ok": True, "numerals": [value for value in values if value]}
-        except Exception as exc:                         # an unread audit must be visible, not guessed
-            last_error = exc
-            if attempt < 2:
-                time.sleep((0.25 * (2 ** attempt)) + random.uniform(0, 0.15))
-    return {"ok": False, "numerals": [],
-            "error": f"Could not inspect drawing numerals: {str(last_error)[:160]}"}
+    """Backward-compatible numeral-only view of the Cloud Vision OCR result."""
+    return inspect_labels(png)
 
 
 # ---------------------------------------------------------------------------
@@ -464,7 +965,8 @@ def create_figure(project_id, user_id, label, caption="", sort_order=0):
 
 
 def add_version(figure_id, *, prompt, instruction, numerals, png, mime="image/png",
-                detected_numerals=(), audit=None, source_kind="generated"):
+                detected_numerals=(), audit=None, semantic_audit=None, base_png=None,
+                source_kind="generated"):
     ensure_schema()
     with db.cursor() as cur:
         cur.execute("SELECT coalesce(max(version_no),0)+1 AS n FROM app_draft_figure_versions "
@@ -472,12 +974,13 @@ def add_version(figure_id, *, prompt, instruction, numerals, png, mime="image/pn
         n = int(cur.fetchone()["n"])
         cur.execute("INSERT INTO app_draft_figure_versions "
                     "(figure_id,version_no,prompt,instruction,numerals,png,mime,"
-                    "detected_numerals,numeral_audit,source_kind) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s) "
+                    "detected_numerals,numeral_audit,semantic_audit,base_png,source_kind) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s::jsonb,%s,%s) "
                     "RETURNING id,version_no,created_at",
                     (int(figure_id), n, str(prompt)[:MAX_PROMPT_CHARS], str(instruction)[:1000],
                      "\n".join(numerals or [])[:4000], png, mime,
                      json.dumps(list(detected_numerals or [])), json.dumps(dict(audit or {})),
+                     json.dumps(dict(semantic_audit or {})), base_png,
                      str(source_kind or "generated")[:40]))
         row = dict(cur.fetchone())
         cur.execute("UPDATE app_draft_figures SET active_version=%s, updated_at=now() WHERE id=%s",
@@ -489,14 +992,27 @@ def add_version(figure_id, *, prompt, instruction, numerals, png, mime="image/pn
     return row
 
 
-def set_active(figure_id, user_id, version_no):
+def set_active(figure_id, user_id, version_no, *, expected_specification_hash: str = ""):
+    """Activate a historical sheet only when it passed the current specification's gates."""
     ensure_schema()
     with db.cursor() as cur:
-        cur.execute("SELECT 1 FROM app_draft_figure_versions v JOIN app_draft_figures f "
+        cur.execute("SELECT v.numeral_audit,v.semantic_audit FROM app_draft_figure_versions v "
+                    "JOIN app_draft_figures f "
                     "ON f.id=v.figure_id WHERE v.figure_id=%s AND v.version_no=%s AND f.user_id=%s",
                     (int(figure_id), int(version_no), int(user_id)))
-        if not cur.fetchone():
+        row = cur.fetchone()
+        if not row:
             return False
+        if expected_specification_hash:
+            numeral = row.get("numeral_audit") or {}
+            semantic = row.get("semantic_audit") or {}
+            if isinstance(numeral, str):
+                numeral = json.loads(numeral)
+            if isinstance(semantic, str):
+                semantic = json.loads(semantic)
+            if not (numeral.get("ok") and semantic.get("ok") and
+                    semantic.get("specification_hash") == expected_specification_hash):
+                return False
         cur.execute("UPDATE app_draft_figures SET active_version=%s, updated_at=now() "
                     "WHERE id=%s AND user_id=%s",
                     (int(version_no), int(figure_id), int(user_id)))
@@ -511,23 +1027,35 @@ def delete_figure(figure_id, user_id) -> bool:
         return cur.rowcount > 0
 
 
+def archive_figure(figure_id, user_id) -> bool:
+    """Remove an obsolete sheet from the filing set while retaining all of its history."""
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("UPDATE app_draft_figures SET archived_at=now(),updated_at=now() "
+                    "WHERE id=%s AND user_id=%s AND archived_at IS NULL",
+                    (int(figure_id), int(user_id)))
+        return cur.rowcount > 0
+
+
 def listing(project_id, user_id):
-    """Every figure of a project with its version list — no image bytes."""
+    """Every figure of a project with its version list - no image bytes."""
     ensure_schema()
     with db.cursor() as cur:
         cur.execute("SELECT * FROM app_draft_figures WHERE project_id=%s AND user_id=%s "
+                    "AND archived_at IS NULL "
                     "ORDER BY sort_order, id", (int(project_id), int(user_id)))
         figs = [dict(r) for r in cur.fetchall()]
         if not figs:
             return []
         cur.execute("SELECT figure_id,version_no,instruction,numerals,status,error,created_at,"
-                    "detected_numerals,numeral_audit,source_kind "
+                    "detected_numerals,numeral_audit,semantic_audit,source_kind "
                     "FROM app_draft_figure_versions WHERE figure_id = ANY(%s) "
                     "ORDER BY figure_id, version_no DESC", ([f["id"] for f in figs],))
         versions = {}
         for r in cur.fetchall():
             version = dict(r)
-            for key, fallback in (("detected_numerals", []), ("numeral_audit", {})):
+            for key, fallback in (("detected_numerals", []), ("numeral_audit", {}),
+                                  ("semantic_audit", {})):
                 value = version.get(key)
                 if isinstance(value, str):
                     try:
@@ -542,24 +1070,50 @@ def listing(project_id, user_id):
     return figs
 
 
-def png_bytes(figure_id, user_id, version_no=None):
-    """(mime, bytes) for one version — the active one unless a version is named."""
+def png_bytes(figure_id, user_id, version_no=None, *, base=False):
+    """(mime, bytes) for one version - the active one unless a version is named."""
     ensure_schema()
     with db.cursor() as cur:
         if version_no is None:
-            cur.execute("SELECT v.mime, v.png FROM app_draft_figure_versions v "
+            cur.execute("SELECT v.mime, CASE WHEN %s THEN coalesce(v.base_png,v.png) ELSE v.png END AS png "
+                        "FROM app_draft_figure_versions v "
                         "JOIN app_draft_figures f ON f.id=v.figure_id "
                         "WHERE f.id=%s AND f.user_id=%s AND v.version_no=f.active_version",
-                        (int(figure_id), int(user_id)))
+                        (bool(base), int(figure_id), int(user_id)))
         else:
-            cur.execute("SELECT v.mime, v.png FROM app_draft_figure_versions v "
+            cur.execute("SELECT v.mime, CASE WHEN %s THEN coalesce(v.base_png,v.png) ELSE v.png END AS png "
+                        "FROM app_draft_figure_versions v "
                         "JOIN app_draft_figures f ON f.id=v.figure_id "
                         "WHERE f.id=%s AND f.user_id=%s AND v.version_no=%s",
-                        (int(figure_id), int(user_id), int(version_no)))
+                        (bool(base), int(figure_id), int(user_id), int(version_no)))
         r = cur.fetchone()
     if not r or not r.get("png"):
         return None, None
     return r["mime"], bytes(r["png"])
+
+
+def materialize_review_images(project_id: int, user_id: int, workspace: Path) -> int:
+    """Copy approved active pixels into the isolated workspace for the independent reviewer."""
+    directory = Path(workspace) / "figures"
+    directory.mkdir(parents=True, exist_ok=True)
+    for stale in directory.glob("rendered-*.png"):
+        stale.unlink()
+    written = 0
+    for figure in listing(project_id, user_id):
+        active_version = int(figure.get("active_version") or 0)
+        active = next((row for row in figure.get("versions") or ()
+                       if int(row.get("version_no") or 0) == active_version), None) or {}
+        if not ((active.get("numeral_audit") or {}).get("ok") and
+                (active.get("semantic_audit") or {}).get("ok")):
+            continue
+        _mime, png = png_bytes(figure["id"], user_id, active_version)
+        if not png:
+            continue
+        label = re.sub(r"[^A-Za-z0-9]+", "-", canonical_figure_label(
+            figure.get("figure_label"))).strip("-") or str(figure["id"])
+        (directory / f"rendered-{label}.png").write_bytes(png)
+        written += 1
+    return written
 
 
 def get_figure(figure_id, user_id):
@@ -608,17 +1162,14 @@ def _cached_generate(prompt: str, previous: bytes | None = None) -> bytes:
 
 
 def _audited_version(figure_id: int, *, prompt: str, instruction: str, numerals,
-                     png: bytes, source_kind: str, inspection=None) -> dict:
-    inspection = inspection or inspect_numerals(png)
-    audit = numeral_audit(numerals, inspection.get("numerals") or [])
-    audit["inspected"] = bool(inspection.get("ok"))
-    if inspection.get("error"):
-        audit["error"] = inspection["error"]
+                     png: bytes, base_png: bytes, source_kind: str,
+                     ocr_audit: dict, semantic_audit: dict) -> dict:
     version = add_version(
         figure_id, prompt=prompt, instruction=instruction, numerals=numerals, png=png,
-        detected_numerals=inspection.get("numerals") or [], audit=audit,
-        source_kind=source_kind)
-    return {**version, "audit": audit, "detected_numerals": inspection.get("numerals") or []}
+        detected_numerals=ocr_audit.get("detected") or [], audit=ocr_audit,
+        semantic_audit=semantic_audit, base_png=base_png, source_kind=source_kind)
+    return {**version, "audit": ocr_audit, "semantic_audit": semantic_audit,
+            "detected_numerals": ocr_audit.get("detected") or []}
 
 
 def save_manual_version(project_id: int, user_id: int, figure_id: int, png: bytes, *,
@@ -627,12 +1178,18 @@ def save_manual_version(project_id: int, user_id: int, figure_id: int, png: byte
     if not figure or int(figure.get("project_id") or 0) != int(project_id):
         raise FigureError("no such figure")
     normalized = normalize_source_image(png, "image/png")
+    label_inspection = inspect_labels(normalized, figure["figure_label"])
+    labels = ocr_audit(numerals, label_inspection, figure["figure_label"])
+    semantic = {"ok": False, "inspected": False, "errors": [
+        "A manual edit requires the automatic semantic review before filing."], "anchors": []}
     version = _audited_version(
         figure_id, prompt="Manual canvas edit", instruction=instruction,
-        numerals=numerals, png=normalized, source_kind="manual")
+        numerals=numerals, png=normalized, base_png=normalized, source_kind="manual",
+        ocr_audit=labels, semantic_audit=semantic)
     return {"figure_id": figure_id, "label": figure["figure_label"],
             "caption": figure["caption"], "version_no": version["version_no"],
             "numerals": list(numerals or []), "numeral_audit": version["audit"],
+            "semantic_audit": version["semantic_audit"],
             "detected_numerals": version["detected_numerals"]}
 
 
@@ -654,40 +1211,153 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
             raise FigureError("no such figure")
         label = label or fig["figure_label"]
         caption = caption or fig["caption"]
-        _, previous = png_bytes(figure_id, user_id, base_version)
+        _, previous = png_bytes(figure_id, user_id, base_version, base=True)
     context = str(sections.get("summary") or disclosure or "")[:1200]
     prompt = build_prompt(label, caption, numerals, instruction, context)
-    inspection = None
     if region:
         if not previous:
             raise FigureError("Draw the figure before editing one area of it.")
-        png = edit_region_png(previous, instruction, region, numerals)
+        raw_png = edit_region_png(previous, instruction, region, numerals)
         source_kind = "region_edit"
     else:
-        png = _cached_generate(prompt, previous)
         source_kind = "photo_to_sketch" if source_png else "generated"
-        # One bounded self-correction pass. The inspection reads the returned pixels rather than
-        # trusting the prompt, and a second mismatch remains visible instead of looping/spending.
-        first_inspection = inspect_numerals(png)
-        first_audit = numeral_audit(numerals, first_inspection.get("numerals") or [])
-        if first_inspection.get("ok") and not first_audit["ok"]:
-            qa_instruction = (
-                "NUMERAL QA FAILED. Redraw the supplied image while preserving its "
-                "geometry. The only reference numerals permitted are " +
-                (", ".join(first_audit["expected"]) or "none") + ". Add missing numerals, remove "
-                "unexpected numerals, and show each permitted numeral exactly once.")
-            retained = max(0, MAX_PROMPT_CHARS - len(qa_instruction) - 2)
-            correction = prompt[:retained] + "\n\n" + qa_instruction
-            png = _cached_generate(correction, png)
-        else:
-            inspection = first_inspection
+        raw_png = b""
+
+    semantic = {}
+    correction = ""
+    for attempt in range(MAX_SEMANTIC_ATTEMPTS):
+        if not region:
+            candidate_prompt = prompt
+            if correction:
+                retained = max(0, MAX_PROMPT_CHARS - len(correction) - 2)
+                candidate_prompt = prompt[:retained] + "\n\n" + correction
+            raw_png = _cached_generate(candidate_prompt, previous if attempt == 0 else raw_png)
+        semantic = inspect_semantics(
+            raw_png, label=label, caption=caption, numerals=numerals)
+        if semantic.get("ok"):
+            break
+        problems = list(semantic.get("errors") or [])
+        if semantic.get("missing"):
+            problems.append("missing components: " + ", ".join(semantic["missing"]))
+        if semantic.get("unexpected_text"):
+            problems.append("remove all visible text")
+        correction = (
+            "SEMANTIC REVIEW FAILED. Produce a corrected geometry-only drawing. " +
+            ("; ".join(problems) or "make every requested component and relationship visible") +
+            ". Keep all geometry that already matches. Include no text or digits.")
+    if not semantic.get("ok"):
+        detail = "; ".join((semantic.get("errors") or []) +
+                           (["missing " + ", ".join(semantic.get("missing") or [])]
+                            if semantic.get("missing") else []))
+        raise FigureError(
+            "semantic drawing review failed" + (f": {detail[:1200]}" if detail else ""))
+
+    png, labels = b"", {}
+    # A larger deterministic label pass changes only typeset text and leader lines. OCR each
+    # changed result and retain the first exact sheet. This repairs small-font OCR ambiguity
+    # without asking an image model to spell or count anything.
+    for scale in (1.0, 1.35, 1.8, 2.2):
+        png = annotate_png(raw_png, label, semantic.get("anchors") or [], scale=scale)
+        label_inspection = inspect_labels(png, label)
+        labels = ocr_audit(numerals, label_inspection, label)
+        if labels.get("ok"):
+            break
+    if not labels.get("ok"):
+        issues = []
+        for key in ("missing", "unexpected", "duplicates", "other_text"):
+            if labels.get(key):
+                issues.append(key.replace("_", " ") + " " + ", ".join(labels[key]))
+        if not labels.get("correct_figure_label"):
+            issues.append("wrong figure label")
+        if float(labels.get("confidence") or 0) < MIN_OCR_CONFIDENCE:
+            issues.append(f"confidence {float(labels.get('confidence') or 0):.2f}")
+        detail = labels.get("error") or "; ".join(issues) or "the OCR result was not exact"
+        raise FigureError("OCR label review failed: " + str(detail)[:300])
     if not figure_id:
-        fig = create_figure(project_id, user_id, label, caption)
+        fig = create_figure(project_id, user_id, canonical_figure_label(label), caption)
         figure_id = fig["id"]
     version = _audited_version(
         figure_id, prompt=prompt, instruction=instruction, numerals=numerals, png=png,
-        source_kind=source_kind, inspection=inspection)
+        base_png=raw_png, source_kind=source_kind, ocr_audit=labels,
+        semantic_audit=semantic)
     return {"figure_id": figure_id, "label": label, "caption": caption,
             "version_no": version["version_no"], "numerals": numerals,
             "detected_numerals": version["detected_numerals"],
-            "numeral_audit": version["audit"]}
+            "numeral_audit": version["audit"],
+            "semantic_audit": version["semantic_audit"]}
+
+
+def expected_entries(spec, numeral_table) -> list[str]:
+    """Resolve a figure brief's numerals against the version's canonical part table."""
+    table = {_clean_numeral(item.get("numeral")): str(item.get("part") or "").strip()
+             for item in numeral_table or () if _clean_numeral(item.get("numeral"))}
+    entries = []
+    for item in numeral_entries((spec or {}).get("numerals") or []):
+        part = table.get(item["numeral"]) or item["part"]
+        entries.append(f"{item['numeral']} = {part}" if part else item["numeral"])
+    return entries
+
+
+def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosure: str,
+                           numeral_table, figure_specs) -> dict:
+    """Generate or repair every described sheet; return only after both pixel gates pass."""
+    existing = listing(project_id, user_id)
+    specs = list(figure_specs or ())
+    expected_keys = {figure_key(spec.get("label") or f"FIG. {index}")
+                     for index, spec in enumerate(specs, 1)}
+    grouped: dict[str, list[dict]] = {}
+    for figure in existing:
+        grouped.setdefault(figure_key(figure.get("figure_label")), []).append(figure)
+    by_key: dict[str, dict] = {}
+    archived = 0
+    for key, candidates in grouped.items():
+        if key not in expected_keys:
+            for figure in candidates:
+                archived += int(archive_figure(figure["id"], user_id))
+            continue
+        # Keep the newest active record for one canonical figure number. Older duplicates remain
+        # in history but cannot become extra filing sheets.
+        for duplicate in candidates[:-1]:
+            archived += int(archive_figure(duplicate["id"], user_id))
+        by_key[key] = candidates[-1]
+    generated, reused, results, errors = 0, 0, [], []
+    for index, spec in enumerate(specs, 1):
+        label = str(spec.get("label") or f"FIG. {index}")
+        caption = str(spec.get("caption") or "")[:4000]
+        expected = expected_entries(spec, numeral_table)
+        expected_hash = specification_hash(label, caption, expected)
+        current = by_key.get(figure_key(label))
+        active = next((item for item in (current or {}).get("versions") or []
+                       if int(item.get("version_no") or 0) ==
+                       int((current or {}).get("active_version") or 0)), None) or {}
+        expected_set = {item["numeral"] for item in numeral_entries(expected)}
+        stored_set = {_clean_numeral(value) for value in
+                      (active.get("numeral_audit") or {}).get("expected") or []}
+        if (current and (active.get("numeral_audit") or {}).get("ok") and
+                (active.get("semantic_audit") or {}).get("ok") and expected_set == stored_set and
+                (active.get("semantic_audit") or {}).get("specification_hash") == expected_hash):
+            reused += 1
+            results.append({"figure_id": current["id"], "label": label,
+                            "numeral_audit": active["numeral_audit"],
+                            "semantic_audit": active["semantic_audit"]})
+            continue
+        try:
+            result = render_figure(
+                project_id, user_id, label=label, caption=caption,
+                sections=sections, disclosure=disclosure, numerals=expected,
+                figure_id=(current or {}).get("id"),
+                instruction="Automatically reconcile this sheet with the current filing text.")
+        except FigureError as exc:
+            error = f"{canonical_figure_label(label)}: {str(exc)[:1400]}"
+            errors.append(error)
+            results.append({"label": label, "error": error,
+                            "numeral_audit": {"ok": False},
+                            "semantic_audit": {"ok": False}})
+            continue
+        generated += 1
+        results.append(result)
+    return {"generated": generated, "reused": reused, "archived": archived,
+            "errors": errors,
+            "figures": results, "ok": len(results) == len(specs) and
+                  all((item.get("numeral_audit") or {}).get("ok") and
+                      (item.get("semantic_audit") or {}).get("ok") for item in results)}

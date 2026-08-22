@@ -1,7 +1,7 @@
 """The check that runs after every drafting iteration, whether anyone asks for it or not.
 
 An application that reads beautifully and numbers the same part 34 in one paragraph and 36 in the
-next is not a draft, it is a rewrite waiting to happen — and the failure mode of a model writing a
+next is not a draft, it is a rewrite waiting to happen - and the failure mode of a model writing a
 long structured document is precisely this: locally fluent, globally inconsistent.  So every
 iteration is followed by a review, and the review is deliberately in two halves that are never
 merged:
@@ -19,14 +19,14 @@ merged:
 
 The reviewer runs in a NEW session on purpose.  Resuming the drafting session would hand the
 reviewer the drafter's own reasoning for every decision, and a model shown its own justification
-approves it — the entire value of the second pass is that it has not heard the argument.
+approves it - the entire value of the second pass is that it has not heard the argument.
 
 CALIBRATION.  A check that cries wolf costs as much as one that misses: a draft flagged FAIL for a
 heuristic that is wrong three times in ten teaches the user to ignore the panel.  So checks are
 graded by how exactly they can be decided.  ``error`` is reserved for things code can prove
 (a numeral used and never defined, a claim depending on a claim that does not exist, a citation
-that resolves to nothing).  Everything inferential — antecedent basis, claim support by term
-overlap — is ``advisory``: it is shown, it is explained, and it can never by itself fail a draft.
+that resolves to nothing).  Everything inferential - antecedent basis, claim support by term
+overlap - is ``advisory``: it is shown, it is explained, and it can never by itself fail a draft.
 """
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ ABSTRACT_WORD_LIMIT = 150            # 37 CFR 1.72(b)
 TITLE_CHAR_LIMIT = 500               # 37 CFR 1.72(a)
 
 _FIG_RE = re.compile(r"\bFIGS?\.?\s*([0-9]+[A-Za-z]?)", re.IGNORECASE)
-_FIG_RANGE_RE = re.compile(r"\bFIGS?\.?\s*([0-9]+[A-Za-z]?)\s*(?:-|–|—|to|through|and)\s*"
+_FIG_RANGE_RE = re.compile(r"\bFIGS?\.?\s*([0-9]+[A-Za-z]?)\s*(?:-|–|\u2014|to|through|and)\s*"
                            r"([0-9]+[A-Za-z]?)", re.IGNORECASE)
 _NUMERAL_IN_TEXT_RE = re.compile(
     r"(?<![\w.\-/])([a-z]?\d{1,4}[a-z]?)(?![\w%°]|\s*(?:%|percent))",
@@ -67,7 +67,16 @@ _DEPENDENCY_RE = re.compile(
     r"([0-9][0-9,\s\u2013\u2014-]*(?:(?:or|and|to|through)\s*[0-9][0-9,\s\u2013\u2014-]*)*)",
     re.IGNORECASE)
 _RANGE_RE = re.compile(r"(\d{1,3})\s*(?:-|\u2013|\u2014|to|through)\s*(\d{1,3})", re.IGNORECASE)
-_DRAFTING_NOTE_RE = re.compile(r"\[DRAFTING NOTE:([^\]]*)\]", re.IGNORECASE)
+_DRAFT_PLACEHOLDER_RE = re.compile(
+    r"(?:"
+    r"\[(?:DRAFTING\s+NOTE|TODO|TBD|TBC|PLACEHOLDER|INSERT)(?::[^\]]*)?\]"
+    r"|(?-i:\bTODO\b)"
+    r"|\b(?:TBD|TBC)\b"
+    r"|\bTO\s+BE\s+(?:DETERMINED|PROVIDED|CONFIRMED|INSERTED)\b"
+    r"|<\s*(?:INSERT|TODO|TBD|TBC|PLACEHOLDER)\b[^>]*>"
+    r"|\{\{[^{}\n]{1,120}\}\}"
+    r"|_{5,}"
+    r")", re.IGNORECASE)
 #  The phrase is captured in a LOOKAHEAD so the scan consumes only the article.  Consuming the
 #  noun phrase as well was a real defect: in "a tool comprising a body, a pump", the first match
 #  swallowed "tool comprising a body", so "a body" was never seen as an introduction and every
@@ -185,21 +194,21 @@ def _abstract_form(abstract: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------------------------
-# Reference numerals — the check this whole review exists for
+# Reference numerals - the check this whole review exists for
 # ---------------------------------------------------------------------------------------------
 def numerals_used(text: str) -> Counter:
     """Numbers in prose that are being used as reference numerals.
 
     Not every number in a specification is a numeral: dimensions, percentages, years, claim
     numbers and figure numbers are not.  Those are removed first, and what survives is counted.
-    Getting this wrong in the generous direction is the expensive mistake — it would report every
-    measurement as an undefined part — so the exclusions are aggressive.
+    Getting this wrong in the generous direction is the expensive mistake - it would report every
+    measurement as an undefined part - so the exclusions are aggressive.
     """
-    cleaned = re.sub(r"\bFIGS?\.?\s*[0-9]+[A-Za-z]?(\s*(?:-|–|—|to|through|and)\s*[0-9]+[A-Za-z]?)?",
+    cleaned = re.sub(r"\bFIGS?\.?\s*[0-9]+[A-Za-z]?(\s*(?:-|–|\u2014|to|through|and)\s*[0-9]+[A-Za-z]?)?",
                      " ", text or "", flags=re.IGNORECASE)
     cleaned = re.sub(r"\bclaims?\s+[0-9,\s\-–and or]+", " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\[REF:[^\]]*\]", " ", cleaned)
-    #  A publication number written into the prose beside its citation token — "US 9,108,319 B2" —
+    #  A publication number written into the prose beside its citation token - "US 9,108,319 B2" -
     #  otherwise reads as three reference numerals (9, 108 and 319) that no numeral table defines,
     #  and FAILS the draft. Measured on a real second iteration: the moment the agent cited a
     #  reference properly, the citation check passed and the numeral check failed on the same
@@ -207,7 +216,7 @@ def numerals_used(text: str) -> Counter:
     cleaned = re.sub(r"\b[A-Z]{2}\s?[0-9][0-9,\s]{3,16}[0-9]\s?(?:[A-Z][0-9]?)?\b", " ", cleaned)
     cleaned = re.sub(r"\b[0-9]{1,3}(?:,[0-9]{3})+\b", " ", cleaned)
     #  A number that OPENS a line, followed by a full stop or bracket, is a list marker. A reference
-    #  numeral never starts a sentence — it always trails the part it labels ("a suction cup 10") —
+    #  numeral never starts a sentence - it always trails the part it labels ("a suction cup 10") -
     #  so this cannot swallow a real one. Measured: an ordered list inside a drawing brief ("1. The
     #  heel portion is deformed…") reported numerals 1, 2 and 3 as undefined and failed the draft.
     cleaned = re.sub(r"(?m)^\s{0,8}[0-9]{1,3}\s*[.)]\s+", " ", cleaned)
@@ -218,7 +227,7 @@ def numerals_used(text: str) -> Counter:
                      cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\b\d+\.\d+\b", " ", cleaned)
     cleaned = re.sub(r"\b(?:19|20)\d{2}\b", " ", cleaned)
-    cleaned = re.sub(r"\b\d+\s*(?:-|–|—|to)\s*\d+\b", " ", cleaned)
+    cleaned = re.sub(r"\b\d+\s*(?:-|–|\u2014|to)\s*\d+\b", " ", cleaned)
     cleaned = re.sub(r"\b(?:35|37)\s+(?:U\.?S\.?C\.?|C\.?F\.?R\.?)[^.\n]*", " ", cleaned)
     return Counter(match.group(1).upper() for match in _NUMERAL_IN_TEXT_RE.finditer(cleaned))
 
@@ -232,10 +241,35 @@ def _drawing_numeral(value: Any) -> str:
 def _numeral_checks(spec_text: str, claims_text: str,
                     numerals: Sequence[Mapping[str, str]],
                     figures: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    row_issues: list[str] = []
+    valid_counts: Counter[str] = Counter()
+    for item in numerals:
+        raw_numeral = str(item.get("numeral") or "").strip()
+        numeral = raw_numeral.upper()
+        part = str(item.get("part") or "").strip()
+        if not re.fullmatch(r"[A-Za-z]?\d{1,4}[A-Za-z]?", raw_numeral):
+            row_issues.append(f"{raw_numeral or '(blank)'}: invalid reference numeral")
+            continue
+        valid_counts[numeral] += 1
+        if not part:
+            row_issues.append(f"{numeral}: no part name")
+    row_issues.extend(
+        f"{numeral}: appears more than once" for numeral, count in valid_counts.items()
+        if count > 1)
     table = {str(item.get("numeral") or "").strip().upper(): str(item.get("part") or "").strip()
              for item in numerals if str(item.get("numeral") or "").strip()}
     used = numerals_used(spec_text)
     out: list[dict[str, Any]] = []
+
+    if row_issues:
+        out.append(_check(
+            "Every numeral-table row is complete and unique", "fail",
+            "Every row must assign one valid reference numeral to one named part exactly once.",
+            items=row_issues))
+    else:
+        out.append(_check(
+            "Every numeral-table row is complete and unique", "pass",
+            f"All {len(numerals)} numeral-table row(s) are complete and unique."))
 
     undefined = sorted((n for n in used if n not in table), key=_numeral_sort)
     if undefined:
@@ -386,7 +420,7 @@ def _first_use_introduces(spec_text: str, table: Mapping[str, str]) -> dict[str,
             continue
         window = _normal(match.group(1))
         if head not in window and not any(word in window for word in _normal(part).split()):
-            problems.append(f"{numeral} ({part}) — first written as: …{match.group(1).strip()} "
+            problems.append(f"{numeral} ({part}) - first written as: …{match.group(1).strip()} "
                             f"{numeral}")
     if not problems:
         return _check("Numerals are introduced with their part name", "pass",
@@ -407,7 +441,7 @@ def _numeral_sort(numeral: str) -> tuple[int, str]:
 def figure_number(label: str) -> str:
     """The number of the figure a label names, or ''.
 
-    A real caption is "FIG. 3 — Enlarged detail III of FIG. 2", and stripping non-digits out of
+    A real caption is "FIG. 3 - Enlarged detail III of FIG. 2", and stripping non-digits out of
     that yields "32". The first FIG. in the label is the figure the label is FOR; any later one is
     a cross-reference.
     """
@@ -438,6 +472,37 @@ def _figure_checks(sections: Mapping[str, str],
     in_detail = figures_mentioned(sections.get("detailed_description", ""))
     out: list[dict[str, Any]] = []
 
+    if described and figures:
+        out.append(_check(
+            "Application includes a drawing plan", "pass",
+            f"The application describes {len(described)} figure(s) and supplies drawing briefs."))
+    else:
+        out.append(_check(
+            "Application includes a drawing plan", "fail",
+            "A complete utility application must include at least one text-grounded figure brief "
+            "that the drawing pipeline can render and inspect.", severity="error"))
+
+    if figures:
+        numbers = [figure_number(figure.get("label")) for figure in figures]
+        valid = [int(number) for number in numbers if number.isdigit()]
+        counts = Counter(valid)
+        issues = [f"{figure.get('label') or '(blank)'}: invalid figure number"
+                  for figure, number in zip(figures, numbers) if not number.isdigit()]
+        issues.extend(f"FIG. {number}: duplicate sheet number"
+                      for number, count in sorted(counts.items()) if count > 1)
+        expected = list(range(1, len(figures) + 1))
+        if sorted(valid) != expected:
+            issues.append(f"expected sheet numbers {expected}; found {valid}")
+        if issues:
+            out.append(_check(
+                "Figure-sheet numbering is unique and contiguous", "fail",
+                "Each filing sheet must have one number in an unbroken sequence beginning at 1.",
+                severity="error", items=issues))
+        else:
+            out.append(_check(
+                "Figure-sheet numbering is unique and contiguous", "pass",
+                f"{len(figures)} sheet(s), numbered 1 through {len(figures)}."))
+
     undescribed = sorted(in_detail - described, key=_numeral_sort)
     if undescribed:
         out.append(_check(
@@ -467,6 +532,27 @@ def _figure_checks(sections: Mapping[str, str],
 
     if figures:
         tracks_pixels = any("drawn" in figure for figure in figures)
+        if tracks_pixels:
+            semantic_failures = []
+            for figure in figures:
+                if not figure.get("drawn"):
+                    continue
+                audit = figure.get("semantic_audit") or {}
+                if not audit.get("inspected") or not audit.get("ok"):
+                    detail = "; ".join(str(item) for item in audit.get("errors") or [])
+                    semantic_failures.append(
+                        f"{figure.get('label') or 'drawing'}: " +
+                        (detail[:220] or "semantic pixel inspection did not pass"))
+            if semantic_failures:
+                out.append(_check(
+                    "Drawing content matches its specification", "fail",
+                    "A semantic vision review could not confirm that every stored drawing shows "
+                    "the view, components, and relationships required by its specification.",
+                    severity="error", items=semantic_failures))
+            else:
+                out.append(_check(
+                    "Drawing content matches its specification", "pass",
+                    "Every stored drawing passed the independent semantic pixel review."))
         labels = {figure_number(f.get("label")) for f in figures
                   if not tracks_pixels or f.get("drawn")}
         extra = sorted((label for label in labels if label and label not in described),
@@ -486,9 +572,10 @@ def _figure_checks(sections: Mapping[str, str],
                          key=_numeral_sort)
         if missing:
             out.append(_check(
-                "Each described figure has a drawing sheet", "warn",
+                "Each described figure has a drawing sheet", "fail",
                 "A figure is described in the specification but no drawing has been prepared for "
-                "it yet.", severity="warn", items=[f"FIG. {n}" for n in missing]))
+                "it. Every described figure is required before the package can be published.",
+                severity="error", items=[f"FIG. {n}" for n in missing]))
     return out
 
 
@@ -647,7 +734,7 @@ def _claim_support(claims: Sequence[Mapping[str, Any]], spec_text: str) -> dict[
     """Claim vocabulary that never appears in the specification.
 
     35 USC 112(a) needs the description to support what is claimed.  Word presence is a weak proxy
-    for support, so this is advisory — but a claim term that appears NOWHERE in the description is
+    for support, so this is advisory - but a claim term that appears NOWHERE in the description is
     a reliable signal, and it is the exact defect a model introduces when it broadens a claim
     without going back to widen the description.
     """
@@ -720,7 +807,7 @@ def _citation_checks(sections: Mapping[str, str], allowed: Sequence[str],
             severity="warn" if allowed_set else "advisory"))
         return out
 
-    unselected = [c for c in unique if allowed_set and c not in allowed_set]
+    unselected = [c for c in unique if c not in allowed_set]
     if unselected:
         out.append(_check(
             "Citations are to supplied references", "fail",
@@ -728,7 +815,7 @@ def _citation_checks(sections: Mapping[str, str], allowed: Sequence[str],
             "add it as a source or remove the citation.", items=unselected))
 
     resolved = draft_cite.check_all(unique, allow_remote=allow_remote)
-    unreachable = [f"{pub} — {record.get('reason') or 'not found'}"
+    unreachable = [f"{pub} - {record.get('reason') or 'not found'}"
                    for pub, record in resolved.items() if not record.get("found")]
     if unreachable:
         out.append(_check(
@@ -739,15 +826,15 @@ def _citation_checks(sections: Mapping[str, str], allowed: Sequence[str],
     else:
         out.append(_check("Every citation resolves to a real publication", "pass",
                           f"All {len(unique)} cited publication(s) resolve.",
-                          items=[f"{pub} — {record.get('title', '')[:120]} "
+                          items=[f"{pub} - {record.get('title', '')[:120]} "
                                  f"({record.get('source')})" for pub, record in resolved.items()]))
 
     uncited = sorted(allowed_set - set(unique))
     if uncited:
         out.append(_check(
             "Supplied art is addressed", "warn",
-            f"{len(uncited)} supplied reference(s) are never cited. That can be correct — not "
-            "every search hit belongs in the Background — but each one is art the examiner may "
+            f"{len(uncited)} supplied reference(s) are never cited. That can be correct - not "
+            "every search hit belongs in the Background - but each one is art the examiner may "
             "raise, so the draft should have a reason for passing over it.",
             severity="warn", items=uncited))
 
@@ -765,16 +852,27 @@ def _citation_checks(sections: Mapping[str, str], allowed: Sequence[str],
 
 
 def _open_notes(sections: Mapping[str, str]) -> dict[str, Any]:
-    notes = []
-    for key, _name, heading in draft_workspace.SECTION_FILES:
-        for match in _DRAFTING_NOTE_RE.finditer(str(sections.get(key) or "")):
-            notes.append(f"{heading}: {match.group(1).strip()[:180]}")
+    notes = find_placeholders(sections)
     if not notes:
         return _check("No unresolved drafting notes", "pass",
-                      "The draft contains no open [DRAFTING NOTE] placeholders.")
-    return _check("No unresolved drafting notes", "warn",
-                  f"{len(notes)} drafting note(s) still need a fact only the inventor has. These "
-                  "must be resolved before filing.", severity="warn", items=notes)
+                      "The draft contains no notes, placeholders, or unfilled fields.")
+    return _check("No unresolved drafting notes", "fail",
+                  f"{len(notes)} unresolved drafting marker(s) remain. A filing package cannot "
+                  "contain notes, placeholders, or unfilled fields.", severity="error", items=notes)
+
+
+def find_placeholders(sections: Mapping[str, str]) -> list[str]:
+    """Return every explicit drafting marker with its section, without heuristic guessing."""
+    notes: list[str] = []
+    for key, _name, heading in draft_workspace.SECTION_FILES:
+        notes.extend(placeholders_in_text(heading, str(sections.get(key) or "")))
+    return notes
+
+
+def placeholders_in_text(label: str, text: str) -> list[str]:
+    """Find filing markers in metadata or drawing specifications as well as prose sections."""
+    return [f"{label}: {match.group(0).strip()[:180]}"
+            for match in _DRAFT_PLACEHOLDER_RE.finditer(str(text or ""))]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -800,7 +898,7 @@ def _terms(phrase: str) -> set[str]:
     and "the evacuable chamber displaces" was reported as lacking basis, because the participle
     that follows the noun is part of neither a prefix nor the head word. A claim term is normally
     one to three words, so comparing every short run inside the phrase finds the noun wherever it
-    sits, at the cost of occasionally accepting a term that was not introduced — the right trade
+    sits, at the cost of occasionally accepting a term that was not introduced - the right trade
     for a check that can only ever advise.
     """
     words = _trim_phrase(phrase).split()
@@ -857,7 +955,7 @@ def _singular(word: str) -> str:
 
 def verdict_for(checks: Sequence[Mapping[str, Any]],
                 findings: Sequence[Mapping[str, Any]]) -> str:
-    """pass / warn / fail — a triage signal about internal consistency, never about patentability.
+    """pass / warn / fail - a triage signal about internal consistency, never about patentability.
 
     Only a check that code can PROVE, or a finding the reviewer marked critical, can fail a draft.
     Advisory checks and lesser findings can raise a warning and nothing more.
@@ -959,10 +1057,11 @@ WHAT TO CHECK, in this order of importance:
    numeral labels in the detailed description is the part it labels in draft/numerals.md and on
    the figure files in figures/. A figure described in the Brief Description of the Drawings shows
    what the detailed description says it shows. Nothing is described as being shown in a figure
-   that the figure's own file does not contain.
+   that the figure's own file does not contain. Open every figures/rendered-*.png image and verify
+   the actual visible geometry and printed reference numerals, not only the Markdown drawing brief.
 
 2. THE LANGUAGE AND THE LOGIC HOLD TOGETHER.
-   One name per thing, used consistently — not "gripper" here and "grasping unit" there for the
+   One name per thing, used consistently - not "gripper" here and "grasping unit" there for the
    same element. No statement that contradicts another. No step that depends on a structure the
    draft never gives it. No embodiment described as preferred in one place and impossible in
    another.
@@ -972,7 +1071,7 @@ WHAT TO CHECK, in this order of importance:
    about that reference is actually in that reference's file. A characterisation the source does
    not support is the most damaging error in this document: report it as critical. Report a
    citation used where the source file says nothing on the point. (Whether the publication EXISTS
-   is checked mechanically elsewhere — do not spend turns on it.)
+   is checked mechanically elsewhere - do not spend turns on it.)
 
 4. THE CLAIMS MATCH WHAT WAS DISCLOSED.
    Every limitation in every claim must have support in the detailed description and, where the
@@ -983,7 +1082,7 @@ WHAT TO CHECK, in this order of importance:
 
 HOW TO REPORT
    Use the tools to read the workspace. Every finding must name where it is (`where`) and quote
-   the text it is about (`evidence`) — a finding without a quote from the document is a guess and
+   the text it is about (`evidence`) - a finding without a quote from the document is a guess and
    must not be reported. If you are unsure, say so in the detail and mark it minor.
    Report NOTHING you have not verified by reading. An empty findings list is a valid and useful
    answer; padding it with speculation is not.
@@ -993,11 +1092,12 @@ HOW TO REPORT
 REVIEW_PROMPT = """Review the draft in this workspace.
 
   draft/            the application, one file per section, plus numerals.md
-  figures/          one file per drawing: what it shows and which numerals appear on it
+  figures/          one Markdown brief and one rendered-*.png image per drawing
   prior_art/        the references the draft is allowed to cite, with their actual text
   input/            the inventor's disclosure and the conversation with the drafter
 
-Read draft/ in full — every section, not a sample. Then read numerals.md and figures/, then the
+Read draft/ in full - every section, not a sample. Then read numerals.md, every figure brief, and
+every rendered-*.png image in figures/. Compare the pixels with the brief and the text. Then read the
 prior_art/ files for every reference the draft cites.
 
 The mechanical checks below have ALREADY been run in code. Do not repeat them; use them as
