@@ -390,7 +390,8 @@ def test_the_repo_migrations_are_discoverable_and_include_figure_images():
     )
     assert [m.filename for m in migrations] == on_disk, "discovery must find every numbered file"
     assert found == sorted(found, key=int), "order must be numeric, so 002 runs before 010"
-    assert len(set(found)) == len(found), "a duplicate version number is never a coincidence"
+    assert len({int(v) for v in found}) == len(found), (
+        "a duplicate version number is never a coincidence, and 009 and 9 are one version")
 
     adopted_history = [f"{n:03d}" for n in range(1, 10)]
     assert found[: len(adopted_history)] == adopted_history, (

@@ -149,6 +149,21 @@ are still the thing any recall claim is measured against. Do not take 011 for so
 Ordering is durable, then corpus, then retrieval, then infrastructure, because the corpus release
 tables are the landing zone the backfill already writes into.
 
+### 014 is ADOPTED, not applied, and why that is not a precedent
+
+`sql/014_fulltext_acquisition.sql` is entirely `CREATE TABLE IF NOT EXISTS` and
+`CREATE INDEX IF NOT EXISTS` over four new tables that nothing else reads, and none of its indexes
+touches a live table. Its objects were created on the live database on 2026-08-22 by an explicit
+operator command, `ops/fulltext_acquire.py ensure-schema`, rather than by the runner. That is a
+deliberate exception and not a pattern to copy: it is an operator command, it is not called at
+worker startup, and the worker refuses to start if the tables are absent
+(`acquire.tasks.require_schema`).
+
+Because the objects are already there, the ledger is made honest with `adopt` and not with `apply`.
+`migrate.py adopt --only 014` records the file and its checksum without executing the DDL. Every
+statement in it is idempotent so `apply` would also succeed rather than raise the way 007 does, but
+adopting is what keeps the ledger a record of what actually ran.
+
 ### The 006 incident, 2026-08-22
 
 `sql/006_draft_agent.sql` was adopted into the live ledger at 10:05 with checksum `a7ad2750`. At
