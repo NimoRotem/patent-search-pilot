@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: tantivy
+Version: 0.26.0
+Requires-Dist: nox ; extra == 'dev'
+Provides-Extra: dev
+License-File: LICENSE
+Summary: Official Python bindings for the Tantivy search engine
+Author-email: Damir Jelić <poljar@termina.org.uk>, Caleb Hattingh <code@cjrh.info>, Cam Parry <cam.parry@kapiche.com>
+Requires-Python: >=3.10

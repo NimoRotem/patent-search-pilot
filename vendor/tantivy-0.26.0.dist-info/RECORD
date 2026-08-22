@@ -1,0 +1,13 @@
+tantivy-0.26.0.dist-info/INSTALLER,sha256=zuuue4knoyJ-UwPPXg8fezS7VCrXJQrAP7zeNuwvFQg,4
+tantivy-0.26.0.dist-info/METADATA,sha256=pIDIV6FoMB5-ZL2l7u30XgEd5Luo39cEI0_4n7f1Ab4,337
+tantivy-0.26.0.dist-info/RECORD,,
+tantivy-0.26.0.dist-info/REQUESTED,sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0
+tantivy-0.26.0.dist-info/WHEEL,sha256=qcptoZlhfIXMX79vtSlJjktSxXjWW-Zv9r2eVf661bI,147
+tantivy-0.26.0.dist-info/direct_url.json,sha256=OlJuWuddXxwqkduOELOOZIZAwHxkHWTGmswIeXaXpHA,291
+tantivy-0.26.0.dist-info/licenses/LICENSE,sha256=PdByIFb3JHNqufb7s3DAQsOTRkG3Ylcl8pqZK1f5Qzo,1086
+tantivy-0.26.0.dist-info/sboms/tantivy.cyclonedx.json,sha256=ZDt8LyTxmFKyiZ2k8NJtdVQ6Xp6f-JItdbNokXSg0D8,159727
+tantivy/__init__.py,sha256=pwQME6G-2TdBk9Rn8JTxvlyxtmky6BA9_WCjkyC29pI,22
+tantivy/__pycache__/__init__.cpython-311.pyc,,
+tantivy/py.typed,sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0
+tantivy/tantivy.cpython-311-x86_64-linux-gnu.so,sha256=Ks5rN6MSCfwPPrBqqj0lYtrJApNTfoBvMrw2Rgj_0wY,13315760
+tantivy/tantivy.pyi,sha256=nJ2pfvGbGifYMrc-x-7T-SP3_0U1xTuUwOdd6401nO4,14892
