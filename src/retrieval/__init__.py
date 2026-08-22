@@ -6,6 +6,8 @@ unchanged, so `import retrieval` and `from retrieval import X` keep working for 
 callers in `src/`, `eval/` and `tests/`. The split is behaviour preserving on its own commit.
 
     orchestrator.py   the Retriever, the presets and the pass that runs the channels
+    channels.py       the one table where a channel NAME becomes a channel CALL (hot and cold)
+    cold.py           the cold tier: the same channels, bound to a woken domain shard
     dense.py          hot claim vectors, hot description vectors, hot abstracts, QBE's raw pass
     lexical.py        the BM25 channel and the backend seam workstream C implements
     exact.py          phrase and proximity
@@ -32,15 +34,17 @@ import db                                            # noqa: F401
 import embed                                         # noqa: F401
 import rerank as rr                                  # noqa: F401
 
-from . import citations, cpc, dense, exact, family, fusion, global_search, legal, lexical
+from . import channels, citations, cold, cpc, dense, exact, family, fusion, global_search
+from . import legal, lexical                                      # noqa: F401
 from . import orchestrator, qbe, shard_manager, shard_router      # noqa: F401
 from .base import (CHUNK_FETCH, EF_SEARCH, MAX_SCAN_TUPLES, PUB_CAP, SEED_CHUNK_FETCH,
                    SEED_EF_SEARCH, SEED_MAX_SCAN_TUPLES, SEED_PUB_CAP, RetrieverBase, _vec)
+from .channels import ChannelArgs
 from .cpc import CPC_HINT_MAX
 from .dense import search_doc_chunks
 from .fusion import (CHANNEL_WEIGHTS, DENSE_FLOOR, OOD_LOCAL_RELEVANCY_FLOOR, RERANK_CHUNK,
-                     RERANK_TOP, RRF_K, _cget, _rerank_progressive, deprioritize_ood_local,
-                     is_local_noise, rrf)
+                     RERANK_TOP, RRF_K, _cget, _rerank_progressive, channel_weight,
+                     deprioritize_ood_local, is_local_noise, rrf)
 from .legal import _date_clause
 from .lexical import (BM25_TERMS, LexicalBackend, LexicalFilters, LexicalHit,
                       PostgresLexicalBackend)
@@ -52,9 +56,9 @@ __all__ = [
     "CHUNK_FETCH", "PUB_CAP", "SEED_CHUNK_FETCH", "SEED_PUB_CAP",
     "EF_SEARCH", "SEED_EF_SEARCH", "MAX_SCAN_TUPLES", "SEED_MAX_SCAN_TUPLES",
     "BM25_TERMS", "CPC_HINT_MAX", "OOD_LOCAL_RELEVANCY_FLOOR",
-    "is_local_noise", "deprioritize_ood_local", "rrf", "RetrieverBase",
+    "is_local_noise", "deprioritize_ood_local", "rrf", "RetrieverBase", "channel_weight",
     "LexicalBackend", "LexicalFilters", "LexicalHit", "PostgresLexicalBackend",
-    "global_search", "shard_router", "shard_manager",
+    "global_search", "shard_router", "shard_manager", "cold", "channels", "ChannelArgs",
     "_vec", "_date_clause", "_rerank_progressive", "_cget",
     "db", "embed", "rr",
 ]
