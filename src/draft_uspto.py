@@ -225,9 +225,9 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
         if not (active.get("numeral_audit") or {}).get("ok"):
             live_drawing_failures.append(
                 f"{label}: OCR numeral inspection did not pass")
-        if not (active.get("semantic_audit") or {}).get("ok"):
+        if not draft_figures.current_semantic_audit(active.get("semantic_audit") or {}):
             live_drawing_failures.append(
-                f"{label}: semantic drawing inspection did not pass")
+                f"{label}: current semantic drawing consensus did not pass")
         if not draft_figures.current_leader_audit(active.get("leader_audit") or {}):
             live_drawing_failures.append(
                 f"{label}: current leader placement consensus did not pass")
