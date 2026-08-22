@@ -312,10 +312,24 @@ _SSE_PING = 15.0    # seconds between keep-alive comments
 #  exists. No worker is started here, corpus writes are not armed, and supervisor is untouched.
 DURABLE_RUNS_ENV = "DURABLE_SEARCH_RUNS"
 _TRUTHY = {"1", "true", "yes", "on"}
+_FALSY = {"0", "false", "no", "off", ""}
 
 
 def durable_runs_enabled():
-    return str(os.environ.get(DURABLE_RUNS_ENV, "")).strip().lower() in _TRUTHY
+    """The WEB flag. Unparseable means OFF, loudly.
+
+    This is the opposite trade from the worker's flag and deliberately so. Refusing to serve the
+    site over a typo in an environment variable is a worse outcome than serving the legacy path,
+    which is what every request did yesterday. But silently reading "maybe" as off is how a
+    rollout that somebody believes is live sits there doing nothing, so it says so on stderr.
+    """
+    raw = str(os.environ.get(DURABLE_RUNS_ENV, "")).strip().lower()
+    if raw in _TRUTHY:
+        return True
+    if raw not in _FALSY:
+        print(f"[durable] {DURABLE_RUNS_ENV}={raw!r} is not a recognised boolean; "
+              f"treating it as OFF and using the legacy path", file=sys.stderr, flush=True)
+    return False
 
 
 def _subscribe(slug):
@@ -1946,14 +1960,33 @@ def _durable_liveness(slug):
     which reads as "nothing is running" to a caller about to delete work in progress. Anything
     destructive has to be able to tell those apart and refuse to act on the second one.
     """
+    state, row = _durable_lookup(slug)
+    if state == "unknown":
+        return None
+    if state == "absent":
+        return False
+    return row.get("status") in ("queued", "running")
+
+
+#  The one message a reader ever sees when the run store cannot be reached. Fixed, so no variant
+#  of it can carry a DSN, a role name, a host or a query fragment down to a browser.
+DURABLE_UNAVAILABLE_MSG = ("This search cannot be read just now. Please retry shortly.")
+
+
+def _durable_lookup(slug):
+    """('present', row) | ('absent', None) | ('unknown', None).
+
+    THREE answers, because collapsing the first and third is how an outage gets read as "there is
+    no such run". A caller that then falls through to stale memory tells the user something it
+    does not actually know, and a caller about to delete work acts on a state it never saw.
+    The detail of the failure is logged HERE and never returned.
+    """
     try:
         row = runstore.latest_for_slug(slug)
     except Exception:                                                # noqa: BLE001
         traceback.print_exc()
-        return None
-    if not row:
-        return False
-    return row.get("status") in ("queued", "running")
+        return "unknown", None
+    return ("present", row) if row else ("absent", None)
 
 
 def _durable_run_for(slug):
@@ -1979,9 +2012,8 @@ def _durable_run_for(slug):
     """
     if not durable_runs_enabled():
         return None
-    try:
-        row = runstore.latest_for_slug(slug)
-    except Exception:
+    state, row = _durable_lookup(slug)
+    if state == "unknown":
         return None
     if row and row.get("status") in _DURABLE_TERMINAL:
         with _JOB_LOCK:
@@ -1989,6 +2021,31 @@ def _durable_run_for(slug):
         if job.get("status") in ("running", "partial"):
             return None            # a current legacy claim outranks a settled durable run
     return row
+
+
+def _legacy_claim_live(slug):
+    """True when THIS process knows a legacy run is executing for the slug.
+
+    Knowing that is real information and outranks not being able to reach the run store: the page
+    keeps reporting the run that is actually running.
+    """
+    with _JOB_LOCK:
+        job = _JOBS.get(slug) or {}
+    return job.get("status") in ("running", "partial")
+
+
+def _durable_unavailable_event(slug):
+    """The fixed, detail-free wire event for an unknown run-store state.
+
+    Every key the browser reads is present, so the page renders an error rather than crashing on a
+    missing field, and `retryable` tells it this is a transient condition rather than a verdict on
+    the search.
+    """
+    return {"kind": "error", "slug": slug, "status": "error",
+            "msg": DURABLE_UNAVAILABLE_MSG,
+            "attempt": 0, "elapsed_total_sec": None, "detail": {},
+            "elapsed_sec": 0, "tokens": 0, "seq": 0,
+            "retryable": True, "ready": False, "done": False}
 
 
 def _durable_epoch(run):
@@ -3422,6 +3479,11 @@ def status(slug):
     regression.sh); /events/<slug> is the primary, push-based channel."""
     if not _can_access_report(slug):
         abort(404)
+    if durable_runs_enabled() and _durable_lookup(slug)[0] == "unknown" \
+            and not _legacy_claim_live(slug):
+        #  UNKNOWN, and nothing in this process knows better. Saying "not found" or falling
+        #  through to whatever stale memory holds would both be assertions we cannot support.
+        return jsonify(_durable_unavailable_event(slug)), 503
     run = _durable_run_for(slug)
     if run is not None:
         ev = _durable_event(slug, run)
@@ -3449,6 +3511,13 @@ def events(slug):
     if not _can_access_report(slug):
         abort(404)
 
+    if durable_runs_enabled() and _durable_lookup(slug)[0] == "unknown" \
+            and not _legacy_claim_live(slug):
+        def _unavailable():
+            yield "data: " + json.dumps(_durable_unavailable_event(slug)) + "\n\n"
+        return Response(stream_with_context(_unavailable()), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache, no-transform",
+                                 "X-Accel-Buffering": "no", "Connection": "keep-alive"})
     run = _durable_run_for(slug)
     if run is not None:
         return Response(stream_with_context(_durable_stream(slug, run["run_id"])),

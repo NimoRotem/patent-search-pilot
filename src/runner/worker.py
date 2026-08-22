@@ -50,6 +50,36 @@ import corpus_guard
 import runctx
 import runstore
 
+WORKER_ENABLED_ENV = "DURABLE_WORKER_ENABLED"
+_TRUTHY = {"1", "true", "yes", "on"}
+_FALSY = {"0", "false", "no", "off", ""}
+
+
+class NotEnabled(RuntimeError):
+    """The worker was started without an explicit, well-formed opt-in."""
+
+
+def enabled():
+    """Whether this process may execute runs. Off by default, and FAILS CLOSED.
+
+    A worker spends money: provider calls, retrieval, reads. So execution is opt-in, and a value
+    that cannot be parsed is refused rather than guessed. Guessing "off" would be survivable;
+    guessing "on" would not, and a typo in a unit file must not be the difference. Contrast
+    `webapp.durable_runs_enabled`, where an unparseable value falls back to the legacy path
+    because refusing to serve the site is the worse failure there.
+    """
+    raw = str(os.environ.get(WORKER_ENABLED_ENV, "")).strip().lower()
+    if raw in _TRUTHY:
+        return True
+    if raw in _FALSY:
+        raise NotEnabled(
+            f"{WORKER_ENABLED_ENV} is not set. Durable execution is opt-in: set it to 1 to let "
+            f"this worker claim and run searches.")
+    raise NotEnabled(
+        f"{WORKER_ENABLED_ENV}={raw!r} is not a recognised boolean. Refusing to start rather "
+        f"than guess, because guessing wrong here spends money.")
+
+
 POLL_SECONDS = float(os.environ.get("RUN_WORKER_POLL", "2.0"))
 REAP_SECONDS = float(os.environ.get("RUN_WORKER_REAP", "15.0"))
 
@@ -165,6 +195,14 @@ def main(argv=None):
     ap.add_argument("--reaper-only", action="store_true",
                     help="return expired leases and exit; execute nothing")
     args = ap.parse_args(argv)
+
+    try:
+        enabled()
+    except NotEnabled as exc:
+        #  Before ANY side effect, including the reaper, which mutates run state and is therefore
+        #  not a read-only escape hatch.
+        print(f"[worker] refusing to start: {exc}", file=sys.stderr, flush=True)
+        return 2
 
     corpus_guard.arm("search worker")
     signal.signal(signal.SIGTERM, _signal)
