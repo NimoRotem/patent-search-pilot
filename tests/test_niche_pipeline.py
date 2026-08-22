@@ -336,7 +336,7 @@ def test_waterfall_validator_can_reject_bad_provider_output_and_continue():
 
 def test_migration_is_staging_only_and_has_all_durable_tables():
     root = Path(__file__).resolve().parents[1]
-    sql = (root / "sql" / "010_niche_fetch_queue.sql").read_text()
+    sql = (root / "sql" / "018_niche_corpus_staging.sql").read_text()
     normalized = " ".join(sql.upper().split())
 
     assert "CREATE SCHEMA IF NOT EXISTS NICHE_CORPUS" in normalized

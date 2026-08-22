@@ -102,6 +102,24 @@ def test_duplicate_version_numbers_are_refused(sqldir):
     assert "009" in str(e.value)
 
 
+def test_the_real_sql_directory_has_no_duplicate_version():
+    """The generic duplicate test uses a tmp_path, so it can never notice the repo's own
+    collision. This one runs `discover()` over `sql/` as it is actually checked in.
+
+    It went red on this branch: the `patentdata` session shipped `sql/010_niche_fetch_queue.sql`
+    while workstream B already held 010, both with `CREATE TABLE IF NOT EXISTS`, so whichever
+    ran first would have silently won. Theirs is now 018. Put any second file back at any
+    existing number and this fails again.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    migrations = migrate.discover(os.path.join(root, "sql"))
+    versions = [m.version for m in migrations]
+    assert len(versions) == len(set(versions))
+    assert versions == sorted(versions, key=int)
+    #  Version assignments are docs/migrations.md's table, and H owns it.
+    assert "018" in versions, "the niche staging schema is 018"
+
+
 def test_numeric_alias_versions_are_duplicates(sqldir):
     """009 and 9 are the same numeric migration version, even if their strings differ."""
     write(sqldir, "009_durable_runs.sql", "SELECT 1;")

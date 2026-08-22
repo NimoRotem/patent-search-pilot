@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-MIGRATION = ROOT / "sql" / "010_niche_fetch_queue.sql"
+MIGRATION = ROOT / "sql" / "018_niche_corpus_staging.sql"
 DEFAULT_ARTIFACTS = ROOT / "artifacts"
 
 
@@ -25,7 +25,7 @@ def _common_database(parser):
     parser.add_argument(
         "--init-schema",
         action="store_true",
-        help="apply sql/010_niche_fetch_queue.sql before running",
+        help="apply sql/018_niche_corpus_staging.sql before running",
     )
 
 

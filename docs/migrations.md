@@ -163,7 +163,9 @@ picking the same next one is how the last collision happened, and it happened ag
 | **014** | `sql/014_fulltext_acquisition.sql` | workstream C, full text | integrated and **adopted** on the live database |
 | **015** | `sql/015_draft_turn_candidates.sql` | workstream H | integrated, see the 006 incident |
 | **016** | `sql/016_bench_indexes.sql` | workstream H | reserved for the 002 split |
-| **017** and above | free | | ask H. Workstream D takes 017 when it renumbers off 013 |
+| **017** | reserved | workstream D, embed pipeline | D takes 017 when it renumbers off 013 |
+| **018** | `sql/018_niche_corpus_staging.sql` | workstream M, the `patentdata` absorption | integrated, **not applied**, and it must not be applied to the live database. See below |
+| **019** and above | free | | ask H |
 
 Two corrections to what this document used to say. The branches it named, `rebuild/v3-corpus` and
 `rebuild/v3-eval`, **do not exist**; the work moved to `v3/F-corpus-release` and, in eval's case,
@@ -188,6 +190,31 @@ Because the objects are already there, the ledger is made honest with `adopt` an
 `migrate.py adopt --only 014` records the file and its checksum without executing the DDL. Every
 statement in it is idempotent so `apply` would also succeed rather than raise the way 007 does, but
 adopting is what keeps the ledger a record of what actually ran.
+
+### 018 is the renumbered `patentdata` collision, 2026-08-22
+
+The `patentdata` Codex session on `grabo-tech` shipped `sql/010_niche_fetch_queue.sql` on branch
+`Nimo/niche-corpus-pipeline`, which is the number workstream B already holds. Both files use
+`CREATE TABLE IF NOT EXISTS` and they create disjoint objects, so whichever ran first would have
+silently won and the other workstream would have read a schema it did not recognise. B's 010 is in
+the pending set, so nothing had run yet and nothing was lost. `discover()` raised `DuplicateVersion`
+on `v3/M-patentdata` until the rename, which is the behaviour this table exists to produce.
+
+Theirs is now `sql/018_niche_corpus_staging.sql`. Neither 010 was touched: B's has a pending row
+and an applied migration is history, so the file that moves is the one with no claim to the number.
+`src/corpus/niche/cli.py`, `tests/test_niche_pipeline.py` and `docs/niche-corpus.md` were updated
+with it.
+
+**018 must not be applied to the live corpus database.** It creates the schema `niche_corpus` and
+five tables for a dedicated staging database that does not exist anywhere yet: not on the live box,
+not on `grabo-tech`, nowhere. Its own CLI refuses to guess one, `database.require_dsn` raises
+unless `NICHE_DATABASE_URL` is set explicitly, and `docs/niche-corpus.md` says to apply it only to
+the independent staging database. Applying it to the live database would create five empty tables
+nothing reads and record a ledger row asserting that the niche staging schema lives there.
+
+`tests/test_migrate.py::test_the_real_sql_directory_has_no_duplicate_version` now runs `discover()`
+over the checked in `sql/` directory. The pre-existing duplicate test builds its own `tmp_path`, so
+it could never have noticed the repo's own collision.
 
 ### The 006 incident, 2026-08-22
 

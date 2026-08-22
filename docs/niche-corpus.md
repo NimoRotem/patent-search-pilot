@@ -32,7 +32,7 @@ known-result publications can enter the manifest without CPC or IPC data.
 
 ## Schema
 
-Apply [sql/010_niche_fetch_queue.sql](../sql/010_niche_fetch_queue.sql) only to
+Apply [sql/018_niche_corpus_staging.sql](../sql/018_niche_corpus_staging.sql) only to
 the independent staging database. It creates:
 
 - `niche_corpus.niche_publications`
