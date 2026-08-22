@@ -288,12 +288,21 @@ def build_release(src, dst, *, shard_key, kind="domain", domains=(), family_keys
     built_from["selection"] = {"domains": sorted(domains or []),
                                "family_keys_explicit": family_keys is not None,
                                "max_families": max_families,
-                               "families_selected": len(fam_by_key)}
+                               "families_selected": len(fam_by_key),
+                               "publications_selected": len(pub_family)}
     built_from["demand"] = {k: v for k, v in demand_report.items() if k != "missing"}
-    counts = {"chunks": n, "families": len(members), "publications": len(pub_family),
+    #  The counts a shard can RECHECK, read back out of the database rather than accumulated in
+    #  this process. `len(pub_family)` is the number of publications SELECTED, and a publication
+    #  whose every chunk lacked an embedding contributes none, so recording the selection here
+    #  made `verify_serving` fail on every release ever built: hot_v1 recorded 4,136 publications
+    #  and held 3,909. What was selected is a property of the build and belongs in `built_from`.
+    counts = {**release_store.observed_counts(dst, release_id),
               "chunks_by_kind": kinds, "chunks_from_live": chunk_stats.get("live", 0),
               "chunks_from_stage": chunk_stats.get("stage", 0),
               "chunks_from_demand": len(demand_chunks)}
+    if counts["chunks"] != n:
+        raise BuildError(f"{release_id}: wrote {n} chunks but the partition holds "
+                         f"{counts['chunks']}")
     idx = release_store.index_bytes(dst, release_id)
     manifest = manifest_mod.build(
         release_id=release_id, shard_key=shard_key, version=rel["version"], kind=kind,

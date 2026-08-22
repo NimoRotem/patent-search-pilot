@@ -423,16 +423,23 @@ def rollback(conn, shard_key, *, actor="", reason="", commit=True):
 # the shard's own check
 # ---------------------------------------------------------------------------------------------
 def observed_counts(conn, release_id):
+    """What the database actually holds for this release. The manifest records exactly this, so
+    `verify_serving` compares like with like.
+
+    Publications are counted by `publication_number`, not by `publication_id`. A chunk that came
+    from the demand loop has no row in `publications` and carries `publication_id = 0`, so
+    counting distinct ids collapses every demand publication in the release into one.
+    """
     with conn.cursor() as cur:
-        cur.execute('SELECT count(*) n FROM chunks_release WHERE release_id=%s', (release_id,))
-        chunks = int(cur.fetchone()["n"])
+        cur.execute("""SELECT count(*) chunks,
+                              count(DISTINCT publication_number) FILTER
+                                  (WHERE publication_number <> '') pubs
+                       FROM chunks_release WHERE release_id=%s""", (release_id,))
+        r = cur.fetchone()
         cur.execute("SELECT count(*) n FROM corpus_release_member WHERE release_id=%s",
                     (release_id,))
         fams = int(cur.fetchone()["n"])
-        cur.execute("SELECT count(DISTINCT publication_id) n FROM chunks_release WHERE release_id=%s",
-                    (release_id,))
-        pubs = int(cur.fetchone()["n"])
-    return {"chunks": chunks, "families": fams, "publications": pubs}
+    return {"chunks": int(r["chunks"]), "families": fams, "publications": int(r["pubs"])}
 
 
 def verify_serving(conn, release_id, *, artifact_root=None):

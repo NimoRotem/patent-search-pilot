@@ -320,6 +320,55 @@ def test_verification_catches_a_content_hash_that_does_not_recompute(conn):
     assert not manifest_mod.verify(m).ok
 
 
+def test_the_manifest_records_what_the_database_holds_not_what_was_selected(conn):
+    """The defect that made every release ever built fail its own verification.
+
+    The builder recorded `counts.publications` as the number of publications SELECTED, while
+    `observed_counts` counts the ones that actually contributed a chunk. A publication whose every
+    chunk lacked an embedding is selected and contributes none, so hot_v1 recorded 4,136 and held
+    3,909 and `verify hot_v1` exited 1.
+    """
+    rid = _seed(conn, "t_counts", version=1, families=("F1", "F2"))
+    observed = release_store.observed_counts(conn, rid)
+    assert release_store.get(conn, rid)["manifest"]["counts"]["publications"] \
+        == observed["publications"]
+    assert release_store.verify_serving(conn, rid).ok
+
+    #  The old shape: a selection count larger than what was loaded.
+    stale = dict(release_store.get(conn, rid)["manifest"])
+    stale["counts"] = {**stale["counts"], "publications": observed["publications"] + 227}
+    v = manifest_mod.verify(stale, observed_counts=observed)
+    assert not v.ok
+    assert any(c["check"] == "count:publications" for c in v.failures)
+
+
+def test_a_demand_publication_is_counted_as_a_publication(conn):
+    """Demand chunks have no row in `publications` and carry publication_id = 0, so counting
+    distinct ids collapses every demand publication in a release into one."""
+    rel = release_store.create(conn, shard_key="t_demand", version=1, kind="hot")
+    rid = rel["release_id"]
+    release_store.ensure_partition(conn, rid)
+    with conn.cursor() as cur:
+        for i, pn in enumerate(("US-D1-A", "US-D2-A", "US-D3-A"), start=1):
+            cur.execute("""INSERT INTO chunks_release (release_id, chunk_id, family_key,
+                               publication_id, publication_number, home_domain, kind, lang, text,
+                               token_count, embedding, embed_model, embed_dim, source)
+                           VALUES (%s,%s,%s,0,%s,'unclassified','abstract','en',%s,5,%s,
+                                   'test-model',768,'demand')""",
+                        (rid, i, f"demand:{pn}", pn, f"an abstract {i}", VEC))
+    conn.commit()
+    assert release_store.observed_counts(conn, rid)["publications"] == 3
+
+
+def test_a_passing_check_carries_no_failure_text(conn):
+    """"ok: true, detail: observed 768 != manifest 768" is a contradiction an operator has to stop
+    and parse in the middle of a cutover."""
+    rid = _seed(conn, "t_detail", version=1)
+    v = release_store.verify_serving(conn, rid)
+    assert v.ok
+    assert all(c["detail"] == "" for c in v.checks if c["ok"])
+
+
 def test_verifying_a_release_that_does_not_exist_fails_rather_than_raising(conn):
     v = release_store.verify_serving(conn, "no_such_release_v9")
     assert not v.ok

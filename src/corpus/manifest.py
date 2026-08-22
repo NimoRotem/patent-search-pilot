@@ -116,7 +116,11 @@ class Verification:
         self.checks = []
 
     def add(self, name, ok, detail=""):
-        self.checks.append({"check": name, "ok": bool(ok), "detail": str(detail)})
+        #  The detail is the reason a check FAILED. Callers build it eagerly, so a passing check
+        #  would otherwise read "ok: true, detail: observed 768 != manifest 768", which is a
+        #  contradiction an operator has to stop and parse in the middle of a cutover.
+        self.checks.append({"check": name, "ok": bool(ok),
+                            "detail": "" if ok else str(detail)})
         return self
 
     @property
