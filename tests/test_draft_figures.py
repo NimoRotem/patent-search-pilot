@@ -366,7 +366,7 @@ def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypat
 
     def inspect_marked(_png, **kwargs):
         marked_calls.append([dict(item) for item in kwargs["anchors"]])
-        if len(marked_calls) < 4:
+        if len(marked_calls) < 6:
             return {
                 "ok": False, "inspected": True,
                 "errors": ["The center is below the bearing-face boundary."],
@@ -393,7 +393,7 @@ def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypat
         semantic={"anchors": initial, "pixel_anchor_audit": dict(accepted_pixel)})
 
     assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
-    assert len(marked_calls) == 4 and len(leader_calls) == 4
+    assert len(marked_calls) == 6 and len(leader_calls) == 6
     assert anchors[0]["x"] > 560
     assert leaders["marked_anchor_audit"]["ok"] is True
 
@@ -426,35 +426,36 @@ def test_compose_accumulates_consensus_for_unchanged_endpoint_coordinates(monkey
         ],
     })
     marked_calls = []
+    marked_numerals = []
 
     def inspect_marked(_png, **kwargs):
         marked_calls.append([dict(item) for item in kwargs["anchors"]])
+        marked_numerals.append([
+            item["numeral"] for item in draft_figures.numeral_entries(kwargs["numerals"])
+        ])
         first_round = len(marked_calls) % 2 == 1
-        rejected = "12" if first_round else "10"
-        return {
-            "ok": False, "inspected": True,
-            "errors": [f"The center for {rejected} needs correction."],
-            "incorrect": [rejected], "missing": [], "unexpected": [],
+        result = {
+            "ok": not first_round, "inspected": True,
+            "errors": (["The center for 12 needs correction."] if first_round else []),
+            "incorrect": (["12"] if first_round else []),
+            "missing": [], "unexpected": [],
             "duplicates": [], "review_count": 3,
             "prompt_version": draft_figures.MARKED_ANCHOR_PROMPT_VERSION,
             "model_name": draft_figures.vision_model(),
-            "labels": [
-                {
+            "labels": ([{
                     "numeral": "10", "correct": first_round, "repairable": True,
                     "evidence": "three reviewers inspected endpoint 10",
-                    "suggested_x": 500 if first_round else 550, "suggested_y": 500,
-                    "correct_votes": 3 if first_round else 1,
-                    "incorrect_votes": 0 if first_round else 2,
-                },
-                {
+                    "suggested_x": 500, "suggested_y": 500,
+                    "correct_votes": 3, "incorrect_votes": 0,
+                }] if first_round else []) + [{
                     "numeral": "12", "correct": not first_round, "repairable": True,
                     "evidence": "three reviewers inspected endpoint 12",
                     "suggested_x": 550 if first_round else 500, "suggested_y": 500,
                     "correct_votes": 1 if first_round else 3,
                     "incorrect_votes": 2 if first_round else 0,
-                },
-            ],
+                }],
         }
+        return result
 
     monkeypatch.setattr(draft_figures, "inspect_marked_anchors", inspect_marked)
 
@@ -465,6 +466,7 @@ def test_compose_accumulates_consensus_for_unchanged_endpoint_coordinates(monkey
 
     assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
     assert len(marked_calls) == 2
+    assert marked_numerals == [["10", "12"], ["12"]]
     assert anchors[0]["x"] == 400 and anchors[1]["x"] > 600
     assert leaders["marked_anchor_audit"]["ok"] is True
     assert leaders["marked_anchor_audit"]["certified_across_attempts"] is True

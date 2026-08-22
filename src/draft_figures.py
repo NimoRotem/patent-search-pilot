@@ -51,7 +51,7 @@ PIXEL_ANCHOR_VERSION = "pixel-anchor-v1-exterior-connectivity"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 3
-MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS = 5
+MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS = 8
 MAX_OCR_CLEAN_RETRIES = 2
 LEADER_THINKING_BUDGET = 2048
 SEMANTIC_THINKING_BUDGET = 2048
@@ -2104,14 +2104,20 @@ def _anchor_positions(anchors) -> dict[str, tuple[int, int]]:
     return positions
 
 
-def _record_marked_coordinate_certificates(certificates: dict, audit: dict, anchors, *,
-                                           attempt: int) -> None:
-    """Retain a three-review approval only while that exact endpoint stays unchanged."""
+def _prune_marked_coordinate_certificates(certificates: dict, anchors) -> None:
+    """Invalidate prior approval as soon as any later gate moves that endpoint."""
     positions = _anchor_positions(anchors)
     for numeral in list(certificates):
         certificate = certificates[numeral]
         if positions.get(numeral) != (certificate["x"], certificate["y"]):
             del certificates[numeral]
+
+
+def _record_marked_coordinate_certificates(certificates: dict, audit: dict, anchors, *,
+                                           attempt: int) -> None:
+    """Retain a three-review approval only while that exact endpoint stays unchanged."""
+    _prune_marked_coordinate_certificates(certificates, anchors)
+    positions = _anchor_positions(anchors)
     for record in (audit or {}).get("labels") or ():
         numeral = _clean_numeral(record.get("numeral"))
         if numeral not in positions or not record.get("correct"):
@@ -2213,13 +2219,19 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
                 break
         if not (labels.get("ok") and leaders.get("ok") and pixel_audit.get("ok")):
             break
+        _prune_marked_coordinate_certificates(marked_certificates, anchors)
+        pending_numerals = [
+            f"{entry['numeral']} = {entry['part']}" if entry["part"] else entry["numeral"]
+            for entry in numeral_entries(numerals)
+            if entry["numeral"] not in marked_certificates]
         marked = inspect_marked_anchors(
-            raw_png, label=label, caption=caption, numerals=numerals, anchors=anchors)
+            raw_png, label=label, caption=caption, numerals=pending_numerals, anchors=anchors)
         _record_marked_coordinate_certificates(
             marked_certificates, marked, anchors, attempt=marked_attempt + 1)
         certified = _certified_marked_anchor_audit(
             marked, marked_certificates, anchors, numerals, attempts=marked_attempt + 1)
         if certified is not None:
+            certified["specification_hash"] = specification_hash(label, caption, numerals)
             marked = certified
             break
         if marked_attempt + 1 >= MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS:
