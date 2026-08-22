@@ -25,6 +25,9 @@ import time
 MAX_CHARS = 8000        # same clip as src/chunker.py, so demand rows match corpus rows
 MIN_CHARS = 20
 CHUNKER_VERSION = "corpus-demand/1"
+#  Recorded in `corpus_ingest_queue.note` on every claim this module takes, so a claim that goes
+#  stale names the process that abandoned it instead of looking like a row nobody ever wanted.
+CLAIMANT = "corpus-release-builder"
 EMBED_SUB = 200
 
 #  A claim starts with its number. Two common shapes, and a fallback that keeps the whole block as
@@ -48,10 +51,32 @@ def pending(limit=500, runstore=None):
     return rs.pending_ingest(limit=limit)
 
 
-def claim(limit=100, runstore=None):
-    """Take a batch of requests. SKIP LOCKED, so two release builders never take the same one."""
+def claim(limit=100, runstore=None, *, claimant="", publication_numbers=None):
+    """Take a batch of requests. SKIP LOCKED, so two release builders never take the same one.
+
+    `claimant` is required by `runstore.claim_ingest` unless the rows are named outright, and it
+    defaults here to the release build that is asking. An anonymous claim is refused because a
+    claim nobody owns is demand that leaves `pending_ingest` and never comes back.
+    """
     rs = runstore or _runstore()
-    return rs.claim_ingest(limit=limit)
+    if publication_numbers is None and not str(claimant or "").strip():
+        claimant = CLAIMANT
+    return rs.claim_ingest(limit=limit, claimant=claimant,
+                           publication_numbers=publication_numbers)
+
+
+def unclaim(publication_numbers=None, runstore=None, *, claimant=None):
+    """Give a batch back. Called when a build fails after claiming and before sealing."""
+    rs = runstore or _runstore()
+    if publication_numbers is None and claimant is None:
+        claimant = CLAIMANT
+    return rs.release_ingest(publication_numbers, claimant=claimant)
+
+
+def reap(older_than_seconds=6 * 3600, runstore=None, *, sweep_all=True):
+    """Operator sweep: abandoned claims go back on the queue. `ops/build_release.py demand --reap`."""
+    rs = runstore or _runstore()
+    return rs.reap_ingest_claims(older_than_seconds, sweep_all=sweep_all)
 
 
 def mark_ingested(publication_numbers, release_id, note="", runstore=None):

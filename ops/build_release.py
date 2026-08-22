@@ -159,8 +159,14 @@ def cmd_restore(a):
 
 def cmd_demand(a):
     dst = _dst()
-    print(json.dumps({"pending": demand.pending(limit=a.limit),
-                      "ledger": demand.ledger_summary(dst)}, indent=1, default=str))
+    out = {}
+    if a.reap:
+        #  The operator sweep. Nothing else in this repo may reset a claim it did not make:
+        #  `runstore.reap_ingest_claims` raises without `sweep_all=True`.
+        out["reaped"] = demand.reap(a.reap_after)
+    out["pending"] = demand.pending(limit=a.limit)
+    out["ledger"] = demand.ledger_summary(dst)
+    print(json.dumps(out, indent=1, default=str))
 
 
 def main(argv=None):
@@ -228,6 +234,9 @@ def main(argv=None):
     rs.set_defaults(fn=cmd_restore)
 
     dm = sub.add_parser("demand"); dm.add_argument("--limit", type=int, default=50)
+    dm.add_argument("--reap", action="store_true",
+                    help="return abandoned claims (never ingested) to the pending queue")
+    dm.add_argument("--reap-after", type=float, default=6 * 3600)
     dm.set_defaults(fn=cmd_demand)
 
     a = p.parse_args(argv)

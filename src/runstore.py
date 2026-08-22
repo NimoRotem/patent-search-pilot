@@ -807,17 +807,103 @@ def pending_ingest(limit=500):
         return [_row(r) for r in cur.fetchall() or []]
 
 
-def claim_ingest(limit=100):
+#  A claim takes a real row out of the demand signal, and nothing in the queue schema records who
+#  took it. MEASURED 2026-08-22: 549 rows on the live queue sat in state='claimed' with
+#  `corpus_release=''` and `ingested_at IS NULL`, which is eleven runs of
+#  `tests/test_durable_runs.py` calling `claim_ingest(limit=50)` against the live database and
+#  cleaning up only the one row the test itself created. Fifty rows the fetcher queued vanish from
+#  `pending_ingest` every time that file runs, on any branch, with no release process anywhere.
+#
+#  So an UNSCOPED, ANONYMOUS claim is now impossible: a caller must either name the rows it wants
+#  or name itself. A test names its own publication and takes nothing else; the release builder
+#  names itself and is therefore attributable when a claim goes stale.
+class UnscopedClaim(ValueError):
+    """Raised when `claim_ingest` is called with neither a row filter nor a claimant."""
+
+
+def claim_ingest(limit=100, *, publication_numbers=None, requested_by_run=None, claimant=""):
     """The offline release process takes a batch. SKIP LOCKED, same as run claiming, so two
-    release workers never take the same publication."""
+    release workers never take the same publication.
+
+    Scope it or name yourself. `publication_numbers` or `requested_by_run` narrow the claim to rows
+    the caller already knows about; `claimant` is a free-form owner recorded in `note`, which is
+    what makes a stale claim traceable back to whoever stopped working on it. Passing none of the
+    three raises `UnscopedClaim` rather than quietly draining the top of the queue.
+    """
+    if publication_numbers is None and requested_by_run is None and not str(claimant or "").strip():
+        raise UnscopedClaim(
+            "claim_ingest() must be scoped: pass publication_numbers=, requested_by_run=, or "
+            "claimant='<who you are>'. An unscoped claim silently consumes the demand signal "
+            "`request_count` ranks releases by.")
+    where, params = ["state='pending'"], []
+    if publication_numbers is not None:
+        where.append("publication_number = ANY(%s)")
+        params.append([str(p) for p in publication_numbers])
+    if requested_by_run is not None:
+        where.append("requested_by_run = ANY(%s)")
+        params.append([str(r) for r in requested_by_run])
     with _cur() as cur:
         cur.execute("""WITH picked AS (
-                           SELECT id FROM corpus_ingest_queue WHERE state='pending'
-                           ORDER BY priority, request_count DESC, first_requested_at
+                           SELECT id FROM corpus_ingest_queue WHERE """ + " AND ".join(where) +
+                    """ ORDER BY priority, request_count DESC, first_requested_at
                            FOR UPDATE SKIP LOCKED LIMIT %s)
-                       UPDATE corpus_ingest_queue q SET state='claimed'
-                         FROM picked p WHERE q.id = p.id RETURNING q.*""", (int(limit),))
+                       UPDATE corpus_ingest_queue q
+                          SET state='claimed', note=%s
+                         FROM picked p WHERE q.id = p.id RETURNING q.*""",
+                    (*params, int(limit), str(claimant or "")))
         return [_row(r) for r in cur.fetchall() or []]
+
+
+def release_ingest(publication_numbers=None, *, claimant=None):
+    """Put claimed rows back on the queue. The undo a claim has to have.
+
+    A build that dies between claiming and sealing would otherwise leave its batch invisible to
+    `pending_ingest` for ever, which is the same defect as the test claiming production rows,
+    only slower.
+    """
+    where, params = ["state='claimed'"], []
+    if publication_numbers is not None:
+        where.append("publication_number = ANY(%s)")
+        params.append([str(p) for p in publication_numbers])
+    if claimant is not None:
+        where.append("note = %s")
+        params.append(str(claimant))
+    if len(where) == 1:
+        raise UnscopedClaim("release_ingest() must name publication_numbers= or claimant=")
+    with _cur() as cur:
+        cur.execute("UPDATE corpus_ingest_queue SET state='pending', note='' WHERE "
+                    + " AND ".join(where) + " RETURNING id", tuple(params))
+        return len(cur.fetchall() or [])
+
+
+def reap_ingest_claims(older_than_seconds=6 * 3600, *, publication_numbers=None, sweep_all=False):
+    """Return claims nobody finished to `pending`.
+
+    `ingested_at IS NULL AND corpus_release = ''` is the test for "this was never actually put in
+    a release": `mark_ingested` sets both. A claim older than the window that still looks like that
+    is abandoned, and abandoned demand that stays claimed is demand that is lost.
+
+    `sweep_all=True` is required to touch rows the caller did not name, and it is an OPERATOR
+    action: `ops/build_release.py demand --reap`. The same rule as `claim_ingest`, for the same
+    reason and found the same way. The first draft of `tests/test_corpus_ingest_demand.py` called
+    this with no filter and reset every abandoned claim on the live queue. That direction was
+    benign, it happened to be the repair those 549 rows needed, but a test that rewrites rows it
+    never created is the defect this module is being hardened against and not a convenience.
+    """
+    where = ["state='claimed'", "ingested_at IS NULL", "corpus_release=''",
+             "last_requested_at < now() - (%s * interval '1 second')"]
+    params = [float(older_than_seconds)]
+    if publication_numbers is not None:
+        where.append("publication_number = ANY(%s)")
+        params.append([str(p) for p in publication_numbers])
+    elif not sweep_all:
+        raise UnscopedClaim(
+            "reap_ingest_claims() would rewrite rows it was not given: pass publication_numbers=, "
+            "or sweep_all=True from an operator context.")
+    with _cur() as cur:
+        cur.execute("UPDATE corpus_ingest_queue SET state='pending', note='' WHERE "
+                    + " AND ".join(where) + " RETURNING publication_number", tuple(params))
+        return [r["publication_number"] for r in cur.fetchall() or []]
 
 
 def mark_ingested(publication_numbers, corpus_release="", note=""):

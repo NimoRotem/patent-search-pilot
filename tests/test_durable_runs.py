@@ -398,8 +398,12 @@ def test_repeat_demand_for_one_publication_bumps_the_count(slug):
         b = runstore.queue_for_ingest(pub, run_id=rid, reason="no claims in corpus")
         assert a["request_count"] == 1 and b["request_count"] == 2
         assert any(r["publication_number"] == pub for r in runstore.pending_ingest(limit=50))
-        claimed = [r["publication_number"] for r in runstore.claim_ingest(limit=50)]
-        assert pub in claimed
+        #  Scoped to this test's own publication. An unscoped claim_ingest(limit=50) here took the
+        #  top fifty rows of the LIVE queue every time this file ran: 549 of them were sitting in
+        #  state='claimed', never ingested, when workstream O found them on 2026-08-22.
+        claimed = [r["publication_number"] for r in runstore.claim_ingest(
+            limit=50, publication_numbers=[pub])]
+        assert claimed == [pub], "a claim scoped to one publication must take nothing else"
         assert runstore.mark_ingested([pub], corpus_release="test") == 1
     finally:
         import db
