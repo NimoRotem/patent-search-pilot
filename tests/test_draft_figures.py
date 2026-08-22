@@ -589,6 +589,31 @@ def test_leader_review_spec_contains_only_annotation_routing():
     assert "perimeter member" not in json.dumps(specification).lower()
 
 
+def test_marked_endpoint_spec_contains_local_part_definitions_only():
+    caption = (
+        "The complete sheet contains three concentric rectangles and one central circle. "
+        "The base 12 is the plate itself, whose edge is the largest rectangle. "
+        "The second side 16 is the plain margin between the first and second rectangles. "
+        "The base 12 is identified at a point on the left-hand quarter.")
+    specification = json.loads(draft_figures._marked_endpoint_specification(
+        "FIG. 3", caption, ["12 = base", "16 = second side"]))
+
+    assert specification["figure_label"] == "FIG. 3"
+    assert specification["parts"] == [
+        {
+            "numeral": "12", "part": "base",
+            "definition": "The base 12 is the plate itself, whose edge is the largest rectangle.",
+        },
+        {
+            "numeral": "16", "part": "second side",
+            "definition": (
+                "The second side 16 is the plain margin between the first and second rectangles."),
+        },
+    ]
+    encoded = json.dumps(specification).lower()
+    assert "complete sheet" not in encoded and "identified at" not in encoded
+
+
 def test_current_visual_audits_are_bound_to_the_configured_review_model(monkeypatch):
     monkeypatch.setattr(draft_figures, "vision_model", lambda: "gemini-2.5-pro")
     digest = "a" * 64
@@ -626,7 +651,7 @@ def test_endpoint_review_specs_strip_geometry_only_annotation_prohibitions(monke
         numerals=["10 = body"],
         anchors=[{"numeral": "10", "x": 500, "y": 500, "visible": True}])
 
-    assert modes == [True]
+    assert modes == []
 
 
 def test_render_refuses_to_store_a_semantically_wrong_drawing(monkeypatch):

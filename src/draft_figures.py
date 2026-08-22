@@ -45,7 +45,7 @@ SEMANTIC_PROMPT_VERSION = (
 LEADER_PROMPT_VERSION = (
     "figure-leader-v7-high-accuracy-routing-only-independent-consensus")
 MARKED_ANCHOR_PROMPT_VERSION = (
-    "figure-anchor-v5-high-accuracy-part-aware-marked-crop-consensus")
+    "figure-anchor-v6-high-accuracy-local-part-marked-crop-consensus")
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v1-exterior-connectivity"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
@@ -1409,6 +1409,32 @@ def _leader_routing_spec(label: str, numerals) -> str:
     }, ensure_ascii=False, sort_keys=True)
 
 
+def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
+    """Give endpoint reviewers one local definition per part, never whole-sheet layout."""
+    chunks = re.split(r"(?<=[.!?])\s+|[\r\n]+", str(caption or ""))
+    parts = []
+    for entry in numeral_entries(numerals):
+        numeral = entry["numeral"]
+        part = str(entry["part"] or "").strip()
+        numeral_pattern = re.compile(
+            r"(?<![A-Za-z0-9])" + re.escape(numeral) + r"(?![A-Za-z0-9])")
+        candidates = [
+            re.sub(r"^\s*[-*#]+\s*", "", re.sub(r"\s+", " ", chunk)).strip()
+            for chunk in chunks
+            if numeral_pattern.search(chunk) and part.lower() in chunk.lower() and
+            not _ANNOTATION_ONLY.search(chunk) and not _ANNOTATION_PLACEMENT.search(chunk)
+        ]
+        parts.append({
+            "numeral": numeral,
+            "part": part,
+            "definition": (candidates[0] if candidates else part)[:800],
+        })
+    return json.dumps({
+        "figure_label": canonical_figure_label(label),
+        "parts": parts,
+    }, ensure_ascii=False, sort_keys=True)
+
+
 def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict:
     """Require independent geometry and constraint traces before labels are composited."""
     from google.genai.types import GenerateContentConfig, Part, ThinkingConfig
@@ -1585,8 +1611,7 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
     from google.genai.types import GenerateContentConfig, Part, ThinkingConfig
 
     entries = numeral_entries(numerals)
-    specification = _review_specification(
-        label, caption, numerals, geometry_only=True)
+    specification = _marked_endpoint_specification(label, caption, numerals)
     spec_hash = specification_hash(label, caption, numerals)
     montage = _marked_anchor_montage(png, anchors, numerals)
     model = vision_model()
