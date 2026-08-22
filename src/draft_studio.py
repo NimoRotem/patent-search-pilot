@@ -124,6 +124,12 @@ detail. Return `questions` as an empty array. The automatic review will reject t
 one unfinished marker remains. Use commas, colons, full stops, or ordinary hyphens; never use an
 em dash.
 
+DRAWINGS FOLLOW THE INVENTION
+Generated drawing pixels are evidence to inspect, never authority for the invention. The inventor
+sources govern the patent text, the patent text governs each figure brief, and each brief governs
+the rendered sheet. Never add or widen a structure, relationship, embodiment, numeral definition,
+or claim to accommodate something an image model drew. Correct or regenerate the drawing instead.
+
 WORKING AROUND THE PRIOR ART
 Read prior_art/INDEX.md and then every reference file before you write. For each one, work out
 what it actually teaches - not what its title suggests. Then:
@@ -171,12 +177,16 @@ Figures live in figures/, one file per drawing, listing the numerals that appear
 on a drawing that is not in the table, or a part described as visible in a figure whose file does
 not list it, is a defect the review will find. Every application must include at least one figure.
 Use a structural view, system diagram, or process flow as appropriate to the disclosed invention.
-Normally use two to four figures. Prefer no more than eight numerals on one sheet; when more
-structure must be shown, use a focused detail or sectional sheet instead of overcrowding one image.
+Normally use two to four figures. Do not list more than eight numerals on one sheet. When more
+structure must be shown, add a focused detail or sectional sheet instead of overcrowding one image,
+then synchronize the Brief Description of the Drawings and Detailed Description.
 Figure files are Markdown specifications only. Never create SVG, PNG, or other image files. The
 image pipeline generates unlabeled geometry, then adds the listed numerals, FIG. label, callouts,
 and leader lines deterministically. Describe the required geometry and relationships, and list
-the numerals, but never ask the geometry image to draw text or labels itself.
+the numerals, but never ask the geometry image to draw text or labels itself. Never address or
+mention a draftsperson, drafter, illustrator, reviewer, attorney, or other person in a figure
+brief. When a part name is only a semantic identifier, say that it does not appear as drawing
+text.
 
 FILES
   input/disclosure.md     the invention (read-only authority)
@@ -240,6 +250,15 @@ false positive, make the draft unambiguous enough that the check passes without 
 invention. Keep the reference-numeral table, drawing descriptions, detailed description, claims,
 and every file in figures/ synchronized.
 
+Generated pixels are never authority for the invention. The authority order is the inventor's
+disclosure and conversation, then the patent text, then the figure briefs, then the rendered
+sheets. Never change the claims, description, numeral table, or disclosed embodiments merely to
+excuse geometry, an object, or a leader endpoint that the image model drew incorrectly. Never add
+an implementation detail or embodiment because it appeared in a generated image. For a drawing
+finding, preserve the authoritative invention, strengthen the figure brief, and regenerate the
+sheet from the authoritative text until the pixels conform. A stubborn rendering artifact remains
+a drawing defect; it does not become part of the invention.
+
 Leave no note, placeholder, question, or instruction for a person. Return the structured answer
 with `action` set to "revised" and `questions` as an empty array."""
 
@@ -278,6 +297,73 @@ def filing_blockers(report: Mapping[str, Any]) -> list[str]:
     for finding in report.get("findings") or ():
         blockers.append(f"Independent review finding: {finding.get('title') or 'unnamed'}")
     return list(dict.fromkeys(blockers))
+
+
+_DRAWING_INSPECTION_CHECK = "Every drawing sheet passes geometry, leader, and OCR inspection"
+
+
+def restore_text_after_drawing_only_review(workspace: Path, snapshot: Mapping[str, Any],
+                                           report: Mapping[str, Any]) -> bool:
+    """Keep image-model artifacts from changing filing sources during an automatic repair.
+
+    A drawing-only review may edit figure briefs, but it has no authority to change the filing
+    text, redefine a numeral, add or remove a sheet, or move a numeral between sheets. Restore
+    those sources after the agent returns while retaining corrected geometry instructions inside
+    each existing figure brief. Mixed reviews are not locked because a source-fidelity,
+    claim-support, or other text finding may legitimately require a broader repair.
+    """
+    checks = [item for item in (report.get("checks") or [])
+              if str(item.get("status") or "") != "pass"]
+    findings = list(report.get("findings") or [])
+    if not checks and not findings:
+        return False
+    if any(str(item.get("name") or "") != _DRAWING_INSPECTION_CHECK for item in checks):
+        return False
+    if any(str(item.get("category") or "") != "figures_and_numerals" for item in findings):
+        return False
+    sections = human_text(dict(snapshot.get("sections") or {}))
+    numerals = human_text([dict(item) for item in (snapshot.get("numerals") or [])])
+    baseline_figures = human_text(
+        [dict(item) for item in (snapshot.get("figures") or [])])
+    current_figures = human_text(draft_workspace.read_figures(workspace))
+    used_current: set[int] = set()
+    locked_figures = []
+    for index, baseline in enumerate(baseline_figures):
+        baseline_number = draft_qa.figure_number(baseline.get("label"))
+        match = next(((item_index, item)
+                      for item_index, item in enumerate(current_figures)
+                      if item_index not in used_current and baseline_number and
+                      draft_qa.figure_number(item.get("label")) == baseline_number), None)
+        if match is None and index < len(current_figures) and index not in used_current:
+            candidate = current_figures[index]
+            if not baseline_number and str(candidate.get("label") or "").strip().lower() == \
+                    str(baseline.get("label") or "").strip().lower():
+                match = (index, candidate)
+        current = match[1] if match else None
+        if match:
+            used_current.add(match[0])
+        locked_figures.append({
+            "label": str(baseline.get("label") or f"FIG. {index + 1}"),
+            "caption": str((current or baseline).get("caption") or ""),
+            "numerals": list(baseline.get("numerals") or []),
+        })
+    comparable_current = [{
+        "label": str(item.get("label") or ""),
+        "caption": str(item.get("caption") or ""),
+        "numerals": list(item.get("numerals") or []),
+    } for item in current_figures]
+    sections_changed = draft_workspace.read_sections(workspace) != sections
+    numerals_changed = draft_workspace.read_numerals(workspace) != numerals
+    figures_changed = comparable_current != locked_figures
+    if not (sections_changed or numerals_changed or figures_changed):
+        return False
+    if sections_changed:
+        draft_workspace.write_sections(workspace, sections)
+    if numerals_changed:
+        draft_workspace.write_numerals(workspace, numerals)
+    if figures_changed:
+        draft_workspace.write_figures(workspace, locked_figures)
+    return True
 
 
 def figures_for_qa(project_id: int, user_id: int,
@@ -412,7 +498,68 @@ def validate_snapshot(snapshot: Mapping[str, Any],
     if markers:
         raise drafting.DraftingValidationError(
             "The filing artifacts contain an unresolved placeholder: " + markers[0] + ".")
+    for figure in figures:
+        values = {draft_qa._drawing_numeral(value)
+                  for value in (figure.get("numerals") or [])}
+        values.discard("")
+        if len(values) > draft_qa.MAX_NUMERALS_PER_SHEET:
+            label = str(figure.get("label") or "Drawing")[:80]
+            raise drafting.DraftingValidationError(
+                f"{label} lists {len(values)} numerals, which is more than "
+                f"{draft_qa.MAX_NUMERALS_PER_SHEET} numerals on one sheet. Split it into focused "
+                "views and synchronize the drawing descriptions before generating images.")
     return {"sections": sections, "numerals": numerals, "figures": figures}
+
+
+def candidate_snapshot_for_repair(snapshot: Any) -> dict[str, Any] | None:
+    """Recover a once-validated candidate after a newer preflight rule blocks publication."""
+    if not isinstance(snapshot, Mapping):
+        return None
+    raw_sections = snapshot.get("sections")
+    raw_numerals = snapshot.get("numerals")
+    raw_figures = snapshot.get("figures")
+    if (not isinstance(raw_sections, Mapping) or
+            not isinstance(raw_numerals, Sequence) or isinstance(raw_numerals, (str, bytes)) or
+            not isinstance(raw_figures, Sequence) or isinstance(raw_figures, (str, bytes))):
+        return None
+    sections = {}
+    for key, _name, _heading in draft_workspace.SECTION_FILES:
+        value = raw_sections.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return None
+        sections[key] = human_text(value.replace("\x00", "").strip())
+    if not all(isinstance(item, Mapping) for item in raw_numerals):
+        return None
+    if not all(isinstance(item, Mapping) for item in raw_figures):
+        return None
+    return {
+        "sections": sections,
+        "numerals": human_text([dict(item) for item in raw_numerals]),
+        "figures": human_text([dict(item) for item in raw_figures]),
+    }
+
+
+def candidate_preflight_report(report: Mapping[str, Any] | None,
+                               error: Exception) -> dict[str, Any]:
+    """Add the current gate failure to an older candidate's repair instructions."""
+    out = human_text(dict(report or {}))
+    name = "Saved candidate passes the current filing preflight"
+    checks = [dict(item) for item in (out.get("checks") or [])
+              if isinstance(item, Mapping) and str(item.get("name") or "") != name]
+    detail = str(error)[:1200]
+    checks.append({
+        "name": name, "status": "fail", "severity": "error", "detail": detail,
+        "items": [detail[:600]],
+    })
+    findings = [dict(item) for item in (out.get("findings") or [])
+                if isinstance(item, Mapping)]
+    out.update({
+        "status": "failed", "verdict": "fail",
+        "summary": "The saved candidate needs an automatic update for the current filing gates.",
+        "checks": checks, "findings": findings,
+        "counts": draft_qa.counts_for(checks, findings), "last_error": detail,
+    })
+    return out
 
 
 def citations_of(sections: Mapping[str, str]) -> list[str]:
@@ -723,7 +870,26 @@ class StudioRepository:
             row = cur.fetchone()
         if not row:
             return None
-        return {"snapshot": _json(row.get("snapshot"), {}),
+        return {"turn_id": int(turn_id),
+                "snapshot": _json(row.get("snapshot"), {}),
+                "qa_report": _json(row.get("qa_report"), {})}
+
+    def latest_retry_candidate(self, project_id: int, *, before_turn_id: int
+                               ) -> dict[str, Any] | None:
+        """Return the newest unpublished candidate from an earlier turn in this project."""
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT c.turn_id,c.snapshot,c.qa_report "
+                "FROM app_draft_turn_candidates c JOIN app_draft_turns t ON t.id=c.turn_id "
+                "WHERE t.project_id=%s AND c.turn_id<%s "
+                "ORDER BY t.turn_no DESC,c.updated_at DESC LIMIT 1",
+                (int(project_id), int(before_turn_id)))
+            row = cur.fetchone()
+        if not row:
+            return None
+        return {"turn_id": int(row["turn_id"]),
+                "snapshot": _json(row.get("snapshot"), {}),
                 "qa_report": _json(row.get("qa_report"), {})}
 
     def discard_retry_candidate(self, turn_id: int) -> None:
@@ -878,7 +1044,8 @@ class StudioRepository:
 
     def complete_turn(self, turn_id: int, lease_token: str, *, result: Mapping[str, Any],
                       session_id: str, cost_usd: float, duration_ms: int, model_name: str,
-                      transcript_path: str = "") -> dict[str, Any]:
+                      transcript_path: str = "", discard_candidates: bool = True
+                      ) -> dict[str, Any]:
         self._ready()
         with self._cursor() as cur:
             turn = self._verify(cur, turn_id, lease_token)
@@ -897,7 +1064,10 @@ class StudioRepository:
                  round(float(cost_usd or 0), 4), int(duration_ms or 0), str(model_name)[:180],
                  str(transcript_path)[:500], turn["id"]))
             out = self._turn(dict(cur.fetchone()))
-            cur.execute("DELETE FROM app_draft_turn_candidates WHERE turn_id=%s", (int(turn_id),))
+            if discard_candidates:
+                cur.execute(
+                    "DELETE FROM app_draft_turn_candidates c USING app_draft_turns t "
+                    "WHERE c.turn_id=t.id AND t.project_id=%s", (int(turn["project_id"]),))
             cur.execute(
                 "UPDATE app_drafting_projects SET status='ready',agent_session_id=%s,"
                 "agent_turn_no=%s,updated_at=now() WHERE id=%s",
@@ -924,9 +1094,6 @@ class StudioRepository:
                     "last_error=%s,updated_at=now() WHERE id=%s RETURNING *",
                     (str(error)[:4000], turn["id"]))
             out = self._turn(dict(cur.fetchone()))
-            if not will_retry:
-                cur.execute("DELETE FROM app_draft_turn_candidates WHERE turn_id=%s",
-                            (int(turn_id),))
             cur.execute(
                 "UPDATE app_drafting_projects SET status=CASE WHEN %s THEN 'queued' "
                 "WHEN latest_version_no>0 THEN 'ready' ELSE 'active' END,updated_at=now() "
@@ -1020,18 +1187,30 @@ class TurnRunner:
         seeded = False
         retry_snapshot = None
 
+        candidate = None
         if int(turn.get("attempts") or 0) > 1:
             candidate = self.repository.retry_candidate(int(turn["id"]))
-            if candidate:
-                try:
-                    retry_snapshot = validate_snapshot(
-                        candidate.get("snapshot") or {},
-                        allowed_reference_keys(loaded["references"], documents))
-                except drafting.DraftingError:
-                    self.repository.discard_retry_candidate(int(turn["id"]))
+        if not candidate:
+            candidate = self.repository.latest_retry_candidate(
+                project_id, before_turn_id=int(turn["id"]))
+        if candidate:
+            try:
+                retry_snapshot = validate_snapshot(
+                    candidate.get("snapshot") or {},
+                    allowed_reference_keys(loaded["references"], documents))
+            except drafting.DraftingError as exc:
+                retry_snapshot = candidate_snapshot_for_repair(
+                    candidate.get("snapshot") or {})
+                if retry_snapshot is None:
+                    self.repository.discard_retry_candidate(
+                        int(candidate.get("turn_id") or turn["id"]))
                 else:
                     sections = retry_snapshot["sections"]
-                    latest_qa = candidate.get("qa_report") or latest_qa
+                    latest_qa = candidate_preflight_report(
+                        candidate.get("qa_report") or {}, exc)
+            else:
+                sections = retry_snapshot["sections"]
+                latest_qa = candidate.get("qa_report") or latest_qa
 
         if sections is None and retry_snapshot is None:
             # First turn.  If the user brought a draft, pre-split it so the agent improves a
@@ -1057,6 +1236,7 @@ class TurnRunner:
             qa_report=latest_qa)
         return {"workspace": workspace, "project": project, "references": loaded["references"],
                 "documents": documents, "seeded": seeded, "had_version": loaded["sections"] is not None,
+                "resuming_candidate": retry_snapshot is not None,
                 "previous_sections": loaded["sections"] or {}}
 
     # -- the turn --------------------------------------------------------------------------------
@@ -1079,15 +1259,55 @@ class TurnRunner:
                    else StudioError(run.error or "The drafting agent did not finish."))
         return run
 
-    def _ensure_figures(self, *, turn_id: int, project_id: int, user_id: int,
+    def _checkpoint_interrupted_agent(self, *, turn_id: int, lease: str, workspace: Path,
+                                      allowed: Sequence[str], error: Exception) -> None:
+        """Keep structurally valid edits when an agent stops before its structured answer."""
+        try:
+            snapshot = validate_snapshot(self.workspace.snapshot(workspace), allowed)
+        except Exception:
+            return
+        detail = str(error)[:1200]
+        check = {
+            "name": "Drafting run completed",
+            "status": "fail",
+            "severity": "error",
+            "detail": detail,
+            "items": ["Continue from this saved candidate and finish every remaining section."],
+        }
+        report = {
+            "status": "failed",
+            "verdict": "fail",
+            "summary": "The drafting run stopped after saving valid edits. Continue from this "
+                       "candidate instead of rebuilding the published version.",
+            "checks": [check],
+            "findings": [],
+            "counts": draft_qa.counts_for([check], []),
+            "cost_usd": 0.0,
+            "duration_ms": 0,
+            "model_name": "",
+            "last_error": detail,
+        }
+        self.repository.save_retry_candidate(
+            turn_id, lease, snapshot=snapshot, report=report)
+        try:
+            self.workspace._write_review(workspace, report)
+        except Exception:
+            pass
+
+    def _ensure_figures(self, *, turn_id: int, lease: str, project_id: int, user_id: int,
                         sections: Mapping[str, str], numerals: Sequence[Mapping[str, str]],
                         figures: Sequence[Mapping[str, Any]], disclosure: str,
                         workspace: Path) -> dict[str, Any]:
         import draft_figures
         draft_figures.checkpoint_project_figures(turn_id, project_id, user_id)
+
+        def check_cancel() -> None:
+            self.repository.heartbeat(
+                turn_id, lease, stage="drawing and inspecting figures")
+
         result = draft_figures.ensure_project_figures(
             project_id, user_id, sections=sections, disclosure=disclosure,
-            numeral_table=numerals, figure_specs=figures)
+            numeral_table=numerals, figure_specs=figures, check_cancel=check_cancel)
         result["review_images"] = draft_figures.materialize_review_images(
             project_id, user_id, workspace)
         return result
@@ -1106,8 +1326,9 @@ class TurnRunner:
         allowed = allowed_reference_keys(context["references"], context["documents"])
 
         kind = str(turn.get("kind") or "revise")
-        first = not context["had_version"]
-        prompt = build_prompt("initial" if first else kind, seeded=context["seeded"])
+        first = not context["had_version"] and not context.get("resuming_candidate")
+        prompt_kind = "initial" if first else ("revise" if kind == "initial" else kind)
+        prompt = build_prompt(prompt_kind, seeded=context["seeded"])
         transcript = workspace / ".agent" / f"turn-{turn['turn_no']:04d}.jsonl"
 
         #  Whether to RESUME and which prompt to send are separate decisions, and conflating them
@@ -1115,10 +1336,15 @@ class TurnRunner:
         #  that answered a question without producing a version would make the next turn pass an
         #  existing id as if it were new. Continue the thread whenever there is one.
         prior_session = str(project.get("agent_session_id") or "")
-        run = self._run_agent(
-            turn_id=turn_id, lease=lease, workspace=workspace, prompt=prompt,
-            session_id=prior_session or self.agent.new_session_id(), resume=bool(prior_session),
-            transcript=transcript, stage="drafting")
+        try:
+            run = self._run_agent(
+                turn_id=turn_id, lease=lease, workspace=workspace, prompt=prompt,
+                session_id=prior_session or self.agent.new_session_id(), resume=bool(prior_session),
+                transcript=transcript, stage="drafting")
+        except StudioError as exc:
+            self._checkpoint_interrupted_agent(
+                turn_id=turn_id, lease=lease, workspace=workspace, allowed=allowed, error=exc)
+            raise
         runs = [run]
         result = human_text(dict(run.result))
         action = str(result.get("action") or "revised")
@@ -1136,7 +1362,7 @@ class TurnRunner:
             completed = self.repository.complete_turn(
                 turn_id, lease, result=result, session_id=run.session_id,
                 cost_usd=run.cost_usd, duration_ms=run.duration_ms, model_name=run.model,
-                transcript_path=str(transcript))
+                transcript_path=str(transcript), discard_candidates=False)
             return {"turn": completed, "version": None}
         answered_without_candidate = action == "answered"
 
@@ -1145,13 +1371,27 @@ class TurnRunner:
         sections: dict[str, str] = {}
         for review_index in range(MAX_FINALIZATION_ROUNDS):
             if review_index:
-                repair = self._run_agent(
-                    turn_id=turn_id, lease=lease, workspace=workspace,
-                    prompt=FINALIZE_PROMPT, session_id=runs[-1].session_id,
-                    resume=True, transcript=transcript, stage="repairing the draft")
+                prior_snapshot, prior_report = snapshot, report or {}
+                try:
+                    repair = self._run_agent(
+                        turn_id=turn_id, lease=lease, workspace=workspace,
+                        prompt=FINALIZE_PROMPT, session_id=runs[-1].session_id,
+                        resume=True, transcript=transcript, stage="repairing the draft")
+                except StudioError as exc:
+                    self._checkpoint_interrupted_agent(
+                        turn_id=turn_id, lease=lease, workspace=workspace,
+                        allowed=allowed, error=exc)
+                    raise
                 runs.append(repair)
                 result = human_text(dict(repair.result))
                 action = "revised"
+                if restore_text_after_drawing_only_review(
+                        workspace, prior_snapshot, prior_report):
+                    changes = list(result.get("changes") or [])
+                    changes.append(
+                        "Preserved the filing text, numeral definitions, and figure membership "
+                        "because every reported blocker concerned generated drawings only.")
+                    result["changes"] = changes
 
             self.repository.heartbeat(turn_id, lease, stage="checking the draft")
             if answered_without_candidate and review_index == 0:
@@ -1172,7 +1412,7 @@ class TurnRunner:
                     sections = snapshot["sections"]
                     self.repository.heartbeat(turn_id, lease, stage="drawing and inspecting figures")
                     generated = self._ensure_figures(
-                        turn_id=turn_id, project_id=project_id,
+                        turn_id=turn_id, lease=lease, project_id=project_id,
                         user_id=int(project["user_id"]), sections=sections,
                         numerals=snapshot["numerals"], figures=snapshot["figures"],
                         disclosure=str(project.get("disclosure_text") or ""), workspace=workspace)

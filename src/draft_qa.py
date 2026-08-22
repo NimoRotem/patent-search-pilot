@@ -77,7 +77,10 @@ _DRAFT_PLACEHOLDER_RE = re.compile(
     r"|<\s*(?:INSERT|TODO|TBD|TBC|PLACEHOLDER)\b[^>]*>"
     r"|\{\{[^{}\n]{1,120}\}\}"
     r"|_{5,}"
+    r"|\bfor\s+(?:the\s+)?(?:draftsperson|drafter|illustrator)\s+only\b"
+    r"|\b(?:draftsperson|drafter|illustrator)\s+(?:must|should|shall|will|to)\b"
     r")", re.IGNORECASE)
+MAX_NUMERALS_PER_SHEET = 8
 #  The phrase is captured in a LOOKAHEAD so the scan consumes only the article.  Consuming the
 #  noun phrase as well was a real defect: in "a tool comprising a body, a pump", the first match
 #  swallowed "tool comprising a body", so "a body" was never seen as an introduction and every
@@ -361,6 +364,24 @@ def _numeral_checks(spec_text: str, claims_text: str,
     elif figures:
         out.append(_check("Each drawing numeral appears once", "pass",
                           "No reference numeral is duplicated within a drawing."))
+    overcrowded = []
+    for figure in figures:
+        values = {_drawing_numeral(n) for n in (figure.get("numerals") or [])}
+        values.discard("")
+        if len(values) > MAX_NUMERALS_PER_SHEET:
+            overcrowded.append(
+                f"{figure.get('label') or 'drawing'}: {len(values)} numerals "
+                f"(maximum {MAX_NUMERALS_PER_SHEET})")
+    if overcrowded:
+        out.append(_check(
+            "Drawing sheets are not overcrowded", "fail",
+            "A generated sheet cannot be inspected reliably when it carries too many labeled "
+            "parts. Split the geometry across focused views and synchronize the drawing "
+            "descriptions.", items=overcrowded))
+    elif figures:
+        out.append(_check(
+            "Drawing sheets are not overcrowded", "pass",
+            f"Every drawing contains at most {MAX_NUMERALS_PER_SHEET} reference numerals."))
     unknown_on_figures = sorted((n for n in figure_numerals if n and n not in table),
                                 key=_numeral_sort)
     if unknown_on_figures:
@@ -540,11 +561,11 @@ def _figure_checks(sections: Mapping[str, str],
                 if not figure.get("drawn"):
                     continue
                 audit = figure.get("semantic_audit") or {}
-                if not audit.get("inspected") or not audit.get("ok"):
+                if not draft_figures.current_semantic_audit(audit):
                     detail = "; ".join(str(item) for item in audit.get("errors") or [])
                     semantic_failures.append(
                         f"{figure.get('label') or 'drawing'}: " +
-                        (detail[:220] or "semantic pixel inspection did not pass"))
+                        (detail[:220] or "current semantic pixel consensus did not pass"))
                 leader = figure.get("leader_audit") or {}
                 if not draft_figures.current_leader_audit(leader):
                     detail = "; ".join(str(item) for item in leader.get("errors") or [])
@@ -1042,8 +1063,9 @@ REVIEW_SCHEMA = {
                 "properties": {
                     "severity": {"type": "string", "enum": ["critical", "major", "minor"]},
                     "category": {"type": "string", "enum": [
-                        "figures_and_numerals", "internal_logic", "terminology",
-                        "citations", "claim_support", "claim_scope", "enablement", "formalities"]},
+                        "disclosure_fidelity", "figures_and_numerals", "internal_logic",
+                        "terminology", "citations", "claim_support", "claim_scope", "enablement",
+                        "formalities"]},
                     "title": {"type": "string"},
                     "where": {"type": "string"},
                     "detail": {"type": "string"},
@@ -1060,9 +1082,9 @@ REVIEW_SCHEMA = {
     "additionalProperties": False,
 }
 
-REVIEW_SYSTEM = """You are reviewing a US patent application draft for INTERNAL CONSISTENCY. You
-did not write it and you have not heard the reasons for any of its choices; judge only what is on
-the page.
+REVIEW_SYSTEM = """You are reviewing a US patent application draft for SOURCE FIDELITY and
+INTERNAL CONSISTENCY. You did not write it and you have not heard the reasons for any of its
+choices; judge only the sources and candidate files in the workspace.
 
 You are NOT assessing patentability, novelty, non-obviousness, validity, infringement or freedom
 to operate, and you must not state or imply any of them. You are checking whether the document
@@ -1070,7 +1092,16 @@ says the same thing everywhere and whether it is supported by its own sources.
 
 WHAT TO CHECK, in this order of importance:
 
-1. FIGURES, NUMERALS AND DESCRIPTIONS AGREE.
+1. DISCLOSURE FIDELITY.
+   Read input/disclosure.md and input/conversation.md before judging the candidate. The inventor's
+   disclosure and user conversation are the authority for the invention. The candidate may organize
+   and explain that material in filing form, but it must not add a core structure, relationship,
+   result, measurement, embodiment, or experimental fact that those sources do not support. A
+   generated drawing artifact is never a source for patent text. Report as critical any passage
+   that appears to have been added or widened merely to legitimize geometry or an object visible
+   only in a generated sheet. Compare the source wording with the candidate and quote both.
+
+2. FIGURES, NUMERALS AND DESCRIPTIONS AGREE.
    Every reference numeral labels one part and only that part, everywhere it appears. The part a
    numeral labels in the detailed description is the part it labels in draft/numerals.md and on
    the figure files in figures/. A figure described in the Brief Description of the Drawings shows
@@ -1078,20 +1109,20 @@ WHAT TO CHECK, in this order of importance:
    that the figure's own file does not contain. Open every figures/rendered-*.png image and verify
    the actual visible geometry and printed reference numerals, not only the Markdown drawing brief.
 
-2. THE LANGUAGE AND THE LOGIC HOLD TOGETHER.
+3. THE LANGUAGE AND THE LOGIC HOLD TOGETHER.
    One name per thing, used consistently - not "gripper" here and "grasping unit" there for the
    same element. No statement that contradicts another. No step that depends on a structure the
    draft never gives it. No embodiment described as preferred in one place and impossible in
    another.
 
-3. THE CITATIONS ARE HONEST.
+4. THE CITATIONS ARE HONEST.
    Read prior_art/. For every [REF:...] citation in the draft, check that what the draft says
    about that reference is actually in that reference's file. A characterisation the source does
    not support is the most damaging error in this document: report it as critical. Report a
    citation used where the source file says nothing on the point. (Whether the publication EXISTS
    is checked mechanically elsewhere - do not spend turns on it.)
 
-4. THE CLAIMS MATCH WHAT WAS DISCLOSED.
+5. THE CLAIMS MATCH WHAT WAS DISCLOSED.
    Every limitation in every claim must have support in the detailed description and, where the
    limitation is structural, be visible in the drawings the draft describes. A claim broader than
    the description supports is a critical finding. So is a claim reciting an element the
@@ -1114,8 +1145,9 @@ REVIEW_PROMPT = """Review the draft in this workspace.
   prior_art/        the references the draft is allowed to cite, with their actual text
   input/            the inventor's disclosure and the conversation with the drafter
 
-Read draft/ in full - every section, not a sample. Then read numerals.md, every figure brief, and
-every rendered-*.png image in figures/. Compare the pixels with the brief and the text. Then read the
+Read input/disclosure.md and input/conversation.md first. Then read draft/ in full - every section,
+not a sample. Read numerals.md, every figure brief, and every rendered-*.png image in figures/.
+Compare the pixels with the brief, the patent text, and the inventor's source. Then read the
 prior_art/ files for every reference the draft cites.
 
 The mechanical checks below have ALREADY been run in code. Do not repeat them; use them as

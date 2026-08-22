@@ -75,6 +75,8 @@ _UNFINISHED_PLACEHOLDER_RE = re.compile(
     r"|<\s*(?:INSERT|TODO|TBD|TBC|PLACEHOLDER)\b[^>]*>"
     r"|\{\{[^{}\n]{1,120}\}\}"
     r"|_{5,}"
+    r"|\bfor\s+(?:the\s+)?(?:draftsperson|drafter|illustrator)\s+only\b"
+    r"|\b(?:draftsperson|drafter|illustrator)\s+(?:must|should|shall|will|to)\b"
     r")", re.IGNORECASE)
 
 _SCHEMA_LOCK = threading.Lock()
