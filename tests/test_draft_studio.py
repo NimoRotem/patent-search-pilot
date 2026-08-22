@@ -965,6 +965,8 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "Return `questions` as an empty array" in system
     assert "No placeholder" in system
     assert "at least one figure" in system
+    assert "Normally use two to four figures" in system
+    assert "no more than eight numerals on one sheet" in system
     assert "broadest statement of the invention that the description fully supports" in system
 
 

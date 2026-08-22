@@ -171,6 +171,8 @@ Figures live in figures/, one file per drawing, listing the numerals that appear
 on a drawing that is not in the table, or a part described as visible in a figure whose file does
 not list it, is a defect the review will find. Every application must include at least one figure.
 Use a structural view, system diagram, or process flow as appropriate to the disclosed invention.
+Normally use two to four figures. Prefer no more than eight numerals on one sheet; when more
+structure must be shown, use a focused detail or sectional sheet instead of overcrowding one image.
 Figure files are Markdown specifications only. Never create SVG, PNG, or other image files. The
 image pipeline generates unlabeled geometry, then adds the listed numerals, FIG. label, callouts,
 and leader lines deterministically. Describe the required geometry and relationships, and list
