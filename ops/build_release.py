@@ -198,7 +198,11 @@ def main(argv=None):
     pl = sub.add_parser("plan", help="pack domains into shards and check the capacity")
     pl.add_argument("--shards", type=int, default=8)
     pl.add_argument("--halfvec", action="store_true")
-    pl.add_argument("--niche", action="store_true", default=True)
+    #  `action="store_true", default=True` can never be False. The hot tier has to come out of the
+    #  mass BEFORE the domains are packed (it is defined at subgroup granularity while shards split
+    #  at subclass granularity), so it is on by default and turned off explicitly.
+    pl.add_argument("--no-niche", dest="niche", action="store_false", default=True,
+                    help="pack all eight shards without taking the hot tier out first")
     pl.add_argument("--unclassified-splits", type=int, default=1)
     pl.add_argument("--projected", action="store_true",
                     help="pack the POST-BACKFILL mass (n_chunks + the description backlog) rather "

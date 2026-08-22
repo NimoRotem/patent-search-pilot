@@ -43,6 +43,70 @@ def test_the_domain_rule_is_the_routers_and_is_not_reimplemented():
     assert assign.domains_of_symbols(["B65G 47/91"]) == {domain_of("B65G 47/91")}
 
 
+class _FakeConn:
+    """A connection whose `classifications` read returns fixed rows, so the router's rule and the
+    builder's rule can be run over the SAME input."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    def cursor(self):
+        rows = self._rows
+        outer = self
+
+        class _C:
+            def __enter__(self_inner):
+                return self_inner
+
+            def __exit__(self_inner, *a):
+                return False
+
+            def execute(self_inner, _sql, params=None):
+                pids = set(params[0]) if params else set()
+                self_inner._out = [r for r in rows if r["publication_id"] in pids]
+
+            def fetchall(self_inner):
+                return self_inner._out
+
+        return _C()
+
+
+def test_the_router_and_the_builder_put_a_publication_in_the_same_domains():
+    """The seam the brief names. The builder cannot call `domains_of_publications` directly (it
+    reads `classifications`, and the builder works off its own mirror), so the agreement is
+    asserted here instead of assumed. A publication that the router routes to B65G and the builder
+    places in B25J is a recall hole that looks like a ranking problem."""
+    from retrieval import shard_router
+
+    cases = {
+        1: ["B65G47/91", "B25J15/06"],
+        2: ["B66C1/0225"],
+        3: [],                                     # no classification at all: 20.6% of the corpus
+        4: ["F16B2/00", "F16B2/02", "F16B4/00"],   # several symbols, one domain
+    }
+    rows = [{"publication_id": pid, "symbol": s} for pid, syms in cases.items() for s in syms]
+    conn = _FakeConn(rows)
+    for pid, syms in cases.items():
+        router_domains = set(shard_router.domains_of_publications(conn, [pid]))
+        builder_domains = assign.domains_of_symbols(syms)
+        assert router_domains == builder_domains, f"pid {pid}: {router_domains} != {builder_domains}"
+
+
+def test_both_rules_spread_one_publications_vote_rather_than_counting_symbols():
+    """The same miscount, refused in both places: a document with three symbols in one subclass
+    must not outweigh one with a single symbol."""
+    from retrieval import shard_router
+
+    conn = _FakeConn([{"publication_id": 1, "symbol": s}
+                      for s in ("B65G47/91", "B65G1/00", "B25J15/06")])
+    routed = shard_router.domains_of_publications(conn, [1])
+    assert routed["B65G"] == pytest.approx(routed["B25J"]), \
+        "the router counted symbols instead of domains"
+    built = assign.publication_domain_weights(["B65G47/91", "B65G1/00", "B25J15/06"])
+    assert built["B65G"] == pytest.approx(built["B25J"])
+    assert sum(built.values()) == pytest.approx(1.0)
+
+
 def test_an_unclassified_publication_still_has_somewhere_to_go():
     """1,024,320 publications, 20.6% of the corpus, carry no classification at all, and they skew
     old and foreign, which is exactly the population the gold citation lists are drawn from."""
