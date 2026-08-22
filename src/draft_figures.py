@@ -863,7 +863,7 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         }
     height, width = gray.shape
     ink = gray < 225
-    binary = Image.fromarray(np.where(ink, 0, 255).astype("uint8"), mode="L")
+    binary = Image.fromarray(np.where(ink, 0, 255).astype("uint8"))
     padded = ImageOps.expand(binary, border=1, fill=255)
     ImageDraw.floodfill(padded, (0, 0), 128, thresh=0)
     exterior = np.asarray(padded)[1:height + 1, 1:width + 1] == 128
