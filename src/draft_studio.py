@@ -66,6 +66,14 @@ class DrawingInspectionError(StudioError):
         super().__init__(f"{len(self.errors)} drawing sheet(s) did not pass inspection.")
 
 
+class FilingPreflightError(drafting.DraftingValidationError):
+    """A filing gate failure carrying the scope an automatic repair may change."""
+
+    def __init__(self, message: str, *, category: str = "internal_logic"):
+        self.category = str(category or "internal_logic")[:40]
+        super().__init__(message)
+
+
 def human_text(value: Any) -> Any:
     """Remove a disallowed punctuation mark from every model-written human-facing string."""
     if isinstance(value, str):
@@ -259,6 +267,10 @@ finding, preserve the authoritative invention, strengthen the figure brief, and 
 sheet from the authoritative text until the pixels conform. A stubborn rendering artifact remains
 a drawing defect; it does not become part of the invention.
 
+For a figure-plan coverage failure, never delete a disclosed part, numeral definition, or
+supporting specification text. Redistribute labels among focused sheets, or add a focused sheet
+when necessary, and synchronize the drawing descriptions.
+
 Leave no note, placeholder, question, or instruction for a person. Return the structured answer
 with `action` set to "revised" and `questions` as an empty array."""
 
@@ -300,6 +312,28 @@ def filing_blockers(report: Mapping[str, Any]) -> list[str]:
 
 
 _DRAWING_INSPECTION_CHECK = "Every drawing sheet passes geometry, leader, and OCR inspection"
+_FIGURE_PLAN_CHECKS = frozenset({
+    "Each drawing numeral appears once",
+    "Drawing sheets are not overcrowded",
+    "Numerals on the drawings are defined",
+    "Every drawing numeral appears in the specification",
+    "Every specification numeral appears in a drawing",
+    "Application includes a drawing plan",
+    "Figure-sheet numbering is unique and contiguous",
+    "Every figure used is described",
+    "Every drawing sheet is described",
+    "Each described figure has a drawing sheet",
+})
+
+
+def _report_item_category(item: Mapping[str, Any]) -> str:
+    category = str(item.get("category") or "")
+    if category:
+        return category
+    name = str(item.get("name") or "")
+    if name == _DRAWING_INSPECTION_CHECK or name in _FIGURE_PLAN_CHECKS:
+        return "figures_and_numerals"
+    return ""
 
 
 def restore_text_after_drawing_only_review(workspace: Path, snapshot: Mapping[str, Any],
@@ -364,6 +398,43 @@ def restore_text_after_drawing_only_review(workspace: Path, snapshot: Mapping[st
     if figures_changed:
         draft_workspace.write_figures(workspace, locked_figures)
     return True
+
+
+def restore_sources_after_figure_plan_review(workspace: Path, snapshot: Mapping[str, Any],
+                                             report: Mapping[str, Any]) -> bool:
+    """Keep figure-plan repairs from erasing the invention they must illustrate.
+
+    A plan repair may redistribute numerals among sheets, add focused sheets, rewrite geometry
+    briefs, and synchronize the Brief Description of the Drawings. The prior checked candidate
+    remains authoritative for every other filing section and for the complete numeral table.
+    Mixed reports are deliberately not locked because a non-figure finding may require a genuine
+    source-text repair.
+    """
+    checks = [item for item in (report.get("checks") or [])
+              if str(item.get("status") or "") != "pass"]
+    findings = list(report.get("findings") or [])
+    blockers = [*checks, *findings]
+    if not blockers:
+        return False
+    if any(_report_item_category(item) != "figures_and_numerals" for item in blockers):
+        return False
+
+    baseline_sections = human_text(dict(snapshot.get("sections") or {}))
+    current_sections = human_text(draft_workspace.read_sections(workspace))
+    locked_sections = dict(baseline_sections)
+    locked_sections["drawing_descriptions"] = str(
+        current_sections.get("drawing_descriptions") or
+        baseline_sections.get("drawing_descriptions") or "")
+    baseline_numerals = human_text(
+        [dict(item) for item in (snapshot.get("numerals") or [])])
+
+    sections_changed = current_sections != locked_sections
+    numerals_changed = draft_workspace.read_numerals(workspace) != baseline_numerals
+    if sections_changed:
+        draft_workspace.write_sections(workspace, locked_sections)
+    if numerals_changed:
+        draft_workspace.write_numerals(workspace, baseline_numerals)
+    return sections_changed or numerals_changed
 
 
 def figures_for_qa(project_id: int, user_id: int,
@@ -496,18 +567,38 @@ def validate_snapshot(snapshot: Mapping[str, Any],
     markers.extend(draft_qa.placeholders_in_text(
         "Drawing specifications", json.dumps(figures, ensure_ascii=False)))
     if markers:
-        raise drafting.DraftingValidationError(
-            "The filing artifacts contain an unresolved placeholder: " + markers[0] + ".")
+        raise FilingPreflightError(
+            "The filing artifacts contain an unresolved placeholder: " + markers[0] + ".",
+            category="figures_and_numerals")
     for figure in figures:
         values = {draft_qa._drawing_numeral(value)
                   for value in (figure.get("numerals") or [])}
         values.discard("")
         if len(values) > draft_qa.MAX_NUMERALS_PER_SHEET:
             label = str(figure.get("label") or "Drawing")[:80]
-            raise drafting.DraftingValidationError(
+            raise FilingPreflightError(
                 f"{label} lists {len(values)} numerals, which is more than "
                 f"{draft_qa.MAX_NUMERALS_PER_SHEET} numerals on one sheet. Split it into focused "
-                "views and synchronize the drawing descriptions before generating images.")
+                "views and synchronize the drawing descriptions before generating images.",
+                category="figures_and_numerals")
+    mechanical = draft_qa.run_checks(
+        sections=sections, numerals=numerals, figures=figures,
+        allowed_references=allowed_references, allow_remote=False)
+    failures = [item for item in mechanical if str(item.get("status") or "") == "fail"]
+    if failures:
+        details = []
+        for item in failures[:8]:
+            evidence = list(item.get("items") or [])
+            details.append(
+                f"{item.get('name') or 'Unnamed check'}: " +
+                str(evidence[0] if evidence else item.get("detail") or "failed")[:300])
+        category = ("figures_and_numerals"
+                    if all(str(item.get("name") or "") in _FIGURE_PLAN_CHECKS
+                           for item in failures)
+                    else "internal_logic")
+        raise FilingPreflightError(
+            "The candidate failed the mechanical filing preflight. " + "; ".join(details),
+            category=category)
     return {"sections": sections, "numerals": numerals, "figures": figures}
 
 
@@ -544,12 +635,15 @@ def candidate_preflight_report(report: Mapping[str, Any] | None,
     """Add the current gate failure to an older candidate's repair instructions."""
     out = human_text(dict(report or {}))
     name = "Saved candidate passes the current filing preflight"
+    superseded = {name, "Drafting run completed"}
     checks = [dict(item) for item in (out.get("checks") or [])
-              if isinstance(item, Mapping) and str(item.get("name") or "") != name]
+              if isinstance(item, Mapping) and
+              str(item.get("name") or "") not in superseded]
     detail = str(error)[:1200]
     checks.append({
         "name": name, "status": "fail", "severity": "error", "detail": detail,
         "items": [detail[:600]],
+        "category": str(getattr(error, "category", "internal_logic"))[:40],
     })
     findings = [dict(item) for item in (out.get("findings") or [])
                 if isinstance(item, Mapping)]
@@ -1237,6 +1331,9 @@ class TurnRunner:
         return {"workspace": workspace, "project": project, "references": loaded["references"],
                 "documents": documents, "seeded": seeded, "had_version": loaded["sections"] is not None,
                 "resuming_candidate": retry_snapshot is not None,
+                "prepared_snapshot": {"sections": sections or {}, "numerals": numerals,
+                                      "figures": figures},
+                "prepared_qa": latest_qa or {},
                 "previous_sections": loaded["sections"] or {}}
 
     # -- the turn --------------------------------------------------------------------------------
@@ -1348,6 +1445,20 @@ class TurnRunner:
         runs = [run]
         result = human_text(dict(run.result))
         action = str(result.get("action") or "revised")
+        if context.get("resuming_candidate"):
+            source_lock = restore_text_after_drawing_only_review(
+                workspace, context.get("prepared_snapshot") or {},
+                context.get("prepared_qa") or {})
+            if not source_lock:
+                source_lock = restore_sources_after_figure_plan_review(
+                    workspace, context.get("prepared_snapshot") or {},
+                    context.get("prepared_qa") or {})
+            if source_lock:
+                changes = list(result.get("changes") or [])
+                changes.append(
+                    "Preserved the checked filing sources while applying the requested "
+                    "drawing repair.")
+                result["changes"] = changes
 
         #  Only an explicit question on an existing application may complete without a filing
         #  candidate. An initial or revision turn that answers instead of drafting is fed back as
@@ -1385,12 +1496,16 @@ class TurnRunner:
                 runs.append(repair)
                 result = human_text(dict(repair.result))
                 action = "revised"
-                if restore_text_after_drawing_only_review(
-                        workspace, prior_snapshot, prior_report):
+                source_lock = restore_text_after_drawing_only_review(
+                    workspace, prior_snapshot, prior_report)
+                if not source_lock:
+                    source_lock = restore_sources_after_figure_plan_review(
+                        workspace, prior_snapshot, prior_report)
+                if source_lock:
                     changes = list(result.get("changes") or [])
                     changes.append(
-                        "Preserved the filing text, numeral definitions, and figure membership "
-                        "because every reported blocker concerned generated drawings only.")
+                        "Preserved the checked filing sources while applying the requested "
+                        "drawing repair.")
                     result["changes"] = changes
 
             self.repository.heartbeat(turn_id, lease, stage="checking the draft")
@@ -1430,6 +1545,7 @@ class TurnRunner:
                     check = {
                         "name": "Every drawing sheet passes geometry, leader, and OCR inspection",
                         "status": "fail", "severity": "error",
+                        "category": "figures_and_numerals",
                         "detail": (f"{len(exc.errors)} sheet(s) failed. Each failure is listed "
                                    "below so the next repair can address the full set."),
                         "items": exc.errors,
@@ -1447,6 +1563,7 @@ class TurnRunner:
                     traceback.print_exc()
                     check = {"name": "Automatic filing candidate checks",
                              "status": "fail", "severity": "error",
+                             "category": str(getattr(exc, "category", "internal_logic"))[:40],
                              "detail": str(exc)[:1200], "items": [str(exc)[:600]]}
                     report = {
                         "status": "failed", "verdict": "fail",

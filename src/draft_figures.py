@@ -1899,6 +1899,7 @@ def annotate_png(png: bytes, label: str, anchors, *, scale: float = 1.0) -> byte
     canvas.paste(source, (source_x, source_y))
     draw = ImageDraw.Draw(canvas)
     font = _font(font_size)
+    dot_radius = max(4, font_size // 8)
     for side_name, group in (("left", left_items), ("right", right_items)):
         for item, y in _spread_y(group, needed_height, top=top + row // 2,
                                  bottom=top + needed_height - row // 2):
@@ -1911,7 +1912,8 @@ def annotate_png(png: bytes, label: str, anchors, *, scale: float = 1.0) -> byte
             text_y = y - font_size // 2
             line_x = text_x + width + 8 if side_name == "left" else text_x - 8
             draw.line((line_x, y, target_x, target_y), fill="black", width=max(2, font_size // 10))
-            draw.ellipse((target_x - 2, target_y - 2, target_x + 2, target_y + 2), fill="black")
+            draw.ellipse((target_x - dot_radius, target_y - dot_radius,
+                          target_x + dot_radius, target_y + dot_radius), fill="black")
             draw.text((text_x, text_y), numeral, fill="black", font=font)
     filing_label = canonical_figure_label(label)
     label_box = draw.textbbox((0, 0), filing_label, font=font)
