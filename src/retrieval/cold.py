@@ -50,6 +50,7 @@ import db
 
 from . import base as _base
 from . import channels, shard_manager, shard_router
+from .family import family_key_sql
 
 #  The channel-name prefix that marks a hit as coming from a cold shard. `fusion.channel_weight`
 #  resolves `cold:dense` to the weight of `dense`: the same query against a different host is the
@@ -145,7 +146,7 @@ def _hydrator(r):
         done.update(todo)
         try:
             with r.conn.cursor() as c:
-                c.execute("SELECT id, COALESCE(NULLIF(simple_family_id,''), publication_number) k "
+                c.execute(f"SELECT id, {family_key_sql()} k "
                           "FROM publications WHERE id = ANY(%s)", (list(todo),))
                 rows = c.fetchall()
         except Exception:                                              # noqa: BLE001
