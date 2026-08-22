@@ -599,7 +599,8 @@ class ShardBackend(shard_manager.ShardManagerBackend, shard_router.ShardRouterBa
             if not any(c in code for c in _CAPACITY_CODES) or attempt >= START_RETRIES:
                 return False
             time.sleep(START_RETRY_SECONDS)
-            self.gce._cache.pop((shard.vm, shard.zone), None)
+            #  max_age=0.0 already bypasses GceClient's cache, and reaching into it would tie this
+            #  to one client implementation.
             info = self.gce.instance(shard.vm, shard.zone, max_age=0.0) or {}
             if (info.get("status") or "").upper() in _UP_STATUSES:
                 self._record_start_error(shard, "", "")
@@ -864,3 +865,67 @@ def uninstall():
 
 def installed():
     return _INSTALLED
+
+
+#  How many domains a prewake is allowed to start. The router's own ceiling: waking more shards
+#  than a query would ever be routed to is paying for VMs on a guess.
+PREWAKE_MAX = int(os.environ.get("SHARD_PREWAKE_MAX", str(getattr(shard_router, "MAX_ROUTES", 5))))
+
+
+def prewake_subject(subject_number, conn=None):
+    """Start the shards a subject's OWN CPC symbols point at, as early as a run is claimed.
+
+    THIS IS THE ANSWER TO THE 25 SECOND WAKE, and it is not a workaround. MEASURED 2026-08-22 on
+    patents-shard-03: cold to hot is 25.0 s, of which 12.6 s is GCE reaching RUNNING and 11.6 s is
+    the kernel and Postgres. `SHARD_WAKE_TIMEOUT` is 20 s and exists because the cold tier runs
+    beside the hot one and a search cannot wait, so the wake does not fit and no tuning of the box
+    will make a Debian boot plus a Postgres start fit either. Raising the timeout would just move
+    the wait onto every search.
+
+    What DOES fit is starting earlier. A run is claimed from `search_runs` before the pipeline
+    begins, and the subject's own symbols are 25% of the routing distribution and are knowable at
+    that moment without any of the evidence the cheap tiers produce. Starting those shards at
+    claim time spends the 25 s inside work the search was doing anyway, so by the time the cold
+    tier asks `hot_domains` the shard is hot rather than 5 s short of it.
+
+    It is a HINT, not the routing decision. `shard_router.route` still decides what is queried; a
+    shard this started that routing does not want is stopped by the reaper on the same lease rule
+    as any other, and a domain routing wants that this did not start is woken by `wake` as before.
+
+    Returns the `wake()` payload, or {} when no backend is installed. Never raises: a prewake that
+    fails costs the cold tier's contribution on the first search and nothing else.
+    """
+    backend = _INSTALLED
+    if backend is None or not subject_number:
+        return {}
+    try:
+        domains, own = [], None
+        if conn is None:
+            import db
+            own = db.connect(readonly=True, autocommit=True)
+            conn = own
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT cl.symbol FROM classifications cl "
+                            "  JOIN publications p ON p.id = cl.publication_id "
+                            " WHERE p.publication_number = %s "
+                            " ORDER BY length(cl.symbol) DESC LIMIT 40", (subject_number,))
+                for row in cur.fetchall() or []:
+                    symbol = row["symbol"] if isinstance(row, dict) else row[0]
+                    d = shard_router.domain_of(symbol)
+                    if d and d not in domains:
+                        domains.append(d)
+        finally:
+            if own is not None:
+                try:
+                    own.close()
+                except Exception:
+                    pass
+        #  route() ALWAYS emits the unclassified route, 1,024,320 publications and 20.6% of the
+        #  corpus, so its shard is always going to be asked for and is always worth starting.
+        if shard_router.UNCLASSIFIED not in domains:
+            domains.append(shard_router.UNCLASSIFIED)
+        return backend.wake(domains[:PREWAKE_MAX])
+    except Exception:
+        traceback.print_exc()
+        return {}

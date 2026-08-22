@@ -83,6 +83,12 @@ def execute(run, worker, heartbeat):
     #  (`runstore.Heartbeat._loop`) and the `finally` below already releases them.
     from retrieval import shard_backend
     shard_backend.bind_run(run["run_id"])
+    #  Start the shards the subject's own symbols point at NOW, at claim time, rather than when
+    #  the cold tier reaches them. MEASURED: a cold shard takes 25.0 s to become hot and the wake
+    #  budget is 20 s, so a shard woken at the moment it is needed is never hot in time. Started
+    #  here, the 25 s is spent inside work the search was doing anyway. No-op with no backend
+    #  installed, which is the default.
+    shard_backend.prewake_subject((run.get("input") or {}).get("subject"))
     try:
         resume_stage, done = runstore.resume_point(run["run_id"])
         if done:

@@ -24,9 +24,16 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 class FakeGce:
     """Enough Compute API to answer the state machine, and a log of what was asked of it."""
 
-    def __init__(self, instances=None):
+    def __init__(self, instances=None, capacity_failures=0):
         self.instances = instances or {}
         self.calls = []
+        #  How many `start` operations fail with a zone stockout before one sticks. MEASURED
+        #  2026-08-22: `instances.start` on a TERMINATED c4-highmem-16 in us-central1-b fails
+        #  with ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS about six seconds after the POST
+        #  returned success, and the same call succeeds later. A stopped VM holds no capacity
+        #  reservation, so this is the cold tier's steady state and not a build time accident.
+        self.capacity_failures = int(capacity_failures)
+        self.starts_attempted = 0
 
     def instance(self, vm, zone, max_age=0.0):
         return self.instances.get(vm)
@@ -36,9 +43,18 @@ class FakeGce:
         inst = self.instances.get(vm)
         if inst is None:
             raise RuntimeError("no such instance")
+        self.starts_attempted += 1
+        if self.starts_attempted <= self.capacity_failures:
+            return {"name": f"op-{self.starts_attempted}", "status": "RUNNING", "failed": True}
         inst["status"] = "RUNNING"
         inst.setdefault("ip", "10.0.0.1")
-        return {}
+        return {"name": f"op-{self.starts_attempted}", "status": "RUNNING"}
+
+    def wait_operation(self, op, zone, timeout=30.0, interval=0.0):
+        if (op or {}).get("failed"):
+            return False, "ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS", \
+                "the zone does not have enough resources available"
+        return True, "", ""
 
     def stop(self, vm, zone):
         self.calls.append(("stop", vm))
@@ -705,3 +721,121 @@ def test_the_worker_binds_the_run_so_a_lease_has_an_owner():
         "the worker no longer attributes shard leases to the run it is executing"
     assert "shard_backend.bind_run(None)" in src, \
         "the worker no longer clears the bound run when the search finishes"
+
+
+# =========================================================================== prewake
+class _SymbolCursor:
+    def __init__(self, symbols):
+        self.symbols = list(symbols)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, params=None):
+        assert "classifications" in sql
+
+    def fetchall(self):
+        return [{"symbol": s} for s in self.symbols]
+
+
+class _SymbolConn:
+    def __init__(self, symbols):
+        self.symbols = symbols
+
+    def cursor(self):
+        return _SymbolCursor(self.symbols)
+
+    def close(self):
+        return None
+
+
+def test_prewake_starts_the_subject_s_own_domains_before_the_cold_tier_asks(monkeypatch):
+    """MEASURED: cold to hot is 25.0 s and SHARD_WAKE_TIMEOUT is 20 s, so a shard woken at the
+    moment the cold tier wants it is never hot in time. The subject's own CPC symbols are 25% of
+    the routing distribution and are knowable when the run is claimed, minutes earlier."""
+    real = shard_backend.load_table()
+    instances = {s.vm: {"status": "TERMINATED", "ip": ""} for s in real}
+    b = shard_backend.ShardBackend(table=real, gce=FakeGce(instances),
+                                   probe=lambda *a, **k: None)
+    shard_backend.install(b)
+
+    out = shard_backend.prewake_subject("EP1234567", conn=_SymbolConn(["B25J 9/00", "B66C 1/02"]))
+    started = {vm for _verb, vm in b.gce.calls}
+    assert shard_backend.shard_of("B25J", real).vm in started
+    assert shard_backend.shard_of("B66C", real).vm in started
+    #  route() always emits the unclassified route, 20.6% of the corpus. Its shard is always
+    #  going to be asked for, so it is always worth starting.
+    assert shard_backend.shard_of(shard_router.UNCLASSIFIED, real).vm in started
+    assert out.get("woken")
+
+
+def test_prewake_is_a_no_op_with_no_backend_installed():
+    """It is called unconditionally from the worker, which must stay identical to today for
+    anybody who has not turned the shard backend on."""
+    shard_backend.uninstall()
+    assert shard_backend.prewake_subject("EP1234567") == {}
+
+
+def test_prewake_never_raises_when_the_lookup_fails(monkeypatch):
+    class Boom:
+        def cursor(self):
+            raise RuntimeError("the corpus is unreachable")
+
+    b = shard_backend.ShardBackend(table=table(), gce=FakeGce({}), probe=lambda *a, **k: None)
+    shard_backend.install(b)
+    assert shard_backend.prewake_subject("EP1234567", conn=Boom()) == {}
+
+
+# =========================================================================== the zone stockout
+def test_a_start_that_fails_on_zone_capacity_is_reissued_off_the_wake_path(monkeypatch):
+    """MEASURED 2026-08-22, twice on patents-shard-03: the `start` POST returns success and the
+    operation reaches DONE about six seconds later with ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS,
+    leaving the instance TERMINATED. Nothing in the inherited backend looked at the operation, so
+    a shard that failed to start looked exactly like a shard that was merely slow, and stayed down
+    until some later query happened to ask for it again."""
+    monkeypatch.setattr(shard_backend, "START_RETRY_SECONDS", 0.0)
+    inst = {"vm-transport": {"status": "TERMINATED", "ip": ""}}
+    gce = FakeGce(inst, capacity_failures=2)
+    b = shard_backend.ShardBackend(table=table(), gce=gce, probe=lambda *a, **k: None)
+
+    b._start(b.shard_for("B65G"))
+    deadline = time.time() + 10.0
+    while time.time() < deadline and inst["vm-transport"]["status"] != "RUNNING":
+        time.sleep(0.05)
+    assert inst["vm-transport"]["status"] == "RUNNING", \
+        "a start that failed on zone capacity was never reissued"
+    assert gce.starts_attempted == 3
+    assert not b.start_errors(), f"the error was not cleared once the start stuck: {b.start_errors()}"
+
+
+def test_ensure_does_not_wait_for_a_start_that_the_zone_refused(monkeypatch):
+    """The retry must stay OFF the wake path. A search that waits for a zone to find capacity is
+    a search that pays for the cold tier's problem, which is exactly what the 20 s budget forbids."""
+    monkeypatch.setattr(shard_backend, "START_RETRY_SECONDS", 0.5)
+    inst = {"vm-transport": {"status": "TERMINATED", "ip": ""}}
+    b = shard_backend.ShardBackend(table=table(), gce=FakeGce(inst, capacity_failures=99),
+                                   probe=lambda *a, **k: None)
+    t0 = time.time()
+    out = b.ensure(["B65G"], timeout=2.0)
+    elapsed = time.time() - t0
+    assert out == {"B65G": "cold"}, out
+    assert elapsed < 3.0, f"ensure waited {elapsed:.1f}s on a zone with no capacity"
+
+
+def test_wake_reports_why_a_domain_contributed_nothing(monkeypatch):
+    """`wake()`'s payload lands in Result.tiers. A domain that answered nothing because the zone
+    had no capacity must be distinguishable from one that answered nothing because it was empty."""
+    monkeypatch.setattr(shard_backend, "START_RETRY_SECONDS", 0.0)
+    monkeypatch.setattr(shard_backend, "START_RETRIES", 1)
+    inst = {"vm-transport": {"status": "TERMINATED", "ip": ""}}
+    b = shard_backend.ShardBackend(table=table(), gce=FakeGce(inst, capacity_failures=99),
+                                   probe=lambda *a, **k: None)
+    b.wake([{"domain": "B65G", "weight": 1.0}])
+    deadline = time.time() + 5.0
+    while time.time() < deadline and not b.start_errors():
+        time.sleep(0.05)
+    out = b.wake([{"domain": "B65G", "weight": 1.0}])
+    assert "ZONE_RESOURCE_POOL_EXHAUSTED" in out["errors"]["03-transport"]["code"]
