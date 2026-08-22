@@ -102,6 +102,9 @@ def enabled():
 
 POLL_SECONDS = float(os.environ.get("RUN_WORKER_POLL", "2.0"))
 REAP_SECONDS = float(os.environ.get("RUN_WORKER_REAP", "15.0"))
+#  The retention sweep for the raw hit ledger. Hourly, because a day of rows is a day of rows
+#  whether it is noticed at 12:00 or 12:59, and a bounded delete an hour is invisible to the box.
+PRUNE_SECONDS = float(os.environ.get("RUN_WORKER_PRUNE", "3600.0"))
 
 _stop = False
 
@@ -288,12 +291,26 @@ def loop(lanes=None, poll=None, once=False):
           f"lease={runstore.LEASE_SECONDS}s", flush=True)
     runstore.ensure_schema()
     last_reap = 0.0
+    #  Starts "now", not at zero: the first sweep is an hour in, so a worker restarted in a loop
+    #  cannot turn the retention sweep into a hot loop against the live table.
+    last_prune = time.time()
     while not _stop:
         try:
             if time.time() - last_reap > REAP_SECONDS:
                 last_reap = time.time()
                 runstore.reap()
                 runstore.reap_shards()
+            #  RETENTION, on its own much slower clock. While a run is alive its rows in
+            #  `retrieval_hits` ARE its per-channel checkpoint; once it has settled they are
+            #  evidence with a retention. One bounded delete an hour, so the ledger of a box
+            #  running fifty deep searches a day does not grow without end and no single
+            #  statement holds a lock on the live table for long. See runstore.prune_hits.
+            if time.time() - last_prune > PRUNE_SECONDS:
+                last_prune = time.time()
+                n = runstore.prune_hits()
+                if n:
+                    print(f"[worker] pruned {n} retrieval hit row(s) from runs settled more "
+                          f"than {runstore.HITS_TTL_DAYS} day(s) ago", flush=True)
             if run_once(worker, lanes) is None:
                 if once:
                     return

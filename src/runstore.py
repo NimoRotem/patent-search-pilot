@@ -1021,6 +1021,42 @@ def replace_hits(run_id, channel, hits, pass_key="", query_id=None, shard=""):
     return len(rows)
 
 
+#  HOW LONG THE RAW HIT LEDGER IS KEPT AFTER A RUN SETTLES.
+#  Scoping the checkpoint to the pass is what makes it correct, and it is also what makes it big:
+#  one pass of a quick search wrote 4,900 rows across seven channels, and a run issues one pass per
+#  element plus one for the whole invention. Measured on a live quick search: 14,712 rows after
+#  three passes, about 157 bytes each. A deep run is several times that, and the box has 62 GB.
+#  While the run is alive the rows ARE the checkpoint and must not be touched. Once it is settled
+#  they are evidence, and evidence has a retention, not an eternity.
+HITS_TTL_DAYS = float(os.environ.get("RETRIEVAL_HITS_TTL_DAYS", "7"))
+#  One sweep deletes at most this many rows, so the delete is a bounded statement on a live box
+#  rather than one that takes a lock for as long as it takes.
+HITS_PRUNE_BATCH = int(os.environ.get("RETRIEVAL_HITS_PRUNE_BATCH", "20000"))
+
+
+def prune_hits(ttl_days=None, batch=None):
+    """Drop the raw hit ledger of runs that settled longer ago than the retention. -> rows deleted.
+
+    ONLY TERMINAL RUNS, and only ones that finished before the cutoff. A queued or running row's
+    hits are its retrieval checkpoint: deleting them would make a resumed run re-issue every
+    channel it had already paid for, which is the exact cost this whole mechanism exists to avoid.
+    """
+    ttl = float(HITS_TTL_DAYS if ttl_days is None else ttl_days)
+    if ttl <= 0:
+        return 0
+    with _cur() as cur:
+        cur.execute("""DELETE FROM retrieval_hits
+                        WHERE id IN (SELECT h.id
+                                       FROM retrieval_hits h
+                                       JOIN search_runs r ON r.run_id = h.run_id
+                                      WHERE r.status IN ('done','failed','cancelled')
+                                        AND r.finished_at IS NOT NULL
+                                        AND r.finished_at < now() - make_interval(secs => %s)
+                                      LIMIT %s)""",
+                    (ttl * 86400.0, int(batch or HITS_PRUNE_BATCH)))
+        return cur.rowcount or 0
+
+
 def channel_hits(run_id, channel, pass_key=""):
     """One pass's recorded hits for `channel`, in the rank order they were recorded in.
 

@@ -1135,3 +1135,53 @@ def test_the_boot_requeue_still_clears_a_partial_with_no_live_run(recovery_env):
     p.write_text(json.dumps({"partial": True}))
     webapp._drop_partial_report("requeue-dead")
     assert not p.exists()
+
+
+# ==================================================== the retention the pass scoping made necessary
+def test_a_live_runs_hit_ledger_is_never_pruned(run):
+    """The rows of a run that has not settled ARE its retrieval checkpoint. Pruning them would
+    make a resumed run re-issue every channel it had already paid for, which is the entire cost
+    this mechanism exists to avoid."""
+    rid, slug = run
+    with bound(rid, slug, attempt=1):
+        orchestrator._run_phase([("dense", _channel("dense", [(1, 0.9), (2, 0.8)], []))], 1,
+                                pass_key=PASS)
+    runstore.prune_hits(ttl_days=0.0000001)
+    with db.cursor() as cur:
+        cur.execute("SELECT count(*) n FROM retrieval_hits WHERE run_id=%s", (rid,))
+        assert cur.fetchone()["n"] == 2, "a running run's checkpoint was pruned out from under it"
+
+
+def test_a_settled_runs_hit_ledger_is_pruned_once_it_is_older_than_the_retention(run):
+    rid, slug = run
+    with bound(rid, slug, attempt=1):
+        orchestrator._run_phase([("dense", _channel("dense", [(1, 0.9), (2, 0.8)], []))], 1,
+                                pass_key=PASS)
+    with db.cursor() as cur:
+        cur.execute("UPDATE search_runs SET status='done', finished_at = now() - interval '30 days' "
+                    "WHERE run_id=%s", (rid,))
+    assert runstore.prune_hits(ttl_days=7) >= 2
+    with db.cursor() as cur:
+        cur.execute("SELECT count(*) n FROM retrieval_hits WHERE run_id=%s", (rid,))
+        assert cur.fetchone()["n"] == 0
+
+
+def test_a_settled_run_inside_the_retention_keeps_its_evidence(run):
+    """`retrieval_hits` answers "was this retrieved and dropped, or never retrieved at all?".
+    A retention that deleted a run's evidence the moment it settled would answer nothing."""
+    rid, slug = run
+    with bound(rid, slug, attempt=1):
+        orchestrator._run_phase([("dense", _channel("dense", [(1, 0.9)], []))], 1, pass_key=PASS)
+    with db.cursor() as cur:
+        cur.execute("UPDATE search_runs SET status='done', finished_at=now() WHERE run_id=%s",
+                    (rid,))
+    runstore.prune_hits(ttl_days=7)
+    with db.cursor() as cur:
+        cur.execute("SELECT count(*) n FROM retrieval_hits WHERE run_id=%s", (rid,))
+        assert cur.fetchone()["n"] == 1
+
+
+def test_the_retention_can_be_turned_off_but_not_by_accident(run):
+    """Zero means off, and off is a decision. A misread of "0 days" as "delete everything now" is
+    the one failure mode that would take a live run's checkpoint with it."""
+    assert runstore.prune_hits(ttl_days=0) == 0
