@@ -1223,6 +1223,7 @@ def test_ensure_project_figures_draws_every_missing_spec_with_canonical_parts(mo
         ])
     assert out["ok"] is True and out["generated"] == 2 and len(calls) == 2
     assert calls[0]["numerals"] == ["10 = body", "12 = pump"]
+    assert [call["sort_order"] for call in calls] == [1, 2]
 
 
 def test_ensure_project_figures_preserves_complete_geometry_brief(monkeypatch):

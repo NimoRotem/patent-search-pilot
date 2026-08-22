@@ -2689,7 +2689,7 @@ def _semantic_has_text_contamination(semantic) -> bool:
 
 def render_figure(project_id, user_id, *, label, caption, sections=None, instruction="",
                   figure_id=None, base_version=None, disclosure="", source_png=None,
-                  region=None, numerals=None):
+                  region=None, numerals=None, sort_order=0):
     """Generate (or re-generate) one figure and store the result as a new version.
 
     With `figure_id` this is an EDIT: the currently active image is passed back to the model with
@@ -2828,7 +2828,9 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
     semantic["pixel_anchor_audit"] = pixel_audit
     semantic["marked_anchor_audit"] = leaders.get("marked_anchor_audit") or {}
     if not figure_id:
-        fig = create_figure(project_id, user_id, canonical_figure_label(label), caption)
+        fig = create_figure(
+            project_id, user_id, canonical_figure_label(label), caption,
+            sort_order=sort_order)
         figure_id = fig["id"]
     version = _audited_version(
         figure_id, prompt=prompt, instruction=instruction, numerals=numerals, png=png,
@@ -2931,6 +2933,7 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
                 project_id, user_id, label=label, caption=caption,
                 sections=sections, disclosure=disclosure, numerals=expected,
                 figure_id=(current or {}).get("id"),
+                sort_order=index,
                 instruction="Automatically reconcile this sheet with the current filing text.")
         except FigureError as exc:
             error = f"{canonical_figure_label(label)}: {str(exc)[:1400]}"
