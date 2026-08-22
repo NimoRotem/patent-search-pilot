@@ -67,6 +67,7 @@ import llm
 import oracle
 import corpus_guard                # is this process allowed to write the live corpus at all
 import runctx                       # the durable run this search belongs to, if any (else no-op)
+from retrieval.family import family_key_sql
 
 VERSION = 1
 
@@ -384,7 +385,7 @@ def _seed_families(cur, report, families, reps):
             "SELECT p.id, p.publication_number, p.kind_code, p.country, p.title, p.abstract, "
             "       p.publication_date, p.filing_date, p.earliest_priority_date, "
             "       p.simple_family_id, p.tier, p.facsimile_path, "
-            "       COALESCE(NULLIF(p.simple_family_id,''), p.publication_number) AS fam, "
+            f"       {family_key_sql('p')} AS fam, "
             "       (SELECT count(*) FROM claims c WHERE c.publication_id=p.id) AS n_claims, "
             "       (SELECT count(*) FROM chunks ch WHERE ch.publication_id=p.id "
             "        AND ch.embedding IS NOT NULL) AS n_emb "
