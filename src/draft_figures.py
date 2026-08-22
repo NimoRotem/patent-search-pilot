@@ -40,9 +40,10 @@ MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
 FIGURE_PROMPT_VERSION = "figure-v3-geometry-only"
-SEMANTIC_PROMPT_VERSION = "figure-semantic-v9-consensus-pixel-grounded-marked-topology"
-LEADER_PROMPT_VERSION = "figure-leader-v3-independent-consensus"
-MARKED_ANCHOR_PROMPT_VERSION = "figure-anchor-v1-marked-crop-consensus"
+SEMANTIC_PROMPT_VERSION = (
+    "figure-semantic-v10-full-spec-consensus-pixel-grounded-marked-topology")
+LEADER_PROMPT_VERSION = "figure-leader-v4-full-spec-independent-consensus"
+MARKED_ANCHOR_PROMPT_VERSION = "figure-anchor-v2-full-spec-marked-crop-consensus"
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v1-exterior-connectivity"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
@@ -1355,14 +1356,23 @@ def _overlay_feedback_only(error: str) -> bool:
                 any(term in text for term in ("called out", "call out", "lack", "missing", "no ")))
 
 
+def _review_specification(label: str, caption: str, numerals, *, geometry_only: bool) -> str:
+    """Build one complete specification shared by every visual review gate."""
+    caption_text = (_geometry_text(caption, numerals) if geometry_only
+                    else str(caption or ""))
+    return json.dumps({
+        "figure_label": canonical_figure_label(label),
+        "caption": caption_text[:MAX_PROMPT_CHARS],
+        "parts": numeral_entries(numerals),
+    }, ensure_ascii=False, sort_keys=True)
+
+
 def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict:
     """Require independent geometry and constraint traces before labels are composited."""
     from google.genai.types import GenerateContentConfig, Part, ThinkingConfig
     entries = numeral_entries(numerals)
-    specification = json.dumps({
-        "caption": _geometry_text(caption, numerals)[:4000],
-        "parts": entries,
-    }, ensure_ascii=False, sort_keys=True)
+    specification = _review_specification(
+        label, caption, numerals, geometry_only=True)
     spec_hash = specification_hash(label, caption, numerals)
     model = vision_model()
     key = _analysis_cache_key("semantic", png, specification, model, SEMANTIC_PROMPT_VERSION)
@@ -1530,11 +1540,8 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
     from google.genai.types import GenerateContentConfig, Part, ThinkingConfig
 
     entries = numeral_entries(numerals)
-    specification = json.dumps({
-        "figure_label": canonical_figure_label(label),
-        "caption": str(caption or "")[:4000],
-        "parts": entries,
-    }, ensure_ascii=False, sort_keys=True)
+    specification = _review_specification(
+        label, caption, numerals, geometry_only=False)
     spec_hash = specification_hash(label, caption, numerals)
     montage = _marked_anchor_montage(png, anchors, numerals)
     model = vision_model()
@@ -1645,11 +1652,8 @@ def inspect_leaders(png: bytes, *, label: str, caption: str, numerals) -> dict:
     """Require two independent final-pixel traces to ground every printed leader."""
     from google.genai.types import GenerateContentConfig, Part, ThinkingConfig
     entries = numeral_entries(numerals)
-    specification = json.dumps({
-        "figure_label": canonical_figure_label(label),
-        "caption": str(caption or "")[:4000],
-        "parts": entries,
-    }, ensure_ascii=False, sort_keys=True)
+    specification = _review_specification(
+        label, caption, numerals, geometry_only=False)
     spec_hash = specification_hash(label, caption, numerals)
     model = vision_model()
     key = _analysis_cache_key("leaders", png, specification, model, LEADER_PROMPT_VERSION)

@@ -512,6 +512,23 @@ def test_long_geometry_prompt_keeps_components_change_request_and_no_text_rule()
     assert prompt.endswith("Return geometry only, without text or digits.")
 
 
+def test_visual_review_spec_keeps_the_full_realistic_brief_and_every_part():
+    caption = (
+        "A rectangular frame supports a transverse pump above an open central chamber. " * 85 +
+        "The terminal flange remains below the upper plate and touches neither side wall.")
+    numerals = ["10 = rectangular frame", "12 = transverse pump", "14 = terminal flange"]
+
+    geometry = json.loads(draft_figures._review_specification(
+        "FIG. 4 - sectional view", caption, numerals, geometry_only=True))
+    endpoints = json.loads(draft_figures._review_specification(
+        "FIG. 4 - sectional view", caption, numerals, geometry_only=False))
+
+    for specification in (geometry, endpoints):
+        assert specification["figure_label"] == "FIG. 4"
+        assert "terminal flange remains below the upper plate" in specification["caption"].lower()
+        assert [item["numeral"] for item in specification["parts"]] == ["10", "12", "14"]
+
+
 def test_render_refuses_to_store_a_semantically_wrong_drawing(monkeypatch):
     monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
     monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
