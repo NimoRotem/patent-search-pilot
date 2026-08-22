@@ -2637,14 +2637,27 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
                        if int(item.get("version_no") or 0) ==
                        int((current or {}).get("active_version") or 0)), None) or {}
         expected_set = {item["numeral"] for item in numeral_entries(expected)}
-        stored_set = {_clean_numeral(value) for value in
-                      (active.get("numeral_audit") or {}).get("expected") or []}
-        if (current and (active.get("numeral_audit") or {}).get("ok") and
-                current_semantic_audit(active.get("semantic_audit") or {}) and
-                current_leader_audit(active.get("leader_audit") or {}) and
-                expected_set == stored_set and
-                (active.get("semantic_audit") or {}).get("specification_hash") == expected_hash and
-                (active.get("leader_audit") or {}).get("specification_hash") == expected_hash):
+
+        def accepted_for_current_spec(version) -> bool:
+            stored_set = {_clean_numeral(value) for value in
+                          (version.get("numeral_audit") or {}).get("expected") or []}
+            return bool((version.get("numeral_audit") or {}).get("ok") and
+                        current_semantic_audit(version.get("semantic_audit") or {}) and
+                        current_leader_audit(version.get("leader_audit") or {}) and
+                        expected_set == stored_set and
+                        (version.get("semantic_audit") or {}).get(
+                            "specification_hash") == expected_hash and
+                        (version.get("leader_audit") or {}).get(
+                            "specification_hash") == expected_hash)
+
+        if current and not accepted_for_current_spec(active):
+            historical = next((item for item in current.get("versions") or []
+                               if accepted_for_current_spec(item)), None)
+            if historical and set_active(
+                    current["id"], user_id, historical["version_no"],
+                    expected_specification_hash=expected_hash):
+                active = historical
+        if current and accepted_for_current_spec(active):
             reused += 1
             results.append({"figure_id": current["id"], "label": label,
                             "numeral_audit": active["numeral_audit"],

@@ -1125,6 +1125,43 @@ def test_existing_figure_metadata_is_refreshed_from_the_current_spec(monkeypatch
     assert updates == [(8, 91, "FIG. 2", "current caption", 1)]
 
 
+def test_exact_checked_historical_sheet_is_reactivated_after_a_rollback(monkeypatch):
+    spec = {"label": "FIG. 1", "caption": "side view", "numerals": ["10"]}
+    digest = draft_figures.specification_hash("FIG. 1", "side view", ["10 = body"])
+    stale = {
+        "version_no": 1,
+        "numeral_audit": {"ok": True, "expected": ["10"]},
+        "semantic_audit": accepted_semantic_audit(specification_hash="old-spec"),
+        "leader_audit": accepted_leader_audit(specification_hash="old-spec"),
+    }
+    checked = {
+        "version_no": 4,
+        "numeral_audit": {"ok": True, "expected": ["10"]},
+        "semantic_audit": accepted_semantic_audit(specification_hash=digest),
+        "leader_audit": accepted_leader_audit(specification_hash=digest),
+    }
+    monkeypatch.setattr(draft_figures, "listing", lambda *a: [{
+        "id": 8, "figure_label": "FIG. 1", "caption": "side view", "sort_order": 1,
+        "active_version": 1, "versions": [checked, stale],
+    }])
+    activations = []
+    monkeypatch.setattr(
+        draft_figures, "set_active",
+        lambda figure_id, user_id, version_no, **values: (
+            activations.append((figure_id, user_id, version_no, values)) or True))
+    monkeypatch.setattr(
+        draft_figures, "render_figure",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("checked sheet should be reused")))
+    monkeypatch.setattr(draft_figures, "archive_figure", lambda *a: True)
+
+    out = draft_figures.ensure_project_figures(
+        7, 91, sections={}, disclosure="body",
+        numeral_table=[{"numeral": "10", "part": "body"}], figure_specs=[spec])
+
+    assert out["ok"] is True and out["reused"] == 1 and out["generated"] == 0
+    assert activations == [(8, 91, 4, {"expected_specification_hash": digest})]
+
+
 def test_a_previous_leader_review_is_never_reused(monkeypatch):
     spec = {"label": "FIG. 1", "caption": "side view", "numerals": ["10"]}
     digest = draft_figures.specification_hash("FIG. 1", "side view", ["10 = body"])
