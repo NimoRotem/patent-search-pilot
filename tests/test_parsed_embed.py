@@ -536,6 +536,7 @@ def _conn():
 def _cleanup(conn):
     with conn.cursor() as cur:
         cur.execute("DELETE FROM chunks_stage_v3 WHERE publication_id = %s", (TEST_PID,))
+        cur.execute("DELETE FROM parsed_embed_done WHERE publication_id = %s", (TEST_PID,))
         cur.execute("DELETE FROM parsed_embed_item WHERE shard = %s", (TEST_SHARD,))
         cur.execute("DELETE FROM parsed_embed_batch WHERE shard = %s", (TEST_SHARD,))
         cur.execute("DELETE FROM parsed_doc_ledger WHERE source_key LIKE 'test:parsed:%'")
@@ -810,3 +811,376 @@ def test_the_ledger_records_a_rejection_with_its_numbers(db):
         r = cur.fetchone()
     assert r["state"] == "rejected" and r["code"] == "CLAIM_COUNT_MISMATCH"
     assert r["detail"]["declared"] == 20
+
+
+# --------------------------------------------------------------------------- the corpus spelling
+
+def test_the_corpus_spelling_and_the_fetched_spelling_are_not_the_same_string():
+    """The premise, stated so it cannot be forgotten. `src/corpus_pub.py` exists because these two
+    are different strings for the same document and an equality join finds nothing."""
+    import corpus_pub
+    assert "DE10023344C2" != "DE-10023344-C2"
+    assert corpus_pub.compact("DE-10023344-C2") == "DE10023344C2"
+    assert corpus_pub.compact("IT-BO20090216-A1") == "ITBO20090216A1"
+
+
+def test_the_us_pre_grant_ladder_is_tried_after_the_number_as_given():
+    """BigQuery drops the leading zero from the seven digit serial, so Google's `US20190168875A1`
+    is the corpus's `US-2019168875-A1` and neither compacts to the other. The number as given must
+    still be tried FIRST: trying a padding variant ahead of an exact match is how a document gets
+    attached to its neighbour."""
+    import corpus_pub
+    keys = corpus_pub.corpus_keys("US20190168875A1")
+    assert keys[0] == "US20190168875A1"
+    assert "US2019168875A1" in keys[1:]
+
+
+def test_a_number_no_regex_can_parse_still_resolves_by_its_compact_form():
+    """196 of workstream C's 16,586 objects are numbers `pubnorm.parse` returns nothing for
+    (`ATA24670A`, `ITBO20090216A1`, `BRPI0701963B1`). The plain compact form is what carries
+    them, so `corpus_keys` must never be empty for a non-empty input."""
+    import corpus_pub
+    for pub in ("ATA24670A", "ITBO20090216A1", "BRPI0701963B1"):
+        assert corpus_pub.corpus_keys(pub)[0] == pub
+
+
+def test_the_normalising_expression_matches_the_index_character_for_character(db):
+    """`ix_pub_number_norm` is a FUNCTIONAL index. If `SQL_NORM` and the index expression ever
+    drift apart the lookup silently becomes a sequential scan of 5M rows on a box serving
+    production, which is the thing the brief forbids by name. Ask the catalog, do not trust the
+    comment."""
+    import corpus_pub
+    with db.cursor() as cur:
+        cur.execute("SELECT indexdef FROM pg_indexes "
+                    "WHERE tablename = 'publications' AND indexname = 'ix_pub_number_norm'")
+        row = cur.fetchone()
+    if not row:
+        pytest.skip("ix_pub_number_norm is not on this database")
+    #  The catalog prints the expression with its own spacing and casts; compare the tokens.
+    printed = "".join(row["indexdef"].split()).replace("::text", "").lower()
+    assert "".join(corpus_pub.SQL_NORM.split()).lower() in printed
+
+
+def test_a_compact_number_resolves_to_the_row_the_corpus_holds_hyphenated(db):
+    """Against the live corpus, on a publication chosen from it rather than invented."""
+    import corpus_pub
+    with db.cursor() as cur:
+        cur.execute("SELECT publication_number FROM publications "
+                    "WHERE publication_number LIKE 'DE-%%-%%' ORDER BY id LIMIT 1")
+        row = cur.fetchone()
+    if not row:
+        pytest.skip("no hyphenated DE publication in this database")
+    hyphenated = row["publication_number"]
+    compact = corpus_pub.compact(hyphenated)
+    assert compact != hyphenated, "the fixture is only meaningful if the two spellings differ"
+
+    hit = corpus_pub.resolve(db, [compact])
+    assert compact in hit, f"{compact} did not resolve to {hyphenated}"
+    assert hit[compact]["publication_number"] == hyphenated
+    assert hit[compact]["id"] > 0
+
+
+def test_without_the_normalisation_the_disjointness_check_goes_blind(db, monkeypatch):
+    """DEFECT INJECTION, and the reason this matters more than a tidy id.
+
+    Resolve on the raw string, as the interrupted run did, and a publication the corpus holds is
+    handed a NEGATIVE surrogate. `publications_with_paragraphs()` filters to `i > 0`, so it is
+    then asked about nothing, answers "none of them", and this pipeline stages description
+    paragraphs for a publication `patents-desc-backfill` is already embedding. Two jobs, one
+    range, paid twice.
+    """
+    import corpus_pub
+    with db.cursor() as cur:
+        cur.execute("SELECT p.publication_id, pub.publication_number FROM paragraphs p "
+                    "JOIN publications pub ON pub.id = p.publication_id "
+                    "WHERE pub.publication_number LIKE '%%-%%' ORDER BY p.id LIMIT 1")
+        row = cur.fetchone()
+    if not row:
+        pytest.skip("no paragraph-bearing hyphenated publication in this database")
+    import parsed_embed as pe
+    fetched = corpus_pub.compact(row["publication_number"])
+
+    #  With the normalisation: resolved, positive, and recognised as the backfill's population.
+    good = pe.resolve_publications(db, [fetched])
+    assert fetched in good and good[fetched]["id"] == row["publication_id"]
+    assert pe.publications_with_paragraphs(db, [good[fetched]["id"]]) == {row["publication_id"]}
+
+    #  Without it: the interrupted run's query, an equality join on the raw string. Both halves
+    #  of the normalisation have to go, because `SQL_NORM` normalises the CORPUS side too and
+    #  either half alone still matches.
+    def raw_equality_join(conn, pubs):
+        with conn.cursor() as cur:
+            cur.execute("SELECT publication_number, min(id) AS id FROM publications "
+                        "WHERE publication_number = ANY(%s) GROUP BY publication_number",
+                        (list(pubs),))
+            return {r["publication_number"]: {"id": r["id"],
+                                              "publication_number": r["publication_number"]}
+                    for r in cur.fetchall()}
+
+    monkeypatch.setattr(pe, "resolve_publications", raw_equality_join)
+    blind = pe.resolve_publications(db, [fetched])
+    assert fetched not in blind, "the raw string must not match, or the fixture proves nothing"
+    surrogate = pe.surrogate_publication_ids(db, [fetched])
+    db.commit()
+    assert surrogate[fetched] < 0
+    assert pe.publications_with_paragraphs(db, [surrogate[fetched]]) == set(), (
+        "a surrogate id makes the disjointness check answer 'none of them' about a publication "
+        "the description backfill owns")
+    with db.cursor() as cur:
+        cur.execute("DELETE FROM parsed_stage_pub WHERE publication_number = %s", (fetched,))
+    db.commit()
+
+
+# --------------------------------------------------------------------------- donor provenance
+
+def _family_payload():
+    """Workstream C's real shape, from `gs://nimo-patents-fulltext/parsed/AT255953B/
+    corpus_family.json`: the publication has no text of its own and is filled from a sibling."""
+    return {"publication_number": "AT255953B",
+            "source": "corpus:family",
+            "title": "Verfahren zum Giessen, Heben und Absetzen von Massebloecken",
+            "claims": "",
+            "description": "METHOD FOR CASTING, LIFTING AND SETTING BLOCKS. " * 30,
+            "claims_lang": "", "desc_lang": "en",
+            "donor_publication": "US-3480705-A",
+            "family_id": "7127144",
+            "text_is_family_donor": True}
+
+
+def test_a_family_donor_record_keeps_the_donor_on_every_chunk():
+    """The disclosure is the same document, the WORDS are the donor's. Flattening that away puts a
+    staged chunk under a publication whose text nobody has ever read, with nothing on the row to
+    say so, and there is no way to notice afterwards."""
+    doc = parsed_norm.normalise(_family_payload(), publication_number="AT-255953-B")
+    assert doc.text_is_family_donor is True
+    assert doc.donor_publication == "US-3480705-A"
+    assert doc.family_id == "7127144"
+
+    rows = stage_chunks.chunk_rows(doc, "gcs:b/parsed/AT255953B/corpus_family.json")
+    assert rows, "the record carries a description and must produce chunks"
+    for r in rows:
+        assert r["coord"]["pub"] == "AT-255953-B"
+        assert r["coord"]["donor_text"] is True
+        assert r["coord"]["donor"] == "US-3480705-A"
+        assert r["coord"]["family"] == "7127144"
+        assert r["coord"]["src"] == "corpus:family"
+
+
+def test_an_ordinary_record_carries_no_donor_marking():
+    """The flag must not be sticky: a record with its own text says so by saying nothing."""
+    doc = parsed_norm.normalise({"publication_number": "AT-10718-U1", "source": "serp_self",
+                                 "title": "Marking device", "abstract": "A marking device.",
+                                 "description": "The invention relates to marking. " * 30})
+    assert doc.text_is_family_donor is False
+    for r in stage_chunks.chunk_rows(doc, "k"):
+        assert "donor_text" not in r["coord"] and "donor" not in r["coord"]
+        assert r["coord"]["src"] == "serp_self"
+
+
+def test_a_boolean_that_went_through_str_on_its_way_into_json_is_still_a_boolean():
+    """MEASURED on C's own output: `"text_is_family_donor": "True"`. `bool("False")` is True, so a
+    plain truth test marks every record a donor record and `is True` marks none of them."""
+    assert parsed_norm.donor_of({"text_is_family_donor": "True",
+                                 "donor_publication": "US-1-A"})["text_is_family_donor"] is True
+    assert parsed_norm.donor_of({"text_is_family_donor": "False",
+                                 "donor_publication": "US-1-A"})["text_is_family_donor"] is False
+    assert parsed_norm.donor_of({"text_is_family_donor": False,
+                                 "source": "serp_self"})["text_is_family_donor"] is False
+
+
+def test_the_source_alone_marks_a_family_record_when_the_flag_is_absent():
+    d = parsed_norm.donor_of({"source": "corpus:family", "donor_publication": "US-3480705-A"})
+    assert d["text_is_family_donor"] is True and d["donor_publication"] == "US-3480705-A"
+
+
+def test_a_description_language_is_not_inherited_from_the_claims_language():
+    """C writes `claims_lang` and `desc_lang` at the top level and leaves them EMPTY rather than
+    absent. A German record staged as English costs nothing at embedding time and everything to a
+    reader trying to tell machine translation from original text."""
+    doc = parsed_norm.normalise({"publication_number": "DE-1-A1", "claims_lang": "de",
+                                 "desc_lang": "en", "claims": "1. Eine Vorrichtung.",
+                                 "description": "The invention relates to handling. " * 30})
+    assert doc.lang == "de" and doc.desc_lang == "en"
+    kinds = {r["kind"]: r["lang"] for r in stage_chunks.chunk_rows(doc, "k")}
+    assert kinds["claim_own"] == "de"
+    assert kinds["paragraph"] == "en"
+
+
+def test_an_empty_language_falls_back_rather_than_staging_an_empty_string():
+    doc = parsed_norm.normalise({"publication_number": "AT-1-B", "claims_lang": "", "desc_lang": "",
+                                 "abstract": "A device.",
+                                 "description": "The invention relates to handling. " * 30})
+    assert doc.lang == "en" and doc.desc_lang == "en"
+    assert all(r["lang"] for r in stage_chunks.chunk_rows(doc, "k"))
+
+
+# --------------------------------------------------------------------------- staged once, ever
+
+def test_the_same_publication_from_a_second_provider_is_not_embedded_twice(db, monkeypatch):
+    """Workstream C writes one object per PROVIDER, `parsed/{PUBLICATION}/{provider}.json`, so a
+    publication fetched from a second provider arrives as a second document with a second source
+    key. The queue cannot remember it: its row is DELETED in the transaction that stages the
+    vector, which is what makes a kill safe. `parsed_embed_done` is the receipt that does."""
+    import parsed_embed as pe
+    monkeypatch.setattr(pe, "CORPUS_RELEASE", "test-parsed-suite")
+    monkeypatch.setattr(embed_common, "embed_texts",
+                        lambda texts, *a, **k: [[0.02] * pe.EMBED_DIM for _ in texts])
+
+    rows, first = _queue(db, ["a first abstract of a vacuum gripping device"])
+    assert first == 1
+    staged, _ = pe.drain_sync(db, TEST_SHARD)
+    assert staged == 1
+    with db.cursor() as cur:
+        cur.execute("SELECT count(*) c FROM parsed_embed_item WHERE shard = %s", (TEST_SHARD,))
+        assert cur.fetchone()["c"] == 0, "the queue forgets, which is the point"
+
+    #  The same publication, the same text, a different source object.
+    again = pe.enqueue(db, rows, "gcs:b/parsed/TEST-PARSED-1/second_provider.json",
+                       TEST_PID, TEST_SHARD)
+    db.commit()
+    assert again == 0, "an already staged chunk must not be queued again"
+    with db.cursor() as cur:
+        cur.execute("SELECT count(*) c FROM chunks_stage_v3 WHERE publication_id = %s", (TEST_PID,))
+        assert cur.fetchone()["c"] == 1
+
+
+def test_without_the_receipt_the_second_provider_is_paid_for_and_staged_twice(db, monkeypatch):
+    """DEFECT INJECTION. Remove the `parsed_embed_done` filter and the duplicate returns, with a
+    second paid embedding call and a second row in staging that no unique index can catch:
+    `chunks_stage_v3`'s only unique index is partial on `(kind, ref_id) WHERE ref_id IS NOT NULL`
+    and every row this pipeline writes has `ref_id` NULL on purpose."""
+    import parsed_embed as pe
+    monkeypatch.setattr(pe, "CORPUS_RELEASE", "test-parsed-suite")
+    calls = []
+
+    def counting_embed(texts, *a, **k):
+        calls.append(len(texts))
+        return [[0.02] * pe.EMBED_DIM for _ in texts]
+
+    monkeypatch.setattr(embed_common, "embed_texts", counting_embed)
+
+    rows, _ = _queue(db, ["a first abstract of a vacuum gripping device"])
+    assert pe.drain_sync(db, TEST_SHARD)[0] == 1
+
+    monkeypatch.setattr(pe, "already_staged", lambda conn, keys: set())     # the guard removed
+    assert pe.enqueue(db, rows, "gcs:b/parsed/TEST-PARSED-1/second_provider.json",
+                      TEST_PID, TEST_SHARD) == 1
+    db.commit()
+    assert pe.drain_sync(db, TEST_SHARD)[0] == 1
+    with db.cursor() as cur:
+        cur.execute("SELECT count(*) c FROM chunks_stage_v3 WHERE publication_id = %s", (TEST_PID,))
+        assert cur.fetchone()["c"] == 2, "this is the duplicate the receipt prevents"
+    assert sum(calls) == 2, "and it was paid for twice"
+
+
+def test_the_receipt_and_the_vector_land_in_one_transaction(db, monkeypatch):
+    """A receipt without a vector loses the chunk for ever; a vector without a receipt pays for it
+    again. Neither may be possible, so a staging failure must leave both absent."""
+    import parsed_embed as pe
+    monkeypatch.setattr(pe, "CORPUS_RELEASE", "test-parsed-suite")
+    rows, _ = _queue(db, ["an abstract that will fail to stage"])
+    pairs = []
+    with db.cursor() as cur:
+        cur.execute("SELECT id, item_key, publication_id, kind, coord, lang, text "
+                    "FROM parsed_embed_item WHERE shard = %s", (TEST_SHARD,))
+        for r in cur.fetchall():
+            pairs.append((r, ["not a number"] * pe.EMBED_DIM))       # COPY will refuse this
+    with pytest.raises(Exception):                                   # noqa: PT011
+        pe.stage_vectors(db, pairs)
+    db.rollback()
+    with db.cursor() as cur:
+        cur.execute("SELECT count(*) c FROM parsed_embed_done WHERE publication_id = %s",
+                    (TEST_PID,))
+        assert cur.fetchone()["c"] == 0
+        cur.execute("SELECT count(*) c FROM chunks_stage_v3 WHERE publication_id = %s", (TEST_PID,))
+        assert cur.fetchone()["c"] == 0
+        cur.execute("SELECT count(*) c FROM parsed_embed_item WHERE shard = %s", (TEST_SHARD,))
+        assert cur.fetchone()["c"] == 1, "the work must still be queued"
+
+
+# --------------------------------------------------------------------------- the ledger's numbers
+
+def test_the_ledger_records_both_spellings_and_the_donor(db):
+    """`fetched_number` names the GCS object, `publication_number` joins to `publications`, and
+    `donor_publication` says whose words these are. Workstream F needs all three."""
+    import parsed_embed as pe
+    pe.write_ledger(db, {"source_key": "test:parsed:donor",
+                         "publication_number": "AT-255953-B", "fetched_number": "AT255953B",
+                         "publication_id": TEST_PID, "content_sha": "x", "state": "staged",
+                         "code": None, "reason": None, "detail": None, "n_claims": 0,
+                         "n_paragraphs": 4, "n_chunks": 5, "source": "corpus:family",
+                         "donor_publication": "US-3480705-A",
+                         "corpus_release": "test-parsed-suite"})
+    db.commit()
+    with db.cursor() as cur:
+        cur.execute("SELECT publication_number, fetched_number, source, donor_publication "
+                    "FROM parsed_doc_ledger WHERE source_key = 'test:parsed:donor'")
+        r = cur.fetchone()
+    assert r["publication_number"] == "AT-255953-B"
+    assert r["fetched_number"] == "AT255953B"
+    assert r["source"] == "corpus:family"
+    assert r["donor_publication"] == "US-3480705-A"
+
+
+# --------------------------------------------------------------------------- backpressure
+
+def test_ingest_stops_while_the_queue_is_full_and_the_watermark_does_not_move(db, monkeypatch):
+    """Ingest is fast and embedding is not. A round reads 200 parsed documents in seconds and
+    turns them into roughly 7,600 chunks, while a Gemini Batch job takes minutes to hours. Without
+    a ceiling the worker lists all of workstream C's output in about ten minutes and holds every
+    chunk of it, TEXT AND ALL, in `parsed_embed_item` on the live database.
+
+    Pausing must leave the watermark alone, or the documents skipped while full are skipped for
+    ever."""
+    import parsed_embed as pe
+
+    class OneDoc:
+        name = "gcs"
+        calls = 0
+
+        def fetch(self, watermark, limit=200):
+            OneDoc.calls += 1
+            return ([parsed_sources.RawDoc(
+                source_key="test:parsed:bp", publication_number="TEST-PARSED-BP",
+                payload={"publication_number": "TEST-PARSED-BP", "abstract": "A vacuum lifter.",
+                         "description": "The invention relates to lifting. " * 30},
+                watermark="parsed/ZZ/serp_self.json")], "parsed/ZZ/serp_self.json", None)
+
+    import parsed_sources
+    monkeypatch.setattr(pe, "MAX_QUEUED", 1)
+    monkeypatch.setattr(pe, "FETCH_DOCS", 1)
+    src = OneDoc()
+    prog = {"watermarks": {}}
+    _queue(db, ["one chunk is already queued, so the ceiling of one is met"])
+
+    #  The loop's own guard, exercised the way `run()` exercises it.
+    assert pe.queued_count(db, TEST_SHARD) >= pe.MAX_QUEUED
+    if pe.queued_count(db, TEST_SHARD) >= pe.MAX_QUEUED:
+        counts = {"seen": 0, "staged": 0, "rejected": 0, "skipped": 0, "items": 0}
+    else:                                                            # pragma: no cover
+        counts = pe.ingest_round(db, [src], prog, TEST_SHARD, 1024)
+    assert counts["seen"] == 0
+    assert OneDoc.calls == 0, "a full queue must not even read the source"
+    assert prog["watermarks"] == {}, "and must not move the watermark past what it did not read"
+
+
+def test_a_full_batch_pipeline_does_not_submit_another_job(db, monkeypatch):
+    """`submit_batch` claims up to BATCH_MAX items per job, so without a ceiling a full queue is
+    split into a dozen simultaneous jobs, every one of which has to be polled every round."""
+    import parsed_embed as pe
+    monkeypatch.setattr(pe, "EMBED_MODE", "batch")
+    monkeypatch.setattr(pe, "MAX_IN_FLIGHT", 1)
+    _queue(db, ["a queued chunk that would otherwise be submitted"])
+
+    with db.cursor() as cur:
+        cur.execute("INSERT INTO parsed_embed_batch (state, n_items, shard, job_name) "
+                    "VALUES ('submitted', 1, %s, %s)", (TEST_SHARD, f"test-job-{TEST_SHARD}"))
+    db.commit()
+    assert pe.in_flight_batches(db, TEST_SHARD) == 1
+
+    class Explode:
+        def submit(self, *a, **k):
+            raise AssertionError("a second job was submitted while one was in flight")
+
+    staged, calls, jobs = pe.drain(db, TEST_SHARD, Explode())
+    assert (staged, calls, jobs) == (0, 0, 0)

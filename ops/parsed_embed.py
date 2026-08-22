@@ -91,6 +91,18 @@ BATCH_MAX = int(os.environ.get("PARSED_BATCH_MAX", "50000"))
 BATCH_BUCKET = os.environ.get("PARSED_BATCH_BUCKET", "nimo-patents-v3")
 MAX_ITEM_ATTEMPTS = int(os.environ.get("PARSED_MAX_ITEM_ATTEMPTS", "4"))
 
+#  BACKPRESSURE. Ingest is fast and embedding is not: a round reads 200 parsed documents in a few
+#  seconds and turns them into roughly 7,600 chunks, while a Gemini Batch job takes minutes to
+#  hours. Without a ceiling the worker would list all of workstream C's output in about ten
+#  minutes and hold every chunk of it, TEXT AND ALL, as rows in `parsed_embed_item` on the live
+#  database. The queue is a work list, not a copy of the corpus, so ingest pauses while it is full
+#  and the watermark simply stays where it is: nothing is lost, the reading resumes next round.
+MAX_QUEUED = int(os.environ.get("PARSED_MAX_QUEUED", "120000"))
+#  And a ceiling on jobs in flight, for the same reason in the other direction. `submit_batch`
+#  claims up to BATCH_MAX items per job, so without this a full queue would be split into a dozen
+#  simultaneous jobs, each of which has to be polled every round.
+MAX_IN_FLIGHT = int(os.environ.get("PARSED_MAX_IN_FLIGHT", "3"))
+
 CHUNKER_VERSION = stage_chunks.CHUNKER_VERSION
 CORPUS_RELEASE = os.environ.get("PARSED_CORPUS_RELEASE", "v3-parsed-20260822")
 
@@ -111,7 +123,7 @@ CHARS_PER_TOKEN = float(os.environ.get("EMBED_CHARS_PER_TOKEN", "4.301"))
 PG = embed_common.pg_params()
 _log = embed_common.log
 
-SQL_DDL = open(os.path.join(ROOT, "sql", "013_parsed_embed.sql"), encoding="utf-8").read()
+SQL_DDL = open(os.path.join(ROOT, "sql", "017_parsed_embed.sql"), encoding="utf-8").read()
 
 
 def _connect():
@@ -228,9 +240,31 @@ def write_ledger(conn, row):
                           updated_at = now()""", row)
 
 
+def already_staged(conn, item_keys):
+    """The item keys that have already been embedded, paid for and staged.
+
+    `parsed_embed_item` cannot answer this: its row is DELETED in the transaction that writes the
+    vector, which is exactly what makes a kill safe. So the receipt lives in `parsed_embed_done`,
+    and this is the check that stops a publication arriving from a SECOND provider from being
+    embedded and staged twice. `chunks_stage_v3` cannot answer it either, because every row this
+    pipeline writes carries `ref_id IS NULL` and the table's only unique index is partial on
+    `(kind, ref_id) WHERE ref_id IS NOT NULL`.
+    """
+    if not item_keys:
+        return set()
+    with conn.cursor() as cur:
+        cur.execute("SELECT item_key FROM parsed_embed_done WHERE item_key = ANY(%s)",
+                    (list(item_keys),))
+        return {r["item_key"] for r in cur.fetchall()}
+
+
 def enqueue(conn, rows, source_key, publication_id, shard):
-    """Queue chunk rows for embedding. ON CONFLICT on `item_key` is the idempotence: a document
-    re-listed by its source costs nothing."""
+    """Queue chunk rows for embedding. ON CONFLICT on `item_key` is the idempotence for a document
+    still in the queue; `already_staged` is the idempotence for one that has left it."""
+    if not rows:
+        return 0
+    done = already_staged(conn, [r["item_key"] for r in rows])
+    rows = [r for r in rows if r["item_key"] not in done]
     if not rows:
         return 0
     flat, values = [], []
@@ -369,6 +403,12 @@ def stage_vectors(conn, pairs):
                               EMBED_MODEL, EMBED_DIM, TASK_TYPE, CHUNKER_VERSION, CORPUS_RELEASE))
         cur.execute(f"INSERT INTO chunks_stage_v3 ({STAGE_COLS}) SELECT {STAGE_COLS} "
                     f"FROM _parsed_in ON CONFLICT DO NOTHING")
+        #  The receipt and the delete are in the SAME transaction as the vector. Either all three
+        #  happened or none did, which is what makes a kill at any instant leave the work queued
+        #  or staged and never both, and never lost.
+        cur.executemany("INSERT INTO parsed_embed_done (item_key, publication_id) VALUES (%s, %s) "
+                        "ON CONFLICT (item_key) DO NOTHING",
+                        [(r["item_key"], r["publication_id"]) for r, _ in pairs])
         cur.execute("DELETE FROM parsed_embed_item WHERE item_key = ANY(%s)",
                     ([r["item_key"] for r, _ in pairs],))
     conn.commit()
@@ -563,6 +603,8 @@ def drain(conn, shard, embedder=None):
     if mode == "auto":
         mode = "batch" if n >= BATCH_MIN else "sync"
     if mode == "batch":
+        if in_flight_batches(conn, shard) >= MAX_IN_FLIGHT:
+            return 0, 0, 0
         return 0, 0, (1 if submit_batch(conn, shard, embedder) else 0)
     done, calls = drain_sync(conn, shard)
     return done, calls, 0
@@ -632,7 +674,15 @@ def run(shard=0, shards=1, pass_name="parsed", once=False):
     while True:
         work = 0
         work += resume_batches(conn, shard)
-        counts = ingest_round(conn, sources, st, shard, shards)
+        #  Ingest only while there is room. Skipping it leaves the watermark alone, so the next
+        #  round reads exactly the documents this one did not.
+        queued = queued_count(conn, shard)
+        if queued >= MAX_QUEUED:
+            _log("ingest_paused", shard=shard, queued=queued, ceiling=MAX_QUEUED,
+                 in_flight=in_flight_batches(conn, shard))
+            counts = {"seen": 0, "staged": 0, "rejected": 0, "skipped": 0, "items": 0}
+        else:
+            counts = ingest_round(conn, sources, st, shard, shards)
         st["docs_seen"] += counts["seen"]
         st["docs_staged"] += counts["staged"]
         st["docs_rejected"] += counts["rejected"]

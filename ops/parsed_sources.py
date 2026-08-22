@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import zlib
+from concurrent.futures import ThreadPoolExecutor
 
 import gcs_lite
 
@@ -44,30 +45,48 @@ class GcsParsedSource:
 
     name = "gcs"
 
+    #  One HTTPS GET per object, so the round is latency bound rather than bandwidth bound: 200
+    #  objects read serially is about 40 seconds of waiting and 16,586 of them is over an hour of
+    #  it. The reads are independent and the ORDER is restored below, so the watermark is
+    #  unaffected. Kept modest because the same VM is running the description backfill's twelve
+    #  embedding threads.
+    READERS = int(os.environ.get("PARSED_GCS_READERS", "12"))
+
     def __init__(self, bucket=PARSED_BUCKET, prefix=PARSED_PREFIX, gcs=gcs_lite):
         self.bucket, self.prefix, self.gcs = bucket, prefix, gcs
 
     def fetch(self, watermark, limit=200):
-        docs, mark = [], watermark
+        mark = watermark
         try:
             listing = list(self.gcs.list_objects(self.bucket, self.prefix,
                                                  start_after=watermark or None, limit=limit))
         except Exception as exc:                                     # noqa: BLE001
             return [], watermark, str(exc)[:200]
+        names = []
         for obj in listing:
-            name = obj["name"]
-            mark = name
-            if not name.endswith(".json"):
-                continue
+            #  The watermark advances over EVERY object listed, including the ones that are not
+            #  JSON and the ones that fail to read. An object that cannot be read is not work this
+            #  worker can ever do, and leaving the watermark behind it would make the next round
+            #  list it again for ever and never reach the objects after it.
+            mark = obj["name"]
+            if obj["name"].endswith(".json"):
+                names.append(obj["name"])
+
+        def read(name):
             try:
-                payload = self.gcs.read_json(self.bucket, name)
+                return name, self.gcs.read_json(self.bucket, name)
             except Exception:                                        # noqa: BLE001
-                continue
-            if not isinstance(payload, dict):
-                continue
-            pub = (payload.get("publication_number") or _pub_from_name(name, self.prefix) or "")
-            docs.append(RawDoc(source_key=f"gcs:{self.bucket}/{name}",
-                               publication_number=pub, payload=payload, watermark=name))
+                return name, None
+
+        docs = []
+        with ThreadPoolExecutor(max_workers=max(1, self.READERS)) as ex:
+            for name, payload in ex.map(read, names):                # ex.map preserves order
+                if not isinstance(payload, dict):
+                    continue
+                pub = (payload.get("publication_number")
+                       or _pub_from_name(name, self.prefix) or "")
+                docs.append(RawDoc(source_key=f"gcs:{self.bucket}/{name}",
+                                   publication_number=pub, payload=payload, watermark=name))
         return docs, mark, None
 
 

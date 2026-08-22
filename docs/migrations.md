@@ -107,3 +107,43 @@ becomes a hard error instead of a coincidence nobody notices.
 migrations through `apply --exclude 002`, performs corpus construction, then applies only 002 at
 the deliberate heavy-index step. Database credentials come from the configured migration
 environment file; no password is embedded in the script.
+
+## The assigned version numbers
+
+Three workstreams each wrote a `009` and nothing noticed, which is what this section exists to
+stop happening again. Two files that differ only in NAME merge cleanly in git and then
+`discover()` raises `DuplicateVersion` and every `migrate.py` command against the live database
+stops, including `status`. Take a number from this table; if none is yours, ask before inventing
+one.
+
+| Version | Owner | File | State |
+|---|---|---|---|
+| 009, 012, 013 | durable execution | `009_durable_runs.sql`, `012_run_admission.sql`, `013_run_side_effects.sql` | 009 adopted; 012 and 013 unmerged |
+| 010 | corpus release | `010_corpus_release.sql` | in the tree, not applied. B and F both wrote one, see below |
+| 011 | **nobody** | held empty | the eval gold set. No V3 workstream owns it. Do not take 011 for something else |
+| 014 | full-text acquisition | `014_fulltext_acquisition.sql` | **adopted** 2026-08-22, checksum `80af56ea` |
+| 015 | integration | draft turns | in the tree, presence=all, not adopted |
+| 016 | integration | the 002 split | reserved |
+| **017** | **parse and embed** | **`017_parsed_embed.sql`** | **in the tree, created by the worker's own DDL on the live database, not applied through the runner** |
+| 018 | niche pipeline | | reserved |
+
+**017 was 013 until 2026-08-22.** It collided with durable execution's `013_run_side_effects.sql`,
+which is the older claim and is referenced by that workstream's own tests, so the parse-and-embed
+migration renumbered. Nothing had been applied through the runner under either number, so the
+rename cost nothing: `ops/parsed_embed.py` reads the file by name at startup and was updated in
+the same commit.
+
+### 017 is present on the live database and was never applied by the runner
+
+`ops/parsed_embed.py` executes `sql/017_parsed_embed.sql` on startup, the same way
+`ops/desc_backfill.py` executes its own `DDL` and `src/sources/docstore.py` executes 008's. Every
+statement in the file is `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS` or
+`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, so it is replayable and the runner will probe it
+`all`. It is a candidate for `adopt`, not for `apply`, and that is workstream H's call to take
+once, deliberately.
+
+The three `ALTER TABLE parsed_doc_ledger ADD COLUMN IF NOT EXISTS` statements are load bearing and
+not tidiness. `fetched_number`, `source` and `donor_publication` were added after the table
+already existed on the live database, created by an earlier run of the worker. A migration that
+shipped only the new `CREATE TABLE` would be silently wrong on exactly the host that holds the
+data, and the worker would fail on its first `INSERT`.

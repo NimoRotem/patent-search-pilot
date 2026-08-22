@@ -12,14 +12,29 @@ Two addresses, both already read by `ops/parsed_embed.py`. Either is enough; bot
 
 | Address | Written by | Read by |
 |---|---|---|
-| `gs://nimo-patents-v3/parsed/{PUBLICATION}/doc.json` | workstream C, bulk acquisition | `GcsParsedSource` |
+| `gs://nimo-patents-fulltext/parsed/{PUBLICATION}/{PROVIDER}.json` | workstream C, bulk acquisition | `GcsParsedSource` |
 | `sources_docstore` (`sql/008`) | the search path's demand fetch | `DocstoreSource` |
 
-The bucket is `nimo-patents-v3`, region `us-central1`, created 2026-08-22. Override with
-`PARSED_BUCKET` and `PARSED_PREFIX`. Any object under the prefix whose name ends `.json` is read;
-the publication number is taken from the payload, and from the first path segment after the prefix
-when the payload does not carry one. The listing is resumed with the API's own `startOffset`, so
-the prefix can grow to millions of objects without the reader getting slower.
+**The bucket is `nimo-patents-fulltext`, and the object is named for the PROVIDER, not `doc.json`.**
+This document said `gs://nimo-patents-v3/parsed/{PUBLICATION}/doc.json` until 2026-08-22 and that
+address has never held a single object. C is configured with `FULLTEXT_GCS_BUCKET`, and
+`parsed_sources.PARSED_BUCKET` now reads that same setting rather than a constant of its own, so
+the two cannot drift apart again. Measured 2026-08-22: 16,586 objects under
+`gs://nimo-patents-fulltext/parsed/`, `serp_self.json` 16,124, `corpus_family.json` 391,
+`himmpat.json` 45. Override with `PARSED_BUCKET` and `PARSED_PREFIX`.
+
+One object per provider means a publication can arrive TWICE, as two documents with two source
+keys. `parsed_doc_ledger` is keyed on the source object, so both are parsed; `stage_chunks.item_key`
+is keyed on the PUBLICATION and the text digest, and `parsed_embed_done` remembers what has already
+been staged, so identical text from the second provider costs nothing and genuinely different text
+from it is new work.
+
+Any object under the prefix whose name ends `.json` is read; the publication number is taken from
+the payload, and from the first path segment after the prefix when the payload does not carry one.
+The listing is resumed with the API's own `startOffset`, so the prefix can grow to millions of
+objects without the reader getting slower. The watermark advances over every object LISTED,
+including the ones that are not JSON and the ones that fail to read, because an object this worker
+can never parse must not be able to pin the cursor in front of the objects after it.
 
 **Write the object once and do not rewrite it.** A document is keyed by `gcs:{bucket}/{name}` in
 `parsed_doc_ledger`, and a key that has been staged is never parsed or paid for again. Better text
@@ -118,6 +133,34 @@ good abstract and a good description along with the unreadable claims.
 `SELECT state, code, count(*) FROM parsed_doc_ledger GROUP BY 1, 2` is the report back to
 acquisition. A rising `CLAIM_COUNT_MISMATCH` means a source's claim splitting has changed.
 
+### What the assertion is actually worth, measured on C's output
+
+300 documents drawn at random from `gs://nimo-patents-fulltext/parsed/` on 2026-08-22, parsed
+without staging:
+
+| | count | share |
+|---|---|---|
+| documents that declared a claim count | 292 | 97.3% |
+| of those, whose claims had to be RE-SPLIT to match it | 262 | 87.3% |
+| `staged`, every assertion passed | 271 | 90.3% |
+| `partial`, claims refused, abstract and description kept | 29 | 9.7% |
+| `rejected`, nothing readable | 0 | 0% |
+
+So on nearly nine documents in ten the shape the source handed over was **wrong**, and the count
+in the `Claims (N)` header is what corrected it. Almost none of those documents carry an
+`n_claims` field: the header is the only declared count these records have, which is why
+`strip_source_preamble` reads it before removing it.
+
+The 29 refusals are 28 `CLAIM_COUNT_MISMATCH` and 1 `CLAIMS_GLUED`, and they are overwhelmingly
+machine-translated KR and DE records whose claims are separated by newlines that also fall inside
+claims, so no deterministic reading produces the declared count. A reading that splits on a
+newline following a sentence-terminating character matches the declared count on 12 of the 32
+defective documents in that sample, and it is **deliberately not used**: matching a count is not
+the same as finding the right boundaries, and a claim that is really two claims is precisely the
+harm this module exists to prevent. Those 29 keep their abstract, description and figure captions
+and are recorded `partial` with the code, so the gap is visible in one query rather than invisible
+in a search result.
+
 ## What comes out
 
 Chunks in `chunks_stage_v3`, kind for kind and clip for clip as `src/chunker.py` built the live
@@ -130,6 +173,44 @@ claim carries its parent's limitations; an independent claim emits only its own)
 `ref_id` is always NULL and `coord` always carries `pub`. Both are deliberate: `ref_id IS NOT NULL`
 is how `ops/desc_backfill.py`'s rows are told apart from these, and a publication the corpus does
 not hold has no id that resolves to a number.
+
+### `coord` also carries the provenance
+
+`chunks_stage_v3` has no provenance column and must not grow one: it is shared with the running
+description backfill. `coord` is jsonb and is the row's own record of where its words came from.
+
+| key | when | meaning |
+|---|---|---|
+| `pub` | always | the publication number, in the CORPUS spelling where the corpus knows it |
+| `src` | when the record names a source | `serp_self`, `himmpat`, `corpus:family`, `docstore` |
+| `donor_text` | family-donor records only | the words on this row are not this publication's |
+| `donor` | family-donor records only | the publication whose words they are |
+| `family` | family-donor records only | the DOCDB simple family both belong to |
+
+Workstream C fills a publication that has no text of its own from a family sibling that does, and
+marks the record `source="corpus:family"` with the donor's number. The disclosure is the same
+document; the WORDS are the donor's. Flattening that away would put a staged chunk under a
+publication whose text nobody has ever read with nothing on the row to say so, and there is no way
+to notice afterwards. Measured 2026-08-22: 391 of C's 16,586 objects are `corpus_family.json`.
+
+`text_is_family_donor` arrives as a JSON boolean from some writers and as the STRING `"True"` from
+others, a Python bool that went through `str()` on its way into JSON. `bool("False")` is True and
+`"True" is True` is False, so `parsed_norm._truthy` reads it and neither of the obvious tests does.
+
+### The publication number is spelled two ways and they are different strings
+
+C and `sources_docstore` spell a publication compactly, `DE10023344C2`; the corpus spells it
+hyphenated, `DE-10023344-C2`. An equality join on the raw string matches NOTHING, and the
+consequence is not an empty result. Every fetched document is handed a negative surrogate id, so
+workstream F cannot join a staged row back to a real publication, and
+`publications_with_paragraphs()` (the query that keeps this pipeline off `patents-desc-backfill`'s
+population) is asked about ids that do not exist and answers "none of them".
+
+`src/corpus_pub.py` resolves it against the functional index `ix_pub_number_norm`, which is exactly
+the compact form, plus `pubnorm.mongo_candidates` for the US pre-grant ladder where BigQuery drops
+a leading zero from the serial. Measured 2026-08-22: **all 16,586 of C's publications resolve**,
+in 1.4 seconds. The ledger records both spellings, `publication_number` for the join and
+`fetched_number` for the object name.
 
 There is no `title` chunk kind. The live schema's kinds are
 `whole|abstract|claim_own|claim_resolved|paragraph|figure_caption` (`sql/001_schema.sql`, line
