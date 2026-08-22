@@ -155,13 +155,22 @@ def new_run_id(slug):
 
 
 def enqueue(slug, inp, *, search_mode="CONCEPT_SEARCH", mode="novelty", depth="deep",
-            lane=None, config=None, priority=100, run_id=None, max_attempts=None):
-    """Add a run. -> run_id.
+            lane=None, config=None, priority=100, run_id=None, max_attempts=None,
+            with_created=False):
+    """Add a run. -> run_id, or (run_id, created) when `with_created` is set.
 
     A slug that already has a live (queued or running) run RETURNS THAT RUN rather than starting a
     second one: the slug is the report's cache identity, and two runs writing one report file is
     the race the in-process `_JOBS` claim used to prevent.
+
+    `with_created` exists because the CALLER has a side effect that must happen exactly once per
+    run and not once per submission: charging the daily budget. Without it every retry and every
+    racing request looks identical to the winner, and a user who reloads a slow page three times
+    pays for three searches while one runs. Default off, so existing callers are unchanged.
     """
+    def _ret(rid, created):
+        return (rid, created) if with_created else rid
+
     lane = lane or depth
     config = config or {}
     fp = config_fingerprint(inp, config)
@@ -171,7 +180,7 @@ def enqueue(slug, inp, *, search_mode="CONCEPT_SEARCH", mode="novelty", depth="d
                     (slug,))
         row = cur.fetchone()
         if row:
-            return row["run_id"]
+            return _ret(row["run_id"], False)
         rid = run_id or new_run_id(slug)
         # ux_search_runs_live_slug settles the race where another transaction inserted after the
         # SELECT above. Partial-index inference uses the same live-state predicate as the index.
@@ -187,14 +196,16 @@ def enqueue(slug, inp, *, search_mode="CONCEPT_SEARCH", mode="novelty", depth="d
              int(max_attempts if max_attempts is not None else MAX_ATTEMPTS)))
         inserted = cur.fetchone()
         if inserted:
-            return inserted["run_id"]
+            return _ret(inserted["run_id"], True)
         cur.execute("SELECT run_id FROM search_runs WHERE slug=%s "
                     "AND status IN ('queued','running') ORDER BY enqueued_at DESC LIMIT 1",
                     (slug,))
         winner = cur.fetchone()
         if not winner:
             raise RuntimeError("live-run uniqueness conflict resolved without a visible winner")
-        return winner["run_id"]
+        #  Lost the insert race: another transaction created the run, so this caller is NOT the
+        #  creator and must not charge the budget for it.
+        return _ret(winner["run_id"], False)
 
 
 def queue_position(run_id):
@@ -234,7 +245,12 @@ UPDATE search_runs r
        attempts         = r.attempts + 1,
        started_at       = COALESCE(r.started_at, now()),
        error            = NULL,
-       updated_at       = now()
+       updated_at       = now(),
+       -- A STATUS TRANSITION IS AN EVENT. The SSE tail emits only when event_seq advances, so a
+       -- claim that changed the row without bumping it let a connected client sit on its last
+       -- progress message while the run started, finished or failed underneath it. Bumped in the
+       -- SAME successful update, so an update that matches no row cannot bump anything.
+       event_seq        = r.event_seq + 1
   FROM picked p
  WHERE r.run_id = p.run_id
  RETURNING r.*
@@ -297,7 +313,8 @@ def reap(now_grace_seconds=0, run_ids=None):
                                            ELSE 'lease expired; requeued to resume' END,
                               finished_at = CASE WHEN attempts >= max_attempts THEN now()
                                                  ELSE NULL END,
-                              updated_at = now()
+                              updated_at = now(),
+                              event_seq = search_runs.event_seq + 1
                         WHERE status = 'running'
                           AND lease_expires_at < now() - make_interval(secs => %s)
                           AND (%s::text[] IS NULL OR run_id = ANY(%s::text[]))
@@ -317,7 +334,8 @@ def finish(run_id, worker=None, status="done", error=None):
     with _cur() as cur:
         cur.execute("""UPDATE search_runs
                           SET status=%s, error=%s, finished_at=now(), updated_at=now(),
-                              worker_id=NULL, lease_expires_at=NULL
+                              worker_id=NULL, lease_expires_at=NULL,
+                              event_seq = search_runs.event_seq + 1
                         WHERE run_id=%s AND (%s::text IS NULL OR worker_id=%s)
                         RETURNING run_id""",
                     (status, (str(error)[:4000] if error else None), run_id, worker, worker))
@@ -339,7 +357,8 @@ def fail(run_id, worker, error, retry=True):
                               lease_expires_at = NULL,
                               finished_at = CASE WHEN %s AND attempts < max_attempts THEN NULL
                                                  ELSE now() END,
-                              updated_at = now()
+                              updated_at = now(),
+                              event_seq = search_runs.event_seq + 1
                         WHERE run_id = %s AND worker_id = %s AND status = 'running'
                         RETURNING status""",
                     (bool(retry), str(error)[:4000], bool(retry), run_id, worker))
