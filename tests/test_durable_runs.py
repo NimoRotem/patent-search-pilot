@@ -68,6 +68,37 @@ def slug():
         cur.execute("DELETE FROM search_runs WHERE slug=%s", (s,))
 
 
+def _admitted(run_id):
+    """Mark exactly this run admitted, so a worker may claim it. -> run_id.
+
+    THE TESTS BELOW ARE ABOUT THE CLAIM, THE LEASE AND THE REAPER, not about admission, and 012
+    put a gate in front of all three: `runstore.enqueue` deliberately creates an UNADMITTED row,
+    because only the single serialized authority in `admit_waiting` may make one spendable. On a
+    009 database every queued row was claimable and these tests passed; on the live 012 database
+    `claim` returns None for all of them and nine tests went red the moment the migration landed.
+
+    Marked directly, by run_id, and NOT through `admit_waiting`: that function is the production
+    authority and would admit whatever else is waiting in the same lane, which on this shared
+    database can be a real user's search. Admission has its own tests in `test_run_cutover` and
+    `test_worker_cutover`; nothing here is weakened by handing this row the flag it would have
+    been given.
+    """
+    if runstore.admission_capable():
+        import db
+        with db.cursor() as cur:
+            cur.execute("UPDATE search_runs SET admitted = true, admitted_at = now() "
+                        "WHERE run_id = %s", (run_id,))
+    return run_id
+
+
+def _enqueue(*a, **kw):
+    """`runstore.enqueue`, admitted. See `_admitted`."""
+    got = runstore.enqueue(*a, **kw)
+    rid = got[0] if isinstance(got, tuple) else got
+    _admitted(rid)
+    return got
+
+
 def _lapse(run_id):
     """Make this run's lease already expired, without waiting for it. The reaper's clock is the
     database's, so this is the same event as a worker that stopped heartbeating."""
@@ -81,7 +112,7 @@ def _lapse(run_id):
 def test_two_workers_never_claim_the_same_run(slug):
     """The defect this replaces: a run's identity lived in a process, so 'who is running it' was
     unanswerable across processes. FOR UPDATE SKIP LOCKED makes it a single fact."""
-    rid = runstore.enqueue(slug, {"query": "a vacuum gripper"}, depth="quick", lane="quick")
+    rid = _enqueue(slug, {"query": "a vacuum gripper"}, depth="quick", lane="quick")
     a, b = runstore.worker_id(), runstore.worker_id()
     first = runstore.claim(a, lanes=["quick"])
     second = runstore.claim(b, lanes=["quick"])
@@ -93,8 +124,8 @@ def test_two_workers_never_claim_the_same_run(slug):
 def test_two_workers_racing_two_runs_take_one_each(slug):
     """SKIP LOCKED, not a lock convoy: the loser of a race on one row takes the NEXT row rather
     than waiting for the winner to commit."""
-    r1 = runstore.enqueue(slug, {"query": "one"}, lane="quick", run_id=f"{slug}-1")
-    r2 = runstore.enqueue(slug + "-b", {"query": "two"}, lane="quick", run_id=f"{slug}-2")
+    r1 = _enqueue(slug, {"query": "one"}, lane="quick", run_id=f"{slug}-1")
+    r2 = _enqueue(slug + "-b", {"query": "two"}, lane="quick", run_id=f"{slug}-2")
     try:
         a, b = runstore.worker_id(), runstore.worker_id()
         got = {runstore.claim(a, lanes=["quick"])["run_id"],
@@ -109,8 +140,8 @@ def test_two_workers_racing_two_runs_take_one_each(slug):
 def test_a_lane_filter_does_not_starve_the_other_lane(slug):
     """Quick and deep have separate concurrency for a reason: a cents-class interactive search
     must never wait behind two multi-hour attacks."""
-    deep = runstore.enqueue(slug, {"query": "deep"}, lane="deep", run_id=f"{slug}-d")
-    quick = runstore.enqueue(slug + "-q", {"query": "quick"}, lane="quick", run_id=f"{slug}-q")
+    deep = _enqueue(slug, {"query": "deep"}, lane="deep", run_id=f"{slug}-d")
+    quick = _enqueue(slug + "-q", {"query": "quick"}, lane="quick", run_id=f"{slug}-q")
     try:
         assert runstore.claim(runstore.worker_id(), lanes=["quick"])["run_id"] == quick
         assert runstore.claim(runstore.worker_id(), lanes=["deep"])["run_id"] == deep
@@ -122,7 +153,7 @@ def test_a_lane_filter_does_not_starve_the_other_lane(slug):
 
 # ------------------------------------------------------------------ the lease
 def test_the_holder_can_heartbeat_and_nobody_else_can(slug):
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    rid = _enqueue(slug, {"query": "q"}, lane="quick")
     mine = runstore.worker_id()
     runstore.claim(mine, lanes=["quick"])
     assert runstore.heartbeat(rid, mine) is True
@@ -132,7 +163,7 @@ def test_the_holder_can_heartbeat_and_nobody_else_can(slug):
 def test_an_expired_lease_is_reclaimed(slug):
     """A SIGKILLed worker stops heartbeating. The run must come back, not sit 'running' forever
     the way a report stuck on its first phase for 76 minutes did."""
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    rid = _enqueue(slug, {"query": "q"}, lane="quick")
     dead = runstore.worker_id()
     runstore.claim(dead, lanes=["quick"])
     assert runstore.get(rid)["status"] == "running"
@@ -147,7 +178,7 @@ def test_an_expired_lease_is_reclaimed(slug):
 
 def test_a_stale_worker_cannot_fail_a_requeued_run(slug):
     """Once the reaper clears ownership, the dead worker cannot settle the queued retry."""
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    rid = _enqueue(slug, {"query": "q"}, lane="quick")
     stale = runstore.worker_id()
     runstore.claim(stale, lanes=["quick"])
     _lapse(rid)
@@ -158,7 +189,7 @@ def test_a_stale_worker_cannot_fail_a_requeued_run(slug):
 
 def test_a_run_that_burns_its_attempts_fails_instead_of_looping(slug):
     """An infinite retry of a run that kills its worker is a loop, not resilience."""
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick", max_attempts=2)
+    rid = _enqueue(slug, {"query": "q"}, lane="quick", max_attempts=2)
     for _ in range(2):
         runstore.claim(runstore.worker_id(), lanes=["quick"])
         _lapse(rid)
@@ -171,7 +202,7 @@ def test_a_run_that_burns_its_attempts_fails_instead_of_looping(slug):
 def test_the_heartbeat_thread_reports_a_lost_lease(slug):
     """`Heartbeat.lost` is the worker's stop signal: continuing after the reaper has handed the
     run on means two workers writing one report."""
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    rid = _enqueue(slug, {"query": "q"}, lane="quick")
     mine = runstore.worker_id()
     runstore.claim(mine, lanes=["quick"])
     hb = runstore.Heartbeat(rid, mine, interval=0.05, lease_seconds=60).start()
@@ -277,7 +308,7 @@ def test_fused_checkpoint_files_are_scoped_to_the_run():
 def test_a_killed_run_resumes_at_the_right_stage(slug):
     """THE WHOLE POINT. A worker dies after screening; the next one starts at reading, keeping the
     retrieval and the screen it already paid for."""
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    rid = _enqueue(slug, {"query": "q"}, lane="quick")
     dead = runstore.worker_id()
     row = runstore.claim(dead, lanes=["quick"])
     for stage, payload in (("decompose", {"n_elements": 12}),
@@ -301,7 +332,7 @@ def test_a_killed_run_resumes_at_the_right_stage(slug):
 
 
 def test_a_resumed_stage_does_not_run_its_body_again(slug):
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    rid = _enqueue(slug, {"query": "q"}, lane="quick")
     runstore.claim(runstore.worker_id(), lanes=["quick"])
     calls = []
     for attempt in (1, 2):
@@ -314,7 +345,7 @@ def test_a_resumed_stage_does_not_run_its_body_again(slug):
 
 def test_a_stage_whose_body_raises_is_not_a_checkpoint(slug):
     """A failed stage must be redone, and nothing before it."""
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    rid = _enqueue(slug, {"query": "q"}, lane="quick")
     runstore.claim(runstore.worker_id(), lanes=["quick"])
     with pytest.raises(ValueError), runstore.Stage(rid, "screen", attempt=1):
         raise ValueError("the screener died")
@@ -323,7 +354,7 @@ def test_a_stage_whose_body_raises_is_not_a_checkpoint(slug):
 
 
 def test_each_reference_and_each_rescue_round_is_its_own_row(slug):
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    rid = _enqueue(slug, {"query": "q"}, lane="quick")
     runstore.claim(runstore.worker_id(), lanes=["quick"])
     for pub in ("US-1-A", "US-2-B2", "EP-3-A1"):
         runstore.substage(rid, "read", pub, payload={"found": True, "chars": 4000})
@@ -340,7 +371,7 @@ def test_each_reference_and_each_rescue_round_is_its_own_row(slug):
 def test_the_candidate_row_accumulates_across_stages(slug):
     """Fusion writes a rank, screening writes a score, reading writes a verdict, and none of them
     erases what the last one recorded."""
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    rid = _enqueue(slug, {"query": "q"}, lane="quick")
     runstore.upsert_candidates(rid, [{"pub": "US-1-A", "fused_rank": 3, "fused_score": 0.71,
                                       "stage": "fused"}])
     runstore.upsert_candidates(rid, [{"pub": "US-1-A", "screen_score": 88, "stage": "screened"}])
@@ -354,7 +385,7 @@ def test_the_candidate_row_accumulates_across_stages(slug):
 def test_provider_usage_accumulates_per_run_not_per_process(slug):
     """The old receipt differenced a PROCESS-WIDE token counter, so two concurrent searches each
     attributed the other's spend to themselves. A row keyed by run cannot."""
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    rid = _enqueue(slug, {"query": "q"}, lane="quick")
     runstore.record_usage(rid, "vertex", tier="FAST", model="flash-lite", calls=3,
                           prompt_tokens=1000, completion_tokens=120, latency_ms=900)
     runstore.record_usage(rid, "vertex", tier="FAST", model="flash-lite", calls=2,
@@ -368,7 +399,7 @@ def test_provider_usage_accumulates_per_run_not_per_process(slug):
 
 
 def test_the_raw_hits_are_recorded_before_fusion(slug):
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    rid = _enqueue(slug, {"query": "q"}, lane="quick")
     qid = runstore.record_query(rid, "dense", query_text="vacuum gripper sealing lip",
                                 params={"ef_search": 200}, n_hits=2)
     assert runstore.record_hits(rid, "dense", [
@@ -383,7 +414,7 @@ def test_the_raw_hits_are_recorded_before_fusion(slug):
 
 # ------------------------------------------------------------------ shard leases
 def test_a_shard_lease_is_taken_refreshed_and_reaped(slug):
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    rid = _enqueue(slug, {"query": "q"}, lane="quick")
     first = runstore.lease_shard(rid, "shard-vacuum-01", host="10.128.0.90", seconds=60)
     again = runstore.lease_shard(rid, "shard-vacuum-01", host="10.128.0.90", seconds=60)
     assert first["id"] == again["id"], "a refresh must extend the lease, not take a second one"
@@ -409,7 +440,7 @@ def test_repeat_demand_for_one_publication_bumps_the_count(slug):
     priority 1 is the head of the queue whatever else is waiting, and claiming exactly one row
     cannot take work belonging to another workstream.
     """
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    rid = _enqueue(slug, {"query": "q"}, lane="quick")
     pub = f"US-{uuid.uuid4().hex[:8].upper()}-A1"
     try:
         a = runstore.queue_for_ingest(pub, run_id=rid, reason="no claims in corpus",
@@ -429,7 +460,7 @@ def test_repeat_demand_for_one_publication_bumps_the_count(slug):
 # ------------------------------------------------------------------ progress
 def test_progress_bumps_a_sequence_so_a_tail_can_see_new_events(slug):
     """The SSE endpoint tails this instead of a process global dict."""
-    rid = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    rid = _enqueue(slug, {"query": "q"}, lane="quick")
     before = runstore.progress_of(rid)["event_seq"]
     runstore.progress(rid, {"kind": "screening", "msg": "Screening 600 candidates…"})
     runstore.progress(rid, {"kind": "reading", "msg": "Read 40 of 420 references in full…"})
@@ -440,11 +471,11 @@ def test_progress_bumps_a_sequence_so_a_tail_can_see_new_events(slug):
 
 def test_one_slug_never_has_two_live_runs(slug):
     """Two runs writing one report file is the race the in-process claim used to prevent."""
-    a = runstore.enqueue(slug, {"query": "q"}, lane="quick")
-    b = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    a = _enqueue(slug, {"query": "q"}, lane="quick")
+    b = _enqueue(slug, {"query": "q"}, lane="quick")
     assert a == b
     runstore.finish(a, None, "done")
-    c = runstore.enqueue(slug, {"query": "q"}, lane="quick")
+    c = _enqueue(slug, {"query": "q"}, lane="quick")
     assert c != a, "a re-request after a finished run is a new run"
     import db
     with db.cursor() as cur:
@@ -468,7 +499,7 @@ def test_concurrent_enqueues_converge_on_one_live_run(slug):
     def enqueue_at_once():
         barrier.wait()
         try:
-            run_id = runstore.enqueue(slug, {"query": "same"}, lane="quick")
+            run_id = _enqueue(slug, {"query": "same"}, lane="quick")
             with result_lock:
                 run_ids.append(run_id)
         except Exception as exc:  # the assertion below reports all thread failures together

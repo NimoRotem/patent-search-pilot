@@ -57,20 +57,47 @@ bare `CREATE TRIGGER`, which has no `IF NOT EXISTS` form here, so a second run *
 ### Live corpus database ledger, 2026-08-22
 
 ```
-adopted: 001 003 004 005 006 007 008 009
-pending: 002
+adopted:  001 003 004 005 006 007 008 009 014
+applied:  012 013            (2026-08-22 19:07 UTC, the durable cutover)
+pending:  002 010 015        (010 and 015 are not in this tree)
 009 checksum: 954e4ec3af83774db8da9af40581e392b62337e8031f1493d6b2db485a3633eb
 ```
 
 The adoption ran from committed integration checkpoint `dbe01d7`. Every selected migration probed
 `all`; the runner recorded the files and checksums without executing their DDL. A subsequent
-`migrate.py status` reports those eight versions applied and only 002 pending.
+`migrate.py status` reports those eight versions applied and only 002 pending. `014` was adopted
+separately by the full-text workstream at 17:06.
 
-`002` remains pending for a real reason: `ix_chunks_hnsw` and `ix_chunks_tsv` exist, but
-`ix_bench1024_hnsw` and `ix_bench3072_hnsw` do not. Those index the dimension sweep benchmark
-tables, which hold 1,308 rows each. Do not adopt partial 002 or insert a ledger row by hand. Apply
-it through the runner only after the active corpus backfill stops competing for database resources,
-or split the optional benchmark indexes into a later migration before 002 is recorded.
+**012 and 013 were APPLIED, not adopted**, at 19:07 UTC on 2026-08-22, through
+`migrate.py apply --only 012 013`, because durable execution cannot run without them: `012` is the
+admission decision (`search_runs.admitted`, `admitted_at`, `charged_day` plus three partial
+indexes) and `013` is `run_side_effects`, the once-per-run ledger that makes three attempts debit
+once. Both are additive and nothing in the legacy path reads either, so neither is undone by a
+rollback of the cutover. Applying them was cheap: `search_runs` held zero rows, so the one-time
+`UPDATE` in 012 matched nothing and the three partial indexes built on an empty table. Neither
+touches the corpus or the 94 GB HNSW.
+
+**002 was NOT applied, and cannot be as written.** `ix_chunks_hnsw` and `ix_chunks_tsv` exist but
+`ix_bench1024_hnsw` and `ix_bench3072_hnsw` do not, so presence is `partial` for ever.
+`bench_emb_3072.embedding` is `vector(3072)` and pgvector 0.8.5 refuses an HNSW index above 2000
+dimensions, so `ix_bench3072_hnsw` can never be created and the file cannot succeed on any fresh
+install. Splitting the two benchmark indexes out into 016 is the fix, and it is not this
+workstream's. Do not adopt partial 002 and do not insert a ledger row by hand.
+
+**010 was NOT applied**, and is not even in this tree. Two different files claim that number, B's
+79-line version and F's 299-line version, both creating `corpus_niche_definition` with different
+primary keys and both using `CREATE TABLE IF NOT EXISTS`, so whichever applies first silently
+wins. Applying it would settle that collision by accident.
+
+### A stale copy of an applied migration is a real outage of the runner
+
+`sql/006_draft_agent.sql` on this branch was an older revision than the one the live ledger
+recorded, so `migrate.py` refused EVERY command with `ChecksumDrift` on 006, including `status`.
+The file, not the ledger, was the stale thing: the recorded revision creates
+`app_draft_turn_candidates`, which the live database has. Fixed by taking the adopted revision.
+The lesson generalises: a branch that forks before a migration is edited carries a file that will
+stop the runner dead on the live database, and the symptom names 006 while the cause is the fork
+point.
 
 ## Sentinels
 
