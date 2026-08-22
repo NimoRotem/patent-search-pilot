@@ -99,6 +99,27 @@ Three workstreams each started with a `sql/009_*.sql`. The assigned integration 
 Order is durable, then corpus, then eval, because the corpus release tables are the landing zone
 the backfill already writes into and eval's gold set is the last thing to depend on either.
 
+Two more workstreams then took numbers. `012` went to run admission on
+`origin/Nimo/v3-worker-cutover`; `014` is full-text acquisition:
+
+| Branch | File | Version | Contents |
+|---|---|---|---|
+| full-text acquisition | `sql/014_fulltext_acquisition.sql` | **014** | `fulltext_fetch_task`, `fulltext_fetch_event`, `fulltext_budget`, `fulltext_manifest_cursor` |
+
+014 is entirely `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` over four new tables
+that nothing else reads, and none of its indexes touches a live table, so it was applied to the
+live database on 2026-08-22 by `ops/fulltext_acquire.py ensure-schema` rather than by the runner.
+That is a deliberate exception, not a precedent: it is an explicit operator command, it is not
+called at worker startup, and the worker refuses to start if the tables are absent
+(`acquire.tasks.require_schema`).
+
+**Its objects are therefore already present on the live database, and it must be ADOPTED, not
+applied.** `migrate.presence()` classifies it `all` against the live database (verified
+2026-08-22: all four tables and all six indexes probe present, and `is_replayable()` is True), so
+`migrate.py adopt --only 014` records it truthfully. Every statement in the file is idempotent, so
+`apply` would also succeed rather than raise the way 007 does, but adopting is what keeps the
+ledger honest about what actually ran.
+
 The durable migration is now integrated at 009. Corpus and evaluation files must be renamed at
 their own integration points. Once renamed, `discover()` enforces the rest: another numeric alias
 becomes a hard error instead of a coincidence nobody notices.
