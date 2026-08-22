@@ -45,6 +45,7 @@ LEADER_PROMPT_VERSION = "figure-leader-v2-deliberate-tracing"
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "3")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 3
+MAX_OCR_CLEAN_RETRIES = 2
 LEADER_THINKING_BUDGET = 2048
 MIN_OCR_CONFIDENCE = float(os.environ.get("PATENT_FIGURE_OCR_CONFIDENCE", "0.85"))
 
@@ -1119,6 +1120,33 @@ def _repair_leader_anchors(raw_png: bytes, anchors, audit: dict, *, scale: float
     return repaired, changed
 
 
+def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals,
+                           semantic: dict) -> tuple[bytes, dict, dict, list]:
+    """Typeset, OCR, trace, and if possible repair the final leader endpoints."""
+    png, labels, leaders = b"", {}, {}
+    anchors = [dict(item) for item in semantic.get("anchors") or []]
+    used_scale = 1.0
+    for _leader_attempt in range(MAX_LEADER_REPAIR_ATTEMPTS):
+        labels = {}
+        for used_scale in (1.0, 1.35, 1.8, 2.2):
+            png = annotate_png(raw_png, label, anchors, scale=used_scale)
+            label_inspection = inspect_labels(png, label)
+            labels = ocr_audit(numerals, label_inspection, label)
+            if labels.get("ok"):
+                break
+        if not labels.get("ok"):
+            break
+        leaders = inspect_leaders(
+            png, label=label, caption=caption, numerals=numerals)
+        if leaders.get("ok"):
+            break
+        anchors, changed = _repair_leader_anchors(
+            raw_png, anchors, leaders, scale=used_scale)
+        if not changed:
+            break
+    return png, labels, leaders, anchors
+
+
 def parse_ocr_response(payload: dict) -> dict:
     """Normalize Google Cloud Vision OCR while preserving duplicate reference numerals."""
     response = ((payload or {}).get("responses") or [{}])[0]
@@ -1581,31 +1609,33 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
         raise FigureError(
             "semantic drawing review failed" + (f": {detail[:1200]}" if detail else ""))
 
-    png, labels, leaders = b"", {}, {}
-    anchors = [dict(item) for item in semantic.get("anchors") or []]
-    used_scale = 1.0
     # A larger deterministic label pass changes only typeset text and leader lines. OCR each
     # changed result and retain the first exact sheet. A separate vision pass then traces each
     # printed leader to its endpoint. When it finds a misplaced endpoint, its suggested point is
     # mapped back into geometry coordinates and the compositor retries without human editing.
-    for _leader_attempt in range(MAX_LEADER_REPAIR_ATTEMPTS):
-        labels = {}
-        for used_scale in (1.0, 1.35, 1.8, 2.2):
-            png = annotate_png(raw_png, label, anchors, scale=used_scale)
-            label_inspection = inspect_labels(png, label)
-            labels = ocr_audit(numerals, label_inspection, label)
-            if labels.get("ok"):
+    png, labels, leaders, anchors = _compose_checked_sheet(
+        raw_png, label=label, caption=caption, numerals=numerals, semantic=semantic)
+    # OCR is the strongest text-contamination detector in this pipeline. If it finds writing in
+    # the model-generated geometry, larger deterministic labels cannot remove those pixels. Start
+    # from a clean canvas, semantically recheck the new geometry, and run all final-pixel gates
+    # again before giving the failure to the document repair loop.
+    if labels.get("other_text") and not region:
+        contamination_prompt = (
+            "FINAL OCR REVIEW FOUND FORBIDDEN WRITING IN THE GEOMETRY. Start over from a blank "
+            "white canvas. Draw outlines only. Include no letters, words, symbols, digits, "
+            "captions, labels, legends, dimensions, or watermarks.")
+        for retry_name in ("first clean retry", "second clean retry")[:MAX_OCR_CLEAN_RETRIES]:
+            retained = max(0, MAX_PROMPT_CHARS - len(contamination_prompt) - len(retry_name) - 4)
+            clean_prompt = prompt[:retained] + "\n\n" + contamination_prompt + " " + retry_name
+            raw_png = _cached_generate(clean_prompt, None)
+            semantic = inspect_semantics(
+                raw_png, label=label, caption=caption, numerals=numerals)
+            if not semantic.get("ok"):
+                continue
+            png, labels, leaders, anchors = _compose_checked_sheet(
+                raw_png, label=label, caption=caption, numerals=numerals, semantic=semantic)
+            if labels.get("ok") or not labels.get("other_text"):
                 break
-        if not labels.get("ok"):
-            break
-        leaders = inspect_leaders(
-            png, label=label, caption=caption, numerals=numerals)
-        if leaders.get("ok"):
-            break
-        anchors, changed = _repair_leader_anchors(
-            raw_png, anchors, leaders, scale=used_scale)
-        if not changed:
-            break
     if not labels.get("ok"):
         issues = []
         for key in ("missing", "unexpected", "duplicates", "other_text"):

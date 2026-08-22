@@ -296,6 +296,42 @@ def test_text_contaminated_geometry_retries_from_a_clean_canvas(monkeypatch):
     assert all(not re.search(r"\d", prompt) for prompt in prompts)
 
 
+def test_ocr_detected_geometry_text_regenerates_from_a_clean_canvas(monkeypatch):
+    generated = []
+
+    def generate(prompt, previous=None):
+        generated.append((prompt, previous))
+        return blank_png(width=640 + len(generated))
+
+    monkeypatch.setattr(draft_figures, "_cached_generate", generate)
+    monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
+        "ok": True, "anchors": [{"numeral": "10", "x": 200, "y": 300,
+                                    "visible": True, "evidence": "body"}]})
+    inspections = []
+
+    def inspect_labels(*_args, **_kwargs):
+        inspections.append(True)
+        if len(generated) == 1:
+            return {"ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
+                    "other_text": ["BODY"], "confidence": 0.99}
+        return {"ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
+                "other_text": [], "confidence": 0.99}
+
+    monkeypatch.setattr(draft_figures, "inspect_labels", inspect_labels)
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [], "labels": []})
+    monkeypatch.setattr(draft_figures, "create_figure", lambda *a, **k: {"id": 44})
+    monkeypatch.setattr(draft_figures, "_audited_version", lambda *a, **k: {
+        "version_no": 1, "audit": k["ocr_audit"], "semantic_audit": k["semantic_audit"],
+        "leader_audit": k["leader_audit"], "detected_numerals": ["10"]})
+
+    result = draft_figures.render_figure(
+        7, 91, label="FIG. 1", caption="body", numerals=["10 = body"])
+    assert result["numeral_audit"]["ok"] is True
+    assert len(generated) == 2 and generated[1][1] is None
+    assert "forbidden writing" in generated[1][0].lower()
+
+
 def test_render_stores_only_after_semantic_and_ocr_gates_pass(monkeypatch):
     events = []
     monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
