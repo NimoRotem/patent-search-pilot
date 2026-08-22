@@ -29,7 +29,12 @@ def _drain(resp, deadline=10.0):
                 q.put(chunk)
         except Exception:
             pass
-        q.put(None)
+        finally:
+            # Exhausting a streamed response does not itself guarantee that Flask releases the
+            # request's app context. Close it in the same thread that advanced the generator;
+            # closing from the deadline thread can race a generator that is still executing.
+            resp.close()
+            q.put(None)
 
     t = threading.Thread(target=reader, daemon=True)
     t.start()
