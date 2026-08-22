@@ -1450,9 +1450,16 @@ def test_a_terminal_durable_row_still_wins_when_no_legacy_run_is_live(app_env, d
     assert body["status"] == "done", body
 
 
-def test_a_queued_legacy_placeholder_does_not_outrank_a_terminal_durable_row(
-        app_env, durable_db, monkeypatch):
-    """A queued placeholder is not an executor, so it must not mask a finished durable run."""
+def test_a_queued_legacy_rerun_outranks_a_settled_durable_row(app_env, durable_db, monkeypatch):
+    """CORRECTED CONTRACT. Round 9 asserted the opposite, and that was wrong.
+
+    A queued legacy placeholder is not an executor, which is why the PRODUCER lets the dispatcher
+    migrate it. But for the OBSERVER it is the CURRENT state of this slug: the user asked for a
+    rerun and it is waiting for a slot. Selecting the settled durable row instead tells them the
+    old report is the final answer while their rerun sits in the queue, and closes the stream so
+    the page stops asking. Producer duplicate rules and observer selection are different
+    questions and must not share one predicate.
+    """
     _flag(monkeypatch, True)
     rid = _seed_run("queued-vs-terminal")
     runstore.claim("w", lanes=["deep"])
@@ -1462,4 +1469,89 @@ def test_a_queued_legacy_placeholder_does_not_outrank_a_terminal_durable_row(
                                               "msg": "Queued", "t0": time.time()}
     monkeypatch.setattr(webapp, "_can_access_report", lambda slug_: True)
     body = webapp.app.test_client().get("/status/queued-vs-terminal").get_json()
-    assert body["status"] == "done", body
+    assert body["status"] == "running", body
+    assert body["done"] is False
+
+
+# =========================================================================== review round 10
+# The queued rerun, mid-rollout, before the dispatcher has migrated it.
+
+
+def _rollback_then_queued_rerun(monkeypatch, app_env, slug, terminal="done"):
+    """Older terminal durable row, then a flag-off rerun that gate pressure leaves QUEUED, then
+    the flag is re-enabled before the dispatcher migrates it."""
+    _flag(monkeypatch, True)
+    rid = runstore.enqueue(slug, dict(PAYLOAD), mode="novelty", depth="deep", lane="deep")
+    runstore.claim("old-worker", lanes=["deep"])
+    if terminal == "done":
+        runstore.finish(rid, "old-worker", status="done")
+    else:
+        runstore.fail(rid, "old-worker", "boom", retry=False)
+
+    _flag(monkeypatch, False)
+    monkeypatch.setattr(auth, "run_gate",
+                        auth.RunGate(max_concurrent=0, daily_cap=100, quick_max=0,
+                                     quick_daily_cap=100,
+                                     state_path=app_env["tmp"] / f"q-{slug}.json"))
+    queued_rows = []
+    monkeypatch.setattr(webapp.run_queue, "enqueue",
+                        lambda s_, payload: queued_rows.append(s_) or 1)
+    st, _ = webapp.ensure_report(slug, **PAYLOAD)
+    assert st == "running", st
+    with webapp._JOB_LOCK:
+        job = webapp._JOBS.get(slug) or {}
+    assert job.get("queued"), f"expected a queued legacy placeholder, got {job}"
+    assert queued_rows == [slug], "no legacy queue row was written"
+
+    _flag(monkeypatch, True)                    # re-enabled before the dispatcher migrates it
+    return rid
+
+
+@pytest.mark.parametrize("terminal", ["done", "failed"])
+def test_status_shows_a_queued_legacy_rerun_not_the_old_terminal_row(
+        app_env, durable_db, monkeypatch, terminal):
+    slug = f"queued-status-{terminal}"
+    _rollback_then_queued_rerun(monkeypatch, app_env, slug, terminal)
+    monkeypatch.setattr(webapp, "_can_access_report", lambda slug_: True)
+    body = webapp.app.test_client().get(f"/status/{slug}").get_json()
+    assert body["status"] == "running", body
+    assert body["done"] is False, body
+
+
+@pytest.mark.parametrize("terminal", ["done", "failed"])
+def test_events_does_not_close_on_a_queued_legacy_rerun(app_env, durable_db, monkeypatch,
+                                                        terminal):
+    slug = f"queued-events-{terminal}"
+    _rollback_then_queued_rerun(monkeypatch, app_env, slug, terminal)
+    monkeypatch.setattr(webapp, "_can_access_report", lambda slug_: True)
+    body, ended, _ = _drain_sse(webapp.app.test_client(), f"/events/{slug}",
+                                max_chunks=1, deadline=4.0)
+    first = json.loads(body.split("data: ", 1)[1].split("\n\n", 1)[0])
+    assert first["status"] == "running", first
+    assert first["done"] is False
+    assert not ended, "the stream closed on a stale terminal row while a rerun was queued"
+
+
+def test_the_settled_vocabulary_has_one_definition():
+    """Two lists of terminal statuses drift. The stream mapping already names them, so the
+    selector reads its keys rather than repeating them."""
+    assert not hasattr(webapp, "_DURABLE_SETTLED"), (
+        "a second settled-status list exists and can drift from _DURABLE_TERMINAL")
+    assert set(webapp._DURABLE_TERMINAL) == {"done", "failed", "cancelled", "canceled"}
+
+
+def test_the_producer_still_treats_a_queued_placeholder_as_migratable(app_env, durable_db,
+                                                                     monkeypatch):
+    """The distinction, pinned: the observer now prefers a queued rerun, but the PRODUCER must
+    still let the dispatcher migrate that placeholder into the durable store."""
+    _flag(monkeypatch, False)
+    monkeypatch.setattr(auth, "run_gate",
+                        auth.RunGate(max_concurrent=0, daily_cap=100, quick_max=0,
+                                     quick_daily_cap=100,
+                                     state_path=app_env["tmp"] / "prod-mig.json"))
+    webapp.ensure_report("prod-mig", **PAYLOAD)
+    _flag(monkeypatch, True)
+    webapp._queue_launch("prod-mig", dict(PAYLOAD))
+    assert runstore.latest_for_slug("prod-mig") is not None
+    with webapp._JOB_LOCK:
+        assert "prod-mig" not in webapp._JOBS

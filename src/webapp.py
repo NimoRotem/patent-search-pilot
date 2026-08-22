@@ -1956,10 +1956,6 @@ def _durable_liveness(slug):
     return row.get("status") in ("queued", "running")
 
 
-#  A durable row is terminal once it has settled. A settled row is HISTORY, not state.
-_DURABLE_SETTLED = frozenset({"done", "failed", "cancelled", "canceled"})
-
-
 def _durable_run_for(slug):
     """The persisted run that describes this slug RIGHT NOW, or None.
 
@@ -1967,10 +1963,19 @@ def _durable_run_for(slug):
 
     PRECEDENCE ACROSS A ROLLBACK. A live durable row always wins, including over stale in-memory
     state left by a finished job. But a SETTLED durable row is history, and history must not
-    outrank a legacy executor that is still working: roll the flag back, let a genuine legacy run
-    start for the same slug, re-enable, and the old terminal row would otherwise make /status and
-    /events report done or failed and hang up while the real run was still reading. A queued
-    placeholder does not count, because it is a row waiting for an executor rather than one.
+    outrank a CURRENT legacy claim: roll the flag back, let a genuine legacy run start for the
+    same slug, re-enable, and the old terminal row would otherwise make /status and /events report
+    done or failed and hang up while the real work was still ahead.
+
+    A QUEUED legacy claim counts here, and this is where observer selection parts company with the
+    producer. To the producer a queued placeholder is not an executor, which is why the dispatcher
+    is allowed to migrate it. To a reader it is the current state of the slug: the user asked for a
+    rerun and it is waiting for a slot. Choosing the settled row instead tells them the old report
+    is the final answer and closes the stream, so the page stops asking about the run they just
+    started. The two questions are different and must not share one predicate.
+
+    The settled vocabulary is read from `_DURABLE_TERMINAL`, which already names exactly those
+    statuses for the stream. A second list would drift from it.
     """
     if not durable_runs_enabled():
         return None
@@ -1978,11 +1983,11 @@ def _durable_run_for(slug):
         row = runstore.latest_for_slug(slug)
     except Exception:
         return None
-    if row and row.get("status") in _DURABLE_SETTLED:
+    if row and row.get("status") in _DURABLE_TERMINAL:
         with _JOB_LOCK:
             job = _JOBS.get(slug) or {}
-        if job.get("status") in ("running", "partial") and not job.get("queued"):
-            return None                  # a live legacy executor outranks a settled durable run
+        if job.get("status") in ("running", "partial"):
+            return None            # a current legacy claim outranks a settled durable run
     return row
 
 
