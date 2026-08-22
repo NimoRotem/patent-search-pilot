@@ -68,3 +68,8 @@ eval/benchmark_results/
 # artefacts at a stable path, never repository content. docs/niche_manifest_contract.md says where.
 data/niche_cache/
 data/manifests/
+
+#  The niche reconciliation. `report.json` is the answer and is committed; the two JSONL files
+#  are the 16,896 discovered records and the 5,403 new ones, 12 MB of intermediate that
+#  `ops/niche_reconcile.py discover` reproduces in 26 seconds.
+data/niche_reconcile/*.jsonl

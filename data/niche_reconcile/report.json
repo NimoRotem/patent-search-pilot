@@ -1,0 +1,50 @@
+{
+  "c_pool": {
+    "pool_states": {
+      "done": 494,
+      "missing": 197,
+      "pending": 10713
+    },
+    "their_publications_already_pooled": 11404
+  },
+  "generated_at": "2026-08-22T19:03:35Z",
+  "new_publications": {
+    "already_in_c_pool": 5323,
+    "gap_reason": {
+      "cpc_outside_b": 98,
+      "graph_only": 4976,
+      "terminology": 151,
+      "unclassified": 178
+    },
+    "gap_reason_of_the_no_text": {
+      "cpc_outside_b": 79,
+      "graph_only": 4294,
+      "terminology": 73,
+      "unclassified": 169
+    },
+    "no_text_held": 4615,
+    "not_in_corpus_at_all": 134,
+    "total": 5403
+  },
+  "our_manifest": {
+    "external_only": 32355,
+    "records_scanned": 1607502,
+    "release_id": "niche-2026-08-22"
+  },
+  "overlap": {
+    "families_b_already_holds": 4820,
+    "families_genuinely_new": 5267,
+    "new_publications_whose_family_b_already_has": 0,
+    "publications_b_already_holds": 11493,
+    "publications_genuinely_new": 5403,
+    "publications_in_b_external_only": 0,
+    "their_family_ids_b_has_a_record_for": 4727
+  },
+  "seconds": 11.4,
+  "their_discovery": {
+    "families_by_family_key": 10087,
+    "families_raw_docdb_id": 6200,
+    "publications": 16896,
+    "source": "data/niche_reconcile/discovered.jsonl"
+  }
+}
