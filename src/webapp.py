@@ -2983,18 +2983,20 @@ def ranked_tail(slug):
     except ValueError:
         start, n = 0, 120
     window = fams[start:start + n]
-    deep = {}
-    try:
-        d = deep_analysis.result(slug, REPORTS) or {}
-        deep = d.get("by_pub") or {}
-    except Exception:
-        pass
+    #  THE READING RECORD LIVES ON THE REPORT, under `deep_rank.by_pub`. This used to ask
+    #  `deep_analysis.result(slug)` for a `by_pub` key that function has never produced, so the
+    #  Screened, Read and Cells columns were empty on EVERY report ever rendered by this page,
+    #  including ones where 324 of 340 references were read in full. The page exists to show that a
+    #  reference the pipeline found, read and ranked is not unreachable, and it was showing "-".
+    deep = ((rep.get("deep_rank") or {}).get("by_pub")) or {}
     rows = []
     try:
         with db.cursor() as cur:
-            #  THROUGH THE REPORT. Resolving this window on its own picked a different member of a
-            #  family from the one the reading charted, so `deep.get(pub)` missed and a reference
-            #  that had been read in full rendered here as unread.
+            #  THROUGH THE REPORT for the second half of the same problem: resolving this window on
+            #  its own picked a different member of a family from the one the reading charted, so
+            #  `deep.get(pub)` would miss even once it is looking in the right place. Measured on
+            #  four dated reports, the two orderings disagreed on 14% to 36% of the top 180
+            #  families.
             reps = webview.reps_for(cur, rep, window)
     except Exception:
         traceback.print_exc()
