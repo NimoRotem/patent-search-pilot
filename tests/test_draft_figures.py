@@ -781,7 +781,8 @@ def test_marked_endpoint_spec_keeps_a_following_target_sentence_in_the_same_bull
     caption = (
         "- The vibration device 10 is the whole rectangular assembly. "
         "Identified on the open upper surface of its slab, not on a component block.\n"
-        "- The motor 18 is the left rectangular block. Identified on its front face.")
+        "- The motor 18 is the left rectangular block. It is taller than the base. "
+        "Identified on its front face.")
 
     specification = json.loads(draft_figures._marked_endpoint_specification(
         "FIG. 1", caption, ["10 = vibration device", "18 = motor"]))
