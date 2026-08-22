@@ -21,6 +21,55 @@ from __future__ import annotations
 #  `Result.is_external` tests it; the global tier uses it too, so it needs one spelling.
 EXTERNAL_PREFIX = "fed:"
 
+#  DOCDB DOES NOT LEAVE `simple_family_id` NULL WHEN A PUBLICATION HAS NO SIMPLE FAMILY. It writes
+#  a sentinel. MEASURED on the live corpus 2026-08-22: 21,862 publications carry the literal
+#  string '-1'. `COALESCE(NULLIF(simple_family_id,''), publication_number)`, which is what every
+#  family query used to say, only catches the empty string, so all 21,862 shared one family key.
+#  Two consequences, both live recall defects rather than tidiness:
+#
+#    * family collapse keeps ONE row per key, so at most one of those 21,862 could ever survive a
+#      search, whichever happened to score best. The other 21,861 were unreachable.
+#    * `legal._date_clause` excludes the subject's own family. With a subject in this set that
+#      excluded all 21,862 unrelated documents from every channel.
+#
+#  A sentinel means "no family", so the publication is its own family and falls back to its own
+#  number, which is what the COALESCE was always trying to express.
+FAMILY_SENTINELS = ("", "-1", "0")
+
+
+def real_family_id(value):
+    """The DOCDB family id, or None when it is a sentinel meaning 'no simple family'."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return None if text in FAMILY_SENTINELS else text
+
+
+def family_id_sql(alias="", column="simple_family_id"):
+    """SQL for the DOCDB family id, NULL when it is a sentinel. No fallback to the publication.
+
+    Use this where the question is "do these two rows share a family", which a fallback would
+    answer wrongly: two publications with no family are not family members of each other.
+    """
+    prefix = f"{alias}." if alias else ""
+    expr = f"{prefix}{column}"
+    for sentinel in FAMILY_SENTINELS:
+        expr = f"NULLIF({expr},'{sentinel}')"
+    return expr
+
+
+def family_key_sql(alias="", column="simple_family_id", fallback="publication_number"):
+    """SQL for the family key of one publications row, sentinels folded to the fallback.
+
+    Kept as one expression in one place because it is repeated across five channels; a second
+    spelling that forgets a sentinel is exactly the defect this replaces.
+    """
+    prefix = f"{alias}." if alias else ""
+    expr = f"{prefix}{column}"
+    for sentinel in FAMILY_SENTINELS:
+        expr = f"NULLIF({expr},'{sentinel}')"
+    return f"COALESCE({expr}, {prefix}{fallback})"
+
 
 def is_external_id(pid):
     return isinstance(pid, str) and pid.startswith(EXTERNAL_PREFIX)
@@ -122,7 +171,7 @@ class FamilyMixin:
         if not keys:
             return {}
         sql = ("SELECT id, upper(regexp_replace(publication_number, '[^A-Za-z0-9]', '', 'g')) AS k, "
-               "COALESCE(NULLIF(simple_family_id,''), publication_number) AS fam "
+               f"{family_key_sql()} AS fam "
                "FROM publications "
                "WHERE upper(regexp_replace(publication_number, '[^A-Za-z0-9]', '', 'g')) = ANY(%s)")
         out = {}

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from search_modes import Mode, citable_where          # re-exported: callers import both from here
 
+from .family import family_id_sql
+
 
 def _date_clause(subject, mode, alias="p"):
     """(where_fragment, params) restricting to citable prior art; ('', []) if no subject/mode."""
@@ -18,9 +20,16 @@ def _date_clause(subject, mode, alias="p"):
     frag, params = citable_where(mode, subject, alias)
     # never return the subject's own family as prior art
     if subject.number:
-        frag += f" AND ({alias}.simple_family_id IS NULL OR {alias}.simple_family_id <> "
-        frag += "(SELECT simple_family_id FROM publications WHERE publication_number=%s LIMIT 1))"
-        params = list(params) + [subject.number]
+        row = family_id_sql(alias)
+        subj = f"(SELECT {family_id_sql()} FROM publications WHERE publication_number=%s LIMIT 1)"
+        #  THE FIRST TERM IS LOAD BEARING. DOCDB writes '-1' rather than NULL for a publication
+        #  with no simple family, and 21,862 rows of the live corpus carry it. Comparing the raw
+        #  column excluded all 21,862 as "the subject's family" whenever the subject was one of
+        #  them. Folding the sentinel to NULL fixes that but introduces the opposite hazard: with
+        #  a NULL subject family, `row <> NULL` is NULL for every row and the filter would discard
+        #  the entire corpus. A subject with no family has no family to exclude, so say so first.
+        frag += f" AND ({subj} IS NULL OR {row} IS NULL OR {row} <> {subj})"
+        params = list(params) + [subject.number, subject.number]
     return "AND " + frag, params
 
 

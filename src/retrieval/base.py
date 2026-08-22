@@ -16,6 +16,8 @@ import threading
 
 import db
 
+from .family import family_key_sql
+
 CHUNK_FETCH = 4000     # chunks pulled before aggregating to publications
 PUB_CAP = 1000         # per-channel publication cap (the spec's ~1000 width)
 
@@ -154,7 +156,7 @@ class RetrieverBase:
         if family_map is None:
             self._fam = {}
             with self.conn.cursor() as c:
-                c.execute("SELECT id, COALESCE(NULLIF(simple_family_id,''), publication_number) k FROM publications")
+                c.execute(f"SELECT id, {family_key_sql()} k FROM publications")
                 for r in c.fetchall():
                     self._fam[r["id"]] = r["k"]
         else:
