@@ -366,7 +366,7 @@ def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypat
 
     def inspect_marked(_png, **kwargs):
         marked_calls.append([dict(item) for item in kwargs["anchors"]])
-        if len(marked_calls) == 1:
+        if len(marked_calls) < 4:
             return {
                 "ok": False, "inspected": True,
                 "errors": ["The center is below the bearing-face boundary."],
@@ -374,7 +374,7 @@ def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypat
                 "labels": [{
                     "numeral": "26", "correct": False, "repairable": True,
                     "evidence": "the bearing face is right of center",
-                    "suggested_x": 750, "suggested_y": 500,
+                    "suggested_x": 550, "suggested_y": 500,
                 }],
             }
         return {
@@ -393,8 +393,8 @@ def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypat
         semantic={"anchors": initial, "pixel_anchor_audit": dict(accepted_pixel)})
 
     assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
-    assert len(marked_calls) == 2 and len(leader_calls) == 2
-    assert anchors[0]["x"] > 600
+    assert len(marked_calls) == 4 and len(leader_calls) == 4
+    assert anchors[0]["x"] > 560
     assert leaders["marked_anchor_audit"]["ok"] is True
 
 
