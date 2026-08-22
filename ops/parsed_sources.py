@@ -17,7 +17,13 @@ import zlib
 
 import gcs_lite
 
-PARSED_BUCKET = os.environ.get("PARSED_BUCKET", "nimo-patents-v3")
+#  ONE setting names the bucket, and it is workstream C's. `FULLTEXT_GCS_BUCKET` is what the two
+#  running `patents-fulltext-acquire*` units are configured with, so reading it here is what stops
+#  this pipeline from politely idling against an address nobody writes to. The interrupted
+#  checkpoint defaulted to `nimo-patents-v3`; C has written 13,872 objects to
+#  `gs://nimo-patents-fulltext/parsed/` and none at all to the other bucket.
+PARSED_BUCKET = (os.environ.get("PARSED_BUCKET") or os.environ.get("FULLTEXT_GCS_BUCKET")
+                 or "nimo-patents-fulltext")
 PARSED_PREFIX = os.environ.get("PARSED_PREFIX", "parsed/")
 
 

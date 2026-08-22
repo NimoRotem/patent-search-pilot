@@ -73,17 +73,33 @@ class ParsedDoc:
     abstract_orig: str = ""
     abstract_orig_lang: str = ""
     lang: str = "en"
+    desc_lang: str = ""
     claims: list = field(default_factory=list)       # claim_no, text, lang, is_independent,
     paragraphs: list = field(default_factory=list)   # parents, resolved_text
     figures: list = field(default_factory=list)
     declared_claim_count: int | None = None
     source: str = ""
+    #  Provenance for text that is not this publication's own words. See `donor_of` below.
+    donor_publication: str = ""
+    text_is_family_donor: bool = False
+    family_id: str = ""
     notes: list = field(default_factory=list)
     claim_defect: dict | None = None      # set when the claims were refused and the rest kept
 
     def counts(self):
         return {"claims": len(self.claims), "paragraphs": len(self.paragraphs),
                 "figures": len(self.figures), "abstract": 1 if self.abstract else 0}
+
+    def provenance(self):
+        """What a staged row has to carry so a reader can tell whose words it is reading."""
+        p = {"src": self.source} if self.source else {}
+        if self.text_is_family_donor:
+            p["donor_text"] = True
+            if self.donor_publication:
+                p["donor"] = self.donor_publication
+            if self.family_id:
+                p["family"] = self.family_id
+        return p
 
 
 # --------------------------------------------------------------------------- shape flattening
@@ -353,6 +369,26 @@ def verify_claims(items: list, declared: int | None, notes: list) -> list:
 
 # --------------------------------------------------------------------------- the whole document
 
+def _lang(payload, *keys, default="en") -> str:
+    """The first language code the payload actually carries, at the top level or inside `meta`.
+
+    Workstream C writes `claims_lang` and `desc_lang` at the TOP LEVEL and leaves them empty
+    rather than absent when it does not know; `sources_docstore` puts the same names inside
+    `meta`. Reading only one of the two places is how a German record is staged as English, which
+    costs nothing at embedding time and everything to a reader trying to tell machine translation
+    from original text.
+    """
+    meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+    for k in keys:
+        v = payload.get(k)
+        if not v:
+            v = meta.get(k)
+        v = str(v or "").strip()
+        if v:
+            return v
+    return default
+
+
 def _paragraph_rows(payload, notes) -> list:
     desc = strip_source_preamble(
         _text(payload.get("description") if payload.get("description") is not None
@@ -388,6 +424,46 @@ def _figure_rows(payload, notes) -> list:
         rows = [{"figure_no": f["figure_no"], "caption": f["caption"]}
                 for f in pt.figure_captions(desc)]
     return rows[:MAX_FIGURES]
+
+
+def _truthy(v) -> bool:
+    """JSON booleans arrive as strings often enough to matter.
+
+    MEASURED on workstream C's own output: `gs://nimo-patents-fulltext/parsed/AT255953B/
+    corpus_family.json` carries `"text_is_family_donor": "True"`, a Python bool that went through
+    `str()` on its way into JSON. `bool("False")` is True, so reading that field with a plain truth
+    test marks every record a donor record, and reading it with `is True` marks none of them.
+    """
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return bool(v)
+    return str(v or "").strip().lower() in ("true", "1", "yes", "y", "t")
+
+
+def donor_of(payload) -> dict:
+    """-> `{donor_publication, text_is_family_donor, family_id}` for a record whose text belongs
+    to a family sibling.
+
+    Workstream C fills a publication that has no text of its own from a family member that does,
+    and marks the record `source="corpus:family"` with the donor's number. The disclosure is the
+    same document; the WORDS are the donor's. Flattening that away would put a staged chunk under
+    a publication whose text nobody has ever read, with nothing in the row to say so, and there is
+    no way to notice afterwards. So it is carried, on the row, into `coord`.
+    """
+    meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+
+    def pick(key):
+        v = payload.get(key)
+        return v if v not in (None, "") else meta.get(key)
+
+    donor = str(pick("donor_publication") or "").strip()
+    flag = pick("text_is_family_donor")
+    source = str(payload.get("source") or meta.get("source") or "")
+    is_donor = _truthy(flag) if flag is not None else source.startswith("corpus:family")
+    return {"donor_publication": donor,
+            "text_is_family_donor": bool(is_donor or (source.startswith("corpus:family") and donor)),
+            "family_id": str(pick("family_id") or "").strip()}
 
 
 def content_sha(payload) -> str:
@@ -435,7 +511,8 @@ def normalise(payload: dict, publication_number: str | None = None,
         claims = []
     claims = pt.resolve_claims(claims)
 
-    lang = (payload.get("lang") or (payload.get("meta") or {}).get("claims_lang") or "en")
+    lang = _lang(payload, "lang", "claims_lang")
+    desc_lang = _lang(payload, "desc_lang", "description_lang", default=lang)
     abstract = _text(payload.get("abstract"))
     orig = payload.get("abstract_orig") or {}
     orig_text = _text(orig.get("text") if isinstance(orig, dict) else orig)
@@ -443,22 +520,30 @@ def normalise(payload: dict, publication_number: str | None = None,
     if orig_text and orig_text.strip() == abstract.strip():
         orig_text, orig_lang = "", ""
 
+    donor = donor_of(payload)
     doc = ParsedDoc(
         publication_number=pub,
         title=_text(payload.get("title")).strip(),
         abstract=abstract.strip(),
-        abstract_lang=(payload.get("abstract_lang") or "en"),
+        abstract_lang=_lang(payload, "abstract_lang"),
         abstract_orig=orig_text.strip(),
         abstract_orig_lang=orig_lang,
         lang=lang,
+        desc_lang=desc_lang,
         claims=claims,
         paragraphs=_paragraph_rows(payload, notes),
         figures=_figure_rows(payload, notes),
         declared_claim_count=declared,
         source=_text(payload.get("source") or (payload.get("meta") or {}).get("source")),
+        donor_publication=donor["donor_publication"],
+        text_is_family_donor=donor["text_is_family_donor"],
+        family_id=donor["family_id"],
         notes=notes,
         claim_defect=defect,
     )
+    if doc.text_is_family_donor:
+        notes.append(f"text is a family sibling's: donor "
+                     f"{doc.donor_publication or '(unnamed)'}, family {doc.family_id or '(none)'}")
     if not (doc.claims or doc.paragraphs or doc.abstract):
         if defect:
             raise ParseRejected(defect["code"], defect["reason"], defect["detail"])

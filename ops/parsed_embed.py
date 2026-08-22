@@ -57,6 +57,7 @@ if os.path.exists(ENV_FILE):
 import embed_common                                                  # noqa: E402
 import parsed_sources                                                # noqa: E402
 import batch_embed                                                   # noqa: E402
+import corpus_pub                                                    # noqa: E402
 import parsed_norm                                                   # noqa: E402
 import stage_chunks                                                  # noqa: E402
 from desc_backfill import DDL as STAGE_DDL                           # noqa: E402
@@ -147,19 +148,20 @@ def shard_of(source_key, shards):
     return zlib.crc32(source_key.encode()) % max(1, shards)
 
 
-def resolve_publication_ids(conn, pubs):
-    """-> `{publication_number: id}` for the publications the corpus already holds.
+def resolve_publications(conn, pubs):
+    """-> `{fetched_number: {"id": corpus id, "publication_number": corpus spelling}}`.
 
-    `publications` is UNIQUE on `(publication_number, kind_code)`, not on the number alone, so a
-    number can carry more than one row. The lowest id is taken and the choice is deterministic,
-    which matters because two workers must stage against the same id.
+    An equality join on the raw string finds NOTHING, because C and `sources_docstore` spell a
+    publication compactly (`DE10023344C2`) and the corpus spells it hyphenated (`DE-10023344-C2`).
+    `src/corpus_pub.py` is the whole story, including why that mismatch is worse than an empty
+    result: it silently disables the disjointness check against `patents-desc-backfill`.
     """
-    if not pubs:
-        return {}
-    with conn.cursor() as cur:
-        cur.execute("SELECT publication_number, min(id) AS id FROM publications "
-                    "WHERE publication_number = ANY(%s) GROUP BY publication_number", (list(pubs),))
-        return {r["publication_number"]: r["id"] for r in cur.fetchall()}
+    return corpus_pub.resolve(conn, pubs)
+
+
+def resolve_publication_ids(conn, pubs):
+    """-> `{fetched_number: corpus id}`. Kept for callers that only want the id."""
+    return {p: r["id"] for p, r in resolve_publications(conn, pubs).items()}
 
 
 def surrogate_publication_ids(conn, pubs):
@@ -205,16 +207,24 @@ def ledgered(conn, source_keys):
 
 
 def write_ledger(conn, row):
+    row = dict({"source": None, "donor_publication": None, "fetched_number": None}, **row)
     with conn.cursor() as cur:
         cur.execute("""INSERT INTO parsed_doc_ledger
-                       (source_key, publication_number, publication_id, content_sha, state, code,
-                        reason, detail, n_claims, n_paragraphs, n_chunks, corpus_release)
-                       VALUES (%(source_key)s, %(publication_number)s, %(publication_id)s,
-                               %(content_sha)s, %(state)s, %(code)s, %(reason)s, %(detail)s,
-                               %(n_claims)s, %(n_paragraphs)s, %(n_chunks)s, %(corpus_release)s)
+                       (source_key, publication_number, fetched_number, publication_id,
+                        content_sha, state, code, reason, detail, n_claims, n_paragraphs,
+                        n_chunks, source, donor_publication, corpus_release)
+                       VALUES (%(source_key)s, %(publication_number)s, %(fetched_number)s,
+                               %(publication_id)s, %(content_sha)s, %(state)s, %(code)s,
+                               %(reason)s, %(detail)s, %(n_claims)s, %(n_paragraphs)s,
+                               %(n_chunks)s, %(source)s, %(donor_publication)s,
+                               %(corpus_release)s)
                        ON CONFLICT (source_key) DO UPDATE SET
+                          publication_number = EXCLUDED.publication_number,
+                          publication_id = EXCLUDED.publication_id,
                           state = EXCLUDED.state, code = EXCLUDED.code, reason = EXCLUDED.reason,
                           detail = EXCLUDED.detail, n_chunks = EXCLUDED.n_chunks,
+                          source = EXCLUDED.source,
+                          donor_publication = EXCLUDED.donor_publication,
                           updated_at = now()""", row)
 
 
@@ -263,20 +273,27 @@ def ingest_round(conn, sources, prog, shard, shards):
             continue
 
         pubs = [d["publication_number"] for d in mine if d["publication_number"]]
-        real = resolve_publication_ids(conn, pubs)
+        real = resolve_publications(conn, pubs)
         missing = [p for p in pubs if p not in real]
         surrogate = surrogate_publication_ids(conn, missing)
         conn.commit()
-        with_paras = publications_with_paragraphs(conn, list(real.values()))
+        with_paras = publications_with_paragraphs(conn, [r["id"] for r in real.values()])
 
         for d in mine:
-            pub = d["publication_number"]
-            pid = real.get(pub, surrogate.get(pub))
+            fetched = d["publication_number"]
+            hit = real.get(fetched)
+            #  The CORPUS spelling wins wherever the corpus knows the publication, so `coord.pub`,
+            #  the item key and the ledger all carry a number workstream F can join on. The number
+            #  as fetched is kept beside it, because that is what names the GCS object.
+            pub = hit["publication_number"] if hit else fetched
+            pid = hit["id"] if hit else surrogate.get(fetched)
             sha = parsed_norm.content_sha(d["payload"])
             base = {"source_key": d["source_key"], "publication_number": pub or "",
-                    "publication_id": pid or 0, "content_sha": sha,
+                    "fetched_number": fetched or "", "publication_id": pid or 0,
+                    "content_sha": sha,
                     "corpus_release": CORPUS_RELEASE, "n_claims": 0, "n_paragraphs": 0,
-                    "n_chunks": 0, "code": None, "reason": None, "detail": None}
+                    "n_chunks": 0, "code": None, "reason": None, "detail": None,
+                    "source": None, "donor_publication": None}
             if not pub or pid is None:
                 write_ledger(conn, dict(base, state="rejected", code="NO_PUBLICATION",
                                         reason="record carries no usable publication number"))
@@ -308,12 +325,17 @@ def ingest_round(conn, sources, prog, shard, shards):
             state = "partial" if doc.claim_defect else "staged"
             write_ledger(conn, dict(base, state=state, n_claims=len(doc.claims),
                                     n_paragraphs=len(doc.paragraphs), n_chunks=len(rows),
+                                    source=doc.source or None,
+                                    donor_publication=doc.donor_publication or None,
                                     code=(doc.claim_defect or {}).get("code"),
                                     reason=((doc.claim_defect or {}).get("reason") or "")[:500]
                                            or None,
                                     detail=json.dumps({"notes": doc.notes,
                                                        "declared_claims": doc.declared_claim_count,
                                                        "claim_defect": doc.claim_defect,
+                                                       "text_is_family_donor":
+                                                           doc.text_is_family_donor,
+                                                       "family_id": doc.family_id,
                                                        "paragraphs_left_to_backfill": dropped_paras
                                                        }, default=str)[:4000]))
             counts["staged"] += 1

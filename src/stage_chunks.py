@@ -38,19 +38,31 @@ def tok(s):
     return max(1, len(s) // 4)
 
 
-def item_key(source_key: str, kind: str, slot: str, text: str) -> str:
+def item_key(scope: str, kind: str, slot: str, text: str) -> str:
     """Stable identity for one chunk of work.
 
     Content is part of the key, so re-running a document with the SAME text is free and re-running
     it with better text is a new item rather than a silent no-op.
+
+    `scope` is the PUBLICATION, not the source object. Workstream C writes one object per provider,
+    `parsed/{PUBLICATION}/{provider}.json`, so a publication that is later fetched from a second
+    provider arrives as a second document with a second source key. Keying on the source object
+    would pay to embed identical text twice and put two identical vectors in staging for one
+    publication; keying on the publication makes the duplicate free and still lets genuinely
+    different text from the second provider through, because the text digest is in the key.
     """
     h = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:16]
-    return hashlib.sha256(f"{source_key}\x1e{kind}\x1e{slot}\x1e{h}".encode()).hexdigest()
+    return hashlib.sha256(f"{scope}\x1e{kind}\x1e{slot}\x1e{h}".encode()).hexdigest()
 
 
 def chunk_rows(doc, source_key: str) -> list:
-    """-> `[{kind, ref_id, coord, lang, text, token_count, item_key}]`, in corpus order."""
+    """-> `[{kind, ref_id, coord, lang, text, token_count, item_key}]`, in corpus order.
+
+    `source_key` is recorded by the caller on the queue row and the ledger; the chunk identity is
+    the publication's, for the reason `item_key` gives.
+    """
     pub = doc.publication_number
+    prov = doc.provenance() if hasattr(doc, "provenance") else {}
     rows = []
 
     def add(kind, coord, lang, text, slot):
@@ -59,9 +71,14 @@ def chunk_rows(doc, source_key: str) -> list:
             return
         coord = dict(coord or {})
         coord["pub"] = pub
+        #  `chunks_stage_v3` has no provenance column and must not grow one: it is shared with the
+        #  running description backfill. `coord` is jsonb and is the row's own record of where its
+        #  words came from, which is the only place a reader can find out that a chunk under
+        #  publication X is publication Y's text.
+        coord.update(prov)
         rows.append({"kind": kind, "ref_id": None, "coord": coord, "lang": lang or "en",
                      "text": text, "token_count": tok(text),
-                     "item_key": item_key(source_key, kind, slot, text)})
+                     "item_key": item_key(pub, kind, slot, text)})
 
     whole = clip((doc.title or "") + (". " + doc.abstract if doc.abstract else ""), WHOLE_CHARS)
     if whole:
@@ -84,10 +101,11 @@ def chunk_rows(doc, source_key: str) -> list:
             add("claim_resolved", {"claim_no": no}, c.get("lang") or doc.lang, res,
                 f"claim_resolved:{no}")
 
+    desc_lang = getattr(doc, "desc_lang", "") or doc.lang
     for p in doc.paragraphs:
         add("paragraph", {"para_no": p.get("para_no"), "heading": p.get("heading"),
                           "page_no": p.get("page_no")},
-            p.get("lang") or doc.lang, p.get("text"), f"paragraph:{p.get('para_no')}")
+            p.get("lang") or desc_lang, p.get("text"), f"paragraph:{p.get('para_no')}")
 
     for f in doc.figures:
         if f.get("caption"):
