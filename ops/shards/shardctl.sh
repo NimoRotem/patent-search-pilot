@@ -12,6 +12,7 @@
 #   ./shardctl.sh status [shard...]        instance state + the shard's own answer
 #   ./shardctl.sh create <shard>           create the VM and its disk, private IP only
 #   ./shardctl.sh create-all               all eight, the command in the cost decision
+#   ./shardctl.sh verify-cold              exit 1 unless every shard is TERMINATED
 #   ./shardctl.sh bootstrap <shard>        pg17 + pgvector + agent + tantivy + prewarm
 #   ./shardctl.sh schema <shard>           apply the repo's migrations to the shard database
 #   ./shardctl.sh start|stop <shard>
@@ -35,6 +36,10 @@ DISK_IOPS="${SHARD_DISK_IOPS:-4500}"
 DISK_MBPS="${SHARD_DISK_MBPS:-515}"
 IMAGE_FAMILY="${SHARD_IMAGE_FAMILY:-debian-12}"
 IMAGE_PROJECT="${SHARD_IMAGE_PROJECT:-debian-cloud}"
+#  The fleet's own service account, the same one every other patents VM runs as. A shard needs an
+#  identity to pull its corpus release out of GCS when workstream F loads it; with none it can only
+#  ever be filled by pushing over ssh.
+SERVICE_ACCOUNT="${SHARD_SERVICE_ACCOUNT:-nimo-843@nimo-gpt.iam.gserviceaccount.com}"
 AGENT_PORT="${SHARD_AGENT_PORT:-8639}"
 TANTIVY_PORT="${SHARD_TANTIVY_PORT:-8635}"
 PGPORT_SHARD="${SHARD_PGPORT:-5432}"
@@ -60,9 +65,17 @@ inst_status() {                            # -> RUNNING | TERMINATED | ABSENT | 
   gcloud compute instances describe "$(vm_of "$1")" --zone "$(zone_of "$1")" \
       --format='value(status)' 2>/dev/null || echo ABSENT
 }
+#  `|| true` is not decoration. `describe` on an instance that does not exist exits non zero, and
+#  under `set -e` a bare `ip="$(inst_ip ...)"` KILLS the script: `status` printed its header and
+#  then nothing at all for the whole fleet, which is exactly the read only command a session is
+#  told to run first. Absent is an answer, not an error.
 inst_ip() {
   gcloud compute instances describe "$(vm_of "$1")" --zone "$(zone_of "$1")" \
-      --format='value(networkInterfaces[0].networkIP)' 2>/dev/null
+      --format='value(networkInterfaces[0].networkIP)' 2>/dev/null || true
+}
+inst_external_ip() {
+  gcloud compute instances describe "$(vm_of "$1")" --zone "$(zone_of "$1")" \
+      --format='value(networkInterfaces[0].accessConfigs[0].natIP)' 2>/dev/null || true
 }
 
 #  The shard database password is the corpus password: the same role, the same secret, so a shard
@@ -82,16 +95,19 @@ ssh_shard() {                              # ssh_shard <shard> <command...>
 
 # ---------------------------------------------------------------------------- commands
 cmd_list() {
-  printf '%-16s %-30s %-16s %s\n' SHARD VM ZONE PREFIXES
-  awk -F'\t' '!/^#/ && NF>=3 {printf "%-16s %-30s %-16s %s\n", $1, $2, $3, $4}' "$TABLE"
+  printf '%-12s %-20s %-16s %7s  %s\n' SHARD VM ZONE DOMAINS 'FIRST FEW'
+  awk -F'\t' '!/^#/ && NF>=3 {n=split($4,a,","); printf "%-12s %-20s %-16s %7d  %s...\n",
+              $1, $2, $3, n, substr($4,1,44)}' "$TABLE"
 }
 
 cmd_status() {
   local shards=("$@"); [ ${#shards[@]} -eq 0 ] && mapfile -t shards < <(all_shards)
-  printf '%-16s %-12s %-15s %-9s %-9s %s\n' SHARD INSTANCE IP STATE INDEX REASON
+  printf '%-12s %-12s %-15s %-9s %-9s %s\n' SHARD INSTANCE IP STATE INDEX REASON
   for s in "${shards[@]}"; do
     local st ip health state index reason
-    st="$(inst_status "$s")"; ip="$(inst_ip "$s")"; state="-"; index="-"; reason=""
+    st="$(inst_status "$s")" || st=ABSENT
+    ip="$(inst_ip "$s")" || ip=""
+    state="-"; index="-"; reason=""
     if [ "$st" = "RUNNING" ] && [ -n "$ip" ]; then
       health="$(curl -fsS --max-time 3 "http://$ip:$AGENT_PORT/health" 2>/dev/null || echo '')"
       if [ -n "$health" ]; then
@@ -106,7 +122,7 @@ cmd_status() {
     elif [ "$st" = "ABSENT" ]; then
       state="absent"; reason="not created"
     fi
-    printf '%-16s %-12s %-15s %-9s %-9s %s\n' "$s" "$st" "${ip:--}" "$state" "$index" "$reason"
+    printf '%-12s %-12s %-15s %-9s %-9s %s\n' "$s" "$st" "${ip:--}" "$state" "$index" "$reason"
   done
 }
 
@@ -114,7 +130,16 @@ cmd_create() {
   local s="$1"; need "$s"
   local vm zone; vm="$(vm_of "$s")"; zone="$(zone_of "$s")"
   if gcloud compute instances describe "$vm" --zone "$zone" >/dev/null 2>&1; then
-    echo "$vm already exists, nothing to create"; return 0
+    echo "$vm already exists, nothing to create"
+    #  Idempotent means convergent, not "skip". A shard created by an earlier pass and then left
+    #  RUNNING is the expensive mistake this whole fleet is exposed to, so bring it back to its
+    #  resting state rather than walking past it. Anything actually serving holds a lease and is
+    #  the reaper's business, not create's; create only ever sees a shard nobody asked for.
+    if [ "$(inst_status "$s")" = "RUNNING" ] && [ "${SHARD_CREATE_LEAVE_RUNNING:-0}" != "1" ]; then
+      echo "  ...and it is RUNNING with nothing asking for it; stopping it"
+      gcloud compute instances stop "$vm" --zone "$zone" --quiet >/dev/null
+    fi
+    return 0
   fi
   echo "creating $vm ($MACHINE, ${DISK_GB}GB $DISK_TYPE, no external address) in $zone"
   gcloud compute instances create "$vm" \
@@ -127,17 +152,34 @@ cmd_create() {
     --boot-disk-provisioned-throughput "$DISK_MBPS" \
     --network-interface=subnet=default,no-address \
     --metadata enable-oslogin=TRUE \
-    --labels "purpose=patents-shard,shard=$s,owner=workstream-e" \
-    --scopes cloud-platform
+    --labels "purpose=patents-shard,shard=$s,tier=cold" \
+    --service-account "$SERVICE_ACCOUNT" --scopes cloud-platform
   #  Created RUNNING. It has nothing on it yet, so bring it straight back down: a shard's resting
   #  state is TERMINATED and an unbootstrapped one that is left up is pure burn.
   gcloud compute instances stop "$vm" --zone "$zone" --quiet
 }
 
 cmd_create_all() {
-  #  THE COST DECISION. Eight of these are ~$340/month in standing disk with every VM stopped and
-  #  ~$761/month EACH the moment one is left running. `cost` prints the arithmetic.
+  #  THE COST DECISION, taken 2026-08-22. `cost` prints the arithmetic from the machine and disk
+  #  types actually used. Serial and not parallel: eight c4-highmem-16 created at once is 128 vCPU
+  #  live at the same moment, and each one is stopped before the next is created.
   for s in $(all_shards); do cmd_create "$s"; done
+  echo
+  echo "created. Verifying every shard is TERMINATED, which is the whole cost argument:"
+  cmd_verify_cold
+}
+
+cmd_verify_cold() {
+  #  The check the cost decision rests on, as a command rather than a promise. Exit 1 if anything
+  #  is up, so it can be the last line of a script or a cron and actually mean something.
+  local bad=0 st
+  for s in $(all_shards); do
+    st="$(inst_status "$s")"
+    printf '  %-12s %s\n' "$s" "$st"
+    [ "$st" = "TERMINATED" ] || [ "$st" = "ABSENT" ] || bad=1
+  done
+  if [ "$bad" = "1" ]; then echo "NOT ALL COLD: a running shard is \$761/month" >&2; return 1; fi
+  echo "all cold."
 }
 
 cmd_egress() {
@@ -318,6 +360,7 @@ case "${1:-}" in
   status)     shift; cmd_status "$@" ;;
   create)     shift; cmd_create "$@" ;;
   create-all) shift; cmd_create_all "$@" ;;
+  verify-cold) shift; cmd_verify_cold "$@" ;;
   bootstrap)  shift; cmd_bootstrap "$@" ;;
   schema)     shift; cmd_schema "$@" ;;
   start)      shift; cmd_start "$@" ;;
@@ -329,5 +372,5 @@ case "${1:-}" in
   egress)     shift; cmd_egress "$@" ;;
   reap)       shift; cmd_reap "$@" ;;
   cost)       shift; cmd_cost "$@" ;;
-  *) sed -n '2,32p' "$0"; exit 1 ;;
+  *) sed -n '2,/^set -euo/p' "$0" | sed '$d'; exit 1 ;;
 esac

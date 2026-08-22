@@ -1,30 +1,37 @@
 # The shard table. THE one place a shard's identity lives; bash and Python both read this file.
 #
-# A "domain" to the router (src/retrieval/shard_router.py) is a CPC SUBCLASS, four characters.
-# There are hundreds of those and there are eight shards, so a shard owns a PREFIX SET and the
-# mapping subclass -> shard is by longest matching prefix. Every domain must land somewhere: the
-# last row is the catch-all and is also where the always-emitted "unclassified" route goes, which
-# is 1,024,320 publications, 20.6% of the corpus, that no classified shard can hold.
+# A "domain" to the router (src/retrieval/shard_router.py) is a CPC SUBCLASS, four characters, plus
+# the literal "unclassified" that route() always emits. There are 602 of those and eight shards, so
+# a shard owns an explicit SET of subclasses and the mapping subclass -> shard is by exact match.
 #
-# The prefix sets are provisional. Workstream F builds the shard databases and owns how the corpus
-# is actually cut; when F settles it, edit this file and nothing else. Rebalancing is a data move,
-# not a code change.
+# THE ASSIGNMENT IS NOT OURS. It is workstream F's balanced eight way partition, computed once and
+# written to its data/logs/plan.json. `ops/shards/plan_to_table.py --plan <plan.json>` regenerates
+# the last column from it and `--check` fails if this file has drifted. Do not hand edit the domain
+# lists: a subclass F loaded onto one shard and this table routes to another is a shard that wakes,
+# is queried and answers nothing, which downstream is indistinguishable from a genuine miss.
+#
+# domain_08 carries the `*` catch-all AND the `unclassified` route, which is 1,024,320 publications,
+# 20.6% of the corpus, that no classified shard holds. A symbol the plan has never seen and a
+# document with no symbol at all are the same problem, so they live on the same box.
+# `shard_of("")` and `shard_of(shard_router.UNCLASSIFIED)` both land here: workstream B's
+# corpus_niche.subclass_of returns "" where domain_of returns "unclassified", and a shard reachable
+# under only one of the two names is 20.6% of the corpus quietly unreachable.
 #
 # Columns, tab separated:
-#   shard    shard id, also the label and the suffix of the VM name
+#   shard    shard id, F's own key for the domain group. Also the lease key in `shard_leases`.
 #   vm       the instance name
 #   zone     the instance zone
-#   prefixes comma separated CPC prefixes this shard owns, or * for the catch-all
+#   domains  comma separated CPC subclasses this shard owns, `*` first on the catch-all
 #
-# Only 03-transport exists today. See README.md for the one command that creates the rest and for
-# what it costs.
+# All eight exist. `shardctl.sh status` is the live picture; `shardctl.sh cost` is the arithmetic.
+# A shard's resting state is TERMINATED and the idle reaper is what keeps it that way.
 #
-#shard	vm	zone	prefixes
-01-handling	patents-shard-01-handling	us-central1-b	B21,B23,B24,B25,B26,B27,B28
-02-lifting	patents-shard-02-lifting	us-central1-b	B66,B67,B68
-03-transport	patents-shard-03-transport	us-central1-b	B60,B61,B62,B63,B64,B65
-04-mechanical	patents-shard-04-mechanical	us-central1-b	F01,F02,F03,F04,F15,F16
-05-process	patents-shard-05-process	us-central1-b	B01,B02,B03,B04,B05,B06,B07,B08,B09,B22,B29,B30,B31,B32,B33,B41,B42,B43,B44,C
-06-structures	patents-shard-06-structures	us-central1-b	D,E,F17,F21,F22,F23,F24,F25,F26,F27,F28,F41,F42
-07-instruments	patents-shard-07-instruments	us-central1-b	G,H
-08-unclassified	patents-shard-08-unclassified	us-central1-b	*
+#shard	vm	zone	domains
+domain_01	patents-shard-01	us-central1-b	A01C,A21D,A22C,A23B,A24B,A41C,A41H,A61H,A61N,A61Q,A62B,A63B,A63G,B02B,B06B,B09B,B22D,B23H,B25D,B25G,B62C,B62J,B82Y,C01D,C01F,C07C,C08B,C11D,C22F,C30B,D02G,D02H,D04H,E01B,E01D,E03F,E04B,E21C,E21D,F02B,F02F,F02P,F03G,F04D,F16G,F16N,F23B,F24V,F27B,F42B,G01F,G01K,G01L,G02B,G03B,G04B,G06K,G07C,G07G,G08C,G08G,G10G,H01F,H01K,H02B,H03D,H03H,H04M,H10F,H10P
+domain_02	patents-shard-02	us-central1-b	A21C,A23G,A24C,A24F,A44C,A46D,A47C,A47D,A61J,A63C,B01J,B03C,B03D,B21J,B25C,B31B,B31F,B41D,B42F,B44D,B60F,B60K,B60L,B60S,B60T,B61H,B63B,B65G,B81C,C05D,C05F,C06B,C07K,C08G,C10L,C12L,C22B,C25B,C25C,D06G,D21D,E02D,E03C,E03D,E04G,F01L,F21K,F21S,F22B,F23D,F23M,F24B,F24D,F24T,F25B,F25D,F25J,F28F,F42D,G01D,G06M,G06N,G06Q,G10H,G21G,H01C,H03M,H04H,H04L,H04N,H05B,H05H
+domain_03	patents-shard-03	us-central1-b	A01J,A01K,A23C,A23K,A24D,A42B,A43B,B04B,B21C,B23F,B25F,B25J,B26D,B27C,B27F,B27H,B28B,B31D,B41B,B41G,B43L,B44C,B44F,B60J,B60M,B60V,B61C,B61D,B61J,B62B,B62H,B64F,B65F,B66F,B67C,B67D,B81B,C01C,C02F,C06F,C08C,C21C,D03J,D05B,E01C,E01F,E21B,F01C,F01M,F03B,F03C,F03D,F16J,F23J,F25C,F41H,G01H,G01M,G01S,G04D,G04G,G05D,G05F,G06F,G08B,G11B,G21K,H01H,H01M,H01P,H04Q,H04S,H04W,H10B
+domain_04	patents-shard-04	us-central1-b	A01N,A23J,A23L,A41F,A43D,A47L,A62D,A63J,B01F,B04C,B09C,B21D,B21F,B23C,B24D,B26F,B27L,B30B,B31C,B32B,B41L,B42C,B43K,B64C,B64D,B65C,B66D,B68G,C07B,C08H,C09G,C09K,C10G,C10M,C11B,C12M,C22C,C23C,C23F,D01G,D06B,D06J,D06N,D21J,E04D,E04F,E05C,F01N,F04B,F04C,F16H,F16T,F26B,F28B,F41A,F41C,F41F,F41G,G01B,G01C,G01R,G01V,G02F,G05B,G07B,G10L,G16C,G21C,H01R,H01T,H02H,H03G,H03K,H05F,H10W
+domain_05	patents-shard-05	us-central1-b	A01B,A23F,A45B,A45D,A45F,A47H,A61M,A62C,A63D,A63K,B02C,B03B,B05C,B21K,B22C,B22F,B23K,B24B,B27D,B27M,B29B,B29D,B41F,B41J,B43M,B61L,B62D,B62L,B65B,B66B,C05G,C07D,C08J,C09C,C09D,C09J,C10C,C10J,C13B,C14C,C21B,D01D,D01F,D01H,D03C,D06H,D06M,D21C,E02B,E05B,E05D,E06C,F02D,F15C,F16D,F17C,F21L,F23H,F23K,F23N,F23Q,F23R,F24H,F28G,G01N,G03D,G03F,G03G,G06T,G06V,G16H,G21B,G21F,H01G,H02K,H05G,H10N
+domain_06	patents-shard-06	us-central1-b	A01G,A22B,A23N,A43C,A46B,A47F,A47J,A61K,A61L,B01D,B07B,B07C,B08B,B24C,B25B,B27G,B27K,B41M,B41N,B42B,B42D,B60G,B60N,B60P,B60Q,B60W,B61B,B62M,B63J,B65H,B68B,C01B,C03C,C04B,C06C,C07F,C09B,C10B,C10H,C11C,C12N,D02J,D04B,D05C,D06C,D06F,D06P,D07B,D21H,E03B,E04C,E21F,F01B,F01D,F02M,F15B,F16F,F16M,F16P,F21V,F24J,F24S,F28C,G01J,G01P,G01Q,G05G,G09C,G10D,G12B,H01B,H01J,H03B,H04B,H04J,H05K,H10D
+domain_07	patents-shard-07	us-central1-b	A01D,A01H,A21B,A41B,A41D,A41G,A44B,A47G,A61B,A61D,A61G,A63H,B21B,B21H,B21L,B23B,B23G,B23P,B23Q,B26B,B27N,B28D,B29C,B60B,B60C,B60D,B61G,B63G,B63H,B65D,B67B,B68C,C01G,C03B,C07H,C08F,C08K,C08L,C12F,C12G,C12P,C12Q,C25D,C25F,C40B,D04C,D04D,D06Q,E02F,E04H,E05F,E05G,F01K,F01P,F02C,F02K,F04F,F15D,F16C,F17D,F23G,F28D,F41B,F42C,G01G,G01W,G02C,G03C,G04C,G04F,G07F,G09B,G09D,G09F,G10C,G16Z,H01Q,H01S,H02N,H02P,H03J
+domain_08	patents-shard-08	us-central1-b	*,A01F,A01M,A23P,A42C,A45C,A47B,A47K,A61C,A61F,A61P,A63F,B01L,B05B,B05D,B21G,B23D,B25H,B27B,B27J,B28C,B33Y,B41C,B41K,B44B,B60H,B60R,B61F,B61K,B62K,B63C,B64B,B64G,B64U,B66C,B82B,C07J,C13K,C14B,C21D,C23G,D01B,D03D,D21B,D21F,D21G,E01H,E06B,F02N,F03H,F16B,F16K,F16L,F23C,F24C,F24F,F27D,F41J,G01T,G03H,G07D,G09G,G10K,G11C,G16B,G21H,H01L,H02G,H02J,H02M,H02S,H03F,H03L,H04R,H10H,H10K,unclassified
