@@ -1,6 +1,7 @@
 """Autonomous patent-drawing generation and pixel-level filing gates."""
 import io
 import json
+import re
 
 import pytest
 from PIL import Image
@@ -146,6 +147,16 @@ def test_geometry_prompt_strips_every_annotation_instruction_and_reference_numbe
     assert "the body" in lowered and "the pump" in lowered
 
 
+def test_geometry_prompt_removes_section_marks_and_spells_geometric_numbers():
+    prompt = draft_figures.build_prompt(
+        "FIG. 2 - perspective view",
+        "The assembly is viewed from 30 degrees above. A section line 2-2 crosses the body.",
+        ["10 = body"])
+    assert not re.search(r"\d", prompt)
+    assert "thirty degrees" in prompt.lower()
+    assert "section line" not in prompt.lower()
+
+
 def test_render_refuses_to_store_a_semantically_wrong_drawing(monkeypatch):
     monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
     monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
@@ -162,20 +173,23 @@ def test_render_refuses_to_store_a_semantically_wrong_drawing(monkeypatch):
 
 def test_text_contaminated_geometry_retries_from_a_clean_canvas(monkeypatch):
     previous_images = []
+    prompts = []
 
-    def generate(_prompt, previous=None):
+    def generate(prompt, previous=None):
+        prompts.append(prompt)
         previous_images.append(previous)
         return blank_png()
 
     monkeypatch.setattr(draft_figures, "_cached_generate", generate)
     monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
-        "ok": False, "missing": [], "errors": ["image contains visible text"],
+        "ok": False, "missing": [], "errors": ["component 10 contains visible text"],
         "unexpected_text": ["BODY"], "anchors": []})
     with pytest.raises(draft_figures.FigureError, match="semantic"):
         draft_figures.render_figure(
             7, 91, label="FIG. 1", caption="side view of body",
             numerals=["10 = body"])
     assert previous_images == [None] * draft_figures.MAX_SEMANTIC_ATTEMPTS
+    assert all(not re.search(r"\d", prompt) for prompt in prompts)
 
 
 def test_render_stores_only_after_semantic_and_ocr_gates_pass(monkeypatch):

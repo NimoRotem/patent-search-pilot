@@ -393,9 +393,33 @@ def numerals_for(sections, caption="", disclosure=""):
 
 
 _ANNOTATION_ONLY = re.compile(
-    r"\b(?:reference\s+(?:numerals?|numbers?)|labels?|legends?|leader\s+lines?|callouts?)\b",
+    r"\b(?:reference\s+(?:numerals?|numbers?)|labels?|legends?|leader\s+lines?|callouts?|"
+    r"section\s+lines?|cutting\s+planes?)\b",
     re.IGNORECASE,
 )
+_SMALL_NUMBERS = (
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+    "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
+    "eighteen", "nineteen",
+)
+_TENS = ("", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty",
+         "ninety")
+
+
+def _integer_words(value: int) -> str:
+    """Spell a small geometric quantity so the image model never sees drawable digits."""
+    value = int(value)
+    if value < 20:
+        return _SMALL_NUMBERS[value]
+    if value < 100:
+        return _TENS[value // 10] + (("-" + _SMALL_NUMBERS[value % 10]) if value % 10 else "")
+    if value < 1000:
+        return (_SMALL_NUMBERS[value // 100] + " hundred" +
+                ((" " + _integer_words(value % 100)) if value % 100 else ""))
+    if value < 10000:
+        return (_SMALL_NUMBERS[value // 1000] + " thousand" +
+                ((" " + _integer_words(value % 1000)) if value % 1000 else ""))
+    return "specified quantity"
 
 
 def _geometry_text(value, numerals=()):
@@ -412,6 +436,13 @@ def _geometry_text(value, numerals=()):
             text,
             flags=re.IGNORECASE,
         )
+    text = re.sub(
+        r"(?<![A-Za-z0-9])(\d{1,4})(?![A-Za-z0-9])",
+        lambda match: _integer_words(int(match.group(1))),
+        text,
+    )
+    text = re.sub(r"\b[A-Za-z]*\d+[A-Za-z0-9]*\b", "", text)
+    text = re.sub(r"\d+", "", text)
     text = re.sub(r"\s+([,.;:])", r"\1", text)
     return re.sub(r"\s+", " ", text).strip(" ,;:-")
 
@@ -1269,6 +1300,7 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
 
     semantic = {}
     correction = ""
+    part_by_numeral = {entry["numeral"]: entry["part"] for entry in numeral_entries(numerals)}
     for attempt in range(MAX_SEMANTIC_ATTEMPTS):
         if not region:
             candidate_prompt = prompt
@@ -1284,13 +1316,19 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
             break
         problems = list(semantic.get("errors") or [])
         if semantic.get("missing"):
-            problems.append("missing components: " + ", ".join(semantic["missing"]))
-        if semantic.get("unexpected_text"):
-            problems.append("remove all visible text")
+            missing_parts = [part_by_numeral.get(_clean_numeral(value), "component")
+                             for value in semantic["missing"]]
+            problems.append("missing components: " + ", ".join(missing_parts))
+        clean_problems = [_geometry_text(problem, numerals) for problem in problems]
+        clean_problems = [problem for problem in clean_problems if problem]
+        contaminated = _semantic_has_text_contamination(semantic)
         correction = (
             "SEMANTIC REVIEW FAILED. Produce a corrected geometry-only drawing. " +
-            ("; ".join(problems) or "make every requested component and relationship visible") +
-            ". Keep all geometry that already matches. Include no text or digits.")
+            ("; ".join(clean_problems) or
+             "make every requested component and relationship visible") + ". " +
+            ("Start again from the disclosed geometry. " if contaminated else
+             "Keep all geometry that already matches. ") +
+            "Include no text or digits.")
     if not semantic.get("ok"):
         detail = "; ".join((semantic.get("errors") or []) +
                            (["missing " + ", ".join(semantic.get("missing") or [])]
