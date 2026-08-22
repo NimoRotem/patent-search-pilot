@@ -521,7 +521,11 @@ def test_exact_overfetches_publications_before_capping_families():
     _attach(r, lambda sql, params: [], log)
     r.channel_exact(["a phrase"])
     assert log, "no query issued"
-    sql, params = log[0]
+    #  log[0] is the selectivity probe the channel runs first (see `phrase_is_affordable`); the
+    #  ranking query is the one this test is about.
+    ranking = [(s, p) for s, p in log if "ts_rank_cd" in s]
+    assert ranking, f"the ranking query was never issued: {[s for s, _ in log]}"
+    sql, params = ranking[0]
     assert "LIMIT 300" not in sql, "the literal cap is still in the SQL"
     assert "LIMIT %s" in sql, f"limit is not a parameter: {sql}"
     assert params[-1] == 300 * FAMILY_OVERFETCH, (
@@ -548,6 +552,8 @@ def test_exact_pools_phrases_without_imposing_a_global_300_family_cap():
     calls = {"n": 0}
 
     def rows_for(sql, params):
+        if "count(*)" in sql:          # the selectivity probe: both phrases are affordable
+            return [{"n": 1}]
         ids = per_phrase[calls["n"]]
         calls["n"] += 1
         return [{"publication_id": p, "score": float(300 - i)} for i, p in enumerate(ids)]
