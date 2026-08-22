@@ -897,7 +897,8 @@ class StudioRepository:
 
     def complete_turn(self, turn_id: int, lease_token: str, *, result: Mapping[str, Any],
                       session_id: str, cost_usd: float, duration_ms: int, model_name: str,
-                      transcript_path: str = "") -> dict[str, Any]:
+                      transcript_path: str = "", discard_candidates: bool = True
+                      ) -> dict[str, Any]:
         self._ready()
         with self._cursor() as cur:
             turn = self._verify(cur, turn_id, lease_token)
@@ -916,9 +917,10 @@ class StudioRepository:
                  round(float(cost_usd or 0), 4), int(duration_ms or 0), str(model_name)[:180],
                  str(transcript_path)[:500], turn["id"]))
             out = self._turn(dict(cur.fetchone()))
-            cur.execute(
-                "DELETE FROM app_draft_turn_candidates c USING app_draft_turns t "
-                "WHERE c.turn_id=t.id AND t.project_id=%s", (int(turn["project_id"]),))
+            if discard_candidates:
+                cur.execute(
+                    "DELETE FROM app_draft_turn_candidates c USING app_draft_turns t "
+                    "WHERE c.turn_id=t.id AND t.project_id=%s", (int(turn["project_id"]),))
             cur.execute(
                 "UPDATE app_drafting_projects SET status='ready',agent_session_id=%s,"
                 "agent_turn_no=%s,updated_at=now() WHERE id=%s",
@@ -1201,7 +1203,7 @@ class TurnRunner:
             completed = self.repository.complete_turn(
                 turn_id, lease, result=result, session_id=run.session_id,
                 cost_usd=run.cost_usd, duration_ms=run.duration_ms, model_name=run.model,
-                transcript_path=str(transcript))
+                transcript_path=str(transcript), discard_candidates=False)
             return {"turn": completed, "version": None}
         answered_without_candidate = action == "answered"
 

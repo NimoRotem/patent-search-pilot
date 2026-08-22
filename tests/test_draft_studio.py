@@ -1370,6 +1370,12 @@ def test_terminal_failure_retains_candidate_until_a_project_completes(monkeypatc
                    if "DELETE FROM app_draft_turn_candidates" in query)
     assert "USING app_draft_turns" in cleanup and "t.project_id" in cleanup
 
+    queries.clear()
+    repository.complete_turn(
+        33, "lease", result={}, session_id="session", cost_usd=1,
+        duration_ms=1000, model_name="model", discard_candidates=False)
+    assert not any("DELETE FROM app_draft_turn_candidates" in query for query, _ in queries)
+
 
 def test_invalid_workspace_is_automatic_repair_input_not_a_failed_turn(monkeypatch, tmp_path):
     repository = Mock()
@@ -1471,6 +1477,34 @@ def test_initial_turn_cannot_finish_as_an_answer_without_a_filing_candidate(monk
     assert repository.save_version.call_count == 1
     first_report = workspace._write_review.call_args_list[0].args[1]
     assert "filing candidate" in first_report["summary"].lower()
+
+
+def test_answering_a_question_does_not_discard_an_unpublished_candidate(monkeypatch, tmp_path):
+    repository = Mock()
+    repository.complete_turn.return_value = {"status": "complete"}
+    agent = Mock()
+    agent.DRAFT_MODEL = "draft-model"
+    agent.DRAFT_TIMEOUT = 60
+    agent.new_session_id.return_value = "new-session"
+    agent.run.return_value = draft_agent.AgentRun(
+        ok=True, session_id="session", model="draft-model",
+        result={"action": "answered", "summary": "answered",
+                "reasoning": [], "changes": [], "questions": [],
+                "prior_art_strategy": "", "answer": "The answer."})
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, qa=draft_qa, workspace=Mock())
+    monkeypatch.setattr(runner, "prepare", lambda _turn: {
+        "workspace": tmp_path, "project": {"user_id": 91, "agent_session_id": "prior",
+                                             "latest_version_no": 1,
+                                             "disclosure_text": "disclosure"},
+        "references": [], "documents": [], "seeded": False, "had_version": True,
+        "resuming_candidate": True, "previous_sections": GOOD,
+    })
+
+    runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
+                "turn_no": 2, "kind": "question"})
+
+    assert repository.complete_turn.call_args.kwargs["discard_candidates"] is False
 
 
 def test_a_drawing_prompt_gets_only_the_numerals_for_that_figure():
