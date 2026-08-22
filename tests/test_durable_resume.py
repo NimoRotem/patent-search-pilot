@@ -331,6 +331,13 @@ def _channel(name, hits, ran):
     return fn
 
 
+#  One retrieval pass, as `Retriever.search` fingerprints it. Every test below that checkpoints a
+#  channel has to say WHICH pass it is: a run issues the same channel once per pass and the whole
+#  point of the key is that pass seven cannot read pass one's answer.
+PASS = "aaaaaaaaaaaaaaaa"
+OTHER_PASS = "bbbbbbbbbbbbbbbb"
+
+
 def test_a_resumed_run_re_runs_only_the_channels_that_did_not_finish(run):
     """A worker killed after six of nine channels used to re-run all nine. The local channel alone
     measured 958 s."""
@@ -344,7 +351,7 @@ def test_a_resumed_run_re_runs_only_the_channels_that_did_not_finish(run):
         tasks = [("dense", _channel("dense", dense, ran)),
                  ("bm25", _channel("bm25", bm25, ran)),
                  ("cpc", (lambda: (_ for _ in ()).throw(RuntimeError("the cpc channel died"))))]
-        first = orchestrator._run_phase(tasks, 3)
+        first = orchestrator._run_phase(tasks, 3, pass_key=PASS)
     assert sorted(ran) == ["bm25", "dense"]
     assert first["cpc"] == [], "an optional channel that failed must fail soft, not raise"
 
@@ -353,7 +360,7 @@ def test_a_resumed_run_re_runs_only_the_channels_that_did_not_finish(run):
         tasks = [("dense", _channel("dense", dense, ran2)),
                  ("bm25", _channel("bm25", bm25, ran2)),
                  ("cpc", _channel("cpc", cpc, ran2))]
-        second = orchestrator._run_phase(tasks, 3)
+        second = orchestrator._run_phase(tasks, 3, pass_key=PASS)
     assert ran2 == ["cpc"], (
         f"a resumed run re-ran channels it had already paid for: {ran2}")
     assert second["dense"] == dense
@@ -374,14 +381,14 @@ def test_fusion_after_an_interruption_produces_the_same_ranking(run):
         uninterrupted = orchestrator._run_phase(
             [("dense", _channel("dense", dense, [])),
              ("bm25", _channel("bm25", bm25, [])),
-             ("cpc", _channel("cpc", cpc, []))], 3)
+             ("cpc", _channel("cpc", cpc, []))], 3, pass_key=PASS)
     expected = fusion.rrf(uninterrupted)
 
     with bound(rid, slug, attempt=2):
         resumed = orchestrator._run_phase(
             [("dense", (lambda: pytest.fail("dense was re-run"))),
              ("bm25", (lambda: pytest.fail("bm25 was re-run"))),
-             ("cpc", (lambda: pytest.fail("cpc was re-run")))], 3)
+             ("cpc", (lambda: pytest.fail("cpc was re-run")))], 3, pass_key=PASS)
     assert list(resumed) == list(uninterrupted), "channel ORDER changed, which reorders RRF ties"
     assert fusion.rrf(resumed) == expected
 
@@ -393,7 +400,8 @@ def test_a_channel_hit_ledger_that_disagrees_with_its_checkpoint_is_run_again(ru
     rid, slug = run
     dense = [(1, 0.9), (2, 0.8), (3, 0.7)]
     with bound(rid, slug, attempt=1):
-        orchestrator._run_phase([("dense", _channel("dense", dense, []))], 1)
+        orchestrator._run_phase([("dense", _channel("dense", dense, []))], 1,
+                                pass_key=PASS)
 
     with db.cursor() as cur:                       # lose one row, as a truncated write would
         cur.execute("DELETE FROM retrieval_hits WHERE run_id=%s AND channel='dense' "
@@ -401,9 +409,79 @@ def test_a_channel_hit_ledger_that_disagrees_with_its_checkpoint_is_run_again(ru
 
     ran = []
     with bound(rid, slug, attempt=2):
-        out = orchestrator._run_phase([("dense", _channel("dense", dense, ran))], 1)
+        out = orchestrator._run_phase([("dense", _channel("dense", dense, ran))], 1,
+                                      pass_key=PASS)
     assert ran == ["dense"], "a short hit ledger was reloaded as though it were whole"
     assert out["dense"] == dense
+
+
+def test_two_passes_of_one_run_do_not_share_a_channel_checkpoint(run):
+    """THE DEFECT A LIVE SEARCH FOUND, and the reason `pass_key` exists.
+
+    One run calls `Retriever.search` once for the whole invention and once per element, roughly
+    twenty times, and every one of those passes runs a channel called `dense` with a DIFFERENT
+    query. The first version of this checkpoint was keyed on (run, channel), so pass two restored
+    pass one's hits and the search answered a question nobody asked, silently and with no error
+    anywhere. Measured on a live quick search before the fix: seven channels, one surviving row
+    set each, and six "the checkpoint does not match the hit ledger" warnings inside a single
+    uninterrupted attempt, which is the same collision showing up as a race.
+    """
+    rid, slug = run
+    first_hits = [(11, 0.9), (12, 0.8)]
+    second_hits = [(21, 0.7), (22, 0.6), (23, 0.5)]
+
+    ran = []
+    with bound(rid, slug, attempt=1):
+        a = orchestrator._run_phase([("dense", _channel("dense", first_hits, ran))], 1,
+                                    pass_key=PASS)
+        b = orchestrator._run_phase([("dense", _channel("dense", second_hits, ran))], 1,
+                                    pass_key=OTHER_PASS)
+    assert ran == ["dense", "dense"], "the second pass was answered from the first pass's cache"
+    assert a["dense"] == first_hits
+    assert b["dense"] == second_hits, "pass two returned pass one's hits"
+
+    #  And each pass resumes onto ITS OWN hits, not onto whichever wrote last.
+    with bound(rid, slug, attempt=2):
+        again_a = orchestrator._run_phase([("dense", (lambda: pytest.fail("pass one re-ran")))],
+                                          1, pass_key=PASS)
+        again_b = orchestrator._run_phase([("dense", (lambda: pytest.fail("pass two re-ran")))],
+                                          1, pass_key=OTHER_PASS)
+    assert again_a["dense"] == first_hits
+    assert again_b["dense"] == second_hits
+
+
+def test_a_phase_that_cannot_name_its_pass_is_not_checkpointed_at_all(run):
+    """No pass identity, no checkpoint. A checkpoint that cannot be keyed correctly is a wrong
+    answer waiting to be restored, and re-running a channel only costs time."""
+    rid, slug = run
+    hits = [(31, 0.9)]
+    ran = []
+    with bound(rid, slug, attempt=1):
+        orchestrator._run_phase([("dense", _channel("dense", hits, ran))], 1)
+        orchestrator._run_phase([("dense", _channel("dense", hits, ran))], 1)
+    assert ran == ["dense", "dense"], "an unkeyed phase banked a checkpoint it could not key"
+    with db.cursor() as cur:
+        cur.execute("SELECT count(*) n FROM retrieval_hits WHERE run_id=%s", (rid,))
+        assert cur.fetchone()["n"] == 0
+
+
+def test_the_pass_key_covers_every_input_that_changes_what_a_channel_returns():
+    """Same question, same key. Different question, different key. A pass fingerprint that
+    ignored an input would let two different passes share a checkpoint again."""
+    base = dict(query="a vacuum gripper", mode="novelty", subject=None, wide=False,
+                preset=["dense", "bm25"], phrases=None, cpc_hints=None, assignee_hints=None,
+                topk=1000)
+    same = orchestrator._pass_key(**base)
+    assert same == orchestrator._pass_key(**base)
+    for field, value in [("query", "a sealing lip"), ("mode", "obviousness"),
+                         ("subject", "US1234567B2"), ("wide", True),
+                         ("preset", ["dense"]), ("phrases", ["sealing lip"]),
+                         ("cpc_hints", ["B25J15/06"]), ("assignee_hints", ["Grabo"]),
+                         ("topk", 50)]:
+        changed = dict(base)
+        changed[field] = value
+        assert orchestrator._pass_key(**changed) != same, \
+            f"{field} does not reach the pass key, so two different passes would share one"
 
 
 # ================================================================ 3. per-reference read resume

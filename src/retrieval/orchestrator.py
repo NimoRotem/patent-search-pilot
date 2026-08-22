@@ -225,7 +225,27 @@ def resolve_preset(config, presets=None):
     return list(dict.fromkeys(names))
 
 
-def _run_phase(tasks, bound, wide=None):
+def _pass_key(query, mode, subject, wide, preset, phrases, cpc_hints, assignee_hints, topk):
+    """A short, stable identity for ONE retrieval pass. -> 16 hex characters.
+
+    Two passes with the same fingerprint would return the same hits, so sharing a checkpoint
+    between them is correct. Two with different ones are different questions, and this is what
+    stops the second reading the first's answer.
+    """
+    import hashlib
+    import json as _json
+    payload = _json.dumps(
+        {"q": str(query or "")[:4000], "mode": str(mode), "subject": str(subject or ""),
+         "wide": bool(wide), "preset": list(preset or []),
+         "phrases": sorted(str(p) for p in (phrases or [])),
+         "cpc": sorted(str(c) for c in (cpc_hints or [])),
+         "assignee": sorted(str(a) for a in (assignee_hints or [])),
+         "topk": int(topk or 0)},
+        sort_keys=True, default=str).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:16]
+
+
+def _run_phase(tasks, bound, wide=None, pass_key=""):
     """Run `tasks` concurrently, at most `bound` inside the database at once.
 
     `tasks` is an ordered sequence of (name, callable). The return is a dict in THAT order, never
@@ -245,6 +265,13 @@ def _run_phase(tasks, bound, wide=None):
     * Cancellation is checked BEFORE a task is submitted and again on the worker thread just
       before the channel body runs, so a run whose lease was reaped while it queued behind the
       concurrency gate stops there rather than issuing the query.
+
+    `pass_key` IS WHAT MAKES THE FIRST OF THOSE SAFE, and without it there is no checkpointing at
+    all. One run calls `Retriever.search` once for the whole invention and once per element,
+    roughly twenty times, and every one of those passes runs a channel called `dense`. Keyed on
+    the channel alone, pass seven restores pass one's hits and answers a question nobody asked.
+    An empty `pass_key` means the caller cannot say which pass this is, and the honest response to
+    that is no checkpoint rather than a wrong one.
     """
     if not tasks:
         return {}
@@ -273,7 +300,7 @@ def _run_phase(tasks, bound, wide=None):
     results, errors, restored = {}, {}, []
     pending = []
     for name, fn in tasks:
-        banked = ctx.channel_hits(name) if ctx is not None else None
+        banked = ctx.channel_hits(name, pass_key) if ctx is not None else None
         if banked is not None:
             results[name] = banked
             restored.append(name)
@@ -309,7 +336,7 @@ def _run_phase(tasks, bound, wide=None):
         for name, _fn in pending:
             if name in results:
                 try:
-                    ctx.channel_done(name, results[name])
+                    ctx.channel_done(name, results[name], pass_key)
                 except Exception:                                       # noqa: BLE001
                     #  A checkpoint that will not persist costs the retry its saving, never the
                     #  search its answer.
@@ -413,6 +440,12 @@ class Retriever(DenseMixin, LexicalMixin, ExactMixin, CpcMixin, CitationMixin, Q
             alt_query_vecs = self.query_translations(query)
 
         bound = resolve_concurrency(db_concurrency)
+        #  WHICH PASS THIS IS. Every input that changes what the channels return goes in, because
+        #  a checkpoint restored for the wrong pass is a wrong answer rather than a slow one. The
+        #  fused seeds phase 2 consumes are derived from phase 1 of this same pass, so they are
+        #  covered by the same fingerprint.
+        pass_key = _pass_key(query, mode, subject, wide_profile, preset, phrases, cpc_hints,
+                             assignee_hints, topk)
 
         # ---- phase 1: everything whose inputs are ready at request start ------------------
         # Ordered by the preset, so the dict RRF consumes is ordered by the preset too. A channel
@@ -438,7 +471,7 @@ class Retriever(DenseMixin, LexicalMixin, ExactMixin, CpcMixin, CitationMixin, Q
                 p1.append((name, lambda: self.channel_biblio(assignee_hints, subject, mode)))
             elif name == "crosslingual" and alt_query_vecs:
                 p1.append((name, lambda: self.channel_crosslingual(alt_query_vecs, subject, mode)))
-        ch.update(_run_phase(p1, bound, wide=wide_profile))
+        ch.update(_run_phase(p1, bound, wide=wide_profile, pass_key=pass_key))
 
         # ---- phase 2: the channels that consume the fused strong seeds --------------------
         # These are a genuine dependency, not an ordering preference: citation expands the graph
@@ -458,7 +491,7 @@ class Retriever(DenseMixin, LexicalMixin, ExactMixin, CpcMixin, CitationMixin, Q
                 p2.append((name, lambda: self.channel_citation_family(strong, subject, mode)))
             elif name == "qbe":
                 p2.append((name, lambda: self.channel_qbe(strong, subject, mode)))
-        ch.update(_run_phase(p2, bound, wide=wide_profile))
+        ch.update(_run_phase(p2, bound, wide=wide_profile, pass_key=pass_key))
 
         # Re-order to the preset: `ch` is built in two passes, and channel order reaches the
         # output through `channel_hits` and through RRF's iteration.

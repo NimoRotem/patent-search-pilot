@@ -218,37 +218,58 @@ class RunContext:
         import runartifact
         return runartifact.digest_bytes(runartifact.serialise(rows))
 
-    def channel_done(self, channel, hits):
-        """Record `channel` complete with the exact hit list fusion will consume. -> its digest.
+    @staticmethod
+    def _channel_key(channel, pass_key):
+        """The checkpoint key for one channel OF ONE PASS.
+
+        A run issues the same channel once per retrieval pass: a whole-invention pass and roughly
+        twenty element passes, each with a different query. Keyed on the channel alone, pass seven
+        reads pass one's hits and the search answers the wrong question, silently. The pass
+        fingerprint is therefore part of the key, and a caller that cannot supply one gets no
+        checkpoint at all rather than a wrong one.
+        """
+        return f"{pass_key}:{channel}" if pass_key else ""
+
+    def channel_done(self, channel, hits, pass_key=""):
+        """Record `channel` complete FOR THIS PASS, with the exact hit list fusion will consume.
+
+        -> its digest, or None when there is no pass identity to key it on.
 
         `hits` is the channel's own [(publication_id, score)] in rank order. The publication id is
         a local bigint or the string form of an external one, so it is stored as text and restored
         to whichever it was.
         """
         import runstore
+        key = self._channel_key(channel, pass_key)
+        if not key:
+            return None
         rows = [{"publication_number": str(pid), "rank": i + 1,
                  "score": (None if score is None else float(score))}
                 for i, (pid, score) in enumerate(hits or [])]
         digest = self._hit_digest(rows)
-        runstore.replace_hits(self.run_id, channel, rows)
-        self.substage_done("retrieve", channel,
-                           {"n": len(rows), "digest": digest}, n_out=len(rows))
+        runstore.replace_hits(self.run_id, channel, rows, pass_key=pass_key)
+        self.substage_done("retrieve", key,
+                           {"n": len(rows), "digest": digest, "channel": channel},
+                           n_out=len(rows))
         return digest
 
-    def channel_hits(self, channel):
-        """The hit list an earlier attempt banked for `channel`, or None to run it again.
+    def channel_hits(self, channel, pass_key=""):
+        """The hit list an earlier attempt banked for THIS PASS of `channel`, or None to run it.
 
-        None on ANY disagreement: no checkpoint row, no rows in the ledger when the checkpoint says
-        there were some, or a digest that does not match what came back. A half-written channel
-        reloaded as though it were whole is a silently short retrieval, which looks like a bad
-        result rather than a broken one.
+        None on ANY disagreement: no pass identity, no checkpoint row, no rows in the ledger when
+        the checkpoint says there were some, or a digest that does not match what came back. A
+        half-written channel reloaded as though it were whole is a silently short retrieval, which
+        looks like a bad result rather than a broken one.
         """
         import runstore
-        row = self.substage_payload("retrieve", channel)
+        key = self._channel_key(channel, pass_key)
+        if not key:
+            return None
+        row = self.substage_payload("retrieve", key)
         if not isinstance(row, dict) or "digest" not in row:
             return None
         try:
-            stored = runstore.channel_hits(self.run_id, channel)
+            stored = runstore.channel_hits(self.run_id, channel, pass_key=pass_key)
         except Exception:                                            # noqa: BLE001
             traceback.print_exc()
             return None
@@ -257,8 +278,9 @@ class RunContext:
                  "score": (None if h.get("score") is None else float(h.get("score")))}
                 for h in stored]
         if len(rows) != int(row.get("n") or 0) or self._hit_digest(rows) != row["digest"]:
-            print(f"[resume {self.run_id}] the {channel} channel checkpoint does not match what "
-                  f"the hit ledger holds; the channel is run again", flush=True)
+            print(f"[resume {self.run_id}] the {channel} channel checkpoint for pass "
+                  f"{pass_key} does not match what the hit ledger holds; it is run again",
+                  flush=True)
             return None
         return [(_pid(h["publication_number"]), h["score"]) for h in rows]
 

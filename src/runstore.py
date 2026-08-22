@@ -971,25 +971,48 @@ def record_hits(run_id, channel, hits, query_id=None, shard=""):
     return len(rows)
 
 
-def replace_hits(run_id, channel, hits, query_id=None, shard=""):
-    """Record this channel's raw hit set, REPLACING whatever an earlier attempt left. -> count.
+#  ONE RUN ISSUES THE SAME CHANNEL MANY TIMES. The agent runs a whole-invention pass and roughly
+#  twenty element passes, and every one of them queries `dense`, `bm25`, `cpc` and the rest. So
+#  (run_id, channel) is NOT the identity of a retrieval checkpoint: it is the identity of a
+#  channel, and keying on it makes pass seven read pass one's hits for a completely different
+#  query. This is the pass, fingerprinted from everything that decides what the pass returns, and
+#  it is the third part of the key.
+_PASS_META = "pass"
+
+
+def replace_hits(run_id, channel, hits, pass_key="", query_id=None, shard=""):
+    """Record ONE PASS's raw hit set for `channel`, replacing what that pass left before. -> count.
 
     `record_hits` appends, which is right for a ledger of everything that was ever issued and
     wrong for a resume: a channel re-run after an interruption would leave two interleaved copies
     of itself, and reading them back would hand fusion a hit list with every rank duplicated. The
     delete and the insert are one transaction, so a reader never sees the channel empty.
+
+    THE DELETE IS SCOPED TO THE PASS. Without that, the twenty element passes of one run overwrite
+    each other's rows on the way through: the last writer wins the ledger, every earlier pass's
+    checkpoint then disagrees with what the ledger holds, and the two passes that raced leave a
+    checkpoint that matches nothing at all. Measured on a live quick search before this was
+    scoped: seven channels, one surviving row set each, and six "the checkpoint does not match the
+    hit ledger" warnings inside a single uninterrupted attempt.
+
+    `channel` still means the channel, so `retrieval_hits` stays readable as the per-channel
+    evidence it was designed to be; the pass lives in `meta` beside it.
     """
     rows = []
     for i, h in enumerate(hits or []):
         pub = h.get("publication_number") or h.get("pub")
         if pub is None or pub == "":
             continue
+        meta = dict(h.get("meta") or {})
+        if pass_key:
+            meta[_PASS_META] = str(pass_key)
         rows.append((run_id, query_id, channel, h.get("rank", i + 1), str(pub),
                      h.get("family_id"), h.get("score"), shard or h.get("shard") or "",
-                     json.dumps(h.get("meta") or {}, default=str)))
+                     json.dumps(meta, default=str)))
     with _cur(autocommit=False) as cur:
-        cur.execute("DELETE FROM retrieval_hits WHERE run_id=%s AND channel=%s",
-                    (run_id, channel))
+        cur.execute("DELETE FROM retrieval_hits WHERE run_id=%s AND channel=%s "
+                    "AND COALESCE(meta->>%s, '') = %s",
+                    (run_id, channel, _PASS_META, str(pass_key or "")))
         if rows:
             cur.executemany("""INSERT INTO retrieval_hits (run_id, query_id, channel, rank,
                                                            publication_number, family_id, score,
@@ -998,8 +1021,8 @@ def replace_hits(run_id, channel, hits, query_id=None, shard=""):
     return len(rows)
 
 
-def channel_hits(run_id, channel):
-    """This channel's recorded hits, in the rank order they were recorded in.
+def channel_hits(run_id, channel, pass_key=""):
+    """One pass's recorded hits for `channel`, in the rank order they were recorded in.
 
     Ordered by `rank` and then by insertion id, so a channel that recorded no ranks still comes
     back in the order it was written. Fusion consumes rank order and nothing else, which is what
@@ -1008,7 +1031,9 @@ def channel_hits(run_id, channel):
     with _cur() as cur:
         cur.execute("SELECT publication_number, rank, score, family_id, shard, meta "
                     "FROM retrieval_hits WHERE run_id=%s AND channel=%s "
-                    "ORDER BY rank NULLS LAST, id", (run_id, channel))
+                    "AND COALESCE(meta->>%s, '') = %s "
+                    "ORDER BY rank NULLS LAST, id",
+                    (run_id, channel, _PASS_META, str(pass_key or "")))
         return [_row(r) for r in cur.fetchall() or []]
 
 
