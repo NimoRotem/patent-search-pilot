@@ -28,6 +28,14 @@ from config import DATA, EMBED_DIM, INGEST_CPC, SEED_CPC, SEED_CPC_TITLES
 
 SNAPSHOT = DATA / "corpus_profile.json"
 
+#  Imported rather than re-spelled: see the `families` step in snapshot().
+try:
+    from retrieval.family import family_key_sql as _family_key_sql
+    _FAMILY_KEY = _family_key_sql()
+except Exception:                                                         # noqa: BLE001
+    _FAMILY_KEY = ("COALESCE(NULLIF(NULLIF(NULLIF(simple_family_id,''),'-1'),'0'), "
+                   "publication_number)")
+
 #  The machine the corpus lives on. Not discoverable from inside the database, and a fact a reader
 #  needs to make sense of a 94 GB index: it does not fit in RAM, which is the retrieval floor.
 DB_HOST = {
@@ -40,13 +48,16 @@ DB_HOST = {
     "zone": os.environ.get("CORPUS_DB_ZONE", "us-central1-b"),
     "note": "Docker pgvector/pgvector:pg17, pgdata bind-mounted at /srv/patents/pgdata",
 }
+#  Moved off instance-3 on 2026-08-21 onto a machine that runs nothing else. The old values sat
+#  here as defaults for a day and the page went on reporting a host the app had left.
 APP_HOST = {
-    "name": os.environ.get("CORPUS_APP_HOST", "instance-3"),
-    "machine_type": os.environ.get("CORPUS_APP_MACHINE", "t2d-standard-4"),
-    "vcpu": int(os.environ.get("CORPUS_APP_VCPU", "4")),
-    "ram_gb": int(os.environ.get("CORPUS_APP_RAM_GB", "16")),
-    "disk_gb": int(os.environ.get("CORPUS_APP_DISK_GB", "800")),
-    "note": "gunicorn, 1 worker x 16 threads, behind nginx at rotem.ai/patents",
+    "name": os.environ.get("CORPUS_APP_HOST", "nimo-iptorch-patents"),
+    "machine_type": os.environ.get("CORPUS_APP_MACHINE", "t2d-standard-8"),
+    "vcpu": int(os.environ.get("CORPUS_APP_VCPU", "8")),
+    "ram_gb": int(os.environ.get("CORPUS_APP_RAM_GB", "32")),
+    "disk_gb": int(os.environ.get("CORPUS_APP_DISK_GB", "500")),
+    "note": "gunicorn, 1 worker x 16 threads, plus the durable search workers, "
+            "behind nginx at nimo.iptorch.com",
 }
 EMBEDDING = {
     "provider": "Google Vertex AI",
@@ -124,8 +135,12 @@ def snapshot(log=print):
                       "FROM publications WHERE publication_date IS NOT NULL GROUP BY 1 "
                       "ORDER BY 1"),
         ("tiers", "SELECT tier, count(*) n FROM publications GROUP BY 1 ORDER BY 2 DESC"),
-        ("families", "SELECT count(DISTINCT COALESCE(NULLIF(simple_family_id,''), "
-                     "publication_number)) families, "
+        #  THE SAME FAMILY KEY THE SEARCH USES. Spelling it as
+        #  `COALESCE(NULLIF(simple_family_id,''), publication_number)` catches the empty string and
+        #  nothing else, so the 21,862 publications DOCDB marks `-1`, meaning NO family, all shared
+        #  one key and the page under-reported the family count by that many. `family_key_sql` is
+        #  the one place the sentinels are listed.
+        ("families", "SELECT count(DISTINCT " + _FAMILY_KEY + ") families, "
                      "count(*) FILTER (WHERE abstract <> '') with_abstract FROM publications"),
         ("cpc_top", "SELECT substring(symbol,1,8) cpc, count(DISTINCT publication_id) pubs "
                     "FROM classifications GROUP BY 1 ORDER BY 2 DESC LIMIT 15"),
@@ -161,6 +176,94 @@ def _load_snapshot():
     except Exception:
         traceback.print_exc()
     return {}
+
+
+#  ---- the databases searched BESIDES this corpus ----------------------------------------------
+#  What each source is FOR, in a sentence an attorney can act on. The engine reports which are
+#  live; it does not say what they are worth, and "pqai" on its own tells a reader nothing.
+SOURCE_PURPOSE = {
+    "uspto": "The USPTO's own record of US filings, including prosecution and office actions.",
+    "epo_ops": "The EPO's official register: EP and worldwide bibliographic data, families and "
+               "legal status.",
+    "pqai": "An open prior-art retrieval service, searched in parallel for art this corpus and "
+            "the keyword sources both miss.",
+    "serpapi_gpatents": "Google Patents, including its machine translations of CN, JP and KR "
+                        "documents.",
+    "bigquery_gpatents": "Google's public patent dataset, queried in bulk for classification and "
+                         "citation reach.",
+    "openalex": "Scholarly literature, for the non-patent prior art a patent search still has to "
+                "answer for.",
+    "ipaustralia": "IP Australia's national register.",
+    "kipris": "The Korean national office: KR patents and utility models.",
+    "lens": "Lens.org: worldwide coverage including national offices, families and legal status.",
+    "euipo": "EUIPO registered designs.",
+    "himmpat": "English full text for CN, JP and KR publications.",
+    "gpatents_direct": "Google Patents queried directly, for full text and its translations.",
+    "gpatents_scrape": "A fallback reader for Google Patents pages the API route misses.",
+}
+_SOURCES_TTL = float(os.environ.get("CORPUS_SOURCES_TTL", "600"))
+_sources_cache: dict = {"at": 0.0, "value": None}
+
+
+def _clean(text):
+    """Engine copy, fit to print. The adapters' own notes are written with em dashes and this page
+    is customer-facing, so they are turned into ordinary punctuation on the way in rather than
+    left for whoever notices."""
+    out = str(text or "").replace("—", ",").replace("–", ",")
+    return " ".join(out.split()).replace(" ,", ",").replace(",,", ",")
+
+
+def external_sources(timeout: float = 6.0):
+    """Which external databases the search fans out to, and whether each is live right now.
+
+    Read from the retrieval engine's own `/api/health`, which is where the adapters and their
+    credentials actually live, and cached for ten minutes: this is a page, not a monitor.
+
+    A source that is off says WHY, because "we searched eleven databases" and "two of them have
+    been 401ing for a month" are different statements to make to someone relying on the result. A
+    failure to reach the engine returns `None`, so the page can say the list could not be read
+    rather than implying nothing is connected.
+    """
+    now = time.time()
+    if _sources_cache["value"] is not None and now - _sources_cache["at"] < _SOURCES_TTL:
+        return _sources_cache["value"]
+    out = None
+    try:
+        import requests
+
+        import federation
+        #  The RAW endpoint, not `federation.health`, which reduces sources to the names of the
+        #  ones that work. The ones that do not are half the point of this section.
+        raw = None
+        for base in federation._bases():
+            try:
+                r = requests.get("%s/api/health" % base, headers=federation._headers(),
+                                 timeout=timeout)
+                if r.status_code == 200:
+                    raw = (r.json() or {}).get("sources")
+                    break
+            except Exception:                                             # noqa: BLE001
+                continue
+        if isinstance(raw, list):
+            out = []
+            for s in raw:
+                key = str(s.get("name") or "")
+                if not key:
+                    continue
+                out.append({
+                    "key": key,
+                    "label": federation.source_label(key),
+                    "live": bool(s.get("search_available")),
+                    "purpose": SOURCE_PURPOSE.get(key, ""),
+                    "note": _clean(s.get("note")),
+                    "reason": _clean(s.get("reason")),
+                })
+            out.sort(key=lambda s: (not s["live"], s["label"].lower()))
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+    _sources_cache["at"] = now
+    _sources_cache["value"] = out
+    return out
 
 
 def _gb(n):
@@ -233,5 +336,6 @@ def profile():
         "seed_cpc": [{"code": c, "title": SEED_CPC_TITLES.get(c, "")} for c in SEED_CPC],
         "ingest_cpc": list(INGEST_CPC),
         "ingest_is_seed": list(INGEST_CPC) == list(SEED_CPC),
+        "external_sources": external_sources(),
         "projections": projections(facts, sizes),
     }

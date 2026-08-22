@@ -2550,6 +2550,17 @@ def api_search_stats(slug):
     p = run_stats.path_for(REPORTS, slug)
     rep = None if os.path.exists(p) else _load_report(slug)
     st = run_stats.load(REPORTS, slug, report=rep, seconds=seconds)
+    #  A receipt written before `sources` existed does not carry it, and which databases were
+    #  searched is exactly what a reader checking a result needs. Derived from the report, on
+    #  expand, for that one search: the same cost a search with no receipt at all already pays,
+    #  and only until its receipt is rewritten.
+    if not st.get("sources"):
+        try:
+            found = run_stats.sources_of(rep if rep is not None else _load_report(slug))
+            if found:
+                st = dict(st, sources=found)
+        except Exception:
+            traceback.print_exc()
     meta = {}
     try:
         mp = REPORTS / ("%s.meta.json" % slug)

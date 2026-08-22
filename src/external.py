@@ -973,6 +973,23 @@ def run(query_specs, brief: str = "", claims=None, on_event=None) -> dict:
             if fam in keep_fams and fam not in pid_of and k in placed:
                 pid_of[fam] = placed[k][0]
         fams = [(f, s, pid_of[f]) for f, s in ranked if f in pid_of]
+        #  WHICH SOURCE ACTUALLY PUT A FAMILY IN FRONT OF THE READER. `stats[src]["hits"]` counts
+        #  what an adapter RETURNED, which is tens of thousands of rows and answers nothing a
+        #  reader asked: a source can return 9,979 hits and contribute nothing that survives.
+        #  Counted over the families that were kept, and `unique` is the ones no other source
+        #  found, which is the only number that says whether a subscription is earning its place.
+        by_source: dict = {}
+        for c in cands:
+            fam = fam_of.get(_norm(c.get("pub_number") or ""))
+            if fam in pid_of:
+                by_source.setdefault(str(c.get("source") or "external"), set()).add(fam)
+        finders: dict = {}
+        for src, fs in by_source.items():
+            for f in fs:
+                finders.setdefault(f, set()).add(src)
+        families_by_source = {s: len(f) for s, f in by_source.items()}
+        unique_by_source = {s: sum(1 for f in fs if len(finders.get(f) or ()) == 1)
+                            for s, fs in by_source.items()}
     except Exception as e:
         traceback.print_exc()
         return {"ok": False, "families": [], "error": f"ranking failed: {str(e)[:200]}",
@@ -985,6 +1002,8 @@ def run(query_specs, brief: str = "", claims=None, on_event=None) -> dict:
             "stats": res.get("stats") or {}, "errors": res.get("errors") or [],
             "n_candidates": len(cands), "n_records": len(records), "n_in_corpus": len(have),
             "n_new": n_new, "n_channels": len(chans),
+            "families_by_source": families_by_source,
+            "unique_families_by_source": unique_by_source,
             "n_families": len(fams), "elapsed": round(time.time() - t0, 1),
             "error": res.get("error") or ""}
 
@@ -996,6 +1015,10 @@ def summary(ext: dict) -> dict:
     per_source = {k: v.get("hits", 0) for k, v in (ext.get("stats") or {}).items()}
     return {
         "ok": bool(ext.get("ok")),
+        #  Families kept, per source, and how many of them nothing else found. `per_source` below
+        #  is the raw returned-row count and is a different unit: keep both, never conflate them.
+        "families_by_source": ext.get("families_by_source") or {},
+        "unique_families_by_source": ext.get("unique_families_by_source") or {},
         "aspects": [{"name": a.get("name"), "cpc": a.get("cpc"),
                      "keywords": a.get("keywords", [])[:6]}
                     for a in (ext.get("aspects") or [])],

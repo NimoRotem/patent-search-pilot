@@ -245,6 +245,7 @@ SOURCE_LABELS = {
     "kipris": "KIPRIS (Korea)",
     "euipo": "EUIPO designs",
     "gpatents_scrape": "Google Patents page scraper",
+    "gpatents_direct": "Google Patents (direct)",
     "bigquery_semantic": "Semantic recall (embeddings)",
     "citation_expand": "Citation / family expansion",
     "web_patent_fallback": "Google Patents web fallbacks",

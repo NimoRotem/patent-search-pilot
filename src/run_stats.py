@@ -26,7 +26,9 @@ import json
 import os
 import traceback
 
-VERSION = 2
+#  3 adds `sources`: which databases the search drew families from. A receipt at 2 predates the
+#  field and is completed from its report on demand, never guessed at.
+VERSION = 3
 #  A model call costs roughly this many tokens on the reading tier, measured across the runs of
 #  2026-08-20 (200-260 M tokens for 400-odd documents read in full). Used ONLY to say "roughly n
 #  calls" when calls were not counted but tokens were, and always labelled as derived.
@@ -64,6 +66,62 @@ def record(reports_dir, slug, *, seconds, tokens, calls=0, prompt_tokens=0, comp
     return data
 
 
+#  Retrieval channels are OUR OWN corpus asked a different way, not separate sources. A reader
+#  wants to know which databases were searched, and answering "dense, bm25, qbe, biblio" to that
+#  question is answering a different one, so they are summed into one row and named plainly.
+_LOCAL_CHANNEL_LABEL = "This system's patent corpus"
+#  Everything the external fan-out contributes arrives on this one channel, already merged. Its
+#  per-provider split comes from `external.families_by_source`, never from here.
+_EXTERNAL_CHANNELS = ("external", "global", "federation")
+
+
+def sources_of(rep):
+    """Which databases this search actually drew families from. -> [{key,label,families,unique}]
+
+    Two units are deliberately kept apart. `families` is what a source PUT IN FRONT OF THE READER:
+    families that survived fusion and reached the ranking. `returned` is what its adapter answered
+    with, which is tens of thousands of rows and says nothing on its own, because a source can
+    return 9,979 hits and contribute nothing that survives. `unique` is the families no other
+    source found, which is the number that says whether a subscription is earning its place.
+
+    A report written before families were counted per provider has `returned` and no `families`.
+    That is shown as an unknown rather than filled in with the wrong unit.
+    """
+    rep = rep or {}
+    ext = rep.get("external") or {}
+    chan = rep.get("channel_families") or {}
+    out = []
+
+    local = set()
+    for name, fams in chan.items():
+        if name in _EXTERNAL_CHANNELS:
+            continue
+        local.update(fams or ())
+    if local:
+        out.append({"key": "corpus", "label": _LOCAL_CHANNEL_LABEL, "kind": "local",
+                    "families": len(local), "unique": None, "returned": None})
+
+    fam_by = ext.get("families_by_source") or {}
+    uniq_by = ext.get("unique_families_by_source") or {}
+    returned = ext.get("per_source") or {}
+    try:
+        import federation
+        label_of = federation.source_label
+    except Exception:                                                     # noqa: BLE001
+        def label_of(k):
+            return str(k).replace("_", " ").title()
+
+    for key in sorted(set(fam_by) | set(returned)):
+        out.append({"key": key, "label": label_of(key), "kind": "external",
+                    "families": fam_by.get(key),
+                    "unique": uniq_by.get(key),
+                    "returned": returned.get(key)})
+    #  Most families first, then the ones we can only report a returned count for.
+    out.sort(key=lambda s: (s["kind"] != "local", -(s.get("families") or -1),
+                            -(s.get("returned") or 0)))
+    return out
+
+
 def _from_report(rep):
     """The parts a finished report already knows: what it searched, read and spent time on."""
     qd = (rep or {}).get("query_document") or {}
@@ -89,6 +147,7 @@ def _from_report(rep):
         "deep_seconds": dr.get("seconds"),
         "external_queries": ext.get("n_queries"),
         "external_seconds": ext.get("elapsed"),
+        "sources": sources_of(rep) or None,
         #  The retrieval agent's OWN calls. Named for what it is: this is not the run's total, and
         #  labelling it "llm_usage" on the report is what made a 400-document read look like seven
         #  calls.
