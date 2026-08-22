@@ -416,8 +416,9 @@ def _numeral_checks(spec_text: str, claims_text: str,
             out.append(_check(
                 "Every specification numeral appears in a drawing", "fail",
                 f"{len(text_only)} reference numeral(s) are used in the specification but absent "
-                "from every drawing. Add them to an appropriate drawing or remove the numbering "
-                "from the text.", items=text_only))
+                "from every drawing. Add each missing numeral to an appropriate focused sheet "
+                "or redistribute the existing drawing plan. Do not remove a disclosed part, "
+                "numeral definition, or supporting text to silence this check.", items=text_only))
         else:
             out.append(_check(
                 "Every specification numeral appears in a drawing", "pass",

@@ -160,6 +160,7 @@ def test_a_text_numeral_missing_from_every_drawing_is_caught():
     figures = [{**FIGURES[0]}, {**FIGURES[1], "numerals": ["16 sealing ring", "18 groove"]}]
     check = checks_for(figures=figures)["Every specification numeral appears in a drawing"]
     assert check["status"] == "fail" and "20" in check["items"]
+    assert "Do not remove a disclosed part" in check["detail"]
 
 
 def test_a_reference_numeral_printed_twice_is_caught():
@@ -628,8 +629,9 @@ def test_a_placeholder_is_refused_before_a_version_can_be_saved():
 def test_placeholders_outside_the_sections_are_refused_before_save(field, value):
     snapshot = {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
     snapshot[field] = value
-    with pytest.raises(drafting.DraftingValidationError, match="placeholder"):
+    with pytest.raises(draft_studio.FilingPreflightError, match="placeholder") as caught:
         draft_studio.validate_snapshot(snapshot, ALLOWED)
+    assert caught.value.category == "figures_and_numerals"
 
 
 def test_overcrowded_sheet_is_refused_before_any_image_call():
@@ -645,8 +647,10 @@ def test_overcrowded_sheet_is_refused_before_any_image_call():
         }],
     }
 
-    with pytest.raises(drafting.DraftingValidationError, match="more than 8 numerals"):
+    with pytest.raises(draft_studio.FilingPreflightError,
+                       match="more than 8 numerals") as caught:
         draft_studio.validate_snapshot(snapshot, ALLOWED)
+    assert caught.value.category == "figures_and_numerals"
 
 
 def test_a_text_numeral_missing_from_every_figure_is_refused_before_any_image_call():
@@ -654,9 +658,10 @@ def test_a_text_numeral_missing_from_every_figure_is_refused_before_any_image_ca
     snapshot = {"sections": GOOD, "numerals": NUMERALS, "figures": figures}
 
     with pytest.raises(
-            drafting.DraftingValidationError,
-            match="Every specification numeral appears in a drawing"):
+            draft_studio.FilingPreflightError,
+            match="Every specification numeral appears in a drawing") as caught:
         draft_studio.validate_snapshot(snapshot, ALLOWED)
+    assert caught.value.category == "figures_and_numerals"
 
 
 def test_agent_filing_artifacts_are_normalized_for_human_facing_text():
@@ -1148,6 +1153,62 @@ def test_drawing_only_repairs_cannot_mutate_filing_sources_or_figure_membership(
     assert restored_figures[1]["numerals"] == FIGURES[1]["numerals"]
 
 
+def test_figure_plan_repairs_keep_authoritative_text_and_numerals(tmp_path):
+    baseline = {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+    revised_sections = {
+        **GOOD,
+        "drawing_descriptions": "FIG. 1 is a focused body view.\n\nFIG. 2 is a ring detail.",
+        "detailed_description": "Removed disclosed structure to make the picture easier.",
+        "claims": "1. A different invention.",
+    }
+    revised_figures = [
+        {**FIGURES[0], "numerals": ["10", "12"]},
+        {**FIGURES[1], "numerals": ["14", "16", "18", "20"]},
+    ]
+    draft_workspace.write_sections(tmp_path, revised_sections)
+    draft_workspace.write_numerals(tmp_path, NUMERALS[:-1])
+    draft_workspace.write_figures(tmp_path, revised_figures)
+    report = {
+        "checks": [{
+            "name": "Saved candidate passes the current filing preflight",
+            "status": "fail", "category": "figures_and_numerals",
+        }],
+        "findings": [],
+    }
+
+    assert draft_studio.restore_sources_after_figure_plan_review(
+        tmp_path, baseline, report) is True
+
+    sections = draft_workspace.read_sections(tmp_path)
+    assert sections["drawing_descriptions"] == revised_sections["drawing_descriptions"]
+    assert sections["detailed_description"] == GOOD["detailed_description"]
+    assert sections["claims"] == GOOD["claims"]
+    assert draft_workspace.read_numerals(tmp_path) == NUMERALS
+    assert [{key: item[key] for key in ("label", "caption", "numerals")}
+            for item in draft_workspace.read_figures(tmp_path)] == revised_figures
+
+
+def test_mixed_review_does_not_lock_a_legitimate_source_repair(tmp_path):
+    revised = {**GOOD, "summary": "A source-faithful correction."}
+    draft_workspace.write_sections(tmp_path, revised)
+    draft_workspace.write_numerals(tmp_path, NUMERALS)
+    draft_workspace.write_figures(tmp_path, FIGURES)
+    report = {
+        "checks": [{
+            "name": "Saved candidate passes the current filing preflight",
+            "status": "fail", "category": "figures_and_numerals",
+        }],
+        "findings": [{
+            "title": "Unsupported relationship", "category": "disclosure_fidelity",
+        }],
+    }
+
+    assert draft_studio.restore_sources_after_figure_plan_review(
+        tmp_path, {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES},
+        report) is False
+    assert draft_workspace.read_sections(tmp_path) == revised
+
+
 def test_a_non_drawing_review_may_repair_the_patent_text(tmp_path):
     draft_workspace.write_sections(tmp_path, {**GOOD, "summary": "Needs source repair."})
     baseline = {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
@@ -1450,7 +1511,8 @@ def test_a_candidate_blocked_by_a_new_preflight_gate_is_retained_for_repair(
         "snapshot": candidate_snapshot,
         "qa_report": {
             "status": "complete", "verdict": "fail", "summary": "Drawing repair needed.",
-            "checks": [], "findings": [],
+            "checks": [{"name": "Drafting run completed", "status": "fail"}],
+            "findings": [],
         },
     }
     workspace = Mock()
@@ -1470,8 +1532,15 @@ def test_a_candidate_blocked_by_a_new_preflight_gate_is_retained_for_repair(
     assert values["qa_report"]["verdict"] == "fail"
     assert any("current filing preflight" in item["name"].lower()
                for item in values["qa_report"]["checks"])
+    current_gate = next(item for item in values["qa_report"]["checks"]
+                        if "current filing preflight" in item["name"].lower())
+    assert current_gate["category"] == "figures_and_numerals"
+    assert all(item["name"] != "Drafting run completed"
+               for item in values["qa_report"]["checks"])
     assert "more than 8 numerals" in json.dumps(values["qa_report"])
     assert context["resuming_candidate"] is True
+    assert context["prepared_snapshot"] == candidate_snapshot
+    assert context["prepared_qa"] == values["qa_report"]
     repository.discard_retry_candidate.assert_not_called()
 
 
@@ -1684,6 +1753,78 @@ def test_initial_turn_cannot_finish_as_an_answer_without_a_filing_candidate(monk
     assert repository.save_version.call_count == 1
     first_report = workspace._write_review.call_args_list[0].args[1]
     assert "filing candidate" in first_report["summary"].lower()
+
+
+def test_resumed_figure_plan_repair_is_source_locked_before_validation(monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_figures, "discard_project_figure_checkpoint",
+                        lambda _turn_id: False)
+    repository = Mock()
+    repository.save_version.return_value = {"version_no": 2}
+    repository.save_qa.return_value = {
+        "id": 5, "verdict": "pass", "checks": [], "findings": [], "counts": {}}
+    repository.complete_turn.return_value = {"status": "complete"}
+    agent = Mock()
+    agent.DRAFT_MODEL = "draft-model"
+    agent.DRAFT_TIMEOUT = 60
+    agent.new_session_id.return_value = "new-session"
+    agent.strings.side_effect = lambda value, **_kwargs: list(value or [])
+    revised_figures = [
+        {**FIGURES[0], "numerals": ["10", "12"]},
+        {**FIGURES[1], "numerals": ["14", "16", "18", "20"]},
+    ]
+
+    def mutate_sources(**_kwargs):
+        draft_workspace.write_sections(tmp_path, {
+            **GOOD,
+            "drawing_descriptions": "FIG. 1 is a body view.\n\nFIG. 2 is a ring view.",
+            "detailed_description": "Deleted part 20 to simplify the drawings.",
+            "claims": "1. A different invention.",
+        })
+        draft_workspace.write_numerals(tmp_path, NUMERALS[:-1])
+        draft_workspace.write_figures(tmp_path, revised_figures)
+        return draft_agent.AgentRun(
+            ok=True, session_id="session", model="draft-model",
+            result={"action": "revised", "summary": "rebalanced figures",
+                    "reasoning": [], "changes": [], "questions": [],
+                    "prior_art_strategy": "", "answer": ""})
+
+    agent.run.side_effect = mutate_sources
+    draft_workspace.write_sections(tmp_path, GOOD)
+    draft_workspace.write_numerals(tmp_path, NUMERALS)
+    draft_workspace.write_figures(tmp_path, FIGURES)
+    workspace = Mock()
+    workspace.snapshot.side_effect = lambda _path: draft_workspace.snapshot(tmp_path)
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, qa=draft_qa, workspace=workspace)
+    monkeypatch.setattr(runner, "prepare", lambda _turn: {
+        "workspace": tmp_path,
+        "project": {"user_id": 91, "agent_session_id": "", "latest_version_no": 1,
+                    "disclosure_text": "disclosure"},
+        "references": [{"publication_number": ALLOWED[0]}], "documents": [],
+        "seeded": False, "had_version": True, "resuming_candidate": True,
+        "prepared_snapshot": {"sections": GOOD, "numerals": NUMERALS,
+                              "figures": FIGURES},
+        "prepared_qa": {"checks": [{
+            "name": "Saved candidate passes the current filing preflight",
+            "status": "fail", "category": "figures_and_numerals",
+        }], "findings": []},
+        "previous_sections": {},
+    })
+    monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {"ok": True})
+    monkeypatch.setattr(runner, "evaluate", lambda *args, **kwargs: {
+        "status": "complete", "verdict": "pass", "summary": "ready",
+        "checks": [], "findings": [], "counts": {}, "cost_usd": 0,
+        "duration_ms": 1, "model_name": "review"})
+
+    runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
+                "turn_no": 2, "kind": "revise"})
+
+    saved = repository.save_version.call_args.kwargs
+    assert saved["sections"]["detailed_description"] == GOOD["detailed_description"]
+    assert saved["sections"]["claims"] == GOOD["claims"]
+    assert saved["numerals"] == NUMERALS
+    assert [{key: item[key] for key in ("label", "caption", "numerals")}
+            for item in saved["figures"]] == revised_figures
 
 
 def test_answering_a_question_does_not_discard_an_unpublished_candidate(monkeypatch, tmp_path):
