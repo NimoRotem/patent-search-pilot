@@ -302,6 +302,21 @@ _SUBS = {}          # slug -> set[queue.Queue]
 _SUBS_LOCK = threading.Lock()
 _SSE_PING = 15.0    # seconds between keep-alive comments
 
+#  ---- durable search execution, behind one flag --------------------------------------------
+#  OFF by default, so an unset variable is exactly today's production path. Read from the
+#  environment on every call rather than captured at import, because a rollout wants to flip it
+#  without a deploy and because a captured value cannot be tested in both states.
+#
+#  This milestone is PRODUCER AND OBSERVER ONLY. Under the flag a search is enqueued into
+#  `search_runs` and the legacy thread is not started, so the run sits `queued` until a worker
+#  exists. No worker is started here, corpus writes are not armed, and supervisor is untouched.
+DURABLE_RUNS_ENV = "DURABLE_SEARCH_RUNS"
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def durable_runs_enabled():
+    return str(os.environ.get(DURABLE_RUNS_ENV, "")).strip().lower() in _TRUTHY
+
 
 def _subscribe(slug):
     q = queue.Queue(maxsize=64)
@@ -1660,7 +1675,7 @@ def _espacenet_safe(pub, family_id=None):
 
 def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, wide=False,
                   doc_token=None, search_focus="all_text", from_queue=False, depth="deep",
-                  restart_partial=False):
+                  restart_partial=False, owner_user_id=None):
     """Return ('ready'|'running'|'missing'|'busy', report_or_None). Kicks off background
     generation if needed. A search that arrives while the gate is full is QUEUED (run_queue) and
     reported as running; 'busy' is only returned to the dispatcher itself (`from_queue=True`),
@@ -1674,6 +1689,7 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
     Reported 2026-08-20 as a report stuck on its first phase for 76 minutes, whose own status
     endpoint said "Use Re-run to start it again" while no Re-run could."""
     p = report_path(slug)
+    defer_partial_drop = False
     if p.exists() and not regen:
         try:
             rep = json.loads(p.read_text())
@@ -1682,10 +1698,39 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
         if rep is not None:
             with _JOB_LOCK:
                 job = _JOBS.get(slug) or {}
-                job_live = job.get("status") in ("running", "partial") and not job.get("queued")
+                legacy_live = (job.get("status") in ("running", "partial")
+                               and not job.get("queued"))
+            if durable_runs_enabled():
+                #  A durable worker writes `partial: true` with NO memory claim, because the
+                #  durable path creates none. Liveness is therefore the UNION of a pre-existing
+                #  legacy claim, which a mid-rollout run still has, and a live durable row.
+                #  UNKNOWN counts as live: a database outage must never be read as "nothing is
+                #  running" by the branch whose next act is to delete the work.
+                durable_live = _durable_liveness(slug)
+                job_live = legacy_live or durable_live is not False
+            else:
+                job_live = legacy_live
             if not (restart_partial and rep.get("partial") and not job_live):
                 return "ready", rep
-            _drop_partial_report(slug)
+            if durable_runs_enabled():
+                #  DEFERRED. Under the flag the partial is dropped only once the replacement run
+                #  is safely recorded, so a failing enqueue cannot leave a user with neither.
+                defer_partial_drop = True
+            else:
+                _drop_partial_report(slug)
+    #  DURABLE PATH, ahead of the in-memory claim on purpose. Under the flag POSTGRES is the
+    #  dedupe and status authority, and a parallel `_JOBS` claim is a second source of truth that
+    #  can only ever disagree with it. It did: the durable path used to leave a `running` entry
+    #  that nothing cleared, and because this function consulted that dict first, a run which
+    #  settled failed or cancelled could not be re-run until the web process restarted.
+    #
+    #  The report-cache fast path above still runs first and is unchanged, so a finished report is
+    #  served from disk without touching the run store.
+    if durable_runs_enabled():
+        return _enqueue_durable_run(slug, query, subject, mode, wide, doc_token, search_focus,
+                                    depth, owner_user_id, from_queue=from_queue,
+                                    regen=(regen or defer_partial_drop))
+
     # Atomically claim the slug: check-and-set under the lock so two concurrent requests for the
     # same new query can't both start a generation (the second sees "running" and just polls).
     # A "queued" placeholder is claimable ONLY by the dispatcher , a user re-request must not
@@ -1712,7 +1757,8 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
             try:
                 pos = run_queue.enqueue(slug, {
                     "query": query, "subject": subject, "mode": mode, "wide": wide,
-                    "doc_token": doc_token, "search_focus": search_focus, "depth": depth})
+                    "doc_token": doc_token, "search_focus": search_focus, "depth": depth,
+                    "owner_user_id": owner_user_id})
                 with _JOB_LOCK:
                     _JOBS[slug] = {"status": "running", "queued": True,
                                    "msg": (f"Queued behind {max(pos - 1, 0)} search(es) , "
@@ -1732,7 +1778,8 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
     #  overall clock and attempt counter for the progress UI.
     run_queue.record_started(slug, {
         "query": query, "subject": subject, "mode": mode, "wide": wide,
-        "doc_token": doc_token, "search_focus": search_focus, "depth": depth})
+        "doc_token": doc_token, "search_focus": search_focus, "depth": depth,
+        "owner_user_id": owner_user_id})
     _QROW_CACHE.pop(slug, None)
     try:
         subj_obj = _subject_obj(subject)
@@ -1753,6 +1800,261 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
             auth.run_gate.end()
         raise
     return "running", None
+
+
+def _durable_search_mode(doc_token):
+    """CONCEPT_SEARCH or CLAIM_ATTACK, decided from the input the way /run decides it.
+
+    This is the MACHINERY, not the legal question. `mode` stays novelty or obviousness and is
+    stored separately; writing one into the other would make a claim attack look like a different
+    kind of legal analysis. A document store that is down must not block the enqueue, so the
+    fallback is the cheaper kind rather than an error.
+    """
+    try:
+        claims = (_load_doc_materials(doc_token) or {}).get("claims")
+    except Exception:                                                # noqa: BLE001
+        traceback.print_exc()
+        claims = None
+    return "CLAIM_ATTACK" if search_profile.kind_for(claims) == search_profile.CLAIMS \
+        else "CONCEPT_SEARCH"
+
+
+def _enqueue_durable_run(slug, query, subject, mode, wide, doc_token, search_focus, depth,
+                         owner_user_id=None, from_queue=False, regen=False):
+    """Enqueue exactly one durable run for this slug, and start nothing.
+
+    ORDER MATTERS. The store is asked first, and it reports whether this submission CREATED the
+    run or joined one already live. Only the creator makes the rate and cap decision, so a
+    reloaded page and a burst of concurrent submissions charge the daily budget once between them
+    rather than once each.
+
+    FAIL CLOSED. If the run store cannot record the run the search is REFUSED. It must never fall
+    back to the legacy thread, because that is an execution nothing is tracking: no row, no lease,
+    no resume, and no record that it ever happened.
+
+    The gate slot is released as soon as it is taken. `try_begin` counts the run against the daily
+    budget, which is right because it will cost money when a worker takes it, but the concurrency
+    slot bounds work IN THIS PROCESS and this process is doing none.
+
+    OWNERSHIP is explicit and always present, `None` meaning a launcher with no account: ops
+    warmers, the gold set and the regression script. A missing key and a deliberate null are
+    different things, and only one of them can be audited later.
+
+    The argument is preserved EXACTLY. An earlier version fell back to the request user when the
+    argument was None, which quietly turned "nobody owns this" into "whoever happened to be
+    signed in", and would have filed a system-owned benchmark run in a real person's list. Every
+    call site passes the owner explicitly now, so there is nothing for a fallback to rescue.
+    """
+    #  ROLLOUT TRANSITION. The durable path creates no `_JOBS` entries, so any live one belongs
+    #  to a run started under the legacy path and STILL EXECUTING in this process. Enqueueing a
+    #  durable row for it would put two executors on one report file. A QUEUED placeholder is
+    #  different: it is a row waiting for an executor, not one, so the dispatcher is allowed to
+    #  migrate it into the durable store, which is the same exemption the legacy claim makes.
+    with _JOB_LOCK:
+        job = _JOBS.get(slug) or {}
+        legacy_live = (job.get("status") in ("running", "partial")
+                       and not job.get("durable"))
+        legacy_queued = bool(job.get("queued"))
+    if legacy_live and not (from_queue and legacy_queued):
+        return "running", None
+
+    if query is None:
+        #  A viewer poll, not a launch. After a restart there is no in-memory job, so the only
+        #  place that knows whether this slug is still working is Postgres.
+        try:
+            live = runstore.latest_for_slug(slug)
+        except Exception:                                            # noqa: BLE001
+            traceback.print_exc()
+            return "missing", None
+        if live and live.get("status") in ("queued", "running"):
+            return "running", None
+        return "missing", None
+
+    payload = {"query": query, "subject": subject, "mode": mode, "wide": bool(wide),
+               "doc_token": doc_token, "search_focus": search_focus, "depth": depth,
+               "owner_user_id": owner_user_id}
+    try:
+        run_id, created = runstore.enqueue(
+            slug, payload, search_mode=_durable_search_mode(doc_token), mode=mode, depth=depth,
+            lane=depth, with_created=True)
+    except Exception:
+        #  No `_JOBS.pop` here. The durable branch does not own a memory claim, and a legacy run
+        #  started before the flag flipped may still be executing behind one; deleting it would
+        #  strand that run with no status at all.
+        traceback.print_exc()
+        return "busy", "durable run store unavailable"
+
+    if regen:
+        #  ONLY NOW, after the replacement is safely recorded. Clearing these first would leave a
+        #  user with neither the old report nor a new run if the store were unreachable. Leaving
+        #  them at all lets an ordinary GET serve the stale final report as READY while the
+        #  replacement is still queued, which hands back the very answer the rerun was replacing.
+        p = report_path(slug)
+        p.unlink(missing_ok=True)
+        (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)
+        (REPORTS / f"{slug}.detail-preview.json").unlink(missing_ok=True)
+        _PARTIAL_CACHE.pop(slug, None)
+
+    if from_queue:
+        #  The dispatcher has just migrated a QUEUED legacy placeholder into the durable store.
+        #  That placeholder is now stale, and leaving it means the next ordinary request for this
+        #  slug sees a legacy claim and is blocked once the durable run settles. Removed only
+        #  after the durable row is safely recorded, and only if it is still the queued one.
+        with _JOB_LOCK:
+            if (_JOBS.get(slug) or {}).get("queued"):
+                _JOBS.pop(slug, None)
+
+    #  No `_JOBS` placeholder is written. The durable row IS the claim, the status and the
+    #  dedupe, and a second copy of that state in process memory is what produced the stale
+    #  running entry that blocked reruns.
+    if created and auth.run_gate:
+        #  The one accounting decision, made once, by the creator. A refusal still leaves the run
+        #  QUEUED, which is exactly what the legacy path does when the gate is full or the cap is
+        #  reached: it queues and reports running, and reserves refusal for the dispatcher.
+        ok, _why = auth.run_gate.try_begin(depth=depth)
+        if ok:
+            auth.run_gate.end(depth=depth)
+    return "running", None
+
+
+#  Durable statuses that end a stream, mapped onto the wire vocabulary the browser already
+#  understands. `done` is the only one that means a report is ready; the other two are terminal
+#  failures and must close the stream without claiming a result.
+_DURABLE_TERMINAL = {"done": "done", "failed": "error", "cancelled": "error",
+                     "canceled": "error"}
+
+
+def _durable_liveness(slug):
+    """True live, False settled, None UNKNOWN. The distinction is the point.
+
+    `_durable_run_for` collapses a database outage and "there is no such run" into the same None,
+    which reads as "nothing is running" to a caller about to delete work in progress. Anything
+    destructive has to be able to tell those apart and refuse to act on the second one.
+    """
+    try:
+        row = runstore.latest_for_slug(slug)
+    except Exception:                                                # noqa: BLE001
+        traceback.print_exc()
+        return None
+    if not row:
+        return False
+    return row.get("status") in ("queued", "running")
+
+
+def _durable_run_for(slug):
+    """The persisted run for this slug, or None. Never raises: an unreachable run store must
+    degrade the STATUS view, not take the page down with it."""
+    if not durable_runs_enabled():
+        return None
+    try:
+        return runstore.latest_for_slug(slug)
+    except Exception:
+        return None
+
+
+def _durable_epoch(run):
+    """Seconds since the run was enqueued, from EITHER row shape.
+
+    `runstore.latest_for_slug` returns the whole row, so its timestamps are real datetimes.
+    `runstore.progress_of` selects `extract(epoch ...)` aliases instead. The status endpoint is fed
+    by the first and the stream tail by the second, so reading only the aliases silently dropped
+    the clock from /status and the page lost its elapsed time.
+    """
+    for key in ("t0", "t_start", "enqueued_at", "started_at"):
+        v = run.get(key)
+        if v is None:
+            continue
+        ts = getattr(v, "timestamp", None)
+        if callable(ts):                       # a real datetime
+            try:
+                return float(ts())
+            except Exception:                                        # noqa: BLE001
+                continue
+        try:
+            #  `extract(epoch ...)` comes back as Decimal, which is neither int nor float, so an
+            #  isinstance check on those two silently dropped the clock for the stream tail.
+            return float(v)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _durable_event(slug, run):
+    """A persisted run rendered in the exact wire shape `_job_event` produces.
+
+    PRECEDENCE, stated once: when the flag is ON and a durable row exists for the slug, the
+    durable row wins. When the flag is OFF, or there is no row, the legacy in-memory job and the
+    report on disk are used exactly as before. That is what lets a rollout begin while runs
+    started under the old path are still in flight.
+    """
+    status = str(run.get("status") or "queued")
+    exists = report_path(slug).exists()
+    wire = _DURABLE_TERMINAL.get(status, "running")
+    prog = run.get("progress") or {}
+    if isinstance(prog, str):
+        try:
+            prog = json.loads(prog)
+        except Exception:
+            prog = {}
+    msg = prog.get("msg") or run.get("error") or ""
+    if not msg:
+        msg = "Queued…" if status == "queued" else (run.get("stage") or "Working…")
+    t0 = _durable_epoch(run)
+    return {"kind": prog.get("kind", "progress"), "slug": slug, "status": wire,
+            "msg": msg,
+            "attempt": int(run.get("attempts") or 0) or 1,
+            "elapsed_total_sec": int(max(0.0, time.time() - float(t0))) if t0 else None,
+            "detail": prog.get("detail") or {},
+            "elapsed_sec": int(max(0.0, time.time() - float(t0))) if t0 else 0,
+            "tokens": prog.get("tokens") or 0,
+            #  Monotonic per run, so a reconnecting client can tell a replay from new news.
+            "seq": int(run.get("event_seq") or 0),
+            "ready": exists and wire == "done",
+            "done": wire == "done"}
+
+
+def _durable_stream(slug, run_id, poll=1.0):
+    """SSE over a persisted run.
+
+    The worker is a different PROCESS, so the in-process publish/subscribe the legacy path uses
+    cannot see its progress. This tails `search_runs` instead and emits only when `event_seq`
+    ADVANCES, which is what makes a reconnecting client able to distinguish a replay of state it
+    already has from genuine news. Terminal states end the generator rather than leaving it on
+    the keep-alive loop.
+    """
+    last_seq = -1
+    last_ping = time.time()
+    try:
+        while True:
+            try:
+                run = runstore.progress_of(run_id)
+            except Exception:                                        # noqa: BLE001
+                #  The detail goes to the SERVER LOG, never down the wire. A database error can
+                #  carry a DSN, a role name or an authentication failure, and this stream is
+                #  readable by any user who can see the report.
+                traceback.print_exc()
+                yield ("data: " + json.dumps(
+                    {"kind": "error", "slug": slug, "status": "error",
+                     "msg": "This search could not be read just now. Please retry shortly.",
+                     "attempt": 1, "elapsed_total_sec": None, "detail": {},
+                     "elapsed_sec": 0, "tokens": 0, "seq": 0,
+                     "ready": False, "done": False}) + "\n\n")
+                return
+            if run is None:
+                return
+            ev = _durable_event(slug, run)
+            if ev["seq"] > last_seq or last_seq < 0:
+                last_seq = ev["seq"]
+                last_ping = time.time()
+                yield "data: " + json.dumps(ev) + "\n\n"
+            if ev["status"] in ("done", "error") or ev["done"]:
+                return
+            if time.time() - last_ping >= _SSE_PING:
+                last_ping = time.time()
+                yield ": ping\n\n"
+            time.sleep(poll)
+    except GeneratorExit:
+        raise
 
 
 def _subject_obj(subject):
@@ -2101,7 +2403,12 @@ def run():
     gold_id = request.form.get("gold_id", "").strip()
     if gold_id and gold_id in _GOLD:
         e = _GOLD[gold_id]
-        st, why = ensure_report(gold_id, query=e["query_text"],
+        #  EXPLICITLY SYSTEM-OWNED. The gold set is a shared benchmark fixture, and this branch
+        #  redirects before `accounts.record_search` ever runs, so filing it under whoever
+        #  happened to click it would put a run in their list that they can neither find through
+        #  the account path nor meaningfully own.
+        st, why = ensure_report(gold_id, owner_user_id=None,
+                                query=e["query_text"],
                                 subject=e.get("anchor_publication"), mode=e["mode"])
         if st == "busy":
             return _error_response({"error": "server busy", "detail": why}, 429,
@@ -2194,7 +2501,8 @@ def run():
     #  default, so a partial still renders with its interrupted banner.
     st, why = ensure_report(slug, query=query, subject=subject, mode=mode, wide=wide,
                             doc_token=doc_token, search_focus=search_focus, depth=depth,
-                            restart_partial=True)
+                            restart_partial=True,
+                            owner_user_id=(user or {}).get("id"))
     if st == "busy":
         return _error_response({"error": "server busy", "detail": why}, 429,
                                f"The server is at capacity , {why}. Please retry shortly.")
@@ -2532,7 +2840,9 @@ def report(slug):
             depth = m.get("depth") or "deep"
             kind_profile = m.get("search_profile")
         title = "Ad-hoc search"
-    status, rep = ensure_report(slug, query=query, subject=subject, mode=mode, regen=regen,
+    _owner = (auth.current_user() or {}).get("id")
+    status, rep = ensure_report(slug, owner_user_id=_owner,
+                                query=query, subject=subject, mode=mode, regen=regen,
                                 wide=wide, doc_token=doc_token, search_focus=search_focus,
                                 depth=depth)
     if status == "missing":
@@ -3073,9 +3383,13 @@ def status(slug):
     regression.sh); /events/<slug> is the primary, push-based channel."""
     if not _can_access_report(slug):
         abort(404)
-    with _JOB_LOCK:
-        job = dict(_JOBS.get(slug, {}))
-    ev = _job_event(slug, job)
+    run = _durable_run_for(slug)
+    if run is not None:
+        ev = _durable_event(slug, run)
+    else:
+        with _JOB_LOCK:
+            job = dict(_JOBS.get(slug, {}))
+        ev = _job_event(slug, job)
     # 'partial' is renderable (first cards streamed); 'done' is the final report. A cached report on
     # disk with no live job is treated as done.
     # `detail` too: the poll fallback drives the same progress narrative as the SSE path, and it
@@ -3095,6 +3409,15 @@ def events(slug):
     """
     if not _can_access_report(slug):
         abort(404)
+
+    run = _durable_run_for(slug)
+    if run is not None:
+        return Response(stream_with_context(_durable_stream(slug, run["run_id"])),
+                        mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache, no-transform",
+                                 "X-Accel-Buffering": "no",
+                                 "Connection": "keep-alive"})
+
     q = _subscribe(slug)
 
     def gen():
@@ -6187,7 +6510,8 @@ def draft_studio_search(project_id):
         mode, focus, wide = "novelty", "all_text", True
         slug = search_slug(query, mode, wide=wide, search_focus=focus)
         state, detail = ensure_report(
-            slug, query=query, mode=mode, wide=wide, search_focus=focus)
+            slug, query=query, mode=mode, wide=wide, search_focus=focus,
+            owner_user_id=(user or {}).get("id"))
         if state == "busy":
             return jsonify({"ok": False, "error": f"The search server is busy: {detail}"}), 429
         (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
@@ -6555,7 +6879,8 @@ def _queue_launch(slug, payload):
             mode=payload.get("mode") or "novelty", wide=bool(payload.get("wide")),
             doc_token=payload.get("doc_token"),
             search_focus=payload.get("search_focus") or "all_text", from_queue=True,
-            depth=payload.get("depth") or "deep", restart_partial=True)
+            depth=payload.get("depth") or "deep", restart_partial=True,
+            owner_user_id=payload.get("owner_user_id"))
     except Exception:
         traceback.print_exc()
         return "gone"
