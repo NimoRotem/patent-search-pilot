@@ -81,7 +81,7 @@ def main(argv=None):
     with gzip.open(os.path.join(args.cache, "publications.csv.gz"), "rt", newline="") as fh:
         for row in csv.reader(fh):
             if row[1] in gold:
-                fam_of[row[1]] = row[7] or row[1]
+                fam_of[row[1]] = cn.family_key(row[7], row[1])
     print(f"held in the corpus at all: {len(fam_of):,} of {len(gold):,}")
 
     want = set(fam_of.values())

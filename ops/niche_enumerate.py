@@ -131,7 +131,8 @@ def load_publications(cache):
             pid, num, country, fam, title = row[0], row[1], row[3], row[7], row[11]
             #  One object per family key and per country code, shared by every publication that
             #  carries it. 5M publications makes both worth doing.
-            key = famkeys.setdefault(fam or num, fam or num)
+            k = corpus_niche.family_key(fam, num)
+            key = famkeys.setdefault(k, k)
             meta[pid] = (num, countries.setdefault(country, country), key, title)
             fam_pids[key].append(pid)
             num_to_pid[num] = pid

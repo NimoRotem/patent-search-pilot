@@ -66,6 +66,27 @@ def test_real_symbols_are_fields(sym):
     assert cn.is_indexing_code(sym) is False
 
 
+# ---------------------------------------------------------------- family identity
+@pytest.mark.parametrize("fam,num,expected", [
+    ("37026742", "US-7789357-B2", "37026742"),
+    ("", "US-7789357-B2", "US-7789357-B2"),
+    (None, "US-7789357-B2", "US-7789357-B2"),
+    ("-1", "US-7789357-B2", "US-7789357-B2"),
+    ("0", "US-7789357-B2", "US-7789357-B2"),
+    ("  -1 ", "US-7789357-B2", "US-7789357-B2"),
+])
+def test_no_family_sentinels_do_not_become_a_family(fam, num, expected):
+    """DOCDB writes -1 for "no simple family" and the ingest stored it verbatim. MEASURED: 21,862
+    publications carry it, so a key of COALESCE(NULLIF(simple_family_id,''), publication_number)
+    merges 21,862 unrelated documents into one family. The first manifest built that way produced
+    a family carrying every CPC symbol from ploughs to harvesters."""
+    assert cn.family_key(fam, num) == expected
+
+
+def test_two_publications_with_no_family_are_two_families():
+    assert cn.family_key("-1", "US-1-A") != cn.family_key("-1", "US-2-A")
+
+
 # ---------------------------------------------------------------- boundary predicate
 def test_symbol_tier():
     b = boundary()

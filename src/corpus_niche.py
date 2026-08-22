@@ -86,6 +86,21 @@ def is_indexing_code(symbol):
     return group.isdigit() and int(group) >= 2000
 
 
+# ---------------------------------------------------------------- family identity
+#  DOCDB writes -1 for "this publication has no simple family", and the ingest stored it verbatim.
+#  MEASURED on the live corpus 2026-08-22: 21,862 publications carry `simple_family_id = '-1'`.
+#  The obvious key, COALESCE(NULLIF(simple_family_id,''), publication_number), passes '-1' straight
+#  through, so all 21,862 unrelated documents become ONE family. Found because the first manifest
+#  record came out with a family holding every CPC symbol from ploughs to harvesters.
+NO_FAMILY = frozenset({"", "-1", "0", "null", "none", "n/a", "\\n"})
+
+
+def family_key(simple_family_id, publication_number):
+    """The family a publication belongs to. A publication with no family is its own family."""
+    s = str(simple_family_id or "").strip()
+    return publication_number if s.lower() in NO_FAMILY else s
+
+
 # ---------------------------------------------------------------- the boundary
 class Boundary:
     """The checked-in niche definition. Constructed from `config/niche_boundary.json`."""
