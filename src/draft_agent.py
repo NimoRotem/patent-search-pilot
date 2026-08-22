@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -60,6 +61,9 @@ CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "")
 DRAFT_TIMEOUT = max(120, int(os.environ.get("DRAFT_AGENT_TIMEOUT", "1500")))
 QA_TIMEOUT = max(120, int(os.environ.get("DRAFT_QA_TIMEOUT", "900")))
 MAX_BUDGET_USD = float(os.environ.get("DRAFT_AGENT_MAX_USD", "12"))
+AUTH_MODE = os.environ.get("DRAFT_AGENT_AUTH", "auto").strip().lower()
+if AUTH_MODE not in {"auto", "subscription", "api"}:
+    AUTH_MODE = "auto"
 
 # The lookup helper the agent may run.  Bash is otherwise unusable: the allow-list below is the
 # only command auto-approved, and with `--permission-mode acceptEdits` anything else is refused
@@ -72,6 +76,7 @@ _QA_TOOLS = "Read,Glob,Grep,Bash"
 _ENV_LOCK = threading.Lock()
 _CACHED_TOKEN: tuple[float, str] | None = None
 _CACHED_VERSION: tuple[str, str] | None = None
+_SUBSCRIPTION_UNAVAILABLE = False
 
 
 class AgentError(RuntimeError):
@@ -170,11 +175,18 @@ def availability() -> dict[str, Any]:
                 "binary": "", "auth": False}
     token = _oauth_token()
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if not token and not api_key:
-        return {"ok": False, "reason": "No Claude subscription token or API key is configured.",
-                "binary": path, "auth": False}
+    selected = AUTH_MODE
+    if selected == "auto":
+        selected = ("api" if _SUBSCRIPTION_UNAVAILABLE and api_key else
+                    "subscription" if token else "api")
+    credential = api_key if selected == "api" else token
+    if not credential:
+        name = "Anthropic API key" if selected == "api" else "Claude subscription token"
+        return {"ok": False, "reason": f"No {name} is configured.",
+                "binary": path, "auth": False, "auth_mode": selected}
     return {"ok": True, "reason": "", "binary": path, "auth": True,
-            "version": version(path), "draft_model": DRAFT_MODEL, "qa_model": QA_MODEL}
+            "auth_mode": selected, "version": version(path),
+            "draft_model": DRAFT_MODEL, "qa_model": QA_MODEL}
 
 
 def config_dir(root: Path) -> Path:
@@ -184,14 +196,17 @@ def config_dir(root: Path) -> Path:
     return out
 
 
-def _environment(cfg_dir: Path) -> dict[str, str]:
+def _environment(cfg_dir: Path, *, auth_mode: str = "subscription") -> dict[str, str]:
     env = dict(os.environ)
     env["CLAUDE_CONFIG_DIR"] = str(cfg_dir)
-    token = _oauth_token()
-    if token:
-        env["CLAUDE_CODE_OAUTH_TOKEN"] = token
+    if auth_mode == "api":
+        env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+    else:
+        token = _oauth_token()
+        if token:
+            env["CLAUDE_CODE_OAUTH_TOKEN"] = token
         # A stale ANTHROPIC_API_KEY in the service environment would be preferred over the
-        # subscription token and would bill (or 401) against an account we did not intend.
+        # subscription token and would bill against an account we did not intend.
         env.pop("ANTHROPIC_API_KEY", None)
     env.setdefault("CI", "1")
     env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
@@ -250,13 +265,15 @@ def _relative(path: str) -> str:
     return Path(path).name
 
 
-def run(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str, Any],
-        session_id: str = "", resume: bool = False, model: str = "", tools: str = _DRAFT_TOOLS,
-        timeout: int = DRAFT_TIMEOUT, transcript: Path | None = None,
-        allowed_bash: Sequence[str] = (LOOKUP_COMMAND,),
-        on_event: Callable[[Mapping[str, Any]], None] | None = None,
-        cancel: threading.Event | None = None,
-        max_budget_usd: float = MAX_BUDGET_USD) -> AgentRun:
+def _run_once(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str, Any],
+              session_id: str = "", resume: bool = False, model: str = "",
+              tools: str = _DRAFT_TOOLS, timeout: int = DRAFT_TIMEOUT,
+              transcript: Path | None = None,
+              allowed_bash: Sequence[str] = (LOOKUP_COMMAND,),
+              on_event: Callable[[Mapping[str, Any]], None] | None = None,
+              cancel: threading.Event | None = None,
+              max_budget_usd: float = MAX_BUDGET_USD,
+              auth_mode: str = "subscription") -> AgentRun:
     """One agent turn inside ``workspace``.
 
     ``resume`` continues the project's own thread so the agent remembers the decisions it already
@@ -296,7 +313,7 @@ def run(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str
                    transcript_path=str(transcript or ""))
     started = time.time()
     process = subprocess.Popen(
-        argv, cwd=str(workspace), env=_environment(cfg),
+        argv, cwd=str(workspace), env=_environment(cfg, auth_mode=auth_mode),
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, bufsize=1, start_new_session=True)
     stderr_tail: list[str] = []
@@ -394,6 +411,89 @@ def run(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str
     out.result = parsed
     out.ok = True
     return out
+
+
+def _subscription_limit_error(error: str) -> bool:
+    text = str(error or "").lower()
+    return bool(
+        re.search(r"\b(?:weekly|monthly|usage) limit\b", text) or
+        ("hit your" in text and "limit" in text and "reset" in text))
+
+
+def _missing_session_error(error: str) -> bool:
+    text = str(error or "").lower()
+    return "session" in text and any(
+        phrase in text for phrase in ("not found", "no conversation", "does not exist"))
+
+
+def _merge_attempts(previous: AgentRun, current: AgentRun, message: str) -> AgentRun:
+    current.cost_usd += previous.cost_usd
+    current.duration_ms += previous.duration_ms
+    current.num_turns += previous.num_turns
+    current.steps = previous.steps + [{"kind": "system", "text": message}] + current.steps
+    return current
+
+
+def run(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str, Any],
+        session_id: str = "", resume: bool = False, model: str = "", tools: str = _DRAFT_TOOLS,
+        timeout: int = DRAFT_TIMEOUT, transcript: Path | None = None,
+        allowed_bash: Sequence[str] = (LOOKUP_COMMAND,),
+        on_event: Callable[[Mapping[str, Any]], None] | None = None,
+        cancel: threading.Event | None = None,
+        max_budget_usd: float = MAX_BUDGET_USD) -> AgentRun:
+    """Run through the configured auth route and fail over on subscription quota exhaustion."""
+    global _SUBSCRIPTION_UNAVAILABLE
+    common = {
+        "workspace": workspace, "prompt": prompt, "system_prompt": system_prompt,
+        "schema": schema, "session_id": session_id, "resume": resume, "model": model,
+        "tools": tools, "timeout": timeout, "transcript": transcript,
+        "allowed_bash": allowed_bash, "on_event": on_event, "cancel": cancel,
+        "max_budget_usd": max_budget_usd,
+    }
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    token = _oauth_token()
+    mode = AUTH_MODE
+    if mode == "api" and not api_key:
+        raise AgentUnavailable("No Anthropic API key is configured.")
+    if mode == "subscription" and not token:
+        raise AgentUnavailable("No Claude subscription token is configured.")
+    if mode == "auto":
+        if _SUBSCRIPTION_UNAVAILABLE and api_key:
+            mode = "api"
+        elif token:
+            mode = "subscription"
+        elif api_key:
+            mode = "api"
+        else:
+            raise AgentUnavailable("No Claude subscription token or API key is configured.")
+
+    first = _run_once(**common, auth_mode=mode)
+    if (mode != "subscription" or first.ok or first.cancelled or
+            not api_key or not _subscription_limit_error(first.error) or
+            (cancel is not None and cancel.is_set())):
+        return first
+
+    _SUBSCRIPTION_UNAVAILABLE = True
+    fallback_session = first.session_id or session_id
+    fallback_resume = bool(resume and fallback_session)
+    if not fallback_resume:
+        fallback_session = new_session_id()
+    fallback = _run_once(
+        **{**common, "session_id": fallback_session, "resume": fallback_resume},
+        auth_mode="api")
+    fallback = _merge_attempts(
+        first, fallback,
+        "The Claude subscription quota was unavailable, so the run continued through the "
+        "configured Anthropic API account.")
+    if not (fallback_resume and not fallback.ok and _missing_session_error(fallback.error)):
+        return fallback
+
+    fresh = _run_once(
+        **{**common, "session_id": new_session_id(), "resume": False}, auth_mode="api")
+    return _merge_attempts(
+        fallback, fresh,
+        "The prior conversation session was unavailable to the API account, so the run "
+        "continued from the complete workspace in a fresh session.")
 
 
 def _terminate(process: subprocess.Popen, *, grace: int) -> None:
