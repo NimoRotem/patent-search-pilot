@@ -1500,14 +1500,15 @@ def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
             not _ANNOTATION_ONLY.search(chunk) and
             (numeral_pattern.search(chunk) or part.lower() in chunk.lower())]
         target = explicit_targets[0] if explicit_targets else ""
-        if not target and definition_index is not None and definition_index + 1 < len(local):
-            following = local[definition_index + 1]
-            mentions_other = any(
-                re.search(r"(?<![A-Za-z0-9])" + re.escape(value) + r"(?![A-Za-z0-9])",
-                          following)
-                for value in all_numerals if value != numeral)
-            if target_marker.search(following) and not mentions_other:
-                target = following
+        if not target and definition_index is not None:
+            for following in local[definition_index + 1:]:
+                mentions_other = any(
+                    re.search(r"(?<![A-Za-z0-9])" + re.escape(value) +
+                              r"(?![A-Za-z0-9])", following)
+                    for value in all_numerals if value != numeral)
+                if target_marker.search(following) and not mentions_other:
+                    target = following
+                    break
         parts.append({
             "numeral": numeral,
             "part": part,
