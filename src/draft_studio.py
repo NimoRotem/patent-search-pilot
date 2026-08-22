@@ -363,10 +363,13 @@ def restore_text_after_drawing_only_review(workspace: Path, snapshot: Mapping[st
         return False
     if any(str(item.get("category") or "") != "figures_and_numerals" for item in findings):
         return False
-    sections = human_text(dict(snapshot.get("sections") or {}))
-    numerals = human_text([dict(item) for item in (snapshot.get("numerals") or [])])
+    baseline_snapshot = candidate_snapshot_for_repair(snapshot)
+    if baseline_snapshot is None:
+        return False
+    sections = baseline_snapshot["sections"]
+    numerals = baseline_snapshot["numerals"]
     baseline_figures = human_text(
-        [dict(item) for item in (snapshot.get("figures") or [])])
+        [dict(item) for item in baseline_snapshot["figures"]])
     current_figures = human_text(draft_workspace.read_figures(workspace))
     used_current: set[int] = set()
     locked_figures = []
@@ -427,14 +430,16 @@ def restore_sources_after_figure_plan_review(workspace: Path, snapshot: Mapping[
     if any(_report_item_category(item) != "figures_and_numerals" for item in blockers):
         return False
 
-    baseline_sections = human_text(dict(snapshot.get("sections") or {}))
+    baseline_snapshot = candidate_snapshot_for_repair(snapshot)
+    if baseline_snapshot is None:
+        return False
+    baseline_sections = baseline_snapshot["sections"]
     current_sections = human_text(draft_workspace.read_sections(workspace))
     locked_sections = dict(baseline_sections)
     locked_sections["drawing_descriptions"] = str(
         current_sections.get("drawing_descriptions") or
         baseline_sections.get("drawing_descriptions") or "")
-    baseline_numerals = human_text(
-        [dict(item) for item in (snapshot.get("numerals") or [])])
+    baseline_numerals = baseline_snapshot["numerals"]
 
     sections_changed = current_sections != locked_sections
     numerals_changed = draft_workspace.read_numerals(workspace) != baseline_numerals
