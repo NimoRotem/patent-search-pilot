@@ -16,6 +16,7 @@ import os
 from dataclasses import dataclass, field, replace
 from datetime import date
 
+from .base import FAMILY_OVERFETCH
 from .legal import _date_clause
 
 #  How many of the query's longest lexemes the general lexical channel ORs together.
@@ -202,7 +203,8 @@ class PostgresLexicalBackend(LexicalBackend):
                    f"FROM chunks c JOIN publications p ON p.id=c.publication_id, tq "
                    f"WHERE tq.q IS NOT NULL AND {kind_clause} AND c.tsv @@ tq.q {dc} "
                    f"GROUP BY c.publication_id ORDER BY score DESC LIMIT %s")
-            return self.r._pubs_from_chunks(sql, [query, *dp, limit], cap=limit)
+            return self.r._families_from_chunks(
+                sql, [query, *dp, limit * FAMILY_OVERFETCH], limit)
         kc = _kind_in(kinds)
         kind_clause = (kc + " AND ") if kc else ""
         sql = (f"WITH tq AS (SELECT to_tsquery('english', NULLIF(array_to_string(ARRAY("
@@ -212,7 +214,8 @@ class PostgresLexicalBackend(LexicalBackend):
                f"FROM chunks c JOIN publications p ON p.id=c.publication_id, tq "
                f"WHERE tq.q IS NOT NULL AND {kind_clause}"
                f"c.tsv @@ tq.q {dc} GROUP BY c.publication_id ORDER BY score DESC LIMIT %s")
-        return self.r._pubs_from_chunks(sql, [query, *dp, limit], cap=limit)
+        return self.r._families_from_chunks(
+            sql, [query, *dp, limit * FAMILY_OVERFETCH], limit)
 
     def search(self, query, *, fields=(), filters=None, limit=1000, operator="or",
                max_terms=None, rank="density"):
@@ -327,5 +330,6 @@ class LexicalMixin:
                f"JOIN publications p ON p.id=pa.publication_id WHERE ({like}) {dc} "
                f"GROUP BY p.id ORDER BY score DESC LIMIT %s")
         with self.conn.cursor() as c:
-            c.execute(sql, params + [self._cap()])
-            return [(r["publication_id"], r["score"]) for r in c.fetchall()]
+            c.execute(sql, params + [self._cap() * FAMILY_OVERFETCH])
+            rows = [(r["publication_id"], r["score"]) for r in c.fetchall()]
+        return self.collapse_pairs(rows, self._cap())

@@ -12,6 +12,8 @@ from __future__ import annotations
 import os
 
 from config import SEED_CPC
+
+from .base import FAMILY_OVERFETCH
 from .legal import _date_clause
 
 #  How many of the subject's own classification symbols the CPC channel may ask about. Its own
@@ -84,5 +86,6 @@ class CpcMixin:
                f"FROM classifications cl JOIN publications p ON p.id=cl.publication_id "
                f"WHERE ({like}) {dc} GROUP BY p.id ORDER BY score DESC LIMIT %s")
         with self.conn.cursor() as c:
-            c.execute(sql, params + [self._cap()])
-            return [(r["publication_id"], r["score"]) for r in c.fetchall()]
+            c.execute(sql, params + [self._cap() * FAMILY_OVERFETCH])
+            rows = [(r["publication_id"], r["score"]) for r in c.fetchall()]
+        return self.collapse_pairs(rows, self._cap())

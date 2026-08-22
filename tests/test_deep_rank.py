@@ -476,7 +476,12 @@ def test_short_documents_get_a_pool_they_can_compete_in(monkeypatch):
     and nine cited documents the all-kinds channel never returned appeared in the second."""
     r = object.__new__(retrieval.Retriever)
     seen = []
+    #  The chunk-ranking channels cap at distinct FAMILIES now, so they call
+    #  `_families_from_chunks`. Both seams are captured; this test is about which chunk kinds the
+    #  SQL selects, which is unaffected by where the cap is applied.
     monkeypatch.setattr(r, "_pubs_from_chunks",
+                        lambda sql, params, cap=None: seen.append(sql) or [])
+    monkeypatch.setattr(r, "_families_from_chunks",
                         lambda sql, params, cap=None: seen.append(sql) or [])
     r.channel_brief_dense([0.1, 0.2], None, None)
     assert len(seen) == 1

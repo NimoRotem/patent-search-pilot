@@ -19,6 +19,13 @@ import db
 CHUNK_FETCH = 4000     # chunks pulled before aggregating to publications
 PUB_CAP = 1000         # per-channel publication cap (the spec's ~1000 width)
 
+# Channels whose cap is a SQL LIMIT cannot collapse families before the database has already
+# truncated. They over-fetch by this factor and collapse the surplus down to `cap` FAMILIES.
+# 4 because the corpus averages well under four members per family, so a channel that wants 1,000
+# families reads 4,000 rows to find them; raising it costs read time for families that are not
+# there, and lowering it lets a heavily-published family exhaust the surplus and short the cap.
+FAMILY_OVERFETCH = int(os.environ.get("RETRIEVAL_FAMILY_OVERFETCH", "4"))
+
 # ---- funnel width -------------------------------------------------------------------------
 # MEASURED (RECALL_STUDY_2026-08-02.md): CHUNK_FETCH=4000 aggregates to **893 distinct
 # publications** on today's corpus, i.e. 0.018% of 4.95M, and PUB_CAP never binds. The note that
@@ -46,6 +53,50 @@ SEED_MAX_SCAN_TUPLES = int(os.environ.get("SEED_MAX_SCAN_TUPLES", "60000"))
 
 def _vec(e):
     return "[" + ",".join(f"{x:.6f}" for x in e) + "]"
+
+
+# ---- per-request scan profile ---------------------------------------------------------------
+# `webapp.retriever()` hands every request the SAME process-global Retriever. `search()` used to
+# record its width on `self._wide`, and each fan-out task then read that attribute again at
+# EXECUTION time. Two overlapping calls on that one object therefore flipped each other's HNSW
+# profile: a wide seed pass could silently run at the narrow ef_search and max_scan_tuples, or a
+# narrow element pass could run wide and take the seed budget with it. Neither shows up as an
+# error; the seed pass just returns a thinner pool than the funnel was sized for.
+#
+# So the width a search decided on is carried per TASK instead, captured when the task is created
+# and restored when it finishes. `self._wide` is left alone for sequential callers, `scan_profile`
+# and `fork`; it is simply no longer what the fan-out reads.
+_PROFILE = threading.local()
+
+
+def active_wide(default=False):
+    """The scan profile THIS task captured, or `default` when there is no active context."""
+    v = getattr(_PROFILE, "wide", None)
+    return default if v is None else v
+
+
+class profile_context:
+    """Bind a scan profile for the duration of a block, then restore the previous one.
+
+    Restored on the way out of an exception as well as a return, so a search that raises cannot
+    leave a stale wide setting behind for whatever runs next on this thread. The pool threads are
+    reused for the life of the process, so "whatever runs next" is a real search, not a hypothesis.
+    """
+
+    __slots__ = ("wide", "prev")
+
+    def __init__(self, wide):
+        self.wide = bool(wide)
+        self.prev = None
+
+    def __enter__(self):
+        self.prev = getattr(_PROFILE, "wide", None)
+        _PROFILE.wide = self.wide
+        return self
+
+    def __exit__(self, *exc):
+        _PROFILE.wide = self.prev
+        return False
 
 
 # ---- per-thread connections ----------------------------------------------------------------
@@ -127,12 +178,23 @@ class RetrieverBase:
         own = self.__dict__.get("_conn")
         if own is not None and threading.get_ident() == self.__dict__.get("_conn_tid"):
             return own
-        return worker_conn(getattr(self, "_wide", False))
+        #  The task's OWN captured width, never the shared attribute, which another request may
+        #  have flipped between this task being created and being run.
+        return worker_conn(self._profile_wide)
 
     @conn.setter
     def conn(self, value):
         self.__dict__["_conn"] = value
         self.__dict__["_conn_tid"] = threading.get_ident()
+
+    @property
+    def _profile_wide(self):
+        """This task's captured scan profile, falling back to the instance attribute.
+
+        The fallback is what keeps sequential callers, the owning thread and `fork()` behaving
+        exactly as before: outside a fan-out there is no context, so `self._wide` is used.
+        """
+        return active_wide(self.__dict__.get("_wide", False))
 
     def scan_profile(self, wide=False):
         """Set this connection's ANN search width. `wide` is for whole-invention seed passes.
@@ -146,10 +208,10 @@ class RetrieverBase:
         _apply_scan_profile(self.conn, self._wide)
 
     def _fetch(self):
-        return SEED_CHUNK_FETCH if getattr(self, "_wide", False) else CHUNK_FETCH
+        return SEED_CHUNK_FETCH if self._profile_wide else CHUNK_FETCH
 
     def _cap(self):
-        return SEED_PUB_CAP if getattr(self, "_wide", False) else PUB_CAP
+        return SEED_PUB_CAP if self._profile_wide else PUB_CAP
 
     def fork(self):
         """Return a search worker with its own DB connection and the shared read-only family map."""
@@ -162,6 +224,20 @@ class RetrieverBase:
             own.close()
 
     # -- aggregation -------------------------------------------------------------------------
+    def _families_from_chunks(self, sql, params, cap):
+        """Run a chunk-level ranking query and cap it at `cap` DISTINCT FAMILIES.
+
+        The family-aware replacement for `_pubs_from_chunks` in the retrieval channels. The old
+        order was chunk hits -> best publication -> channel cap -> fusion -> family dedup, so a
+        family with forty members in the corpus could spend forty of a channel's slots and then be
+        collapsed to one anyway. Rows arrive best-first, so the first member seen is the one that
+        carried the evidence and the one that inherits the family's rank, which is the same member
+        `dedup_family` would have picked after fusion.
+        """
+        with self.conn.cursor() as c:
+            c.execute(sql, params)
+            return self.collapse_rows(c.fetchall(), cap)
+
     def _pubs_from_chunks(self, sql, params, cap=PUB_CAP):
         """Run a chunk-level ranking query, aggregate to best-per-publication, cap.
 

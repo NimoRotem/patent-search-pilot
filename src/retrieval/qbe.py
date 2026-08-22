@@ -22,4 +22,5 @@ class QbeMixin:
         for v in vecs[:per]:
             for pid, sc in self.channel_dense_raw(v, subject, mode, limit=500):
                 agg[pid] = max(agg.get(pid, 0), sc)
-        return sorted(agg.items(), key=lambda t: t[1], reverse=True)
+        pooled = sorted(agg.items(), key=lambda t: t[1], reverse=True)
+        return self.collapse_pairs(pooled, self._cap())

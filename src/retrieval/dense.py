@@ -26,7 +26,7 @@ class DenseMixin:
                f"WHERE c.embedding IS NOT NULL {dc} "
                f"ORDER BY c.embedding <=> %s::vector LIMIT %s")
         v = _vec(qvec)
-        return self._pubs_from_chunks(sql, [v, *dp, v, self._fetch()], cap=self._cap())
+        return self._families_from_chunks(sql, [v, *dp, v, self._fetch()], self._cap())
 
     def channel_claim_dense(self, qvec, subject=None, mode=None):
         """Semantic search restricted to patent claims (the claim-search product mode)."""
@@ -36,7 +36,7 @@ class DenseMixin:
                f"WHERE c.embedding IS NOT NULL AND c.kind IN ('claim_own','claim_resolved') {dc} "
                f"ORDER BY c.embedding <=> %s::vector LIMIT %s")
         v = _vec(qvec)
-        return self._pubs_from_chunks(sql, [v, *dp, v, self._fetch()], cap=self._cap())
+        return self._families_from_chunks(sql, [v, *dp, v, self._fetch()], self._cap())
 
     def channel_brief_dense(self, qvec, subject=None, mode=None):
         """Semantic search restricted to the ABSTRACT and WHOLE-document chunks.
@@ -63,7 +63,7 @@ class DenseMixin:
                f"WHERE c.embedding IS NOT NULL AND c.kind IN ('abstract','whole') {dc} "
                f"ORDER BY c.embedding <=> %s::vector LIMIT %s")
         v = _vec(qvec)
-        return self._pubs_from_chunks(sql, [v, *dp, v, self._fetch()], cap=self._cap())
+        return self._families_from_chunks(sql, [v, *dp, v, self._fetch()], self._cap())
 
     def channel_dense_raw(self, vecstr, subject=None, mode=None, limit=None):
         limit = self._fetch() if limit is None else limit
@@ -71,7 +71,7 @@ class DenseMixin:
         sql = (f"SELECT c.publication_id, 1-(c.embedding <=> %s::vector) AS score FROM chunks c "
                f"JOIN publications p ON p.id=c.publication_id WHERE c.embedding IS NOT NULL {dc} "
                f"ORDER BY c.embedding <=> %s::vector LIMIT %s")
-        return self._pubs_from_chunks(sql, [vecstr, *dp, vecstr, limit], cap=self._cap())
+        return self._families_from_chunks(sql, [vecstr, *dp, vecstr, limit], self._cap())
 
     def channel_crosslingual(self, alt_query_vecs, subject=None, mode=None):
         """Dense search from translated/alternate-language query embeddings (agent-supplied)."""
@@ -79,7 +79,8 @@ class DenseMixin:
         for v in alt_query_vecs:
             for pid, sc in self.channel_dense_raw(_vec(v), subject, mode, limit=800):
                 agg[pid] = max(agg.get(pid, 0), sc)
-        return sorted(agg.items(), key=lambda t: t[1], reverse=True)
+        pooled = sorted(agg.items(), key=lambda t: t[1], reverse=True)
+        return self.collapse_pairs(pooled, self._cap())
 
     def query_translations(self, query):
         """Translate the query to the OTHER language (DE<->EN) and embed, cached per query.

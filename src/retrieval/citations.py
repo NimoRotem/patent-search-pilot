@@ -8,6 +8,7 @@ and Y on 1,180,521, which are an evaluation label source at a scale nothing here
 """
 from __future__ import annotations
 
+from .base import FAMILY_OVERFETCH
 from .legal import _date_clause
 
 
@@ -33,5 +34,6 @@ class CitationMixin:
             f"SELECT u.id AS publication_id, u.score FROM u JOIN publications p ON p.id=u.id "
             f"WHERE true {dc} ORDER BY u.score DESC LIMIT %s")
         with self.conn.cursor() as c:
-            c.execute(sql, list(seeds) + list(dp) + [self._cap()])
-            return [(r["publication_id"], float(r["score"])) for r in c.fetchall()]
+            c.execute(sql, list(seeds) + list(dp) + [self._cap() * FAMILY_OVERFETCH])
+            rows = [(r["publication_id"], float(r["score"])) for r in c.fetchall()]
+        return self.collapse_pairs(rows, self._cap())
