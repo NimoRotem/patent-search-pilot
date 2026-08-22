@@ -218,6 +218,22 @@ def test_budget_refuses_a_reservation_larger_than_the_room_left():
     assert ledger.reserve("zztest", 1.0, cap=5.0, period=TEST_PERIOD)["granted"] is True
 
 
+def test_a_refused_reservation_still_reports_the_configured_cap():
+    """Defect injection: drop the UPDATE from the refusal path in ledger.reserve and this goes red.
+
+    The stored cap is only written when a reservation SUCCEEDS. Raise the cap after the budget is
+    spent and every later call is refused, so the row keeps the old cap for ever and `status`
+    reports a limit that is not the one being enforced. Enforcement is correct either way, because
+    the WHERE clause carries the live value; this is the ledger telling the truth.
+    """
+    for _ in range(3):
+        assert ledger.reserve("zztest", 1.0, cap=3.0, period=TEST_PERIOD)["granted"]
+    refused = ledger.reserve("zztest", 5.0, cap=4.0, period=TEST_PERIOD)
+    assert refused["granted"] is False and refused["cap"] == 4.0
+    state = {b["provider"]: b for b in ledger.budget_state(period=TEST_PERIOD)}
+    assert state["zztest"]["cap"] == 4.0, "the stored cap is not the configured one"
+
+
 def test_budget_refund_puts_the_reservation_back():
     ledger.reserve("zztest2", 3.0, cap=3.0, period=TEST_PERIOD)
     assert ledger.reserve("zztest2", 1.0, cap=3.0, period=TEST_PERIOD)["granted"] is False
@@ -651,7 +667,7 @@ def test_corpus_provider_answers_from_a_family_sibling():
                   AND NOT EXISTS (SELECT 1 FROM paragraphs g WHERE g.publication_id=p.id)
                   AND EXISTS (SELECT 1 FROM publications q JOIN claims c2 ON c2.publication_id=q.id
                                WHERE q.simple_family_id=p.simple_family_id AND q.id<>p.id)
-                LIMIT 1""")
+                ORDER BY p.id LIMIT 1""")
         row = cur.fetchone()
     if row is None:
         pytest.skip("no starved publication with a texted sibling in this corpus")

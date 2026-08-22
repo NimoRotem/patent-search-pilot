@@ -83,8 +83,13 @@ def reserve(provider: str, amount: float, cap: float, period: str = None) -> dic
         row = cur.fetchone()
         if row is not None:
             return {"granted": True, "spent": float(row["spent"]), "cap": float(row["cap"])}
-        cur.execute(f"SELECT spent, cap FROM {BUDGET} WHERE provider=%s AND period=%s",
-                    (provider, period))
+        #  Refused. Still write the configured cap through, or the stored one stays at whatever it
+        #  was when the last reservation SUCCEEDED and `status` reports a cap that is no longer
+        #  the one being enforced. The WHERE clause above always uses the live value, so this is
+        #  about the ledger telling the truth rather than about enforcement.
+        cur.execute(f"UPDATE {BUDGET} SET cap=%s, updated_at=now() "
+                    f"WHERE provider=%s AND period=%s RETURNING spent, cap",
+                    (cap, provider, period))
         row = cur.fetchone() or {}
         return {"granted": False, "spent": float(row.get("spent") or 0.0),
                 "cap": float(row.get("cap") or cap)}

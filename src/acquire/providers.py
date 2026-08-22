@@ -231,9 +231,16 @@ class CorpusProvider(Provider):
                         "abstract": row["abstract"] or "", "donor": ""}
             if not self.allow_family_donor or not row["simple_family_id"]:
                 return None
+            #  Only siblings that ACTUALLY hold text. Without the EXISTS filter the 20 row
+            #  budget is spent on whichever siblings the planner happens to return first, and a
+            #  large family whose one texted member is not among them reads as a miss. Both
+            #  EXISTS clauses are index driven (ix_claims_pub, ix_para_pub).
             cur.execute(
-                "SELECT id, publication_number FROM publications WHERE simple_family_id=%s "
-                "AND id <> %s LIMIT %s",
+                "SELECT id, publication_number FROM publications q "
+                "WHERE q.simple_family_id=%s AND q.id <> %s "
+                "  AND (EXISTS (SELECT 1 FROM claims c WHERE c.publication_id=q.id) "
+                "    OR EXISTS (SELECT 1 FROM paragraphs g WHERE g.publication_id=q.id)) "
+                "ORDER BY q.id LIMIT %s",
                 (row["simple_family_id"], row["id"], self.MAX_SIBLINGS))
             best, best_len = None, 0
             for sib in cur.fetchall() or []:
