@@ -57,20 +57,79 @@ bare `CREATE TRIGGER`, which has no `IF NOT EXISTS` form here, so a second run *
 ### Live corpus database ledger, 2026-08-22
 
 ```
-adopted: 001 003 004 005 006 007 008 009
-pending: 002
+adopted: 001 003 004 005 006 007 008 009 014
+pending: 002 010 015
 009 checksum: 954e4ec3af83774db8da9af40581e392b62337e8031f1493d6b2db485a3633eb
+014 checksum: 80af56ea66ca4340239f4ec89a7d2747c790d34ebcec4b5023c53fbf36a48e32
+014 adopted:  2026-08-22 17:06:34+00
 ```
 
-The adoption ran from committed integration checkpoint `dbe01d7`. Every selected migration probed
-`all`; the runner recorded the files and checksums without executing their DDL. A subsequent
-`migrate.py status` reports those eight versions applied and only 002 pending.
+The first adoption ran from committed integration checkpoint `dbe01d7`. Every selected migration
+probed `all`; the runner recorded the files and checksums without executing their DDL. **014 was
+adopted at the workstream C integration**, on the same terms and for the same reason: its four
+tables and six indexes were created by an explicit operator command and `presence()` classifies it
+`all`.
+
+The three that remain pending are pending for three different reasons, and only one of them is
+"nobody has got to it yet".
+
+`015` probes `all` and is simply not adopted yet. One command, whenever someone is confident.
+
+`010` probes `none`, so it would have to be APPLIED and not adopted. **It must not be applied
+yet.** Workstream F's unmerged branch writes a different file at the same path and the same
+number, and both create `corpus_niche_definition` with disjoint columns and different primary
+keys. Both use `CREATE TABLE IF NOT EXISTS`, so whichever runs first silently wins and the other
+workstream reads a table it does not recognise. Applying 010 now decides that collision by
+accident rather than on purpose.
 
 `002` remains pending for a real reason: `ix_chunks_hnsw` and `ix_chunks_tsv` exist, but
 `ix_bench1024_hnsw` and `ix_bench3072_hnsw` do not. Those index the dimension sweep benchmark
 tables, which hold 1,308 rows each. Do not adopt partial 002 or insert a ledger row by hand. Apply
 it through the runner only after the active corpus backfill stops competing for database resources,
 or split the optional benchmark indexes into a later migration before 002 is recorded.
+
+Verified against the live database on 2026-08-22 by workstream H, read only:
+
+| Object | State | Measured |
+|---|---|---|
+| `ix_chunks_hnsw` | present | 94 GB |
+| `ix_chunks_tsv` | present | |
+| `ix_bench1024_hnsw` | **missing** | table `bench_emb_1024` holds 1,308 rows, `embedding` is `vector(1024)` |
+| `ix_bench3072_hnsw` | **missing and impossible** | `bench_emb_3072.embedding` is `vector(3072)`, and pgvector 0.8.5 refuses an hnsw index above 2,000 dimensions |
+
+Every ledger row carries `adopted = true` and `applied_at = 2026-08-22 10:05:54+00`.
+
+### The 002 decision, taken 2026-08-22 by workstream H
+
+**Not today.** `patents-desc-backfill` has been running for over six hours and must stay running,
+and V3 schema integration is still moving. Nothing in 002 is urgent: both indexes the search path
+actually uses are already built.
+
+**When it is taken, the route is split, not apply as written.** The two production indexes in 002
+already exist, so their `CREATE INDEX IF NOT EXISTS` are catalog no-ops. The only real work left in
+the file is the trailing `ANALYZE chunks` over 27.6M rows and the two benchmark HNSW builds over
+1,308 rows each, and the `ANALYZE` is the part that competes with the backfill. So:
+
+1. Move `ix_bench1024_hnsw`, `ix_bench3072_hnsw` and `ANALYZE chunks` into `sql/016_bench_indexes.sql`.
+2. `migrate.py adopt --only 002`, which executes no DDL at all and records the truth: both of its
+   remaining objects are present, so it probes `all` and adoption is honest rather than partial.
+3. Apply 016 at a quiet moment, when its cost is one small index build and one `ANALYZE` and
+   nothing else is contending.
+
+**Correction to step 3, measured 2026-08-22 against the live catalog.** It is ONE index build, not
+two. `bench_emb_3072.embedding` is `vector(3072)` and pgvector 0.8.5 caps the hnsw access method at
+2,000 dimensions, so `CREATE INDEX ix_bench3072_hnsw ... USING hnsw` cannot succeed on any database,
+ever, not merely not today. **002 as written is unappliable**, which means `run.sh`'s final
+`apply --only 002` would fail on a fresh install and `presence()` will report `partial` for ever.
+The split is therefore not an optimisation, it is the repair. When 016 is written, that index needs
+either a different access method (`ivfflat` has no such limit) or to be dropped along with the
+3072-dimension sweep it belonged to.
+
+Editing 002 is safe precisely because it has no ledger row. That is the whole reason the split is
+available: the moment 002 is recorded, its bytes are frozen like every other applied migration.
+
+Nobody should execute any of this without saying so first. Migration application against the live
+database is one deliberate decision, and today's answer is no.
 
 ## Sentinels
 
@@ -86,22 +145,70 @@ triggers. Two details that are not obvious:
   present, which pinned 008 at `partial` for ever and would have blocked adoption permanently for
   a reason nobody could see. Found by probing the live database, not by reading the code.
 
-## Integration renumbering map
+## Version assignments, V3 rebuild
 
-Three workstreams each started with a `sql/009_*.sql`. The assigned integration versions are:
+Workstream H owns this table. It is the authority. Take a number from here before you name a file,
+and if you need one that is not listed, ask H rather than picking the next one you see: two agents
+picking the same next one is how the last collision happened, and it happened again on 2026-08-22
+(see below). `discover()` turns a duplicate into a hard error, but only after both files exist.
 
-| Branch | File today | Becomes | Contents |
+| Version | File | Owner | State |
 |---|---|---|---|
-| durable execution | `sql/009_durable_runs.sql` | **`sql/009_durable_runs.sql`** (unchanged) | `search_runs`, `search_stages`, `search_queries`, `retrieval_hits`, `search_candidates`, `provider_usage`, `shard_leases`, `corpus_ingest_queue` |
-| `rebuild/v3-corpus` | `sql/009_corpus_release.sql` | **`sql/010_corpus_release.sql`** | `corpus_niche_definition`, `corpus_release`, `corpus_release_active`, `corpus_release_member`, `corpus_release_shard`, `chunks_release`, `corpus_fetch_ledger` |
-| `rebuild/v3-eval` | `sql/009_eval_gold_xy.sql` | **`sql/011_eval_gold_xy.sql`** | `eval_gold_set`, `eval_gold_subject`, `eval_gold_pair`, `eval_scorecard` |
+| 001 to 008 | legacy baseline | deployed | adopted on the live database |
+| 009 | `sql/009_durable_runs.sql` | durable execution | adopted on the live database |
+| **010** | `sql/010_corpus_release.sql` | workstreams B and F, **contested** | B's version integrated; F's unmerged version writes the same path. presence=none, NOT applied |
+| **011** | `sql/011_eval_gold_xy.sql` | **unclaimed** | reserved, see below |
+| **012** | `sql/012_run_admission.sql` | workstream A, durable worker | on `origin/Nimo/v3-worker-cutover` |
+| **013** | `sql/013_run_side_effects.sql` | workstream A, durable worker | on `v3/A-durable-worker`, **also claimed by workstream D**, D renumbers |
+| **014** | `sql/014_fulltext_acquisition.sql` | workstream C, full text | integrated and **adopted** on the live database |
+| **015** | `sql/015_draft_turn_candidates.sql` | workstream H | integrated, see the 006 incident |
+| **016** | `sql/016_bench_indexes.sql` | workstream H | reserved for the 002 split |
+| **017** and above | free | | ask H. Workstream D takes 017 when it renumbers off 013 |
 
-Order is durable, then corpus, then eval, because the corpus release tables are the landing zone
-the backfill already writes into and eval's gold set is the last thing to depend on either.
+Two corrections to what this document used to say. The branches it named, `rebuild/v3-corpus` and
+`rebuild/v3-eval`, **do not exist**; the work moved to `v3/F-corpus-release` and, in eval's case,
+nowhere. And 011 is **claimed by nobody**: no workstream in the V3 build owns the eval gold set, so
+011 is held empty rather than reassigned, because `eval/RESULTS.md` and the gold set it describes
+are still the thing any recall claim is measured against. Do not take 011 for something else.
 
-The durable migration is now integrated at 009. Corpus and evaluation files must be renamed at
-their own integration points. Once renamed, `discover()` enforces the rest: another numeric alias
-becomes a hard error instead of a coincidence nobody notices.
+Ordering is durable, then corpus, then retrieval, then infrastructure, because the corpus release
+tables are the landing zone the backfill already writes into.
+
+### 014 is ADOPTED, not applied, and why that is not a precedent
+
+`sql/014_fulltext_acquisition.sql` is entirely `CREATE TABLE IF NOT EXISTS` and
+`CREATE INDEX IF NOT EXISTS` over four new tables that nothing else reads, and none of its indexes
+touches a live table. Its objects were created on the live database on 2026-08-22 by an explicit
+operator command, `ops/fulltext_acquire.py ensure-schema`, rather than by the runner. That is a
+deliberate exception and not a pattern to copy: it is an operator command, it is not called at
+worker startup, and the worker refuses to start if the tables are absent
+(`acquire.tasks.require_schema`).
+
+Because the objects are already there, the ledger is made honest with `adopt` and not with `apply`.
+`migrate.py adopt --only 014` records the file and its checksum without executing the DDL. Every
+statement in it is idempotent so `apply` would also succeed rather than raise the way 007 does, but
+adopting is what keeps the ledger a record of what actually ran.
+
+### The 006 incident, 2026-08-22
+
+`sql/006_draft_agent.sql` was adopted into the live ledger at 10:05 with checksum `a7ad2750`. At
+11:08, commit `e4199f5b` on the deployed `Nimo/drafting-ready` line appended a
+`CREATE TABLE IF NOT EXISTS app_draft_turn_candidates` block to that same file, taking it to
+`4347e3df`. From then until this repair, `migrate.py` refused **every** command against the live
+database with `ChecksumDrift` on 006. Not just Draft Studio's: all eight V3 workstreams lost the
+ability to run `migrate.py status`.
+
+The repair is what the runner's own doctrine says: 006 is back to `a7ad2750`, byte for byte, and
+the new table is `sql/015_draft_turn_candidates.sql`. No DDL changed. The table already exists on
+the live database with two rows, created out of band, so 015 probes present.
+
+Consequences worth knowing:
+
+* **`sql/006_draft_agent.sql` is frozen.** Its bytes are the ledger's. It contains three em dashes
+  and they have to stay, because removing one re-breaks the checksum. Fix them in a new migration
+  or not at all.
+* **`sql/002_indexes.sql` is not frozen**, because it has no ledger row yet.
+* An applied migration is history. New schema goes in a new file, always, even a three line table.
 
 `run.sh` now invokes the runner with an absolute virtual-environment path. It applies all light
 migrations through `apply --exclude 002`, performs corpus construction, then applies only 002 at

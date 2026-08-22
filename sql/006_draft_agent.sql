@@ -99,16 +99,6 @@ CREATE INDEX IF NOT EXISTS app_draft_turns_queue_idx
 CREATE INDEX IF NOT EXISTS app_draft_turns_project_idx
   ON app_draft_turns (project_id, turn_no DESC);
 
--- A candidate that cleared structural parsing but exhausted an automatic repair cycle is not a
--- published version. Keep it separately so a leased retry continues from that work and its exact
--- review instead of rebuilding the last published version and repeating the same failed attempt.
-CREATE TABLE IF NOT EXISTS app_draft_turn_candidates (
-  turn_id bigint PRIMARY KEY REFERENCES app_draft_turns(id) ON DELETE CASCADE,
-  snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
-  qa_report jsonb NOT NULL DEFAULT '{}'::jsonb,
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
 -- ---------------------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS app_draft_qa_reports (
   id bigserial PRIMARY KEY,

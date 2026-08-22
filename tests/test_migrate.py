@@ -365,10 +365,38 @@ def test_never_replays_001_or_002_blindly_on_an_unrecorded_database(db, sqldir):
 # --------------------------------------------------------------------------- the real repo
 
 def test_the_repo_migrations_are_discoverable_and_include_figure_images():
-    """Every schema asset must have one deterministic place in the numbered history."""
+    """Every schema asset must have one deterministic place in the numbered history.
+
+    This used to assert the literal list 001 through 009, which made it a tripwire that every
+    workstream adding a migration trips at once for a reason that has nothing to do with their
+    change. What actually has to hold is the property: discovery finds exactly the numbered files
+    on disk, in ascending numeric order, with no duplicate version, and the adopted history 001
+    through 009 is still there and still in front.
+
+    THREE WORKSTREAMS WROTE THIS FIX INDEPENDENTLY (B, C and H) and two of them asserted a
+    CONTIGUOUS run 001..N. That is the stricter property and it is the wrong one: the numbering is
+    deliberately sparse. 011 is held empty because no V3 workstream owns the eval gold set, and
+    012 and 013 belong to a branch that is not integrated yet, so a contiguity assertion goes red
+    on the integrated tree for the one reason that is not a defect. Gaps are a decision; a
+    DUPLICATE is the failure worth catching, and that is what the third assertion below is.
+    """
     real = os.path.join(ROOT, "sql")
     migrations = migrate.discover(real)
-    assert [m.version for m in migrations] == [f"{n:03d}" for n in range(1, 10)]
+    found = [m.version for m in migrations]
+
+    on_disk = sorted(
+        (name for name in os.listdir(real) if migrate.VERSION_RE.match(name)),
+        key=lambda name: int(migrate.VERSION_RE.match(name).group(1)),
+    )
+    assert [m.filename for m in migrations] == on_disk, "discovery must find every numbered file"
+    assert found == sorted(found, key=int), "order must be numeric, so 002 runs before 010"
+    assert len({int(v) for v in found}) == len(found), (
+        "a duplicate version number is never a coincidence, and 009 and 9 are one version")
+
+    adopted_history = [f"{n:03d}" for n in range(1, 10)]
+    assert found[: len(adopted_history)] == adopted_history, (
+        "001 through 009 are recorded in the live ledger and must keep their numbers")
+
     first = next(m for m in migrations if m.version == "001")
     assert ("table", "figure_images") in migrate.sentinels(first.sql)
 

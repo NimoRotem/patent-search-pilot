@@ -117,6 +117,34 @@ The 8-term cap on the broad channel is a measured cost control, not a quality ch
 33.6 s and 8 took 8.5 s, both filling the same 1,000-publication cap. **A backend that is fast
 enough should be given more terms**, which is why `max_terms` is an argument and not a constant.
 
+## The phrase channel is NOT behind this interface, and probably should be
+
+`channel_exact` runs `phraseto_tsquery` directly rather than through a `LexicalBackend`, because
+the interface has no phrase operator: `operator` is `"or"` or `"and"`, and adjacency is a third
+thing. Adding it is workstream C's call, and here is the number that should decide it.
+
+MEASURED 2026-08-22 on the live corpus, EP 3 707 092, four phrases a model produced for that
+subject, each run alone on a cold cache:
+
+```
+'air extraction means'    0.33 s    12 families
+'vacuum seal element'     2.80 s     4 families
+'rigid base element'      3.27 s     5 families
+'contact surface'        97.26 s   300 families
+```
+
+One generic two-word phrase was 94% of the channel's 103 s. The cost is the aggregation over the
+whole match set, which the 1,200-row limit then truncates, so a phrase matching tens of thousands
+of chunks pays for a ranking that is thrown away. `retrieval.exact.PHRASE_MAX_CHUNKS` now declines
+such a phrase after a bounded probe (`EXACT_PHRASE_MAX_CHUNKS`, default 20,000), which took the
+four-phrase channel from 9.17 s warm to 2.96 s and, on that subject, ALSO recovered a gold family
+at rank 500 that the generic phrase's 300 families had displaced.
+
+**A Tantivy phrase query does not have this shape**, so the guard is a `to_tsvector` cost control
+and not a quality rule. If C exposes phrases, it should be a `LexicalBackend` operator
+(`operator="phrase"` is the obvious spelling), and the threshold should be raised or turned off for
+that backend rather than inherited from this one.
+
 ## What "available" means
 
 `available()` gating exists because an empty result set and a genuine miss are indistinguishable to
