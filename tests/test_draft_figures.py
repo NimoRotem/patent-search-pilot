@@ -88,6 +88,9 @@ def test_semantic_response_schema_is_inline_for_vertex():
     assert '"$ref"' not in leader and '"$defs"' not in leader
     marked = json.dumps(draft_figures.MARKED_ANCHOR_RESPONSE_SCHEMA)
     assert '"$ref"' not in marked and '"$defs"' not in marked
+    marked_fields = draft_figures.MARKED_ANCHOR_RESPONSE_SCHEMA["properties"]["labels"][
+        "items"]["properties"]
+    assert {"repairable", "suggested_x", "suggested_y"} <= set(marked_fields)
 
 
 def test_image_generation_uses_its_dedicated_location_client(monkeypatch):
@@ -248,6 +251,85 @@ def test_marked_anchor_consensus_rejects_a_dot_on_neighboring_hatching():
     assert audit["ok"] is False
     assert audit["incorrect"] == ["26"]
     assert audit["review_count"] == 2
+
+
+def test_marked_anchor_repair_maps_a_crop_suggestion_back_to_the_source():
+    raw = blank_png(1000, 1000)
+    anchors = [{"numeral": "26", "x": 500, "y": 500, "visible": True,
+                "evidence": "bearing face"}]
+    audit = {
+        "incorrect": ["26"],
+        "labels": [{
+            "numeral": "26", "correct": False, "repairable": True,
+            "evidence": "the bearing face is to the right of the marked center",
+            "suggested_x": 750, "suggested_y": 500,
+        }],
+    }
+
+    repaired, changed = draft_figures._repair_marked_anchors(raw, anchors, audit)
+
+    assert changed is True
+    assert 615 <= repaired[0]["x"] <= 625
+    assert repaired[0]["y"] == 500
+
+
+def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypatch):
+    raw = blank_png(1000, 1000)
+    initial = [{"numeral": "26", "x": 500, "y": 500,
+                "visible": True, "evidence": "bearing face"}]
+    accepted_pixel = {
+        "ok": True, "inspected": True,
+        "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [], "allowed_spaces": [], "ungrounded": [],
+    }
+    monkeypatch.setattr(
+        draft_figures, "_ground_anchors_to_pixels",
+        lambda _png, _numerals, anchors: ([dict(item) for item in anchors],
+                                           dict(accepted_pixel)))
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["26"], "figure_label": "FIG. 2",
+        "other_text": [], "confidence": 0.99})
+    leader_calls = []
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: (
+        leader_calls.append(True) or {
+            "ok": True, "inspected": True, "errors": [], "incorrect": [],
+            "labels": [{"numeral": "26", "correct": True,
+                        "evidence": "leader reaches the marked point"}],
+        }))
+    marked_calls = []
+
+    def inspect_marked(_png, **kwargs):
+        marked_calls.append([dict(item) for item in kwargs["anchors"]])
+        if len(marked_calls) == 1:
+            return {
+                "ok": False, "inspected": True,
+                "errors": ["The center is below the bearing-face boundary."],
+                "incorrect": ["26"], "missing": [],
+                "labels": [{
+                    "numeral": "26", "correct": False, "repairable": True,
+                    "evidence": "the bearing face is right of center",
+                    "suggested_x": 750, "suggested_y": 500,
+                }],
+            }
+        return {
+            "ok": True, "inspected": True, "errors": [], "incorrect": [],
+            "labels": [{
+                "numeral": "26", "correct": True, "repairable": True,
+                "evidence": "the center is on the bearing face",
+                "suggested_x": 500, "suggested_y": 500,
+            }],
+        }
+
+    monkeypatch.setattr(draft_figures, "inspect_marked_anchors", inspect_marked)
+
+    _png, labels, leaders, anchors, pixel = draft_figures._compose_checked_sheet(
+        raw, label="FIG. 2", caption="bearing face", numerals=["26 = bearing face"],
+        semantic={"anchors": initial, "pixel_anchor_audit": dict(accepted_pixel)})
+
+    assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
+    assert len(marked_calls) == 2 and len(leader_calls) == 2
+    assert anchors[0]["x"] > 600
+    assert leaders["marked_anchor_audit"]["ok"] is True
 
 
 def test_marked_anchor_montage_preserves_the_endpoint_pixel_inside_a_red_ring():
