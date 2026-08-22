@@ -56,7 +56,7 @@ from .citations import CitationMixin
 from .cpc import CpcMixin
 from .dense import DenseMixin
 from .exact import ExactMixin
-from .family import FamilyMixin
+from .family import FamilyMixin, is_external_id
 from .fusion import RERANK_TOP, FusionMixin
 from .legal import as_mode
 from .lexical import LexicalMixin
@@ -488,7 +488,14 @@ class Retriever(DenseMixin, LexicalMixin, ExactMixin, CpcMixin, CitationMixin, Q
         # seeds are one per family too and citation and qbe expand around the right member.
         ch = self.canonicalise(ch)
         base_fused = self.rrf({k: v for k, v in ch.items()})
-        strong = [pid for pid, _, _ in base_fused[:40]]
+        #  LOCAL ids only. `citation` joins `publications.id` and `qbe` reads that publication's
+        #  chunks, so an external id is not a weaker seed, it is a bigint cast error: measured on a
+        #  live search the moment the global tier was registered, `channel_citation_family` failed
+        #  with `invalid input syntax for type bigint: "fed:EP9999999"` and soft-degraded to zero
+        #  hits, while `qbe` survived only because it reads the first five seeds and the external
+        #  one happened to sit lower. Top 40 of the LOCAL rows, so the seed count does not shrink
+        #  just because the global tier answered.
+        strong = [pid for pid, _, _ in base_fused if not is_external_id(pid)][:40]
         args2 = args.with_seeds(strong)
         p2 = [(name, channels.thunk(self, name, args2))
               for name in p2_kinds if channels.has_input(name, args2)]

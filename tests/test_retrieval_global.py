@@ -207,6 +207,68 @@ def test_a_slow_global_backend_does_not_serialise_the_local_channels():
     assert not started.is_set()
 
 
+# =========================================================================== local ids only
+
+def test_an_external_id_never_reaches_the_phase_two_seeds():
+    """`citation` joins publications.id and `qbe` reads that publication's chunks, so an external
+    id is not a weaker seed, it is a bigint cast error.
+
+    MEASURED on a live search the moment the global tier was registered:
+    `channel_citation_family` failed with `invalid input syntax for type bigint:
+    "fed:EP9999999"` and soft-degraded to zero hits, while `qbe` survived only because it reads
+    the first five seeds and the external one happened to sit lower. The global tier is what made
+    this reachable: the federated bridge fuses AFTER the local search and never seeds phase 2.
+    """
+    seen = {}
+
+    def p2(tag):
+        def run(seeds, *a, **k):
+            seen[tag] = list(seeds)
+            return []
+        return run
+
+    r = _double(channel_citation_family=p2("cit"), channel_qbe=p2("qbe"))
+    r._fam = {1: "F1", 2: "F2"}
+    #  Scored above every local hit, so it leads the fused list and would be seed number one.
+    _search(r, testing.SyntheticGlobal(hits=[("fed:EP1", 99.0)]),
+            config=("dense", "bm25", "global", "citation", "qbe"))
+    assert seen["cit"], "phase 2 got no seeds at all"
+    assert not any(isinstance(p, str) and p.startswith("fed:") for p in seen["cit"]), seen["cit"]
+    assert seen["qbe"] == seen["cit"]
+    assert 1 in seen["cit"] and 2 in seen["cit"], "the local seeds were lost with the external one"
+
+
+def test_the_seed_count_does_not_shrink_because_the_global_tier_answered():
+    """Top 40 of the LOCAL rows, not the local rows within the top 40."""
+    seen = {}
+
+    def p2(seeds, *a, **k):
+        seen["s"] = list(seeds)
+        return []
+
+    locals_ = [(i, float(100 - i)) for i in range(1, 61)]
+    r = _double(channel_dense=lambda *a, **k: locals_, channel_bm25=lambda *a, **k: [],
+                channel_citation_family=p2, channel_qbe=lambda *a, **k: [])
+    r._fam = {i: f"F{i}" for i in range(1, 61)}
+    ext = [(f"fed:EP{i}", float(1000 - i)) for i in range(20)]
+    _search(r, testing.SyntheticGlobal(hits=ext),
+            config=("dense", "bm25", "global", "citation", "qbe"))
+    assert len(seen["s"]) == 40, len(seen["s"])
+    assert all(not isinstance(p, str) for p in seen["s"])
+
+
+def test_a_local_member_represents_its_family_even_when_the_external_one_ranks_higher():
+    """An external id has a title and an abstract at best; a local row has chunks, claims, dates
+    and figures. Letting the external one represent a family this corpus holds throws all of that
+    away for a row the reader cannot open."""
+    r = _double(channel_dense=lambda *a, **k: [(1, 1.0)], channel_bm25=lambda *a, **k: [])
+    r._fam = {1: "F1"}
+    res = _search(r, testing.SyntheticGlobal(hits=[("fed:EP1", 99.0)],
+                                             families={"fed:EP1": "F1"}))
+    reps = [pid for fk, pid, _s, _pr in res.family_ranked if fk == "F1"]
+    assert reps == [1], f"the external id represented a family with a local member: {reps}"
+
+
 # =========================================================================== both tiers at once
 
 def test_the_cold_and_global_tiers_run_together_and_neither_blocks_the_other():

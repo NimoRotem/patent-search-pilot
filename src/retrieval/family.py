@@ -17,6 +17,14 @@ reader is eventually handed.
 """
 from __future__ import annotations
 
+#  A publication id with no local row. `federation.py` coined the convention and
+#  `Result.is_external` tests it; the global tier uses it too, so it needs one spelling.
+EXTERNAL_PREFIX = "fed:"
+
+
+def is_external_id(pid):
+    return isinstance(pid, str) and pid.startswith(EXTERNAL_PREFIX)
+
 
 class FamilyMixin:
     """Family key lookup, collapse and federated-id registration."""
@@ -142,9 +150,17 @@ class FamilyMixin:
         splits its votes between them and neither wins. That is not a hypothetical: a family with
         a US pre-grant publication and its granted patent is the ordinary case in this corpus.
 
-        The representative is the member that appears in the MOST channels, tie-broken by the best
-        rank it reached. Ranks, never scores: channel scores are incomparable, which is the whole
-        reason fusion is rank-based.
+        A LOCAL member always beats an external one, whatever the ranks say. An external id has a
+        title and an abstract at best; a local row has chunks, claims, dates, figures and a family.
+        Letting `fed:EP1234567` represent a family this corpus actually holds throws all of that
+        away for a row the reader cannot open, and every later stage (the cross-encoder, the claim
+        chart, the citability window) then works from the thinner of the two. The global tier made
+        this reachable: it fuses in phase 1, where `canonicalise` runs, which the federated bridge
+        never did.
+
+        Otherwise the representative is the member that appears in the MOST channels, tie-broken by
+        the best rank it reached. Ranks, never scores: channel scores are incomparable, which is the
+        whole reason fusion is rank-based.
         """
         stats = {}
         for res in channel_results.values():
@@ -156,7 +172,9 @@ class FamilyMixin:
                     cur[1] = rank
         out = {}
         for fk, members in stats.items():
-            out[fk] = min(members.items(), key=lambda kv: (-kv[1][0], kv[1][1], str(kv[0])))[0]
+            out[fk] = min(members.items(),
+                          key=lambda kv: (is_external_id(kv[0]), -kv[1][0], kv[1][1],
+                                          str(kv[0])))[0]
         return out
 
     def canonicalise(self, channel_results):

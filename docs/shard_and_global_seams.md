@@ -187,6 +187,17 @@ the citation channel, which runs in the same phase the routing decision starts, 
 would mean waiting for the hot tier. `route()` redistributes that 15%, which is the documented
 behaviour and not a silent loss.
 
+**Phase 2 seeds are LOCAL ids only, and a local member always represents its family.** `citation`
+joins `publications.id` and `qbe` reads that publication's chunks, so an external id is not a
+weaker seed, it is a bigint cast error: measured on a live search the moment a global backend was
+registered, `channel_citation_family` failed with `invalid input syntax for type bigint:
+"fed:EP9999999"` and soft-degraded to zero hits, while `qbe` survived only because it reads the
+first five seeds and the external one happened to sit lower. The federated bridge never hit this
+because it fuses AFTER the local search; the global tier fuses in phase 1. `canonical_reps`
+likewise now prefers a local member over an external one whatever the ranks say, because an
+external id carries a title and an abstract at best and a local row carries chunks, claims, dates
+and figures.
+
 ### The channel names
 
 A cold channel is `cold:<kind>`: `cold:dense`, `cold:bm25`, and so on, one per channel the preset
