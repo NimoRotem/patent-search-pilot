@@ -50,6 +50,25 @@ def _drain(resp, deadline=10.0):
     return out
 
 
+def _first_frame(resp):
+    """Read one immediately available SSE frame and always release its Flask context.
+
+    A live stream has no natural EOF. Sending it through `_drain` leaves that helper's reader
+    thread blocked in the generator after its deadline, which also leaves the request's app
+    context alive. A later anonymous request can then cache `g.patent_user = None` in that leaked
+    context and make an authenticated test appear logged out. The initial SSE state is emitted
+    synchronously, so read just that frame in this thread and close before returning.
+    """
+    try:
+        for chunk in resp.response:
+            frame = chunk.decode("utf-8", "replace").strip()
+            if frame.startswith("data:"):
+                return json.loads(frame[5:].strip())
+        raise AssertionError("the SSE stream ended without an initial data frame")
+    finally:
+        resp.close()
+
+
 # ---- SSE ------------------------------------------------------------------------------------
 def test_sse_headers_are_streaming_safe(app_client):
     r = app_client.get(f"/events/{GOLD}")
@@ -106,9 +125,9 @@ def test_sse_and_status_report_the_same_state(app_client, monkeypatch, tmp_path)
     with webapp._JOB_LOCK:
         webapp._JOBS[slug] = {"status": "partial", "msg": "refining…"}
     poll = app_client.get(f"/status/{slug}").get_json()
-    frames = _drain(app_client.get(f"/events/{slug}"))
+    first = _first_frame(app_client.get(f"/events/{slug}", buffered=False))
     for k in ("ready", "done", "status", "msg"):
-        assert frames[0][k] == poll[k]
+        assert first[k] == poll[k]
     webapp._JOBS.pop(slug, None)
 
 
