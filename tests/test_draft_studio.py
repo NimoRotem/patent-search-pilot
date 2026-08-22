@@ -1052,6 +1052,40 @@ def test_the_independent_reviewer_checks_source_fidelity_before_internal_consist
     assert "disclosure_fidelity" in json.dumps(draft_qa.REVIEW_SCHEMA)
 
 
+def test_drawing_only_repairs_cannot_mutate_patent_text_or_numeral_definitions(tmp_path):
+    draft_workspace.write_sections(tmp_path, GOOD)
+    draft_workspace.write_numerals(tmp_path, NUMERALS)
+    changed_figures = [{**FIGURES[0], "caption": "A corrected geometry brief."}]
+    draft_workspace.write_figures(tmp_path, changed_figures)
+    baseline = {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+    draft_workspace.write_sections(tmp_path, {**GOOD, "summary": "Pixel-derived embodiment."})
+    draft_workspace.write_numerals(tmp_path, [*NUMERALS, {"numeral": "99", "part": "artifact"}])
+    report = {
+        "checks": [{
+            "name": "Every drawing sheet passes geometry, leader, and OCR inspection",
+            "status": "fail",
+        }],
+        "findings": [{"category": "figures_and_numerals", "title": "Floating leader"}],
+    }
+
+    assert draft_studio.restore_text_after_drawing_only_review(tmp_path, baseline, report) is True
+    assert draft_workspace.read_sections(tmp_path) == GOOD
+    assert draft_workspace.read_numerals(tmp_path) == NUMERALS
+    assert draft_workspace.read_figures(tmp_path)[0]["caption"] == "A corrected geometry brief."
+
+
+def test_a_non_drawing_review_may_repair_the_patent_text(tmp_path):
+    draft_workspace.write_sections(tmp_path, {**GOOD, "summary": "Needs source repair."})
+    baseline = {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+    report = {
+        "checks": [],
+        "findings": [{"category": "disclosure_fidelity", "title": "Unsupported structure"}],
+    }
+
+    assert draft_studio.restore_text_after_drawing_only_review(tmp_path, baseline, report) is False
+    assert draft_workspace.read_sections(tmp_path)["summary"] == "Needs source repair."
+
+
 # =============================================================================================
 # The workspace is a cache, not the record
 # =============================================================================================

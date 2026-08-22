@@ -295,6 +295,37 @@ def filing_blockers(report: Mapping[str, Any]) -> list[str]:
     return list(dict.fromkeys(blockers))
 
 
+_DRAWING_INSPECTION_CHECK = "Every drawing sheet passes geometry, leader, and OCR inspection"
+
+
+def restore_text_after_drawing_only_review(workspace: Path, snapshot: Mapping[str, Any],
+                                           report: Mapping[str, Any]) -> bool:
+    """Keep image-model artifacts from becoming patent text during an automatic repair.
+
+    A drawing-only review may edit figure briefs, but it has no authority to change the filing
+    text or redefine a numeral. Restore those two sources after the agent returns while leaving
+    every figure-file edit in place. Mixed reviews are not locked because a source-fidelity,
+    claim-support, or other text finding may legitimately require a text repair.
+    """
+    checks = [item for item in (report.get("checks") or [])
+              if str(item.get("status") or "") != "pass"]
+    findings = list(report.get("findings") or [])
+    if not checks and not findings:
+        return False
+    if any(str(item.get("name") or "") != _DRAWING_INSPECTION_CHECK for item in checks):
+        return False
+    if any(str(item.get("category") or "") != "figures_and_numerals" for item in findings):
+        return False
+    sections = human_text(dict(snapshot.get("sections") or {}))
+    numerals = human_text([dict(item) for item in (snapshot.get("numerals") or [])])
+    if (draft_workspace.read_sections(workspace) == sections and
+            draft_workspace.read_numerals(workspace) == numerals):
+        return False
+    draft_workspace.write_sections(workspace, sections)
+    draft_workspace.write_numerals(workspace, numerals)
+    return True
+
+
 def figures_for_qa(project_id: int, user_id: int,
                    figure_specs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     """Replace requested numerals with vision-detected pixels for every drawn sheet."""
@@ -1227,6 +1258,7 @@ class TurnRunner:
         sections: dict[str, str] = {}
         for review_index in range(MAX_FINALIZATION_ROUNDS):
             if review_index:
+                prior_snapshot, prior_report = snapshot, report or {}
                 try:
                     repair = self._run_agent(
                         turn_id=turn_id, lease=lease, workspace=workspace,
@@ -1240,6 +1272,13 @@ class TurnRunner:
                 runs.append(repair)
                 result = human_text(dict(repair.result))
                 action = "revised"
+                if restore_text_after_drawing_only_review(
+                        workspace, prior_snapshot, prior_report):
+                    changes = list(result.get("changes") or [])
+                    changes.append(
+                        "Preserved the filing text and numeral definitions because every "
+                        "reported blocker concerned generated drawings only.")
+                    result["changes"] = changes
 
             self.repository.heartbeat(turn_id, lease, stage="checking the draft")
             if answered_without_candidate and review_index == 0:
