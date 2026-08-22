@@ -4,8 +4,8 @@
 -- HNSW index at 2000 dimensions:
 --     ERROR: column cannot have more than 2000 dimensions for hnsw index
 -- So `ix_bench3072_hnsw` can never be created, on any host, at any scale. While it sat in 002 the
--- whole file raised, which meant `ix_chunks_hnsw` and `ix_chunks_tsv` — the two indexes the live
--- search depends on — were never built on a fresh install either.
+-- whole file raised, which meant `ix_chunks_hnsw` and `ix_chunks_tsv`, the two indexes the live
+-- search depends on, were never built on a fresh install either.
 --
 -- The 1024 index is real and is built here. The 3072 one is deliberately NOT attempted: an
 -- index that the extension refuses is not a pending task, and writing it out as a comment is
