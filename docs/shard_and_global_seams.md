@@ -250,6 +250,34 @@ in its own `finally`, so a shard that overruns is dropped from the answer and do
    20.6% of the corpus would go quietly unreachable at integration. Map `""` to `UNCLASSIFIED`
    when naming shards from a manifest.
 
+### What was measured when it was built, 2026-08-22 (workstream J)
+
+Implemented in `src/retrieval/shard_backend.py` and `ops/shards/`; `ops/shards/README.md` has the
+whole argument. Two numbers change how the seam behaves and both belong here.
+
+**Cold to hot is 25.0 s, not 20.** Measured on `patents-shard-03` with `ops/shards/wakebench.py` on
+an empty shard: `start` API 0.3 s, instance RUNNING 12.6 s, agent answering 24.2 s, Postgres
+accepting 24.2 s, hot 25.0 s. A loaded shard is slower by whatever the blocking prewarm budget
+reads off the disk. **`SHARD_WAKE_TIMEOUT` is NOT raised**, because the 20 s is the whole reason the
+cold tier can run beside the hot one. Instead `shard_backend.prewake_subject()` runs when the
+durable worker CLAIMS a run and starts the shards the subject's own CPC symbols point at, minutes
+before the cold tier asks; a domain only the candidate evidence routes to still misses on the first
+search and is hot for the next one inside the lease's fifteen minutes. Consumers should expect
+`hot_domains` to return a SUBSET on a cold first search, which is what the contract already says,
+rather than assume a wake always lands.
+
+The earlier report that `shard_agent.py` calls a shard ready ninety seconds before Postgres accepts
+is **refuted**: the agent's first answer was `waking`, on the same poll at which Postgres was
+already accepting.
+
+**Starting a TERMINATED c4-highmem-16 can fail.** Measured three times in half an hour in
+`us-central1-b`: the `start` POST returns success and the operation reaches DONE about six seconds
+later with `ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS`, instance still TERMINATED. A stopped VM
+holds no capacity reservation, so a shard is not guaranteed to come back. `ensure` reports `cold`
+and returns rather than waiting; the start is reissued on a background thread; `wake()`'s payload
+gained an `errors` key so `Result.tiers["cold"]` can say a domain contributed nothing because of a
+stockout rather than because it was empty. The fleet is spread over four zones for the same reason.
+
 ---
 
 ## 6. Testing against it before anything is built

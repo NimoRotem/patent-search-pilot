@@ -839,3 +839,98 @@ def test_wake_reports_why_a_domain_contributed_nothing(monkeypatch):
         time.sleep(0.05)
     out = b.wake([{"domain": "B65G", "weight": 1.0}])
     assert "ZONE_RESOURCE_POOL_EXHAUSTED" in out["errors"]["03-transport"]["code"]
+
+
+# =========================================================================== the id gate
+def _ops_module(name):
+    path = os.path.join(REPO, "ops", "shards", f"{name}.py")
+    spec = importlib.util.spec_from_file_location(f"{name}_under_test", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class _RowCursor:
+    """A cursor that answers the two queries verify_ids issues, and nothing else."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.out = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, params=None):
+        low = " ".join(sql.split()).lower()
+        if "count(*)" in low:
+            self.out = [{"count": len(self.rows)}]
+        elif "= any" in low:
+            wanted = set((params or [[]])[0] or [])
+            self.out = [{"id": i, "publication_number": n} for i, n in self.rows if i in wanted]
+        else:
+            self.out = [{"id": i, "publication_number": n} for i, n in self.rows]
+
+    def fetchall(self):
+        return list(self.out)
+
+    def fetchone(self):
+        return self.out[0] if self.out else None
+
+
+class _RowConn:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def cursor(self):
+        return _RowCursor(self.rows)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def close(self):
+        return None
+
+
+def test_the_id_check_passes_when_the_shard_uses_the_corpus_ids():
+    vi = _ops_module("verify_ids")
+    shard_rows = [(11, "EP1A"), (12, "EP2A"), (13, "EP3A")]
+    hot = _RowConn([(11, "EP1A"), (12, "EP2A"), (13, "EP3A"), (99, "EP9A")])
+    matched, mismatched, absent = vi.compare(hot, shard_rows)
+    assert (matched, mismatched, absent) == (3, [], 0)
+
+
+def test_the_id_check_catches_a_renumbered_shard():
+    """THE FAILURE IT EXISTS FOR. A shard that renumbered gives id 12 to a different publication.
+    `retrieval.cold` hydrates the family key of every cold hit into the retriever's family map,
+    filling gaps and never overwriting, so the hot corpus's family for id 12 would be attributed
+    to the shard's document. Not a crash, not an empty result: a wrong answer that looks right."""
+    vi = _ops_module("verify_ids")
+    shard_rows = [(11, "EP1A"), (12, "JP-SOMETHING-ELSE"), (13, "EP3A")]
+    hot = _RowConn([(11, "EP1A"), (12, "EP2A"), (13, "EP3A")])
+    matched, mismatched, absent = vi.compare(hot, shard_rows)
+    assert matched == 2 and absent == 0
+    assert mismatched == [(12, "JP-SOMETHING-ELSE", "EP2A")]
+
+
+def test_a_shard_holding_art_the_hot_corpus_does_not_is_not_a_failure():
+    """Reaching art the hot corpus does not hold is the entire point of a cold shard, so an id
+    the hot corpus has never seen is reported and is not a mismatch."""
+    vi = _ops_module("verify_ids")
+    shard_rows = [(11, "EP1A"), (77, "CN-ONLY-ON-THE-SHARD")]
+    hot = _RowConn([(11, "EP1A")])
+    matched, mismatched, absent = vi.compare(hot, shard_rows)
+    assert (matched, mismatched, absent) == (1, [], 1)
+
+
+def test_ready_refuses_a_shard_that_fails_the_id_check():
+    """The gate is in shardctl.sh `ready`, which is the only thing that can make a shard `hot`."""
+    script = open(os.path.join(REPO, "ops", "shards", "shardctl.sh")).read()
+    body = script.split("cmd_ready() {", 1)[1].split("\ncmd_", 1)[0]
+    assert "cmd_verify_ids" in body, "ready no longer runs the publication id check"
+    assert "refusing to mark it ready" in body

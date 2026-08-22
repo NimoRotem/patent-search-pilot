@@ -235,6 +235,34 @@ cmd_egress() {
   esac
 }
 
+#  Where the fetched wheel is kept between bootstraps. Gitignored: a 4.6 MB binary does not belong
+#  in the repo, and a second copy of one that already exists in two other worktrees belongs there
+#  even less.
+WHEEL_CACHE="${SHARD_WHEEL_CACHE:-$HERE/.cache}"
+
+fetch_tantivy_wheel() {                    # fetch_tantivy_wheel <dest-dir>
+  local dest="$1" wheel=""
+  if [ -n "${SHARD_TANTIVY_WHEEL:-}" ] && [ -r "${SHARD_TANTIVY_WHEEL}" ]; then
+    cp "$SHARD_TANTIVY_WHEEL" "$dest/" && return 0
+  fi
+  wheel="$(ls "$WHEEL_CACHE"/tantivy-*.whl 2>/dev/null | head -1 || true)"
+  if [ -z "$wheel" ]; then
+    mkdir -p "$WHEEL_CACHE"
+    echo "fetching the tantivy wheel once, to $WHEEL_CACHE"
+    "$(dirname "$PY")/pip" download tantivy --no-deps -q -d "$WHEEL_CACHE" >/dev/null 2>&1 || true
+    wheel="$(ls "$WHEEL_CACHE"/tantivy-*.whl 2>/dev/null | head -1 || true)"
+  fi
+  #  cp311 and manylinux, because the shard runs Debian 12's python3.11. A wheel for another
+  #  interpreter would unpack and then fail to import, and tantivy_server.py would report
+  #  `state: missing`, which is honest but is not what anybody wanted.
+  case "$(basename "${wheel:-none}")" in
+    *cp311*manylinux*) ;;
+    *) [ -n "$wheel" ] && echo "  the cached wheel $(basename "$wheel") is not cp311 manylinux" >&2 ;;
+  esac
+  [ -n "$wheel" ] || return 1
+  cp "$wheel" "$dest/"
+}
+
 cmd_bootstrap() {
   local s="$1"; need "$s"
   [ "$(inst_status "$s")" = "RUNNING" ] || cmd_start "$s"
@@ -251,9 +279,13 @@ cmd_bootstrap() {
 
   local tmp; tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
-  cp -r "$HERE"/{bootstrap.sh,shard_agent.py,prewarm.py,tantivy_serve.sh,tantivy_stub.py,systemd,sql} "$tmp/"
-  tar czf "$tmp/payload.tgz" -C "$tmp" bootstrap.sh shard_agent.py prewarm.py \
-      tantivy_serve.sh tantivy_stub.py systemd sql
+  cp -r "$HERE"/{bootstrap.sh,shard_agent.py,prewarm.py,tantivy_serve.sh,tantivy_server.py,systemd,sql} "$tmp/"
+  #  The Tantivy extension travels WITH the payload. A shard is private IP only and the address it
+  #  borrows for apt is taken off at the end of bootstrap, so it has no route to PyPI at any point
+  #  a re-run might happen. The wheel is fetched once here, on the controller, cached, and
+  #  unpacked on the shard with python3's own zipfile: no pip and no network on the far side.
+  fetch_tantivy_wheel "$tmp" || echo "  ...continuing without Tantivy; the server will say so" >&2
+  tar czf "$tmp/payload.tgz" -C "$tmp" $(cd "$tmp" && ls | grep -v '^payload.tgz$')
 
   echo "shipping the payload to $(vm_of "$s")"
   gcloud compute scp --internal-ip --zone "$(zone_of "$s")" --strict-host-key-checking=no \
