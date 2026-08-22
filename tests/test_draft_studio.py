@@ -556,6 +556,13 @@ def test_a_citation_to_an_unsupplied_reference_is_refused():
     assert "US-4444444-A" in str(caught.value)
 
 
+def test_a_citation_is_refused_when_the_project_has_no_supplied_references():
+    broken = {**GOOD, "background": GOOD["background"] + " [REF:US-11223344-B2]"}
+    with pytest.raises(Exception) as caught:
+        draft_studio.validate_sections(broken, [])
+    assert "not among this project's sources" in str(caught.value)
+
+
 def test_a_legal_conclusion_is_refused():
     broken = {**GOOD, "summary": GOOD["summary"] + " The claimed tool is clearly non-obvious."}
     with pytest.raises(Exception) as caught:
@@ -1101,7 +1108,8 @@ def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, t
         "workspace": tmp_path, "project": {"user_id": 91, "agent_session_id": "",
                                              "latest_version_no": 0,
                                              "disclosure_text": "disclosure"},
-        "references": [], "documents": [], "seeded": False, "had_version": False,
+        "references": [{"publication_number": ALLOWED[0]}], "documents": [],
+        "seeded": False, "had_version": False,
         "previous_sections": {},
     })
     monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {"ok": True})
@@ -1161,7 +1169,8 @@ def test_invalid_workspace_is_automatic_repair_input_not_a_failed_turn(monkeypat
         "workspace": tmp_path, "project": {"user_id": 91, "agent_session_id": "",
                                              "latest_version_no": 0,
                                              "disclosure_text": "disclosure"},
-        "references": [], "documents": [], "seeded": False, "had_version": False,
+        "references": [{"publication_number": ALLOWED[0]}], "documents": [],
+        "seeded": False, "had_version": False,
         "previous_sections": {},
     })
     monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {"ok": True})
@@ -1210,7 +1219,8 @@ def test_initial_turn_cannot_finish_as_an_answer_without_a_filing_candidate(monk
         "workspace": tmp_path, "project": {"user_id": 91, "agent_session_id": "",
                                              "latest_version_no": 0,
                                              "disclosure_text": "disclosure"},
-        "references": [], "documents": [], "seeded": False, "had_version": False,
+        "references": [{"publication_number": ALLOWED[0]}], "documents": [],
+        "seeded": False, "had_version": False,
         "previous_sections": {},
     })
     monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {"ok": True})

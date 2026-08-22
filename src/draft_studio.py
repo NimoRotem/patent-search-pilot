@@ -362,7 +362,7 @@ def validate_sections(sections: Mapping[str, str],
             if not canonical:
                 raise drafting.DraftingValidationError(
                     f"{heading} cites an unusable publication number [REF:{citation[:40]}].")
-            if allowed and canonical not in allowed:
+            if canonical not in allowed:
                 raise drafting.DraftingValidationError(
                     f"{heading} cites {canonical}, which is not among this project's sources.")
 

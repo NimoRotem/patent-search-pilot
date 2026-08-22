@@ -807,7 +807,7 @@ def _citation_checks(sections: Mapping[str, str], allowed: Sequence[str],
             severity="warn" if allowed_set else "advisory"))
         return out
 
-    unselected = [c for c in unique if allowed_set and c not in allowed_set]
+    unselected = [c for c in unique if c not in allowed_set]
     if unselected:
         out.append(_check(
             "Citations are to supplied references", "fail",
