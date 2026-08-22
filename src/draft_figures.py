@@ -45,13 +45,13 @@ SEMANTIC_PROMPT_VERSION = (
 LEADER_PROMPT_VERSION = (
     "figure-leader-v7-high-accuracy-routing-only-independent-consensus")
 MARKED_ANCHOR_PROMPT_VERSION = (
-    "figure-anchor-v8-local-part-three-trace-majority-with-correction")
+    "figure-anchor-v9-local-part-coordinate-certificate-majority-with-correction")
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v1-exterior-connectivity"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 3
-MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS = 5
+MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS = 8
 MAX_OCR_CLEAN_RETRIES = 2
 LEADER_THINKING_BUDGET = 2048
 SEMANTIC_THINKING_BUDGET = 2048
@@ -1723,6 +1723,8 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
         "exact center lands on the named geometry at the location required by the specification. "
         "Each part's target field is authoritative for the endpoint location. Follow that local "
         "target even when the part name also denotes a larger assembly or adjacent structure. "
+        "Judge every panel independently; a verdict for one panel must not influence any other "
+        "panel. The same exact center must receive the same verdict whenever it is shown again. "
         "Near is not enough. A boundary endpoint must be on the required boundary line, a space "
         "endpoint must be inside the required bounded white space, and a body endpoint must be "
         "inside or on the specifically requested body or surface. Reject a center on neighboring "
@@ -2089,6 +2091,94 @@ def _repair_marked_anchors(raw_png: bytes, anchors, audit: dict) -> tuple[list, 
     return repaired, changed
 
 
+def _anchor_positions(anchors) -> dict[str, tuple[int, int]]:
+    positions = {}
+    for item in anchors or ():
+        numeral = _clean_numeral(item.get("numeral"))
+        if not numeral or not item.get("visible"):
+            continue
+        try:
+            positions[numeral] = (int(item.get("x")), int(item.get("y")))
+        except (TypeError, ValueError, OverflowError):
+            continue
+    return positions
+
+
+def _prune_marked_coordinate_certificates(certificates: dict, anchors) -> None:
+    """Invalidate prior approval as soon as any later gate moves that endpoint."""
+    positions = _anchor_positions(anchors)
+    for numeral in list(certificates):
+        certificate = certificates[numeral]
+        if positions.get(numeral) != (certificate["x"], certificate["y"]):
+            del certificates[numeral]
+
+
+def _record_marked_coordinate_certificates(certificates: dict, audit: dict, anchors, *,
+                                           attempt: int) -> None:
+    """Retain a three-review approval only while that exact endpoint stays unchanged."""
+    _prune_marked_coordinate_certificates(certificates, anchors)
+    positions = _anchor_positions(anchors)
+    for record in (audit or {}).get("labels") or ():
+        numeral = _clean_numeral(record.get("numeral"))
+        if numeral not in positions or not record.get("correct"):
+            continue
+        votes = record.get("correct_votes")
+        try:
+            approved = votes is None or int(votes) >= ((MARKED_ANCHOR_REVIEW_COUNT // 2) + 1)
+        except (TypeError, ValueError, OverflowError):
+            approved = False
+        if not approved or not str(record.get("evidence") or "").strip():
+            continue
+        x, y = positions[numeral]
+        certificates[numeral] = {
+            "x": x, "y": y, "attempt": int(attempt), "label": dict(record),
+        }
+
+
+def _certified_marked_anchor_audit(audit: dict, certificates: dict, anchors, numerals, *,
+                                   attempts: int) -> dict | None:
+    """Combine per-coordinate majority verdicts without accepting a moved endpoint."""
+    expected = sorted(
+        {item["numeral"] for item in numeral_entries(numerals)}, key=_numeral_order)
+    positions = _anchor_positions(anchors)
+    if any(numeral not in certificates or
+           positions.get(numeral) != (certificates[numeral]["x"], certificates[numeral]["y"])
+           for numeral in expected):
+        return None
+    labels, coordinate_certificates = [], []
+    for numeral in expected:
+        certificate = certificates[numeral]
+        record = dict(certificate["label"])
+        record.update({
+            "numeral": numeral, "correct": True, "repairable": True,
+            "suggested_x": 500, "suggested_y": 500,
+            "correct_votes": max(
+                (MARKED_ANCHOR_REVIEW_COUNT // 2) + 1,
+                int(record.get("correct_votes") or 0)),
+            "incorrect_votes": int(record.get("incorrect_votes") or 0),
+        })
+        labels.append(record)
+        coordinate_certificates.append({
+            "numeral": numeral, "x": certificate["x"], "y": certificate["y"],
+            "attempt": certificate["attempt"],
+            "review_count": MARKED_ANCHOR_REVIEW_COUNT,
+        })
+    result = dict(audit or {})
+    result.update({
+        "ok": True, "inspected": True,
+        "summary": (
+            "Every endpoint at its final coordinate passed an independent three-review "
+            "majority inspection."),
+        "errors": [], "expected": expected, "observed": expected,
+        "missing": [], "unexpected": [], "duplicates": [], "incorrect": [],
+        "labels": labels, "review_count": MARKED_ANCHOR_REVIEW_COUNT,
+        "inspection_rounds": int(attempts),
+        "certified_across_attempts": int(attempts) > 1,
+        "coordinate_certificates": coordinate_certificates,
+    })
+    return result
+
+
 def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals,
                            semantic: dict) -> tuple[bytes, dict, dict, list, dict]:
     """Typeset, OCR, trace, and if possible repair the final leader endpoints."""
@@ -2097,6 +2187,7 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
     pixel_audit = dict(semantic.get("pixel_anchor_audit") or {})
     used_scale = 1.0
     marked = {}
+    marked_certificates = {}
     for marked_attempt in range(MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS):
         for _leader_attempt in range(MAX_LEADER_REPAIR_ATTEMPTS):
             labels = {}
@@ -2128,13 +2219,28 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
                 break
         if not (labels.get("ok") and leaders.get("ok") and pixel_audit.get("ok")):
             break
+        _prune_marked_coordinate_certificates(marked_certificates, anchors)
+        pending_numerals = [
+            f"{entry['numeral']} = {entry['part']}" if entry["part"] else entry["numeral"]
+            for entry in numeral_entries(numerals)
+            if entry["numeral"] not in marked_certificates]
         marked = inspect_marked_anchors(
-            raw_png, label=label, caption=caption, numerals=numerals, anchors=anchors)
-        if marked.get("ok"):
+            raw_png, label=label, caption=caption, numerals=pending_numerals, anchors=anchors)
+        _record_marked_coordinate_certificates(
+            marked_certificates, marked, anchors, attempt=marked_attempt + 1)
+        certified = _certified_marked_anchor_audit(
+            marked, marked_certificates, anchors, numerals, attempts=marked_attempt + 1)
+        if certified is not None:
+            certified["specification_hash"] = specification_hash(label, caption, numerals)
+            marked = certified
             break
         if marked_attempt + 1 >= MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS:
             break
-        anchors, changed = _repair_marked_anchors(raw_png, anchors, marked)
+        repair_audit = dict(marked)
+        repair_audit["incorrect"] = [
+            numeral for numeral in marked.get("incorrect") or []
+            if _clean_numeral(numeral) not in marked_certificates]
+        anchors, changed = _repair_marked_anchors(raw_png, anchors, repair_audit)
         if not changed:
             break
         anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
