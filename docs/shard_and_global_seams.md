@@ -242,6 +242,13 @@ in its own `finally`, so a shard that overruns is dropped from the answer and do
    SQL; there is deliberately no second implementation to adapt.
 5. **`available()` must be False while a shard set is mid-build.** An empty result and a genuine
    miss are indistinguishable downstream and a miss scores as a recall failure.
+6. **The unclassified shard is named `shard_router.UNCLASSIFIED`**, the literal string
+   `"unclassified"`. Workstream B's `corpus_niche.subclass_of` is the same four-character unit as
+   `domain_of` and agrees with it on every real symbol, but it returns `""` where `domain_of`
+   returns `"unclassified"`. A shard registered under `""` and a route emitted as `"unclassified"`
+   are the same 1,024,320 publications under two names, and `hot_domains` would never match them:
+   20.6% of the corpus would go quietly unreachable at integration. Map `""` to `UNCLASSIFIED`
+   when naming shards from a manifest.
 
 ---
 
