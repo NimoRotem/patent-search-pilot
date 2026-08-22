@@ -1531,7 +1531,16 @@ class TurnRunner:
                 }
             else:
                 try:
-                    snapshot = validate_snapshot(self.workspace.snapshot(workspace), allowed)
+                    raw_snapshot = self.workspace.snapshot(workspace)
+                    # A new deterministic rule may reject a structurally complete candidate.
+                    # Retain that full candidate before validation so the following repair round
+                    # has an authoritative source-lock baseline. Assigning only after validation
+                    # leaves ``snapshot`` empty and lets a figure-only repair erase every filing
+                    # section when the lock restores the empty value.
+                    repair_snapshot = candidate_snapshot_for_repair(raw_snapshot)
+                    if repair_snapshot is not None:
+                        snapshot = repair_snapshot
+                    snapshot = validate_snapshot(raw_snapshot, allowed)
                     sections = snapshot["sections"]
                     self.repository.heartbeat(turn_id, lease, stage="drawing and inspecting figures")
                     generated = self._ensure_figures(

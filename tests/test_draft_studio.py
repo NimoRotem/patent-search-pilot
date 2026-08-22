@@ -1846,6 +1846,85 @@ def test_resumed_figure_plan_repair_is_source_locked_before_validation(monkeypat
             for item in saved["figures"]] == revised_figures
 
 
+def test_preflight_failure_retains_the_full_candidate_as_the_repair_source_lock(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_figures, "discard_project_figure_checkpoint",
+                        lambda _turn_id: False)
+    repository = Mock()
+    repository.save_version.return_value = {"version_no": 2}
+    repository.save_qa.return_value = {
+        "id": 5, "verdict": "pass", "checks": [], "findings": [], "counts": {}}
+    repository.complete_turn.return_value = {"status": "complete"}
+    agent = Mock()
+    agent.DRAFT_MODEL = "draft-model"
+    agent.DRAFT_TIMEOUT = 60
+    agent.new_session_id.return_value = "new-session"
+    agent.strings.side_effect = lambda value, **_kwargs: list(value or [])
+    overlong_figures = [
+        {**FIGURES[0], "caption": "plain rectangular body " * 160},
+        FIGURES[1],
+    ]
+    repaired_figures = [
+        {**FIGURES[0], "caption": "plain rectangular body"},
+        FIGURES[1],
+    ]
+
+    def run_agent(**_kwargs):
+        if agent.run.call_count == 1:
+            return draft_agent.AgentRun(
+                ok=True, session_id="session", model="draft-model",
+                result={"action": "revised", "summary": "candidate",
+                        "reasoning": [], "changes": [], "questions": [],
+                        "prior_art_strategy": "", "answer": ""})
+        draft_workspace.write_sections(tmp_path, {
+            key: ("FIG. 1 is an assembly view. FIG. 2 is a ring view."
+                  if key == "drawing_descriptions" else "")
+            for key, _name, _heading in draft_workspace.SECTION_FILES
+        })
+        draft_workspace.write_numerals(tmp_path, [])
+        draft_workspace.write_figures(tmp_path, repaired_figures)
+        return draft_agent.AgentRun(
+            ok=True, session_id="session", model="draft-model",
+            result={"action": "revised", "summary": "shortened drawing brief",
+                    "reasoning": [], "changes": [], "questions": [],
+                    "prior_art_strategy": "", "answer": ""})
+
+    agent.run.side_effect = run_agent
+    draft_workspace.write_sections(tmp_path, GOOD)
+    draft_workspace.write_numerals(tmp_path, NUMERALS)
+    draft_workspace.write_figures(tmp_path, overlong_figures)
+    workspace = Mock()
+    workspace.snapshot.side_effect = lambda _path: draft_workspace.snapshot(tmp_path)
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, qa=draft_qa, workspace=workspace)
+    monkeypatch.setattr(runner, "prepare", lambda _turn: {
+        "workspace": tmp_path,
+        "project": {"user_id": 91, "agent_session_id": "", "latest_version_no": 1,
+                    "disclosure_text": "disclosure"},
+        "references": [{"publication_number": ALLOWED[0]}], "documents": [],
+        "seeded": False, "had_version": True, "resuming_candidate": False,
+        "previous_sections": {},
+    })
+    monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {"ok": True})
+    monkeypatch.setattr(runner, "evaluate", lambda *args, **kwargs: {
+        "status": "complete", "verdict": "pass", "summary": "ready",
+        "checks": [], "findings": [], "counts": {}, "cost_usd": 0,
+        "duration_ms": 1, "model_name": "review"})
+
+    runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
+                "turn_no": 2, "kind": "revise"})
+
+    assert agent.run.call_count == 2
+    first_report = workspace._write_review.call_args_list[0].args[1]
+    assert first_report["checks"][0]["category"] == "figures_and_numerals"
+    saved = repository.save_version.call_args.kwargs
+    assert saved["sections"]["claims"] == GOOD["claims"]
+    assert saved["sections"]["detailed_description"] == GOOD["detailed_description"]
+    assert saved["numerals"] == NUMERALS
+    assert [{key: item[key] for key in ("label", "caption", "numerals")}
+            for item in saved["figures"]] == repaired_figures
+
+
 def test_answering_a_question_does_not_discard_an_unpublished_candidate(monkeypatch, tmp_path):
     repository = Mock()
     repository.complete_turn.return_value = {"status": "complete"}
