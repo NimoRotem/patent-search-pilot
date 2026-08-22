@@ -1989,6 +1989,26 @@ def _durable_lookup(slug):
     return ("present", row) if row else ("absent", None)
 
 
+def _durable_select(slug, state, row):
+    """Resolve ONE already-taken tri-state snapshot into the row a reader should render.
+
+    Pure: it performs no lookup of its own. That is the whole point. The routes used to ask the
+    store whether the state was unknown and then ask AGAIN through a second helper, so a store
+    that answered once and failed on the second call produced a legacy fallthrough on a slug whose
+    live durable row had just been read successfully. It also doubled the read on every observer
+    request, and the report page polls one of these every two seconds per open tab.
+
+    Returns the durable row, or None meaning "use the legacy view". `unknown` is NOT resolved
+    here: the caller decides, because only it knows whether a known live legacy claim makes the
+    outage survivable.
+    """
+    if state != "present" or not row:
+        return None
+    if row.get("status") in _DURABLE_TERMINAL and _legacy_claim_live(slug):
+        return None                # a current legacy claim outranks a settled durable run
+    return row
+
+
 def _durable_run_for(slug):
     """The persisted run that describes this slug RIGHT NOW, or None.
 
@@ -2012,15 +2032,7 @@ def _durable_run_for(slug):
     """
     if not durable_runs_enabled():
         return None
-    state, row = _durable_lookup(slug)
-    if state == "unknown":
-        return None
-    if row and row.get("status") in _DURABLE_TERMINAL:
-        with _JOB_LOCK:
-            job = _JOBS.get(slug) or {}
-        if job.get("status") in ("running", "partial"):
-            return None            # a current legacy claim outranks a settled durable run
-    return row
+    return _durable_select(slug, *_durable_lookup(slug))
 
 
 def _legacy_claim_live(slug):
@@ -2109,7 +2121,7 @@ def _durable_event(slug, run):
             "done": wire == "done"}
 
 
-def _durable_stream(slug, run_id, poll=1.0):
+def _durable_stream(slug, run_id, poll=1.0, first=None):
     """SSE over a persisted run.
 
     The worker is a different PROCESS, so the in-process publish/subscribe the legacy path uses
@@ -2120,10 +2132,14 @@ def _durable_stream(slug, run_id, poll=1.0):
     """
     last_seq = -1
     last_ping = time.time()
+    pending = first          # the snapshot the ROUTE already took: rendered without re-reading
     try:
         while True:
             try:
-                run = runstore.progress_of(run_id)
+                if pending is not None:
+                    run, pending = pending, None
+                else:
+                    run = runstore.progress_of(run_id)
             except Exception:                                        # noqa: BLE001
                 #  The detail goes to the SERVER LOG, never down the wire. A database error can
                 #  carry a DSN, a role name or an authentication failure, and this stream is
@@ -3479,12 +3495,15 @@ def status(slug):
     regression.sh); /events/<slug> is the primary, push-based channel."""
     if not _can_access_report(slug):
         abort(404)
-    if durable_runs_enabled() and _durable_lookup(slug)[0] == "unknown" \
-            and not _legacy_claim_live(slug):
-        #  UNKNOWN, and nothing in this process knows better. Saying "not found" or falling
-        #  through to whatever stale memory holds would both be assertions we cannot support.
-        return jsonify(_durable_unavailable_event(slug)), 503
-    run = _durable_run_for(slug)
+    run = None
+    if durable_runs_enabled():
+        #  ONE immutable snapshot for the whole request. Every later decision reads THIS tuple.
+        state, row = _durable_lookup(slug)
+        if state == "unknown" and not _legacy_claim_live(slug):
+            #  UNKNOWN, and nothing in this process knows better. Saying "not found" or falling
+            #  through to whatever stale memory holds would both be assertions we cannot support.
+            return jsonify(_durable_unavailable_event(slug)), 503
+        run = _durable_select(slug, state, row)
     if run is not None:
         ev = _durable_event(slug, run)
     else:
@@ -3511,16 +3530,18 @@ def events(slug):
     if not _can_access_report(slug):
         abort(404)
 
-    if durable_runs_enabled() and _durable_lookup(slug)[0] == "unknown" \
-            and not _legacy_claim_live(slug):
-        def _unavailable():
-            yield "data: " + json.dumps(_durable_unavailable_event(slug)) + "\n\n"
-        return Response(stream_with_context(_unavailable()), mimetype="text/event-stream",
-                        headers={"Cache-Control": "no-cache, no-transform",
-                                 "X-Accel-Buffering": "no", "Connection": "keep-alive"})
-    run = _durable_run_for(slug)
+    run = None
+    if durable_runs_enabled():
+        state, row = _durable_lookup(slug)          # one snapshot, before anything streams
+        if state == "unknown" and not _legacy_claim_live(slug):
+            def _unavailable():
+                yield "data: " + json.dumps(_durable_unavailable_event(slug)) + "\n\n"
+            return Response(stream_with_context(_unavailable()), mimetype="text/event-stream",
+                            headers={"Cache-Control": "no-cache, no-transform",
+                                     "X-Accel-Buffering": "no", "Connection": "keep-alive"})
+        run = _durable_select(slug, state, row)
     if run is not None:
-        return Response(stream_with_context(_durable_stream(slug, run["run_id"])),
+        return Response(stream_with_context(_durable_stream(slug, run["run_id"], first=row)),
                         mimetype="text/event-stream",
                         headers={"Cache-Control": "no-cache, no-transform",
                                  "X-Accel-Buffering": "no",

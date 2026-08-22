@@ -339,3 +339,135 @@ def test_a_well_formed_producer_flag_says_nothing(monkeypatch, capsys, value):
     monkeypatch.setenv("DURABLE_SEARCH_RUNS", value)
     webapp.durable_runs_enabled()
     assert "DURABLE_SEARCH_RUNS" not in capsys.readouterr().err
+
+
+# =========================================================================== 1b. one snapshot
+
+
+SECOND_READ_SECRET = "FATAL: role patents does not exist on 10.128.0.53:5433"
+
+
+def _one_good_then_explode(monkeypatch, row):
+    """First call answers, every later call raises with a secret-bearing message.
+
+    That is the real shape of a store going away mid-request, and it is the shape that turns a
+    double read into a fallthrough: read one sees a live run, read two raises, and the caller
+    quietly reports whatever stale memory holds instead.
+    """
+    calls = {"n": 0}
+
+    def flaky(slug):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return row
+        raise RuntimeError(SECOND_READ_SECRET)
+
+    monkeypatch.setattr(runstore, "latest_for_slug", flaky)
+    return calls
+
+
+def _live_row(slug, run_id="rid-1"):
+    return {"run_id": run_id, "slug": slug, "status": "running", "stage": "screen",
+            "attempts": 1, "event_seq": 7, "progress": {"msg": "Screening candidates"},
+            "error": None, "enqueued_at": None, "started_at": None,
+            "t0": time.time() - 30, "t_start": time.time() - 20}
+
+
+def test_status_takes_exactly_one_durable_snapshot(app_env, durable_db, monkeypatch):
+    """THE GAP. status() asked the store whether the state was unknown, then asked AGAIN through
+    _durable_run_for. A store that answered once and then failed produced a legacy fallthrough on
+    a slug whose live durable row had just been read successfully."""
+    _flag(monkeypatch, True)
+    calls = _one_good_then_explode(monkeypatch, _live_row("snap"))
+    with webapp._JOB_LOCK:
+        webapp._JOBS["snap"] = {"status": "done", "msg": "stale legacy", "t0": time.time()}
+
+    body = webapp.app.test_client().get("/status/snap").get_json()
+    assert calls["n"] == 1, f"the route read the store {calls['n']} times"
+    assert body["status"] == "running", body
+    assert body["msg"] == "Screening candidates", body
+    assert body["done"] is False
+    assert "stale legacy" not in json.dumps(body), "it fell through to stale legacy state"
+    assert SECOND_READ_SECRET not in json.dumps(body)
+
+
+def test_events_takes_exactly_one_durable_snapshot(app_env, durable_db, monkeypatch):
+    _flag(monkeypatch, True)
+    calls = _one_good_then_explode(monkeypatch, _live_row("snap-ev"))
+    with webapp._JOB_LOCK:
+        webapp._JOBS["snap-ev"] = {"status": "done", "msg": "stale legacy", "t0": time.time()}
+
+    body, ended, code = _drain_sse(webapp.app.test_client(), "/events/snap-ev",
+                                   max_chunks=1, deadline=4.0)
+    assert code == 200, code
+    assert calls["n"] == 1, f"the route read the store {calls['n']} times before streaming"
+    ev = json.loads(body.split("data: ", 1)[1].split("\n\n", 1)[0])
+    assert ev["status"] == "running", ev
+    assert ev["seq"] == 7, ev
+    assert "stale legacy" not in body
+    assert SECOND_READ_SECRET not in body
+    assert not ended, "a live durable run closed its stream"
+
+
+def test_status_reads_the_store_once_in_the_ordinary_case(app_env, durable_db, monkeypatch):
+    """Not only correctness: the doubled read was on every observer request, and the report page
+    polls one of these every two seconds per open tab."""
+    _flag(monkeypatch, True)
+    runstore.enqueue("counted", dict(PAYLOAD), mode="novelty", depth="deep", lane="deep")
+    real = runstore.latest_for_slug
+    calls = {"n": 0}
+
+    def counting(slug):
+        calls["n"] += 1
+        return real(slug)
+
+    monkeypatch.setattr(runstore, "latest_for_slug", counting)
+    webapp.app.test_client().get("/status/counted")
+    assert calls["n"] == 1, f"{calls['n']} store reads for one status poll"
+
+
+def test_events_reads_the_store_once_before_it_starts_streaming(app_env, durable_db, monkeypatch):
+    _flag(monkeypatch, True)
+    runstore.enqueue("counted-ev", dict(PAYLOAD), mode="novelty", depth="deep", lane="deep")
+    real = runstore.latest_for_slug
+    calls = {"n": 0}
+
+    def counting(slug):
+        calls["n"] += 1
+        return real(slug)
+
+    monkeypatch.setattr(runstore, "latest_for_slug", counting)
+    _drain_sse(webapp.app.test_client(), "/events/counted-ev", max_chunks=1, deadline=4.0)
+    assert calls["n"] == 1, f"{calls['n']} store reads before the first frame"
+
+
+def test_a_settled_row_and_a_live_legacy_claim_still_prefers_legacy_on_one_snapshot(
+        app_env, durable_db, monkeypatch):
+    """The precedence rule from the run-cutover milestone, preserved through the refactor."""
+    _flag(monkeypatch, True)
+    settled = dict(_live_row("prec"), status="done")
+    calls = _one_good_then_explode(monkeypatch, settled)
+    with webapp._JOB_LOCK:
+        webapp._JOBS["prec"] = {"status": "running", "msg": "legacy still working",
+                                "t0": time.time()}
+    body = webapp.app.test_client().get("/status/prec").get_json()
+    assert calls["n"] == 1
+    assert body["status"] == "running", body
+    assert body["msg"] == "legacy still working", body
+
+
+def test_an_initial_unknown_still_gives_the_generic_error_on_one_snapshot(
+        app_env, durable_db, monkeypatch):
+    """The FIRST read failing is still the generic retryable error, and still only one read."""
+    _flag(monkeypatch, True)
+    calls = {"n": 0}
+
+    def always_boom(slug):
+        calls["n"] += 1
+        raise RuntimeError(SECRET)
+
+    monkeypatch.setattr(runstore, "latest_for_slug", always_boom)
+    resp = webapp.app.test_client().get("/status/init-unknown")
+    assert resp.status_code == 503
+    assert calls["n"] == 1, f"{calls['n']} reads for one unknown lookup"
+    assert resp.get_json()["retryable"] is True
