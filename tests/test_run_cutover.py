@@ -75,7 +75,11 @@ def durable_db(pw, monkeypatch):
     adm.close()
 
     dsn = dict(ADMIN, dbname=TESTDB, password=pw)
-    ddl = open(os.path.join(ROOT, "sql", "009_durable_runs.sql"), encoding="utf-8").read()
+    #  012 is part of the durable schema now: runstore.ensure_schema requires the admission
+    #  columns, and enqueue writes them.
+    ddl = "\n".join(
+        open(os.path.join(ROOT, "sql", fn), encoding="utf-8").read()
+        for fn in ("009_durable_runs.sql", "012_run_admission.sql"))
     boot = psycopg.connect(autocommit=True, row_factory=dict_row, **dsn)
     with boot.cursor() as cur:
         cur.execute(ddl)
@@ -256,7 +260,7 @@ def test_a_durable_enqueue_failure_fails_closed(app_env, durable_db, monkeypatch
     def boom(*a, **k):
         raise RuntimeError("run store down")
 
-    monkeypatch.setattr(runstore, "enqueue", boom)
+    monkeypatch.setattr(runstore, "enqueue_admitted", boom)
     st, why = webapp.ensure_report("fail-closed", **PAYLOAD)
     assert st == "busy", f"expected a refusal, got {st}"
     assert why
@@ -268,7 +272,7 @@ def test_a_durable_enqueue_failure_fails_closed(app_env, durable_db, monkeypatch
 
 def test_a_durable_enqueue_failure_releases_the_gate_slot(app_env, durable_db, monkeypatch):
     _flag(monkeypatch, True)
-    monkeypatch.setattr(runstore, "enqueue",
+    monkeypatch.setattr(runstore, "enqueue_admitted",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
     before = auth.run_gate.active
     webapp.ensure_report("fail-gate", **PAYLOAD)
@@ -279,10 +283,10 @@ def test_the_gate_slot_is_not_held_while_the_run_only_sits_queued(app_env, durab
     """The web process is not executing the run, so it must not hold a concurrency slot. The
     daily budget still counts it, because it will cost money when a worker takes it."""
     _flag(monkeypatch, True)
-    before_count = auth.run_gate.count
+    before_count = _charged_today()
     webapp.ensure_report("gate-slug", **PAYLOAD)
     assert auth.run_gate.active == 0, "a concurrency slot is held for a run nobody is running"
-    assert auth.run_gate.count == before_count + 1, "the daily budget did not count the run"
+    assert _charged_today() == before_count + 1, "the daily budget did not count the run"
 
 
 def test_a_cap_full_search_queues_durably_and_never_touches_run_queue(app_env, durable_db,
@@ -322,6 +326,30 @@ def test_a_gate_full_search_holds_no_slot_and_makes_one_row(app_env, durable_db,
 
 
 # =========================================================================== 4. observer
+
+def _charged_today(lane="deep"):
+    """The daily spend, read from the ROWS.
+
+    Since 012 the ledger is `search_runs.charged_day`, not a counter on the in-process gate: the
+    gate cannot be the authority when two web processes and a worker all admit. These assertions
+    therefore ask the database what was charged, which is the thing the cap is now enforced on.
+    """
+    with runstore._cur() as cur:
+        cur.execute("SELECT count(*) n FROM search_runs WHERE lane=%s "
+                    "AND charged_day = (now() AT TIME ZONE 'UTC')::date", (lane,))
+        return int(cur.fetchone()["n"])
+
+
+def _make_claimable(lane="deep"):
+    """Admit the oldest waiting run so a test can claim it.
+
+    Since 012, a row created by the generic `runstore.enqueue` is born UNADMITTED and `claim`
+    correctly refuses it. Tests whose subject is a claimed or terminal run therefore have to go
+    through the real admission path first, exactly as production does. This uses high caps because
+    the cap is not what these tests are about; the ones that DO test caps set their own.
+    """
+    return runstore.admit_waiting(lane=lane, daily_cap=10 ** 6, max_concurrent=10 ** 6, limit=1)
+
 
 def _seed_run(slug, status="queued", **kw):
     rid = runstore.enqueue(slug, dict(PAYLOAD), mode="novelty", depth="deep", lane="deep")
@@ -593,7 +621,7 @@ def test_a_doc_load_failure_does_not_break_the_enqueue(app_env, durable_db, monk
 
 def test_a_sequential_retry_consumes_the_daily_budget_once(app_env, durable_db, monkeypatch):
     _flag(monkeypatch, True)
-    before = auth.run_gate.count
+    before = _charged_today()
     webapp.ensure_report("budget-once", **PAYLOAD)
     with webapp._JOB_LOCK:
         webapp._JOBS.clear()
@@ -601,8 +629,8 @@ def test_a_sequential_retry_consumes_the_daily_budget_once(app_env, durable_db, 
     with webapp._JOB_LOCK:
         webapp._JOBS.clear()
     webapp.ensure_report("budget-once", **PAYLOAD)
-    assert auth.run_gate.count == before + 1, (
-        f"the daily budget moved by {auth.run_gate.count - before} for one run")
+    assert _charged_today() == before + 1, (
+        f"the daily budget moved by {_charged_today() - before} for one run")
     with runstore._cur() as cur:
         cur.execute("SELECT count(*) n FROM search_runs WHERE slug=%s", ("budget-once",))
         assert cur.fetchone()["n"] == 1
@@ -610,7 +638,7 @@ def test_a_sequential_retry_consumes_the_daily_budget_once(app_env, durable_db, 
 
 def test_concurrent_submissions_consume_the_daily_budget_once(app_env, durable_db, monkeypatch):
     _flag(monkeypatch, True)
-    before = auth.run_gate.count
+    before = _charged_today()
     ready = threading.Barrier(5, timeout=25)
     errors = []
 
@@ -632,8 +660,8 @@ def test_concurrent_submissions_consume_the_daily_budget_once(app_env, durable_d
     with runstore._cur() as cur:
         cur.execute("SELECT count(*) n FROM search_runs WHERE slug=%s", ("budget-race",))
         assert cur.fetchone()["n"] == 1
-    assert auth.run_gate.count == before + 1, (
-        f"{auth.run_gate.count - before} submissions each charged the daily budget")
+    assert _charged_today() == before + 1, (
+        f"{_charged_today() - before} submissions each charged the daily budget")
 
 
 def test_enqueue_reports_whether_it_created_the_run(durable_db):
@@ -950,6 +978,7 @@ def test_a_connected_stream_sees_the_terminal_transition(app_env, durable_db, mo
     seq_queued = first["seq"]
 
     #  A worker takes it. No progress call, only the claim.
+    _make_claimable()
     claimed = runstore.claim("test-worker", lanes=["deep"])
     assert claimed and claimed["run_id"] == run_id, claimed
     running = _next_event(gen)
@@ -981,6 +1010,7 @@ def test_a_requeue_after_a_failure_is_observable(app_env, durable_db, monkeypatc
                               lane="deep", max_attempts=3)
     gen = webapp._durable_stream("requeued", run_id, poll=0.01)
     first = _next_event(gen)
+    _make_claimable()
     runstore.claim("test-worker", lanes=["deep"])
     running = _next_event(gen)
     assert runstore.fail(run_id, "test-worker", "transient", retry=True) == "queued"
@@ -995,6 +1025,7 @@ def test_a_stale_worker_update_changes_nothing_and_bumps_nothing(app_env, durabl
     lost its lease would look like news."""
     _flag(monkeypatch, True)
     run_id = runstore.enqueue("stale", dict(PAYLOAD), mode="novelty", depth="deep", lane="deep")
+    _make_claimable()
     runstore.claim("real-worker", lanes=["deep"])
     before = runstore.progress_of(run_id)["event_seq"]
 
@@ -1012,6 +1043,7 @@ def test_the_reaper_transition_is_observable(app_env, durable_db, monkeypatch):
     _flag(monkeypatch, True)
     run_id = runstore.enqueue("reaped", dict(PAYLOAD), mode="novelty", depth="deep",
                               lane="deep", max_attempts=3)
+    _make_claimable()
     runstore.claim("dead-worker", lanes=["deep"])
     before = runstore.progress_of(run_id)["event_seq"]
     with runstore._cur() as cur:                       # expire the lease, as a dead worker would
@@ -1028,6 +1060,7 @@ def test_the_reaper_bumps_nothing_when_it_reaps_nothing(app_env, durable_db, mon
     _flag(monkeypatch, True)
     run_id = runstore.enqueue("not-reaped", dict(PAYLOAD), mode="novelty", depth="deep",
                               lane="deep")
+    _make_claimable()
     runstore.claim("live-worker", lanes=["deep"])
     before = runstore.progress_of(run_id)["event_seq"]
     runstore.reap(run_ids=[run_id])                    # lease is healthy, nothing to reap
@@ -1047,18 +1080,19 @@ def test_a_settled_durable_run_can_be_rerun_without_a_process_restart(app_env, d
     _flag(monkeypatch, True)
     webapp.ensure_report("rerunnable", **PAYLOAD)
     first = runstore.latest_for_slug("rerunnable")["run_id"]
+    _make_claimable()
     runstore.claim("w", lanes=["deep"])
     assert runstore.fail(first, "w", "boom", retry=False) == "failed"
 
     #  Deliberately NOT clearing _JOBS: that is the restart this must not require.
-    before_count = auth.run_gate.count
+    before_count = _charged_today()
     st, _ = webapp.ensure_report("rerunnable", **PAYLOAD)
     assert st == "running", st
     second = runstore.latest_for_slug("rerunnable")["run_id"]
     assert second != first, "the stale memory claim blocked a rerun of a settled run"
     assert runstore.progress_of(second)["status"] == "queued"
-    assert auth.run_gate.count == before_count + 1, (
-        f"the rerun charged the budget {auth.run_gate.count - before_count} times")
+    assert _charged_today() == before_count + 1, (
+        f"the rerun charged the budget {_charged_today() - before_count} times")
 
 
 @pytest.mark.parametrize("settle", ["failed", "cancelled"])
@@ -1068,6 +1102,7 @@ def test_a_cancelled_or_failed_run_is_rerunnable(app_env, durable_db, monkeypatc
     webapp.ensure_report(slug, **PAYLOAD)
     rid = runstore.latest_for_slug(slug)["run_id"]
     if settle == "failed":
+        _make_claimable()
         runstore.claim("w", lanes=["deep"])
         runstore.fail(rid, "w", "boom", retry=False)
     else:
@@ -1189,7 +1224,7 @@ def test_a_durable_enqueue_failure_does_not_erase_a_legacy_claim(app_env, durabl
     _flag(monkeypatch, True)
     with webapp._JOB_LOCK:
         webapp._JOBS["legacy-owned"] = {"status": "running", "msg": "legacy", "t0": time.time()}
-    monkeypatch.setattr(runstore, "enqueue",
+    monkeypatch.setattr(runstore, "enqueue_admitted",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
     #  A live legacy claim short-circuits before the store is reached, so force the failure path
     #  by asking about a slug that has no claim, then assert the other one survived.
@@ -1234,7 +1269,7 @@ def test_a_failed_durable_enqueue_does_not_delete_the_cached_report(app_env, dur
     tmp = app_env["tmp"]
     _flag(monkeypatch, True)
     _seed_report(tmp, "keep-cache")
-    monkeypatch.setattr(runstore, "enqueue",
+    monkeypatch.setattr(runstore, "enqueue_admitted",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
     st, _ = webapp.ensure_report("keep-cache", regen=True, **PAYLOAD)
     assert st == "busy", st
@@ -1251,6 +1286,7 @@ def test_a_live_durable_partial_is_not_treated_as_interrupted(app_env, durable_d
     _seed_report(tmp, "live-partial", partial=True)
     rid = runstore.enqueue("live-partial", dict(PAYLOAD), mode="novelty", depth="deep",
                            lane="deep")
+    _make_claimable()
     runstore.claim("w", lanes=["deep"])
     assert runstore.progress_of(rid)["status"] == "running"
     webapp._PARTIAL_CACHE.pop("live-partial", None)
@@ -1274,6 +1310,7 @@ def test_a_dead_durable_partial_is_still_restartable(app_env, durable_db, monkey
     _seed_report(tmp, "dead-partial", partial=True)
     rid = runstore.enqueue("dead-partial", dict(PAYLOAD), mode="novelty", depth="deep",
                            lane="deep")
+    _make_claimable()
     runstore.claim("w", lanes=["deep"])
     runstore.fail(rid, "w", "died", retry=False)
     webapp._PARTIAL_CACHE.pop("dead-partial", None)
@@ -1319,6 +1356,7 @@ def test_a_migrated_placeholder_does_not_block_the_next_run(app_env, durable_db,
         assert "mig-then-fail" not in webapp._JOBS, (
             "the migrated placeholder was left behind")
 
+    _make_claimable()
     runstore.claim("w", lanes=["deep"])
     runstore.fail(rid, "w", "boom", retry=False)
     st, _ = webapp.ensure_report("mig-then-fail", **PAYLOAD)
@@ -1377,6 +1415,7 @@ def _rollback_then_reenable(monkeypatch, slug, terminal="done"):
     starts for the same slug, then the flag is re-enabled with that legacy run still working."""
     _flag(monkeypatch, True)
     rid = runstore.enqueue(slug, dict(PAYLOAD), mode="novelty", depth="deep", lane="deep")
+    _make_claimable()
     runstore.claim("old-worker", lanes=["deep"])
     if terminal == "done":
         runstore.finish(rid, "old-worker", status="done")
@@ -1441,6 +1480,7 @@ def test_a_terminal_durable_row_still_wins_when_no_legacy_run_is_live(app_env, d
     a finished search must still report finished."""
     _flag(monkeypatch, True)
     rid = _seed_run("terminal-alone")
+    _make_claimable()
     runstore.claim("w", lanes=["deep"])
     runstore.finish(rid, "w", status="done")
     with webapp._JOB_LOCK:
@@ -1462,6 +1502,7 @@ def test_a_queued_legacy_rerun_outranks_a_settled_durable_row(app_env, durable_d
     """
     _flag(monkeypatch, True)
     rid = _seed_run("queued-vs-terminal")
+    _make_claimable()
     runstore.claim("w", lanes=["deep"])
     runstore.finish(rid, "w", status="done")
     with webapp._JOB_LOCK:
@@ -1482,6 +1523,7 @@ def _rollback_then_queued_rerun(monkeypatch, app_env, slug, terminal="done"):
     the flag is re-enabled before the dispatcher migrates it."""
     _flag(monkeypatch, True)
     rid = runstore.enqueue(slug, dict(PAYLOAD), mode="novelty", depth="deep", lane="deep")
+    _make_claimable()
     runstore.claim("old-worker", lanes=["deep"])
     if terminal == "done":
         runstore.finish(rid, "old-worker", status="done")

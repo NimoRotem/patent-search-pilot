@@ -68,6 +68,9 @@ HEARTBEAT_SECONDS = float(os.environ.get("RUN_HEARTBEAT_SECONDS", str(LEASE_SECO
 MAX_ATTEMPTS = int(os.environ.get("RUN_MAX_ATTEMPTS", "3"))
 SHARD_LEASE_SECONDS = int(os.environ.get("SHARD_LEASE_SECONDS", "300"))
 
+#  Columns added after 009 that the store writes unconditionally.
+REQUIRED_RUN_COLUMNS = ("admitted", "admitted_at", "charged_day")
+
 REQUIRED_TABLES = (
     "search_runs", "search_stages", "search_queries", "retrieval_hits",
     "search_candidates", "provider_usage", "shard_leases", "corpus_ingest_queue",
@@ -129,6 +132,45 @@ def ensure_schema(force=False):
         _schema_ready.set()
 
 
+def admission_capable():
+    """Whether THIS database carries the admission columns (012). RAISES on a detection failure.
+
+    NOT CACHED, on purpose. A cached answer is keyed by nothing: one process that retargets its
+    connection, or one test suite that hands the module a different database, then reuses a 012
+    answer on a 009 database and claims rows it was never admitted to spend on. A schema-qualified
+    catalog read is a few hundred microseconds and it is always about the database in front of it.
+
+    An error is NOT capability information. Swallowing it as False collapses "I could not find
+    out" into "this is confirmed legacy", which is the one answer that lets a caller spend money
+    it was not admitted to spend. The exception propagates and the caller refuses.
+    """
+    with db.cursor(autocommit=True, readonly=True) as cur:
+        #  table_schema too: another schema on the search_path can hold a `search_runs` with these
+        #  column names, and confirming 012 from someone else's table would put this process on
+        #  the admitted predicate against a database that does not have it.
+        cur.execute("SELECT count(*) n FROM information_schema.columns "
+                    "WHERE table_schema = current_schema() AND table_name='search_runs' "
+                    "AND column_name = ANY(%s)",
+                    (list(REQUIRED_RUN_COLUMNS),))
+        return int((cur.fetchone() or {}).get("n") or 0) == len(REQUIRED_RUN_COLUMNS)
+
+
+def require_admission_schema():
+    """Refuse an ADMISSION operation when 012 has not been applied.
+
+    Scoped deliberately. Folding this into `ensure_schema` refused every durable feature on a
+    database that carries 009 but not 012, including reads that never touch the new columns, which
+    is a bigger outage than the bug it prevents. The hazard is still real: without it the first
+    enqueue fails at runtime, on a user's search, with UndefinedColumn.
+    """
+    ensure_schema()
+    if not admission_capable():
+        raise RuntimeError(
+            "durable-run admission needs columns that are not present on search_runs: "
+            + ", ".join(sorted(REQUIRED_RUN_COLUMNS))
+            + ". Apply sql/012_run_admission.sql through the migration runner.")
+
+
 def _cur(autocommit=True):
     ensure_schema()
     return db.cursor(autocommit=autocommit)
@@ -162,6 +204,10 @@ def enqueue(slug, inp, *, search_mode="CONCEPT_SEARCH", mode="novelty", depth="d
     A slug that already has a live (queued or running) run RETURNS THAT RUN rather than starting a
     second one: the slug is the report's cache identity, and two runs writing one report file is
     the race the in-process `_JOBS` claim used to prevent.
+
+    This API does NOT set admission. A row it creates is unadmitted, and only the single
+    serialized authority in `admit_waiting` may make it runnable, so there is no second path by
+    which something becomes spendable.
 
     `with_created` exists because the CALLER has a side effect that must happen exactly once per
     run and not once per submission: charging the daily budget. Without it every retry and every
@@ -208,6 +254,151 @@ def enqueue(slug, inp, *, search_mode="CONCEPT_SEARCH", mode="novelty", depth="d
         return _ret(winner["run_id"], False)
 
 
+#  OUTSTANDING work in a lane, which is what a concurrency limit actually bounds: runs a worker
+#  is executing PLUS runs already admitted and waiting to be claimed. Counting only 'running'
+#  admits one more on every sweep, because admitting does not itself make a row running, so three
+#  serialized sweeps against a limit of one admit three.
+_OUTSTANDING_SQL = ("SELECT count(*) n FROM search_runs WHERE lane=%s "
+                    "AND (status='running' OR (status='queued' AND admitted))")
+
+
+def enqueue_admitted(slug, inp, *, search_mode="CONCEPT_SEARCH", mode="novelty", depth="deep",
+                     lane=None, config=None, priority=100, daily_cap=0, max_concurrent=0):
+    """Insert a run, then let the single admission authority decide. -> (run_id, created, admitted)
+
+    THE INSERT AND THE DECISION ARE DELIBERATELY SEPARATE. Every new row is born unadmitted, and
+    only `admit_waiting` may make one runnable, oldest first. Admitting a newcomer inline inside
+    this transaction would let it jump whatever was already waiting, and it would be a second
+    admission path that could disagree with the sweep. A worker can never observe the brief
+    unadmitted state as runnable, and if this process dies between the insert and the sweep, the
+    worker's own sweep recovers the row.
+
+    POSTGRES IS THE AUTHORITY throughout. A process-local gate cannot decide admission: two
+    gunicorn workers and the sweeper each hold their own counters, so each can believe it holds
+    the last slot. Caps arrive here as CONFIGURED LIMITS only; the counting happens against rows.
+    """
+    require_admission_schema()
+    lane = lane or depth
+    config = config or {}
+    fp = config_fingerprint(inp, config)
+    with _cur(autocommit=False) as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"admit:{lane}",))
+
+        cur.execute("SELECT run_id, admitted FROM search_runs WHERE slug=%s "
+                    "AND status IN ('queued','running') ORDER BY enqueued_at DESC LIMIT 1",
+                    (slug,))
+        row = cur.fetchone()
+        if row:
+            return row["run_id"], False, bool(row["admitted"])
+
+        rid = new_run_id(slug)
+        cur.execute(
+            """INSERT INTO search_runs (run_id, slug, search_mode, mode, depth, lane, input,
+                                        config, config_fingerprint, status, priority,
+                                        max_attempts, admitted, admitted_at, charged_day)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'queued',%s,%s,
+                       false, NULL, NULL)
+               ON CONFLICT (slug) WHERE status IN ('queued','running') DO NOTHING
+               RETURNING run_id""",
+            (rid, slug, search_mode, mode, depth, lane, json.dumps(inp or {}, default=str),
+             json.dumps(config, default=str), fp, int(priority), MAX_ATTEMPTS))
+        inserted = cur.fetchone()
+        if inserted:
+            created_id = inserted["run_id"]
+        else:
+            cur.execute("SELECT run_id, admitted FROM search_runs WHERE slug=%s "
+                        "AND status IN ('queued','running') ORDER BY enqueued_at DESC LIMIT 1",
+                        (slug,))
+            winner = cur.fetchone()
+            if not winner:
+                raise RuntimeError(
+                    "live-run uniqueness conflict resolved without a visible winner")
+            return winner["run_id"], False, bool(winner["admitted"])
+
+    #  EVERY new row is born unadmitted, then the ONE serialized authority decides, oldest
+    #  first. Admitting the newcomer inline would let it jump whatever was already waiting, and
+    #  it would be a second admission path that could disagree with the sweep. If this process
+    #  dies between the insert and the sweep, the worker's own sweep recovers the row.
+    admitted_ids = admit_waiting(lane=lane, daily_cap=daily_cap, max_concurrent=max_concurrent)
+    return created_id, True, created_id in admitted_ids
+
+
+def admission_stats(lane):
+    """The persisted counts an operator needs for one lane. RAISES; the caller decides.
+
+    /healthz used to read the process-local gate, which durable submissions never touch. After
+    cutover that reports zero active and zero spent while Postgres holds running and charged work,
+    which is worse than no number at all: it is a confident wrong answer to the first question
+    anybody asks during an incident.
+    """
+    require_admission_schema()
+    with _cur() as cur:
+        cur.execute("""SELECT
+              count(*) FILTER (WHERE status = 'running')                        AS running,
+              count(*) FILTER (WHERE status = 'queued' AND admitted)            AS admitted_queued,
+              count(*) FILTER (WHERE status = 'queued' AND NOT admitted)        AS waiting,
+              count(*) FILTER (WHERE charged_day = (now() AT TIME ZONE 'UTC')::date) AS today
+            FROM search_runs WHERE lane = %s""", (lane,))
+        r0 = cur.fetchone() or {}
+    return {k: int(r0.get(k) or 0) for k in ("running", "admitted_queued", "waiting", "today")}
+
+
+def charged_today(lane):
+    """How many runs in this lane have spent from today's budget.
+
+    The ROWS are the ledger. There is no counter to reset, so a UTC rollover is a date changing
+    rather than an invariant somebody has to remember, and a crash cannot lose the count or
+    double it.
+    """
+    with _cur() as cur:
+        cur.execute("SELECT count(*) n FROM search_runs WHERE lane=%s "
+                    "AND charged_day = (now() AT TIME ZONE 'UTC')::date", (lane,))
+        return int((cur.fetchone() or {}).get("n") or 0)
+
+
+def admit_waiting(lane, daily_cap, max_concurrent, limit=None):
+    """Admit queued-but-unadmitted runs in this lane, up to what the caps genuinely allow.
+
+    -> the run_ids admitted, oldest first.
+
+    Every new row is queued and NOT runnable. This is the ONLY path by which one becomes
+    runnable, for producers and workers alike, and it re-checks both caps against the database
+    rather than against any process's memory.
+
+    The whole decision runs inside ONE transaction holding a per-lane advisory lock. Counting in
+    one transaction and admitting in another is precisely the race that lets two sweeps each see
+    room for one and admit two: the lock makes admission per lane serial, and it is released on
+    commit or rollback, so a worker that dies mid-sweep does not wedge the lane.
+    """
+    require_admission_schema()
+    admitted = []
+    with _cur(autocommit=False) as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"admit:{lane}",))
+        cur.execute("SELECT count(*) n FROM search_runs WHERE lane=%s "
+                    "AND charged_day = (now() AT TIME ZONE 'UTC')::date", (lane,))
+        spent = int((cur.fetchone() or {}).get("n") or 0)
+        cur.execute(_OUTSTANDING_SQL, (lane,))
+        running = int((cur.fetchone() or {}).get("n") or 0)
+
+        room = min(int(daily_cap) - spent, int(max_concurrent) - running)
+        if limit is not None:
+            room = min(room, int(limit))
+        if room <= 0:
+            return []
+
+        cur.execute("""UPDATE search_runs SET admitted = true, admitted_at = now(),
+                              charged_day = (now() AT TIME ZONE 'UTC')::date,
+                              updated_at = now(), event_seq = event_seq + 1
+                        WHERE run_id IN (
+                            SELECT run_id FROM search_runs
+                             WHERE lane=%s AND status='queued' AND NOT admitted
+                             ORDER BY priority, enqueued_at
+                             LIMIT %s)
+                        RETURNING run_id""", (lane, room))
+        admitted = [r["run_id"] for r in cur.fetchall() or []]
+    return admitted
+
+
 def queue_position(run_id):
     """How many queued runs are ahead of this one in its own lane, or None if it is not queued."""
     with _cur() as cur:
@@ -227,11 +418,12 @@ def queue_position(run_id):
 #  ONE STATEMENT, ONE TRANSACTION. The CTE takes the row lock with SKIP LOCKED and the UPDATE
 #  releases it on commit, so the window in which any row is locked is the width of one UPDATE.
 #  Two workers polling at the same instant take two different rows; neither blocks.
-_CLAIM_SQL = """
+_CLAIM_SQL_TEMPLATE = """
 WITH picked AS (
     SELECT run_id
       FROM search_runs
      WHERE status = 'queued'
+       AND {admitted_clause}
        AND (%(lanes)s::text[] IS NULL OR lane = ANY(%(lanes)s::text[]))
      ORDER BY priority, enqueued_at
      FOR UPDATE SKIP LOCKED
@@ -257,14 +449,36 @@ UPDATE search_runs r
 """
 
 
-def claim(worker, lanes=None, lease_seconds=None):
+def claim(worker, lanes=None, lease_seconds=None, admitted_only=None):
     """Claim the next runnable run for `worker`. -> the run row (dict) or None.
+
+    `admitted_only`: True or None, and nothing else.
+
+      True  filter on admission. The real worker passes this immediately after
+            `require_admission_schema`, so its safety is visible at the call site and it does not
+            pay for a second catalog probe.
+      None  detect the schema and filter whenever 012 exists. A foundation caller on 009 uses
+            this and gets the legacy shape because the columns genuinely are not there.
+
+    There is deliberately NO explicit legacy mode. `False` on a 012 database would claim
+    admitted=false rows, which is exactly the cap bypass this whole path exists to close, and no
+    caller needs it: a database without the columns is already handled by detection.
 
     `lanes`: restrict to these lanes (e.g. ['quick']) so a cheap interactive search is never stuck
     behind two multi-hour attacks. None means any lane.
     """
     with _cur() as cur:
-        cur.execute(_CLAIM_SQL, {"lanes": list(lanes) if lanes else None,
+        #  NEVER spend on a row admission refused. On a 009 database there is no such concept,
+        #  so every queued row is claimable exactly as it was before.
+        if admitted_only is False:
+            raise ValueError(
+                "claim(admitted_only=False) is not a supported mode: on a database with 012 it "
+                "would claim rows admission refused. Use None to detect the schema, or True "
+                "after require_admission_schema().")
+        want = admission_capable() if admitted_only is None else True
+        clause = "admitted" if want else "true"
+        cur.execute(_CLAIM_SQL_TEMPLATE.format(admitted_clause=clause),
+                    {"lanes": list(lanes) if lanes else None,
                                  "worker": worker,
                                  "lease": float(lease_seconds or LEASE_SECONDS)})
         row = cur.fetchone()

@@ -214,6 +214,12 @@ def test_worker_settles_success_before_stopping_its_heartbeat(monkeypatch):
     """No reaper window may open between producing the report and settling the owned run."""
     from runner import worker
 
+    #  run_once now verifies the admission schema and sweeps before it claims, so that a worker
+    #  can never fall back to claiming unadmitted rows on a 009 database. This test is about
+    #  heartbeat settlement, not schema, and it runs against a store that predates 012.
+    monkeypatch.setattr(worker.runstore, "require_admission_schema", lambda: None)
+    monkeypatch.setattr(worker, "sweep", lambda lanes=None: {})
+
     events = []
     row = {"run_id": "run-1", "slug": "slug", "lane": "quick", "attempts": 1,
            "max_attempts": 3}

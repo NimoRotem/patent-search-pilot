@@ -297,6 +297,27 @@ def reset_limits():
 # ---------------------------------------------------------------------------------------------
 # hard caps: concurrent generations + daily LLM-spending runs
 # ---------------------------------------------------------------------------------------------
+#  THE canonical lane limits, in one place. The web gate and the standalone worker must resolve
+#  the SAME numbers from the SAME environment variables: a worker that invents its own names
+#  silently ignores whatever the operator configured, and admits against defaults nobody chose.
+LANE_LIMIT_ENV = {
+    "deep":  {"max_concurrent": ("MAX_CONCURRENT_RUNS", 2), "daily_cap": ("DAILY_RUN_CAP", 50)},
+    "quick": {"max_concurrent": ("MAX_CONCURRENT_QUICK", 3), "daily_cap": ("QUICK_DAILY_CAP", 200)},
+}
+
+
+def lane_limits(lane):
+    """Configured concurrency and daily cap for a lane, from the canonical variables."""
+    spec = LANE_LIMIT_ENV.get(lane, LANE_LIMIT_ENV["deep"])
+    out = {}
+    for key, (env, default) in spec.items():
+        try:
+            out[key] = int(os.environ.get(env, default))
+        except (TypeError, ValueError):
+            out[key] = int(default)
+    return out
+
+
 class RunGate:
     """Bounds how much money/CPU the app can burn.
 
@@ -401,9 +422,10 @@ run_gate = None
 
 def init_run_gate(state_path):
     global run_gate
-    run_gate = RunGate(_num("MAX_CONCURRENT_RUNS", 2), _num("DAILY_RUN_CAP", 50), state_path,
-                       quick_max=_num("MAX_CONCURRENT_QUICK", 3),
-                       quick_daily_cap=_num("QUICK_DAILY_CAP", 200))
+    run_gate = RunGate(lane_limits("deep")["max_concurrent"],
+                       lane_limits("deep")["daily_cap"], state_path,
+                       quick_max=lane_limits("quick")["max_concurrent"],
+                       quick_daily_cap=lane_limits("quick")["daily_cap"])
     return run_gate
 
 

@@ -128,9 +128,47 @@ def execute(run, worker, heartbeat):
         runstore.release_shards(run["run_id"])
 
 
+LANES = ("quick", "deep")
+
+
+def lane_caps(lane):
+    """The configured limits this worker admits against.
+
+    Resolved through `auth.lane_limits`, the same function the web gate uses, so a worker and the
+    app can never disagree about what the operator configured. An earlier version invented its own
+    variable names and would have quietly admitted against defaults nobody set.
+    """
+    import auth
+    return auth.lane_limits(lane)
+
+
+def sweep(lanes=None):
+    """Admit waiting rows this worker could run. -> {lane: [run_id, ...]}.
+
+    Without this nothing ever re-checks a row that was refused for concurrency or for today's
+    budget: it stays unadmitted for ever, because the producer only looks once, at submission.
+    A run finishing or a UTC day rolling over is exactly when a waiting row becomes eligible, and
+    the worker is the process that notices both.
+    """
+    out = {}
+    for lane in (lanes or LANES):
+        caps = lane_caps(lane)
+        got = runstore.admit_waiting(lane=lane, **caps)
+        if got:
+            out[lane] = got
+            print(f"[worker] admitted {len(got)} waiting run(s) in lane {lane}", flush=True)
+    return out
+
+
 def run_once(worker, lanes=None):
     """Claim and execute at most one run. -> the run_id executed, or None."""
-    run = runstore.claim(worker, lanes=lanes)
+    #  BEFORE any sweep or claim. DURABLE_WORKER_ENABLED=1 must never degrade into claiming
+    #  unadmitted rows on a 009 database: the real worker refuses instead.
+    runstore.require_admission_schema()
+    sweep(lanes)
+    #  Explicit, right after the guard above: no second catalog probe, and the safety of
+    #  this call is readable here rather than inferred from a global.
+    run = runstore.claim(worker, lanes=lanes, admitted_only=True)
     if not run:
         return None
     rid = run["run_id"]

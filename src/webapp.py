@@ -1831,6 +1831,59 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
     return "running", None
 
 
+def _health_runs():
+    """What /healthz reports about run capacity.
+
+    Under the flag the COUNTS come from Postgres, because that is where the work is, while the
+    CAPS still come from the configured gate, because that is where the operator set them. The
+    source is named so nobody has to guess which regime produced the numbers.
+
+    A stats failure returns a fixed marker and never the exception: this endpoint is reachable by
+    anything that can hit the host, and a database error carries a DSN or a role name.
+    """
+    gate = auth.run_gate
+    if not durable_runs_enabled():
+        return gate.stats() if gate else {}
+    caps_deep, caps_quick = _lane_caps(gate, "deep"), _lane_caps(gate, "quick")
+    try:
+        deep = runstore.admission_stats("deep")
+        quick = runstore.admission_stats("quick")
+    except Exception:                                                # noqa: BLE001
+        traceback.print_exc()
+        return {"source": "unavailable",
+                "detail": "durable run statistics could not be read",
+                "daily_cap": caps_deep["daily_cap"],
+                "max_concurrent": caps_deep["max_concurrent"]}
+    return {"source": "postgres",
+            "active": deep["running"], "today": deep["today"],
+            "admitted_queued": deep["admitted_queued"], "waiting": deep["waiting"],
+            "daily_cap": caps_deep["daily_cap"],
+            "max_concurrent": caps_deep["max_concurrent"],
+            "active_quick": quick["running"], "quick_today": quick["today"],
+            "admitted_queued_quick": quick["admitted_queued"],
+            "waiting_quick": quick["waiting"],
+            "quick_daily_cap": caps_quick["daily_cap"],
+            "quick_max": caps_quick["max_concurrent"]}
+
+
+def _lane_caps(gate, depth):
+    """The CONFIGURED limits for a lane. Limits only, never a decision.
+
+    The durable admission decision belongs to Postgres. This exists so the numbers an operator
+    already set on the gate keep meaning the same thing for durable runs as they do for legacy
+    ones, rather than being duplicated in a second place that can drift.
+    """
+    if gate is None:
+        #  REFUSE, do not wave through. A missing gate used to mean a billion slots, which is
+        #  fail-open on money: the one direction this must never fail. An unadmitted row is still
+        #  queued and still visible to the user, and the worker sweep admits it once real limits
+        #  are configured.
+        return {"daily_cap": 0, "max_concurrent": 0}
+    if depth == "quick":
+        return {"daily_cap": int(gate.quick_daily_cap), "max_concurrent": int(gate.quick_max)}
+    return {"daily_cap": int(gate.daily_cap), "max_concurrent": int(gate.max_concurrent)}
+
+
 def _durable_search_mode(doc_token):
     """CONCEPT_SEARCH or CLAIM_ATTACK, decided from the input the way /run decides it.
 
@@ -1903,9 +1956,17 @@ def _enqueue_durable_run(slug, query, subject, mode, wide, doc_token, search_foc
                "doc_token": doc_token, "search_focus": search_focus, "depth": depth,
                "owner_user_id": owner_user_id}
     try:
-        run_id, created = runstore.enqueue(
+        #  The row is inserted UNADMITTED, and a separate serialized sweep then admits oldest
+        #  first. Deciding inline would let a newcomer jump whatever was already waiting, and it
+        #  would be a second admission path that could disagree with the sweep. The process-local
+        #  gate supplies only the configured LIMITS: it cannot supply the decision, because two
+        #  gunicorn processes and the worker each keep their own counters and would each believe
+        #  they hold the last slot.
+        gate = auth.run_gate
+        caps = _lane_caps(gate, depth)
+        run_id, created, admitted = runstore.enqueue_admitted(
             slug, payload, search_mode=_durable_search_mode(doc_token), mode=mode, depth=depth,
-            lane=depth, with_created=True)
+            lane=depth, daily_cap=caps["daily_cap"], max_concurrent=caps["max_concurrent"])
     except Exception:
         #  No `_JOBS.pop` here. The durable branch does not own a memory claim, and a legacy run
         #  started before the flag flipped may still be executing behind one; deleting it would
@@ -1936,13 +1997,6 @@ def _enqueue_durable_run(slug, query, subject, mode, wide, doc_token, search_foc
     #  No `_JOBS` placeholder is written. The durable row IS the claim, the status and the
     #  dedupe, and a second copy of that state in process memory is what produced the stale
     #  running entry that blocked reruns.
-    if created and auth.run_gate:
-        #  The one accounting decision, made once, by the creator. A refusal still leaves the run
-        #  QUEUED, which is exactly what the legacy path does when the gate is full or the cap is
-        #  reached: it queues and reports running, and reserves refusal for the dispatcher.
-        ok, _why = auth.run_gate.try_begin(depth=depth)
-        if ok:
-            auth.run_gate.end(depth=depth)
     return "running", None
 
 
@@ -6914,7 +6968,13 @@ def healthz():
     """Unauthenticated on purpose so external monitoring keeps working."""
     h = {"ok": True, "gold": len(_GOLD)}
     if auth.run_gate:
-        h["runs"] = auth.run_gate.stats()
+        h["runs"] = _health_runs()
+        if h["runs"].get("source") == "unavailable":
+            #  DEGRADED, deliberately. Under the flag the run store is where execution lives, so
+            #  being unable to read it means this instance cannot say whether searches are running
+            #  at all. Reporting ok:true would tell a monitor everything is fine precisely when
+            #  nobody can see the work.
+            h["ok"] = False
     h["mail"] = notifications.transport_status()
     h["draft_worker"] = draft_worker.status()
     h["draft_turn_worker"] = draft_studio_service.status()
