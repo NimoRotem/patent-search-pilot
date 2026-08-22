@@ -39,13 +39,13 @@ MAX_PNG_BYTES = 8 * 1024 * 1024
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
-FIGURE_PROMPT_VERSION = "figure-v4-exact-geometry-rejected-cache-eviction"
+FIGURE_PROMPT_VERSION = "figure-v5-exact-geometry-without-annotation-placement"
 SEMANTIC_PROMPT_VERSION = (
-    "figure-semantic-v11-high-accuracy-full-spec-consensus-pixel-grounded-marked-topology")
+    "figure-semantic-v12-high-accuracy-geometry-only-consensus-pixel-grounded-marked-topology")
 LEADER_PROMPT_VERSION = (
     "figure-leader-v7-high-accuracy-routing-only-independent-consensus")
 MARKED_ANCHOR_PROMPT_VERSION = (
-    "figure-anchor-v4-high-accuracy-annotation-aware-full-spec-marked-crop-consensus")
+    "figure-anchor-v5-high-accuracy-part-aware-marked-crop-consensus")
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v1-exterior-connectivity"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
@@ -506,6 +506,11 @@ _ANNOTATION_ONLY = re.compile(
     r"section\s+lines?|cutting\s+planes?)\b",
     re.IGNORECASE,
 )
+_ANNOTATION_PLACEMENT = re.compile(
+    r"\bidentif(?:ied|ies|ying|ication)\b.{0,160}\bpoint\b|"
+    r"\bpoint\b.{0,160}\bidentif(?:ied|ies|ying|ication)\b",
+    re.IGNORECASE,
+)
 _SMALL_NUMBERS = (
     "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
     "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
@@ -534,7 +539,9 @@ def _integer_words(value: int) -> str:
 def _geometry_text(value, numerals=()):
     """Remove filing annotations from prose before it reaches the image model."""
     chunks = re.split(r"(?<=[.!?])\s+|[\r\n]+", str(value or ""))
-    text = " ".join(chunk for chunk in chunks if not _ANNOTATION_ONLY.search(chunk))
+    text = " ".join(
+        chunk for chunk in chunks
+        if not _ANNOTATION_ONLY.search(chunk) and not _ANNOTATION_PLACEMENT.search(chunk))
     text = _FIGURE_ID_RE.sub("", text)
     values = [re.escape(entry["numeral"]) for entry in numeral_entries(numerals)]
     if values:

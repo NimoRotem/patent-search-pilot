@@ -503,6 +503,27 @@ def test_geometry_prompt_removes_section_marks_and_spells_geometric_numbers():
     assert "section line" not in prompt.lower()
 
 
+def test_geometry_spec_strips_arbitrary_annotation_point_placement():
+    caption = (
+        "The second side 16 is the straight lower edge of the slab. "
+        "The extraction opening 30 breaks through that edge at the horizontal center. "
+        "The second side 16 is identified at one point on that lower edge, at the exact "
+        "horizontal center of the sheet. "
+        "The covering element 36 is identified by a point inside its right-hand quarter.")
+
+    cleaned = draft_figures._geometry_text(
+        caption, ["16 = second side", "30 = extraction opening", "36 = covering element"])
+    specification = json.loads(draft_figures._review_specification(
+        "FIG. 2", caption,
+        ["16 = second side", "30 = extraction opening", "36 = covering element"],
+        geometry_only=True))
+
+    assert "straight lower edge" in cleaned
+    assert "breaks through that edge" in cleaned
+    assert "identified at" not in cleaned and "identified by a point" not in cleaned
+    assert specification["caption"] == cleaned
+
+
 def test_long_geometry_prompt_keeps_components_change_request_and_no_text_rule():
     caption = "A rigid frame surrounds a central opening with parallel bearing faces. " * 180
     prompt = draft_figures.build_prompt(
