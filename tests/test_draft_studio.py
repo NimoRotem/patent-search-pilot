@@ -1207,6 +1207,34 @@ def test_figure_plan_repairs_keep_authoritative_text_and_numerals(tmp_path):
             for item in draft_workspace.read_figures(tmp_path)] == revised_figures
 
 
+def test_source_locks_never_restore_an_empty_or_incomplete_baseline(tmp_path):
+    draft_workspace.write_sections(tmp_path, GOOD)
+    draft_workspace.write_numerals(tmp_path, NUMERALS)
+    draft_workspace.write_figures(tmp_path, FIGURES)
+    before = draft_workspace.snapshot(tmp_path)
+    figure_plan_report = {
+        "checks": [{
+            "name": "Drawing briefs are concise and renderable",
+            "status": "fail", "category": "figures_and_numerals",
+        }],
+        "findings": [],
+    }
+    drawing_report = {
+        "checks": [{
+            "name": "Every drawing sheet passes geometry, leader, and OCR inspection",
+            "status": "fail", "category": "figures_and_numerals",
+        }],
+        "findings": [],
+    }
+
+    assert not draft_studio.restore_sources_after_figure_plan_review(
+        tmp_path, {}, figure_plan_report)
+    assert draft_workspace.snapshot(tmp_path) == before
+    assert not draft_studio.restore_text_after_drawing_only_review(
+        tmp_path, {"sections": GOOD}, drawing_report)
+    assert draft_workspace.snapshot(tmp_path) == before
+
+
 def test_mixed_review_does_not_lock_a_legitimate_source_repair(tmp_path):
     revised = {**GOOD, "summary": "A source-faithful correction."}
     draft_workspace.write_sections(tmp_path, revised)
