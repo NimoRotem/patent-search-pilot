@@ -29,6 +29,7 @@ import glob
 import json
 import os
 from dataclasses import dataclass
+from typing import ClassVar
 
 import db
 
@@ -204,7 +205,7 @@ class JsonlManifestReader(ManifestReader):
                         continue
                     try:
                         obj = json.loads(line)
-                    except Exception:
+                    except json.JSONDecodeError:
                         continue
                     e = self.entry_from(obj, self.name)
                     if e is not None:
@@ -220,6 +221,157 @@ class JsonlManifestReader(ManifestReader):
         return entries, f"{fi}:{off}", exhausted
 
 
+class NicheDatabaseReader(ManifestReader):
+    """Read one preferred incomplete publication per family from isolated staging.
+
+    The durable cursor walks the staging manifest primary key. Family selection is restricted to
+    the family keys in that bounded page and uses the family index, so it never scans or sorts the
+    full manifest. A family seen on two pages offers the same preferred publication twice, which
+    the acquisition queue primary key deduplicates without another provider call.
+    """
+
+    name = "niche-db:niche_full_v1"
+    PRIORITIES: ClassVar[dict[int, int]] = {1: 50, 2: 60, 3: 70, 4: 150}
+
+    PAGE_SQL = """
+        SELECT publication_id, publication_number, family_id, authority, priority,
+               has_complete_claims, has_complete_description, updated_at
+          FROM niche_corpus.niche_publications
+         WHERE (updated_at, publication_id) > (%s::timestamptz, %s)
+         ORDER BY updated_at, publication_id
+         LIMIT %s
+    """
+    FAMILY_TARGET_SQL = """
+        SELECT DISTINCT ON (p.family_id)
+               p.publication_number, p.family_id, p.authority,
+               min(p.priority) OVER (PARTITION BY p.family_id) AS family_priority
+          FROM niche_corpus.niche_publications AS p
+         WHERE p.family_id = ANY(%s)
+           AND NOT (p.has_complete_claims AND p.has_complete_description)
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM niche_corpus.niche_publications AS complete
+                WHERE complete.family_id = p.family_id
+                  AND complete.has_complete_claims
+                  AND complete.has_complete_description
+           )
+         ORDER BY p.family_id,
+                  (p.has_complete_claims::integer +
+                   p.has_complete_description::integer) DESC,
+                  (lower(COALESCE(p.language, '')) = 'en') DESC,
+                  (p.has_claims::integer + p.has_description::integer) DESC,
+                  (COALESCE(p.kind_code, '') LIKE 'A%%') DESC,
+                  p.priority,
+                  p.publication_id
+    """
+
+    def __init__(
+        self,
+        *,
+        connection_factory=None,
+        expected_database: str | None = None,
+        fingerprint: str | None = None,
+    ):
+        dsn = str(os.environ.get("NICHE_PARSE_DATABASE_URL") or "").strip()
+        if connection_factory is None:
+            if not dsn:
+                raise RuntimeError("NICHE_PARSE_DATABASE_URL is required for niche-db")
+            from psycopg import connect
+            from psycopg.rows import dict_row
+
+            def connection_factory():
+                return connect(
+                    dsn,
+                    row_factory=dict_row,
+                    application_name="niche-fetch-seed",
+                    connect_timeout=10,
+                )
+
+        self.connection_factory = connection_factory
+        self.expected_database = str(
+            expected_database or os.environ.get("NICHE_EXPECTED_DATABASE") or ""
+        ).strip()
+        self.fingerprint = str(
+            fingerprint or os.environ.get("NICHE_DATABASE_FINGERPRINT") or ""
+        ).strip()
+        if not self.expected_database or not self.fingerprint:
+            raise RuntimeError("niche-db requires its expected database name and fingerprint")
+
+    @classmethod
+    def _priority(cls, value) -> int:
+        try:
+            priority = min(4, max(1, int(value or 4)))
+        except (TypeError, ValueError):
+            priority = 4
+        return cls.PRIORITIES[priority]
+
+    def read(self, cursor: str, limit: int):
+        page_size = min(10_000, max(1, int(limit)))
+        try:
+            after_time, after_publication = str(cursor or "").split("|", 1)
+        except ValueError:
+            after_time, after_publication = "1970-01-01T00:00:00+00:00", ""
+        with self.connection_factory() as connection:
+            connection.execute("SET TRANSACTION READ ONLY")
+            with connection.cursor() as db_cursor:
+                db_cursor.execute(
+                    "SELECT current_database() AS database_name, identity.fingerprint "
+                    "FROM niche_corpus.pipeline_identity AS identity "
+                    "WHERE identity.singleton=true"
+                )
+                identity = db_cursor.fetchone() or {}
+                if str(identity.get("database_name") or "") != self.expected_database:
+                    raise RuntimeError("niche-db database name mismatch")
+                if str(identity.get("fingerprint") or "") != self.fingerprint:
+                    raise RuntimeError("niche-db database fingerprint mismatch")
+                db_cursor.execute(
+                    self.PAGE_SQL, (after_time, after_publication, page_size)
+                )
+                page = [dict(row) for row in db_cursor.fetchall()]
+                families = sorted({
+                    str(row.get("family_id") or "")
+                    for row in page
+                    if row.get("family_id")
+                })
+                targets = []
+                if families:
+                    db_cursor.execute(self.FAMILY_TARGET_SQL, (families,))
+                    targets = [dict(row) for row in db_cursor.fetchall()]
+
+        entries = [
+            ManifestEntry(
+                publication_number=canonical(row.get("publication_number") or ""),
+                family_id=str(row.get("family_id") or ""),
+                country=str(row.get("authority") or "")[:4],
+                priority=self._priority(row.get("family_priority")),
+                manifest=self.name,
+            )
+            for row in targets
+            if canonical(row.get("publication_number") or "")
+        ]
+        entries.extend(
+            ManifestEntry(
+                publication_number=canonical(row.get("publication_number") or ""),
+                family_id="",
+                country=str(row.get("authority") or "")[:4],
+                priority=self._priority(row.get("priority")),
+                manifest=self.name,
+            )
+            for row in page
+            if not row.get("family_id")
+            and not (
+                row.get("has_complete_claims") and row.get("has_complete_description")
+            )
+            and canonical(row.get("publication_number") or "")
+        )
+        deduplicated = {entry.publication_number: entry for entry in entries}
+        next_cursor = (
+            f"{page[-1]['updated_at'].isoformat()}|{page[-1]['publication_id']}"
+            if page else str(cursor or "")
+        )
+        return list(deduplicated.values()), next_cursor, len(page) < page_size
+
+
 def open_reader(spec: str = "") -> ManifestReader:
     """`spec` is `FULLTEXT_MANIFEST` or the `--manifest` flag.
 
@@ -230,6 +382,8 @@ def open_reader(spec: str = "") -> ManifestReader:
     spec = spec or os.environ.get("FULLTEXT_MANIFEST", "corpus-niche")
     if spec in ("corpus-niche", "", "default"):
         return CorpusNicheReader()
+    if spec == "niche-db":
+        return NicheDatabaseReader()
     return JsonlManifestReader(spec)
 
 

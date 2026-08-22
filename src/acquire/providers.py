@@ -12,9 +12,10 @@
     5. serp_self     Google Patents fetched from our own IP. Every jurisdiction, already in
                      English, free, and the one rung that can get this box cut off, so it is
                      paced at 2 in flight with 0.7 s between calls and it self-disables.
-    6. scrapingbee   the same pages through somebody else's IPs. 15 credits a page.
-    7. himmpat       CN / JP / KR / TW translations, metered trial key.
-    8. serpapi       paid, and LAST.
+    6. firecrawl     one deterministic Google Patents page scrape. 1 credit a page.
+    7. scrapingbee   the same pages through somebody else's IPs. 15 credits a page.
+    8. himmpat       CN / JP / KR / TW translations, metered trial key.
+    9. serpapi       paid, and LAST.
 
 ORDER NOTE, deliberate and measured. The brief lists SerpApi at rung 5 and "the other adapters" at
 rung 6, while also calling SerpApi the last resort. Those cannot both hold, so cost decides.
@@ -55,6 +56,9 @@ class FetchResult:
     meta: dict = field(default_factory=dict)
     raw: bytes = b""
     raw_ext: str = "json"
+    http_status: int | None = None
+    response_headers: dict = field(default_factory=dict)
+    source_url: str = ""
     credits: float = 0.0
     usd: float = 0.0
     #  True when the upstream answered, EVEN IF the answer was "this document has no full text".
@@ -193,7 +197,7 @@ class CorpusProvider(Provider):
     timeout = 30.0
     MAX_SIBLINGS = 20
 
-    def __init__(self, allow_family_donor: bool = None):
+    def __init__(self, allow_family_donor: bool | None = None):
         super().__init__()
         if allow_family_donor is None:
             allow_family_donor = os.environ.get(
@@ -264,7 +268,7 @@ class CorpusProvider(Provider):
                     "family_id": found.get("family_id", ""),
                     "text_is_family_donor": True}
         return FetchResult(
-            provider=(f"corpus:family" if found.get("donor") else "corpus"),
+            provider=("corpus:family" if found.get("donor") else "corpus"),
             claims=found["claims"], description=found["description"],
             abstract=found.get("abstract", ""), title=found.get("title", ""),
             claims_lang=found.get("claims_lang", ""), desc_lang=found.get("desc_lang", ""),
@@ -292,7 +296,7 @@ def parse_st36(xml_bytes: bytes) -> dict:
 
     try:
         root = etree.fromstring(xml_bytes, parser=etree.XMLParser(recover=True, huge_tree=True))
-    except Exception:
+    except (etree.XMLSyntaxError, TypeError, ValueError):
         return {}
     if root is None:
         return {}
@@ -389,8 +393,10 @@ class BulkXmlProvider(Provider):
         if root.startswith("gs://"):
             bucket, _, prefix = root[5:].partition("/")
             from . import blobstore
-            for name in (f"{prefix.rstrip('/')}/{pub}.xml", f"{prefix.rstrip('/')}/"
-                         f"{_country(pub)}/{pub}.xml"):
+            for name in (
+                f"{prefix.rstrip('/')}/{pub}.xml",
+                f"{prefix.rstrip('/')}/{_country(pub)}/{pub}.xml",
+            ):
                 try:
                     tok = await blobstore.token(client)
                     import urllib.parse
@@ -399,7 +405,7 @@ class BulkXmlProvider(Provider):
                                                 name=urllib.parse.quote(name, safe="")),
                         params={"alt": "media"},
                         headers={"Authorization": f"Bearer {tok}"}, timeout=self.timeout)
-                except Exception:
+                except (httpx.HTTPError, RuntimeError):
                     continue
                 if r.status_code == 200:
                     return self._result(r.content)
@@ -418,7 +424,7 @@ class BulkXmlProvider(Provider):
                         return fh.read()
                 with open(p, "rb") as fh:
                     return fh.read()
-            except Exception:
+            except (EOFError, OSError):
                 continue
         return None
 
@@ -536,10 +542,25 @@ class SelfSerpProvider(Provider):
         if not rec:
             #  Reached, and the page carries no full text. That is Google's answer too.
             return FetchResult(provider=self.name, reached=True)
-        return _from_gpatents(self.name, rec, r.text)
+        return _from_gpatents(
+            self.name,
+            rec,
+            r.text,
+            http_status=r.status_code,
+            response_headers=dict(r.headers),
+            source_url=str(r.url),
+        )
 
 
-def _from_gpatents(provider: str, rec: dict, page_html: str) -> FetchResult:
+def _from_gpatents(
+    provider: str,
+    rec: dict,
+    page_html: str,
+    *,
+    http_status: int | None = None,
+    response_headers: dict | None = None,
+    source_url: str = "",
+) -> FetchResult:
     meta = {k: rec[k] for k in ("assignee", "date", "priority_date", "filing_date", "kind",
                                 "country", "inventors", "cpc", "images", "pdf", "family",
                                 "backward", "forward", "legal_state", "legal_status")
@@ -550,11 +571,75 @@ def _from_gpatents(provider: str, rec: dict, page_html: str) -> FetchResult:
                        claims_lang=rec.get("claims_lang", "") or "",
                        desc_lang=rec.get("desc_lang", "") or "",
                        meta=meta, raw=(page_html or "").encode("utf-8", "replace"),
-                       raw_ext="html")
+                       raw_ext="html", http_status=http_status,
+                       response_headers=dict(response_headers or {}), source_url=source_url)
 
 
 # ---------------------------------------------------------------------------------------------
-# 6. ScrapingBee: the same pages, their IPs
+# 6. Firecrawl: one deterministic page scrape
+# ---------------------------------------------------------------------------------------------
+class FirecrawlProvider(Provider):
+    """Reuse the canonical single-page Firecrawl adapter under the shared DB budget."""
+
+    name = "firecrawl"
+    upstream = "google_patents"
+    concurrency = int(os.environ.get("FULLTEXT_FIRECRAWL_CONCURRENCY", "4"))
+    min_interval = float(os.environ.get("FULLTEXT_FIRECRAWL_MIN_INTERVAL", "0.25"))
+    timeout = 100.0
+    credits = 1.0
+    budget_key = "firecrawl"
+
+    def available(self):
+        return (
+            bool(os.environ.get("FIRECRAWL_API_KEY", "")),
+            "FIRECRAWL_API_KEY not set",
+        )
+
+    async def fetch(self, pub: str, client: httpx.AsyncClient):
+        del client  # The shared adapter owns its requests session.
+        from corpus.niche.models import Completeness, FetchRequest
+        from corpus.niche.providers.firecrawl import FirecrawlProvider as ScrapeAdapter
+
+        adapter = ScrapeAdapter(
+            api_key=os.environ.get("FIRECRAWL_API_KEY", ""),
+            timeout=max(1.0, self.timeout - 5.0),
+        )
+        request = FetchRequest(
+            publication_id=pub,
+            publication_number=pub,
+            authority=_country(pub),
+            missing_fields=frozenset({"claims", "description"}),
+            completeness=Completeness(),
+            language="en",
+        )
+        try:
+            result = await asyncio.to_thread(adapter.fetch, request)
+        finally:
+            close = getattr(adapter.http, "close", None)
+            if close:
+                close()
+        if not result or not result.content:
+            return FetchResult(provider=self.name, reached=True, credits=self.credits)
+        from sources.gpatents_direct import parse_document
+
+        page_html = result.content.decode("utf-8", "replace")
+        record = parse_document(page_html, pub)
+        if not record:
+            return FetchResult(provider=self.name, reached=True, credits=self.credits)
+        output = _from_gpatents(
+            self.name,
+            record,
+            page_html,
+            http_status=result.http_status,
+            response_headers=dict(result.response_headers or {}),
+            source_url=result.source_url,
+        )
+        output.credits = self.credits
+        return output
+
+
+# ---------------------------------------------------------------------------------------------
+# 7. ScrapingBee: the same pages, their IPs
 # ---------------------------------------------------------------------------------------------
 class ScrapingBeeProvider(Provider):
     """ScrapingBee classes patents.google.com as Google, so it needs `custom_google=True` and
@@ -589,13 +674,20 @@ class ScrapingBeeProvider(Provider):
         rec = parse_document(r.text, pub)
         if not rec:
             return FetchResult(provider=self.name, reached=True, credits=self.credits)
-        out = _from_gpatents(self.name, rec, r.text)
+        out = _from_gpatents(
+            self.name,
+            rec,
+            r.text,
+            http_status=r.status_code,
+            response_headers=dict(r.headers),
+            source_url=str(r.url),
+        )
         out.credits = self.credits
         return out
 
 
 # ---------------------------------------------------------------------------------------------
-# 7. HimmPat: CN / JP / KR / TW
+# 8. HimmPat: CN / JP / KR / TW
 # ---------------------------------------------------------------------------------------------
 class HimmPatProvider(Provider):
     name = "himmpat"
@@ -631,7 +723,7 @@ class HimmPatProvider(Provider):
 
 
 # ---------------------------------------------------------------------------------------------
-# 8. SerpApi: paid, capped, last
+# 9. SerpApi: paid, capped, last
 # ---------------------------------------------------------------------------------------------
 class SerpApiProvider(Provider):
     """The backstop that makes every rung above it optional rather than load-bearing, and the
@@ -680,11 +772,12 @@ class SerpApiProvider(Provider):
 # assembly
 # ---------------------------------------------------------------------------------------------
 DEFAULT_ORDER = ["corpus", "marec", "uspto_bulk", "epo_ops", "pqai", "serp_self",
-                 "scrapingbee", "himmpat", "serpapi"]
+                 "firecrawl", "scrapingbee", "himmpat", "serpapi"]
 
 #  Per-provider hard caps for one calendar month, enforced by ledger.reserve(). Names are the
 #  provider names; units are that provider's own credits.
 DEFAULT_CAPS = {
+    "firecrawl": float(os.environ.get("FULLTEXT_FIRECRAWL_BUDGET", "0")),
     "serpapi": float(os.environ.get("FULLTEXT_SERPAPI_BUDGET", "2000")),
     "scrapingbee": float(os.environ.get("FULLTEXT_SCRAPINGBEE_BUDGET", "300000")),
     "himmpat": float(os.environ.get("FULLTEXT_HIMMPAT_BUDGET", "200")),
@@ -711,6 +804,8 @@ def build(order=None) -> list:
             made.append(PqaiProvider())
         elif n == "serp_self":
             made.append(SelfSerpProvider())
+        elif n == "firecrawl":
+            made.append(FirecrawlProvider())
         elif n == "scrapingbee":
             made.append(ScrapingBeeProvider())
         elif n == "himmpat":
