@@ -1899,7 +1899,7 @@ def annotate_png(png: bytes, label: str, anchors, *, scale: float = 1.0) -> byte
     canvas.paste(source, (source_x, source_y))
     draw = ImageDraw.Draw(canvas)
     font = _font(font_size)
-    dot_radius = max(4, font_size // 8)
+    dot_radius = max(6, font_size // 8)
     for side_name, group in (("left", left_items), ("right", right_items)):
         for item, y in _spread_y(group, needed_height, top=top + row // 2,
                                  bottom=top + needed_height - row // 2):
