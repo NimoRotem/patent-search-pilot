@@ -649,15 +649,31 @@ def test_overcrowded_sheet_is_refused_before_any_image_call():
         draft_studio.validate_snapshot(snapshot, ALLOWED)
 
 
+def test_a_text_numeral_missing_from_every_figure_is_refused_before_any_image_call():
+    figures = [dict(FIGURES[0]), {**FIGURES[1], "numerals": ["16", "18"]}]
+    snapshot = {"sections": GOOD, "numerals": NUMERALS, "figures": figures}
+
+    with pytest.raises(
+            drafting.DraftingValidationError,
+            match="Every specification numeral appears in a drawing"):
+        draft_studio.validate_snapshot(snapshot, ALLOWED)
+
+
 def test_agent_filing_artifacts_are_normalized_for_human_facing_text():
+    numerals = [dict(item) for item in NUMERALS]
+    numerals[0]["part"] = "vacuum lifting tool\u2014assembly"
+    figures = [{**item, "numerals": list(item["numerals"])} for item in FIGURES]
+    figures[0]["caption"] = "side\u2014elevation"
     snapshot = {
         "sections": {**GOOD, "summary": GOOD["summary"] + " One view\u2014shown below."},
-        "numerals": [{"numeral": "10", "part": "base\u2014plate"}],
-        "figures": [{"label": "FIG. 1", "caption": "base\u2014plate view", "numerals": ["10"]}],
+        "numerals": numerals,
+        "figures": figures,
     }
     clean = draft_studio.validate_snapshot(snapshot, ALLOWED)
     assert "\u2014" not in json.dumps(clean, ensure_ascii=False)
     assert "One view - shown below." in clean["sections"]["summary"]
+    assert clean["numerals"][0]["part"] == "vacuum lifting tool - assembly"
+    assert clean["figures"][0]["caption"] == "side - elevation"
 
 
 def test_a_citation_in_the_detailed_description_is_allowed_here():

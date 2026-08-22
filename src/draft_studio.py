@@ -508,6 +508,19 @@ def validate_snapshot(snapshot: Mapping[str, Any],
                 f"{label} lists {len(values)} numerals, which is more than "
                 f"{draft_qa.MAX_NUMERALS_PER_SHEET} numerals on one sheet. Split it into focused "
                 "views and synchronize the drawing descriptions before generating images.")
+    mechanical = draft_qa.run_checks(
+        sections=sections, numerals=numerals, figures=figures,
+        allowed_references=allowed_references, allow_remote=False)
+    failures = [item for item in mechanical if str(item.get("status") or "") == "fail"]
+    if failures:
+        details = []
+        for item in failures[:8]:
+            evidence = list(item.get("items") or [])
+            details.append(
+                f"{item.get('name') or 'Unnamed check'}: " +
+                str(evidence[0] if evidence else item.get("detail") or "failed")[:300])
+        raise drafting.DraftingValidationError(
+            "The candidate failed the mechanical filing preflight. " + "; ".join(details))
     return {"sections": sections, "numerals": numerals, "figures": figures}
 
 
