@@ -57,6 +57,9 @@ class FetchResult:
     raw_ext: str = "json"
     credits: float = 0.0
     usd: float = 0.0
+    #  True when the upstream answered, EVEN IF the answer was "this document has no full text".
+    #  That distinction is worth real money: see `Provider.upstream` below.
+    reached: bool = True
 
     def complete(self) -> bool:
         """Enough to count as read in full. Below this we hold a stub (an abstract, a filing
@@ -136,6 +139,13 @@ class Provider:
     credits = 0.0
     usd = 0.0
     budget_key = ""          # set to enable the reserved hard budget
+    #  Which upstream corpus this rung reads. Rungs that share an upstream see the SAME document:
+    #  once one of them has reached it and found no full text, the others will fetch the identical
+    #  page and produce the identical nothing, and two of them charge for it. Measured 2026-08-22
+    #  before this existed: 1,018 old FR/SE/GB/NL/AT documents that Google Patents serves with no
+    #  claims and no description section cost 15,480 ScrapingBee credits and the whole $4.58
+    #  SerpApi budget, confirming what the free rung had already established.
+    upstream = ""
 
     def __init__(self):
         self.gate = Gate(self.name, self.concurrency, self.min_interval, self.timeout)
@@ -494,6 +504,7 @@ class SelfSerpProvider(Provider):
     the raw bytes are what makes a parser fix a re-parse rather than a re-fetch.
     """
     name = "serp_self"
+    upstream = "google_patents"
     concurrency = int(os.environ.get("FULLTEXT_SELFSERP_CONCURRENCY", "2"))
     min_interval = float(os.environ.get("FULLTEXT_SELFSERP_MIN_INTERVAL", "1.0"))
     timeout = 45.0
@@ -507,11 +518,17 @@ class SelfSerpProvider(Provider):
     async def fetch(self, pub: str, client: httpx.AsyncClient):
         from sources import gpatents_direct as G
         r = await G._get(client, G.DOC.format(pn=pub))
+        #  404 is Google ANSWERING: it does not hold this publication, and neither will the two
+        #  paid rungs that resell the same index. Anything else non-200 is a refusal, not an
+        #  answer, and the paid rungs are exactly the fallback that outage is meant to have.
+        if r.status_code == 404:
+            return FetchResult(provider=self.name, reached=True)
         if r.status_code != 200:
-            return None
+            return FetchResult(provider=self.name, reached=False)
         rec = G.parse_document(r.text, pub)
         if not rec:
-            return None
+            #  Reached, and the page carries no full text. That is Google's answer too.
+            return FetchResult(provider=self.name, reached=True)
         return _from_gpatents(self.name, rec, r.text)
 
 
@@ -538,6 +555,7 @@ class ScrapingBeeProvider(Provider):
     renewing 2026-09-02, which is ~55,000 pages. That is the rung that makes reading tens of
     thousands of documents a real option instead of an aspiration."""
     name = "scrapingbee"
+    upstream = "google_patents"
     concurrency = int(os.environ.get("FULLTEXT_SB_CONCURRENCY", "8"))
     timeout = 120.0
     credits = 15.0
@@ -556,12 +574,14 @@ class ScrapingBeeProvider(Provider):
                                      "url": f"https://patents.google.com/patent/{pub}/en",
                                      "custom_google": "True", "render_js": "False"},
                              timeout=self.timeout)
+        if r.status_code == 404:
+            return FetchResult(provider=self.name, reached=True, credits=self.credits)
         if r.status_code != 200:
-            return None
+            return FetchResult(provider=self.name, reached=False, credits=self.credits)
         from sources.gpatents_direct import parse_document
         rec = parse_document(r.text, pub)
         if not rec:
-            return None
+            return FetchResult(provider=self.name, reached=True, credits=self.credits)
         out = _from_gpatents(self.name, rec, r.text)
         out.credits = self.credits
         return out
@@ -613,6 +633,7 @@ class SerpApiProvider(Provider):
     is reserved through `ledger.reserve` before the call, so four workers share one cap rather
     than holding four copies of it."""
     name = "serpapi"
+    upstream = "google_patents"
     concurrency = int(os.environ.get("FULLTEXT_SERPAPI_CONCURRENCY", "4"))
     min_interval = float(os.environ.get("FULLTEXT_SERPAPI_MIN_INTERVAL", "0.6"))
     timeout = 90.0
@@ -630,7 +651,8 @@ class SerpApiProvider(Provider):
     async def fetch(self, pub: str, client: httpx.AsyncClient):
         d = await self.adapter.details(pub, client)
         if not d:
-            return None
+            return FetchResult(provider=self.name, reached=True, credits=self.credits,
+                               usd=self.usd)
         meta = {k: d[k] for k in ("assignee", "inventors", "cpc", "images", "pdf", "family",
                                   "legal_state", "legal_status") if d.get(k)}
         if d.get("patent_citations"):

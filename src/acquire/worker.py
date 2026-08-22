@@ -115,27 +115,49 @@ class Worker:
         prov.gate.note_ok()
         if res is None or not res.complete():
             #  A rung that answered with a stub still spent its credit. Keep the charge; the
-            #  refund is only for a call that did not happen.
+            #  refund is only for a call that did not happen. The INCOMPLETE result is returned
+            #  rather than swallowed, because `reached` on it is what stops the rungs below
+            #  buying the same nothing: see cascade_for.
             events.append(dict(base, outcome="miss", latency_ms=ms,
                                credits=(res.credits if res else 0.0),
                                usd=(res.usd if res else 0.0),
                                claims_chars=len(res.claims) if res else 0,
                                desc_chars=len(res.description) if res else 0,
-                               detail="below the completeness floor" if res else "no answer"))
-            return None
+                               detail=("upstream reached, no full text there" if res
+                                       else "no answer")))
+            return res
         events.append(dict(base, outcome="hit", latency_ms=ms, credits=res.credits, usd=res.usd,
                            claims_chars=len(res.claims), desc_chars=len(res.description),
                            provider=res.provider, detail=""))
         return res
 
     async def cascade_for(self, pub: str, task: dict, client, events: list):
+        """Down the rungs until one answers in full.
+
+        A rung that REACHED its upstream and found no full text there settles the question for
+        every rung reading the same upstream. `serp_self`, `scrapingbee` and `serpapi` all read
+        the Google Patents index: when the free one fetches the page and the page has no claims
+        and no description section, the two paid ones fetch the identical page and produce the
+        identical nothing. Before this existed, 1,018 old FR / SE / GB / NL / AT documents cost
+        15,480 ScrapingBee credits and the entire $4.58 SerpApi budget doing exactly that.
+        """
         deadline = time.monotonic() + PUBLICATION_DEADLINE
+        settled: set = set()
         for prov in self.cascade:
             if self.stopping.is_set() or time.monotonic() > deadline:
                 return None
+            if prov.upstream and prov.upstream in settled:
+                events.append({"worker": self.id, "partition_id": task["partition_id"],
+                               "publication_number": pub, "provider": prov.name,
+                               "outcome": "settled",
+                               "detail": f"{prov.upstream} was reached already and holds no "
+                                         f"full text for this publication"})
+                continue
             res = await self._try(prov, pub, task, client, events)
-            if res is not None:
+            if res is not None and res.complete():
                 return res
+            if res is not None and res.reached and prov.upstream:
+                settled.add(prov.upstream)
         return None
 
     # -- storage -------------------------------------------------------------------------------

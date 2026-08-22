@@ -23,7 +23,8 @@ BUDGET = "fulltext_budget"
 #  Outcomes. Anything that is not a hit is worth its own name: 'miss' is the provider answering
 #  "not mine", 'error' is the provider failing, 'timeout' is it hanging, 'budget' is us refusing
 #  to spend. Collapsing them loses exactly the signal an operator needs.
-OUTCOMES = ("hit", "miss", "error", "timeout", "budget", "skipped", "breaker")
+OUTCOMES = ("hit", "miss", "error", "timeout", "budget", "skipped", "breaker",
+            "settled")
 
 
 def month_period(when=None) -> str:

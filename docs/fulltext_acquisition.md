@@ -184,6 +184,26 @@ Scaling to four workers: copy `ops/patents-fulltext-acquire.conf` to `-1`, `-2`,
 `--of 1` while another runs `--of 4` is the one mistake that puts two workers on the same
 partition.
 
+## The most expensive thing the ledger caught
+
+`serp_self`, `scrapingbee` and `serpapi` all read the Google Patents index. When the free rung
+fetches the page and the page carries no claims and no description section, the two paid rungs
+fetch the identical page and produce the identical nothing. Measured on 2026-08-22, before the
+fix: 1,018 publications, almost all of them pre-digital FR (335), SE (200), GB (189), NL (68), IT
+(54), AT and AU documents, cost **15,480 ScrapingBee credits and the entire $4.58 SerpApi budget**
+confirming what the free rung had already established.
+
+Providers now declare an `upstream`. A rung that REACHED its upstream and found no full text
+settles the question for every rung reading the same upstream, and the cascade records a `settled`
+event instead of buying it again. The distinction that makes this safe is `FetchResult.reached`:
+Google answering 404 means it does not hold the publication, which settles it; Google answering
+503 means it refused us, which is exactly the outage the paid rungs exist for. Both halves are
+defect injected (`test_a_settled_upstream_is_not_bought_twice`,
+`test_an_unreached_upstream_still_falls_through_to_the_paid_rung`).
+
+The SerpApi cap is what contained this to $4.58 rather than to the 12,501 searches left on the
+account. It is raised to 1,500 credits after the fix, of which 500 are already spent.
+
 ## Two collisions this fetcher caused, and how they are settled
 
 **Bulk demand must queue behind a live search.** `runstore.pending_ingest(limit=N)` returns the top

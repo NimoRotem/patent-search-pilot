@@ -338,6 +338,58 @@ def test_the_breaker_opens_after_consecutive_failures():
     assert events[0]["outcome"] == "breaker"
 
 
+def test_a_settled_upstream_is_not_bought_twice():
+    """The single most expensive defect this ledger has caught.
+
+    serp_self, scrapingbee and serpapi all read the Google Patents index. When the free rung
+    fetches the page and the page carries no claims and no description section, the two paid rungs
+    fetch the identical page and produce the identical nothing, at 15 credits and $0.0092 a go.
+    Measured on 2026-08-22 before this existed: 1,018 old FR / SE / GB / NL / AT documents cost
+    15,480 ScrapingBee credits and the whole $4.58 SerpApi budget confirming what the free rung
+    had already established.
+
+    Defect injection: delete the `settled` set from Worker.cascade_for and this goes red.
+    """
+    free = FakeProvider("serp_self", result=providers.FetchResult(provider="serp_self",
+                                                                  reached=True))
+    free.upstream = "google_patents"
+    paid = FakeProvider("scrapingbee", result=_full("scrapingbee"), credits=15.0)
+    paid.upstream = "google_patents"
+    other = FakeProvider("himmpat", result=_full("himmpat"))
+    res, events = _run_cascade([free, paid, other])
+    assert paid.calls == 0, "the paid rung bought a page the free rung had already read as empty"
+    assert res.provider == "himmpat", "a rung on a DIFFERENT upstream must still be tried"
+    outcomes = {e["provider"]: e["outcome"] for e in events}
+    assert outcomes["serp_self"] == "miss"
+    assert outcomes["scrapingbee"] == "settled"
+
+
+def test_an_unreached_upstream_still_falls_through_to_the_paid_rung():
+    """The other half of the rule, and the reason `reached` is a flag rather than an assumption.
+
+    Google answering 404 and Google answering 503 look identical to a caller that only asks "did
+    I get a document". They are opposites. 404 is Google saying it does not hold the publication,
+    which settles it for the two rungs that resell the same index. 503 is Google refusing us,
+    which is exactly the outage the paid rungs exist for. Defect injection: drop `res.reached`
+    from the settling condition in Worker.cascade_for and this goes red.
+    """
+    refused = FakeProvider("serp_self",
+                           result=providers.FetchResult(provider="serp_self", reached=False))
+    refused.upstream = "google_patents"
+    paid = FakeProvider("scrapingbee", result=_full("scrapingbee"), credits=15.0)
+    paid.upstream = "google_patents"
+    res, _ = _run_cascade([refused, paid])
+    assert paid.calls == 1 and res.provider == "scrapingbee"
+
+    #  and a rung that raised outright settles nothing either
+    boom = FakeProvider("serp_self", exc=RuntimeError("HTTP 503 from patents.google.com"))
+    boom.upstream = "google_patents"
+    paid2 = FakeProvider("scrapingbee", result=_full("scrapingbee"), credits=15.0)
+    paid2.upstream = "google_patents"
+    res, _ = _run_cascade([boom, paid2])
+    assert paid2.calls == 1 and res.provider == "scrapingbee"
+
+
 def test_a_spent_budget_skips_the_rung_without_calling_it(monkeypatch):
     paid = FakeProvider("paid", result=_full("paid"), credits=1.0, budget_key="zztest")
     free = FakeProvider("free", result=_full("free"))
