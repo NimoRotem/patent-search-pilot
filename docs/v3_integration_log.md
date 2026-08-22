@@ -144,6 +144,30 @@ Workstream C has an uncommitted `sql/012_fulltext_acquisition.sql`. **012 is alr
 migrations for everyone. C renumbers to **014**, which costs one `git mv` of a file that is not yet
 committed. The full assignment table is in `docs/migrations.md`.
 
+The rename is free at the ledger level, checked rather than assumed: C's tables
+(`fulltext_budget`, `fulltext_fetch_event`, `fulltext_fetch_task`, `fulltext_manifest_cursor`) are
+already live, but `schema_migrations` still holds only 001 and 003 through 009. So C built them out
+of band rather than through the runner, which means no ledger row carries the number 012 and
+renaming the file costs nothing. When 014 is eventually recorded it will probe present and adopt
+truthfully.
+
+That is the **second** time in one day that live schema was created outside the ledger, after the
+006 incident. It is not harmful on its own, but each one is a migration that no other host can see,
+and the ledger stops being an answer to "what is on this database". Create it through the runner,
+or accept that someone else has to discover it in `pg_tables`.
+
+### Two acquisition workers went live at 15:24
+
+`patents-fulltext-acquire` and `patents-fulltext-acquire-1`, workstream C, running from
+`~/v3/C-fulltext` under supervisor, shards 0 and 1 of 2. Their conf documents the sharding
+invariant and the process arms `corpus_guard` before anything else, so the write surface is
+`sources_docstore`, `corpus_ingest_queue`, their own `fulltext_*` tables and GCS. Within C's remit
+and no reason for integration to object.
+
+The consequence for **this** workstream is the 002 decision: there are now three things contending
+for the live database at once, `patents-desc-backfill`, and both acquisition workers. Whatever the
+case was for applying 002 today, there is less of it now.
+
 ### Blocker: `v3/A-durable-worker` is red before it is merged
 
 A's branch adds `sql/012_run_admission.sql` without touching `tests/test_migrate.py`, so
