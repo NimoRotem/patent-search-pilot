@@ -77,7 +77,10 @@ _DRAFT_PLACEHOLDER_RE = re.compile(
     r"|<\s*(?:INSERT|TODO|TBD|TBC|PLACEHOLDER)\b[^>]*>"
     r"|\{\{[^{}\n]{1,120}\}\}"
     r"|_{5,}"
+    r"|\bfor\s+(?:the\s+)?(?:draftsperson|drafter|illustrator)\s+only\b"
+    r"|\b(?:draftsperson|drafter|illustrator)\s+(?:must|should|shall|will|to)\b"
     r")", re.IGNORECASE)
+MAX_NUMERALS_PER_SHEET = 8
 #  The phrase is captured in a LOOKAHEAD so the scan consumes only the article.  Consuming the
 #  noun phrase as well was a real defect: in "a tool comprising a body, a pump", the first match
 #  swallowed "tool comprising a body", so "a body" was never seen as an introduction and every
@@ -361,6 +364,24 @@ def _numeral_checks(spec_text: str, claims_text: str,
     elif figures:
         out.append(_check("Each drawing numeral appears once", "pass",
                           "No reference numeral is duplicated within a drawing."))
+    overcrowded = []
+    for figure in figures:
+        values = {_drawing_numeral(n) for n in (figure.get("numerals") or [])}
+        values.discard("")
+        if len(values) > MAX_NUMERALS_PER_SHEET:
+            overcrowded.append(
+                f"{figure.get('label') or 'drawing'}: {len(values)} numerals "
+                f"(maximum {MAX_NUMERALS_PER_SHEET})")
+    if overcrowded:
+        out.append(_check(
+            "Drawing sheets are not overcrowded", "fail",
+            "A generated sheet cannot be inspected reliably when it carries too many labeled "
+            "parts. Split the geometry across focused views and synchronize the drawing "
+            "descriptions.", items=overcrowded))
+    elif figures:
+        out.append(_check(
+            "Drawing sheets are not overcrowded", "pass",
+            f"Every drawing contains at most {MAX_NUMERALS_PER_SHEET} reference numerals."))
     unknown_on_figures = sorted((n for n in figure_numerals if n and n not in table),
                                 key=_numeral_sort)
     if unknown_on_figures:

@@ -114,6 +114,7 @@ def test_generated_sections_validate_selected_citations_and_render_in_order():
     ({"background": "No citations are used here."}, "must ground"),
     ({"summary": "The disclosed system is patentable."}, "legal conclusion"),
     ({"cross_reference": "[DRAFTING NOTE: confirm priority.]"}, "unfinished placeholder"),
+    ({"summary": "Part names are for the draftsperson only."}, "unfinished placeholder"),
     ({"abstract": ""}, "missing the abstract"),
 ])
 def test_generated_sections_reject_ungrounded_or_legal_output(mutation, message):

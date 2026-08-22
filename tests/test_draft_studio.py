@@ -168,6 +168,22 @@ def test_a_reference_numeral_printed_twice_is_caught():
     assert check["status"] == "fail" and check["items"] == ["FIG. 1: 10"]
 
 
+def test_an_overcrowded_drawing_sheet_is_a_filing_blocker():
+    numerals = [
+        {"numeral": str(value), "part": f"part {value}"}
+        for value in range(10, 28, 2)
+    ]
+    figures = [{
+        "label": "FIG. 1", "caption": "assembly view",
+        "numerals": [item["numeral"] for item in numerals],
+    }]
+
+    check = checks_for(numerals=numerals, figures=figures)[
+        "Drawing sheets are not overcrowded"]
+
+    assert check["status"] == "fail" and "9 numerals" in check["items"][0]
+
+
 def test_letter_qualified_reference_numerals_are_compared_exactly():
     version = {**GOOD, "detailed_description":
                GOOD["detailed_description"] + " A secondary spacer 10a is beside a lug A12."}
@@ -461,7 +477,7 @@ def test_open_drafting_notes_are_a_filing_blocker():
 
 @pytest.mark.parametrize("placeholder", [
     "[TODO: add dimensions]", "TBD", "TO BE PROVIDED", "<INSERT MATERIAL>",
-    "{{applicant_name}}", "_______",
+    "{{applicant_name}}", "_______", "Part names are for the draftsperson only.",
 ])
 def test_every_placeholder_form_is_a_filing_blocker(placeholder):
     broken = dict(GOOD)
@@ -605,11 +621,31 @@ def test_a_placeholder_is_refused_before_a_version_can_be_saved():
 @pytest.mark.parametrize("field,value", [
     ("numerals", [{"numeral": "10", "part": "TBD component"}]),
     ("figures", [{"label": "FIG. 1", "caption": "<INSERT VIEW>", "numerals": ["10"]}]),
+    ("figures", [{"label": "FIG. 1",
+                  "caption": "Part names are for the draftsperson only.",
+                  "numerals": ["10"]}]),
 ])
 def test_placeholders_outside_the_sections_are_refused_before_save(field, value):
     snapshot = {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
     snapshot[field] = value
     with pytest.raises(drafting.DraftingValidationError, match="placeholder"):
+        draft_studio.validate_snapshot(snapshot, ALLOWED)
+
+
+def test_overcrowded_sheet_is_refused_before_any_image_call():
+    snapshot = {
+        "sections": GOOD,
+        "numerals": [
+            {"numeral": str(value), "part": f"part {value}"}
+            for value in range(10, 28, 2)
+        ],
+        "figures": [{
+            "label": "FIG. 1", "caption": "assembly view",
+            "numerals": [str(value) for value in range(10, 28, 2)],
+        }],
+    }
+
+    with pytest.raises(drafting.DraftingValidationError, match="more than 8 numerals"):
         draft_studio.validate_snapshot(snapshot, ALLOWED)
 
 
@@ -1040,7 +1076,8 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "No placeholder" in system
     assert "at least one figure" in system
     assert "Normally use two to four figures" in system
-    assert "no more than eight numerals on one sheet" in system
+    assert "Do not list more than eight numerals on one sheet" in system
+    assert "Never address or mention a draftsperson" in " ".join(system.split())
     assert "broadest statement of the invention that the description fully supports" in system
 
 

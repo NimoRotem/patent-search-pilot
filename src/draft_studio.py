@@ -177,12 +177,16 @@ Figures live in figures/, one file per drawing, listing the numerals that appear
 on a drawing that is not in the table, or a part described as visible in a figure whose file does
 not list it, is a defect the review will find. Every application must include at least one figure.
 Use a structural view, system diagram, or process flow as appropriate to the disclosed invention.
-Normally use two to four figures. Prefer no more than eight numerals on one sheet; when more
-structure must be shown, use a focused detail or sectional sheet instead of overcrowding one image.
+Normally use two to four figures. Do not list more than eight numerals on one sheet. When more
+structure must be shown, add a focused detail or sectional sheet instead of overcrowding one image,
+then synchronize the Brief Description of the Drawings and Detailed Description.
 Figure files are Markdown specifications only. Never create SVG, PNG, or other image files. The
 image pipeline generates unlabeled geometry, then adds the listed numerals, FIG. label, callouts,
 and leader lines deterministically. Describe the required geometry and relationships, and list
-the numerals, but never ask the geometry image to draw text or labels itself.
+the numerals, but never ask the geometry image to draw text or labels itself. Never address or
+mention a draftsperson, drafter, illustrator, reviewer, attorney, or other person in a figure
+brief. When a part name is only a semantic identifier, say that it does not appear as drawing
+text.
 
 FILES
   input/disclosure.md     the invention (read-only authority)
@@ -494,6 +498,16 @@ def validate_snapshot(snapshot: Mapping[str, Any],
     if markers:
         raise drafting.DraftingValidationError(
             "The filing artifacts contain an unresolved placeholder: " + markers[0] + ".")
+    for figure in figures:
+        values = {draft_qa._drawing_numeral(value)
+                  for value in (figure.get("numerals") or [])}
+        values.discard("")
+        if len(values) > draft_qa.MAX_NUMERALS_PER_SHEET:
+            label = str(figure.get("label") or "Drawing")[:80]
+            raise drafting.DraftingValidationError(
+                f"{label} lists {len(values)} numerals, which is more than "
+                f"{draft_qa.MAX_NUMERALS_PER_SHEET} numerals on one sheet. Split it into focused "
+                "views and synchronize the drawing descriptions before generating images.")
     return {"sections": sections, "numerals": numerals, "figures": figures}
 
 
