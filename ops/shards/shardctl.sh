@@ -36,6 +36,9 @@ DISK_IOPS="${SHARD_DISK_IOPS:-4500}"
 DISK_MBPS="${SHARD_DISK_MBPS:-515}"
 IMAGE_FAMILY="${SHARD_IMAGE_FAMILY:-debian-12}"
 IMAGE_PROJECT="${SHARD_IMAGE_PROJECT:-debian-cloud}"
+#  A c4 create that hits a zone stockout clears on retry; see cmd_create.
+CREATE_RETRIES="${SHARD_CREATE_RETRIES:-6}"
+CREATE_RETRY_SECONDS="${SHARD_CREATE_RETRY_SECONDS:-20}"
 #  The fleet's own service account, the same one every other patents VM runs as. A shard needs an
 #  identity to pull its corpus release out of GCS when workstream F loads it; with none it can only
 #  ever be filled by pushing over ssh.
@@ -142,18 +145,51 @@ cmd_create() {
     return 0
   fi
   echo "creating $vm ($MACHINE, ${DISK_GB}GB $DISK_TYPE, no external address) in $zone"
-  gcloud compute instances create "$vm" \
-    --zone "$zone" \
-    --machine-type "$MACHINE" \
-    --image-family "$IMAGE_FAMILY" --image-project "$IMAGE_PROJECT" \
-    --boot-disk-size "${DISK_GB}GB" --boot-disk-type "$DISK_TYPE" \
-    --boot-disk-device-name "$vm" \
-    --boot-disk-provisioned-iops "$DISK_IOPS" \
-    --boot-disk-provisioned-throughput "$DISK_MBPS" \
-    --network-interface=subnet=default,no-address \
-    --metadata enable-oslogin=TRUE \
-    --labels "purpose=patents-shard,shard=$s,tier=cold" \
-    --service-account "$SERVICE_ACCOUNT" --scopes cloud-platform
+  #  STOCKOUT RETRY, and it is not defensive programming. MEASURED 2026-08-22: creating a
+  #  c4-highmem-16 in us-central1-b returned ZONE_RESOURCE_POOL_EXHAUSTED and the SAME request
+  #  succeeded on a later attempt with nothing else changed. c4 is a newer family with thinner
+  #  per-zone capacity than the e2/n2 machines the rest of this project runs on, so a first-try
+  #  failure says nothing about whether the shard can exist.
+  #
+  #  Retrying in the SAME zone on purpose. The zone is a column in shards.tsv and the shard's
+  #  disk lives in it; a create that quietly landed a shard in another zone would leave the table
+  #  wrong, and a wrong table routes a query to a VM that is not the one holding that domain.
+  local attempt=1 err rc
+  while :; do
+    err="$(mktemp)"
+    rc=0
+    gcloud compute instances create "$vm" \
+      --zone "$zone" \
+      --machine-type "$MACHINE" \
+      --image-family "$IMAGE_FAMILY" --image-project "$IMAGE_PROJECT" \
+      --boot-disk-size "${DISK_GB}GB" --boot-disk-type "$DISK_TYPE" \
+      --boot-disk-device-name "$vm" \
+      --boot-disk-provisioned-iops "$DISK_IOPS" \
+      --boot-disk-provisioned-throughput "$DISK_MBPS" \
+      --network-interface=subnet=default,no-address \
+      --metadata enable-oslogin=TRUE \
+      --labels "purpose=patents-shard,shard=$s,tier=cold" \
+      --service-account "$SERVICE_ACCOUNT" --scopes cloud-platform 2>"$err" || rc=$?
+    cat "$err" >&2
+    [ "$rc" = "0" ] && { rm -f "$err"; break; }
+    #  Only a capacity error is retried. A quota error, a bad flag or a permission error will
+    #  never clear by waiting, and retrying it eight times just buries the real message.
+    if grep -qE 'ZONE_RESOURCE_POOL_EXHAUSTED|does not have enough resources available|resource pool exhausted|RESOURCE_POOL_EXHAUSTED_WITH_DETAILS|Internal error' "$err" \
+       && [ "$attempt" -lt "$CREATE_RETRIES" ]; then
+      local wait=$(( CREATE_RETRY_SECONDS * attempt ))
+      echo "  $vm: capacity error in $zone on attempt $attempt/$CREATE_RETRIES; retrying in ${wait}s" >&2
+      rm -f "$err"
+      sleep "$wait"
+      attempt=$(( attempt + 1 ))
+      continue
+    fi
+    rm -f "$err"
+    #  Never leave a half created shard behind: `create` is re-runnable and a caller that sees a
+    #  non zero exit must be able to run it again from a clean state.
+    gcloud compute instances describe "$vm" --zone "$zone" >/dev/null 2>&1 \
+      && gcloud compute instances delete "$vm" --zone "$zone" --quiet >/dev/null 2>&1 || true
+    die "could not create $vm in $zone after $attempt attempt(s)"
+  done
   #  Created RUNNING. It has nothing on it yet, so bring it straight back down: a shard's resting
   #  state is TERMINATED and an unbootstrapped one that is left up is pure burn.
   gcloud compute instances stop "$vm" --zone "$zone" --quiet
