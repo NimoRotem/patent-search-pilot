@@ -222,6 +222,61 @@ def choose_representative(pids, claims, paras, meta, has_abs_row):
 
 
 # ------------------------------------------------------------------ driver
+def emit_db(release_dir, release_id, boundary, summary, batch=5000):
+    """Mirror a finished release into `corpus_niche_release` / `corpus_niche_family` / _external.
+
+    Those three tables are workstream B's own, defined in sql/010_corpus_release.sql, and this
+    writes nothing else. It refuses if the migration has not been applied, because creating tables
+    on the live corpus database is workstream H's decision, taken once, deliberately.
+    """
+    import db  # imported here so a file-only run needs no database configuration at all
+
+    with db.cursor(autocommit=True) as cur:
+        cur.execute("SELECT to_regclass('corpus_niche_family') AS t")
+        if not (cur.fetchone() or {}).get("t"):
+            raise SystemExit("corpus_niche_family does not exist: sql/010_corpus_release.sql has "
+                             "not been applied. Applying it is workstream H's call, not this "
+                             "script's. The manifest files are already written.")
+        cur.execute(
+            "INSERT INTO corpus_niche_release (release_id, boundary_sha256, state, families, "
+            "publications, summary) VALUES (%s, %s, 'complete', %s, %s, %s) "
+            "ON CONFLICT (release_id) DO UPDATE SET state = EXCLUDED.state, "
+            "families = EXCLUDED.families, publications = EXCLUDED.publications, "
+            "summary = EXCLUDED.summary, updated_at = now()",
+            (release_id, boundary.sha256(), summary["niche_families"],
+             summary["niche_publications"], json.dumps(summary)))
+        rows = []
+        n = 0
+        for _part, rec in corpus_niche.read_manifest(release_dir):
+            rows.append((release_id, rec["family_id"], rec["publications"], rec["cpc"],
+                         rec["title"], rec["abstract"], rec["has_claims"], rec["has_description"],
+                         rec["has_complete_text"], rec["best_source"], rec["missing_fields"]))
+            if len(rows) >= batch:
+                n += _flush_rows(cur, rows)
+                rows = []
+        n += _flush_rows(cur, rows)
+        ext = os.path.join(release_dir, "external_only.txt")
+        if os.path.exists(ext):
+            pubs = [p for p in open(ext).read().split() if p]
+            for i in range(0, len(pubs), batch):
+                cur.executemany(
+                    "INSERT INTO corpus_niche_external (release_id, publication_number) "
+                    "VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    [(release_id, p) for p in pubs[i:i + batch]])
+        log(f"emit db: {n:,} families written to corpus_niche_family")
+
+
+def _flush_rows(cur, rows):
+    if not rows:
+        return 0
+    cur.executemany(
+        "INSERT INTO corpus_niche_family (release_id, family_id, publications, cpc, title, "
+        "abstract, has_claims, has_description, has_complete_text, best_source, missing_fields) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+        "ON CONFLICT (release_id, family_id) DO NOTHING", rows)
+    return len(rows)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--cache", default=CACHE)
@@ -232,6 +287,9 @@ def main(argv=None):
     ap.add_argument("--limit-families", type=int, default=0,
                     help="stop after this many families; for a smoke run")
     ap.add_argument("--skip-mem-check", action="store_true")
+    ap.add_argument("--emit", choices=["files", "db"], default="files",
+                    help="'db' additionally mirrors the finished release into the tables in "
+                         "sql/010_corpus_release.sql. Files are always written.")
     args = ap.parse_args(argv)
 
     avail = available_gb()
@@ -335,6 +393,8 @@ def main(argv=None):
     with open(os.path.join(outdir, "external_only.txt"), "w") as fh:
         fh.write("\n".join(sorted(external_reach)) + "\n")
     log(json.dumps(summary, indent=1))
+    if args.emit == "db":
+        emit_db(outdir, release, boundary, summary)
     return 0
 
 

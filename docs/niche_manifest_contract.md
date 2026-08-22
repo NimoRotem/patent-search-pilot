@@ -42,7 +42,7 @@ list or a bool is declared:
 
 | field | type | meaning |
 |---|---|---|
-| `family_id` | string | the family key. `publications.simple_family_id` when it is set, otherwise the publication number of the only member. Unique within a release. |
+| `family_id` | string | the family key. `publications.simple_family_id` when it is a real one, otherwise the publication number of the only member. Unique within a release. **DOCDB writes `-1` for "no simple family" and this corpus stored it verbatim on 21,862 publications, so `-1`, `0` and `''` are all treated as absent** (`corpus_niche.family_key`). The obvious `COALESCE(NULLIF(simple_family_id,''), publication_number)` merges all 21,862 into one family, and `src/retrieval/base.py` and `src/retrieval/family.py` still do exactly that |
 | `publications` | list of string | every publication number in the family that this corpus holds, sorted |
 | `cpc` | list of string | every distinct classification symbol carried by any member, sorted. Includes IPC symbols, Y tagging codes and 2000-series indexing codes: they are excluded from the *boundary*, not from the record |
 | `title` | string | the representative member's title, `""` when none is held |

@@ -22,20 +22,20 @@ that distinction is the whole point of section 3.
 | | families | publications | method |
 |---|--:|--:|---|
 | in the niche at this boundary, **worldwide** | **1,398,816** | **3,482,514** | `COUNT(DISTINCT family_id)` over `patents-public-data.patents.publications` restricted to the boundary; 19.4 GB scanned |
-| this corpus holds, from the CPC boundary | 1,103,284 | 2,514,385 | `classifications`, then family closed |
-| this corpus holds, whole niche incl. closures | 1,607,096 | 3,079,166 | the manifest, 1.9 GB of NDJSON |
-| holds claim text | 261,434 | | at least one member with >= 200 claim characters |
-| holds description text | 288,159 | | at least one member with >= 800 description characters |
+| this corpus holds, from the CPC boundary | 1,103,690 | 2,492,930 | `classifications`, then family closed |
+| this corpus holds, whole niche incl. closures | 1,607,502 | 3,057,711 | the manifest, 1.9 GB of NDJSON |
+| holds claim text | 261,479 | | at least one member with >= 200 claim characters |
+| holds description text | 288,171 | | at least one member with >= 800 description characters |
 | **holds COMPLETE text** | **173,725** | | one member with both |
 | carries no classification at all | 294,327 | | `cpc == []` on the record |
 | reachable only from an external source | 32,355 | | X/Y cited by the niche, no local publication row |
 
-**Coverage of the CPC boundary: 78.9% of the world's families (1,103,284 of 1,398,816) and 72.2%
-of its publications (2,514,385 of 3,482,514).** The missing 295,532 families are real: the six core
+**Coverage of the CPC boundary: 78.9% of the world's families (1,103,690 of 1,398,816) and 71.6%
+of its publications (2,492,930 of 3,482,514).** The missing 295,126 families are real: the six core
 subclasses are held at 100.0%, so essentially the whole gap is in the 22 adjacent main groups,
 where the corpus holds 210,520 of 1,226,600 world publications (17.2%).
 
-**Coverage with text is 10.8%.** 173,725 of 1,607,096 niche families hold a document that can be
+**Coverage with text is 10.8%.** 173,725 of 1,607,502 niche families hold a document that can be
 read end to end. That is the number that decides whether a claim chart can be grounded, and it is
 four times smaller than the "held" number that a coverage statement usually quotes.
 
@@ -44,8 +44,8 @@ four times smaller than the "held" number that a coverage statement usually quot
 | step | families | publications | method |
 |---|--:|--:|---|
 | named by a CPC symbol in the boundary | | 2,480,143 | `classifications`, one sorted pass |
-| after family closure | 1,103,284 | 2,514,385 | every publication sharing a `simple_family_id` |
-| plus the one-hop X/Y examiner citation closure | 1,607,096 | 3,079,166 | `citations` where category in SEA/EXA/ISR and origin contains X or Y |
+| after family closure | 1,103,690 | 2,492,930 | every publication sharing a `simple_family_id` |
+| plus the one-hop X/Y examiner citation closure | 1,607,502 | 3,057,711 | `citations` where category in SEA/EXA/ISR and origin contains X or Y |
 
 The closures add **503,812 families, 31.3% of the niche.** They are not a refinement of the CPC
 rule; they are a third of the answer, and section 5 shows they admit as many gold references as the
@@ -53,7 +53,7 @@ CPC core does.
 
 ## 3. What "held" hides
 
-Across the whole niche: 1,607,096 families held, 261,434 with claims, 288,159 with a description,
+Across the whole niche: 1,607,502 families held, 261,479 with claims, 288,171 with a description,
 **173,725 with both**. So **89.2% of the niche is a title, an abstract and a classification**, which
 retrieves and embeds and grounds nothing. `eval/textstate.py` made the same point on the dev gold
 set at a much smaller corpus size; this is that measurement at niche scale.
@@ -68,7 +68,7 @@ two makes "held" exceed "exists".
 | office | in niche | from CPC boundary | world at boundary | held % | complete text | complete % |
 |---|--:|--:|--:|--:|--:|--:|
 | CN | 795,448 | 468,422 | 609,436 | 76.9% | 44,979 | **5.7%** |
-| US | 389,676 | 312,631 | 406,460 | 76.9% | 168,626 | 43.3% |
+| US | 390,082 | 313,037 | 406,460 | 77.0% | 168,626 | 43.2% |
 | DE | 192,867 | 175,234 | 204,421 | 85.7% | 37,915 | 19.7% |
 | JP | 152,241 | 77,812 | 136,327 | 57.1% | 44,385 | 29.2% |
 | KR | 129,309 | 122,924 | 222,832 | **55.2%** | 18,786 | 14.5% |
@@ -89,7 +89,7 @@ two makes "held" exceed "exists".
 **CN is 49.5% of the niche by families and 5.7% of it by readable text.** TW at 29.5% and KR at
 55.2% are the two worst-held offices at the boundary.
 
-Counting each family once, not once per office: **589,647 niche families (36.7%) have a member in
+Counting each family once, not once per office: **590,053 niche families (36.7%) have a member in
 `US`, `EP`, `WO` or `DE`, the four-office scope `config.JURISDICTIONS` still names as a fallback.
 1,021,287 (63.5%) have a CN, JP, KR or TW member, and 898,377 (55.9%) have ONLY CJK members**, so
 for more than half the niche there is no western sibling to substitute and no English text to fall
@@ -110,12 +110,12 @@ publication at the boundary.
 | 1940s | 13,987 | 12,709 | 14,364 | 88.5% | 6 | 0.0% |
 | 1950s | 33,683 | 30,856 | 34,474 | 89.5% | 143 | 0.4% |
 | 1960s | 51,277 | 46,013 | 52,345 | 87.9% | 7,356 | 14.3% |
-| 1970s | 62,717 | 50,661 | 57,228 | 88.5% | 15,368 | 24.5% |
+| 1970s | 62,716 | 50,660 | 57,228 | 88.5% | 15,367 | 24.5% |
 | 1980s | 77,769 | 56,073 | 66,507 | 84.3% | 16,821 | 21.6% |
 | 1990s | 100,197 | 61,065 | 81,228 | 75.2% | 19,853 | 19.8% |
 | 2000s | 158,896 | 93,038 | 136,636 | 68.1% | 30,089 | 18.9% |
 | 2010s | 528,399 | 276,453 | 348,579 | 79.3% | 51,892 | 9.8% |
-| 2020s | 472,139 | 372,393 | 487,204 | 76.4% | 32,156 | 6.8% |
+| 2020s | 472,546 | 372,800 | 487,204 | 76.5% | 32,157 | 6.8% |
 
 **Not one family published before 1900 holds readable text, and only 185 published before 1960 do.**
 Coverage by ROW is flat across the whole 190 years at 68% to 90%; coverage by TEXT collapses to zero
@@ -169,18 +169,18 @@ that family.
 |---|--:|---|
 | `himmpat` | **900,463** | CN, JP or KR only. Metered at 250/day |
 | `gpatents_direct` | 240,482 | every other office. Rate limited, self-disabling, ScrapingBee at scale |
-| `pqai` | 220,126 | a US member exists. Free and not quota counted |
+| `pqai` | 220,532 | a US member exists. Free and not quota counted |
 | `none_needed` | 168,645 | nothing is missing |
 | `epo_ops` | 71,375 | an EP or WO member exists. Free inside 4 GB/week |
 | `local:family_member` | 6,005 | a sibling already holds the text here. A join, not a fetch |
 
-**62.9% of the niche's missing text is behind HimmPat's 250 a day.** At that rate 900,463 families
+**62.6% of the niche's missing text is behind HimmPat's 250 a day.** At that rate 900,463 families
 is about 3,600 days, so the CN/JP/KR share of this niche cannot be acquired through that adapter and
 needs a different route: this is a hard blocker for workstream C, not a throughput problem.
 `gpatents_direct` plus ScrapingBee reaches every office including CN, so the realistic plan for the
 Chinese share is ScrapingBee volume, and it should be sized before it is started.
 
-The `pqai` and `epo_ops` rungs together are 291,501 families and both are free, which is where an
+The `pqai` and `epo_ops` rungs together are 291,907 families and both are free, which is where an
 acquisition run should start.
 
 ## 7. The 20.4% with no classification
@@ -202,11 +202,19 @@ unclassified families in this manifest would not exist in a CPC-only manifest.
 
 ## 8. What this release does not claim
 
-* **It is not the complete niche.** 295,532 families exist at this boundary that this corpus holds
+* **It is not the complete niche.** 295,126 families exist at this boundary that this corpus holds
   no row for, plus 32,355 X/Y-cited publications with no local row. Both lists are derivable:
   `data/manifests/<release>/external_only.txt` holds the second one.
 * **It does not cover art outside the boundary.** By construction. Section 5 says what that costs
   against a real attorney's work product.
+* **A family id of `-1` is not a family.** DOCDB writes it for "no simple family" and the ingest
+  stored it verbatim on 21,862 publications. `corpus_niche.family_key` treats it as absent, so each
+  of those is its own family here. `src/retrieval/base.py:157` and `src/retrieval/family.py:93`
+  still key on `COALESCE(NULLIF(simple_family_id,''), publication_number)`, which collapses all
+  21,862 into one family: in family collapse at most one of them can be returned by any search, and
+  `src/retrieval/citations.py` joining `p.simple_family_id = s.simple_family_id` treats all 21,862
+  as one document's family neighbours. That is a live retrieval defect, not a manifest one, and it
+  belongs to whoever owns retrieval.
 * **`cpc` is what this corpus recorded**, not what the office publishes today. The classification
   snapshot moves; a publication reclassified into `H10P` after our ingest still carries its old
   `H01L` symbol here.
