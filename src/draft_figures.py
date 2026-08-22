@@ -2527,7 +2527,7 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
         if check_cancel:
             check_cancel()
         label = str(spec.get("label") or f"FIG. {index}")
-        caption = str(spec.get("caption") or "")[:4000]
+        caption = str(spec.get("caption") or "")
         expected = expected_entries(spec, numeral_table)
         expected_hash = specification_hash(label, caption, expected)
         current = by_key.get(figure_key(label))

@@ -868,6 +868,29 @@ def test_ensure_project_figures_draws_every_missing_spec_with_canonical_parts(mo
     assert calls[0]["numerals"] == ["10 = body", "12 = pump"]
 
 
+def test_ensure_project_figures_preserves_complete_geometry_brief(monkeypatch):
+    monkeypatch.setattr(draft_figures, "listing", lambda *a: [])
+    calls = []
+    monkeypatch.setattr(draft_figures, "render_figure", lambda *a, **values: (
+        calls.append(values) or {
+            "figure_id": 1, "numeral_audit": {"ok": True},
+            "semantic_audit": accepted_semantic_audit(),
+            "leader_audit": accepted_leader_audit(),
+        }))
+    geometry_brief = "opening geometry. " + ("precise relationship. " * 260) + "terminal geometry."
+
+    out = draft_figures.ensure_project_figures(
+        7, 91, sections={}, disclosure="body",
+        numeral_table=[{"numeral": "10", "part": "body"}],
+        figure_specs=[{
+            "label": "FIG. 1", "caption": geometry_brief, "numerals": ["10"],
+        }])
+
+    assert out["ok"] is True
+    assert len(geometry_brief) > 4000
+    assert calls[0]["caption"] == geometry_brief
+
+
 def test_ensure_project_figures_rechecks_cancellation_before_each_sheet(monkeypatch):
     monkeypatch.setattr(draft_figures, "listing", lambda *a: [])
     rendered = []
