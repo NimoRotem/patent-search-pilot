@@ -1,0 +1,4336 @@
+{
+ "plan": {
+  "shards": {
+   "domain_01": [
+    "A01F",
+    "A01J",
+    "A01M",
+    "A01N",
+    "A23D",
+    "A23P",
+    "A23V",
+    "A41H",
+    "A44B",
+    "A44D",
+    "A61K",
+    "A61L",
+    "A63D",
+    "A63F",
+    "A63K",
+    "B23H",
+    "B24C",
+    "B27J",
+    "B29L",
+    "B41K",
+    "B42C",
+    "B60G",
+    "B60N",
+    "B61C",
+    "B65C",
+    "B65G",
+    "B67B",
+    "B68B",
+    "B82B",
+    "C05C",
+    "C05D",
+    "C08G",
+    "C09B",
+    "C09G",
+    "C10B",
+    "C25D",
+    "C30B",
+    "D01C",
+    "D01D",
+    "E21D",
+    "E21F",
+    "F02B",
+    "F02N",
+    "F03D",
+    "F03G",
+    "F15C",
+    "F17B",
+    "F17C",
+    "F21H",
+    "F21K",
+    "F21V",
+    "F22D",
+    "F27D",
+    "F28D",
+    "F28G",
+    "F41B",
+    "G01K",
+    "G02C",
+    "G03D",
+    "G03F",
+    "G04F",
+    "G06G",
+    "G07G",
+    "G08B",
+    "G10D",
+    "G10G",
+    "H01C",
+    "H01T",
+    "H02J",
+    "H02S",
+    "H03G",
+    "H04H",
+    "H05G",
+    "H05H",
+    "H10F"
+   ],
+   "domain_02": [
+    "A01G",
+    "A01L",
+    "A21C",
+    "A22B",
+    "A23N",
+    "A41D",
+    "A45B",
+    "A45C",
+    "A47D",
+    "A61H",
+    "A61Q",
+    "A63C",
+    "B02C",
+    "B03B",
+    "B03D",
+    "B05D",
+    "B25J",
+    "B27C",
+    "B27K",
+    "B29K",
+    "B33Y",
+    "B41C",
+    "B42F",
+    "B60B",
+    "B60D",
+    "B61L",
+    "B62B",
+    "B62H",
+    "B62K",
+    "B64D",
+    "B64G",
+    "B66B",
+    "B82Y",
+    "C01D",
+    "C01P",
+    "C05B",
+    "C05F",
+    "C07B",
+    "C07C",
+    "C07F",
+    "C08K",
+    "C12G",
+    "C13K",
+    "D01G",
+    "D01H",
+    "D03D",
+    "D06B",
+    "D06G",
+    "D21G",
+    "E02D",
+    "E04D",
+    "E21C",
+    "F02F",
+    "F04B",
+    "F05D",
+    "F16D",
+    "F16P",
+    "F21L",
+    "F23J",
+    "F23M",
+    "F24B",
+    "F41A",
+    "F42D",
+    "G03B",
+    "G03G",
+    "G06E",
+    "G07B",
+    "G10H",
+    "G16C",
+    "H01J",
+    "H01L",
+    "H01S",
+    "H03B",
+    "H03F",
+    "H03H",
+    "H04K",
+    "H10D",
+    "Y02D",
+    "Y10T"
+   ],
+   "domain_03": [
+    "A01C",
+    "A01D",
+    "A21D",
+    "A24B",
+    "A24C",
+    "A47H",
+    "A61P",
+    "B05C",
+    "B07B",
+    "B07C",
+    "B21J",
+    "B22D",
+    "B23C",
+    "B23D",
+    "B24B",
+    "B24D",
+    "B25F",
+    "B25H",
+    "B27H",
+    "B28C",
+    "B41N",
+    "B41P",
+    "B44B",
+    "B60Y",
+    "B61H",
+    "B61J",
+    "B63J",
+    "B65H",
+    "B68C",
+    "C01C",
+    "C04B",
+    "C08J",
+    "C09J",
+    "C10G",
+    "C14B",
+    "C14C",
+    "C21C",
+    "C22B",
+    "C22F",
+    "D01B",
+    "D01F",
+    "D02H",
+    "D04H",
+    "D06L",
+    "E01C",
+    "E03B",
+    "E03D",
+    "E04G",
+    "E05D",
+    "E05Y",
+    "F01D",
+    "F03C",
+    "F04C",
+    "F16N",
+    "F16T",
+    "F23H",
+    "F23K",
+    "F24H",
+    "F24J",
+    "F24S",
+    "F28F",
+    "F41C",
+    "G01B",
+    "G01T",
+    "G01W",
+    "G04R",
+    "G05G",
+    "G07D",
+    "G09B",
+    "G09D",
+    "G10L",
+    "G11B",
+    "G16Z",
+    "H01B",
+    "H01K",
+    "H02H",
+    "H02P",
+    "H03C",
+    "H10H",
+    "H10W",
+    "Y02T",
+    "unclassified"
+   ],
+   "domain_04": [
+    "A01B",
+    "A01K",
+    "A22C",
+    "A42C",
+    "A43C",
+    "A47B",
+    "A47G",
+    "A47J",
+    "A47L",
+    "A61C",
+    "A63H",
+    "B01B",
+    "B02B",
+    "B09B",
+    "B09C",
+    "B21B",
+    "B21F",
+    "B26F",
+    "B27D",
+    "B27F",
+    "B29B",
+    "B29D",
+    "B30B",
+    "B32B",
+    "B41L",
+    "B41M",
+    "B44F",
+    "B60K",
+    "B60M",
+    "B60R",
+    "B60S",
+    "B60W",
+    "B61F",
+    "B67C",
+    "B67D",
+    "B81C",
+    "C01G",
+    "C03B",
+    "C03C",
+    "C07D",
+    "C07J",
+    "C08C",
+    "C08L",
+    "C10M",
+    "C10N",
+    "C11B",
+    "C11D",
+    "C12L",
+    "C12P",
+    "C12Q",
+    "C21D",
+    "D02G",
+    "D02J",
+    "D04C",
+    "D21D",
+    "E01H",
+    "E02F",
+    "E05F",
+    "E05G",
+    "F01P",
+    "F02P",
+    "F03H",
+    "F15B",
+    "F15D",
+    "F16B",
+    "F16C",
+    "F16F",
+    "F21Y",
+    "F23R",
+    "F24V",
+    "F41F",
+    "F41H",
+    "F41J",
+    "G01Q",
+    "G03C",
+    "G03H",
+    "G04C",
+    "G05F",
+    "G06N",
+    "G10F",
+    "G10K",
+    "G16H",
+    "G16Y",
+    "H02M",
+    "H04B",
+    "Y02A"
+   ],
+   "domain_05": [
+    "A01H",
+    "A23B",
+    "A23J",
+    "A23K",
+    "A41F",
+    "A46B",
+    "A46D",
+    "A61M",
+    "A61N",
+    "A62B",
+    "A63G",
+    "A63J",
+    "B01D",
+    "B05B",
+    "B21H",
+    "B23F",
+    "B25B",
+    "B25G",
+    "B27G",
+    "B27M",
+    "B31C",
+    "B31D",
+    "B41F",
+    "B44C",
+    "B60L",
+    "B60Q",
+    "B61B",
+    "B61D",
+    "B62C",
+    "B62L",
+    "B62M",
+    "B64F",
+    "B68F",
+    "C01B",
+    "C06B",
+    "C07K",
+    "C08B",
+    "C09H",
+    "C10C",
+    "C10F",
+    "C11C",
+    "C12C",
+    "C12J",
+    "C21B",
+    "C23D",
+    "C25F",
+    "D05C",
+    "D06C",
+    "D21F",
+    "D21H",
+    "E05B",
+    "F01C",
+    "F01K",
+    "F01L",
+    "F02D",
+    "F02K",
+    "F02M",
+    "F04D",
+    "F04F",
+    "F16H",
+    "F16K",
+    "F16S",
+    "F23B",
+    "F23C",
+    "F23G",
+    "F24D",
+    "F25D",
+    "F27B",
+    "F41G",
+    "G01P",
+    "G01V",
+    "G04B",
+    "G05B",
+    "G05D",
+    "G06C",
+    "G07F",
+    "G21H",
+    "G21J",
+    "H02K",
+    "H02N",
+    "H04M",
+    "H04R",
+    "H05F",
+    "H05K",
+    "H10P",
+    "Y02E"
+   ],
+   "domain_06": [
+    "A24F",
+    "A41C",
+    "A41G",
+    "A47F",
+    "A61B",
+    "A61D",
+    "B04B",
+    "B08B",
+    "B21C",
+    "B21D",
+    "B21L",
+    "B22C",
+    "B23G",
+    "B23K",
+    "B23P",
+    "B27L",
+    "B28B",
+    "B29C",
+    "B31B",
+    "B31F",
+    "B41B",
+    "B41D",
+    "B41G",
+    "B42D",
+    "B43L",
+    "B43M",
+    "B60C",
+    "B63C",
+    "B64U",
+    "B65D",
+    "B65F",
+    "B66D",
+    "B68G",
+    "C01F",
+    "C05G",
+    "C06C",
+    "C06F",
+    "C07H",
+    "C09D",
+    "C09K",
+    "C10H",
+    "C12M",
+    "C13B",
+    "C22C",
+    "C23C",
+    "C23F",
+    "D04D",
+    "D06N",
+    "D10B",
+    "D21B",
+    "E01B",
+    "E03C",
+    "E03F",
+    "E04C",
+    "E04H",
+    "F02C",
+    "F02G",
+    "F05B",
+    "F16M",
+    "F22B",
+    "F23D",
+    "F23L",
+    "F24F",
+    "F25C",
+    "F26B",
+    "G01G",
+    "G01L",
+    "G01M",
+    "G01R",
+    "G04G",
+    "G06V",
+    "G08G",
+    "G10C",
+    "G11C",
+    "H01F",
+    "H01H",
+    "H01Q",
+    "H02G",
+    "H03D",
+    "H03J",
+    "H03M",
+    "H04S",
+    "H04W",
+    "Y02B",
+    "Y02W",
+    "Y10S"
+   ],
+   "domain_07": [
+    "A23C",
+    "A23F",
+    "A23G",
+    "A23L",
+    "A24D",
+    "A42B",
+    "A43B",
+    "A43D",
+    "A47C",
+    "A61F",
+    "A61J",
+    "A62C",
+    "B01F",
+    "B03C",
+    "B22F",
+    "B23Q",
+    "B25D",
+    "B26D",
+    "B27B",
+    "B41J",
+    "B42B",
+    "B60T",
+    "B62D",
+    "B62J",
+    "B63B",
+    "B63G",
+    "B63H",
+    "B64B",
+    "B64C",
+    "B66C",
+    "B81B",
+    "C02F",
+    "C06D",
+    "C08H",
+    "C09C",
+    "C09F",
+    "C10J",
+    "C10K",
+    "D03C",
+    "D03J",
+    "D04B",
+    "D04G",
+    "D06F",
+    "D06H",
+    "D06M",
+    "E02C",
+    "E04F",
+    "E05C",
+    "E06B",
+    "E06C",
+    "F01M",
+    "F01N",
+    "F03B",
+    "F16L",
+    "F17D",
+    "F21W",
+    "F23Q",
+    "F24C",
+    "F24T",
+    "F25B",
+    "F28B",
+    "F28C",
+    "F42B",
+    "G01C",
+    "G01D",
+    "G01H",
+    "G01J",
+    "G01N",
+    "G01S",
+    "G04D",
+    "G06J",
+    "G06M",
+    "G06T",
+    "G08C",
+    "G09C",
+    "G21B",
+    "G21D",
+    "G21F",
+    "G21K",
+    "H01M",
+    "H01P",
+    "H01R",
+    "H02B",
+    "H04J",
+    "H05B",
+    "H10N",
+    "Y02C",
+    "Y04S"
+   ],
+   "domain_08": [
+    "A21B",
+    "A41B",
+    "A44C",
+    "A45D",
+    "A45F",
+    "A47K",
+    "A61G",
+    "A62D",
+    "A63B",
+    "B01J",
+    "B01L",
+    "B04C",
+    "B06B",
+    "B21G",
+    "B21K",
+    "B23B",
+    "B25C",
+    "B26B",
+    "B27N",
+    "B28D",
+    "B43K",
+    "B44D",
+    "B60F",
+    "B60H",
+    "B60J",
+    "B60P",
+    "B60V",
+    "B61G",
+    "B61K",
+    "B65B",
+    "B66F",
+    "C07G",
+    "C08F",
+    "C10L",
+    "C12F",
+    "C12H",
+    "C12N",
+    "C12Y",
+    "C23G",
+    "C25B",
+    "C25C",
+    "C40B",
+    "D05B",
+    "D06J",
+    "D06P",
+    "D06Q",
+    "D07B",
+    "D21C",
+    "D21J",
+    "E01D",
+    "E01F",
+    "E02B",
+    "E04B",
+    "E21B",
+    "F01B",
+    "F05C",
+    "F16G",
+    "F16J",
+    "F21S",
+    "F22G",
+    "F23N",
+    "F25J",
+    "F42C",
+    "G01F",
+    "G02B",
+    "G02F",
+    "G06F",
+    "G06K",
+    "G06Q",
+    "G07C",
+    "G09F",
+    "G09G",
+    "G10B",
+    "G12B",
+    "G16B",
+    "G21C",
+    "G21G",
+    "H01G",
+    "H03K",
+    "H03L",
+    "H04L",
+    "H04N",
+    "H04Q",
+    "H05C",
+    "H10B",
+    "H10K",
+    "Y02P"
+   ]
+  },
+  "mass": {
+   "domain_01": 4762670,
+   "domain_02": 4762668,
+   "domain_03": 4762668,
+   "domain_04": 4762667,
+   "domain_05": 4762670,
+   "domain_06": 4762669,
+   "domain_07": 4762669,
+   "domain_08": 4762669
+  },
+  "capacity": 25119648,
+  "oversized": [],
+  "fits": true
+ },
+ "hot": {
+  "families": 35119,
+  "publications": 84305,
+  "chunks": 2024262
+ },
+ "domain_mass": {
+  "B65G": {
+   "families": 263677,
+   "publications": 547429,
+   "chunks": 3658061
+  },
+  "B25J": {
+   "families": 111283,
+   "publications": 263342,
+   "chunks": 3050911
+  },
+  "unclassified": {
+   "families": 1012657,
+   "publications": 1022727,
+   "chunks": 2528153
+  },
+  "F16B": {
+   "families": 114055,
+   "publications": 262844,
+   "chunks": 1825975
+  },
+  "B25B": {
+   "families": 112914,
+   "publications": 204004,
+   "chunks": 1687578
+  },
+  "A61B": {
+   "families": 37610,
+   "publications": 71871,
+   "chunks": 1451413
+  },
+  "B66C": {
+   "families": 83921,
+   "publications": 157741,
+   "chunks": 899495
+  },
+  "B66F": {
+   "families": 61231,
+   "publications": 113856,
+   "chunks": 816598
+  },
+  "G06F": {
+   "families": 26862,
+   "publications": 32607,
+   "chunks": 493758
+  },
+  "B65B": {
+   "families": 28775,
+   "publications": 47555,
+   "chunks": 387993
+  },
+  "H10P": {
+   "families": 14845,
+   "publications": 28039,
+   "chunks": 342937
+  },
+  "B62D": {
+   "families": 23592,
+   "publications": 37521,
+   "chunks": 418952
+  },
+  "B29C": {
+   "families": 21197,
+   "publications": 33493,
+   "chunks": 329525
+  },
+  "B65D": {
+   "families": 26600,
+   "publications": 37024,
+   "chunks": 345001
+  },
+  "F16L": {
+   "families": 28943,
+   "publications": 41110,
+   "chunks": 351160
+  },
+  "G01N": {
+   "families": 20907,
+   "publications": 27590,
+   "chunks": 344805
+  },
+  "G06Q": {
+   "families": 18466,
+   "publications": 24571,
+   "chunks": 339554
+  },
+  "A61F": {
+   "families": 10980,
+   "publications": 17507,
+   "chunks": 315648
+  },
+  "A47B": {
+   "families": 23507,
+   "publications": 36177,
+   "chunks": 319895
+  },
+  "G05B": {
+   "families": 15531,
+   "publications": 24359,
+   "chunks": 305798
+  },
+  "B23Q": {
+   "families": 21725,
+   "publications": 34646,
+   "chunks": 259994
+  },
+  "B23K": {
+   "families": 25095,
+   "publications": 37323,
+   "chunks": 282218
+  },
+  "E21B": {
+   "families": 14759,
+   "publications": 20056,
+   "chunks": 289035
+  },
+  "B60R": {
+   "families": 16928,
+   "publications": 25626,
+   "chunks": 275203
+  },
+  "E04B": {
+   "families": 16868,
+   "publications": 26994,
+   "chunks": 262562
+  },
+  "G05D": {
+   "families": 11459,
+   "publications": 17121,
+   "chunks": 259181
+  },
+  "B23P": {
+   "families": 23264,
+   "publications": 37107,
+   "chunks": 238530
+  },
+  "B65H": {
+   "families": 16916,
+   "publications": 24137,
+   "chunks": 213108
+  },
+  "A47L": {
+   "families": 9486,
+   "publications": 17293,
+   "chunks": 214157
+  },
+  "B60P": {
+   "families": 12615,
+   "publications": 18323,
+   "chunks": 211126
+  },
+  "B21D": {
+   "families": 12924,
+   "publications": 20883,
+   "chunks": 174263
+  },
+  "H01R": {
+   "families": 14065,
+   "publications": 18431,
+   "chunks": 184988
+  },
+  "H05K": {
+   "families": 10971,
+   "publications": 15484,
+   "chunks": 163985
+  },
+  "B07C": {
+   "families": 9875,
+   "publications": 16657,
+   "chunks": 155810
+  },
+  "A61M": {
+   "families": 6887,
+   "publications": 9165,
+   "chunks": 178387
+  },
+  "E02F": {
+   "families": 11910,
+   "publications": 19341,
+   "chunks": 176858
+  },
+  "G01B": {
+   "families": 13867,
+   "publications": 18265,
+   "chunks": 164954
+  },
+  "G06T": {
+   "families": 11229,
+   "publications": 14121,
+   "chunks": 161458
+  },
+  "F16C": {
+   "families": 13488,
+   "publications": 19205,
+   "chunks": 156826
+  },
+  "A63B": {
+   "families": 8958,
+   "publications": 11267,
+   "chunks": 158000
+  },
+  "E04H": {
+   "families": 11924,
+   "publications": 16131,
+   "chunks": 156034
+  },
+  "E04F": {
+   "families": 10103,
+   "publications": 16620,
+   "chunks": 152524
+  },
+  "B23B": {
+   "families": 10651,
+   "publications": 15602,
+   "chunks": 150390
+  },
+  "F16H": {
+   "families": 15187,
+   "publications": 20339,
+   "chunks": 152214
+  },
+  "F16M": {
+   "families": 8463,
+   "publications": 12224,
+   "chunks": 141368
+  },
+  "A47G": {
+   "families": 8015,
+   "publications": 10266,
+   "chunks": 130119
+  },
+  "A01K": {
+   "families": 10922,
+   "publications": 14804,
+   "chunks": 142006
+  },
+  "A01D": {
+   "families": 9423,
+   "publications": 13532,
+   "chunks": 137611
+  },
+  "F16D": {
+   "families": 12673,
+   "publications": 18032,
+   "chunks": 139327
+  },
+  "B05B": {
+   "families": 8282,
+   "publications": 13832,
+   "chunks": 132944
+  },
+  "A47C": {
+   "families": 9376,
+   "publications": 12744,
+   "chunks": 133623
+  },
+  "A61G": {
+   "families": 6806,
+   "publications": 10186,
+   "chunks": 130286
+  },
+  "H02G": {
+   "families": 13355,
+   "publications": 18177,
+   "chunks": 126272
+  },
+  "E04G": {
+   "families": 13197,
+   "publications": 19396,
+   "chunks": 123079
+  },
+  "B63B": {
+   "families": 10649,
+   "publications": 16544,
+   "chunks": 122091
+  },
+  "A61H": {
+   "families": 5931,
+   "publications": 10521,
+   "chunks": 124359
+  },
+  "B32B": {
+   "families": 6332,
+   "publications": 9620,
+   "chunks": 118083
+  },
+  "B24B": {
+   "families": 9952,
+   "publications": 13091,
+   "chunks": 104076
+  },
+  "H02K": {
+   "families": 9628,
+   "publications": 13062,
+   "chunks": 121805
+  },
+  "G02B": {
+   "families": 7074,
+   "publications": 8684,
+   "chunks": 119134
+  },
+  "A01G": {
+   "families": 8803,
+   "publications": 12539,
+   "chunks": 112481
+  },
+  "A47F": {
+   "families": 7269,
+   "publications": 9956,
+   "chunks": 112553
+  },
+  "C23C": {
+   "families": 5802,
+   "publications": 8033,
+   "chunks": 106794
+  },
+  "B25F": {
+   "families": 3990,
+   "publications": 8488,
+   "chunks": 110901
+  },
+  "B01D": {
+   "families": 7085,
+   "publications": 9852,
+   "chunks": 108697
+  },
+  "B64C": {
+   "families": 5239,
+   "publications": 8210,
+   "chunks": 109179
+  },
+  "B64D": {
+   "families": 4254,
+   "publications": 7546,
+   "chunks": 104195
+  },
+  "H04L": {
+   "families": 5632,
+   "publications": 6336,
+   "chunks": 105523
+  },
+  "F15B": {
+   "families": 8794,
+   "publications": 13351,
+   "chunks": 105136
+  },
+  "B60L": {
+   "families": 5915,
+   "publications": 10301,
+   "chunks": 99258
+  },
+  "E06B": {
+   "families": 8284,
+   "publications": 11158,
+   "chunks": 97968
+  },
+  "H04N": {
+   "families": 6775,
+   "publications": 8057,
+   "chunks": 95165
+  },
+  "G01L": {
+   "families": 5590,
+   "publications": 8529,
+   "chunks": 94048
+  },
+  "B08B": {
+   "families": 9906,
+   "publications": 13661,
+   "chunks": 90025
+  },
+  "B60K": {
+   "families": 6332,
+   "publications": 9955,
+   "chunks": 93961
+  },
+  "B21J": {
+   "families": 4117,
+   "publications": 8977,
+   "chunks": 92203
+  },
+  "B60B": {
+   "families": 5549,
+   "publications": 8648,
+   "chunks": 93522
+  },
+  "F16K": {
+   "families": 7748,
+   "publications": 9484,
+   "chunks": 90091
+  },
+  "G01S": {
+   "families": 6016,
+   "publications": 7679,
+   "chunks": 90509
+  },
+  "A63H": {
+   "families": 4691,
+   "publications": 6715,
+   "chunks": 88905
+  },
+  "B62B": {
+   "families": 7708,
+   "publications": 10497,
+   "chunks": 87764
+  },
+  "G06K": {
+   "families": 5641,
+   "publications": 7140,
+   "chunks": 88623
+  },
+  "G11B": {
+   "families": 4393,
+   "publications": 5214,
+   "chunks": 87382
+  },
+  "G07F": {
+   "families": 5630,
+   "publications": 7607,
+   "chunks": 83640
+  },
+  "G01C": {
+   "families": 7381,
+   "publications": 8928,
+   "chunks": 85559
+  },
+  "A47J": {
+   "families": 5844,
+   "publications": 7770,
+   "chunks": 80332
+  },
+  "G09F": {
+   "families": 5670,
+   "publications": 6976,
+   "chunks": 80259
+  },
+  "G01R": {
+   "families": 7004,
+   "publications": 8524,
+   "chunks": 76873
+  },
+  "B60N": {
+   "families": 4892,
+   "publications": 7199,
+   "chunks": 76288
+  },
+  "B41J": {
+   "families": 4236,
+   "publications": 6124,
+   "chunks": 72157
+  },
+  "B66B": {
+   "families": 7694,
+   "publications": 11198,
+   "chunks": 75805
+  },
+  "E04C": {
+   "families": 5629,
+   "publications": 8041,
+   "chunks": 74622
+  },
+  "E05B": {
+   "families": 5630,
+   "publications": 6860,
+   "chunks": 74450
+  },
+  "F01D": {
+   "families": 4029,
+   "publications": 6966,
+   "chunks": 74676
+  },
+  "F16F": {
+   "families": 6073,
+   "publications": 7935,
+   "chunks": 72284
+  },
+  "F16G": {
+   "families": 7057,
+   "publications": 10579,
+   "chunks": 71394
+  },
+  "C03B": {
+   "families": 4612,
+   "publications": 8219,
+   "chunks": 57467
+  },
+  "B60J": {
+   "families": 4261,
+   "publications": 5980,
+   "chunks": 66967
+  },
+  "A44B": {
+   "families": 4480,
+   "publications": 6847,
+   "chunks": 67981
+  },
+  "B25H": {
+   "families": 6508,
+   "publications": 8500,
+   "chunks": 67131
+  },
+  "E04D": {
+   "families": 3657,
+   "publications": 5259,
+   "chunks": 67462
+  },
+  "G03F": {
+   "families": 2818,
+   "publications": 4007,
+   "chunks": 60708
+  },
+  "G01M": {
+   "families": 8550,
+   "publications": 10481,
+   "chunks": 65496
+  },
+  "B61B": {
+   "families": 3267,
+   "publications": 6703,
+   "chunks": 59371
+  },
+  "A61J": {
+   "families": 2331,
+   "publications": 4138,
+   "chunks": 62488
+  },
+  "B60S": {
+   "families": 4808,
+   "publications": 7422,
+   "chunks": 63420
+  },
+  "E02D": {
+   "families": 6285,
+   "publications": 7821,
+   "chunks": 60433
+  },
+  "B25G": {
+   "families": 3567,
+   "publications": 5358,
+   "chunks": 61380
+  },
+  "H01M": {
+   "families": 7566,
+   "publications": 9604,
+   "chunks": 58026
+  },
+  "A01C": {
+   "families": 3832,
+   "publications": 5536,
+   "chunks": 60174
+  },
+  "B26D": {
+   "families": 4075,
+   "publications": 5908,
+   "chunks": 54339
+  },
+  "B05C": {
+   "families": 5000,
+   "publications": 7618,
+   "chunks": 55616
+  },
+  "G01G": {
+   "families": 3988,
+   "publications": 5796,
+   "chunks": 57267
+  },
+  "B60G": {
+   "families": 4428,
+   "publications": 6189,
+   "chunks": 57829,
+   "backlog": 2350
+  },
+  "A22C": {
+   "families": 3001,
+   "publications": 5123,
+   "chunks": 53058
+  },
+  "F16J": {
+   "families": 4773,
+   "publications": 6245,
+   "chunks": 57108
+  },
+  "G03G": {
+   "families": 2600,
+   "publications": 3352,
+   "chunks": 55944
+  },
+  "B01L": {
+   "families": 2204,
+   "publications": 4085,
+   "chunks": 52454
+  },
+  "A45F": {
+   "families": 2212,
+   "publications": 2856,
+   "chunks": 45469
+  },
+  "F04B": {
+   "families": 3928,
+   "publications": 4999,
+   "chunks": 52394
+  },
+  "F21V": {
+   "families": 3748,
+   "publications": 4604,
+   "chunks": 52831
+  },
+  "A47K": {
+   "families": 3306,
+   "publications": 4399,
+   "chunks": 43973
+  },
+  "A61N": {
+   "families": 2040,
+   "publications": 2554,
+   "chunks": 52802
+  },
+  "H01Q": {
+   "families": 2779,
+   "publications": 3683,
+   "chunks": 52556
+  },
+  "E01C": {
+   "families": 3352,
+   "publications": 4495,
+   "chunks": 51338
+  },
+  "G06N": {
+   "families": 3306,
+   "publications": 4281,
+   "chunks": 52151,
+   "backlog": 4987
+  },
+  "A63F": {
+   "families": 2043,
+   "publications": 2696,
+   "chunks": 51977
+  },
+  "B66D": {
+   "families": 5309,
+   "publications": 7598,
+   "chunks": 51401
+  },
+  "A62B": {
+   "families": 2729,
+   "publications": 4433,
+   "chunks": 51489
+  },
+  "H01J": {
+   "families": 3026,
+   "publications": 3777,
+   "chunks": 49754
+  },
+  "B60T": {
+   "families": 3824,
+   "publications": 5353,
+   "chunks": 50616
+  },
+  "B64F": {
+   "families": 2548,
+   "publications": 4734,
+   "chunks": 48679
+  },
+  "B25C": {
+   "families": 3259,
+   "publications": 4839,
+   "chunks": 49925
+  },
+  "G01D": {
+   "families": 3477,
+   "publications": 4937,
+   "chunks": 49698
+  },
+  "G08B": {
+   "families": 3143,
+   "publications": 3601,
+   "chunks": 49689
+  },
+  "A61C": {
+   "families": 2695,
+   "publications": 3707,
+   "chunks": 49431
+  },
+  "B01J": {
+   "families": 2760,
+   "publications": 4687,
+   "chunks": 48836,
+   "backlog": 3687
+  },
+  "G03B": {
+   "families": 2894,
+   "publications": 3541,
+   "chunks": 46243
+  },
+  "B07B": {
+   "families": 6506,
+   "publications": 8563,
+   "chunks": 48052
+  },
+  "G06V": {
+   "families": 4490,
+   "publications": 5371,
+   "chunks": 46719
+  },
+  "B23D": {
+   "families": 4127,
+   "publications": 5418,
+   "chunks": 46660
+  },
+  "H01H": {
+   "families": 4411,
+   "publications": 5327,
+   "chunks": 46702
+  },
+  "B29D": {
+   "families": 2928,
+   "publications": 4771,
+   "chunks": 42858
+  },
+  "F25D": {
+   "families": 3086,
+   "publications": 4362,
+   "chunks": 45525
+  },
+  "B60W": {
+   "families": 3045,
+   "publications": 4425,
+   "chunks": 45400,
+   "backlog": 3044
+  },
+  "B01F": {
+   "families": 3416,
+   "publications": 4535,
+   "chunks": 45051
+  },
+  "A45C": {
+   "families": 2172,
+   "publications": 2999,
+   "chunks": 43329
+  },
+  "A61L": {
+   "families": 2891,
+   "publications": 3851,
+   "chunks": 44537
+  },
+  "B65F": {
+   "families": 3639,
+   "publications": 5538,
+   "chunks": 44528
+  },
+  "H02S": {
+   "families": 3152,
+   "publications": 4646,
+   "chunks": 44090
+  },
+  "F04D": {
+   "families": 3653,
+   "publications": 4731,
+   "chunks": 43871
+  },
+  "H01L": {
+   "families": 3474,
+   "publications": 4246,
+   "chunks": 36373
+  },
+  "H05B": {
+   "families": 2225,
+   "publications": 2690,
+   "chunks": 43386
+  },
+  "A01B": {
+   "families": 3138,
+   "publications": 4007,
+   "chunks": 40752
+  },
+  "G02F": {
+   "families": 3460,
+   "publications": 4650,
+   "chunks": 37103
+  },
+  "H02P": {
+   "families": 3490,
+   "publications": 4678,
+   "chunks": 41876
+  },
+  "H10W": {
+   "families": 3007,
+   "publications": 3310,
+   "chunks": 41856
+  },
+  "D06F": {
+   "families": 3770,
+   "publications": 5020,
+   "chunks": 40646
+  },
+  "B02C": {
+   "families": 5453,
+   "publications": 7370,
+   "chunks": 40161
+  },
+  "B41F": {
+   "families": 3195,
+   "publications": 4185,
+   "chunks": 34941
+  },
+  "A61K": {
+   "families": 2171,
+   "publications": 2658,
+   "chunks": 38352
+  },
+  "B61D": {
+   "families": 3347,
+   "publications": 4947,
+   "chunks": 38133
+  },
+  "E01F": {
+   "families": 3225,
+   "publications": 4243,
+   "chunks": 37961
+  },
+  "B30B": {
+   "families": 3453,
+   "publications": 4550,
+   "chunks": 36237
+  },
+  "E01B": {
+   "families": 4146,
+   "publications": 6037,
+   "chunks": 37136
+  },
+  "H04W": {
+   "families": 2860,
+   "publications": 3272,
+   "chunks": 37343
+  },
+  "G01V": {
+   "families": 1761,
+   "publications": 2390,
+   "chunks": 36812
+  },
+  "H02J": {
+   "families": 3091,
+   "publications": 3894,
+   "chunks": 36383
+  },
+  "H01F": {
+   "families": 3188,
+   "publications": 4197,
+   "chunks": 35686
+  },
+  "G09B": {
+   "families": 2816,
+   "publications": 3312,
+   "chunks": 36143
+  },
+  "B25D": {
+   "families": 2486,
+   "publications": 3680,
+   "chunks": 36144
+  },
+  "G16H": {
+   "families": 1301,
+   "publications": 1921,
+   "chunks": 32147
+  },
+  "E21D": {
+   "families": 4148,
+   "publications": 6144,
+   "chunks": 35227
+  },
+  "B62J": {
+   "families": 1843,
+   "publications": 2569,
+   "chunks": 34348
+  },
+  "B62K": {
+   "families": 2553,
+   "publications": 3585,
+   "chunks": 34901
+  },
+  "G01F": {
+   "families": 2688,
+   "publications": 3278,
+   "chunks": 34941
+  },
+  "F03D": {
+   "families": 2533,
+   "publications": 4759,
+   "chunks": 34005
+  },
+  "E01H": {
+   "families": 1724,
+   "publications": 2122,
+   "chunks": 34165
+  },
+  "E05D": {
+   "families": 2993,
+   "publications": 4187,
+   "chunks": 34038
+  },
+  "B27B": {
+   "families": 1908,
+   "publications": 2728,
+   "chunks": 29314
+  },
+  "B60Q": {
+   "families": 2275,
+   "publications": 3286,
+   "chunks": 33487
+  },
+  "F26B": {
+   "families": 3551,
+   "publications": 4508,
+   "chunks": 33018
+  },
+  "B65C": {
+   "families": 2523,
+   "publications": 3559,
+   "chunks": 29425
+  },
+  "E02B": {
+   "families": 3134,
+   "publications": 3975,
+   "chunks": 33423
+  },
+  "A62C": {
+   "families": 2582,
+   "publications": 3599,
+   "chunks": 31283
+  },
+  "C09J": {
+   "families": 1499,
+   "publications": 2459,
+   "chunks": 27620
+  },
+  "A24C": {
+   "families": 2181,
+   "publications": 4253,
+   "chunks": 31445
+  },
+  "B22D": {
+   "families": 3357,
+   "publications": 4911,
+   "chunks": 30913
+  },
+  "F41A": {
+   "families": 1969,
+   "publications": 2580,
+   "chunks": 31114
+  },
+  "E06C": {
+   "families": 2699,
+   "publications": 3554,
+   "chunks": 31021
+  },
+  "B60D": {
+   "families": 2164,
+   "publications": 2738,
+   "chunks": 30892,
+   "backlog": 2804
+  },
+  "E05F": {
+   "families": 2408,
+   "publications": 2997,
+   "chunks": 30700
+  },
+  "B28B": {
+   "families": 3756,
+   "publications": 4974,
+   "chunks": 28643
+  },
+  "B60C": {
+   "families": 2705,
+   "publications": 3392,
+   "chunks": 30460,
+   "backlog": 2567
+  },
+  "A23B": {
+   "families": 2057,
+   "publications": 2843,
+   "chunks": 29740
+  },
+  "B26B": {
+   "families": 2293,
+   "publications": 2908,
+   "chunks": 29668
+  },
+  "C04B": {
+   "families": 2081,
+   "publications": 2975,
+   "chunks": 29297
+  },
+  "A24F": {
+   "families": 992,
+   "publications": 1482,
+   "chunks": 22633
+  },
+  "B64G": {
+   "families": 1675,
+   "publications": 2357,
+   "chunks": 29007
+  },
+  "Y02E": {
+   "families": 14392,
+   "publications": 14511,
+   "chunks": 29167,
+   "backlog": 0
+  },
+  "A01M": {
+   "families": 1984,
+   "publications": 2367,
+   "chunks": 28503
+  },
+  "Y02P": {
+   "families": 14193,
+   "publications": 14369,
+   "chunks": 29040
+  },
+  "H04B": {
+   "families": 1920,
+   "publications": 2241,
+   "chunks": 28679
+  },
+  "H04M": {
+   "families": 2152,
+   "publications": 2501,
+   "chunks": 28217
+  },
+  "G21C": {
+   "families": 2041,
+   "publications": 3118,
+   "chunks": 28251
+  },
+  "A01F": {
+   "families": 2114,
+   "publications": 2915,
+   "chunks": 28701
+  },
+  "B67D": {
+   "families": 1726,
+   "publications": 2322,
+   "chunks": 28342
+  },
+  "A21C": {
+   "families": 2136,
+   "publications": 3142,
+   "chunks": 28054
+  },
+  "F24F": {
+   "families": 2694,
+   "publications": 3402,
+   "chunks": 27551
+  },
+  "E05C": {
+   "families": 2456,
+   "publications": 3055,
+   "chunks": 27728
+  },
+  "B22F": {
+   "families": 1303,
+   "publications": 2132,
+   "chunks": 25839
+  },
+  "G08G": {
+   "families": 1939,
+   "publications": 2278,
+   "chunks": 26244
+  },
+  "G05G": {
+   "families": 1919,
+   "publications": 2862,
+   "chunks": 26217,
+   "backlog": 3147
+  },
+  "G07C": {
+   "families": 1457,
+   "publications": 1839,
+   "chunks": 25595
+  },
+  "B05D": {
+   "families": 1608,
+   "publications": 2419,
+   "chunks": 25613
+  },
+  "H02N": {
+   "families": 1109,
+   "publications": 1648,
+   "chunks": 24967
+  },
+  "B27F": {
+   "families": 961,
+   "publications": 1822,
+   "chunks": 25224
+  },
+  "A01J": {
+   "families": 679,
+   "publications": 1244,
+   "chunks": 24597
+  },
+  "C25D": {
+   "families": 1893,
+   "publications": 2692,
+   "chunks": 24325
+  },
+  "H10F": {
+   "families": 1420,
+   "publications": 1671,
+   "chunks": 20182
+  },
+  "F02M": {
+   "families": 1854,
+   "publications": 2613,
+   "chunks": 24174
+  },
+  "B21F": {
+   "families": 1918,
+   "publications": 3097,
+   "chunks": 24070
+  },
+  "H02B": {
+   "families": 2840,
+   "publications": 3819,
+   "chunks": 23198
+  },
+  "A45D": {
+   "families": 1542,
+   "publications": 1961,
+   "chunks": 21886
+  },
+  "A44C": {
+   "families": 2061,
+   "publications": 2634,
+   "chunks": 23049
+  },
+  "E21C": {
+   "families": 1809,
+   "publications": 2556,
+   "chunks": 23072,
+   "backlog": 985
+  },
+  "A63C": {
+   "families": 1298,
+   "publications": 1652,
+   "chunks": 21942
+  },
+  "B63C": {
+   "families": 2167,
+   "publications": 2756,
+   "chunks": 22218
+  },
+  "F24S": {
+   "families": 1384,
+   "publications": 2172,
+   "chunks": 22308,
+   "backlog": 2179
+  },
+  "G07D": {
+   "families": 848,
+   "publications": 1292,
+   "chunks": 22283
+  },
+  "A46B": {
+   "families": 1020,
+   "publications": 1418,
+   "chunks": 19982
+  },
+  "B67B": {
+   "families": 2703,
+   "publications": 3479,
+   "chunks": 21690
+  },
+  "C02F": {
+   "families": 1959,
+   "publications": 2289,
+   "chunks": 21832,
+   "backlog": 441
+  },
+  "H04R": {
+   "families": 1589,
+   "publications": 1970,
+   "chunks": 21040
+  },
+  "B28D": {
+   "families": 1277,
+   "publications": 1855,
+   "chunks": 14719
+  },
+  "F42B": {
+   "families": 1645,
+   "publications": 2033,
+   "chunks": 20500
+  },
+  "C08L": {
+   "families": 1586,
+   "publications": 2088,
+   "chunks": 20837
+  },
+  "B67C": {
+   "families": 1998,
+   "publications": 3148,
+   "chunks": 20910
+  },
+  "E03C": {
+   "families": 1597,
+   "publications": 2263,
+   "chunks": 20082
+  },
+  "B62M": {
+   "families": 1267,
+   "publications": 1743,
+   "chunks": 20678,
+   "backlog": 428
+  },
+  "H01B": {
+   "families": 2073,
+   "publications": 2569,
+   "chunks": 20626
+  },
+  "E01D": {
+   "families": 3692,
+   "publications": 4418,
+   "chunks": 20549
+  },
+  "A23N": {
+   "families": 3135,
+   "publications": 3979,
+   "chunks": 20509
+  },
+  "C22C": {
+   "families": 1636,
+   "publications": 2546,
+   "chunks": 20273
+  },
+  "C08G": {
+   "families": 1209,
+   "publications": 1519,
+   "chunks": 20194,
+   "backlog": 457
+  },
+  "F01N": {
+   "families": 1352,
+   "publications": 1919,
+   "chunks": 19811
+  },
+  "A47D": {
+   "families": 1187,
+   "publications": 1554,
+   "chunks": 19892
+  },
+  "G10L": {
+   "families": 1730,
+   "publications": 2086,
+   "chunks": 19942,
+   "backlog": 226
+  },
+  "B21B": {
+   "families": 2618,
+   "publications": 3788,
+   "chunks": 19801
+  },
+  "B21K": {
+   "families": 1675,
+   "publications": 3100,
+   "chunks": 19610,
+   "backlog": 3159
+  },
+  "F21S": {
+   "families": 1567,
+   "publications": 1881,
+   "chunks": 19044
+  },
+  "B29B": {
+   "families": 1722,
+   "publications": 2327,
+   "chunks": 18903
+  },
+  "B63H": {
+   "families": 1519,
+   "publications": 1882,
+   "chunks": 18961
+  },
+  "A41D": {
+   "families": 1110,
+   "publications": 1412,
+   "chunks": 18858
+  },
+  "A63G": {
+   "families": 1002,
+   "publications": 1449,
+   "chunks": 18878,
+   "backlog": 730
+  },
+  "C08J": {
+   "families": 1150,
+   "publications": 1415,
+   "chunks": 18483,
+   "backlog": 239
+  },
+  "B24C": {
+   "families": 1307,
+   "publications": 1832,
+   "chunks": 18206
+  },
+  "B21C": {
+   "families": 2059,
+   "publications": 2901,
+   "chunks": 18289
+  },
+  "F27D": {
+   "families": 1626,
+   "publications": 2537,
+   "chunks": 17819
+  },
+  "B23C": {
+   "families": 1253,
+   "publications": 1906,
+   "chunks": 16026
+  },
+  "C09K": {
+   "families": 881,
+   "publications": 1062,
+   "chunks": 17614,
+   "backlog": 264
+  },
+  "A24B": {
+   "families": 1190,
+   "publications": 1626,
+   "chunks": 17401
+  },
+  "A45B": {
+   "families": 1153,
+   "publications": 1495,
+   "chunks": 16647
+  },
+  "A21B": {
+   "families": 1266,
+   "publications": 1831,
+   "chunks": 17027
+  },
+  "C09D": {
+   "families": 1060,
+   "publications": 1352,
+   "chunks": 15998
+  },
+  "A43B": {
+   "families": 1153,
+   "publications": 1436,
+   "chunks": 16935
+  },
+  "C21D": {
+   "families": 1809,
+   "publications": 2494,
+   "chunks": 16983
+  },
+  "D21F": {
+   "families": 999,
+   "publications": 1302,
+   "chunks": 16975,
+   "backlog": 609
+  },
+  "H10D": {
+   "families": 1042,
+   "publications": 1180,
+   "chunks": 16963,
+   "backlog": 96
+  },
+  "A42B": {
+   "families": 873,
+   "publications": 1157,
+   "chunks": 16607
+  },
+  "G01P": {
+   "families": 1190,
+   "publications": 1587,
+   "chunks": 16824
+  },
+  "C10M": {
+   "families": 490,
+   "publications": 962,
+   "chunks": 16545,
+   "backlog": 1653
+  },
+  "B60H": {
+   "families": 1165,
+   "publications": 1691,
+   "chunks": 16161
+  },
+  "F17C": {
+   "families": 1331,
+   "publications": 1837,
+   "chunks": 15704
+  },
+  "B31B": {
+   "families": 1218,
+   "publications": 1679,
+   "chunks": 12467
+  },
+  "F02B": {
+   "families": 1234,
+   "publications": 1634,
+   "chunks": 15620,
+   "backlog": 579
+  },
+  "B64U": {
+   "families": 441,
+   "publications": 849,
+   "chunks": 15494
+  },
+  "C03C": {
+   "families": 1100,
+   "publications": 1589,
+   "chunks": 14704
+  },
+  "A23G": {
+   "families": 1242,
+   "publications": 1765,
+   "chunks": 14574
+  },
+  "F04C": {
+   "families": 1250,
+   "publications": 1640,
+   "chunks": 14728
+  },
+  "B61L": {
+   "families": 1256,
+   "publications": 1647,
+   "chunks": 14551
+  },
+  "A47H": {
+   "families": 1358,
+   "publications": 1662,
+   "chunks": 14261
+  },
+  "F01L": {
+   "families": 1269,
+   "publications": 1649,
+   "chunks": 14488,
+   "backlog": 611
+  },
+  "A43D": {
+   "families": 988,
+   "publications": 1358,
+   "chunks": 10279
+  },
+  "G21F": {
+   "families": 915,
+   "publications": 1687,
+   "chunks": 13842
+  },
+  "C08F": {
+   "families": 844,
+   "publications": 1156,
+   "chunks": 13871
+  },
+  "C12Q": {
+   "families": 563,
+   "publications": 664,
+   "chunks": 13668
+  },
+  "F16P": {
+   "families": 726,
+   "publications": 1286,
+   "chunks": 13682
+  },
+  "A22B": {
+   "families": 764,
+   "publications": 1339,
+   "chunks": 13158
+  },
+  "B06B": {
+   "families": 807,
+   "publications": 1347,
+   "chunks": 13355
+  },
+  "G01K": {
+   "families": 930,
+   "publications": 1131,
+   "chunks": 13509
+  },
+  "F41G": {
+   "families": 779,
+   "publications": 929,
+   "chunks": 13574,
+   "backlog": 207
+  },
+  "F02C": {
+   "families": 862,
+   "publications": 1161,
+   "chunks": 13549,
+   "backlog": 453
+  },
+  "B26F": {
+   "families": 1045,
+   "publications": 1373,
+   "chunks": 12134
+  },
+  "B27M": {
+   "families": 1078,
+   "publications": 1543,
+   "chunks": 12746
+  },
+  "B09B": {
+   "families": 1666,
+   "publications": 2226,
+   "chunks": 12734
+  },
+  "A23L": {
+   "families": 1498,
+   "publications": 1875,
+   "chunks": 12658
+  },
+  "G09G": {
+   "families": 818,
+   "publications": 888,
+   "chunks": 11656
+  },
+  "B28C": {
+   "families": 1475,
+   "publications": 1833,
+   "chunks": 12518,
+   "backlog": 845
+  },
+  "C10B": {
+   "families": 1142,
+   "publications": 1529,
+   "chunks": 12504
+  },
+  "E03F": {
+   "families": 1195,
+   "publications": 1485,
+   "chunks": 12204
+  },
+  "F28F": {
+   "families": 1077,
+   "publications": 1341,
+   "chunks": 12341,
+   "backlog": 462
+  },
+  "F27B": {
+   "families": 1375,
+   "publications": 2022,
+   "chunks": 12230
+  },
+  "E21F": {
+   "families": 1935,
+   "publications": 2561,
+   "chunks": 12069
+  },
+  "B03C": {
+   "families": 1428,
+   "publications": 1798,
+   "chunks": 11962
+  },
+  "B42F": {
+   "families": 1191,
+   "publications": 1401,
+   "chunks": 11716
+  },
+  "F24C": {
+   "families": 1059,
+   "publications": 1306,
+   "chunks": 11511
+  },
+  "F41B": {
+   "families": 609,
+   "publications": 705,
+   "chunks": 11508,
+   "backlog": 623
+  },
+  "D05B": {
+   "families": 1012,
+   "publications": 1264,
+   "chunks": 11307
+  },
+  "B03B": {
+   "families": 910,
+   "publications": 1150,
+   "chunks": 11403,
+   "backlog": 1362
+  },
+  "A43C": {
+   "families": 656,
+   "publications": 879,
+   "chunks": 10895
+  },
+  "G11C": {
+   "families": 692,
+   "publications": 741,
+   "chunks": 10786,
+   "backlog": 148
+  },
+  "B21H": {
+   "families": 770,
+   "publications": 1548,
+   "chunks": 10761,
+   "backlog": 2161
+  },
+  "F41C": {
+   "families": 636,
+   "publications": 713,
+   "chunks": 10594,
+   "backlog": 284
+  },
+  "B24D": {
+   "families": 736,
+   "publications": 864,
+   "chunks": 10541
+  },
+  "F02D": {
+   "families": 848,
+   "publications": 997,
+   "chunks": 10513,
+   "backlog": 298
+  },
+  "C12M": {
+   "families": 1033,
+   "publications": 1397,
+   "chunks": 10484
+  },
+  "F41H": {
+   "families": 708,
+   "publications": 977,
+   "chunks": 10311
+  },
+  "H04Q": {
+   "families": 548,
+   "publications": 655,
+   "chunks": 10306
+  },
+  "C08K": {
+   "families": 736,
+   "publications": 966,
+   "chunks": 10233,
+   "backlog": 138
+  },
+  "G10D": {
+   "families": 634,
+   "publications": 777,
+   "chunks": 10145,
+   "backlog": 289
+  },
+  "C21B": {
+   "families": 1000,
+   "publications": 1696,
+   "chunks": 9900
+  },
+  "C12N": {
+   "families": 610,
+   "publications": 653,
+   "chunks": 8844
+  },
+  "H02M": {
+   "families": 897,
+   "publications": 1004,
+   "chunks": 10055,
+   "backlog": 58
+  },
+  "F04F": {
+   "families": 519,
+   "publications": 784,
+   "chunks": 6573
+  },
+  "F16N": {
+   "families": 1169,
+   "publications": 1415,
+   "chunks": 9963
+  },
+  "Y02W": {
+   "families": 4946,
+   "publications": 4975,
+   "chunks": 9966,
+   "backlog": 0
+  },
+  "H03K": {
+   "families": 786,
+   "publications": 906,
+   "chunks": 9861
+  },
+  "B62H": {
+   "families": 753,
+   "publications": 934,
+   "chunks": 9738
+  },
+  "F28D": {
+   "families": 780,
+   "publications": 904,
+   "chunks": 9758
+  },
+  "G01J": {
+   "families": 759,
+   "publications": 959,
+   "chunks": 9675
+  },
+  "A01N": {
+   "families": 517,
+   "publications": 802,
+   "chunks": 8925
+  },
+  "F23G": {
+   "families": 629,
+   "publications": 812,
+   "chunks": 9487,
+   "backlog": 876
+  },
+  "C07D": {
+   "families": 898,
+   "publications": 1153,
+   "chunks": 9421,
+   "backlog": 257
+  },
+  "Y02T": {
+   "families": 4523,
+   "publications": 4549,
+   "chunks": 9378,
+   "backlog": 0
+  },
+  "G02C": {
+   "families": 807,
+   "publications": 1002,
+   "chunks": 9070
+  },
+  "B23G": {
+   "families": 1019,
+   "publications": 1371,
+   "chunks": 9228
+  },
+  "F25B": {
+   "families": 727,
+   "publications": 802,
+   "chunks": 9209,
+   "backlog": 177
+  },
+  "C07C": {
+   "families": 689,
+   "publications": 847,
+   "chunks": 9157,
+   "backlog": 458
+  },
+  "D07B": {
+   "families": 976,
+   "publications": 1434,
+   "chunks": 9009
+  },
+  "B27C": {
+   "families": 821,
+   "publications": 1018,
+   "chunks": 8232
+  },
+  "D01H": {
+   "families": 1015,
+   "publications": 1345,
+   "chunks": 8843,
+   "backlog": 489
+  },
+  "F25C": {
+   "families": 479,
+   "publications": 601,
+   "chunks": 8715,
+   "backlog": 210
+  },
+  "F01M": {
+   "families": 659,
+   "publications": 842,
+   "chunks": 8597
+  },
+  "H02H": {
+   "families": 666,
+   "publications": 771,
+   "chunks": 8557,
+   "backlog": 90
+  },
+  "F02K": {
+   "families": 566,
+   "publications": 706,
+   "chunks": 8530
+  },
+  "F23R": {
+   "families": 485,
+   "publications": 713,
+   "chunks": 8531,
+   "backlog": 307
+  },
+  "G08C": {
+   "families": 630,
+   "publications": 870,
+   "chunks": 8418
+  },
+  "Y02A": {
+   "families": 4244,
+   "publications": 4272,
+   "chunks": 8416,
+   "backlog": 0
+  },
+  "H10H": {
+   "families": 468,
+   "publications": 619,
+   "chunks": 7187
+  },
+  "D04H": {
+   "families": 551,
+   "publications": 736,
+   "chunks": 8323,
+   "backlog": 105
+  },
+  "B61K": {
+   "families": 923,
+   "publications": 1203,
+   "chunks": 8249
+  },
+  "A41F": {
+   "families": 726,
+   "publications": 888,
+   "chunks": 8249
+  },
+  "B22C": {
+   "families": 904,
+   "publications": 1130,
+   "chunks": 8265
+  },
+  "B43M": {
+   "families": 405,
+   "publications": 470,
+   "chunks": 7157
+  },
+  "B44C": {
+   "families": 666,
+   "publications": 830,
+   "chunks": 7940
+  },
+  "A41G": {
+   "families": 381,
+   "publications": 619,
+   "chunks": 8005
+  },
+  "F03G": {
+   "families": 568,
+   "publications": 739,
+   "chunks": 8069,
+   "backlog": 270
+  },
+  "B23H": {
+   "families": 591,
+   "publications": 874,
+   "chunks": 8067,
+   "backlog": 122
+  },
+  "B44D": {
+   "families": 595,
+   "publications": 692,
+   "chunks": 7633
+  },
+  "E03D": {
+   "families": 682,
+   "publications": 1051,
+   "chunks": 7731
+  },
+  "G01H": {
+   "families": 554,
+   "publications": 705,
+   "chunks": 7660
+  },
+  "C01B": {
+   "families": 723,
+   "publications": 926,
+   "chunks": 7185
+  },
+  "B81C": {
+   "families": 267,
+   "publications": 431,
+   "chunks": 7477
+  },
+  "A24D": {
+   "families": 392,
+   "publications": 749,
+   "chunks": 7071
+  },
+  "D03D": {
+   "families": 736,
+   "publications": 1157,
+   "chunks": 7595,
+   "backlog": 407
+  },
+  "H01G": {
+   "families": 650,
+   "publications": 777,
+   "chunks": 7365
+  },
+  "G10K": {
+   "families": 457,
+   "publications": 525,
+   "chunks": 7458
+  },
+  "F02F": {
+   "families": 608,
+   "publications": 893,
+   "chunks": 7415
+  },
+  "B63G": {
+   "families": 527,
+   "publications": 689,
+   "chunks": 7304
+  },
+  "B42C": {
+   "families": 404,
+   "publications": 629,
+   "chunks": 6558
+  },
+  "B43K": {
+   "families": 698,
+   "publications": 806,
+   "chunks": 6927
+  },
+  "C30B": {
+   "families": 470,
+   "publications": 565,
+   "chunks": 7160,
+   "backlog": 160
+  },
+  "G01T": {
+   "families": 376,
+   "publications": 477,
+   "chunks": 7153
+  },
+  "B61F": {
+   "families": 915,
+   "publications": 1207,
+   "chunks": 6750
+  },
+  "B27G": {
+   "families": 566,
+   "publications": 692,
+   "chunks": 6340
+  },
+  "B82Y": {
+   "families": 329,
+   "publications": 417,
+   "chunks": 6200
+  },
+  "H01S": {
+   "families": 444,
+   "publications": 519,
+   "chunks": 6734
+  },
+  "B27L": {
+   "families": 553,
+   "publications": 747,
+   "chunks": 6510
+  },
+  "F22B": {
+   "families": 602,
+   "publications": 848,
+   "chunks": 6486,
+   "backlog": 470
+  },
+  "A41H": {
+   "families": 562,
+   "publications": 815,
+   "chunks": 6465
+  },
+  "F41J": {
+   "families": 384,
+   "publications": 441,
+   "chunks": 6271
+  },
+  "C25C": {
+   "families": 434,
+   "publications": 933,
+   "chunks": 6178
+  },
+  "H01P": {
+   "families": 494,
+   "publications": 642,
+   "chunks": 6166
+  },
+  "B41M": {
+   "families": 425,
+   "publications": 522,
+   "chunks": 6018
+  },
+  "E03B": {
+   "families": 507,
+   "publications": 587,
+   "chunks": 6153,
+   "backlog": 407
+  },
+  "D01G": {
+   "families": 599,
+   "publications": 773,
+   "chunks": 6112,
+   "backlog": 468
+  },
+  "C07K": {
+   "families": 470,
+   "publications": 515,
+   "chunks": 6100,
+   "backlog": 143
+  },
+  "B42D": {
+   "families": 387,
+   "publications": 434,
+   "chunks": 5219
+  },
+  "A23P": {
+   "families": 598,
+   "publications": 816,
+   "chunks": 5789
+  },
+  "B04B": {
+   "families": 515,
+   "publications": 721,
+   "chunks": 5984,
+   "backlog": 180
+  },
+  "F21L": {
+   "families": 350,
+   "publications": 386,
+   "chunks": 5308
+  },
+  "B33Y": {
+   "families": 237,
+   "publications": 329,
+   "chunks": 4927
+  },
+  "B31D": {
+   "families": 301,
+   "publications": 415,
+   "chunks": 4982
+  },
+  "B27N": {
+   "families": 558,
+   "publications": 853,
+   "chunks": 5803
+  },
+  "C10J": {
+   "families": 386,
+   "publications": 649,
+   "chunks": 5775,
+   "backlog": 315
+  },
+  "C22F": {
+   "families": 267,
+   "publications": 359,
+   "chunks": 5665
+  },
+  "B61C": {
+   "families": 675,
+   "publications": 1027,
+   "chunks": 5564
+  },
+  "C10G": {
+   "families": 526,
+   "publications": 605,
+   "chunks": 5594,
+   "backlog": 347
+  },
+  "C10L": {
+   "families": 437,
+   "publications": 563,
+   "chunks": 5535,
+   "backlog": 393
+  },
+  "B64B": {
+   "families": 268,
+   "publications": 380,
+   "chunks": 5463,
+   "backlog": 141
+  },
+  "C12P": {
+   "families": 253,
+   "publications": 338,
+   "chunks": 5323,
+   "backlog": 267
+  },
+  "H03M": {
+   "families": 346,
+   "publications": 378,
+   "chunks": 5269,
+   "backlog": 72
+  },
+  "F01C": {
+   "families": 369,
+   "publications": 489,
+   "chunks": 5267,
+   "backlog": 241
+  },
+  "F03B": {
+   "families": 613,
+   "publications": 715,
+   "chunks": 4890
+  },
+  "E05G": {
+   "families": 285,
+   "publications": 365,
+   "chunks": 4947
+  },
+  "G06M": {
+   "families": 402,
+   "publications": 483,
+   "chunks": 4395
+  },
+  "B60V": {
+   "families": 399,
+   "publications": 568,
+   "chunks": 4869,
+   "backlog": 693
+  },
+  "F02N": {
+   "families": 507,
+   "publications": 638,
+   "chunks": 4733,
+   "backlog": 375
+  },
+  "F23K": {
+   "families": 894,
+   "publications": 1261,
+   "chunks": 4731,
+   "backlog": 391
+  },
+  "C22B": {
+   "families": 513,
+   "publications": 661,
+   "chunks": 4700,
+   "backlog": 218
+  },
+  "C11D": {
+   "families": 334,
+   "publications": 398,
+   "chunks": 4421
+  },
+  "A63D": {
+   "families": 386,
+   "publications": 439,
+   "chunks": 4635,
+   "backlog": 221
+  },
+  "G07B": {
+   "families": 329,
+   "publications": 356,
+   "chunks": 4594,
+   "backlog": 11
+  },
+  "B60F": {
+   "families": 550,
+   "publications": 639,
+   "chunks": 4493,
+   "backlog": 186
+  },
+  "F24H": {
+   "families": 431,
+   "publications": 508,
+   "chunks": 4065
+  },
+  "B61G": {
+   "families": 503,
+   "publications": 629,
+   "chunks": 4306
+  },
+  "G04B": {
+   "families": 515,
+   "publications": 705,
+   "chunks": 4381,
+   "backlog": 161
+  },
+  "B43L": {
+   "families": 502,
+   "publications": 536,
+   "chunks": 4360
+  },
+  "B81B": {
+   "families": 217,
+   "publications": 264,
+   "chunks": 4353,
+   "backlog": 3
+  },
+  "F24D": {
+   "families": 675,
+   "publications": 1000,
+   "chunks": 4350,
+   "backlog": 210
+  },
+  "F01P": {
+   "families": 423,
+   "publications": 505,
+   "chunks": 4326,
+   "backlog": 108
+  },
+  "H01C": {
+   "families": 359,
+   "publications": 404,
+   "chunks": 4257
+  },
+  "A61P": {
+   "families": 16,
+   "publications": 44,
+   "chunks": 4256,
+   "backlog": 1266
+  },
+  "B31F": {
+   "families": 305,
+   "publications": 532,
+   "chunks": 4233
+  },
+  "H03H": {
+   "families": 335,
+   "publications": 351,
+   "chunks": 4239,
+   "backlog": 10
+  },
+  "B60M": {
+   "families": 638,
+   "publications": 825,
+   "chunks": 4222,
+   "backlog": 435
+  },
+  "G21K": {
+   "families": 161,
+   "publications": 216,
+   "chunks": 4218,
+   "backlog": 33
+  },
+  "B23F": {
+   "families": 453,
+   "publications": 565,
+   "chunks": 4215,
+   "backlog": 80
+  },
+  "G03D": {
+   "families": 351,
+   "publications": 400,
+   "chunks": 4180,
+   "backlog": 214
+  },
+  "F01B": {
+   "families": 341,
+   "publications": 414,
+   "chunks": 4156,
+   "backlog": 294
+  },
+  "G10H": {
+   "families": 218,
+   "publications": 243,
+   "chunks": 4124,
+   "backlog": 14
+  },
+  "B04C": {
+   "families": 550,
+   "publications": 675,
+   "chunks": 3875
+  },
+  "C23F": {
+   "families": 268,
+   "publications": 355,
+   "chunks": 4050,
+   "backlog": 101
+  },
+  "A61D": {
+   "families": 251,
+   "publications": 334,
+   "chunks": 4034,
+   "backlog": 40
+  },
+  "C21C": {
+   "families": 590,
+   "publications": 720,
+   "chunks": 3952
+  },
+  "D06B": {
+   "families": 534,
+   "publications": 626,
+   "chunks": 3906
+  },
+  "B27D": {
+   "families": 656,
+   "publications": 811,
+   "chunks": 3725
+  },
+  "C14B": {
+   "families": 249,
+   "publications": 298,
+   "chunks": 2905
+  },
+  "G07G": {
+   "families": 266,
+   "publications": 313,
+   "chunks": 3834
+  },
+  "F17D": {
+   "families": 329,
+   "publications": 396,
+   "chunks": 3812
+  },
+  "H10K": {
+   "families": 468,
+   "publications": 554,
+   "chunks": 3357
+  },
+  "D21H": {
+   "families": 294,
+   "publications": 343,
+   "chunks": 3723,
+   "backlog": 75
+  },
+  "D02G": {
+   "families": 256,
+   "publications": 324,
+   "chunks": 3680,
+   "backlog": 181
+  },
+  "A63J": {
+   "families": 277,
+   "publications": 422,
+   "chunks": 3672,
+   "backlog": 405
+  },
+  "A01H": {
+   "families": 228,
+   "publications": 300,
+   "chunks": 3108
+  },
+  "A23F": {
+   "families": 647,
+   "publications": 750,
+   "chunks": 3577
+  },
+  "G10G": {
+   "families": 249,
+   "publications": 285,
+   "chunks": 3560
+  },
+  "B44B": {
+   "families": 355,
+   "publications": 429,
+   "chunks": 2816
+  },
+  "D21C": {
+   "families": 271,
+   "publications": 410,
+   "chunks": 3489,
+   "backlog": 122
+  },
+  "D21G": {
+   "families": 219,
+   "publications": 295,
+   "chunks": 3473,
+   "backlog": 172
+  },
+  "B61J": {
+   "families": 486,
+   "publications": 634,
+   "chunks": 3462,
+   "backlog": 576
+  },
+  "F23D": {
+   "families": 345,
+   "publications": 391,
+   "chunks": 3439,
+   "backlog": 63
+  },
+  "B61H": {
+   "families": 415,
+   "publications": 543,
+   "chunks": 3315,
+   "backlog": 330
+  },
+  "F23J": {
+   "families": 415,
+   "publications": 493,
+   "chunks": 3274,
+   "backlog": 138
+  },
+  "H01T": {
+   "families": 337,
+   "publications": 386,
+   "chunks": 3231,
+   "backlog": 148
+  },
+  "D04B": {
+   "families": 364,
+   "publications": 418,
+   "chunks": 3184,
+   "backlog": 108
+  },
+  "B21L": {
+   "families": 291,
+   "publications": 406,
+   "chunks": 3122
+  },
+  "G01Q": {
+   "families": 162,
+   "publications": 205,
+   "chunks": 3103,
+   "backlog": 50
+  },
+  "B09C": {
+   "families": 230,
+   "publications": 265,
+   "chunks": 3041,
+   "backlog": 115
+  },
+  "F23C": {
+   "families": 212,
+   "publications": 240,
+   "chunks": 2999,
+   "backlog": 82
+  },
+  "C07H": {
+   "families": 123,
+   "publications": 250,
+   "chunks": 2995,
+   "backlog": 73
+  },
+  "D06M": {
+   "families": 274,
+   "publications": 326,
+   "chunks": 2981,
+   "backlog": 161
+  },
+  "H05H": {
+   "families": 149,
+   "publications": 170,
+   "chunks": 2958,
+   "backlog": 6
+  },
+  "C05F": {
+   "families": 334,
+   "publications": 387,
+   "chunks": 2925,
+   "backlog": 28
+  },
+  "B21G": {
+   "families": 282,
+   "publications": 466,
+   "chunks": 2898,
+   "backlog": 357
+  },
+  "F01K": {
+   "families": 167,
+   "publications": 188,
+   "chunks": 2893,
+   "backlog": 6
+  },
+  "Y02B": {
+   "families": 1331,
+   "publications": 1339,
+   "chunks": 2884,
+   "backlog": 0
+  },
+  "D04C": {
+   "families": 153,
+   "publications": 184,
+   "chunks": 2868,
+   "backlog": 157
+  },
+  "H10N": {
+   "families": 290,
+   "publications": 319,
+   "chunks": 2858,
+   "backlog": 0
+  },
+  "C07F": {
+   "families": 207,
+   "publications": 243,
+   "chunks": 2844,
+   "backlog": 39
+  },
+  "H04H": {
+   "families": 124,
+   "publications": 127,
+   "chunks": 2809,
+   "backlog": 0
+  },
+  "C23G": {
+   "families": 318,
+   "publications": 372,
+   "chunks": 2736,
+   "backlog": 529
+  },
+  "H10B": {
+   "families": 295,
+   "publications": 303,
+   "chunks": 2725,
+   "backlog": 0
+  },
+  "F15C": {
+   "families": 105,
+   "publications": 144,
+   "chunks": 2660,
+   "backlog": 117
+  },
+  "A21D": {
+   "families": 175,
+   "publications": 208,
+   "chunks": 2618
+  },
+  "D21B": {
+   "families": 184,
+   "publications": 259,
+   "chunks": 2573,
+   "backlog": 63
+  },
+  "F42D": {
+   "families": 232,
+   "publications": 315,
+   "chunks": 2562
+  },
+  "B62L": {
+   "families": 192,
+   "publications": 253,
+   "chunks": 2563,
+   "backlog": 40
+  },
+  "H04J": {
+   "families": 184,
+   "publications": 199,
+   "chunks": 2511,
+   "backlog": 0
+  },
+  "G05F": {
+   "families": 194,
+   "publications": 219,
+   "chunks": 2490,
+   "backlog": 4
+  },
+  "F15D": {
+   "families": 133,
+   "publications": 182,
+   "chunks": 2485,
+   "backlog": 160
+  },
+  "B42B": {
+   "families": 129,
+   "publications": 168,
+   "chunks": 2482
+  },
+  "D06C": {
+   "families": 359,
+   "publications": 409,
+   "chunks": 2394
+  },
+  "B41C": {
+   "families": 131,
+   "publications": 187,
+   "chunks": 2398,
+   "backlog": 55
+  },
+  "D06N": {
+   "families": 163,
+   "publications": 184,
+   "chunks": 2386,
+   "backlog": 113
+  },
+  "D01F": {
+   "families": 194,
+   "publications": 232,
+   "chunks": 2364,
+   "backlog": 123
+  },
+  "F28G": {
+   "families": 172,
+   "publications": 199,
+   "chunks": 2323,
+   "backlog": 175
+  },
+  "A41B": {
+   "families": 221,
+   "publications": 245,
+   "chunks": 2298,
+   "backlog": 69
+  },
+  "A46D": {
+   "families": 176,
+   "publications": 264,
+   "chunks": 2232
+  },
+  "B68G": {
+   "families": 202,
+   "publications": 268,
+   "chunks": 2222,
+   "backlog": 78
+  },
+  "F21K": {
+   "families": 263,
+   "publications": 303,
+   "chunks": 2165
+  },
+  "F23N": {
+   "families": 138,
+   "publications": 152,
+   "chunks": 2196,
+   "backlog": 0
+  },
+  "D06H": {
+   "families": 262,
+   "publications": 328,
+   "chunks": 2036
+  },
+  "H03F": {
+   "families": 199,
+   "publications": 221,
+   "chunks": 2153,
+   "backlog": 7
+  },
+  "B41N": {
+   "families": 152,
+   "publications": 184,
+   "chunks": 2088,
+   "backlog": 4
+  },
+  "F02P": {
+   "families": 196,
+   "publications": 238,
+   "chunks": 2041,
+   "backlog": 133
+  },
+  "F41F": {
+   "families": 232,
+   "publications": 251,
+   "chunks": 2012,
+   "backlog": 72
+  },
+  "F24B": {
+   "families": 270,
+   "publications": 290,
+   "chunks": 1958
+  },
+  "D03C": {
+   "families": 207,
+   "publications": 302,
+   "chunks": 2007,
+   "backlog": 252
+  },
+  "G16Z": {
+   "families": 69,
+   "publications": 91,
+   "chunks": 1970,
+   "backlog": 443
+  },
+  "D01D": {
+   "families": 236,
+   "publications": 286,
+   "chunks": 1951,
+   "backlog": 99
+  },
+  "C25B": {
+   "families": 164,
+   "publications": 189,
+   "chunks": 1938,
+   "backlog": 69
+  },
+  "G04G": {
+   "families": 110,
+   "publications": 117,
+   "chunks": 1932,
+   "backlog": 0
+  },
+  "D05C": {
+   "families": 165,
+   "publications": 181,
+   "chunks": 1884,
+   "backlog": 18
+  },
+  "G04D": {
+   "families": 363,
+   "publications": 454,
+   "chunks": 1691
+  },
+  "H01K": {
+   "families": 270,
+   "publications": 312,
+   "chunks": 1803,
+   "backlog": 62
+  },
+  "G03C": {
+   "families": 177,
+   "publications": 179,
+   "chunks": 1719,
+   "backlog": 0
+  },
+  "B27K": {
+   "families": 149,
+   "publications": 209,
+   "chunks": 1684
+  },
+  "A23K": {
+   "families": 141,
+   "publications": 190,
+   "chunks": 1673
+  },
+  "H05G": {
+   "families": 82,
+   "publications": 84,
+   "chunks": 1651,
+   "backlog": 11
+  },
+  "H03L": {
+   "families": 109,
+   "publications": 149,
+   "chunks": 1521,
+   "backlog": 51
+  },
+  "F23L": {
+   "families": 116,
+   "publications": 148,
+   "chunks": 1457,
+   "backlog": 59
+  },
+  "C13B": {
+   "families": 125,
+   "publications": 151,
+   "chunks": 1453,
+   "backlog": 45
+  },
+  "G12B": {
+   "families": 161,
+   "publications": 190,
+   "chunks": 1369,
+   "backlog": 48
+  },
+  "B68B": {
+   "families": 217,
+   "publications": 233,
+   "chunks": 1366,
+   "backlog": 430
+  },
+  "F28C": {
+   "families": 99,
+   "publications": 129,
+   "chunks": 1364,
+   "backlog": 72
+  },
+  "H05F": {
+   "families": 136,
+   "publications": 157,
+   "chunks": 1360
+  },
+  "B68C": {
+   "families": 80,
+   "publications": 106,
+   "chunks": 1189
+  },
+  "C13K": {
+   "families": 56,
+   "publications": 84,
+   "chunks": 1339,
+   "backlog": 76
+  },
+  "F42C": {
+   "families": 152,
+   "publications": 168,
+   "chunks": 1301
+  },
+  "B44F": {
+   "families": 71,
+   "publications": 88,
+   "chunks": 1325,
+   "backlog": 30
+  },
+  "G01W": {
+   "families": 94,
+   "publications": 123,
+   "chunks": 1319,
+   "backlog": 7
+  },
+  "F02G": {
+   "families": 68,
+   "publications": 91,
+   "chunks": 1288,
+   "backlog": 10
+  },
+  "B02B": {
+   "families": 184,
+   "publications": 204,
+   "chunks": 1254,
+   "backlog": 35
+  },
+  "C09B": {
+   "families": 134,
+   "publications": 155,
+   "chunks": 1241,
+   "backlog": 13
+  },
+  "A01L": {
+   "families": 132,
+   "publications": 154,
+   "chunks": 1230,
+   "backlog": 102
+  },
+  "F23Q": {
+   "families": 151,
+   "publications": 170,
+   "chunks": 1212,
+   "backlog": 47
+  },
+  "C25F": {
+   "families": 89,
+   "publications": 114,
+   "chunks": 1197,
+   "backlog": 1
+  },
+  "F25J": {
+   "families": 112,
+   "publications": 129,
+   "chunks": 1148,
+   "backlog": 0
+  },
+  "F23B": {
+   "families": 99,
+   "publications": 137,
+   "chunks": 1102,
+   "backlog": 52
+  },
+  "H04S": {
+   "families": 73,
+   "publications": 100,
+   "chunks": 1062,
+   "backlog": 6
+  },
+  "C09C": {
+   "families": 117,
+   "publications": 137,
+   "chunks": 1038,
+   "backlog": 118
+  },
+  "F23M": {
+   "families": 111,
+   "publications": 148,
+   "chunks": 1028,
+   "backlog": 2
+  },
+  "B41K": {
+   "families": 213,
+   "publications": 246,
+   "chunks": 1007
+  },
+  "F24J": {
+   "families": 74,
+   "publications": 81,
+   "chunks": 1003,
+   "backlog": 154
+  },
+  "G04C": {
+   "families": 111,
+   "publications": 119,
+   "chunks": 983,
+   "backlog": 7
+  },
+  "D21D": {
+   "families": 117,
+   "publications": 137,
+   "chunks": 968,
+   "backlog": 13
+  },
+  "F23H": {
+   "families": 149,
+   "publications": 164,
+   "chunks": 965,
+   "backlog": 29
+  },
+  "H03G": {
+   "families": 91,
+   "publications": 99,
+   "chunks": 964,
+   "backlog": 0
+  },
+  "G21B": {
+   "families": 62,
+   "publications": 94,
+   "chunks": 961,
+   "backlog": 192
+  },
+  "Y10T": {
+   "families": 82,
+   "publications": 82,
+   "chunks": 958,
+   "backlog": 0
+  },
+  "C01F": {
+   "families": 107,
+   "publications": 125,
+   "chunks": 955,
+   "backlog": 56
+  },
+  "G03H": {
+   "families": 82,
+   "publications": 89,
+   "chunks": 760
+  },
+  "C08B": {
+   "families": 99,
+   "publications": 149,
+   "chunks": 953,
+   "backlog": 5
+  },
+  "A62D": {
+   "families": 66,
+   "publications": 84,
+   "chunks": 942,
+   "backlog": 0
+  },
+  "C01G": {
+   "families": 124,
+   "publications": 140,
+   "chunks": 921,
+   "backlog": 6
+  },
+  "D01B": {
+   "families": 153,
+   "publications": 175,
+   "chunks": 919,
+   "backlog": 11
+  },
+  "G06G": {
+   "families": 84,
+   "publications": 92,
+   "chunks": 886,
+   "backlog": 60
+  },
+  "C12G": {
+   "families": 233,
+   "publications": 258,
+   "chunks": 875
+  },
+  "D21J": {
+   "families": 149,
+   "publications": 164,
+   "chunks": 771
+  },
+  "A23C": {
+   "families": 142,
+   "publications": 155,
+   "chunks": 843
+  },
+  "G10C": {
+   "families": 111,
+   "publications": 122,
+   "chunks": 838
+  },
+  "C12C": {
+   "families": 126,
+   "publications": 168,
+   "chunks": 828,
+   "backlog": 57
+  },
+  "D06P": {
+   "families": 71,
+   "publications": 92,
+   "chunks": 821,
+   "backlog": 28
+  },
+  "F24T": {
+   "families": 47,
+   "publications": 72,
+   "chunks": 819,
+   "backlog": 1
+  },
+  "Y10S": {
+   "families": 43,
+   "publications": 44,
+   "chunks": 812,
+   "backlog": 0
+  },
+  "B03D": {
+   "families": 82,
+   "publications": 84,
+   "chunks": 806,
+   "backlog": 0
+  },
+  "B27J": {
+   "families": 162,
+   "publications": 188,
+   "chunks": 784
+  },
+  "C06B": {
+   "families": 85,
+   "publications": 97,
+   "chunks": 790,
+   "backlog": 0
+  },
+  "B63J": {
+   "families": 116,
+   "publications": 130,
+   "chunks": 749,
+   "backlog": 0
+  },
+  "C40B": {
+   "families": 24,
+   "publications": 29,
+   "chunks": 715,
+   "backlog": 0
+  },
+  "F03C": {
+   "families": 82,
+   "publications": 88,
+   "chunks": 685,
+   "backlog": 26
+  },
+  "C08C": {
+   "families": 34,
+   "publications": 65,
+   "chunks": 684,
+   "backlog": 49
+  },
+  "G21D": {
+   "families": 87,
+   "publications": 114,
+   "chunks": 678,
+   "backlog": 20
+  },
+  "G04F": {
+   "families": 66,
+   "publications": 66,
+   "chunks": 664,
+   "backlog": 0
+  },
+  "B62C": {
+   "families": 173,
+   "publications": 173,
+   "chunks": 650,
+   "backlog": 268
+  },
+  "H03J": {
+   "families": 115,
+   "publications": 122,
+   "chunks": 617,
+   "backlog": 48
+  },
+  "Y02D": {
+   "families": 308,
+   "publications": 310,
+   "chunks": 615,
+   "backlog": 0
+  },
+  "B41B": {
+   "families": 105,
+   "publications": 106,
+   "chunks": 601,
+   "backlog": 31
+  },
+  "F05D": {
+   "families": 38,
+   "publications": 39,
+   "chunks": 596,
+   "backlog": 0
+  },
+  "A23J": {
+   "families": 64,
+   "publications": 67,
+   "chunks": 595,
+   "backlog": 16
+  },
+  "A63K": {
+   "families": 52,
+   "publications": 74,
+   "chunks": 580,
+   "backlog": 36
+  },
+  "C08H": {
+   "families": 29,
+   "publications": 45,
+   "chunks": 580,
+   "backlog": 0
+  },
+  "B27H": {
+   "families": 72,
+   "publications": 77,
+   "chunks": 570,
+   "backlog": 0
+  },
+  "B41L": {
+   "families": 90,
+   "publications": 94,
+   "chunks": 570,
+   "backlog": 0
+  },
+  "G16B": {
+   "families": 56,
+   "publications": 63,
+   "chunks": 569,
+   "backlog": 0
+  },
+  "A41C": {
+   "families": 78,
+   "publications": 84,
+   "chunks": 557,
+   "backlog": 19
+  },
+  "C01D": {
+   "families": 97,
+   "publications": 112,
+   "chunks": 555,
+   "backlog": 21
+  },
+  "B82B": {
+   "families": 43,
+   "publications": 59,
+   "chunks": 544
+  },
+  "B31C": {
+   "families": 63,
+   "publications": 69,
+   "chunks": 542,
+   "backlog": 0
+  },
+  "D02H": {
+   "families": 104,
+   "publications": 124,
+   "chunks": 542,
+   "backlog": 18
+  },
+  "D02J": {
+   "families": 51,
+   "publications": 73,
+   "chunks": 523,
+   "backlog": 0
+  },
+  "D04G": {
+   "families": 36,
+   "publications": 77,
+   "chunks": 520,
+   "backlog": 46
+  },
+  "G21G": {
+   "families": 39,
+   "publications": 53,
+   "chunks": 518,
+   "backlog": 0
+  },
+  "C11B": {
+   "families": 114,
+   "publications": 132,
+   "chunks": 508,
+   "backlog": 2
+  },
+  "C05G": {
+   "families": 43,
+   "publications": 44,
+   "chunks": 506,
+   "backlog": 0
+  },
+  "D03J": {
+   "families": 101,
+   "publications": 125,
+   "chunks": 490,
+   "backlog": 34
+  },
+  "H03B": {
+   "families": 53,
+   "publications": 55,
+   "chunks": 475,
+   "backlog": 0
+  },
+  "A42C": {
+   "families": 44,
+   "publications": 46,
+   "chunks": 316
+  },
+  "F16S": {
+   "families": 123,
+   "publications": 179,
+   "chunks": 442,
+   "backlog": 28
+  },
+  "D06Q": {
+   "families": 44,
+   "publications": 55,
+   "chunks": 416
+  },
+  "C09G": {
+   "families": 22,
+   "publications": 26,
+   "chunks": 416,
+   "backlog": 0
+  },
+  "C01C": {
+   "families": 45,
+   "publications": 47,
+   "chunks": 401,
+   "backlog": 41
+  },
+  "F16T": {
+   "families": 37,
+   "publications": 39,
+   "chunks": 395,
+   "backlog": 0
+  },
+  "A23D": {
+   "families": 27,
+   "publications": 34,
+   "chunks": 380,
+   "backlog": 0
+  },
+  "C12H": {
+   "families": 50,
+   "publications": 54,
+   "chunks": 380,
+   "backlog": 1
+  },
+  "C10C": {
+   "families": 44,
+   "publications": 57,
+   "chunks": 374,
+   "backlog": 24
+  },
+  "D06G": {
+   "families": 74,
+   "publications": 91,
+   "chunks": 357
+  },
+  "E02C": {
+   "families": 69,
+   "publications": 77,
+   "chunks": 357,
+   "backlog": 29
+  },
+  "H03D": {
+   "families": 40,
+   "publications": 40,
+   "chunks": 320,
+   "backlog": 22
+  },
+  "D06J": {
+   "families": 14,
+   "publications": 33,
+   "chunks": 299,
+   "backlog": 0
+  },
+  "C05C": {
+   "families": 22,
+   "publications": 24,
+   "chunks": 299,
+   "backlog": 16
+  },
+  "B60Y": {
+   "families": 152,
+   "publications": 152,
+   "chunks": 295,
+   "backlog": 0
+  },
+  "G10F": {
+   "families": 45,
+   "publications": 57,
+   "chunks": 284,
+   "backlog": 36
+  },
+  "C06C": {
+   "families": 35,
+   "publications": 55,
+   "chunks": 269,
+   "backlog": 0
+  },
+  "C11C": {
+   "families": 35,
+   "publications": 35,
+   "chunks": 255,
+   "backlog": 11
+  },
+  "G16C": {
+   "families": 33,
+   "publications": 33,
+   "chunks": 229,
+   "backlog": 0
+  },
+  "Y04S": {
+   "families": 104,
+   "publications": 104,
+   "chunks": 208,
+   "backlog": 0
+  },
+  "C10K": {
+   "families": 33,
+   "publications": 43,
+   "chunks": 208,
+   "backlog": 0
+  },
+  "H04K": {
+   "families": 26,
+   "publications": 27,
+   "chunks": 172,
+   "backlog": 0
+  },
+  "G06C": {
+   "families": 48,
+   "publications": 49,
+   "chunks": 163,
+   "backlog": 0
+  },
+  "F17B": {
+   "families": 34,
+   "publications": 37,
+   "chunks": 162,
+   "backlog": 25
+  },
+  "F05B": {
+   "families": 31,
+   "publications": 31,
+   "chunks": 162,
+   "backlog": 0
+  },
+  "C14C": {
+   "families": 48,
+   "publications": 50,
+   "chunks": 161,
+   "backlog": 0
+  },
+  "C07J": {
+   "families": 31,
+   "publications": 31,
+   "chunks": 154,
+   "backlog": 0
+  },
+  "F22G": {
+   "families": 56,
+   "publications": 58,
+   "chunks": 151,
+   "backlog": 27
+  },
+  "A61Q": {
+   "families": 41,
+   "publications": 53,
+   "chunks": 150,
+   "backlog": 0
+  },
+  "C23D": {
+   "families": 52,
+   "publications": 53,
+   "chunks": 149,
+   "backlog": 18
+  },
+  "D04D": {
+   "families": 25,
+   "publications": 26,
+   "chunks": 148,
+   "backlog": 0
+  },
+  "H05C": {
+   "families": 9,
+   "publications": 9,
+   "chunks": 138,
+   "backlog": 20
+  },
+  "F24V": {
+   "families": 5,
+   "publications": 18,
+   "chunks": 134,
+   "backlog": 0
+  },
+  "G06J": {
+   "families": 8,
+   "publications": 8,
+   "chunks": 133,
+   "backlog": 72
+  },
+  "H03C": {
+   "families": 14,
+   "publications": 15,
+   "chunks": 132,
+   "backlog": 0
+  },
+  "C05D": {
+   "families": 22,
+   "publications": 23,
+   "chunks": 120,
+   "backlog": 0
+  },
+  "F22D": {
+   "families": 29,
+   "publications": 30,
+   "chunks": 111,
+   "backlog": 0
+  },
+  "C05B": {
+   "families": 37,
+   "publications": 38,
+   "chunks": 106,
+   "backlog": 0
+  },
+  "G21H": {
+   "families": 8,
+   "publications": 8,
+   "chunks": 93,
+   "backlog": 0
+  },
+  "B01B": {
+   "families": 11,
+   "publications": 14,
+   "chunks": 88,
+   "backlog": 35
+  },
+  "F28B": {
+   "families": 29,
+   "publications": 30,
+   "chunks": 88,
+   "backlog": 0
+  },
+  "C07G": {
+   "families": 10,
+   "publications": 11,
+   "chunks": 84,
+   "backlog": 0
+  },
+  "E05Y": {
+   "families": 44,
+   "publications": 44,
+   "chunks": 82,
+   "backlog": 0
+  },
+  "C10H": {
+   "families": 44,
+   "publications": 45,
+   "chunks": 81,
+   "backlog": 18
+  },
+  "G04R": {
+   "families": 10,
+   "publications": 10,
+   "chunks": 74,
+   "backlog": 0
+  },
+  "C12F": {
+   "families": 9,
+   "publications": 9,
+   "chunks": 69,
+   "backlog": 0
+  },
+  "F03H": {
+   "families": 18,
+   "publications": 18,
+   "chunks": 67,
+   "backlog": 0
+  },
+  "Y02C": {
+   "families": 31,
+   "publications": 32,
+   "chunks": 62,
+   "backlog": 0
+  },
+  "B41D": {
+   "families": 22,
+   "publications": 22,
+   "chunks": 53
+  },
+  "C10F": {
+   "families": 16,
+   "publications": 17,
+   "chunks": 53,
+   "backlog": 0
+  },
+  "G06E": {
+   "families": 6,
+   "publications": 6,
+   "chunks": 49,
+   "backlog": 0
+  },
+  "A23V": {
+   "families": 24,
+   "publications": 24,
+   "chunks": 46,
+   "backlog": 0
+  },
+  "C06F": {
+   "families": 38,
+   "publications": 38,
+   "chunks": 46,
+   "backlog": 0
+  },
+  "B68F": {
+   "families": 7,
+   "publications": 7,
+   "chunks": 45,
+   "backlog": 0
+  },
+  "C07B": {
+   "families": 11,
+   "publications": 11,
+   "chunks": 45,
+   "backlog": 0
+  },
+  "B29L": {
+   "families": 21,
+   "publications": 22,
+   "chunks": 43,
+   "backlog": 0
+  },
+  "C06D": {
+   "families": 5,
+   "publications": 6,
+   "chunks": 43,
+   "backlog": 0
+  },
+  "C12L": {
+   "families": 22,
+   "publications": 22,
+   "chunks": 39,
+   "backlog": 0
+  },
+  "C12Y": {
+   "families": 4,
+   "publications": 4,
+   "chunks": 34,
+   "backlog": 0
+  },
+  "B41G": {
+   "families": 17,
+   "publications": 18,
+   "chunks": 26
+  },
+  "G09D": {
+   "families": 11,
+   "publications": 11,
+   "chunks": 29,
+   "backlog": 0
+  },
+  "D06L": {
+   "families": 7,
+   "publications": 7,
+   "chunks": 24,
+   "backlog": 0
+  },
+  "C12J": {
+   "families": 9,
+   "publications": 10,
+   "chunks": 20,
+   "backlog": 0
+  },
+  "F05C": {
+   "families": 10,
+   "publications": 10,
+   "chunks": 19,
+   "backlog": 0
+  },
+  "D01C": {
+   "families": 12,
+   "publications": 12,
+   "chunks": 17,
+   "backlog": 0
+  },
+  "B29K": {
+   "families": 16,
+   "publications": 16,
+   "chunks": 16,
+   "backlog": 0
+  },
+  "G09C": {
+   "families": 7,
+   "publications": 7,
+   "chunks": 12,
+   "backlog": 0
+  },
+  "F21Y": {
+   "families": 7,
+   "publications": 7,
+   "chunks": 12,
+   "backlog": 0
+  },
+  "G16Y": {
+   "families": 4,
+   "publications": 5,
+   "chunks": 11,
+   "backlog": 0
+  },
+  "F21W": {
+   "families": 5,
+   "publications": 5,
+   "chunks": 10,
+   "backlog": 0
+  },
+  "G10B": {
+   "families": 9,
+   "publications": 9,
+   "chunks": 10,
+   "backlog": 0
+  },
+  "C01P": {
+   "families": 4,
+   "publications": 4,
+   "chunks": 8,
+   "backlog": 0
+  },
+  "C09H": {
+   "families": 5,
+   "publications": 5,
+   "chunks": 6,
+   "backlog": 0
+  },
+  "A44D": {
+   "families": 3,
+   "publications": 3,
+   "chunks": 5,
+   "backlog": 0
+  },
+  "D10B": {
+   "families": 2,
+   "publications": 2,
+   "chunks": 4,
+   "backlog": 0
+  },
+  "B41P": {
+   "families": 3,
+   "publications": 3,
+   "chunks": 4,
+   "backlog": 0
+  },
+  "G21J": {
+   "families": 3,
+   "publications": 3,
+   "chunks": 4,
+   "backlog": 0
+  },
+  "F21H": {
+   "families": 4,
+   "publications": 4,
+   "chunks": 4,
+   "backlog": 0
+  },
+  "C09F": {
+   "families": 2,
+   "publications": 2,
+   "chunks": 3,
+   "backlog": 0
+  },
+  "C10N": {
+   "families": 1,
+   "publications": 1,
+   "chunks": 0,
+   "backlog": 0
+  }
+ }
+}

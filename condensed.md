@@ -919,3 +919,29 @@ issues one.
 
 **Interface.** `ops/build_release.py` (mirror, assign, plan, build, stats, verify, activate,
 rollback, restore, demand) and `ops/corpus_sizing.py` (the shard arithmetic, no database needed).
+
+**Does the eight-way split fit? Yes, with 5x headroom, and this was re-derived rather than
+inherited.** The plan the fleet was being provisioned against reported `fits: true` by comparing a
+0.4% TABLESAMPLE's chunk mass (142,148 per shard) against a whole-corpus capacity (25,911,302).
+The mass was 32x understated overall and 426x for `unclassified`, the largest home domain in the
+corpus. Re-derived over every one of the 4,984,254 publications and 3,431,375 families:
+
+```
+27,623,460  chunks live today
+ 8,992,335  staged in chunks_stage_v3 by the description backfill (all kind='paragraph')
+ 3,576,933  description paragraphs with no chunk anywhere, over 173,257 families
+40,125,612  POST-BACKFILL CORPUS
+             hot tier      2,024,262 chunks / 35,119 families
+             8 cold shards 4,762,670 chunks each -> index 18.4 GiB, disk 43.0 GiB
+             per-shard ceiling 25,119,648 chunks (RAM-bound, 96.9 GiB resident budget)
+```
+
+Eight stops fitting at 200,957,184 cold chunks, which is 72% full-text coverage of the corpus.
+Above that the fleet grows or the vectors become `halfvec`. Working in `docs/shard_sizing.md`.
+
+**A claim on `corpus_ingest_queue` must name its rows or name itself.** `runstore.claim_ingest()`
+took no filter, so `claim_ingest(limit=50)` claimed the top fifty pending rows of whichever
+database the process was pointed at. `tests/test_durable_runs.py` called exactly that and cleaned
+up only its own row. Measured 2026-08-22: 549 live rows stuck in state `claimed`, never ingested,
+with no release process running. It now raises `runstore.UnscopedClaim` unless scoped, and
+`ops/build_release.py demand --reap` sweeps abandoned claims back onto the queue.

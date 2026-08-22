@@ -21,6 +21,7 @@ step: `release_store.activate`.
 from __future__ import annotations
 
 import os
+import gzip
 import shutil
 import subprocess
 import tarfile
@@ -376,8 +377,46 @@ def _write_domain_rows(dst, release_id, domains):
 # ---------------------------------------------------------------------------------------------
 # the snapshot
 # ---------------------------------------------------------------------------------------------
+MEMBER_COLS = ("release_id", "family_key", "home_domain", "secondary_domains",
+               "n_publications", "n_chunks", "source")
+SHARD_COLS = ("release_id", "domain", "n_families", "n_publications", "n_chunks", "index_bytes",
+              "disk_bytes")
+
+
+def _copy_out(dst, sql, params, path):
+    """One release's rows, gzipped, as a snapshot artifact. COPY rather than JSON because a full
+    domain shard has hundreds of thousands of member rows and the restore is a COPY back in."""
+    with gzip.open(path, "wb") as fh:
+        with dst.cursor() as cur:
+            with cur.copy(sql, params) as cp:
+                for block in cp:
+                    fh.write(block)
+    return path
+
+
+def _copy_in(dst, table, cols, path):
+    n = 0
+    with gzip.open(path, "rb") as fh:
+        with dst.cursor() as cur:
+            with cur.copy(f"COPY {table} ({', '.join(cols)}) FROM STDIN") as cp:
+                while True:
+                    block = fh.read(1 << 20)
+                    if not block:
+                        break
+                    cp.write(block)
+            n = cur.rowcount
+    return max(0, n)
+
+
 def write_snapshot(dst, release_id, snapshot_dir, *, lexical_dir=None, pg_dump="pg_dump"):
-    """A release on disk: the partition's data, the Tantivy index, and a checksum for each.
+    """A release on disk: the partition's data, its members, its domain rows, the Tantivy index,
+    and a checksum for each.
+
+    THE MEMBER AND DOMAIN ROWS ARE PART OF THE RELEASE, not bookkeeping left behind on the
+    builder. A snapshot of the chunk partition alone restores a shard that holds every chunk,
+    reports zero families, cannot answer `releases_for_domain` (which is the lookup
+    `shard_router.route()` output needs), and fails its own `verify_serving` on `count:families`.
+    That is a shard that would join the fan-out while unable to prove what it is serving.
 
     LOGICAL, NOT PHYSICAL, and that is a real limitation worth naming. `pg_dump` carries rows, not
     index pages, so restoring a release rebuilds its HNSW on the target. For a full-size shard that
@@ -400,7 +439,18 @@ def write_snapshot(dst, release_id, snapshot_dir, *, lexical_dir=None, pg_dump="
     if res.returncode != 0:
         raise BuildError(f"pg_dump failed for {release_id}: {res.stderr.strip()[:400]}")
 
-    artifacts = [manifest_mod.artifact(dump_path, "chunks.dump")]
+    members_path = _copy_out(
+        dst, f"COPY (SELECT {', '.join(MEMBER_COLS)} FROM corpus_release_member "
+             f"WHERE release_id = %s ORDER BY family_key) TO STDOUT", (release_id,),
+        os.path.join(out, "members.copy.gz"))
+    domains_path = _copy_out(
+        dst, f"COPY (SELECT {', '.join(SHARD_COLS)} FROM corpus_release_shard "
+             f"WHERE release_id = %s ORDER BY domain) TO STDOUT", (release_id,),
+        os.path.join(out, "domains.copy.gz"))
+
+    artifacts = [manifest_mod.artifact(dump_path, "chunks.dump"),
+                 manifest_mod.artifact(members_path, "members.copy.gz"),
+                 manifest_mod.artifact(domains_path, "domains.copy.gz")]
     lex_tar = ""
     if lexical_dir and os.path.isdir(lexical_dir):
         lex_tar = os.path.join(out, "lexical.tar.gz")
@@ -434,7 +484,16 @@ def restore_snapshot(dst, release_id, snapshot_dir, *, m=16, ef_construction=64,
     if not v.ok:
         raise BuildError(f"snapshot for {release_id} does not verify: {v.failures}")
 
-    release_store.ensure_partition(dst, release_id)
+    #  The release row first: a target that does not know the release exists cannot hold its
+    #  partition, its members or its verdict. Sealed on arrival, because what is being restored is
+    #  a sealed release and a window in which it is editable on the target is a window in which it
+    #  can be edited.
+    _ensure_release_row(dst, manifest, snapshot_path=out)
+    part = release_store.ensure_partition(dst, release_id)
+    #  A restore has to be repeatable. pg_restore --data-only appends, so a second run over a
+    #  partition that already has rows is a primary key violation, or worse, a doubled release.
+    with dst.cursor() as cur:
+        cur.execute(f'TRUNCATE "{part}"')
     dst.commit()
     info = dst.info
     env = dict(os.environ)
@@ -459,6 +518,21 @@ def restore_snapshot(dst, release_id, snapshot_dir, *, m=16, ef_construction=64,
             tf.extractall(lex_dir)
         lex_dir = os.path.join(lex_dir, "lexical")
 
+    #  Members and domain rows travel with the release. Without them the target holds every
+    #  chunk, reports zero families and fails count:families in its own verification.
+    counts = {"members": 0, "domains": 0}
+    with dst.cursor() as cur:
+        cur.execute("DELETE FROM corpus_release_member WHERE release_id=%s", (release_id,))
+        cur.execute("DELETE FROM corpus_release_shard WHERE release_id=%s", (release_id,))
+    for table, cols, name in (("corpus_release_member", MEMBER_COLS, "members.copy.gz"),
+                              ("corpus_release_shard", SHARD_COLS, "domains.copy.gz")):
+        path = os.path.join(out, name)
+        if os.path.exists(path):
+            counts["members" if "member" in table else "domains"] = _copy_in(dst, table, cols,
+                                                                             path)
+    _seal_restored(dst, release_id, manifest)
+    dst.commit()
+
     index_s = 0.0
     if rebuild_indexes:
         t0 = time.time()
@@ -466,6 +540,34 @@ def restore_snapshot(dst, release_id, snapshot_dir, *, m=16, ef_construction=64,
                                     halfvec=halfvec)
         dst.commit()
         index_s = round(time.time() - t0, 2)
-    _log(log, "restored", release_id=release_id, restore_s=restore_s, index_s=index_s)
+    _log(log, "restored", release_id=release_id, restore_s=restore_s, index_s=index_s, **counts)
     return {"release_id": release_id, "restore_s": restore_s, "dense_index_s": index_s,
-            "lexical_dir": lex_dir, "manifest": manifest}
+            "lexical_dir": lex_dir, "manifest": manifest, "rows": counts}
+
+
+def _ensure_release_row(dst, manifest, *, snapshot_path=""):
+    """Put the release on the target if it is not there. Unsealed for the length of the restore,
+    because the immutability triggers refuse to let a sealed release take rows away again if a
+    restore has to be repeated."""
+    rid = manifest["release_id"]
+    with dst.cursor() as cur:
+        cur.execute("SELECT sealed_at FROM corpus_release WHERE release_id=%s", (rid,))
+        row = cur.fetchone()
+        if row is None:
+            cur.execute("""INSERT INTO corpus_release (release_id, shard_key, version, kind,
+                               state, builder, note, manifest, content_hash, snapshot_path, stats)
+                           VALUES (%s,%s,%s,%s,'building',%s,%s,%s,%s,%s,%s)""",
+                        (rid, manifest["shard_key"], manifest["version"], manifest["kind"],
+                         "restore", manifest.get("note") or "",
+                         _json(manifest), manifest["content_hash"], snapshot_path,
+                         _json(manifest.get("stats") or {})))
+        elif row["sealed_at"] is not None:
+            cur.execute("UPDATE corpus_release SET sealed_at=NULL WHERE release_id=%s", (rid,))
+
+
+def _seal_restored(dst, release_id, manifest):
+    with dst.cursor() as cur:
+        cur.execute("""UPDATE corpus_release SET sealed_at=now(), state='built',
+                           content_hash=%s, manifest=%s
+                        WHERE release_id=%s AND sealed_at IS NULL""",
+                    (manifest["content_hash"], _json(manifest), release_id))

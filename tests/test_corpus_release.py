@@ -70,6 +70,33 @@ def scratch_dsn():
         adm.close()
 
 
+@pytest.fixture(scope="module")
+def target_dsn(scratch_dsn):
+    """A SECOND throwaway database: the shard a snapshot is restored onto."""
+    admin = _admin_dsn()
+    name = f"reltgt_{uuid.uuid4().hex[:12]}"
+    adm = psycopg.connect(admin, autocommit=True)
+    with adm.cursor() as cur:
+        cur.execute(f'CREATE DATABASE "{name}"')
+    adm.close()
+    dsn = " ".join(p for p in admin.split() if not p.startswith("dbname=")) + f" dbname={name}"
+    c = psycopg.connect(dsn, autocommit=True)
+    with c.cursor() as cur:
+        cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        cur.execute(open(os.path.join(ROOT, "sql", "010_corpus_release.sql"),
+                         encoding="utf-8").read())
+    c.close()
+    try:
+        yield dsn
+    finally:
+        adm = psycopg.connect(admin, autocommit=True)
+        with adm.cursor() as cur:
+            cur.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                        "WHERE datname=%s AND pid <> pg_backend_pid()", (name,))
+            cur.execute(f'DROP DATABASE IF EXISTS "{name}"')
+        adm.close()
+
+
 @pytest.fixture()
 def conn(scratch_dsn):
     c = psycopg.connect(scratch_dsn, row_factory=dict_row, autocommit=False)
@@ -387,3 +414,69 @@ def test_the_domain_to_release_lookup_prefers_the_active_release(conn):
     #  Active first: `route()` must not be handed a superseded release ahead of the live one.
     assert ids.index(v1) < ids.index(v2)
     assert all(r["is_active"] for r in rows[:sum(1 for r in rows if r["is_active"])])
+
+
+# ------------------------------------------------------------------ the snapshot round trip
+def test_a_restored_shard_holds_the_whole_release_and_can_verify_itself(conn, target_dsn, tmp_path):
+    """The defect this was written for: `write_snapshot` dumped the chunk partition and nothing
+    else, so a restored shard held every chunk, reported ZERO families, could not answer
+    `releases_for_domain` (the lookup shard_router.route() output needs) and failed its own
+    verification on count:families. Measured on hot_v3: 5,887 chunks restored, 0 of 200 families.
+    """
+    from corpus import builder
+
+    rid = _seed(conn, "t_snap", version=1, families=("F1", "F2", "F3"), chunks=4)
+    snap = builder.write_snapshot(conn, rid, str(tmp_path))
+    names = {a["name"] for a in snap["artifacts"]}
+    assert {"chunks.dump", "members.copy.gz", "domains.copy.gz"} <= names
+
+    #  Re-seal the manifest with the artifacts, the way build_release does, so the restored copy
+    #  checks the files it was actually shipped.
+    rel = release_store.get(conn, rid)
+    man = manifest_mod.build(release_id=rid, shard_key="t_snap", version=1, kind="domain",
+                             domains=["B65G"], counts=release_store.observed_counts(conn, rid),
+                             built_from={"chunks_max_id": 1},
+                             index_params={"dense": release_store.observed_index_params(conn, rid)},
+                             artifacts=snap["artifacts"], stats=rel["stats"], timings={},
+                             root=ROOT, note="")
+    manifest_mod.write(man, os.path.join(snap["dir"], "manifest.json"))
+
+    target = psycopg.connect(target_dsn, row_factory=dict_row, autocommit=False)
+    try:
+        r = builder.restore_snapshot(target, rid, str(tmp_path))
+        assert r["rows"]["members"] == 3
+        assert r["rows"]["domains"] == 1
+        assert release_store.observed_counts(target, rid) == \
+            release_store.observed_counts(conn, rid)
+        assert [x["release_id"] for x in release_store.releases_for_domain(target, "B65G")] == [rid]
+        v = release_store.verify_serving(target, rid, artifact_root=snap["dir"])
+        assert v.ok, v.failures
+
+        #  Repeatable. pg_restore --data-only appends, so a second run over a populated partition
+        #  is a primary key violation or, worse, a doubled release.
+        builder.restore_snapshot(target, rid, str(tmp_path))
+        assert release_store.observed_counts(target, rid)["chunks"] == 12
+    finally:
+        target.close()
+
+
+def test_a_tampered_snapshot_is_refused_before_it_is_restored(conn, target_dsn, tmp_path):
+    from corpus import builder
+
+    rid = _seed(conn, "t_tamper_snap", version=1, families=("F1",))
+    snap = builder.write_snapshot(conn, rid, str(tmp_path))
+    man = manifest_mod.build(release_id=rid, shard_key="t_tamper_snap", version=1, kind="domain",
+                             domains=["B65G"], counts=release_store.observed_counts(conn, rid),
+                             built_from={}, index_params={}, artifacts=snap["artifacts"],
+                             stats={}, timings={}, root=ROOT, note="")
+    manifest_mod.write(man, os.path.join(snap["dir"], "manifest.json"))
+    with open(os.path.join(snap["dir"], "members.copy.gz"), "ab") as fh:
+        fh.write(b"\x00")
+
+    target = psycopg.connect(target_dsn, row_factory=dict_row, autocommit=False)
+    try:
+        with pytest.raises(builder.BuildError) as exc:
+            builder.restore_snapshot(target, rid, str(tmp_path))
+        assert "does not verify" in str(exc.value)
+    finally:
+        target.close()

@@ -137,3 +137,74 @@ def test_demand_claim_names_itself_by_default():
     demand.claim(limit=7, runstore=FakeRunstore())
     assert calls["claimant"] == demand.CLAIMANT
     assert calls["limit"] == 7
+
+
+# ------------------------------------------------------------------ materialising the scratch text
+class _FakeDocstore:
+    """Stands in for `sources.docstore`. The real one talks to the live scratch store, and a test
+    that chunked production scratch text would be reading rows it did not put there."""
+
+    def __init__(self, records):
+        self._records = records
+
+    def _get_sync(self, pn):
+        return self._records.get(pn)
+
+
+def test_scratch_text_becomes_release_shaped_chunks_and_is_embedded_offline():
+    """The write policy in one test: the search may ask, the OFFLINE builder chunks and embeds.
+    Nothing here may add a vector to an index that is being queried."""
+    ds = _FakeDocstore({"US-1-A": {
+        "abstract": "a vacuum gripper for porous workpieces",
+        "claims": "1. A gripper comprising a suction cup and a pump.\n"
+                  "2. The gripper of claim 1, wherein the cup is elastomeric.",
+        "description": "The invention relates to gripping.\n\n"
+                       "In one embodiment the pump is a rotary vane pump.",
+        "claims_lang": "en"}})
+    embedded = {"calls": 0}
+
+    class _Embed:
+        @staticmethod
+        def embed_texts(texts, dim):
+            embedded["calls"] += 1
+            return [[0.01] * dim for _ in texts]
+
+    rows = [{"publication_number": "US-1-A", "request_count": 4, "priority": 10}]
+    chunks, report = demand.materialise(rows, embed_module=_Embed, docstore=ds, model="m")
+
+    kinds = sorted({c["kind"] for c in chunks})
+    assert kinds == ["abstract", "claim_own", "paragraph"]
+    assert report["with_text"] == 1 and report["missing"] == []
+    assert report["chunks"] == len(chunks) == 5
+    assert embedded["calls"] == 1
+    assert all(len(c["embedding"]) == 768 for c in chunks)
+    assert all(c["chunker_version"] == demand.CHUNKER_VERSION for c in chunks)
+    claim_two = [c for c in chunks if c["coord"] == {"claim_no": 2}]
+    assert claim_two and "elastomeric" in claim_two[0]["text"]
+
+
+def test_a_request_whose_scratch_store_holds_nothing_is_reported_missing_not_dropped():
+    """"We tried and the source had nothing" and "nobody asked for it" must stay distinguishable,
+    which is the whole reason the ledger exists separately from the queue."""
+    ds = _FakeDocstore({"US-2-A": {"abstract": "", "claims": "", "description": ""}})
+    rows = [{"publication_number": "US-2-A"}, {"publication_number": "US-3-A"}]
+
+    class _Embed:
+        @staticmethod
+        def embed_texts(texts, dim):
+            return [[0.0] * dim for _ in texts]
+
+    chunks, report = demand.materialise(rows, embed_module=_Embed, docstore=ds, model="m")
+    assert chunks == []
+    assert sorted(report["missing"]) == ["US-2-A", "US-3-A"]
+    assert report["requested"] == 2 and report["with_text"] == 0
+
+
+def test_claims_split_on_their_numbering_and_short_fragments_are_dropped():
+    assert demand.split_claims("1. A gripper with a cup.\n2. The gripper of claim 1, extended.") \
+        == ["A gripper with a cup.", "The gripper of claim 1, extended."]
+    assert demand.split_claims("1. tiny\n2. also a claim that is long enough to keep") \
+        == ["also a claim that is long enough to keep"]
+    #  Text that matches no pattern is kept whole rather than dropped.
+    assert demand.split_claims("a single unnumbered claim body of sufficient length") \
+        == ["a single unnumbered claim body of sufficient length"]
