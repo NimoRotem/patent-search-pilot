@@ -61,3 +61,9 @@ eval/benchmark_results/
 
 # Timestamped in-place backups taken before a live patch. Never artefacts.
 *.bak-*
+
+# Niche corpus workstream. The extraction cache is a 2 GB copy of live tables (ops/niche_extract.py
+# rebuilds it in about 4 minutes) and a manifest release is 1 to 2 GB of NDJSON. Both are build
+# artefacts at a stable path, never repository content. docs/niche_manifest_contract.md says where.
+data/niche_cache/
+data/manifests/

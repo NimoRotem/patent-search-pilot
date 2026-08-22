@@ -372,6 +372,13 @@ def test_the_repo_migrations_are_discoverable_and_include_figure_images():
     change. What actually has to hold is the property: discovery finds exactly the numbered files
     on disk, in ascending numeric order, with no duplicate version, and the adopted history 001
     through 009 is still there and still in front.
+
+    THREE WORKSTREAMS WROTE THIS FIX INDEPENDENTLY (B, C and H) and two of them asserted a
+    CONTIGUOUS run 001..N. That is the stricter property and it is the wrong one: the numbering is
+    deliberately sparse. 011 is held empty because no V3 workstream owns the eval gold set, and
+    012 and 013 belong to a branch that is not integrated yet, so a contiguity assertion goes red
+    on the integrated tree for the one reason that is not a defect. Gaps are a decision; a
+    DUPLICATE is the failure worth catching, and that is what the third assertion below is.
     """
     real = os.path.join(ROOT, "sql")
     migrations = migrate.discover(real)
