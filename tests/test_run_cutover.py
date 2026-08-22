@@ -1597,3 +1597,4 @@ def test_the_producer_still_treats_a_queued_placeholder_as_migratable(app_env, d
     assert runstore.latest_for_slug("prod-mig") is not None
     with webapp._JOB_LOCK:
         assert "prod-mig" not in webapp._JOBS
+

@@ -433,7 +433,7 @@ def find_candidates(plans, subject, mode, exclude_pubs, exclude_families, retrie
 #  checkpoint, so a resumed run re-enters the rescue at the first round it has not finished. They
 #  are named rather than numbered because the numbers would move the moment a round is added, and a
 #  checkpoint that changes meaning between deploys is worse than none.
-ROUNDS = ("reread", "search", "read", "narrow")
+ROUNDS = ("reread", "search", "enrich", "read", "narrow")
 
 #  What the search round wrote onto the summary. Restored with the checkpoint, because a resumed
 #  run that reloads the candidates and not the receipt would report an acquisition that "did not
@@ -450,6 +450,14 @@ def _round_fp(summary, claim_items):
     return runartifact.digest_bytes(runartifact.serialise(
         {"orphans": list(summary.get("orphans") or []),
          "claims": [c.get("label") for c in (claim_items or [])]}))[:32]
+
+
+def _cands_fp(cands):
+    """Which candidates an enrichment was performed for. Order matters as little as it can, so it
+    is sorted: the same set found in a different order is the same work."""
+    import runartifact
+    return runartifact.digest_bytes(runartifact.serialise(
+        sorted(str((c or {}).get("pub") or "") for c in (cands or []))))[:32]
 
 
 def _apply_charts(charts, stored):
@@ -771,11 +779,37 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
     print(f"[rescue] {len(cands)} candidates for {len(plans)} claims that no reference covers, "
           f"from queries with no classification filter", flush=True)
 
+    #  A ROUND OF ITS OWN, because it SPENDS. `enrich` is `deep_rank._enrich_missing_text`: it
+    #  fetches full text for the rescued candidates the corpus holds nothing readable for, one
+    #  paid provider fetch per candidate. It used to sit outside every checkpoint, between the
+    #  search round and the reading round, so a run resumed after the search had banked its
+    #  candidates paid for the whole enrichment a second time and a run resumed twice paid three
+    #  times. Keyed on the candidate set rather than on `_fp` alone: enriching a different set of
+    #  candidates is different work, and reloading the receipt for the old one would leave the new
+    #  candidates unenriched and silently unreadable.
     if enrich:
-        try:
-            enrich(cands)
-        except Exception:
-            traceback.print_exc()
+        _enrich_fp = f"{_fp}:{_cands_fp(cands)}"
+        if runctx.round_payload("rescue", "enrich", fp=_enrich_fp) is not None:
+            summary["rounds"].append({"round": "enrich", "resumed": True,
+                                      "candidates": len(cands)})
+            print(f"[resume] the rescue enrichment round was already complete for these "
+                  f"{len(cands)} candidates; no text was fetched again", flush=True)
+        else:
+            runctx.check_cancelled("rescue enrich")
+            try:
+                enrich(cands)
+            except runctx.RunCancelled:
+                raise
+            except Exception:
+                traceback.print_exc()
+            #  Recorded even when the fetch raised. The round is "we went and asked for this
+            #  candidate set", and a source that was down is not a reason to pay for the whole
+            #  set again on the next attempt: the references it left thin are listed rather than
+            #  read, exactly as they are in an uninterrupted run.
+            runctx.round_done("rescue", "enrich", {"candidates": len(cands)},
+                              fp=_enrich_fp, n_out=len(cands))
+            summary["rounds"].append({"round": "enrich", "resumed": False,
+                                      "candidates": len(cands)})
 
     # ---- 3. read them, against the SAME checklist as everything else -------------------------
     #  Not against the orphaned claims alone. A rescued reference has to be comparable to the rest

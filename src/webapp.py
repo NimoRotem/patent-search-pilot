@@ -7026,8 +7026,19 @@ def recover_interrupted_searches():
     therefore leaves the row saying ``running`` for ever, and the user who was told "you can
     close this tab, we will email you" is never emailed and never sees the search finish.
 
+    THAT REASONING ENDS AT THE CUTOVER, AND THIS IS WHERE IT HAD TO BE TAUGHT. "Nothing is running
+    in this process" stopped meaning "nothing is running" the moment execution moved to the durable
+    worker: the whole point of the cutover is that restarting the web app leaves a search running
+    in ANOTHER process. Its report on disk is still the partial snapshot, its saved-search row
+    still says ``running``, and the rule below would read both as an interrupted run, mark it
+    failed and email the person "the search was interrupted and could not be resumed" while the
+    worker was still reading documents for it. So a slug whose durable run is still live is left
+    alone. UNKNOWN is left alone too: a run store that cannot be reached is not evidence that
+    nothing is running, and this branch's next act is destructive.
+
     At startup nothing is running in THIS process, so every stale ``running`` row belongs to a
-    process that is gone. Each is settled against what is actually on disk:
+    process that is gone, or to the durable worker. Each is settled against what is actually on
+    disk:
 
       * a finished report (``partial`` false) -> the work DID complete and only the bookkeeping
         was lost: mark it complete and queue the email that was promised;
@@ -7037,7 +7048,7 @@ def recover_interrupted_searches():
     Fail-soft and best-effort: the accounts store may be unavailable, and a search page must
     still come up if it is.
     """
-    settled = {"completed": 0, "failed": 0}
+    settled = {"completed": 0, "failed": 0, "still_running": 0}
     try:
         if not auth.accounts_enabled(app):
             return settled
@@ -7052,6 +7063,14 @@ def recover_interrupted_searches():
 
     for slug in slugs:
         try:
+            if durable_runs_enabled() and _durable_liveness(slug) is not False:
+                #  Still executing in the worker, or the store could not say. Either way this
+                #  process has no standing to declare it interrupted. Left exactly as it is: the
+                #  worker settles it, and its own completion mail is the one the user gets.
+                settled["still_running"] += 1
+                print(f"[recovery] {slug} is still running in the durable worker; left alone",
+                      flush=True)
+                continue
             rep = None
             p = report_path(slug)
             if p.exists():
@@ -7074,9 +7093,10 @@ def recover_interrupted_searches():
                 settled["failed"] += 1
         except Exception:
             traceback.print_exc()
-    if settled["completed"] or settled["failed"]:
+    if settled["completed"] or settled["failed"] or settled["still_running"]:
         print(f"[recovery] settled interrupted searches: {settled['completed']} completed, "
-              f"{settled['failed']} marked failed", flush=True)
+              f"{settled['failed']} marked failed, {settled['still_running']} still running in "
+              f"the durable worker and left alone", flush=True)
     return settled
 
 
@@ -7102,6 +7122,19 @@ def _report_is_finished(slug):
 
 
 def _drop_partial_report(slug):
+    """Remove a half-written report so a re-run starts clean. REFUSED while a worker owns it.
+
+    `run_queue.requeue_orphans` calls this at boot for every `app_run_queue` row a dead process
+    left `running`. After the cutover the process that owns the run is not dead, it is the durable
+    worker, and deleting the partial out from under it takes away the only thing the page has to
+    show for an hour of work and leaves the run publishing into a directory whose earlier writes
+    have vanished. A live durable run keeps its files; an unreachable store keeps them too, for the
+    same reason the recovery pass leaves those slugs alone.
+    """
+    if durable_runs_enabled() and _durable_liveness(slug) is not False:
+        print(f"[run_queue] {slug} is still running in the durable worker; its partial report is "
+              f"kept", flush=True)
+        return
     for suffix in (".json", ".view.json", ".detail-preview.json"):
         (REPORTS / f"{slug}{suffix}").unlink(missing_ok=True)
 

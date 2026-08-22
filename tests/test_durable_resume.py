@@ -173,9 +173,14 @@ def _read_wave_fixtures(monkeypatch, calls, cancel_after=None, ctx=None):
     import llm
 
     monkeypatch.setattr(evidence, "load_chart", lambda *a, **k: None)
+    #  The passage shape is `full_text`'s own, `label` and `coord` included: `_rendered` formats
+    #  every passage as "[label] text" and a fixture missing either key raises inside the reading
+    #  and is caught as an unreadable reference, so the wave completes having issued no provider
+    #  call at all and a cancellation test measures nothing.
     monkeypatch.setattr(deep_analysis, "full_text", lambda pub: {
         "found": True, "chars": 400, "n_claims": 1, "n_paragraphs": 1, "truncated": False,
-        "title": pub, "passages": [{"kind": "claim", "no": 1, "text": "a vacuum gripper"}]})
+        "title": pub, "passages": [{"kind": "claim", "no": 1, "coord": 1, "label": "claim 1",
+                                    "text": "a vacuum gripper"}]})
 
     lock = threading.Lock()
 
@@ -231,17 +236,32 @@ def test_a_cancelled_reference_leaves_no_read_checkpoint(monkeypatch, tmp_path, 
     fragment."""
     rid, slug = run
     calls = []
+    chosen = [{"pub": f"US-{i}-A", "title": f"t{i}", "rank": i, "fam": f"F{i}"}
+              for i in range(6)]
     with bound(rid, slug, artifact_root=tmp_path) as ctx:
         _read_wave_fixtures(monkeypatch, calls, cancel_after=1, ctx=ctx)
-        chosen = [{"pub": f"US-{i}-A", "title": f"t{i}", "rank": i, "fam": f"F{i}"}
-                  for i in range(6)]
         with pytest.raises(runctx.RunCancelled):
             deep_rank.read_wave(chosen, ["a vacuum gripper"], [], {}, {}, slug, workers=1)
+
     banked = runstore.substages_done(rid, "read")
-    for pub, row in banked.items():
-        art = (row or {}).get("artifact") or {}
-        assert runartifact.verify(art["path"], art["sha256"]), (
-            f"{pub} left a checkpoint whose artifact does not match its digest")
+    assert len(banked) < len(chosen), "a cancelled wave banked a checkpoint for every reference"
+    fp = deep_analysis.checklist_fp(["a vacuum gripper"], [])
+    with bound(rid, slug, attempt=2, artifact_root=tmp_path) as ctx2:
+        for pub, row in banked.items():
+            art = (row or {}).get("artifact")
+            if art:
+                #  A checkpoint that NAMES an artifact must be the whole artifact. This is the
+                #  half-written file the digest exists to catch.
+                assert runartifact.verify(art["path"], art["sha256"]), (
+                    f"{pub} left a checkpoint whose artifact does not match its digest")
+            else:
+                #  The reading that never came back leaves a ledger row saying so, and NOTHING a
+                #  resume would read instead of paying again. The interruption cut the reading off
+                #  at "unavailable", which is a statement about one attempt's luck and must not
+                #  become this run's answer for that reference.
+                assert (row or {}).get("method") != "llm"
+                assert ctx2.reference_payload(pub, fp=fp) is None, (
+                    f"{pub} resumed onto a reading that was cut off rather than reading again")
 
 
 def test_the_retrieval_fan_out_does_not_query_for_a_cancelled_run(run):
@@ -511,7 +531,7 @@ def test_a_resumed_rescue_does_not_repeat_a_completed_round(rescue_fakes, tmp_pa
     with bound(rid, slug, attempt=1, artifact_root=tmp_path):
         new_charts, summary = _rescue_call(charts, claim_items, calls)
     assert summary["ran"] is True
-    assert [r["round"] for r in summary["rounds"]] == ["reread", "search", "read", "narrow"]
+    assert [r["round"] for r in summary["rounds"]] == ["reread", "search", "enrich", "read", "narrow"]
     assert all(r["resumed"] is False for r in summary["rounds"])
     first = list(calls)
     assert "search" in first and "read:US-R1-A" in first
@@ -520,10 +540,71 @@ def test_a_resumed_rescue_does_not_repeat_a_completed_round(rescue_fakes, tmp_pa
     charts2 = [_chart("US-A-A")]
     with bound(rid, slug, attempt=2, artifact_root=tmp_path):
         new2, summary2 = _rescue_call(charts2, claim_items, calls)
-    assert [r["round"] for r in summary2["rounds"]] == ["reread", "search", "read", "narrow"]
+    assert [r["round"] for r in summary2["rounds"]] == ["reread", "search", "enrich", "read", "narrow"]
     assert all(r["resumed"] is True for r in summary2["rounds"]), summary2["rounds"]
     assert calls == [], f"a resumed rescue repeated completed rounds: {calls}"
     assert [c["pub"] for c in new2] == [c["pub"] for c in new_charts]
+
+
+def test_a_resumed_rescue_does_not_pay_to_enrich_the_same_candidates_twice(rescue_fakes, tmp_path,
+                                                                          run):
+    """THE ONE ROUND THAT SPENT OUTSIDE EVERY CHECKPOINT.
+
+    `enrich` is `deep_rank._enrich_missing_text`: a paid provider fetch per rescued candidate with
+    no readable text. It sat between the search round and the reading round, outside both, so a
+    resumed run reloaded its candidates from the search checkpoint and then went and bought the
+    text for all of them again. Two restarts, three enrichments.
+
+    Defect-injected: with the enrich round's checkpoint lookup forced to miss, the identical resume
+    enriches a second time, which is the behaviour being fixed.
+    """
+    rid, slug = run
+    calls = rescue_fakes
+    claim_items = [{"label": "claim 7", "text": "wherein the seal is annular", "claim_no": 7,
+                    "independent": False}]
+    with bound(rid, slug, attempt=1, artifact_root=tmp_path):
+        _rescue_call([_chart("US-A-A")], claim_items, calls)
+    assert calls.count("enrich") == 1, calls
+
+    calls.clear()
+    with bound(rid, slug, attempt=2, artifact_root=tmp_path):
+        _, summary = _rescue_call([_chart("US-A-A")], claim_items, calls)
+    assert calls.count("enrich") == 0, "a resumed rescue enriched the same candidates again"
+    assert {r["round"]: r["resumed"] for r in summary["rounds"]}["enrich"] is True
+
+    #  DEFECT INJECTION. Only the enrich round's own checkpoint is taken away; every other round
+    #  still resumes. If this does not enrich again, the assertion above is not measuring it.
+    calls.clear()
+    real = runctx.round_payload
+    with bound(rid, slug, attempt=3, artifact_root=tmp_path):
+        try:
+            runctx.round_payload = (lambda parent, key, fp="":
+                                    None if key == "enrich" else real(parent, key, fp=fp))
+            _rescue_call([_chart("US-A-A")], claim_items, calls)
+        finally:
+            runctx.round_payload = real
+    assert calls.count("enrich") == 1, (
+        "without its checkpoint the enrichment did not repeat, so the test above proves nothing")
+
+
+def test_an_enrichment_for_a_different_candidate_set_is_not_reused(rescue_fakes, tmp_path, run):
+    """The receipt is keyed on the candidates, not on the rescue. A resumed run whose search found
+    a different set must enrich that set, or those candidates stay thin and unreadable while the
+    run reports the enrichment as done."""
+    rid, slug = run
+    calls = rescue_fakes
+    seen = []
+    ctx1 = runctx.RunContext(rid, slug, attempt=1, artifact_root=tmp_path)
+    assert ctx1.round_payload("rescue", "enrich", fp="fp-a:set-one") is None
+    ctx1.round_done("rescue", "enrich", {"candidates": 3}, fp="fp-a:set-one")
+    assert ctx1.round_payload("rescue", "enrich", fp="fp-a:set-one") is not None
+    assert ctx1.round_payload("rescue", "enrich", fp="fp-a:set-two") is None, (
+        "an enrichment receipt for one candidate set was reused for another")
+    assert claim_rescue._cands_fp([{"pub": "B"}, {"pub": "A"}]) == \
+        claim_rescue._cands_fp([{"pub": "A"}, {"pub": "B"}]), "order changed the candidate key"
+    assert claim_rescue._cands_fp([{"pub": "A"}]) != claim_rescue._cands_fp([{"pub": "A"},
+                                                                            {"pub": "B"}])
+    assert (seen, calls) == ([], [])
 
 
 def test_a_corrupt_rescue_round_artifact_makes_the_round_run_again(rescue_fakes, tmp_path, run):
@@ -785,3 +866,194 @@ def test_the_capability_probe_is_never_cached(side_effect_schema):
     with db.cursor(autocommit=True) as cur:
         cur.execute("DROP TABLE run_side_effects")
     assert runstore.side_effects_capable() is False, "a stale capability answer survived"
+
+
+# =============================================== 8. restarting the web app under the cutover
+#
+#  THE POINT OF THE WHOLE CUTOVER, and the one place it was still false. Both reconcilers below
+#  run at gunicorn startup. Both were written when "nothing is running in this process" meant
+#  "nothing is running anywhere". After the cutover a restart of `patent-results` leaves a search
+#  executing in the WORKER, with a partial report on disk and a saved-search row still saying
+#  `running`, and both of them read that as an interrupted run.
+#
+#  These live in this file rather than in `test_run_cutover.py` because that file's fixtures need
+#  a local Postgres in Docker, which the patents VM does not have: all 99 of its tests skip here.
+#  A throwaway schema in the live database is what actually runs on the box the deploy happens on.
+
+@pytest.fixture()
+def recovery_schema(side_effect_schema):
+    """The durable schema plus the accounts schema, in one throwaway schema, with the recovery
+    pass's two destructive side effects replaced by counters."""
+    import accounts as acc
+    ddl = (Path(ROOT) / "sql" / "003_app_accounts.sql").read_text(encoding="utf-8")
+    with db.cursor(autocommit=True) as cur:
+        cur.execute(ddl)
+    prev = acc._SCHEMA_READY
+    try:
+        acc.ensure_schema(force=True)
+        yield side_effect_schema
+    finally:
+        acc._SCHEMA_READY = prev
+
+
+@pytest.fixture()
+def recovery_env(monkeypatch, recovery_schema, tmp_path):
+    import webapp
+    failed, mailed = [], []
+    monkeypatch.setenv(webapp.DURABLE_RUNS_ENV, "1")
+    monkeypatch.setattr(webapp, "REPORTS", tmp_path)
+    monkeypatch.setattr(webapp.auth, "accounts_enabled", lambda app_: True)
+    monkeypatch.setattr(webapp.accounts, "mark_search_failed", lambda s: failed.append(s))
+    monkeypatch.setattr(webapp.notifications, "queue_search_failure",
+                        lambda s, reason=None: mailed.append(("failure", s)))
+    monkeypatch.setattr(webapp.notifications, "queue_search_completion",
+                        lambda s: mailed.append(("completion", s)))
+    return {"failed": failed, "mailed": mailed, "tmp": tmp_path, "webapp": webapp}
+
+
+def _user(email):
+    with db.cursor() as cur:
+        cur.execute("INSERT INTO app_users (email, full_name, password_hash) "
+                    "VALUES (%s,%s,'x') RETURNING id", (email, email.split("@")[0]))
+        return cur.fetchone()["id"]
+
+
+def _saved_search_running(slug, user_id):
+    """A saved search left `running` by the process the restart killed, old enough to be past the
+    recovery grace period."""
+    with db.cursor() as cur:
+        cur.execute("INSERT INTO app_saved_searches (user_id, slug, query, mode, status) "
+                    "VALUES (%s,%s,'a vacuum gripper','novelty','running')", (user_id, slug))
+        cur.execute("UPDATE app_saved_searches SET updated_at = now() - interval '10 minutes' "
+                    "WHERE slug=%s", (slug,))
+
+
+def _running_durable_run(slug):
+    rid = runstore.enqueue(slug, {"query": "a vacuum gripper"}, lane="deep")
+    runstore.admit_waiting(lane="deep", daily_cap=100, max_concurrent=100)
+    runstore.claim(runstore.worker_id(), lanes=["deep"], admitted_only=True)
+    assert runstore.get(rid)["status"] == "running", "the fixture did not leave a running run"
+    return rid
+
+
+def test_a_restart_does_not_fail_a_search_the_worker_is_still_running(recovery_env):
+    """RESTARTING patent-results MUST BE INVISIBLE TO A RUNNING SEARCH.
+
+    Before this, restarting the web app marked the live run's saved search FAILED and mailed the
+    person "the search was interrupted and could not be resumed", while the worker went on reading
+    documents for it and published the finished report half an hour later.
+    """
+    webapp = recovery_env["webapp"]
+    slug = "recovery-live"
+    _saved_search_running(slug, _user("recovery-live@example.com"))
+    _running_durable_run(slug)
+    (recovery_env["tmp"] / f"{slug}.json").write_text(json.dumps({"partial": True}))
+
+    got = webapp.recover_interrupted_searches()
+
+    assert got["still_running"] == 1, got
+    assert got["failed"] == 0, got
+    assert recovery_env["failed"] == [], "a live durable run was marked failed by a restart"
+    assert recovery_env["mailed"] == [], "a live durable run was mailed a failure by a restart"
+
+
+def test_without_the_liveness_check_the_same_restart_fails_the_live_run(recovery_env, monkeypatch):
+    """DEFECT INJECTION for the test above. With the liveness answer forced to "settled", the
+    identical restart marks the running search failed and mails the user. If it does not, the test
+    above is measuring nothing."""
+    webapp = recovery_env["webapp"]
+    slug = "recovery-injected"
+    _saved_search_running(slug, _user("recovery-injected@example.com"))
+    _running_durable_run(slug)
+    (recovery_env["tmp"] / f"{slug}.json").write_text(json.dumps({"partial": True}))
+
+    monkeypatch.setattr(webapp, "_durable_liveness", lambda s: False)
+    got = webapp.recover_interrupted_searches()
+
+    assert got["failed"] == 1, got
+    assert recovery_env["failed"] == [slug]
+    assert recovery_env["mailed"] == [("failure", slug)]
+
+
+def test_an_unreadable_run_store_is_not_read_as_nothing_is_running(recovery_env, monkeypatch):
+    """UNKNOWN is not FALSE. A store that cannot be reached is not evidence that the worker
+    stopped, and the next act of this branch is destructive."""
+    webapp = recovery_env["webapp"]
+    slug = "recovery-unknown"
+    _saved_search_running(slug, _user("recovery-unknown@example.com"))
+    (recovery_env["tmp"] / f"{slug}.json").write_text(json.dumps({"partial": True}))
+
+    monkeypatch.setattr(webapp, "_durable_liveness", lambda s: None)
+    got = webapp.recover_interrupted_searches()
+
+    assert got["still_running"] == 1 and recovery_env["failed"] == [], got
+
+
+def test_a_genuinely_interrupted_search_is_still_settled_under_the_flag(recovery_env):
+    """The guard must not turn the recovery pass off. A slug with no live durable run is settled
+    exactly as it always was."""
+    webapp = recovery_env["webapp"]
+    slug = "recovery-dead"
+    _saved_search_running(slug, _user("recovery-dead@example.com"))
+    (recovery_env["tmp"] / f"{slug}.json").write_text(json.dumps({"partial": True}))
+
+    got = webapp.recover_interrupted_searches()
+
+    assert got["failed"] == 1 and recovery_env["failed"] == [slug], got
+
+
+def test_a_finished_report_is_still_completed_under_the_flag(recovery_env):
+    webapp = recovery_env["webapp"]
+    slug = "recovery-done"
+    _saved_search_running(slug, _user("recovery-done@example.com"))
+    (recovery_env["tmp"] / f"{slug}.json").write_text(json.dumps({"partial": False, "ranked": []}))
+
+    got = webapp.recover_interrupted_searches()
+
+    assert got["completed"] == 1 and recovery_env["failed"] == [], got
+    assert recovery_env["mailed"] == [("completion", slug)]
+
+
+def test_with_the_flag_off_the_recovery_pass_never_consults_the_run_store(recovery_env,
+                                                                         monkeypatch):
+    """The legacy regime is untouched: with the flag off nothing asks the durable store, and an
+    interrupted search is settled as it always was."""
+    webapp = recovery_env["webapp"]
+    monkeypatch.setenv(webapp.DURABLE_RUNS_ENV, "0")
+    slug = "recovery-legacy"
+    _saved_search_running(slug, _user("recovery-legacy@example.com"))
+    (recovery_env["tmp"] / f"{slug}.json").write_text(json.dumps({"partial": True}))
+
+    def _boom(_s):
+        raise AssertionError("the legacy path consulted the durable run store")
+
+    monkeypatch.setattr(webapp, "_durable_liveness", _boom)
+    got = webapp.recover_interrupted_searches()
+    assert got["failed"] == 1 and recovery_env["failed"] == [slug], got
+
+
+def test_the_boot_requeue_does_not_delete_a_live_runs_partial_report(recovery_env, monkeypatch):
+    """`run_queue.requeue_orphans` calls `_drop_partial_report` for every queue row a dead process
+    left running. The durable worker is not a dead process, and that partial is the only thing the
+    page has to show for an hour of work."""
+    webapp = recovery_env["webapp"]
+    slug = "requeue-live"
+    _running_durable_run(slug)
+    p = recovery_env["tmp"] / f"{slug}.json"
+    p.write_text(json.dumps({"partial": True}))
+
+    webapp._drop_partial_report(slug)
+    assert p.exists(), "a restart deleted the partial report of a search still being run"
+
+    #  DEFECT INJECTION: with the liveness answer forced to settled, the same call deletes it.
+    monkeypatch.setattr(webapp, "_durable_liveness", lambda s: False)
+    webapp._drop_partial_report(slug)
+    assert not p.exists(), "the drop is not gated on liveness at all"
+
+
+def test_the_boot_requeue_still_clears_a_partial_with_no_live_run(recovery_env):
+    webapp = recovery_env["webapp"]
+    p = recovery_env["tmp"] / "requeue-dead.json"
+    p.write_text(json.dumps({"partial": True}))
+    webapp._drop_partial_report("requeue-dead")
+    assert not p.exists()
