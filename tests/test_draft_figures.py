@@ -398,6 +398,78 @@ def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypat
     assert leaders["marked_anchor_audit"]["ok"] is True
 
 
+def test_compose_accumulates_consensus_for_unchanged_endpoint_coordinates(monkeypatch):
+    raw = blank_png(1000, 1000)
+    initial = [
+        {"numeral": "10", "x": 400, "y": 500,
+         "visible": True, "evidence": "first body"},
+        {"numeral": "12", "x": 600, "y": 500,
+         "visible": True, "evidence": "second body"},
+    ]
+    accepted_pixel = {
+        "ok": True, "inspected": True,
+        "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [], "allowed_spaces": [], "ungrounded": [],
+    }
+    monkeypatch.setattr(
+        draft_figures, "_ground_anchors_to_pixels",
+        lambda _png, _numerals, anchors: ([dict(item) for item in anchors],
+                                           dict(accepted_pixel)))
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["10", "12"], "figure_label": "FIG. 1",
+        "other_text": [], "confidence": 0.99})
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [],
+        "labels": [
+            {"numeral": "10", "correct": True, "evidence": "leader reaches 10"},
+            {"numeral": "12", "correct": True, "evidence": "leader reaches 12"},
+        ],
+    })
+    marked_calls = []
+
+    def inspect_marked(_png, **kwargs):
+        marked_calls.append([dict(item) for item in kwargs["anchors"]])
+        first_round = len(marked_calls) % 2 == 1
+        rejected = "12" if first_round else "10"
+        return {
+            "ok": False, "inspected": True,
+            "errors": [f"The center for {rejected} needs correction."],
+            "incorrect": [rejected], "missing": [], "unexpected": [],
+            "duplicates": [], "review_count": 3,
+            "prompt_version": draft_figures.MARKED_ANCHOR_PROMPT_VERSION,
+            "model_name": draft_figures.vision_model(),
+            "labels": [
+                {
+                    "numeral": "10", "correct": first_round, "repairable": True,
+                    "evidence": "three reviewers inspected endpoint 10",
+                    "suggested_x": 500 if first_round else 550, "suggested_y": 500,
+                    "correct_votes": 3 if first_round else 1,
+                    "incorrect_votes": 0 if first_round else 2,
+                },
+                {
+                    "numeral": "12", "correct": not first_round, "repairable": True,
+                    "evidence": "three reviewers inspected endpoint 12",
+                    "suggested_x": 550 if first_round else 500, "suggested_y": 500,
+                    "correct_votes": 1 if first_round else 3,
+                    "incorrect_votes": 2 if first_round else 0,
+                },
+            ],
+        }
+
+    monkeypatch.setattr(draft_figures, "inspect_marked_anchors", inspect_marked)
+
+    _png, labels, leaders, anchors, pixel = draft_figures._compose_checked_sheet(
+        raw, label="FIG. 1", caption="two bodies",
+        numerals=["10 = first body", "12 = second body"],
+        semantic={"anchors": initial, "pixel_anchor_audit": dict(accepted_pixel)})
+
+    assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
+    assert len(marked_calls) == 2
+    assert anchors[0]["x"] == 400 and anchors[1]["x"] > 600
+    assert leaders["marked_anchor_audit"]["ok"] is True
+    assert leaders["marked_anchor_audit"]["certified_across_attempts"] is True
+
+
 def test_marked_anchor_montage_preserves_the_endpoint_pixel_inside_a_red_ring():
     image = Image.new("RGB", (400, 400), "white")
     ImageDraw.Draw(image).point((200, 200), fill="black")
