@@ -1,6 +1,7 @@
 """Autonomous patent-drawing generation and pixel-level filing gates."""
 import io
 import json
+import re
 
 import pytest
 from PIL import Image
@@ -15,11 +16,22 @@ def blank_png(width=640, height=420):
     return out.getvalue()
 
 
+def accepted_leader_audit(**values):
+    return {
+        "ok": True, "inspected": True,
+        "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
+        "review_count": draft_figures.LEADER_REVIEW_COUNT,
+        **values,
+    }
+
+
 def test_semantic_response_schema_is_inline_for_vertex():
     encoded = json.dumps(draft_figures.SEMANTIC_RESPONSE_SCHEMA)
     assert '"$ref"' not in encoded and '"$defs"' not in encoded
     assert draft_figures.SEMANTIC_RESPONSE_SCHEMA["properties"]["anchors"]["items"][
         "properties"]["numeral"]["type"] == "string"
+    leader = json.dumps(draft_figures.LEADER_RESPONSE_SCHEMA)
+    assert '"$ref"' not in leader and '"$defs"' not in leader
 
 
 def test_figure_identity_uses_the_figure_number_not_a_truncated_caption():
@@ -79,6 +91,84 @@ def test_semantic_audit_requires_one_grounded_anchor_per_expected_part():
     audit = draft_figures.semantic_audit(["10 = body", "12 = pump"], result)
     assert audit["ok"] is False and audit["missing"] == ["12"]
 
+    result["anchors"][1].update({"visible": True, "x": 220, "y": 300})
+    audit = draft_figures.semantic_audit(["10 = body", "12 = pump"], result)
+    assert audit["ok"] is False and audit["anchor_collisions"] == [["10", "12"]]
+
+
+def test_semantic_review_treats_named_surfaces_and_spaces_as_visible_geometry():
+    guidance = draft_figures.SEMANTIC_GEOMETRY_RULES.lower()
+    for term in ("face", "side", "surface", "opening", "chamber", "boundary"):
+        assert term in guidance
+    assert "physically separate object" in guidance
+    assert "distinct representative endpoint" in guidance
+    assert "must not share coordinates" in guidance
+
+
+def test_leader_audit_rejects_converged_or_wrong_endpoints():
+    expected = ["10 = body", "12 = pump", "14 = outlet"]
+    passing = draft_figures.leader_audit(expected, {
+        "matches_spec": True, "summary": "all leaders are grounded", "errors": [],
+        "labels": [
+            {"numeral": "10", "correct": True, "evidence": "leader ends on the body"},
+            {"numeral": "12", "correct": True, "evidence": "leader ends on the pump"},
+            {"numeral": "14", "correct": True, "evidence": "leader ends on the outlet"},
+        ],
+    })
+    assert passing["ok"] is True
+
+    failed = draft_figures.leader_audit(expected, {
+        "matches_spec": False, "summary": "leaders converge", "errors": [
+            "Numerals 12 and 14 converge on the body."],
+        "labels": [
+            {"numeral": "10", "correct": True, "evidence": "leader ends on the body"},
+            {"numeral": "12", "correct": False, "evidence": "leader ends on the body"},
+            {"numeral": "14", "correct": False, "evidence": "leader ends in blank space"},
+        ],
+    })
+    assert failed["ok"] is False
+    assert failed["incorrect"] == ["12", "14"]
+    assert "converge" in failed["errors"][0]
+
+
+def test_leader_consensus_fails_when_the_adversarial_trace_disagrees():
+    expected = ["10 = body", "12 = pump"]
+    primary = {
+        "matches_spec": True, "summary": "appears correct", "errors": [],
+        "labels": [
+            {"numeral": "10", "correct": True, "evidence": "body",
+             "suggested_x": 300, "suggested_y": 400},
+            {"numeral": "12", "correct": True, "evidence": "pump",
+             "suggested_x": 700, "suggested_y": 400},
+        ],
+    }
+    adversarial = {
+        "matches_spec": False, "summary": "12 ends on the body",
+        "errors": ["Numeral 12 ends on the neighboring body."],
+        "labels": [
+            {"numeral": "10", "correct": True, "evidence": "body",
+             "suggested_x": 300, "suggested_y": 400},
+            {"numeral": "12", "correct": False, "evidence": "neighboring body",
+             "suggested_x": 760, "suggested_y": 420},
+        ],
+    }
+    consensus = draft_figures.leader_consensus(expected, [primary, adversarial])
+    assert consensus["ok"] is False and consensus["incorrect"] == ["12"]
+    assert consensus["review_count"] == 2
+    assert consensus["labels"][1]["suggested_x"] == 760
+
+
+def test_only_the_current_two_trace_leader_review_is_accepted():
+    current = {
+        "ok": True, "inspected": True,
+        "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
+        "review_count": 2,
+    }
+    assert draft_figures.current_leader_audit(current) is True
+    assert draft_figures.current_leader_audit({**current, "review_count": 1}) is False
+    assert draft_figures.current_leader_audit({**current, "prompt_version": "old"}) is False
+    assert draft_figures.current_leader_audit({"ok": True}) is False
+
 
 def test_semantic_audit_normalizes_model_written_human_text():
     audit = draft_figures.semantic_audit(["10 = body"], {
@@ -135,6 +225,27 @@ def test_labels_are_overlaid_deterministically_after_geometry_review():
     ])
 
 
+def test_geometry_prompt_strips_every_annotation_instruction_and_reference_number():
+    prompt = draft_figures.build_prompt(
+        "FIG. 3 - sectional view",
+        "FIG. 3 shows the body 10 around the pump 12. Label body 10 with a leader line and legend.",
+        ["10 = body", "12 = pump"], spec_context="The body 10 supports the pump 12.")
+    lowered = prompt.lower()
+    assert "fig. 3" not in lowered and " 10" not in prompt and " 12" not in prompt
+    assert "leader" not in lowered and "legend" not in lowered and "label body" not in lowered
+    assert "the body" in lowered and "the pump" in lowered
+
+
+def test_geometry_prompt_removes_section_marks_and_spells_geometric_numbers():
+    prompt = draft_figures.build_prompt(
+        "FIG. 2 - perspective view",
+        "The assembly is viewed from 30 degrees above. A section line 2-2 crosses the body.",
+        ["10 = body"])
+    assert not re.search(r"\d", prompt)
+    assert "thirty degrees" in prompt.lower()
+    assert "section line" not in prompt.lower()
+
+
 def test_render_refuses_to_store_a_semantically_wrong_drawing(monkeypatch):
     monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
     monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
@@ -149,6 +260,126 @@ def test_render_refuses_to_store_a_semantically_wrong_drawing(monkeypatch):
             numerals=["10 = body", "12 = pump"])
 
 
+def test_render_refuses_to_store_a_sheet_with_a_misplaced_leader(monkeypatch):
+    monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
+    monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
+        "ok": True, "anchors": [{"numeral": "10", "x": 200, "y": 300,
+                                    "visible": True, "evidence": "body"}]})
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
+        "other_text": [], "confidence": 0.99})
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: {
+        "ok": False, "inspected": True, "errors": ["10 ends in blank space"],
+        "incorrect": ["10"], "missing": [], "labels": [
+            {"numeral": "10", "correct": False, "evidence": "blank space",
+             "suggested_x": 0, "suggested_y": 0}]})
+    monkeypatch.setattr(
+        draft_figures, "create_figure",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not persist")))
+
+    with pytest.raises(draft_figures.FigureError, match="leader placement"):
+        draft_figures.render_figure(
+            7, 91, label="FIG. 1", caption="side view of body", numerals=["10 = body"])
+
+
+def test_render_automatically_moves_a_rejected_leader_to_the_reviewed_feature(monkeypatch):
+    raw = blank_png()
+    initial = [{"numeral": "10", "x": 200, "y": 300,
+                "visible": True, "evidence": "body"}]
+    layout = draft_figures._annotation_layout(raw, initial, 1.0)
+    suggested_x = round((layout["source_x"] + layout["source"].width * 0.8) *
+                        1000 / layout["canvas_width"])
+    suggested_y = round((layout["source_y"] + layout["source"].height * 0.5) *
+                        1000 / layout["canvas_height"])
+    monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: raw)
+    monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
+        "ok": True, "anchors": initial})
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
+        "other_text": [], "confidence": 0.99})
+    calls = []
+
+    def inspect(*_args, **_kwargs):
+        calls.append(True)
+        if len(calls) == 1:
+            return {"ok": False, "inspected": True, "errors": ["wrong endpoint"],
+                    "incorrect": ["10"], "missing": [], "labels": [{
+                        "numeral": "10", "correct": False, "evidence": "wrong endpoint",
+                        "suggested_x": suggested_x, "suggested_y": suggested_y}]}
+        return {"ok": True, "inspected": True, "errors": [], "incorrect": [],
+                "labels": [{"numeral": "10", "correct": True, "evidence": "body",
+                            "suggested_x": suggested_x, "suggested_y": suggested_y}]}
+
+    monkeypatch.setattr(draft_figures, "inspect_leaders", inspect)
+    monkeypatch.setattr(draft_figures, "create_figure", lambda *a, **k: {"id": 44})
+    saved = []
+    monkeypatch.setattr(draft_figures, "_audited_version", lambda *a, **k: saved.append(k) or {
+        "version_no": 1, "audit": k["ocr_audit"], "semantic_audit": k["semantic_audit"],
+        "leader_audit": k["leader_audit"], "detected_numerals": ["10"]})
+
+    result = draft_figures.render_figure(
+        7, 91, label="FIG. 1", caption="body", numerals=["10 = body"])
+    assert result["leader_audit"]["ok"] is True and len(calls) == 2
+    assert saved[0]["semantic_audit"]["anchors"][0]["x"] > 700
+
+
+def test_text_contaminated_geometry_retries_from_a_clean_canvas(monkeypatch):
+    previous_images = []
+    prompts = []
+
+    def generate(prompt, previous=None):
+        prompts.append(prompt)
+        previous_images.append(previous)
+        return blank_png()
+
+    monkeypatch.setattr(draft_figures, "_cached_generate", generate)
+    monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
+        "ok": False, "missing": [], "errors": ["component 10 contains visible text"],
+        "unexpected_text": ["BODY"], "anchors": []})
+    with pytest.raises(draft_figures.FigureError, match="semantic"):
+        draft_figures.render_figure(
+            7, 91, label="FIG. 1", caption="side view of body",
+            numerals=["10 = body"])
+    assert previous_images == [None] * draft_figures.MAX_SEMANTIC_ATTEMPTS
+    assert all(not re.search(r"\d", prompt) for prompt in prompts)
+
+
+def test_ocr_detected_geometry_text_regenerates_from_a_clean_canvas(monkeypatch):
+    generated = []
+
+    def generate(prompt, previous=None):
+        generated.append((prompt, previous))
+        return blank_png(width=640 + len(generated))
+
+    monkeypatch.setattr(draft_figures, "_cached_generate", generate)
+    monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
+        "ok": True, "anchors": [{"numeral": "10", "x": 200, "y": 300,
+                                    "visible": True, "evidence": "body"}]})
+    inspections = []
+
+    def inspect_labels(*_args, **_kwargs):
+        inspections.append(True)
+        if len(generated) == 1:
+            return {"ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
+                    "other_text": ["BODY"], "confidence": 0.99}
+        return {"ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
+                "other_text": [], "confidence": 0.99}
+
+    monkeypatch.setattr(draft_figures, "inspect_labels", inspect_labels)
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [], "labels": []})
+    monkeypatch.setattr(draft_figures, "create_figure", lambda *a, **k: {"id": 44})
+    monkeypatch.setattr(draft_figures, "_audited_version", lambda *a, **k: {
+        "version_no": 1, "audit": k["ocr_audit"], "semantic_audit": k["semantic_audit"],
+        "leader_audit": k["leader_audit"], "detected_numerals": ["10"]})
+
+    result = draft_figures.render_figure(
+        7, 91, label="FIG. 1", caption="body", numerals=["10 = body"])
+    assert result["numeral_audit"]["ok"] is True
+    assert len(generated) == 2 and generated[1][1] is None
+    assert "forbidden writing" in generated[1][0].lower()
+
+
 def test_render_stores_only_after_semantic_and_ocr_gates_pass(monkeypatch):
     events = []
     monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
@@ -159,12 +390,16 @@ def test_render_stores_only_after_semantic_and_ocr_gates_pass(monkeypatch):
     monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
         "ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
         "other_text": [], "confidence": 0.99})
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [],
+        "labels": [{"numeral": "10", "correct": True, "evidence": "body"}]})
     monkeypatch.setattr(draft_figures, "create_figure", lambda *a, **k: {"id": 44})
 
     def save(figure_id, **kwargs):
         events.append((figure_id, kwargs))
         return {"version_no": 1, "audit": kwargs["ocr_audit"],
-                "semantic_audit": kwargs["semantic_audit"], "detected_numerals": ["10"]}
+                "semantic_audit": kwargs["semantic_audit"],
+                "leader_audit": kwargs["leader_audit"], "detected_numerals": ["10"]}
 
     monkeypatch.setattr(draft_figures, "_audited_version", save)
     out = draft_figures.render_figure(
@@ -172,6 +407,7 @@ def test_render_stores_only_after_semantic_and_ocr_gates_pass(monkeypatch):
         numerals=["10 = body"])
     assert out["numeral_audit"]["ok"] is True
     assert out["semantic_audit"]["ok"] is True
+    assert out["leader_audit"]["ok"] is True
     assert events and events[0][0] == 44
 
 
@@ -195,9 +431,12 @@ def test_render_increases_deterministic_label_size_until_ocr_is_exact(monkeypatc
          "other_text": [], "confidence": 0.98},
     ])
     monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: next(inspections))
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [], "labels": []})
     monkeypatch.setattr(draft_figures, "create_figure", lambda *a, **k: {"id": 44})
     monkeypatch.setattr(draft_figures, "_audited_version", lambda *a, **k: {
         "version_no": 1, "audit": k["ocr_audit"], "semantic_audit": k["semantic_audit"],
+        "leader_audit": k["leader_audit"],
         "detected_numerals": ["10"]})
     out = draft_figures.render_figure(
         7, 91, label="FIG. 1", caption="body", numerals=["10 = body"])
@@ -210,7 +449,7 @@ def test_ensure_project_figures_draws_every_missing_spec_with_canonical_parts(mo
     calls = []
     monkeypatch.setattr(draft_figures, "render_figure", lambda *a, **k: calls.append(k) or {
         "figure_id": len(calls), "numeral_audit": {"ok": True},
-        "semantic_audit": {"ok": True}})
+        "semantic_audit": {"ok": True}, "leader_audit": accepted_leader_audit()})
     out = draft_figures.ensure_project_figures(
         7, 91, sections={}, disclosure="a body carrying a pump",
         numeral_table=[{"numeral": "10", "part": "body"},
@@ -219,7 +458,7 @@ def test_ensure_project_figures_draws_every_missing_spec_with_canonical_parts(mo
             {"label": "FIG. 1 - side view", "caption": "body and pump", "numerals": ["10", "12"]},
             {"label": "FIG. 2", "caption": "pump detail", "numerals": ["12"]},
         ])
-    assert out["generated"] == 2 and len(calls) == 2
+    assert out["ok"] is True and out["generated"] == 2 and len(calls) == 2
     assert calls[0]["numerals"] == ["10 = body", "12 = pump"]
 
 
@@ -232,7 +471,8 @@ def test_ensure_project_figures_collects_every_failed_sheet_before_repair(monkey
         if "1" in values["label"]:
             raise draft_figures.FigureError("wrong motor axis")
         return {"figure_id": 2, "numeral_audit": {"ok": True},
-                "semantic_audit": {"ok": True}}
+                "semantic_audit": {"ok": True},
+                "leader_audit": accepted_leader_audit()}
 
     monkeypatch.setattr(draft_figures, "render_figure", render)
     out = draft_figures.ensure_project_figures(
@@ -256,7 +496,8 @@ def test_changed_figure_spec_is_reinspected_even_when_its_numerals_are_unchanged
     }])
     calls = []
     monkeypatch.setattr(draft_figures, "render_figure", lambda *a, **k: calls.append(k) or {
-        "figure_id": 8, "numeral_audit": {"ok": True}, "semantic_audit": {"ok": True}})
+        "figure_id": 8, "numeral_audit": {"ok": True}, "semantic_audit": {"ok": True},
+        "leader_audit": accepted_leader_audit()})
     monkeypatch.setattr(draft_figures, "archive_figure", lambda *a: True)
     draft_figures.ensure_project_figures(
         7, 91, sections={}, disclosure="body", numeral_table=[{"numeral": "10", "part": "body"}],
@@ -268,7 +509,8 @@ def test_obsolete_and_duplicate_sheets_are_archived_without_losing_history(monke
     spec = {"label": "FIG. 1", "caption": "side view", "numerals": ["10"]}
     digest = draft_figures.specification_hash("FIG. 1", "side view", ["10 = body"])
     active = {"version_no": 1, "numeral_audit": {"ok": True, "expected": ["10"]},
-              "semantic_audit": {"ok": True, "specification_hash": digest}}
+              "semantic_audit": {"ok": True, "specification_hash": digest},
+              "leader_audit": accepted_leader_audit(specification_hash=digest)}
     monkeypatch.setattr(draft_figures, "listing", lambda *a: [
         {"id": 2, "figure_label": "FIG. 1", "active_version": 1, "versions": [active]},
         {"id": 3, "figure_label": "FIG. 1: newer", "active_version": 1, "versions": [active]},
@@ -287,6 +529,33 @@ def test_obsolete_and_duplicate_sheets_are_archived_without_losing_history(monke
     assert out["archived"] == 2 and out["reused"] == 1
 
 
+def test_a_previous_leader_review_is_never_reused(monkeypatch):
+    spec = {"label": "FIG. 1", "caption": "side view", "numerals": ["10"]}
+    digest = draft_figures.specification_hash("FIG. 1", "side view", ["10 = body"])
+    active = {
+        "version_no": 1,
+        "numeral_audit": {"ok": True, "expected": ["10"]},
+        "semantic_audit": {"ok": True, "specification_hash": digest},
+        "leader_audit": {
+            "ok": True, "inspected": True, "specification_hash": digest,
+            "prompt_version": "figure-leader-v2-single-review", "review_count": 1,
+        },
+    }
+    monkeypatch.setattr(draft_figures, "listing", lambda *a: [{
+        "id": 3, "figure_label": "FIG. 1", "active_version": 1, "versions": [active],
+    }])
+    calls = []
+    monkeypatch.setattr(draft_figures, "render_figure", lambda *a, **k: calls.append(k) or {
+        "figure_id": 3, "numeral_audit": {"ok": True}, "semantic_audit": {"ok": True},
+        "leader_audit": accepted_leader_audit(),
+    })
+    monkeypatch.setattr(draft_figures, "archive_figure", lambda *a: True)
+    out = draft_figures.ensure_project_figures(
+        7, 91, sections={}, disclosure="body",
+        numeral_table=[{"numeral": "10", "part": "body"}], figure_specs=[spec])
+    assert len(calls) == 1 and out["generated"] == 1 and out["reused"] == 0
+
+
 def test_checked_images_are_materialized_for_the_independent_reviewer(monkeypatch, tmp_path):
     figures_dir = tmp_path / "figures"
     figures_dir.mkdir()
@@ -294,10 +563,25 @@ def test_checked_images_are_materialized_for_the_independent_reviewer(monkeypatc
     monkeypatch.setattr(draft_figures, "listing", lambda *a: [{
         "id": 8, "figure_label": "FIG. 1: side view", "active_version": 2,
         "versions": [{"version_no": 2, "numeral_audit": {"ok": True},
-                      "semantic_audit": {"ok": True}}],
+                      "semantic_audit": {"ok": True},
+                      "leader_audit": accepted_leader_audit()}],
     }])
     monkeypatch.setattr(draft_figures, "png_bytes", lambda *a, **k: ("image/png", b"checked"))
     count = draft_figures.materialize_review_images(7, 91, tmp_path)
     assert count == 1
     assert not (figures_dir / "rendered-old.png").exists()
     assert (figures_dir / "rendered-FIG-1.png").read_bytes() == b"checked"
+
+
+def test_old_leader_reviews_are_not_materialized_for_independent_review(monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_figures, "listing", lambda *a: [{
+        "id": 8, "figure_label": "FIG. 1", "active_version": 2,
+        "versions": [{"version_no": 2, "numeral_audit": {"ok": True},
+                      "semantic_audit": {"ok": True},
+                      "leader_audit": {"ok": True, "inspected": True,
+                                         "prompt_version": "old", "review_count": 1}}],
+    }])
+    monkeypatch.setattr(
+        draft_figures, "png_bytes",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not copy stale pixels")))
+    assert draft_figures.materialize_review_images(7, 91, tmp_path) == 0

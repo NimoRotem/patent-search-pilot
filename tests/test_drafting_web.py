@@ -1,5 +1,6 @@
 """Authenticated Flask contracts for the versioned drafting workspace."""
 import io
+import re
 import zipfile
 from pathlib import Path
 
@@ -190,6 +191,25 @@ def test_intake_uses_profile_defaults_and_specific_drafting_choices(draft_client
     assert 'name="priority_status"' in body
     assert 'name="claim_strategy"' in body
     assert 'name="government_support"' in body
+    assert chr(0x2014) not in body
+    assert 'value="unknown"' not in body
+    assert re.search(r'name="priority_status" value="none"\s+checked', body)
+    assert re.search(r'name="government_support" value="none"\s+checked', body)
+
+
+def test_unsupplied_filing_facts_never_create_notes_or_follow_up_requests():
+    notes = webapp._structured_drafting_notes({})
+    assert notes.count("Not applicable.") == 2
+    assert not re.search(r"drafting note|ask for|not confirmed|placeholder", notes, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("values", [
+    {"priority_status": "claim"},
+    {"government_support": "yes"},
+])
+def test_selected_priority_or_government_support_requires_filing_details(values):
+    with pytest.raises(drafting.DraftingValidationError):
+        webapp._structured_drafting_notes(values)
 
 
 def test_intake_uses_profile_name_when_no_inventor_default_exists(draft_client, monkeypatch):

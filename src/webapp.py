@@ -5826,20 +5826,31 @@ def _draft_new_context(user, principal, slug, selected=None, values=None, error=
 def _structured_drafting_notes(values) -> str:
     """Turn explicit intake choices into a stable brief instead of accepting a catch-all box."""
     priority = str(values.get("priority_status") or "unknown")
+    priority_details = str(values.get("priority_details") or "").strip()[:1000]
+    if priority == "claim" and not priority_details:
+        raise drafting.DraftingValidationError(
+            "Provide the application number, country, and filing date for the priority claim.")
     priority_text = {
-        "none": "No domestic or foreign priority claim is expected.",
-        "claim": "A priority claim may be required: " +
-                 (str(values.get("priority_details") or "details not supplied; ask for them")[:1000]),
-        "unknown": "Priority status is not confirmed; leave a drafting note requesting it.",
-    }.get(priority, "Priority status is not confirmed; leave a drafting note requesting it.")
+        "none": "No domestic or foreign priority claim was supplied. Use 'Not applicable.' in "
+                "the cross-reference section.",
+        "claim": "Claim priority using these supplied filing details: " + priority_details,
+        "unknown": "No domestic or foreign priority claim was supplied. Use 'Not applicable.' in "
+                   "the cross-reference section.",
+    }.get(priority, "No domestic or foreign priority claim was supplied. Use 'Not applicable.' "
+                    "in the cross-reference section.")
     support = str(values.get("government_support") or "unknown")
+    support_details = str(values.get("government_support_details") or "").strip()[:1000]
+    if support == "yes" and not support_details:
+        raise drafting.DraftingValidationError(
+            "Provide the agency, award, or contract details for government support.")
     support_text = {
-        "none": "No federally sponsored research or government contract was identified.",
-        "yes": "Government support may apply: " +
-               (str(values.get("government_support_details") or
-                    "award and contract details not supplied; ask for them")[:1000]),
-        "unknown": "Government support status is not confirmed; leave a drafting note requesting it.",
-    }.get(support, "Government support status is not confirmed; leave a drafting note requesting it.")
+        "none": "No government support was supplied. Use 'Not applicable.' in the government "
+                "support section.",
+        "yes": "Use these supplied government support details: " + support_details,
+        "unknown": "No government support was supplied. Use 'Not applicable.' in the government "
+                   "support section.",
+    }.get(support, "No government support was supplied. Use 'Not applicable.' in the government "
+                   "support section.")
     strategy = {
         "balanced": "Use a broad, disclosure-supported independent claim with a graduated fallback ladder.",
         "broad": "Prioritize the broadest disclosure-supported independent claim and retain narrower fallbacks.",
@@ -6735,9 +6746,10 @@ def _filing_figure_images(project):
                        if int(row.get("version_no") or 0) ==
                        int(figure.get("active_version") or 0)), None) or {}
         if not ((active.get("numeral_audit") or {}).get("ok") and
-                (active.get("semantic_audit") or {}).get("ok")):
+                (active.get("semantic_audit") or {}).get("ok") and
+                draft_figures.current_leader_audit(active.get("leader_audit") or {})):
             raise drafting.DraftingValidationError(
-                f"{figure.get('figure_label') or 'A drawing'} has not passed both drawing checks.")
+                f"{figure.get('figure_label') or 'A drawing'} has not passed all drawing checks.")
         _mime, png = draft_figures.png_bytes(
             figure["id"], project["user_id"], int(figure.get("active_version") or 0))
         if not png:

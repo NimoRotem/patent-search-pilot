@@ -50,7 +50,7 @@ MAX_MESSAGE_CHARS = 20_000
 MAX_TURNS_LISTED = 200
 LEASE_SECONDS = 2400                           # a full drafting turn plus its review
 MAX_FINALIZATION_ROUNDS = max(
-    2, min(int(os.environ.get("DRAFT_FINALIZATION_ROUNDS", "4")), 6))
+    2, min(int(os.environ.get("DRAFT_FINALIZATION_ROUNDS", "6")), 6))
 _SCHEMA_LOCK = threading.Lock()
 _SCHEMA_READY = False
 _MIGRATION = Path(__file__).resolve().parents[1] / "sql" / "006_draft_agent.sql"
@@ -171,6 +171,8 @@ Figures live in figures/, one file per drawing, listing the numerals that appear
 on a drawing that is not in the table, or a part described as visible in a figure whose file does
 not list it, is a defect the review will find. Every application must include at least one figure.
 Use a structural view, system diagram, or process flow as appropriate to the disclosed invention.
+Normally use two to four figures. Prefer no more than eight numerals on one sheet; when more
+structure must be shown, use a focused detail or sectional sheet instead of overcrowding one image.
 Figure files are Markdown specifications only. Never create SVG, PNG, or other image files. The
 image pipeline generates unlabeled geometry, then adds the listed numerals, FIG. label, callouts,
 and leader lines deterministically. Describe the required geometry and relationships, and list
@@ -289,7 +291,9 @@ def figures_for_qa(project_id: int, user_id: int,
         # continue, but it must carry a blocking, visible inspection result rather than a false pass.
         return [{**dict(item), "numerals": [], "drawn": False,
                  "numeral_audit": {"inspected": False,
-                                     "error": "The drawing store could not be read."}}
+                                     "error": "The drawing store could not be read."},
+                 "leader_audit": {"inspected": False,
+                                    "errors": ["The drawing store could not be read."]}}
                 for item in figure_specs]
 
     def key(value):
@@ -310,11 +314,13 @@ def figures_for_qa(project_id: int, user_id: int,
                            int(image.get("active_version") or 0)), None) or {}
             audit = active.get("numeral_audit") or {}
             semantic = active.get("semantic_audit") or {}
+            leaders = active.get("leader_audit") or {}
             item["drawn"] = bool(active)
             if audit.get("inspected"):
                 item["numerals"] = list(active.get("detected_numerals") or [])
             item["numeral_audit"] = dict(audit)
             item["semantic_audit"] = dict(semantic)
+            item["leader_audit"] = dict(leaders)
         out.append(item)
     # Stored sheets whose figure specification disappeared are still real pixels. Include them so
     # an unexpected numeral or obsolete drawing cannot vanish from QA merely because the text side
@@ -325,11 +331,13 @@ def figures_for_qa(project_id: int, user_id: int,
                        int(image.get("active_version") or 0)), None) or {}
         audit = active.get("numeral_audit") or {}
         semantic = active.get("semantic_audit") or {}
+        leaders = active.get("leader_audit") or {}
         out.append({"label": image.get("figure_label"), "caption": image.get("caption") or "",
                     "numerals": (list(active.get("detected_numerals") or [])
                                  if audit.get("inspected") else []),
                     "drawn": bool(active), "orphan": True, "numeral_audit": dict(audit)})
         out[-1]["semantic_audit"] = dict(semantic)
+        out[-1]["leader_audit"] = dict(leaders)
     return out
 
 
@@ -437,6 +445,18 @@ def render_markdown(sections: Mapping[str, str]) -> str:
         prefix = "#" if index == 0 else "##"
         blocks.append(f"{prefix} {heading}\n\n{str(sections.get(key) or '').strip()}")
     return "\n\n".join(blocks).strip() + "\n"
+
+
+def allowed_reference_keys(references: Sequence[Mapping[str, Any]],
+                           documents: Sequence[Mapping[str, Any]]) -> list[str]:
+    allowed = [str(row.get("publication_number") or "") for row in references
+               if row.get("publication_number")]
+    allowed += [str(row.get("publication_number")) for row in documents
+                if row.get("kind") == "prior_art" and row.get("publication_number")]
+    allowed += [f"UPLOAD-{index:02d}" for index in range(1, 1 + sum(
+        1 for row in documents
+        if row.get("kind") == "prior_art" and not row.get("publication_number")))]
+    return allowed
 
 
 # =============================================================================================
@@ -683,6 +703,34 @@ class StudioRepository:
                         "ORDER BY turn_no DESC LIMIT %s", (int(project_id), int(limit)))
             return [self._turn(dict(row)) for row in cur.fetchall()]
 
+    def save_retry_candidate(self, turn_id: int, lease_token: str, *,
+                             snapshot: Mapping[str, Any], report: Mapping[str, Any]) -> None:
+        """Durably checkpoint a valid but blocked candidate for the next leased attempt."""
+        self._ready()
+        with self._cursor() as cur:
+            self._verify(cur, turn_id, lease_token)
+            cur.execute(
+                "INSERT INTO app_draft_turn_candidates (turn_id,snapshot,qa_report) "
+                "VALUES (%s,%s::jsonb,%s::jsonb) ON CONFLICT (turn_id) DO UPDATE SET "
+                "snapshot=EXCLUDED.snapshot,qa_report=EXCLUDED.qa_report,updated_at=now()",
+                (int(turn_id), _dumps(dict(snapshot)), _dumps(dict(report))))
+
+    def retry_candidate(self, turn_id: int) -> dict[str, Any] | None:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("SELECT snapshot,qa_report FROM app_draft_turn_candidates WHERE turn_id=%s",
+                        (int(turn_id),))
+            row = cur.fetchone()
+        if not row:
+            return None
+        return {"snapshot": _json(row.get("snapshot"), {}),
+                "qa_report": _json(row.get("qa_report"), {})}
+
+    def discard_retry_candidate(self, turn_id: int) -> None:
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("DELETE FROM app_draft_turn_candidates WHERE turn_id=%s", (int(turn_id),))
+
     def latest_turn(self, project_id: int) -> dict[str, Any] | None:
         rows = self.turns(project_id, limit=1)
         return rows[0] if rows else None
@@ -698,6 +746,7 @@ class StudioRepository:
             cur.execute("UPDATE app_drafting_projects SET status=CASE WHEN latest_version_no>0 "
                         "THEN 'ready' ELSE 'active' END,updated_at=now() WHERE id=%s",
                         (int(project_id),))
+            cur.execute("DELETE FROM app_draft_turn_candidates WHERE turn_id=%s", (int(turn_id),))
 
     @staticmethod
     def _turn(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -848,6 +897,7 @@ class StudioRepository:
                  round(float(cost_usd or 0), 4), int(duration_ms or 0), str(model_name)[:180],
                  str(transcript_path)[:500], turn["id"]))
             out = self._turn(dict(cur.fetchone()))
+            cur.execute("DELETE FROM app_draft_turn_candidates WHERE turn_id=%s", (int(turn_id),))
             cur.execute(
                 "UPDATE app_drafting_projects SET status='ready',agent_session_id=%s,"
                 "agent_turn_no=%s,updated_at=now() WHERE id=%s",
@@ -874,6 +924,9 @@ class StudioRepository:
                     "last_error=%s,updated_at=now() WHERE id=%s RETURNING *",
                     (str(error)[:4000], turn["id"]))
             out = self._turn(dict(cur.fetchone()))
+            if not will_retry:
+                cur.execute("DELETE FROM app_draft_turn_candidates WHERE turn_id=%s",
+                            (int(turn_id),))
             cur.execute(
                 "UPDATE app_drafting_projects SET status=CASE WHEN %s THEN 'queued' "
                 "WHEN latest_version_no>0 THEN 'ready' ELSE 'active' END,updated_at=now() "
@@ -965,8 +1018,22 @@ class TurnRunner:
         latest_qa = self.repository.latest_qa(project_id)
         sections = loaded["sections"]
         seeded = False
+        retry_snapshot = None
 
-        if sections is None:
+        if int(turn.get("attempts") or 0) > 1:
+            candidate = self.repository.retry_candidate(int(turn["id"]))
+            if candidate:
+                try:
+                    retry_snapshot = validate_snapshot(
+                        candidate.get("snapshot") or {},
+                        allowed_reference_keys(loaded["references"], documents))
+                except drafting.DraftingError:
+                    self.repository.discard_retry_candidate(int(turn["id"]))
+                else:
+                    sections = retry_snapshot["sections"]
+                    latest_qa = candidate.get("qa_report") or latest_qa
+
+        if sections is None and retry_snapshot is None:
             # First turn.  If the user brought a draft, pre-split it so the agent improves a
             # document rather than facing nine empty files and rewriting from the summary.
             source = next((d for d in documents if d["kind"] == "source_draft"), None)
@@ -979,11 +1046,13 @@ class TurnRunner:
                     sections = seeded_sections
                     seeded = True
 
-        numerals = (self.workspace.numerals_from_sections(sections) if seeded
-                    else loaded["numerals"])
+        numerals = (retry_snapshot["numerals"] if retry_snapshot else
+                    self.workspace.numerals_from_sections(sections) if seeded else
+                    loaded["numerals"])
+        figures = retry_snapshot["figures"] if retry_snapshot else loaded["figures"]
         workspace = self.workspace.build(
             project=project, references=loaded["references"], documents=documents,
-            sections=sections, numerals=numerals, figures=loaded["figures"],
+            sections=sections, numerals=numerals, figures=figures,
             conversation=history, request=turn.get("user_message") or "",
             qa_report=latest_qa)
         return {"workspace": workspace, "project": project, "references": loaded["references"],
@@ -1034,12 +1103,7 @@ class TurnRunner:
         context = self.prepare(turn)
         workspace: Path = context["workspace"]
         project = context["project"]
-        allowed = [r["publication_number"] for r in context["references"]]
-        allowed += [d["publication_number"] for d in context["documents"]
-                    if d.get("kind") == "prior_art" and d.get("publication_number")]
-        allowed += [f"UPLOAD-{i:02d}" for i in range(1, 1 + sum(
-            1 for d in context["documents"]
-            if d.get("kind") == "prior_art" and not d.get("publication_number")))]
+        allowed = allowed_reference_keys(context["references"], context["documents"])
 
         kind = str(turn.get("kind") or "revise")
         first = not context["had_version"]
@@ -1115,7 +1179,7 @@ class TurnRunner:
                     if not generated.get("ok"):
                         failures = [str(item) for item in generated.get("errors") or ()]
                         raise DrawingInspectionError(failures or [
-                            "One or more sheets did not pass semantic and OCR inspection."])
+                            "One or more sheets did not pass geometry, leader, and OCR inspection."])
                     self.repository.heartbeat(turn_id, lease, stage="independent review")
                     report = self.evaluate(
                         project_id, version_no=int(project.get("latest_version_no") or 0) + 1,
@@ -1124,7 +1188,7 @@ class TurnRunner:
                         review_index=review_index)
                 except DrawingInspectionError as exc:
                     check = {
-                        "name": "Every drawing sheet passes semantic and OCR inspection",
+                        "name": "Every drawing sheet passes geometry, leader, and OCR inspection",
                         "status": "fail", "severity": "error",
                         "detail": (f"{len(exc.errors)} sheet(s) failed. Each failure is listed "
                                    "below so the next repair can address the full set."),
@@ -1155,6 +1219,9 @@ class TurnRunner:
             blockers = filing_blockers(report)
             if not blockers:
                 break
+            if snapshot.get("sections"):
+                self.repository.save_retry_candidate(
+                    turn_id, lease, snapshot=snapshot, report=report)
             self.workspace._write_review(workspace, report)
             if review_index + 1 >= MAX_FINALIZATION_ROUNDS:
                 raise drafting.DraftingValidationError(

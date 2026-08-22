@@ -222,6 +222,24 @@ def test_qa_fails_closed_when_drawing_geometry_does_not_match_the_spec(monkeypat
     assert checks["Drawing content matches its specification"]["status"] == "fail"
 
 
+def test_qa_fails_closed_when_a_printed_leader_does_not_reach_its_named_feature(monkeypatch):
+    import draft_figures
+    monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [{
+        "figure_label": "FIG. 1", "active_version": 2,
+        "versions": [{"version_no": 2, "detected_numerals": ["10"],
+                      "numeral_audit": {"inspected": True, "ok": True},
+                      "semantic_audit": {"inspected": True, "ok": True},
+                      "leader_audit": {"inspected": True, "ok": False,
+                                         "errors": ["10 ends in blank space"]}}],
+    }])
+    merged = draft_studio.figures_for_qa(
+        7, 91, [{"label": "FIG. 1", "caption": "view", "numerals": ["10 body"]}])
+    checks = {item["name"]: item for item in draft_qa.run_checks(
+        sections=GOOD, numerals=NUMERALS, figures=merged, allow_remote=False)}
+    assert checks["Drawing leaders identify the named features"]["status"] == "fail"
+    assert "blank space" in checks["Drawing leaders identify the named features"]["items"][0]
+
+
 def test_qa_fails_closed_when_the_drawing_store_is_unavailable(monkeypatch):
     import draft_figures
 
@@ -649,11 +667,15 @@ def checked_figures(*labels):
         spec = next(item for item in FIGURES
                     if draft_figures.figure_key(item["label"]) == draft_figures.figure_key(label))
         expected = draft_figures.expected_entries(spec, NUMERALS)
+        digest = draft_figures.specification_hash(spec["label"], spec["caption"], expected)
         out.append({"figure_label": label, "active_version": 1, "versions": [{
             "version_no": 1, "numeral_audit": {"ok": True},
-            "semantic_audit": {"ok": True, "specification_hash":
-                               draft_figures.specification_hash(
-                                   spec["label"], spec["caption"], expected)}}]})
+            "leader_audit": {
+                "ok": True, "inspected": True, "specification_hash": digest,
+                "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
+                "review_count": draft_figures.LEADER_REVIEW_COUNT,
+            },
+            "semantic_audit": {"ok": True, "specification_hash": digest}}]})
     return out
 
 
@@ -716,6 +738,27 @@ def test_readiness_rechecks_the_active_drawing_instead_of_trusting_old_qa():
         qa=clean_qa(), figures=figures)
     assert not report["ready"]
     assert any("active drawings" in item["title"] for item in report["blockers"])
+
+
+def test_readiness_blocks_a_sheet_without_final_leader_placement_approval():
+    figures = checked_figures()
+    figures[0]["versions"][0]["leader_audit"] = {
+        "inspected": True, "ok": False, "errors": ["12 points to the body"]}
+    report = draft_uspto.readiness(
+        project={"inventors": "Dana", "applicant": "Example"},
+        version=clean_version(), qa=clean_qa(), figures=figures)
+    assert not report["ready"]
+    assert any("leader placement" in item["items"] for item in report["blockers"])
+
+
+def test_readiness_rejects_a_leader_review_from_an_older_gate():
+    figures = checked_figures()
+    figures[0]["versions"][0]["leader_audit"]["prompt_version"] = "old"
+    report = draft_uspto.readiness(
+        project={"inventors": "Dana", "applicant": "Example"},
+        version=clean_version(), qa=clean_qa(), figures=figures)
+    assert not report["ready"]
+    assert any("leader" in item["items"] for item in report["blockers"])
 
 
 def test_readiness_requires_review_for_the_exact_exported_version():
@@ -965,6 +1008,8 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "Return `questions` as an empty array" in system
     assert "No placeholder" in system
     assert "at least one figure" in system
+    assert "Normally use two to four figures" in system
+    assert "no more than eight numerals on one sheet" in system
     assert "broadest statement of the invention that the description fully supports" in system
 
 
@@ -1047,11 +1092,16 @@ def test_filing_gate_requires_every_check_and_independent_review_to_be_clean():
     assert "review" in draft_studio.filing_blockers({**clean, "status": "failed"})[0].lower()
 
 
+def test_default_finalization_budget_allows_drawing_and_text_repair_rounds():
+    assert draft_studio.MAX_FINALIZATION_ROUNDS == 6
+
+
 def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, tmp_path):
     class Repository:
         def __init__(self):
             self.saved_versions = []
             self.saved_reports = []
+            self.retry_candidates = []
             self.messages = []
 
         def heartbeat(self, *_args, **_kwargs):
@@ -1064,6 +1114,9 @@ def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, t
         def save_qa(self, _project_id, **kwargs):
             self.saved_reports.append(kwargs)
             return {"id": 4, **kwargs["report"]}
+
+        def save_retry_candidate(self, _turn_id, _lease, *, snapshot, report):
+            self.retry_candidates.append((snapshot, report))
 
         def add_message(self, _project_id, role, body, **kwargs):
             self.messages.append((role, body, kwargs))
@@ -1147,7 +1200,44 @@ def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, t
     assert all(message[0] != "qa" or message[1] == "ready" for message in repository.messages)
     assert workspace.review_reports[0]["checks"][0]["items"] == [
         "FIG. 2: wrong fastener axis", "FIG. 7: missing process arrow"]
+    assert repository.retry_candidates[0][0]["sections"] == GOOD
+    assert repository.retry_candidates[0][1]["verdict"] == "fail"
     assert out["version"]["version_no"] == 1
+
+
+def test_retry_preparation_uses_the_durable_checked_candidate_instead_of_published_text(
+        monkeypatch, tmp_path):
+    candidate_sections = {**GOOD, "summary": "Repaired candidate summary."}
+    candidate_report = {
+        "status": "complete", "verdict": "fail", "summary": "Fix claim wording.",
+        "checks": [{"name": "Claims", "status": "fail", "items": ["claim 1"]}],
+        "findings": [],
+    }
+    repository = Mock()
+    repository.documents.return_value = []
+    repository.messages.return_value = []
+    repository.latest_qa.return_value = {"summary": "stale published review"}
+    repository.retry_candidate.return_value = {
+        "snapshot": {"sections": candidate_sections, "numerals": NUMERALS,
+                     "figures": FIGURES},
+        "qa_report": candidate_report,
+    }
+    workspace = Mock()
+    workspace.build.return_value = tmp_path
+    runner = draft_studio.TurnRunner(repository, Mock(), workspace=workspace)
+    monkeypatch.setattr(runner, "_load", lambda _project_id: {
+        "project": {"id": 7, "user_id": 91, "input_kind": "description"},
+        "references": [{"publication_number": ALLOWED[0]}],
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES,
+    })
+
+    context = runner.prepare({"id": 33, "project_id": 7, "attempts": 2,
+                              "user_message": "Finish automatically."})
+
+    values = workspace.build.call_args.kwargs
+    assert values["sections"] == candidate_sections
+    assert values["qa_report"] == candidate_report
+    assert context["previous_sections"] == GOOD
 
 
 def test_invalid_workspace_is_automatic_repair_input_not_a_failed_turn(monkeypatch, tmp_path):
