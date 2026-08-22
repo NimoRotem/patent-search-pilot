@@ -70,6 +70,15 @@ def test_a_family_with_no_symbols_names_the_unclassified_shard():
     assert cn.shard_domains_of(["B25", ""]) == ["unclassified"]
 
 
+def test_a_y_tagging_code_is_not_a_shard():
+    """Y10T carries 4.3M cross-sectionally tagged documents with nothing technical in common. A
+    shard map built straight from `subclass_of` would create one, which is why the family-to-shard
+    helper drops them and `subclass_of` itself, which must match `domain_of`, does not."""
+    assert cn.shard_domains_of(["B23Q7/03", "Y10T29/49826", "B65G2201/02"]) == ["B23Q"]
+    assert cn.shard_domains_of(["Y10T29/49826"]) == ["unclassified"]
+    assert cn.shard_domains_of(["Y10T29/49826"], drop_indexing_codes=False) == ["Y10T"]
+
+
 @pytest.mark.parametrize("sym", ["Y02P70/50", "Y10T29/49826", "Y10S901/30",
                                  "B65G2201/02", "F16B2200/50", "B65G2249/045",
                                  "G05B2219/40", "B65H2701/1752"])

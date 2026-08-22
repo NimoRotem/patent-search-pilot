@@ -146,15 +146,18 @@ by definition this field, and they score:
 
 The best group outside the six core subclasses scores **0.069**, so the field's own core is 1.7x to
 17x denser than anything adjacent to it. There is no natural gap in the tail below that, so the bar
-is a stated choice, not a discovered one. `ops/niche_boundary.py --sweep` prints the whole curve;
-these are the four points that matter:
+is a stated choice, not a discovered one. `ops/niche_boundary.py --sweep` prints the whole curve, and
+re-running it reproduces the checked-in `adjacent_groups` list exactly, 22 for 22:
 
 | min_density | adjacent groups | world publications | world families |
 |--:|--:|--:|--:|
+| 0.07 and above | 0 | 0 | 0 |
 | 0.05 | 9 | 133,587 | 50,337 |
+| 0.04 | 14 | 355,163 | 117,204 |
 | **0.03** | **22** | **1,226,600** | **391,974** |
 | 0.02 | 46 | 2,049,906 | 753,663 |
-| 0.01 | 128 | 5,614,000 | 2,180,000 |
+| 0.015 | 64 | 2,565,415 | 987,099 |
+| 0.01 | 94 | 4,200,720 | 1,712,343 |
 
 0.03 is the last point at which the adjacency stays smaller than half the core (2.55M publications)
 and the last at which every admitted group reads as handling art when its CPC title is looked up

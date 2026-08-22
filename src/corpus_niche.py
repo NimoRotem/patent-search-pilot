@@ -77,16 +77,22 @@ def subclass_of(symbol):
     return s[:4] if s else UNCLASSIFIED
 
 
-def shard_domains_of(symbols):
+def shard_domains_of(symbols, drop_indexing_codes=True):
     """The shard domains one family belongs to, best used on a manifest record's `cpc`.
 
     A family with no usable symbol belongs to the unclassified shard, not to no shard. MEASURED on
     release niche-2026-08-22: 294,327 of 1,607,502 niche families carry `cpc == []`, and they are
     there because the family and citation closures put them there, so they are exactly the families
     a classification-only shard map would lose.
+
+    Y tagging codes are dropped by default, because `Y10T` and `Y10S` are not a technical field and
+    a shard built from them would hold 2.4M cross-sectionally tagged documents with nothing in
+    common. `subclass_of` itself does NOT drop them: it has to stay byte-identical with
+    `shard_router.domain_of`, which maps every symbol it is given.
     """
-    doms = {subclass_of(s) for s in (symbols or ())}
-    doms.discard("")
+    doms = {subclass_of(s) for s in (symbols or ())
+            if not (drop_indexing_codes and is_indexing_code(s))}
+    doms.discard(UNCLASSIFIED)
     return sorted(doms) if doms else [UNCLASSIFIED]
 
 
