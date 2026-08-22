@@ -1410,6 +1410,85 @@ def test_new_turn_preparation_uses_the_latest_failed_turn_candidate(
     assert context["previous_sections"] == GOOD
 
 
+def test_a_candidate_blocked_by_a_new_preflight_gate_is_retained_for_repair(
+        monkeypatch, tmp_path):
+    candidate_figures = [{
+        "label": "FIG. 1", "caption": "assembly view",
+        "numerals": [str(value) for value in range(10, 28, 2)],
+    }]
+    candidate_snapshot = {
+        "sections": GOOD,
+        "numerals": [
+            {"numeral": str(value), "part": f"part {value}"}
+            for value in range(10, 28, 2)
+        ],
+        "figures": candidate_figures,
+    }
+    repository = Mock()
+    repository.documents.return_value = []
+    repository.messages.return_value = []
+    repository.latest_qa.return_value = {"summary": "stale published review"}
+    repository.retry_candidate.return_value = None
+    repository.latest_retry_candidate.return_value = {
+        "turn_id": 32,
+        "snapshot": candidate_snapshot,
+        "qa_report": {
+            "status": "complete", "verdict": "fail", "summary": "Drawing repair needed.",
+            "checks": [], "findings": [],
+        },
+    }
+    workspace = Mock()
+    workspace.build.return_value = tmp_path
+    runner = draft_studio.TurnRunner(repository, Mock(), workspace=workspace)
+    monkeypatch.setattr(runner, "_load", lambda _project_id: {
+        "project": {"id": 7, "user_id": 91, "input_kind": "description"},
+        "references": [{"publication_number": ALLOWED[0]}],
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES,
+    })
+
+    context = runner.prepare({"id": 33, "project_id": 7, "attempts": 1,
+                              "user_message": "Finish automatically."})
+
+    values = workspace.build.call_args.kwargs
+    assert values["figures"] == candidate_figures
+    assert values["qa_report"]["verdict"] == "fail"
+    assert any("current filing preflight" in item["name"].lower()
+               for item in values["qa_report"]["checks"])
+    assert "more than 8 numerals" in json.dumps(values["qa_report"])
+    assert context["resuming_candidate"] is True
+    repository.discard_retry_candidate.assert_not_called()
+
+
+def test_a_structurally_corrupt_candidate_is_discarded_instead_of_repaired(
+        monkeypatch, tmp_path):
+    repository = Mock()
+    repository.documents.return_value = []
+    repository.messages.return_value = []
+    repository.latest_qa.return_value = {"summary": "published review"}
+    repository.retry_candidate.return_value = None
+    repository.latest_retry_candidate.return_value = {
+        "turn_id": 32,
+        "snapshot": {"sections": {"title": "partial"}, "numerals": "bad", "figures": []},
+        "qa_report": {"verdict": "fail"},
+    }
+    workspace = Mock()
+    workspace.build.return_value = tmp_path
+    runner = draft_studio.TurnRunner(repository, Mock(), workspace=workspace)
+    monkeypatch.setattr(runner, "_load", lambda _project_id: {
+        "project": {"id": 7, "user_id": 91, "input_kind": "description"},
+        "references": [{"publication_number": ALLOWED[0]}],
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES,
+    })
+
+    context = runner.prepare({"id": 33, "project_id": 7, "attempts": 1,
+                              "user_message": "Finish automatically."})
+
+    values = workspace.build.call_args.kwargs
+    assert values["sections"] == GOOD and values["figures"] == FIGURES
+    assert context["resuming_candidate"] is False
+    repository.discard_retry_candidate.assert_called_once_with(32)
+
+
 def test_an_agent_budget_stop_checkpoints_the_valid_workspace_for_retry(monkeypatch, tmp_path):
     repository = Mock()
     repository.documents.return_value = []

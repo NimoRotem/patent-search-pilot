@@ -511,6 +511,57 @@ def validate_snapshot(snapshot: Mapping[str, Any],
     return {"sections": sections, "numerals": numerals, "figures": figures}
 
 
+def candidate_snapshot_for_repair(snapshot: Any) -> dict[str, Any] | None:
+    """Recover a once-validated candidate after a newer preflight rule blocks publication."""
+    if not isinstance(snapshot, Mapping):
+        return None
+    raw_sections = snapshot.get("sections")
+    raw_numerals = snapshot.get("numerals")
+    raw_figures = snapshot.get("figures")
+    if (not isinstance(raw_sections, Mapping) or
+            not isinstance(raw_numerals, Sequence) or isinstance(raw_numerals, (str, bytes)) or
+            not isinstance(raw_figures, Sequence) or isinstance(raw_figures, (str, bytes))):
+        return None
+    sections = {}
+    for key, _name, _heading in draft_workspace.SECTION_FILES:
+        value = raw_sections.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return None
+        sections[key] = human_text(value.replace("\x00", "").strip())
+    if not all(isinstance(item, Mapping) for item in raw_numerals):
+        return None
+    if not all(isinstance(item, Mapping) for item in raw_figures):
+        return None
+    return {
+        "sections": sections,
+        "numerals": human_text([dict(item) for item in raw_numerals]),
+        "figures": human_text([dict(item) for item in raw_figures]),
+    }
+
+
+def candidate_preflight_report(report: Mapping[str, Any] | None,
+                               error: Exception) -> dict[str, Any]:
+    """Add the current gate failure to an older candidate's repair instructions."""
+    out = human_text(dict(report or {}))
+    name = "Saved candidate passes the current filing preflight"
+    checks = [dict(item) for item in (out.get("checks") or [])
+              if isinstance(item, Mapping) and str(item.get("name") or "") != name]
+    detail = str(error)[:1200]
+    checks.append({
+        "name": name, "status": "fail", "severity": "error", "detail": detail,
+        "items": [detail[:600]],
+    })
+    findings = [dict(item) for item in (out.get("findings") or [])
+                if isinstance(item, Mapping)]
+    out.update({
+        "status": "failed", "verdict": "fail",
+        "summary": "The saved candidate needs an automatic update for the current filing gates.",
+        "checks": checks, "findings": findings,
+        "counts": draft_qa.counts_for(checks, findings), "last_error": detail,
+    })
+    return out
+
+
 def citations_of(sections: Mapping[str, str]) -> list[str]:
     out: list[str] = []
     for key, _name, _heading in draft_workspace.SECTION_FILES:
@@ -1147,9 +1198,16 @@ class TurnRunner:
                 retry_snapshot = validate_snapshot(
                     candidate.get("snapshot") or {},
                     allowed_reference_keys(loaded["references"], documents))
-            except drafting.DraftingError:
-                self.repository.discard_retry_candidate(
-                    int(candidate.get("turn_id") or turn["id"]))
+            except drafting.DraftingError as exc:
+                retry_snapshot = candidate_snapshot_for_repair(
+                    candidate.get("snapshot") or {})
+                if retry_snapshot is None:
+                    self.repository.discard_retry_candidate(
+                        int(candidate.get("turn_id") or turn["id"]))
+                else:
+                    sections = retry_snapshot["sections"]
+                    latest_qa = candidate_preflight_report(
+                        candidate.get("qa_report") or {}, exc)
             else:
                 sections = retry_snapshot["sections"]
                 latest_qa = candidate.get("qa_report") or latest_qa
