@@ -190,6 +190,26 @@ def image_model() -> str:
                           str(config.PATENT_FIGURE_IMAGE_MODEL)).strip()
 
 
+def image_location() -> str:
+    return os.environ.get(
+        "PATENT_FIGURE_IMAGE_LOCATION",
+        str(config.PATENT_FIGURE_IMAGE_LOCATION)).strip()
+
+
+_IMAGE_CLIENT_LOCAL = threading.local()
+
+
+def _image_client():
+    """Use the image model's global endpoint without moving regional text and review calls."""
+    key = (str(config.GCP_PROJECT), image_location())
+    if getattr(_IMAGE_CLIENT_LOCAL, "key", None) != key:
+        from google import genai
+        _IMAGE_CLIENT_LOCAL.client = genai.Client(
+            vertexai=True, project=key[0], location=key[1])
+        _IMAGE_CLIENT_LOCAL.key = key
+    return _IMAGE_CLIENT_LOCAL.client
+
+
 def vision_model() -> str:
     return os.environ.get("PATENT_FIGURE_VISION_MODEL",
                           str(config.PATENT_FIGURE_VISION_MODEL)).strip()
@@ -623,14 +643,14 @@ def _model_call(prompt, previous_png=None):
         # SDK. Production has the SDK and always uses its typed image Part objects.
         if previous_png:
             raise
-        return llm._client().models.generate_content(
+        return _image_client().models.generate_content(
             model=image_model(), contents=[DRAWING_SYSTEM + "\n\n" + prompt],
             config={"response_modalities": ["TEXT", "IMAGE"], "temperature": 0.35})
     contents = []
     if previous_png:
         contents.append(Part.from_bytes(data=previous_png, mime_type="image/png"))
     contents.append(DRAWING_SYSTEM + "\n\n" + prompt)
-    return llm._client().models.generate_content(
+    return _image_client().models.generate_content(
         model=image_model(), contents=contents,
         config=GenerateContentConfig(response_modalities=["TEXT", "IMAGE"], temperature=0.35))
 

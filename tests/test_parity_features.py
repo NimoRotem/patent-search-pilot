@@ -282,8 +282,7 @@ def test_generate_png_surfaces_a_refusal_instead_of_returning_nothing(monkeypatc
         candidates = [type("C", (), {"content": type("X", (), {"parts": [Part()]})()})()]
         usage_metadata = None
 
-    import llm
-    monkeypatch.setattr(llm, "_client", lambda: type("C", (), {
+    monkeypatch.setattr(draft_figures, "_image_client", lambda: type("C", (), {
         "models": type("M", (), {"generate_content": staticmethod(lambda **k: Resp())})()})())
     with pytest.raises(draft_figures.FigureError) as exc:
         draft_figures.generate_png("draw something")

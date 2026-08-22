@@ -90,6 +90,26 @@ def test_semantic_response_schema_is_inline_for_vertex():
     assert '"$ref"' not in marked and '"$defs"' not in marked
 
 
+def test_image_generation_uses_its_dedicated_location_client(monkeypatch):
+    calls = []
+
+    class Models:
+        def generate_content(self, **values):
+            calls.append(values)
+            return "image-response"
+
+    class Client:
+        models = Models()
+
+    monkeypatch.setattr(draft_figures, "_image_client", lambda: Client())
+    monkeypatch.setattr(
+        draft_figures.llm, "_client",
+        lambda: (_ for _ in ()).throw(AssertionError("shared regional client must not be used")))
+
+    assert draft_figures._model_call("draw exact geometry") == "image-response"
+    assert calls and calls[0]["model"] == draft_figures.image_model()
+
+
 def test_verbose_visual_evidence_does_not_abort_an_otherwise_valid_review():
     evidence = "visually verified endpoint " * 60
     semantic = draft_figures._SemanticInspection.model_validate({
