@@ -191,6 +191,30 @@ def test_ensure_project_figures_draws_every_missing_spec_with_canonical_parts(mo
     assert calls[0]["numerals"] == ["10 = body", "12 = pump"]
 
 
+def test_ensure_project_figures_collects_every_failed_sheet_before_repair(monkeypatch):
+    monkeypatch.setattr(draft_figures, "listing", lambda *a: [])
+    attempted = []
+
+    def render(*_args, **values):
+        attempted.append(values["label"])
+        if "1" in values["label"]:
+            raise draft_figures.FigureError("wrong motor axis")
+        return {"figure_id": 2, "numeral_audit": {"ok": True},
+                "semantic_audit": {"ok": True}}
+
+    monkeypatch.setattr(draft_figures, "render_figure", render)
+    out = draft_figures.ensure_project_figures(
+        7, 91, sections={}, disclosure="body and pump",
+        numeral_table=[{"numeral": "10", "part": "body"}],
+        figure_specs=[
+            {"label": "FIG. 1", "caption": "side view", "numerals": ["10"]},
+            {"label": "FIG. 2", "caption": "bottom view", "numerals": ["10"]},
+        ])
+    assert attempted == ["FIG. 1", "FIG. 2"]
+    assert out["ok"] is False and out["generated"] == 1
+    assert out["errors"] == ["FIG. 1: wrong motor axis"]
+
+
 def test_changed_figure_spec_is_reinspected_even_when_its_numerals_are_unchanged(monkeypatch):
     spec = {"label": "FIG. 1", "caption": "new sectional view", "numerals": ["10"]}
     monkeypatch.setattr(draft_figures, "listing", lambda *a: [{

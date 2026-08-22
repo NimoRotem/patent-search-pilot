@@ -1220,7 +1220,8 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
         detail = "; ".join((semantic.get("errors") or []) +
                            (["missing " + ", ".join(semantic.get("missing") or [])]
                             if semantic.get("missing") else []))
-        raise FigureError("semantic drawing review failed" + (f": {detail[:300]}" if detail else ""))
+        raise FigureError(
+            "semantic drawing review failed" + (f": {detail[:1200]}" if detail else ""))
 
     png, labels = b"", {}
     # A larger deterministic label pass changes only typeset text and leader lines. OCR each
@@ -1290,7 +1291,7 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
         for duplicate in candidates[:-1]:
             archived += int(archive_figure(duplicate["id"], user_id))
         by_key[key] = candidates[-1]
-    generated, reused, results = 0, 0, []
+    generated, reused, results, errors = 0, 0, [], []
     for index, spec in enumerate(specs, 1):
         label = str(spec.get("label") or f"FIG. {index}")
         caption = str(spec.get("caption") or "")[:4000]
@@ -1311,14 +1312,23 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
                             "numeral_audit": active["numeral_audit"],
                             "semantic_audit": active["semantic_audit"]})
             continue
-        result = render_figure(
-            project_id, user_id, label=label, caption=caption,
-            sections=sections, disclosure=disclosure, numerals=expected,
-            figure_id=(current or {}).get("id"),
-            instruction="Automatically reconcile this sheet with the current filing text.")
+        try:
+            result = render_figure(
+                project_id, user_id, label=label, caption=caption,
+                sections=sections, disclosure=disclosure, numerals=expected,
+                figure_id=(current or {}).get("id"),
+                instruction="Automatically reconcile this sheet with the current filing text.")
+        except FigureError as exc:
+            error = f"{canonical_figure_label(label)}: {str(exc)[:1400]}"
+            errors.append(error)
+            results.append({"label": label, "error": error,
+                            "numeral_audit": {"ok": False},
+                            "semantic_audit": {"ok": False}})
+            continue
         generated += 1
         results.append(result)
     return {"generated": generated, "reused": reused, "archived": archived,
+            "errors": errors,
             "figures": results, "ok": len(results) == len(specs) and
                   all((item.get("numeral_audit") or {}).get("ok") and
                       (item.get("semantic_audit") or {}).get("ok") for item in results)}

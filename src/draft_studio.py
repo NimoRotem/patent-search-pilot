@@ -1103,7 +1103,11 @@ class TurnRunner:
                         numerals=snapshot["numerals"], figures=snapshot["figures"],
                         disclosure=str(project.get("disclosure_text") or ""), workspace=workspace)
                     if not generated.get("ok"):
-                        raise StudioError("One or more drawing sheets did not pass inspection.")
+                        failures = [str(item) for item in generated.get("errors") or ()]
+                        raise StudioError(
+                            "Drawing inspection failed: " +
+                            ("; ".join(failures) if failures else
+                             "one or more sheets did not pass semantic and OCR inspection."))
                     self.repository.heartbeat(turn_id, lease, stage="independent review")
                     report = self.evaluate(
                         project_id, version_no=int(project.get("latest_version_no") or 0) + 1,
