@@ -540,11 +540,11 @@ def _figure_checks(sections: Mapping[str, str],
                 if not figure.get("drawn"):
                     continue
                 audit = figure.get("semantic_audit") or {}
-                if not audit.get("inspected") or not audit.get("ok"):
+                if not draft_figures.current_semantic_audit(audit):
                     detail = "; ".join(str(item) for item in audit.get("errors") or [])
                     semantic_failures.append(
                         f"{figure.get('label') or 'drawing'}: " +
-                        (detail[:220] or "semantic pixel inspection did not pass"))
+                        (detail[:220] or "current semantic pixel consensus did not pass"))
                 leader = figure.get("leader_audit") or {}
                 if not draft_figures.current_leader_audit(leader):
                     detail = "; ".join(str(item) for item in leader.get("errors") or [])

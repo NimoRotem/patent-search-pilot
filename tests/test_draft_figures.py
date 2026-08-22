@@ -25,6 +25,15 @@ def accepted_leader_audit(**values):
     }
 
 
+def accepted_semantic_audit(**values):
+    return {
+        "ok": True, "inspected": True,
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        **values,
+    }
+
+
 def test_semantic_response_schema_is_inline_for_vertex():
     encoded = json.dumps(draft_figures.SEMANTIC_RESPONSE_SCHEMA)
     assert '"$ref"' not in encoded and '"$defs"' not in encoded
@@ -103,6 +112,44 @@ def test_semantic_review_treats_named_surfaces_and_spaces_as_visible_geometry():
     assert "physically separate object" in guidance
     assert "distinct representative endpoint" in guidance
     assert "must not share coordinates" in guidance
+
+
+def test_semantic_consensus_fails_when_the_constraint_trace_disagrees():
+    expected = ["10 = base", "12 = closed loop"]
+    primary = {
+        "matches_spec": True, "summary": "all geometry appears present", "errors": [],
+        "unexpected_text": [],
+        "anchors": [
+            {"numeral": "10", "x": 300, "y": 500, "visible": True, "evidence": "base"},
+            {"numeral": "12", "x": 500, "y": 500, "visible": True,
+             "evidence": "closed loop"},
+        ],
+    }
+    adversarial = {
+        "matches_spec": False, "summary": "an extra ring violates the exact count",
+        "errors": ["The image has four rings where exactly three are required."],
+        "unexpected_text": [],
+        "anchors": [
+            {"numeral": "10", "x": 300, "y": 500, "visible": True, "evidence": "base"},
+            {"numeral": "12", "x": 500, "y": 500, "visible": True,
+             "evidence": "loop is present but its geometry is wrong"},
+        ],
+    }
+    consensus = draft_figures.semantic_consensus(expected, [primary, adversarial])
+    assert consensus["ok"] is False and consensus["review_count"] == 2
+    assert "four rings" in consensus["errors"][0]
+
+
+def test_only_the_current_two_trace_semantic_review_is_accepted():
+    current = {
+        "ok": True, "inspected": True,
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": 2,
+    }
+    assert draft_figures.current_semantic_audit(current) is True
+    assert draft_figures.current_semantic_audit({**current, "review_count": 1}) is False
+    assert draft_figures.current_semantic_audit({**current, "prompt_version": "old"}) is False
+    assert draft_figures.current_semantic_audit({"ok": True}) is False
 
 
 def test_leader_audit_rejects_converged_or_wrong_endpoints():
@@ -449,7 +496,8 @@ def test_ensure_project_figures_draws_every_missing_spec_with_canonical_parts(mo
     calls = []
     monkeypatch.setattr(draft_figures, "render_figure", lambda *a, **k: calls.append(k) or {
         "figure_id": len(calls), "numeral_audit": {"ok": True},
-        "semantic_audit": {"ok": True}, "leader_audit": accepted_leader_audit()})
+        "semantic_audit": accepted_semantic_audit(),
+        "leader_audit": accepted_leader_audit()})
     out = draft_figures.ensure_project_figures(
         7, 91, sections={}, disclosure="a body carrying a pump",
         numeral_table=[{"numeral": "10", "part": "body"},
@@ -471,7 +519,7 @@ def test_ensure_project_figures_collects_every_failed_sheet_before_repair(monkey
         if "1" in values["label"]:
             raise draft_figures.FigureError("wrong motor axis")
         return {"figure_id": 2, "numeral_audit": {"ok": True},
-                "semantic_audit": {"ok": True},
+                "semantic_audit": accepted_semantic_audit(),
                 "leader_audit": accepted_leader_audit()}
 
     monkeypatch.setattr(draft_figures, "render_figure", render)
@@ -496,7 +544,8 @@ def test_changed_figure_spec_is_reinspected_even_when_its_numerals_are_unchanged
     }])
     calls = []
     monkeypatch.setattr(draft_figures, "render_figure", lambda *a, **k: calls.append(k) or {
-        "figure_id": 8, "numeral_audit": {"ok": True}, "semantic_audit": {"ok": True},
+        "figure_id": 8, "numeral_audit": {"ok": True},
+        "semantic_audit": accepted_semantic_audit(),
         "leader_audit": accepted_leader_audit()})
     monkeypatch.setattr(draft_figures, "archive_figure", lambda *a: True)
     draft_figures.ensure_project_figures(
@@ -509,7 +558,7 @@ def test_obsolete_and_duplicate_sheets_are_archived_without_losing_history(monke
     spec = {"label": "FIG. 1", "caption": "side view", "numerals": ["10"]}
     digest = draft_figures.specification_hash("FIG. 1", "side view", ["10 = body"])
     active = {"version_no": 1, "numeral_audit": {"ok": True, "expected": ["10"]},
-              "semantic_audit": {"ok": True, "specification_hash": digest},
+              "semantic_audit": accepted_semantic_audit(specification_hash=digest),
               "leader_audit": accepted_leader_audit(specification_hash=digest)}
     monkeypatch.setattr(draft_figures, "listing", lambda *a: [
         {"id": 2, "figure_label": "FIG. 1", "active_version": 1, "versions": [active]},
@@ -535,7 +584,7 @@ def test_a_previous_leader_review_is_never_reused(monkeypatch):
     active = {
         "version_no": 1,
         "numeral_audit": {"ok": True, "expected": ["10"]},
-        "semantic_audit": {"ok": True, "specification_hash": digest},
+        "semantic_audit": accepted_semantic_audit(specification_hash=digest),
         "leader_audit": {
             "ok": True, "inspected": True, "specification_hash": digest,
             "prompt_version": "figure-leader-v2-single-review", "review_count": 1,
@@ -546,7 +595,36 @@ def test_a_previous_leader_review_is_never_reused(monkeypatch):
     }])
     calls = []
     monkeypatch.setattr(draft_figures, "render_figure", lambda *a, **k: calls.append(k) or {
-        "figure_id": 3, "numeral_audit": {"ok": True}, "semantic_audit": {"ok": True},
+        "figure_id": 3, "numeral_audit": {"ok": True},
+        "semantic_audit": accepted_semantic_audit(),
+        "leader_audit": accepted_leader_audit(),
+    })
+    monkeypatch.setattr(draft_figures, "archive_figure", lambda *a: True)
+    out = draft_figures.ensure_project_figures(
+        7, 91, sections={}, disclosure="body",
+        numeral_table=[{"numeral": "10", "part": "body"}], figure_specs=[spec])
+    assert len(calls) == 1 and out["generated"] == 1 and out["reused"] == 0
+
+
+def test_a_previous_semantic_review_is_never_reused(monkeypatch):
+    spec = {"label": "FIG. 1", "caption": "side view", "numerals": ["10"]}
+    digest = draft_figures.specification_hash("FIG. 1", "side view", ["10 = body"])
+    active = {
+        "version_no": 1,
+        "numeral_audit": {"ok": True, "expected": ["10"]},
+        "semantic_audit": {
+            "ok": True, "inspected": True, "specification_hash": digest,
+            "prompt_version": "figure-semantic-v5-single-review", "review_count": 1,
+        },
+        "leader_audit": accepted_leader_audit(specification_hash=digest),
+    }
+    monkeypatch.setattr(draft_figures, "listing", lambda *a: [{
+        "id": 3, "figure_label": "FIG. 1", "active_version": 1, "versions": [active],
+    }])
+    calls = []
+    monkeypatch.setattr(draft_figures, "render_figure", lambda *a, **k: calls.append(k) or {
+        "figure_id": 3, "numeral_audit": {"ok": True},
+        "semantic_audit": accepted_semantic_audit(),
         "leader_audit": accepted_leader_audit(),
     })
     monkeypatch.setattr(draft_figures, "archive_figure", lambda *a: True)
@@ -563,7 +641,7 @@ def test_checked_images_are_materialized_for_the_independent_reviewer(monkeypatc
     monkeypatch.setattr(draft_figures, "listing", lambda *a: [{
         "id": 8, "figure_label": "FIG. 1: side view", "active_version": 2,
         "versions": [{"version_no": 2, "numeral_audit": {"ok": True},
-                      "semantic_audit": {"ok": True},
+                      "semantic_audit": accepted_semantic_audit(),
                       "leader_audit": accepted_leader_audit()}],
     }])
     monkeypatch.setattr(draft_figures, "png_bytes", lambda *a, **k: ("image/png", b"checked"))
@@ -577,7 +655,7 @@ def test_old_leader_reviews_are_not_materialized_for_independent_review(monkeypa
     monkeypatch.setattr(draft_figures, "listing", lambda *a: [{
         "id": 8, "figure_label": "FIG. 1", "active_version": 2,
         "versions": [{"version_no": 2, "numeral_audit": {"ok": True},
-                      "semantic_audit": {"ok": True},
+                      "semantic_audit": accepted_semantic_audit(),
                       "leader_audit": {"ok": True, "inspected": True,
                                          "prompt_version": "old", "review_count": 1}}],
     }])

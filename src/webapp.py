@@ -6266,7 +6266,7 @@ def _filing_figure_images(project):
                        if int(row.get("version_no") or 0) ==
                        int(figure.get("active_version") or 0)), None) or {}
         if not ((active.get("numeral_audit") or {}).get("ok") and
-                (active.get("semantic_audit") or {}).get("ok") and
+                draft_figures.current_semantic_audit(active.get("semantic_audit") or {}) and
                 draft_figures.current_leader_audit(active.get("leader_audit") or {})):
             raise drafting.DraftingValidationError(
                 f"{figure.get('figure_label') or 'A drawing'} has not passed all drawing checks.")
