@@ -36,7 +36,7 @@ AGENT_MODEL = os.environ.get("AGENT_MODEL", "gpt-4o-mini")
 PATENT_FIGURE_IMAGE_MODEL = os.environ.get(
     "PATENT_FIGURE_IMAGE_MODEL", "gemini-2.5-flash-image")
 PATENT_FIGURE_VISION_MODEL = os.environ.get(
-    "PATENT_FIGURE_VISION_MODEL", "gemini-2.5-flash")
+    "PATENT_FIGURE_VISION_MODEL", "gemini-2.5-pro")
 
 # Seed CPC classes (spec §0). Stored without the space BigQuery uses (e.g. "B66C1/02").
 SEED_CPC = [

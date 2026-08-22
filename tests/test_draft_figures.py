@@ -19,6 +19,7 @@ def blank_png(width=640, height=420):
 def accepted_leader_audit(**values):
     return {
         "ok": True, "inspected": True,
+        "model_name": draft_figures.vision_model(),
         "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
         "review_count": draft_figures.LEADER_REVIEW_COUNT,
         **values,
@@ -28,6 +29,7 @@ def accepted_leader_audit(**values):
 def accepted_marked_anchor_audit(**values):
     return {
         "ok": True, "inspected": True,
+        "model_name": draft_figures.vision_model(),
         "prompt_version": draft_figures.MARKED_ANCHOR_PROMPT_VERSION,
         "review_count": draft_figures.MARKED_ANCHOR_REVIEW_COUNT,
         **values,
@@ -37,8 +39,11 @@ def accepted_marked_anchor_audit(**values):
 def accepted_semantic_audit(**values):
     marked_values = ({"specification_hash": values["specification_hash"]}
                      if values.get("specification_hash") else {})
+    if values.get("model_name"):
+        marked_values["model_name"] = values["model_name"]
     return {
         "ok": True, "inspected": True,
+        "model_name": draft_figures.vision_model(),
         "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
         "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
         "pixel_anchor_audit": {
@@ -244,6 +249,7 @@ def test_marked_anchor_montage_preserves_the_endpoint_pixel_inside_a_red_ring():
 def test_only_the_current_two_trace_semantic_review_is_accepted():
     current = {
         "ok": True, "inspected": True,
+        "model_name": draft_figures.vision_model(),
         "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
         "review_count": 2,
         "pixel_anchor_audit": {
@@ -411,6 +417,7 @@ def test_leader_consensus_fails_when_the_adversarial_trace_disagrees():
 def test_only_the_current_two_trace_leader_review_is_accepted():
     current = {
         "ok": True, "inspected": True,
+        "model_name": draft_figures.vision_model(),
         "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
         "review_count": 2,
     }
@@ -527,6 +534,20 @@ def test_visual_review_spec_keeps_the_full_realistic_brief_and_every_part():
         assert specification["figure_label"] == "FIG. 4"
         assert "terminal flange remains below the upper plate" in specification["caption"].lower()
         assert [item["numeral"] for item in specification["parts"]] == ["10", "12", "14"]
+
+
+def test_current_visual_audits_are_bound_to_the_configured_review_model(monkeypatch):
+    monkeypatch.setattr(draft_figures, "vision_model", lambda: "gemini-2.5-pro")
+    digest = "a" * 64
+    semantic = accepted_semantic_audit(
+        specification_hash=digest, model_name="gemini-2.5-flash")
+    leader = accepted_leader_audit(
+        specification_hash=digest, model_name="gemini-2.5-flash")
+
+    assert draft_figures.current_semantic_audit(semantic) is False
+    assert draft_figures.current_leader_audit(leader) is False
+    assert draft_figures.current_marked_anchor_audit(
+        semantic["marked_anchor_audit"], specification_hash=digest) is False
 
 
 def test_render_refuses_to_store_a_semantically_wrong_drawing(monkeypatch):

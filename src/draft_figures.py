@@ -41,9 +41,10 @@ MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
 FIGURE_PROMPT_VERSION = "figure-v3-geometry-only"
 SEMANTIC_PROMPT_VERSION = (
-    "figure-semantic-v10-full-spec-consensus-pixel-grounded-marked-topology")
-LEADER_PROMPT_VERSION = "figure-leader-v4-full-spec-independent-consensus"
-MARKED_ANCHOR_PROMPT_VERSION = "figure-anchor-v2-full-spec-marked-crop-consensus"
+    "figure-semantic-v11-high-accuracy-full-spec-consensus-pixel-grounded-marked-topology")
+LEADER_PROMPT_VERSION = "figure-leader-v5-high-accuracy-full-spec-independent-consensus"
+MARKED_ANCHOR_PROMPT_VERSION = (
+    "figure-anchor-v3-high-accuracy-full-spec-marked-crop-consensus")
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v1-exterior-connectivity"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
@@ -1104,6 +1105,7 @@ def _current_semantic_model_audit(value) -> bool:
         return False
     return bool(
         value.get("ok") and value.get("inspected") and
+        value.get("model_name") == vision_model() and
         value.get("prompt_version") == SEMANTIC_PROMPT_VERSION and
         review_count == SEMANTIC_REVIEW_COUNT)
 
@@ -1302,6 +1304,7 @@ def current_marked_anchor_audit(value, *, specification_hash: str = "") -> bool:
     same_spec = not specification_hash or value.get("specification_hash") == specification_hash
     return bool(
         value.get("ok") and value.get("inspected") and same_spec and
+        value.get("model_name") == vision_model() and
         value.get("prompt_version") == MARKED_ANCHOR_PROMPT_VERSION and
         review_count == MARKED_ANCHOR_REVIEW_COUNT)
 
@@ -1321,6 +1324,7 @@ def current_leader_audit(value) -> bool:
         return False
     return bool(
         value.get("ok") and value.get("inspected") and
+        value.get("model_name") == vision_model() and
         value.get("prompt_version") == LEADER_PROMPT_VERSION and
         review_count == LEADER_REVIEW_COUNT)
 
@@ -1380,6 +1384,7 @@ def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict
     if cached is not None:
         cached["specification_hash"] = spec_hash
         cached["prompt_version"] = SEMANTIC_PROMPT_VERSION
+        cached["model_name"] = model
         if _current_semantic_model_audit(cached):
             _audit_log(
                 request_id=str(uuid.uuid4()), provider="vertex", model=model, stage="semantic",
@@ -1463,6 +1468,7 @@ def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict
                 "unexpected_text": [], "anchors": [], "summary": "",
                 "review_count": len(payloads), "specification_hash": spec_hash,
                 "prompt_version": SEMANTIC_PROMPT_VERSION,
+                "model_name": model,
             }
             _audit_log(request_id=request_id, provider="vertex", model=model, stage=stage,
                        prompt_version=SEMANTIC_PROMPT_VERSION,
@@ -1472,6 +1478,7 @@ def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict
     result = semantic_consensus(numerals, payloads)
     result["specification_hash"] = spec_hash
     result["prompt_version"] = SEMANTIC_PROMPT_VERSION
+    result["model_name"] = model
     _analysis_cache_put(key, stage="semantic", provider="vertex", model=model,
                         prompt_version=SEMANTIC_PROMPT_VERSION, result=result)
     return result
@@ -1551,6 +1558,7 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
     if cached is not None:
         cached["specification_hash"] = spec_hash
         cached["prompt_version"] = MARKED_ANCHOR_PROMPT_VERSION
+        cached["model_name"] = model
         if current_marked_anchor_audit(cached, specification_hash=spec_hash):
             _audit_log(
                 request_id=str(uuid.uuid4()), provider="vertex", model=model,
@@ -1632,6 +1640,7 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
                 "errors": [f"Marked endpoint inspection failed: {str(last_error)[:180]}"],
                 "specification_hash": spec_hash,
                 "prompt_version": MARKED_ANCHOR_PROMPT_VERSION,
+                "model_name": model,
             }
             _audit_log(
                 request_id=request_id, provider="vertex", model=model, stage=stage,
@@ -1642,6 +1651,7 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
     result = marked_anchor_consensus(numerals, payloads)
     result["specification_hash"] = spec_hash
     result["prompt_version"] = MARKED_ANCHOR_PROMPT_VERSION
+    result["model_name"] = model
     _analysis_cache_put(
         key, stage="marked_anchors", provider="vertex", model=model,
         prompt_version=MARKED_ANCHOR_PROMPT_VERSION, result=result)
@@ -1661,6 +1671,7 @@ def inspect_leaders(png: bytes, *, label: str, caption: str, numerals) -> dict:
     if cached is not None:
         cached["specification_hash"] = spec_hash
         cached["prompt_version"] = LEADER_PROMPT_VERSION
+        cached["model_name"] = model
         if current_leader_audit(cached):
             _audit_log(
                 request_id=str(uuid.uuid4()), provider="vertex", model=model, stage="leaders",
@@ -1743,6 +1754,7 @@ def inspect_leaders(png: bytes, *, label: str, caption: str, numerals) -> dict:
                 "errors": [f"Leader placement inspection failed: {str(last_error)[:180]}"],
                 "specification_hash": spec_hash,
                 "prompt_version": LEADER_PROMPT_VERSION,
+                "model_name": model,
             }
             _audit_log(request_id=request_id, provider="vertex", model=model, stage=stage,
                        prompt_version=LEADER_PROMPT_VERSION,
@@ -1752,6 +1764,7 @@ def inspect_leaders(png: bytes, *, label: str, caption: str, numerals) -> dict:
     result = leader_consensus(numerals, payloads)
     result["specification_hash"] = spec_hash
     result["prompt_version"] = LEADER_PROMPT_VERSION
+    result["model_name"] = model
     _analysis_cache_put(key, stage="leaders", provider="vertex", model=model,
                         prompt_version=LEADER_PROMPT_VERSION, result=result)
     return result

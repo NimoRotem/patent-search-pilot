@@ -673,11 +673,13 @@ def checked_figures(*labels):
             "version_no": 1, "numeral_audit": {"ok": True},
             "leader_audit": {
                 "ok": True, "inspected": True, "specification_hash": digest,
+                "model_name": draft_figures.vision_model(),
                 "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
                 "review_count": draft_figures.LEADER_REVIEW_COUNT,
             },
             "semantic_audit": {
                 "ok": True, "inspected": True, "specification_hash": digest,
+                "model_name": draft_figures.vision_model(),
                 "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
                 "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
                 "pixel_anchor_audit": {
@@ -690,6 +692,7 @@ def checked_figures(*labels):
                 },
                 "marked_anchor_audit": {
                     "ok": True, "inspected": True, "specification_hash": digest,
+                    "model_name": draft_figures.vision_model(),
                     "prompt_version": draft_figures.MARKED_ANCHOR_PROMPT_VERSION,
                     "review_count": draft_figures.MARKED_ANCHOR_REVIEW_COUNT,
                 },
