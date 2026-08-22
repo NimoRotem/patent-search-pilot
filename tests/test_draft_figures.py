@@ -64,6 +64,23 @@ def test_semantic_response_schema_is_inline_for_vertex():
     assert '"$ref"' not in leader and '"$defs"' not in leader
 
 
+def test_verbose_visual_evidence_does_not_abort_an_otherwise_valid_review():
+    evidence = "visually verified endpoint " * 60
+    semantic = draft_figures._SemanticInspection.model_validate({
+        "matches_spec": True, "summary": "checked", "errors": [], "unexpected_text": [],
+        "anchors": [{"numeral": "10", "x": 400, "y": 500, "visible": True,
+                     "evidence": evidence}],
+    })
+    leaders = draft_figures._LeaderInspection.model_validate({
+        "matches_spec": True, "summary": "checked", "errors": [],
+        "labels": [{"numeral": "10", "correct": True, "evidence": evidence,
+                    "suggested_x": 400, "suggested_y": 500}],
+    })
+
+    assert semantic.anchors[0].evidence == evidence
+    assert leaders.labels[0].evidence == evidence
+
+
 def test_figure_identity_uses_the_figure_number_not_a_truncated_caption():
     long = "FIG. 2 - Side elevation in vertical section showing the chamber and every air path"
     assert draft_figures.figure_key(long) == draft_figures.figure_key(long[:80]) == "fig-2"

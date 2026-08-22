@@ -63,7 +63,7 @@ class _PartAnchor(BaseModel):
     x: int = Field(ge=0, le=1000)
     y: int = Field(ge=0, le=1000)
     visible: bool
-    evidence: str = Field(max_length=500)
+    evidence: str = Field(max_length=2000)
 
 
 class _SemanticInspection(BaseModel):
@@ -77,7 +77,7 @@ class _SemanticInspection(BaseModel):
 class _LeaderLabel(BaseModel):
     numeral: str
     correct: bool
-    evidence: str = Field(max_length=500)
+    evidence: str = Field(max_length=2000)
     suggested_x: int = Field(ge=0, le=1000)
     suggested_y: int = Field(ge=0, le=1000)
 
