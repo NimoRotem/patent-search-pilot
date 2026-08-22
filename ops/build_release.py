@@ -57,12 +57,17 @@ def cmd_mirror(a):
 
 def cmd_assign(a):
     dst = _dst()
-    r = source_mod.assign_family_homes(dst, progress=_log)
-    print(json.dumps(r, indent=1))
+    if not a.counts_only:
+        r = source_mod.assign_family_homes(dst, progress=_log)
+        print(json.dumps(r, indent=1))
     if not a.no_counts:
         src = _src()
-        c = source_mod.fill_family_chunk_counts(src, dst, batch=a.batch, progress=_log)
+        c = source_mod.fill_family_chunk_counts(src, dst, batch=a.batch, progress=_log,
+                                               resume=a.resume)
         print(json.dumps(c, indent=1))
+        b = source_mod.fill_family_backlog_counts(src, dst, batch=a.batch, progress=_log,
+                                                  resume=a.resume)
+        print(json.dumps(b, indent=1))
 
 
 def cmd_plan(a):
@@ -71,9 +76,11 @@ def cmd_plan(a):
     cap = sizing.chunks_per_shard(halfvec=a.halfvec)["cap_chunks"]
     out = builder.plan_fleet(dst, n_domain_shards=a.shards,
                              niche_patterns=[c + "%" for c in SEED_CPC] if a.niche else (),
-                             capacity=cap, unclassified_splits=a.unclassified_splits)
+                             capacity=cap, unclassified_splits=a.unclassified_splits,
+                             projected=a.projected)
     plan = out["plan"]
-    print(f"per-shard capacity: {cap:,} chunks  (halfvec={a.halfvec})")
+    print(f"per-shard capacity: {cap:,} chunks  (halfvec={a.halfvec}, "
+          f"mass={'projected post-backfill' if a.projected else 'today'})")
     print(f"hot/niche: {out['hot']['families']:,} families, {out['hot']['chunks']:,} chunks")
     for k in sorted(plan.shards):
         doms = plan.shards[k]
@@ -184,6 +191,8 @@ def main(argv=None):
     s = sub.add_parser("assign", help="place every family in its home domain")
     s.add_argument("--batch", type=int, default=5000)
     s.add_argument("--no-counts", action="store_true", help="skip the chunk-count pass")
+    s.add_argument("--counts-only", action="store_true", help="skip the placement pass")
+    s.add_argument("--resume", action="store_true", help="continue the chunk-count watermark")
     s.set_defaults(fn=cmd_assign)
 
     pl = sub.add_parser("plan", help="pack domains into shards and check the capacity")
@@ -191,6 +200,9 @@ def main(argv=None):
     pl.add_argument("--halfvec", action="store_true")
     pl.add_argument("--niche", action="store_true", default=True)
     pl.add_argument("--unclassified-splits", type=int, default=1)
+    pl.add_argument("--projected", action="store_true",
+                    help="pack the POST-BACKFILL mass (n_chunks + the description backlog) rather "
+                         "than the mass the corpus holds today")
     pl.add_argument("--json", default="")
     pl.set_defaults(fn=cmd_plan)
 

@@ -54,8 +54,14 @@ CREATE TABLE IF NOT EXISTS src_family_home (
   home_domain       text NOT NULL,
   secondary_domains text[] NOT NULL DEFAULT '{}',
   n_publications    int  NOT NULL DEFAULT 0,
-  n_chunks          int  NOT NULL DEFAULT 0
+  n_chunks          int  NOT NULL DEFAULT 0,
+  -- `n_chunks` is what the corpus holds TODAY. Sizing a fleet on it sizes for a corpus that is
+  -- already obsolete: the description backfill is running right now. `n_backlog` is the
+  -- description paragraphs this family has in `paragraphs` and has NOT had chunked anywhere yet,
+  -- so `n_chunks + n_backlog` is the mass the shard will actually carry.
+  n_backlog         int  NOT NULL DEFAULT 0
 );
+ALTER TABLE src_family_home ADD COLUMN IF NOT EXISTS n_backlog int NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS ix_src_family_home_domain ON src_family_home (home_domain);
 
 CREATE TABLE IF NOT EXISTS src_mirror_state (
@@ -282,23 +288,48 @@ def _write_homes(cur, rows):
             cp.write_row((fk, home, list(sec), int(n)))
 
 
-def fill_family_chunk_counts(src, dst, *, batch=5000, progress=None):
+def fill_family_chunk_counts(src, dst, *, batch=5000, progress=None, resume=False):
     """How many chunks each family actually has, which is the mass the shard plan packs.
 
     Publication counts are the wrong unit: an unclassified biblio-only publication has an abstract
     chunk and nothing else, while a fully texted one has a measured 56.1. Packing by publications
     would put the byte-heavy families in one bin and call the plan balanced.
+
+    Both sides are bounded. The live read is one `Index Only Scan using ix_chunks_pub` per batch of
+    publication ids, MEASURED at 0.13 s for 5,000 publications and 244,173 chunks, which is the
+    key-range read the brief requires and not a scan of `chunks`. The builder-side write is a COPY
+    into a delta table and ONE set-based UPDATE at the end, because the obvious `executemany` of a
+    per-family UPDATE is 4.9 million single-row statements and takes longer than the read it is
+    recording.
+
+    Resumable through `src_mirror_state('chunk_counts')`: the watermark is committed with the
+    delta rows, so a killed pass costs one batch. `resume=False` starts over.
     """
+    ensure_mirror(dst)
     with dst.cursor() as cur:
-        cur.execute("UPDATE src_family_home SET n_chunks = 0 WHERE n_chunks <> 0")
-        cur.execute("SELECT to_regclass('chunks_stage_v3') t")
+        cur.execute("""CREATE UNLOGGED TABLE IF NOT EXISTS src_family_chunk_delta (
+                         family_key text NOT NULL, n bigint NOT NULL)""")
+        cur.execute("INSERT INTO src_mirror_state (name) VALUES ('chunk_counts') "
+                    "ON CONFLICT (name) DO NOTHING")
+        if not resume:
+            cur.execute("TRUNCATE src_family_chunk_delta")
+            cur.execute("UPDATE src_mirror_state SET watermark=-1, rows_done=0 "
+                        "WHERE name='chunk_counts'")
+        cur.execute("SELECT watermark, rows_done FROM src_mirror_state WHERE name='chunk_counts'")
+        st = cur.fetchone()
     dst.commit()
+    watermark, total = int(st["watermark"]), int(st["rows_done"])
+
     with src.cursor() as cur:
         cur.execute("SELECT to_regclass('chunks_stage_v3') t")
         has_stage = cur.fetchone()["t"] is not None
+    plan = explain(src, "SELECT publication_id p, count(*) n FROM chunks "
+                        "WHERE publication_id = ANY(%s) GROUP BY 1", ([1],))
+    if _plan_is_seqscan(plan):
+        raise RuntimeError(f"refusing to count chunks: the read is a sequential scan on a serving "
+                           f"database. plan: {plan}")
 
-    t0 = time.time()
-    watermark, total, seen = -1, 0, 0
+    t0, seen = time.time(), 0
     while True:
         with dst.cursor() as cur:
             cur.execute("SELECT id, family_key FROM src_publications WHERE id > %s "
@@ -316,36 +347,160 @@ def fill_family_chunk_counts(src, dst, *, batch=5000, progress=None):
                 fk = by_pid[int(r["p"])]
                 counts[fk] = counts.get(fk, 0) + int(r["n"])
             if has_stage:
+                #  The staged description backfill is corpus that WILL be in the next release even
+                #  though it is not in `chunks` yet. Leaving it out sizes the fleet for a corpus
+                #  that is already obsolete on the day it is planned.
                 cur.execute("SELECT publication_id p, count(*) n FROM chunks_stage_v3 "
                             "WHERE publication_id = ANY(%s) GROUP BY 1", (window,))
                 for r in cur.fetchall():
                     fk = by_pid[int(r["p"])]
                     counts[fk] = counts.get(fk, 0) + int(r["n"])
-        #  Accumulated, not assigned: a family's publications can straddle two id batches, and a
-        #  plain SET would keep only whichever batch ran last.
-        if counts:
-            with dst.cursor() as cur:
-                cur.executemany("UPDATE src_family_home SET n_chunks = n_chunks + %s "
-                                "WHERE family_key = %s",
-                                [(n, fk) for fk, n in counts.items()])
-            dst.commit()
-        total += sum(counts.values())
-        seen += len(window)
-        watermark = window[-1]
+        #  Appended, not assigned: a family's publications straddle id batches, so the totals are
+        #  summed once at the end rather than overwritten by whichever batch ran last.
+        with dst.cursor() as cur:
+            if counts:
+                with cur.copy("COPY src_family_chunk_delta (family_key, n) FROM STDIN") as cp:
+                    for fk, n in counts.items():
+                        cp.write_row((fk, int(n)))
+            total += sum(counts.values())
+            seen += len(window)
+            watermark = window[-1]
+            cur.execute("UPDATE src_mirror_state SET watermark=%s, rows_done=%s, updated_at=now() "
+                        "WHERE name='chunk_counts'", (watermark, total))
+        dst.commit()
         if progress:
             progress({"publications": seen, "chunks": total,
                       "elapsed_s": round(time.time() - t0, 1)})
-    return {"publications": seen, "chunks": total, "elapsed_s": round(time.time() - t0, 1)}
 
-
-def domain_mass(dst):
-    """{domain: {families, publications, chunks}} over the mirror. The input to the shard plan."""
     with dst.cursor() as cur:
-        cur.execute("""SELECT home_domain d, count(*) fams, COALESCE(sum(n_publications),0) pubs,
-                              COALESCE(sum(n_chunks),0) chunks
-                       FROM src_family_home GROUP BY 1 ORDER BY 4 DESC""")
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_src_delta_fk ON src_family_chunk_delta "
+                    "(family_key)")
+        cur.execute("UPDATE src_family_home SET n_chunks = 0 WHERE n_chunks <> 0")
+        cur.execute("""UPDATE src_family_home h SET n_chunks = d.n
+                         FROM (SELECT family_key, sum(n)::bigint n FROM src_family_chunk_delta
+                                GROUP BY 1) d
+                        WHERE h.family_key = d.family_key""")
+        merged = cur.rowcount
+    dst.commit()
+    return {"publications": seen, "chunks": total, "families_with_chunks": merged,
+            "elapsed_s": round(time.time() - t0, 1)}
+
+
+def fill_family_backlog_counts(src, dst, *, batch=5000, progress=None, resume=False):
+    """The description backfill's REMAINING work, per family.
+
+    MEASURED 2026-08-22: `paragraphs` holds 14,379,681 rows; 1,690,534 are chunked in `chunks` and
+    8,992,335 more are staged in `chunks_stage_v3`, leaving 3,696,812 description paragraphs with
+    no chunk anywhere. Those become chunks on a shard, so a plan packed on today's `n_chunks` is a
+    plan for a corpus that no longer exists by the time the shards are built.
+
+    Same shape and same bounds as `fill_family_chunk_counts`: one `Index Only Scan using
+    ix_para_pub` per batch of publication ids, a COPY into a delta table, one set-based UPDATE.
+    """
+    ensure_mirror(dst)
+    with dst.cursor() as cur:
+        cur.execute("""CREATE UNLOGGED TABLE IF NOT EXISTS src_family_backlog_delta (
+                         family_key text NOT NULL, n bigint NOT NULL)""")
+        cur.execute("INSERT INTO src_mirror_state (name) VALUES ('backlog_counts') "
+                    "ON CONFLICT (name) DO NOTHING")
+        if not resume:
+            cur.execute("TRUNCATE src_family_backlog_delta")
+            cur.execute("UPDATE src_mirror_state SET watermark=-1, rows_done=0 "
+                        "WHERE name='backlog_counts'")
+        cur.execute("SELECT watermark, rows_done FROM src_mirror_state WHERE name='backlog_counts'")
+        st = cur.fetchone()
+    dst.commit()
+    watermark, total = int(st["watermark"]), int(st["rows_done"])
+
+    with src.cursor() as cur:
+        cur.execute("SELECT to_regclass('chunks_stage_v3') t")
+        has_stage = cur.fetchone()["t"] is not None
+    for sql in ("SELECT publication_id p, count(*) n FROM paragraphs "
+                "WHERE publication_id = ANY(%s) GROUP BY 1",
+                "SELECT publication_id p, count(*) n FROM chunks "
+                "WHERE publication_id = ANY(%s) AND kind='paragraph' GROUP BY 1"):
+        plan = explain(src, sql, ([1],))
+        if _plan_is_seqscan(plan):
+            raise RuntimeError(f"refusing to count the backlog: sequential scan. plan: {plan}")
+
+    t0, seen = time.time(), 0
+    while True:
+        with dst.cursor() as cur:
+            cur.execute("SELECT id, family_key FROM src_publications WHERE id > %s "
+                        "ORDER BY id LIMIT %s", (watermark, batch))
+            rows = cur.fetchall()
+        if not rows:
+            break
+        by_pid = {int(r["id"]): r["family_key"] for r in rows}
+        window = sorted(by_pid)
+        have, want = {}, {}
+        with src.cursor() as cur:
+            cur.execute("SELECT publication_id p, count(*) n FROM paragraphs "
+                        "WHERE publication_id = ANY(%s) GROUP BY 1", (window,))
+            for r in cur.fetchall():
+                want[int(r["p"])] = int(r["n"])
+            cur.execute("SELECT publication_id p, count(*) n FROM chunks "
+                        "WHERE publication_id = ANY(%s) AND kind='paragraph' GROUP BY 1", (window,))
+            for r in cur.fetchall():
+                have[int(r["p"])] = have.get(int(r["p"]), 0) + int(r["n"])
+            if has_stage:
+                cur.execute("SELECT publication_id p, count(*) n FROM chunks_stage_v3 "
+                            "WHERE publication_id = ANY(%s) AND kind='paragraph' GROUP BY 1",
+                            (window,))
+                for r in cur.fetchall():
+                    have[int(r["p"])] = have.get(int(r["p"]), 0) + int(r["n"])
+        #  Clamped per PUBLICATION, not per family. A family with one over-chunked publication and
+        #  one un-chunked one would otherwise net its backlog to zero and under-size the shard.
+        counts = {}
+        for pid, npara in want.items():
+            gap = npara - have.get(pid, 0)
+            if gap > 0:
+                fk = by_pid[pid]
+                counts[fk] = counts.get(fk, 0) + gap
+        with dst.cursor() as cur:
+            if counts:
+                with cur.copy("COPY src_family_backlog_delta (family_key, n) FROM STDIN") as cp:
+                    for fk, n in counts.items():
+                        cp.write_row((fk, int(n)))
+            total += sum(counts.values())
+            seen += len(window)
+            watermark = window[-1]
+            cur.execute("UPDATE src_mirror_state SET watermark=%s, rows_done=%s, updated_at=now() "
+                        "WHERE name='backlog_counts'", (watermark, total))
+        dst.commit()
+        if progress:
+            progress({"publications": seen, "backlog": total,
+                      "elapsed_s": round(time.time() - t0, 1)})
+
+    with dst.cursor() as cur:
+        cur.execute("CREATE INDEX IF NOT EXISTS ix_src_backlog_fk ON src_family_backlog_delta "
+                    "(family_key)")
+        cur.execute("UPDATE src_family_home SET n_backlog = 0 WHERE n_backlog <> 0")
+        cur.execute("""UPDATE src_family_home h SET n_backlog = d.n
+                         FROM (SELECT family_key, sum(n)::bigint n FROM src_family_backlog_delta
+                                GROUP BY 1) d
+                        WHERE h.family_key = d.family_key""")
+        merged = cur.rowcount
+    dst.commit()
+    return {"publications": seen, "backlog": total, "families_with_backlog": merged,
+            "elapsed_s": round(time.time() - t0, 1)}
+
+
+def domain_mass(dst, *, projected=False):
+    """{domain: {families, publications, chunks, backlog}} over the mirror. The shard plan's input.
+
+    `projected=True` counts the description backfill's remaining work into `chunks`, which is the
+    mass the shard will hold rather than the mass the corpus holds today. Default False so a
+    caller has to decide which question it is asking.
+    """
+    col = "n_chunks + n_backlog" if projected else "n_chunks"
+    with dst.cursor() as cur:
+        cur.execute(f"""SELECT home_domain d, count(*) fams, COALESCE(sum(n_publications),0) pubs,
+                               COALESCE(sum({col}),0) chunks, COALESCE(sum(n_backlog),0) backlog
+                        FROM src_family_home GROUP BY 1 ORDER BY 4 DESC""")
         return {r["d"]: {"families": int(r["fams"]), "publications": int(r["pubs"]),
-                         "chunks": int(r["chunks"])} for r in cur.fetchall()}
+                         "chunks": int(r["chunks"]), "backlog": int(r["backlog"])}
+                for r in cur.fetchall()}
 
 
 #  Selection order matters when a build is capped. `family_key` is the default because it is

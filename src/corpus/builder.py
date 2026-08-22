@@ -66,7 +66,7 @@ def _log(fn, event, **kv):
 # the fleet plan
 # ---------------------------------------------------------------------------------------------
 def plan_fleet(dst, *, n_domain_shards=8, niche_patterns=(), capacity=None,
-               unclassified_splits=1):
+               unclassified_splits=1, projected=False):
     """Which domains each cold shard holds, and what the niche takes out first.
 
     The niche comes out first because it is defined at SUBGROUP granularity while shards split at
@@ -74,7 +74,7 @@ def plan_fleet(dst, *, n_domain_shards=8, niche_patterns=(), capacity=None,
     the corpus and is not. Taking the niche out by symbol and then packing what is left by domain
     is the only order in which both statements stay true.
     """
-    mass = source_mod.domain_mass(dst)
+    mass = source_mod.domain_mass(dst, projected=projected)
     hot_keys = set()
     if niche_patterns:
         hot_keys = {r["family_key"] for r in
@@ -82,9 +82,10 @@ def plan_fleet(dst, *, n_domain_shards=8, niche_patterns=(), capacity=None,
     hot_mass = {"families": 0, "publications": 0, "chunks": 0}
     if hot_keys:
         with dst.cursor() as cur:
-            cur.execute("""SELECT home_domain d, count(*) f, COALESCE(sum(n_publications),0) p,
-                                  COALESCE(sum(n_chunks),0) c
-                           FROM src_family_home WHERE family_key = ANY(%s) GROUP BY 1""",
+            col = "n_chunks + n_backlog" if projected else "n_chunks"
+            cur.execute(f"""SELECT home_domain d, count(*) f, COALESCE(sum(n_publications),0) p,
+                                   COALESCE(sum({col}),0) c
+                            FROM src_family_home WHERE family_key = ANY(%s) GROUP BY 1""",
                         (list(hot_keys),))
             for r in cur.fetchall():
                 d = r["d"]
@@ -99,7 +100,7 @@ def plan_fleet(dst, *, n_domain_shards=8, niche_patterns=(), capacity=None,
     plan = assign.pack_domains(chunk_mass, n_domain_shards, capacity=capacity,
                                unclassified_splits=unclassified_splits)
     return {"plan": plan, "domain_mass": mass, "hot": {**hot_mass, "family_keys": sorted(hot_keys)},
-            "capacity": capacity}
+            "capacity": capacity, "projected": bool(projected)}
 
 
 # ---------------------------------------------------------------------------------------------
