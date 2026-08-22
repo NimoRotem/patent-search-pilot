@@ -1461,10 +1461,11 @@ def _repair_leader_anchors(raw_png: bytes, anchors, audit: dict, *, scale: float
 
 
 def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals,
-                           semantic: dict) -> tuple[bytes, dict, dict, list]:
+                           semantic: dict) -> tuple[bytes, dict, dict, list, dict]:
     """Typeset, OCR, trace, and if possible repair the final leader endpoints."""
     png, labels, leaders = b"", {}, {}
     anchors = [dict(item) for item in semantic.get("anchors") or []]
+    pixel_audit = dict(semantic.get("pixel_anchor_audit") or {})
     used_scale = 1.0
     for _leader_attempt in range(MAX_LEADER_REPAIR_ATTEMPTS):
         labels = {}
@@ -1484,7 +1485,17 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             raw_png, anchors, leaders, scale=used_scale)
         if not changed:
             break
-    return png, labels, leaders, anchors
+        anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
+        if not pixel_audit.get("ok"):
+            leaders = dict(leaders)
+            leaders["ok"] = False
+            errors = list(leaders.get("errors") or [])
+            errors.extend(
+                f"Numeral {item.get('numeral') or '?'} corrected endpoint is not grounded: "
+                f"{item.get('reason')}" for item in pixel_audit.get("ungrounded") or [])
+            leaders["errors"] = errors
+            break
+    return png, labels, leaders, anchors, pixel_audit
 
 
 def parse_ocr_response(payload: dict) -> dict:
@@ -1956,7 +1967,7 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
     # changed result and retain the first exact sheet. A separate vision pass then traces each
     # printed leader to its endpoint. When it finds a misplaced endpoint, its suggested point is
     # mapped back into geometry coordinates and the compositor retries without human editing.
-    png, labels, leaders, anchors = _compose_checked_sheet(
+    png, labels, leaders, anchors, pixel_audit = _compose_checked_sheet(
         raw_png, label=label, caption=caption, numerals=numerals, semantic=semantic)
     # OCR is the strongest text-contamination detector in this pipeline. If it finds writing in
     # the model-generated geometry, larger deterministic labels cannot remove those pixels. Start
@@ -1977,7 +1988,7 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
                 semantic = _apply_pixel_grounding(raw_png, numerals, semantic)
             if not semantic.get("ok"):
                 continue
-            png, labels, leaders, anchors = _compose_checked_sheet(
+            png, labels, leaders, anchors, pixel_audit = _compose_checked_sheet(
                 raw_png, label=label, caption=caption, numerals=numerals, semantic=semantic)
             if labels.get("ok") or not labels.get("other_text"):
                 break
@@ -2001,6 +2012,7 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
         detail = "; ".join(issues) or "one or more leaders did not identify the named geometry"
         raise FigureError("leader placement review failed: " + str(detail)[:1200])
     semantic["anchors"] = anchors
+    semantic["pixel_anchor_audit"] = pixel_audit
     if not figure_id:
         fig = create_figure(project_id, user_id, canonical_figure_label(label), caption)
         figure_id = fig["id"]

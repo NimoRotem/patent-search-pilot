@@ -39,15 +39,20 @@ def accepted_semantic_audit(**values):
 
 
 def accept_pixel_grounding(monkeypatch):
+    accepted = {
+        "ok": True, "inspected": True,
+        "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [], "allowed_spaces": [], "ungrounded": [],
+    }
     monkeypatch.setattr(
         draft_figures, "_apply_pixel_grounding",
         lambda _png, _numerals, semantic: {
             **semantic,
-            "pixel_anchor_audit": {
-                "ok": True, "inspected": True,
-                "version": draft_figures.PIXEL_ANCHOR_VERSION,
-            },
+            "pixel_anchor_audit": dict(accepted),
         })
+    monkeypatch.setattr(
+        draft_figures, "_ground_anchors_to_pixels",
+        lambda _png, _numerals, anchors: ([dict(item) for item in anchors], dict(accepted)))
 
 
 def test_semantic_response_schema_is_inline_for_vertex():
@@ -453,6 +458,46 @@ def test_render_automatically_moves_a_rejected_leader_to_the_reviewed_feature(mo
         7, 91, label="FIG. 1", caption="body", numerals=["10 = body"])
     assert result["leader_audit"]["ok"] is True and len(calls) == 2
     assert saved[0]["semantic_audit"]["anchors"][0]["x"] > 700
+
+
+def test_leader_repair_cannot_move_a_grounded_endpoint_back_into_blank_paper(monkeypatch):
+    image = Image.new("RGB", (1000, 1000), "white")
+    ImageDraw.Draw(image).rectangle((200, 200, 800, 600), outline="black", width=8)
+    out = io.BytesIO()
+    image.save(out, format="PNG")
+    raw = out.getvalue()
+    initial = [{"numeral": "10", "x": 500, "y": 400,
+                "visible": True, "evidence": "inside the body"}]
+    layout = draft_figures._annotation_layout(raw, initial, 1.0)
+    suggested_x = round((layout["source_x"] + layout["source"].width * 0.5) *
+                        1000 / layout["canvas_width"])
+    suggested_y = round((layout["source_y"] + layout["source"].height * 0.8) *
+                        1000 / layout["canvas_height"])
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
+        "other_text": [], "confidence": 0.99})
+    calls = []
+
+    def inspect(*_args, **_kwargs):
+        calls.append(True)
+        if len(calls) == 1:
+            return {"ok": False, "inspected": True, "errors": ["wrong endpoint"],
+                    "incorrect": ["10"], "missing": [], "labels": [{
+                        "numeral": "10", "correct": False, "evidence": "blank paper",
+                        "suggested_x": suggested_x, "suggested_y": suggested_y}]}
+        return {"ok": True, "inspected": True, "errors": [], "incorrect": [],
+                "labels": [{"numeral": "10", "correct": True, "evidence": "body",
+                            "suggested_x": suggested_x, "suggested_y": suggested_y}]}
+
+    monkeypatch.setattr(draft_figures, "inspect_leaders", inspect)
+    _png, _labels, leaders, anchors, pixel = draft_figures._compose_checked_sheet(
+        raw, label="FIG. 1", caption="body", numerals=["10 = body"],
+        semantic={"anchors": initial, "pixel_anchor_audit": accepted_semantic_audit()[
+            "pixel_anchor_audit"]})
+
+    assert leaders["ok"] is True and len(calls) == 2
+    assert pixel["ok"] is True and pixel["adjusted"][0]["numeral"] == "10"
+    assert 590 <= anchors[0]["y"] <= 610
 
 
 def test_text_contaminated_geometry_retries_from_a_clean_canvas(monkeypatch):
