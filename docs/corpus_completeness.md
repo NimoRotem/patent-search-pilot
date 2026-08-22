@@ -227,12 +227,13 @@ unclassified families in this manifest would not exist in a CPC-only manifest.
   against a real attorney's work product.
 * **A family id of `-1` is not a family.** DOCDB writes it for "no simple family" and the ingest
   stored it verbatim on 21,862 publications. `corpus_niche.family_key` treats it as absent, so each
-  of those is its own family here. `src/retrieval/base.py:157` and `src/retrieval/family.py:93`
-  still key on `COALESCE(NULLIF(simple_family_id,''), publication_number)`, which collapses all
-  21,862 into one family: in family collapse at most one of them can be returned by any search, and
-  `src/retrieval/citations.py` joining `p.simple_family_id = s.simple_family_id` treats all 21,862
-  as one document's family neighbours. That is a live retrieval defect, not a manifest one, and it
-  belongs to whoever owns retrieval.
+  of those is its own family here. This paragraph used to end by reporting the same defect as live
+  in retrieval, which it was: `base.py`, `family.py` and `citations.py` all keyed on
+  `COALESCE(NULLIF(simple_family_id,''), publication_number)` and collapsed all 21,862 into one
+  family. **FIXED at integration**, `retrieval.family.family_key_sql` and `family_id_sql` are now
+  the single expression and `tests/test_family_sentinel.py` holds the line. Censused on the live
+  corpus while merging: over the union of both sentinel lists exactly one value occurs, `-1` on
+  21,862 rows. Not `0`, not `null`, and not the empty string every expression was folding before.
 * **`cpc` is what this corpus recorded**, not what the office publishes today. The classification
   snapshot moves; a publication reclassified into `H10P` after our ingest still carries its old
   `H01L` symbol here.
