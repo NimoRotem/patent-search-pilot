@@ -25,16 +25,20 @@ from __future__ import annotations
 
 import json
 import os
-import random
 import sys
 import time
-import threading
-import zlib
 from concurrent.futures import ThreadPoolExecutor
 
 import psycopg
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
+
+# The retry policy, the lease and the vector format live in embed_common so the second staging
+# embedder inherits the fixes instead of a copy of them. The path insert is what lets the
+# STANDALONE deployed copy work: it looks for embed_common.py beside itself, so deploying this
+# file means deploying both.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import embed_common                                                  # noqa: E402
 
 BACKFILL_ENV_FILE = os.environ.get("BACKFILL_ENV_FILE")
 if BACKFILL_ENV_FILE:
@@ -56,11 +60,7 @@ CHUNKER_VERSION = "chunker-2026.08.22"
 LEASE_NAMESPACE = 0x64657363          # "desc"
 CORPUS_RELEASE = os.environ.get("CORPUS_RELEASE", "v3-desc-backfill-20260822")
 
-PG = dict(host=os.environ.get("PGHOST", "10.128.0.53"),
-          port=int(os.environ.get("PGPORT", "5433")),
-          dbname=os.environ.get("PGDATABASE", "patents"),
-          user=os.environ.get("PGUSER", "patents"),
-          password=os.environ.get("PGPASSWORD"))
+PG = embed_common.pg_params()
 
 DDL = """
 CREATE TABLE IF NOT EXISTS chunks_stage_v3 (
@@ -97,26 +97,20 @@ CREATE TABLE IF NOT EXISTS chunks_stage_v3_progress (
 );
 """
 
-_local = threading.local()
-
-
 CALL_TIMEOUT_MS = int(os.environ.get("EMBED_CALL_TIMEOUT_MS", "120000"))
+
+#  These are embed_common's, re-exported under the names this worker and its tests already use.
+#  Behaviour is unchanged; the definitions simply live in one place now.
+_log = embed_common.log
+retryable = embed_common.retryable
+backoff_delay = embed_common.backoff_delay
+lease_key = embed_common.lease_key
+_vec = embed_common.vec
+_tok = embed_common.tok
 
 
 def _client():
-    """A timeout here is not optional, it is the difference between a retry and a wedge.
-
-    Measured 2026-08-22: run 58597 stopped producing rows at 08:00:29 and sat in
-    `futex_wait_queue` with two of its seven threads in `wait_woken` on ESTAB sockets to
-    172.217.118.4:443. The retry loop below only catches EXCEPTIONS, and a hung socket never
-    raises one, so `ThreadPoolExecutor.map` blocked for ever and the whole process stalled while
-    looking perfectly alive. Bounding the call turns that silent wedge into an ordinary retry."""
-    if not hasattr(_local, "c"):
-        from google import genai
-        from google.genai.types import HttpOptions
-        _local.c = genai.Client(vertexai=True, project="nimo-gpt", location="us-central1",
-                                http_options=HttpOptions(timeout=CALL_TIMEOUT_MS))
-    return _local.c
+    return embed_common.vertex_client(CALL_TIMEOUT_MS)
 
 
 def _connect():
@@ -124,70 +118,13 @@ def _connect():
 
 
 def _clip(s):
-    s = (s or "").strip()
-    return s[:MAX_CHARS] if len(s) > MAX_CHARS else s
-
-
-def _tok(s):
-    return max(1, len(s) // 4)
-
-
-def _vec(e):
-    return "[" + ",".join(f"{x:.6f}" for x in e) + "]"
-
-
-def _log(event, **kv):
-    """One structured line per event. Greppable, and parseable without a log shipper."""
-    kv["event"] = event
-    kv["ts"] = round(time.time(), 3)
-    print(json.dumps(kv, sort_keys=True), flush=True)
-
-
-def retryable(exc):
-    """Transport and capacity failures are worth another attempt; a bad request is not.
-
-    Split out so it can be tested without a network."""
-    s = str(exc).lower()
-    return any(t in s for t in ("429", "resource_exhausted", "quota", "503", "500",
-                                "deadline", "timeout", "timed out", "unavailable",
-                                "connection reset", "broken pipe"))
-
-
-def backoff_delay(attempt, base=0.7, cap=20.0, rand=None):
-    """Exponential with full jitter. Without jitter every worker that hit the same 429 retries in
-    the same millisecond and reproduces the burst that caused it."""
-    rand = rand if rand is not None else random.random
-    return min(base * (2 ** attempt), cap) * (0.5 + 0.5 * rand())
+    return embed_common.clip(s, MAX_CHARS)
 
 
 def _embed(texts):
     """One Vertex call, bounded by MAX_ATTEMPTS and by the client deadline in _client()."""
-    from google.genai.types import EmbedContentConfig
-    for attempt in range(MAX_ATTEMPTS):
-        t0 = time.time()
-        try:
-            r = _client().models.embed_content(
-                model=EMBED_MODEL, contents=list(texts),
-                config=EmbedContentConfig(output_dimensionality=EMBED_DIM, task_type=TASK_TYPE))
-            out = [list(e.values) for e in r.embeddings]
-            _log("embed_call", n=len(texts), attempt=attempt, ms=int((time.time() - t0) * 1000),
-                 ok=True)
-            return out
-        except Exception as exc:                                   # noqa: BLE001
-            ms = int((time.time() - t0) * 1000)
-            last = attempt == MAX_ATTEMPTS - 1
-            _log("embed_call", n=len(texts), attempt=attempt, ms=ms, ok=False,
-                 retryable=retryable(exc), err=str(exc)[:200])
-            if last or not retryable(exc):
-                raise
-            time.sleep(backoff_delay(attempt))
-    raise RuntimeError("unreachable")
-
-
-def lease_key(pass_name, shard):
-    """Stable 32 bit key for one (pass, shard). zlib.crc32 rather than hash(), because hash() is
-    randomised per process and would hand two workers different keys for the same work."""
-    return zlib.crc32(f"{pass_name}:{shard}".encode()) & 0x7FFFFFFF
+    return embed_common.embed_texts(texts, EMBED_MODEL, EMBED_DIM, TASK_TYPE,
+                                    max_attempts=MAX_ATTEMPTS, timeout_ms=CALL_TIMEOUT_MS)
 
 
 def _take_lease(conn, pass_name, shard):
@@ -197,10 +134,7 @@ def _take_lease(conn, pass_name, shard):
     see to that, but it is duplicate paid embedding calls and two writers fighting over one
     watermark row. It happened on 2026-08-22. The lock is released automatically when the
     connection drops, so a killed worker never leaves the lease stuck."""
-    with conn.cursor() as cur:
-        cur.execute("SELECT pg_try_advisory_lock(%s, %s) AS got",
-                    (LEASE_NAMESPACE, lease_key(pass_name, shard)))
-        return bool(cur.fetchone()["got"])
+    return embed_common.take_lease(conn, LEASE_NAMESPACE, pass_name, shard)
 
 
 def _filter_staged(conn, rows):
