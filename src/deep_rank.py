@@ -527,6 +527,34 @@ def _candidate_rows(cur, families, reps, limit):
     return rows
 
 
+def _candidate_rows_for_ledger(rows, report):
+    """Resolved fused candidates in the durable ledger's publication-keyed shape.
+
+    ``ranked_families`` itself contains family keys, not dictionaries and not publication
+    numbers. The screen has already resolved those keys to the exact publications it will judge,
+    so this is the first point where a valid ``search_candidates`` row can be written.
+    """
+    channels_by_family = {}
+    for channel, families in ((report or {}).get("channel_families") or {}).items():
+        for family in families or ():
+            channels_by_family.setdefault(str(family), set()).add(str(channel))
+
+    out = []
+    for index, row in enumerate(rows or (), 1):
+        pub = row.get("pub")
+        if not pub:
+            continue
+        family = row.get("fam")
+        out.append({
+            "pub": pub,
+            "family_id": str(family) if family is not None and str(family) else None,
+            "channels": sorted(channels_by_family.get(str(family), ())),
+            "fused_rank": int(row.get("rank") or index),
+            "stage": "fused",
+        })
+    return out
+
+
 def screen(rows, brief, on_progress=None, sys_prompt=None, header="TARGET INVENTION"):
     """{pub: 0-100} over every candidate row, in batches. Fail-soft: an unscored candidate simply
     has no screen score and falls back to its retrieval rank.
@@ -1180,6 +1208,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
             rows = kept
     if not rows:
         return None
+    runctx.note_candidates(slug, _candidate_rows_for_ledger(rows, report))
 
     #  FETCH FIRST, SCREEN SECOND. See PRESCREEN_ENRICH_TOP. `_enrich_missing_text` decides for
     #  itself which of these hold no claims and no paragraphs, in retrieval order, so the whole
@@ -1237,8 +1266,8 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
                         on_progress=lambda d, t: emit("screen_progress", done=d, total=t))
         runctx.checkpoint(slug, "screen", {"scores": scores}, n_in=len(rows),
                           n_out=len(scores or {}))
-    runctx.note_candidates([{"pub": p, "screen_score": s, "stage": "screened"}
-                            for p, s in (scores or {}).items()])
+    runctx.note_candidates(slug, [{"pub": p, "screen_score": s, "stage": "screened"}
+                                  for p, s in (scores or {}).items()])
     screen_seconds = time.time() - t0
 
     #  Choose what to read: the head of the screen, plus the head of the RETRIEVAL order no matter

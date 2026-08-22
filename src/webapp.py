@@ -584,6 +584,30 @@ def _fused_checkpoint_path(slug):
     return REPORTS / f"{slug}.{token}.fused.json"
 
 
+def _final_candidate_rows(deep_result):
+    """Publication-keyed terminal candidate rows from ``deep_rank.run``.
+
+    The report's ``ranked_families`` remains a list of family keys for the view resolver. The deep
+    result is the authoritative publication order and carries the family and evidence score for
+    each resolved reference.
+    """
+    result = deep_result if isinstance(deep_result, dict) else {}
+    by_pub = result.get("by_pub") if isinstance(result.get("by_pub"), dict) else {}
+    rows = []
+    for index, pub in enumerate(result.get("order") or (), 1):
+        detail = by_pub.get(pub) if isinstance(by_pub.get(pub), dict) else {}
+        family = detail.get("family")
+        rows.append({
+            "pub": pub,
+            "family_id": str(family) if family is not None and str(family) else None,
+            "final_rank": index,
+            "final_score": detail.get("score"),
+            "read_status": "read" if detail.get("read_in_full") else "unread",
+            "stage": "final",
+        })
+    return rows
+
+
 def _write_report(slug, rep):
     _write_json_atomic(report_path(slug), rep, indent=1)
     (REPORTS / f"{slug}.view.json").unlink(missing_ok=True)   # force the view to rebuild from this
@@ -1285,11 +1309,6 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 runctx.checkpoint(slug, "fuse", {"report_path": str(_fused_path),
                                                  "budget": run_budget},
                                   n_out=len(rep.get("ranked_families") or []))
-                runctx.note_candidates(slug, [
-                    {"pub": f.get("pub"), "family_id": str(f.get("family_id") or "") or None,
-                     "fused_rank": i + 1, "fused_score": f.get("score"), "stage": "fused"}
-                    for i, f in enumerate((rep.get("ranked_families") or [])[:2000])
-                    if f.get("pub")])
         runctx.check_lease(slug)
 
         # ---- WHAT THE OFFICE ALREADY DECIDED (prosecution) --------------------------------
@@ -1390,11 +1409,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             _rounds = _rescue.get("rounds") if isinstance(_rescue, dict) else None
             runctx.checkpoint(slug, "rescue", {"summary": _rescue},
                               n_out=len(_rounds or []))
-            runctx.note_candidates(slug, [
-                {"pub": c.get("pub"), "final_rank": i + 1, "final_score": c.get("score"),
-                 "read_status": ("read" if c.get("chart") or c.get("read") else "unread"),
-                 "stage": "final"}
-                for i, c in enumerate((rep.get("ranked_families") or [])[:500]) if c.get("pub")])
+            runctx.note_candidates(slug, _final_candidate_rows(dr))
         except (runctx.DurabilityError, runstore.LeaseLost):
             raise
         except Exception:

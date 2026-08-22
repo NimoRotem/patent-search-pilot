@@ -1,5 +1,7 @@
 """Integration-layer tests: the wiring that connects the parallel workstreams to the hardened
 webapp. These cover the seams BETWEEN modules, which no single agent's suite could test."""
+import ast
+import inspect
 import json
 import os
 import sys
@@ -9,6 +11,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import auth
+import deep_rank
 import webapp
 import webview
 import search_modes
@@ -128,9 +131,8 @@ def test_generation_records_candidates_against_the_run_slug(monkeypatch, tmp_pat
             pass
 
         def run(self, *args, **kwargs):
-            return {"elements": ["e"], "ranked_families": [
-                {"pub": "US-123-A1", "score": 0.75},
-            ]}
+            # This is the real CoverageAgent contract: family keys, not candidate dicts.
+            return {"elements": ["e"], "ranked_families": ["family-123"]}
 
     class FakeTrace:
         def write(self, path):
@@ -152,7 +154,14 @@ def test_generation_records_candidates_against_the_run_slug(monkeypatch, tmp_pat
     monkeypatch.setattr(webapp, "retriever", lambda: None)
     monkeypatch.setattr(webapp.accounts, "mark_search_running", lambda slug: None)
     monkeypatch.setattr(webapp.domain_detect, "detect", lambda *args, **kwargs: None)
-    monkeypatch.setattr(webapp.deep_rank, "run", lambda *args, **kwargs: {})
+    monkeypatch.setattr(webapp.deep_rank, "run", lambda *args, **kwargs: {
+        "order": ["US-123-A1"],
+        "by_pub": {"US-123-A1": {
+            "family": "family-123", "score": 0.75, "read_in_full": True,
+        }},
+        "screened": 1, "n_candidates": 1, "screen_seconds": 0.1,
+        "read_in_full": 1, "chars_read": 100, "chart_seconds": 0.2,
+    })
     monkeypatch.setattr(webapp, "_attach_prosecution", lambda report, slug: None)
     monkeypatch.setattr(webapp, "_attach_disclosures", lambda *args, **kwargs: None)
     monkeypatch.setattr(webapp, "_drop_self_family", lambda report: report)
@@ -181,11 +190,48 @@ def test_generation_records_candidates_against_the_run_slug(monkeypatch, tmp_pat
 
     webapp._generate("candidate-ledger", "q", None, "novelty")
 
-    assert [slug for slug, candidates in recorded] == ["candidate-ledger", "candidate-ledger"]
-    assert [candidates[0]["pub"] for slug, candidates in recorded] == [
-        "US-123-A1", "US-123-A1",
+    assert [slug for slug, candidates in recorded] == ["candidate-ledger"]
+    assert recorded[0][1] == [{
+        "pub": "US-123-A1", "family_id": "family-123", "final_rank": 1,
+        "final_score": 0.75, "read_status": "read", "stage": "final",
+    }]
+
+
+def test_fused_candidate_ledger_uses_resolved_publications_and_channel_provenance():
+    rows = [
+        {"pub": "US-123-A1", "fam": "family-123", "rank": 1},
+        {"pub": "EP-456-A1", "fam": "family-456", "rank": 2},
     ]
-    assert [candidates[0]["stage"] for slug, candidates in recorded] == ["fused", "final"]
+    report = {"channel_families": {
+        "dense": ["family-123", "family-456"],
+        "bm25": ["family-123"],
+    }}
+
+    assert deep_rank._candidate_rows_for_ledger(rows, report) == [
+        {"pub": "US-123-A1", "family_id": "family-123", "channels": ["bm25", "dense"],
+         "fused_rank": 1, "stage": "fused"},
+        {"pub": "EP-456-A1", "family_id": "family-456", "channels": ["dense"],
+         "fused_rank": 2, "stage": "fused"},
+    ]
+
+
+def test_every_candidate_ledger_call_is_bound_to_the_active_slug():
+    """A missing slug raises before the fail-soft run context wrapper can protect the search."""
+    calls = []
+    for function in (webapp._generate, deep_rank.run):
+        tree = ast.parse(inspect.getsource(function))
+        calls.extend(
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "note_candidates"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "runctx"
+        )
+    assert calls
+    assert all(len(call.args) >= 2 for call in calls)
+    assert all(isinstance(call.args[0], ast.Name) and call.args[0].id == "slug"
+               for call in calls)
 
 
 def test_federate_block_survives_federation_outage(monkeypatch):
