@@ -9,6 +9,7 @@ and Y on 1,180,521, which are an evaluation label source at a scale nothing here
 from __future__ import annotations
 
 from .base import FAMILY_OVERFETCH
+from .family import family_id_sql
 from .legal import _date_clause
 
 
@@ -22,9 +23,13 @@ class CitationMixin:
         seeds = seed_pids[:40]
         inlist = "(" + ",".join(["%s"] * len(seeds)) + ")"
         sql = (
-            f"WITH seed AS (SELECT id, publication_number, simple_family_id FROM publications WHERE id IN {inlist}), "
-            f"fam AS (SELECT p.id, 2 AS w FROM publications p JOIN seed s ON p.simple_family_id=s.simple_family_id "
-            f"        WHERE p.simple_family_id IS NOT NULL), "
+            f"WITH seed AS (SELECT id, publication_number, {family_id_sql()} AS fam_id "
+            f"              FROM publications WHERE id IN {inlist}), "
+            #  Join on the family id with DOCDB's sentinels folded to NULL. Joining on the raw
+            #  column made the 21,862 publications that carry '-1' one family of 21,862 members,
+            #  so a single seed in that set flooded this channel with unrelated documents at w=2.
+            f"fam AS (SELECT p.id, 2 AS w FROM publications p JOIN seed s ON {family_id_sql('p')}=s.fam_id "
+            f"        WHERE s.fam_id IS NOT NULL), "
             f"cited AS (SELECT p.id, 3 AS w FROM citations ci JOIN seed s ON ci.src_pub=s.publication_number "
             f"          JOIN publications p ON p.publication_number=ci.dst_pub), "
             f"citing AS (SELECT p.id, 1 AS w FROM citations ci JOIN seed s ON ci.dst_pub=s.publication_number "

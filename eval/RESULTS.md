@@ -243,3 +243,141 @@ of the five are found, read and correctly charted, and the 60-card page cannot h
 is wrong for a submission, or the page is the wrong deliverable for a Type B search and the ledger
 is — which is now at 79% covered with six anticipated claims, and is the thing an attorney would
 actually file from.
+
+---
+
+## R9: The exact-phrase channel's cost is the PHRASE, not the number of phrases (2026-08-22)
+
+**Hypothesis.** `channel_exact` is a cheap precision channel, so it can go into the deep presets.
+The agent already generates the phrases (`plan()` asks for "exact multiword phrases to match" and
+`search()` is given them) and no preset ran the channel, so they were computed and discarded.
+
+**Measurement.** EP 3 707 092, novelty mode, four phrases a model produced for that subject, each
+run alone against the live corpus on a cold cache:
+
+```
+'air extraction means'      0.33 s     12 families
+'vacuum seal element'       2.80 s      4 families
+'rigid base element'        3.27 s      5 families
+'contact surface'          97.26 s    300 families
+```
+
+One generic two-word phrase is 94% of the channel's 103 s. The whole four-phrase channel measured
+270 s on the first pass of a fresh process. A deep run makes about 39 passes.
+
+**Verdict. The hypothesis is REJECTED as stated and the channel is fixed instead.** The cost is
+the aggregation over the entire match set, which the 1,200-row limit then truncates, so a phrase
+matching tens of thousands of chunks pays for a ranking that is thrown away.
+
+`retrieval.exact.PHRASE_MAX_CHUNKS` (`EXACT_PHRASE_MAX_CHUNKS`, default 20,000, about 17x the
+1,200 rows the channel can return) declines such a phrase after a bounded probe:
+
+```
+probe 'contact surface'      LIMIT  5,000    1.16 s   (fills it)
+probe 'contact surface'      LIMIT 40,000    3.70 s   (fills it)
+probe 'vacuum seal element'  LIMIT  5,000    0.30 s   -> 1,111 chunks, affordable
+```
+
+Same four phrases, same subject, two runs each:
+
+| | wall clock | families |
+|---|---|---|
+| guard off | 16.08 s / 9.17 s | 321 |
+| **guard on** | **3.17 s / 2.96 s** | 21 |
+
+DECLINED, NOT TRUNCATED. Reading the first 20,000 matches and ranking those would look like a
+result and be an arbitrary subset of one, which for a precision channel is the one failure mode it
+must not have.
+
+**The guard also turned out not to cost recall, and on one subject to buy it.** Frozen phrases,
+same seeds, arm A without `exact` and arm B with it:
+
+| ep3707092 | families | gold@100 | gold@500 | gold@2500 |
+|---|---|---|---|---|
+| A, no exact | 2,129 | 0.0 | 0.0 | 0.3077 |
+| B, exact + guard | 2,154 | 0.0 | **0.0769** | 0.3077 |
+| B, exact unguarded | 2,443 | 0.0 | 0.0 | 0.3077 |
+
+The unguarded generic phrase contributes 314 families and displaces a gold family out of the top
+500, and costs 10 s doing it. That is one family on one subject and inside the recorded +/-2
+variance, so it is not the reason for the guard; it is a reason to stop worrying that the guard
+throws recall away.
+
+---
+
+## R10: `exact` into the deep presets
+
+**Change.** `agentic` and `claim_agentic` now name `exact`. With R9's guard the channel is bounded.
+
+**Measurement.** Five benchmark subjects, phrases generated per subject, arm A without `exact` and
+arm B with it, same query text and same seeds in one process:
+
+| subject | gold in corpus | A@100 | B@100 | A@2500 | B@2500 |
+|---|---|---|---|---|---|
+| ep3707092 | 13/27 | 0.0 | 0.0 | 0.3077 | 0.3077 |
+| b66c_ep1889537a3 | 10/10 | 0.4 | 0.4 | 0.5 | 0.5 |
+| b25j_ep3546144a1 | 11/11 | 0.0 | 0.0 | 0.0 | 0.0 |
+| b65g_ep3345847a1 | 11/11 | 0.5455 | **0.6364** | 0.7273 | 0.7273 |
+| f16b_ep1989975a1 | 15/15 | 0.0 | 0.0 | 0.4 | 0.4 |
+
+**Verdict. ACCEPTED, and stated honestly: this is not a proven recall win.** Nothing moved at
+depth on any subject. One subject gained one gold family at rank 100, reproduced across two runs
+with frozen phrases, and that is inside the +/-2 family variance this log already records. What is
+established is the cost: about 3 s per pass warm on a four-phrase set, against a channel weighted
+0.60 whose input the pipeline was already paying a model to produce and then throwing away.
+
+`b23q_ep1651392a4` is not in this corpus at all (the A4 kind code), so it produced no arm. That is
+a gap in the benchmark subject list, not a harness failure.
+
+**Not changed, deliberately.** `bm25` stays out of the deep presets. `docs/lexical_interface.md`
+records it returning ZERO gold families at any depth on both standing subjects while costing
+20.45 s and 175.55 s a pass, and nothing here contradicts that. It becomes a question again when
+workstream C's Tantivy index lands, not before.
+
+---
+
+## R11: The shard router's family dedup was inverted
+
+**Found while writing the first test of `shard_router.route`.** `_rank_weighted` suppresses every
+member of a family after the first, and `domains_of_publications` then defaulted a pid missing from
+the weights map to a FULL vote of 1.0. So the five suppressed members of a six-member family each
+voted 1.0 while the one that survived voted 1/41: the dedup did not fail, it inverted.
+
+**Measurement.** Seven candidates, six of them one family classified in `B25J` and one a distinct
+family in `B66C`:
+
+```
+before   B25J 0.986   B66C 0.004
+after    B25J 0.534   B66C 0.466
+```
+
+**Verdict. FIXED.** A supplied weights map is now the electoral roll: a pid absent from it does not
+vote. `tests/test_shard_router.py::test_one_family_votes_once` and
+`::test_a_pid_absent_from_a_supplied_weights_map_does_not_vote`. Nothing in production consumed
+`route()` yet, so this cost nobody a search; it would have cost workstream E a shard fleet woken by
+whichever family happened to publish most.
+
+---
+
+## R12: The cold and global tiers cost nothing when their backends are absent
+
+**Hypothesis.** Naming `cold` and `global` in a preset before workstream E lands is free, so they
+can be wired into the default presets now rather than in a later change nobody measures.
+
+**Measurement.** `b65g_ep3345847a1`, three alternating runs of each arm in one process, arm A
+`dense,brief_dense,cpc,citation,qbe` and arm B the same plus `cold,global`:
+
+```
+A   7.21 s   6.62 s   7.44 s      mean 7.09 s
+B   6.60 s   6.68 s   6.58 s      mean 6.62 s
+```
+
+Identical per-channel hit counts (`dense` 1000, `brief_dense` 1000, `cpc` 1000, `citation` 546,
+`qbe` 139), identical 2,994 families, identical recall at 100, 500 and 2,500.
+
+**Verdict. ACCEPTED.** The tiers short-circuit on `shard_manager.available()` and
+`global_search.available()` before any routing query is issued, which matters because
+`shard_router.historical_prior` is a 7.9 s `GROUP BY` over 53,473,700 classification rows. The
+guarantee is also a test rather than a hope:
+`tests/test_retrieval_cold.py::test_no_shard_backend_issues_no_query_and_creates_no_channel`
+fails if the tier so much as opens a connection.

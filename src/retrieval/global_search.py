@@ -20,8 +20,20 @@ one, and puts the results in under the channel name `"global"`.
 UNTIL THEN. `search()` returns [] and `available()` returns False, so the orchestrator runs the
 channel, gets nothing and carries on. That is the same fail-soft contract every other channel has:
 a channel that returns nothing is not an error.
+
+THE BACKEND OWNS ITS OWN CLOCK. There is no way to interrupt a call that has already started, so
+`GLOBAL_TIMEOUT` is a budget the ORCHESTRATOR checks before starting the call, not a deadline it
+can impose on one in flight. A backend that talks to an external API must bound its own request
+timeouts, or a single hung provider makes every search as slow as that provider.
 """
 from __future__ import annotations
+
+import os
+
+#  Seconds. Checked before the global task starts, so a task that queued behind other work past
+#  its budget is skipped rather than added to the critical path of a search that has already
+#  finished its local tiers. See `retrieval.orchestrator`.
+GLOBAL_TIMEOUT = float(os.environ.get("GLOBAL_SEARCH_TIMEOUT", "60"))
 
 
 class GlobalBackend:
@@ -42,6 +54,20 @@ class GlobalBackend:
         Without this a global hit cannot be deduped against a local one and the same disclosure is
         shown twice. Return {} if the backend has no family data; the orchestrator then treats each
         external id as its own family, which is the safe direction (nothing is silently merged).
+        """
+        return {}
+
+    def records(self, publication_ids) -> dict:
+        """publication_id -> a display record for the EXTERNAL ids in the result. Optional.
+
+        An external hit has no local row, so nothing downstream can read its title or abstract out
+        of `chunks`: `Result.external` is where a renderer and the cross-encoder both look, and an
+        id that is missing from it renders as a blank card and reranks on an empty passage. The
+        record only has to duck-type `federation.FederatedHit`: `.title` and `.abstract` are what
+        `fusion.best_text` reads, and a renderer additionally uses `.pub_number`, `.date`,
+        `.assignee` and `.url` when they are present.
+
+        Returning {} is allowed and costs display quality, not correctness.
         """
         return {}
 
@@ -93,5 +119,15 @@ def family_keys(publication_ids):
         return {}
     try:
         return dict(_BACKEND.family_keys(list(publication_ids)) or {})
+    except Exception:
+        return {}
+
+
+def records(publication_ids):
+    """Display records for external ids. Never raises; {} is a valid answer."""
+    if not available():
+        return {}
+    try:
+        return dict(_BACKEND.records(list(publication_ids)) or {})
     except Exception:
         return {}

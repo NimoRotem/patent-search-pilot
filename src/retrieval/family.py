@@ -17,12 +17,87 @@ reader is eventually handed.
 """
 from __future__ import annotations
 
+#  A publication id with no local row. `federation.py` coined the convention and
+#  `Result.is_external` tests it; the global tier uses it too, so it needs one spelling.
+EXTERNAL_PREFIX = "fed:"
+
+#  DOCDB DOES NOT LEAVE `simple_family_id` NULL WHEN A PUBLICATION HAS NO SIMPLE FAMILY. It writes
+#  a sentinel. MEASURED on the live corpus 2026-08-22: 21,862 publications carry the literal
+#  string '-1'. `COALESCE(NULLIF(simple_family_id,''), publication_number)`, which is what every
+#  family query used to say, only catches the empty string, so all 21,862 shared one family key.
+#  Two consequences, both live recall defects rather than tidiness:
+#
+#    * family collapse keeps ONE row per key, so at most one of those 21,862 could ever survive a
+#      search, whichever happened to score best. The other 21,861 were unreachable.
+#    * `legal._date_clause` excludes the subject's own family. With a subject in this set that
+#      excluded all 21,862 unrelated documents from every channel.
+#
+#  A sentinel means "no family", so the publication is its own family and falls back to its own
+#  number, which is what the COALESCE was always trying to express.
+FAMILY_SENTINELS = ("", "-1", "0")
+
+
+def real_family_id(value):
+    """The DOCDB family id, or None when it is a sentinel meaning 'no simple family'."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return None if text in FAMILY_SENTINELS else text
+
+
+def family_id_sql(alias="", column="simple_family_id"):
+    """SQL for the DOCDB family id, NULL when it is a sentinel. No fallback to the publication.
+
+    Use this where the question is "do these two rows share a family", which a fallback would
+    answer wrongly: two publications with no family are not family members of each other.
+    """
+    prefix = f"{alias}." if alias else ""
+    expr = f"{prefix}{column}"
+    for sentinel in FAMILY_SENTINELS:
+        expr = f"NULLIF({expr},'{sentinel}')"
+    return expr
+
+
+def family_key_sql(alias="", column="simple_family_id", fallback="publication_number"):
+    """SQL for the family key of one publications row, sentinels folded to the fallback.
+
+    Kept as one expression in one place because it is repeated across five channels; a second
+    spelling that forgets a sentinel is exactly the defect this replaces.
+    """
+    prefix = f"{alias}." if alias else ""
+    expr = f"{prefix}{column}"
+    for sentinel in FAMILY_SENTINELS:
+        expr = f"NULLIF({expr},'{sentinel}')"
+    return f"COALESCE({expr}, {prefix}{fallback})"
+
+
+def is_external_id(pid):
+    return isinstance(pid, str) and pid.startswith(EXTERNAL_PREFIX)
+
 
 class FamilyMixin:
     """Family key lookup, collapse and federated-id registration."""
 
+    #  Set True only on a retriever bound to a FOREIGN corpus (see `retrieval.cold.bind`). The hot
+    #  retriever preloads the whole publication -> family map in `RetrieverBase.__init__`, so the
+    #  hook below has nothing to do and the collapse must not pay for it: this flag is what keeps
+    #  the hot path exactly as expensive as it was.
+    _needs_hydration = False
+
     def family_key(self, pid):
         return self._fam.get(pid, str(pid))
+
+    def hydrate_families(self, pids):
+        """Hook: make `family_key` answerable for every id about to be collapsed.
+
+        A no-op for the hot corpus, whose map is already complete. A retriever bound to a COLD
+        SHARD replaces it with one batched lookup against that shard, because the shard holds
+        publications the hot map has never seen. Without it `family_key` falls back to `str(pid)`,
+        every cold hit is its own family, and a cold hit and a hot hit of the same disclosure both
+        survive the collapse: RRF then splits that family's votes between two ids and neither wins,
+        which is the exact failure `canonical_reps` exists to prevent locally.
+        """
+        return None
 
     def collapse_rows(self, rows, cap):
         """Chunk-level rows -> [(publication_id, score)], ONE PER FAMILY, capped at `cap` FAMILIES.
@@ -38,6 +113,9 @@ class FamilyMixin:
         the member that gets the family's slot, exactly as `dedup_family` would have chosen after
         fusion.
         """
+        if self._needs_hydration:
+            rows = list(rows)
+            self.hydrate_families([r["publication_id"] for r in rows])
         best, seen = {}, set()
         for r in rows:
             pid = r["publication_id"]
@@ -59,6 +137,9 @@ class FamilyMixin:
         rows, and the ones that pool several dense passes (qbe, crosslingual) have already
         aggregated. They collapse here instead.
         """
+        if self._needs_hydration:
+            pairs = list(pairs)
+            self.hydrate_families([p for p, _s in pairs])
         out, seen = [], set()
         for pid, sc in pairs:
             fk = self.family_key(pid)
@@ -90,7 +171,7 @@ class FamilyMixin:
         if not keys:
             return {}
         sql = ("SELECT id, upper(regexp_replace(publication_number, '[^A-Za-z0-9]', '', 'g')) AS k, "
-               "COALESCE(NULLIF(simple_family_id,''), publication_number) AS fam "
+               f"{family_key_sql()} AS fam "
                "FROM publications "
                "WHERE upper(regexp_replace(publication_number, '[^A-Za-z0-9]', '', 'g')) = ANY(%s)")
         out = {}
@@ -118,9 +199,17 @@ class FamilyMixin:
         splits its votes between them and neither wins. That is not a hypothetical: a family with
         a US pre-grant publication and its granted patent is the ordinary case in this corpus.
 
-        The representative is the member that appears in the MOST channels, tie-broken by the best
-        rank it reached. Ranks, never scores: channel scores are incomparable, which is the whole
-        reason fusion is rank-based.
+        A LOCAL member always beats an external one, whatever the ranks say. An external id has a
+        title and an abstract at best; a local row has chunks, claims, dates, figures and a family.
+        Letting `fed:EP1234567` represent a family this corpus actually holds throws all of that
+        away for a row the reader cannot open, and every later stage (the cross-encoder, the claim
+        chart, the citability window) then works from the thinner of the two. The global tier made
+        this reachable: it fuses in phase 1, where `canonicalise` runs, which the federated bridge
+        never did.
+
+        Otherwise the representative is the member that appears in the MOST channels, tie-broken by
+        the best rank it reached. Ranks, never scores: channel scores are incomparable, which is the
+        whole reason fusion is rank-based.
         """
         stats = {}
         for res in channel_results.values():
@@ -132,7 +221,9 @@ class FamilyMixin:
                     cur[1] = rank
         out = {}
         for fk, members in stats.items():
-            out[fk] = min(members.items(), key=lambda kv: (-kv[1][0], kv[1][1], str(kv[0])))[0]
+            out[fk] = min(members.items(),
+                          key=lambda kv: (is_external_id(kv[0]), -kv[1][0], kv[1][1],
+                                          str(kv[0])))[0]
         return out
 
     def canonicalise(self, channel_results):

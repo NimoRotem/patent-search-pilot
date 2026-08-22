@@ -72,6 +72,23 @@ CHANNEL_WEIGHTS = {
 DENSE_FLOOR = 30           # the top-N dense hits are guaranteed a floor so weak channels can
                            # never demote a strong semantic hit out of the head
 
+#  A cold-shard channel is the SAME query against a different host, so it carries the SAME weight
+#  as its hot counterpart: `cold:dense` is weighted exactly like `dense`. Deriving the weight
+#  rather than copying the table is deliberate. Two tables drift, and the day someone retunes
+#  `dense` and forgets `cold:dense` the fusion silently prefers whichever half of the corpus
+#  happens to be hot, which is a ranking that depends on which VM is awake.
+COLD_PREFIX = "cold:"
+
+
+def channel_weight(name, weights=None):
+    """The RRF weight for a channel name, resolving the `cold:` prefix to its hot counterpart."""
+    w = CHANNEL_WEIGHTS if weights is None else weights
+    if name in w:
+        return w[name]
+    if isinstance(name, str) and name.startswith(COLD_PREFIX):
+        return w.get(name[len(COLD_PREFIX):], 0.5)
+    return 0.5
+
 
 def rrf(channel_results: dict, weighted=True, dense_floor=True):
     """Weighted reciprocal-rank fusion. channel_results: {name: [(pid, score)] best-first}.
@@ -86,7 +103,7 @@ def rrf(channel_results: dict, weighted=True, dense_floor=True):
     documents into the head of an out-of-domain answer."""
     fused, prov = {}, {}
     for name, res in channel_results.items():
-        w = CHANNEL_WEIGHTS.get(name, 0.5) if weighted else 1.0
+        w = channel_weight(name) if weighted else 1.0
         for rank, (pid, _s) in enumerate(res):
             fused[pid] = fused.get(pid, 0.0) + w / (RRF_K + rank + 1)
             prov.setdefault(pid, {})[name] = rank + 1
