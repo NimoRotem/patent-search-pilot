@@ -536,6 +536,18 @@ def test_visual_review_spec_keeps_the_full_realistic_brief_and_every_part():
         assert [item["numeral"] for item in specification["parts"]] == ["10", "12", "14"]
 
 
+def test_leader_review_spec_contains_only_annotation_routing():
+    specification = json.loads(draft_figures._leader_routing_spec(
+        "FIG. 2 - sectional view",
+        ["24 = perimeter member on the right leg", "36 = covering element on the right side"]))
+
+    assert specification == {
+        "figure_label": "FIG. 2",
+        "expected_numerals": ["24", "36"],
+    }
+    assert "perimeter member" not in json.dumps(specification).lower()
+
+
 def test_current_visual_audits_are_bound_to_the_configured_review_model(monkeypatch):
     monkeypatch.setattr(draft_figures, "vision_model", lambda: "gemini-2.5-pro")
     digest = "a" * 64
@@ -573,7 +585,7 @@ def test_endpoint_review_specs_strip_geometry_only_annotation_prohibitions(monke
         numerals=["10 = body"],
         anchors=[{"numeral": "10", "x": 500, "y": 500, "visible": True}])
 
-    assert modes == [True, True]
+    assert modes == [True]
 
 
 def test_render_refuses_to_store_a_semantically_wrong_drawing(monkeypatch):
