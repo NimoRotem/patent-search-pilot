@@ -1078,6 +1078,10 @@ def test_filing_gate_requires_every_check_and_independent_review_to_be_clean():
     assert "review" in draft_studio.filing_blockers({**clean, "status": "failed"})[0].lower()
 
 
+def test_default_finalization_budget_allows_drawing_and_text_repair_rounds():
+    assert draft_studio.MAX_FINALIZATION_ROUNDS == 6
+
+
 def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, tmp_path):
     class Repository:
         def __init__(self):

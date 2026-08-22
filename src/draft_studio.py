@@ -50,7 +50,7 @@ MAX_MESSAGE_CHARS = 20_000
 MAX_TURNS_LISTED = 200
 LEASE_SECONDS = 2400                           # a full drafting turn plus its review
 MAX_FINALIZATION_ROUNDS = max(
-    2, min(int(os.environ.get("DRAFT_FINALIZATION_ROUNDS", "4")), 6))
+    2, min(int(os.environ.get("DRAFT_FINALIZATION_ROUNDS", "6")), 6))
 _SCHEMA_LOCK = threading.Lock()
 _SCHEMA_READY = False
 _MIGRATION = Path(__file__).resolve().parents[1] / "sql" / "006_draft_agent.sql"
