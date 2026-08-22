@@ -502,6 +502,19 @@ def test_labels_are_overlaid_deterministically_after_geometry_review():
     ])
 
 
+def test_deterministic_leader_endpoint_has_a_vision_visible_dot():
+    raw = blank_png()
+    anchors = [{"numeral": "10", "x": 500, "y": 500,
+                "visible": True, "evidence": "body"}]
+    layout = draft_figures._annotation_layout(raw, anchors, 1.0)
+    output = Image.open(io.BytesIO(
+        draft_figures.annotate_png(raw, "FIG. 1", anchors)))
+    target_x = layout["source_x"] + round(500 * layout["source"].width / 1000)
+    target_y = layout["source_y"] + round(500 * layout["source"].height / 1000)
+
+    assert output.getpixel((target_x, target_y + 4))[0] < 32
+
+
 def test_geometry_prompt_strips_every_annotation_instruction_and_reference_number():
     prompt = draft_figures.build_prompt(
         "FIG. 3 - sectional view",
