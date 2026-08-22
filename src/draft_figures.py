@@ -39,7 +39,7 @@ MAX_PNG_BYTES = 8 * 1024 * 1024
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
-FIGURE_PROMPT_VERSION = "figure-v3-geometry-only"
+FIGURE_PROMPT_VERSION = "figure-v4-exact-geometry-rejected-cache-eviction"
 SEMANTIC_PROMPT_VERSION = (
     "figure-semantic-v11-high-accuracy-full-spec-consensus-pixel-grounded-marked-topology")
 LEADER_PROMPT_VERSION = (
@@ -49,7 +49,7 @@ MARKED_ANCHOR_PROMPT_VERSION = (
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v1-exterior-connectivity"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
-MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "3")), 4))
+MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 3
 MAX_OCR_CLEAN_RETRIES = 2
 LEADER_THINKING_BUDGET = 2048
@@ -204,7 +204,9 @@ DRAWING_SYSTEM = (
     "hatching where a sectional view is requested, NO greyscale fills, NO colour, NO "
     "photorealism, NO drop shadows, and NO background scenery. Draw GEOMETRY ONLY. Include no "
     "letters, words, digits, dimensions, reference numerals, figure labels, legends, logos, or "
-    "watermarks. Leave clear white space around every component. A deterministic compositor adds "
+    "watermarks. Treat every stated quantity, count, shape, and spatial relationship as literal, "
+    "and count repeated geometry before returning. Leave clear white space around every "
+    "component. A deterministic compositor adds "
     "the exact reference numerals, leader lines, and figure label only after a separate vision "
     "review confirms that the geometry matches the specification."
 )
@@ -2306,6 +2308,18 @@ def _cached_generate(prompt: str, previous: bytes | None = None) -> bytes:
     return png
 
 
+def _discard_cached_generation(prompt: str, previous: bytes | None = None) -> None:
+    """Never replay pixels that a downstream filing gate has already rejected."""
+    try:
+        ensure_schema()
+        with db.cursor() as cur:
+            cur.execute(
+                "DELETE FROM app_draft_figure_cache WHERE cache_key=%s",
+                (_cache_key(prompt, previous),))
+    except Exception:
+        pass
+
+
 def _audited_version(figure_id: int, *, prompt: str, instruction: str, numerals,
                      png: bytes, base_png: bytes, source_kind: str,
                      ocr_audit: dict, semantic_audit: dict, leader_audit: dict) -> dict:
@@ -2391,6 +2405,7 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
 
     semantic = {}
     correction = ""
+    active_generation = None
     part_by_numeral = {entry["numeral"]: entry["part"] for entry in numeral_entries(numerals)}
     for attempt in range(MAX_SEMANTIC_ATTEMPTS):
         if not region:
@@ -2401,6 +2416,7 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
             retry_source = previous if attempt == 0 else (
                 None if _semantic_has_text_contamination(semantic) else raw_png)
             raw_png = _cached_generate(candidate_prompt, retry_source)
+            active_generation = (candidate_prompt, retry_source)
         semantic = inspect_semantics(
             raw_png, label=label, caption=caption, numerals=numerals)
         if semantic.get("ok"):
@@ -2408,6 +2424,9 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
             semantic = _apply_topology_audit(raw_png, caption, semantic)
             if semantic.get("ok"):
                 break
+        if active_generation:
+            _discard_cached_generation(*active_generation)
+            active_generation = None
         problems = list(semantic.get("errors") or [])
         if semantic.get("missing"):
             missing_parts = [part_by_numeral.get(_clean_numeral(value), "component")
@@ -2441,6 +2460,9 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
     # from a clean canvas, semantically recheck the new geometry, and run all final-pixel gates
     # again before giving the failure to the document repair loop.
     if labels.get("other_text") and not region:
+        if active_generation:
+            _discard_cached_generation(*active_generation)
+            active_generation = None
         contamination_prompt = (
             "FINAL OCR REVIEW FOUND FORBIDDEN WRITING IN THE GEOMETRY. Start over from a blank "
             "white canvas. Draw outlines only. Include no letters, words, symbols, digits, "
@@ -2449,18 +2471,25 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
             retained = max(0, MAX_PROMPT_CHARS - len(contamination_prompt) - len(retry_name) - 4)
             clean_prompt = prompt[:retained] + "\n\n" + contamination_prompt + " " + retry_name
             raw_png = _cached_generate(clean_prompt, None)
+            active_generation = (clean_prompt, None)
             semantic = inspect_semantics(
                 raw_png, label=label, caption=caption, numerals=numerals)
             if semantic.get("ok"):
                 semantic = _apply_pixel_grounding(raw_png, numerals, semantic)
                 semantic = _apply_topology_audit(raw_png, caption, semantic)
             if not semantic.get("ok"):
+                _discard_cached_generation(*active_generation)
+                active_generation = None
                 continue
             png, labels, leaders, anchors, pixel_audit = _compose_checked_sheet(
                 raw_png, label=label, caption=caption, numerals=numerals, semantic=semantic)
             if labels.get("ok") or not labels.get("other_text"):
                 break
+            _discard_cached_generation(*active_generation)
+            active_generation = None
     if not labels.get("ok"):
+        if active_generation:
+            _discard_cached_generation(*active_generation)
         issues = []
         for key in ("missing", "unexpected", "duplicates", "other_text"):
             if labels.get(key):
@@ -2472,6 +2501,8 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
         detail = labels.get("error") or "; ".join(issues) or "the OCR result was not exact"
         raise FigureError("OCR label review failed: " + str(detail)[:300])
     if not leaders.get("ok"):
+        if active_generation:
+            _discard_cached_generation(*active_generation)
         issues = list(leaders.get("errors") or [])
         if leaders.get("incorrect"):
             issues.append("misplaced numerals " + ", ".join(leaders["incorrect"]))

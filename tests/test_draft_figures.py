@@ -604,7 +604,11 @@ def test_render_refuses_to_store_a_semantically_wrong_drawing(monkeypatch):
 
 def test_render_refuses_to_store_a_sheet_with_a_misplaced_leader(monkeypatch):
     accept_pixel_grounding(monkeypatch)
+    discarded = []
     monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
+    monkeypatch.setattr(
+        draft_figures, "_discard_cached_generation",
+        lambda prompt, previous=None: discarded.append((prompt, previous)))
     monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
         "ok": True, "anchors": [{"numeral": "10", "x": 200, "y": 300,
                                     "visible": True, "evidence": "body"}]})
@@ -623,12 +627,17 @@ def test_render_refuses_to_store_a_sheet_with_a_misplaced_leader(monkeypatch):
     with pytest.raises(draft_figures.FigureError, match="leader placement"):
         draft_figures.render_figure(
             7, 91, label="FIG. 1", caption="side view of body", numerals=["10 = body"])
+    assert len(discarded) == 1
 
 
 def test_render_refuses_a_false_positive_when_marked_endpoint_is_on_neighboring_geometry(
         monkeypatch):
     accept_pixel_grounding(monkeypatch)
+    discarded = []
     monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
+    monkeypatch.setattr(
+        draft_figures, "_discard_cached_generation",
+        lambda prompt, previous=None: discarded.append((prompt, previous)))
     monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
         "ok": True, "anchors": [{"numeral": "26", "x": 220, "y": 650,
                                     "visible": True, "evidence": "bearing face"}]})
@@ -653,6 +662,7 @@ def test_render_refuses_a_false_positive_when_marked_endpoint_is_on_neighboring_
         draft_figures.render_figure(
             7, 91, label="FIG. 2", caption="bearing face at the upper boundary of the band",
             numerals=["26 = bearing face"])
+    assert len(discarded) == 1
 
 
 def test_render_automatically_moves_a_rejected_leader_to_the_reviewed_feature(monkeypatch):
@@ -756,6 +766,23 @@ def test_text_contaminated_geometry_retries_from_a_clean_canvas(monkeypatch):
             numerals=["10 = body"])
     assert previous_images == [None] * draft_figures.MAX_SEMANTIC_ATTEMPTS
     assert all(not re.search(r"\d", prompt) for prompt in prompts)
+
+
+def test_semantically_rejected_generation_is_evicted_from_cache(monkeypatch):
+    discarded = []
+    monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
+    monkeypatch.setattr(
+        draft_figures, "_discard_cached_generation",
+        lambda prompt, previous=None: discarded.append((prompt, previous)))
+    monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
+        "ok": False, "missing": [], "errors": ["wrong geometry"], "anchors": []})
+
+    with pytest.raises(draft_figures.FigureError, match="semantic"):
+        draft_figures.render_figure(
+            7, 91, label="FIG. 1", caption="side view of body",
+            numerals=["10 = body"])
+
+    assert len(discarded) == draft_figures.MAX_SEMANTIC_ATTEMPTS
 
 
 def test_ocr_detected_geometry_text_regenerates_from_a_clean_canvas(monkeypatch):
