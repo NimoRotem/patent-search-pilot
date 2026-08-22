@@ -37,9 +37,19 @@ def normalize_classification(value: str) -> str:
     return re.sub(r"\s+", "", str(value or "").upper()).strip(".;,")
 
 
+#  DOCDB writes '-1' (and, more rarely, '0') to mean "this publication has no simple family".
+#  Treating either as a family id collapses every such publication onto ONE key. Workstream I
+#  measured 21,862 live publications carrying '-1', and `manifest.choose_family_fetch_targets`
+#  keeps exactly one record per key, so the collapse does not merely mis-count: it drops every
+#  other member of the bucket from the fetch set. Measured on the 16,896-publication discovery
+#  replay this module produces, 3,888 publications carry a sentinel, so 3,887 of them would never
+#  be queued. `corpus_niche.family_key` is the same rule, spelled for the manifest side.
+NO_FAMILY = frozenset({"", "-1", "0"})
+
+
 def normalize_family_id(value: str, publication_number: str) -> str:
     family = re.sub(r"\s+", "", str(value or "").strip())
-    if family:
+    if family and family not in NO_FAMILY:
         return f"family:{family.upper()}"
     return f"publication:{normalize_publication_number(publication_number)}"
 

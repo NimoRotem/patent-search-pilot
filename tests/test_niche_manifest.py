@@ -66,6 +66,31 @@ def test_family_normalization_is_stable_with_and_without_provider_family():
     assert family_key("", "EP-1234567-A1") == "publication:EP1234567A1"
 
 
+def test_the_docdb_no_family_sentinel_does_not_collapse_the_fetch_set():
+    """'-1' is DOCDB saying "no simple family", not a family that 21,862 publications share.
+
+    `choose_family_fetch_targets` keeps ONE record per family key, so collapsing the sentinel
+    does not merely mis-count families: every other member of the bucket is dropped from the
+    fetch set and never queued. Defect injection: drop `and family not in NO_FAMILY` from
+    `identifiers.normalize_family_id` and this returns one target instead of three.
+    """
+    assert family_key("-1", "EP-1234567-A1") == "publication:EP1234567A1"
+    assert family_key("0", "EP-1234567-A1") == "publication:EP1234567A1"
+    assert family_key(" 07128644 ", "EP-1234567-A1") == "family:07128644"
+
+    orphans = [_record(pn, family_id="-1", has_abstract=True)
+               for pn in ("US1111111A1", "DE2222222A1", "JP3333333A")]
+    targets = choose_family_fetch_targets(orphans)
+    assert len(targets) == 3, (
+        f"the '-1' sentinel collapsed {len(orphans)} unrelated publications into "
+        f"{len(targets)} fetch target(s)")
+
+    #  A real shared family still collapses to one target, which is the whole point of the rule.
+    siblings = [_record(pn, family_id="07128644", has_abstract=True)
+                for pn in ("US4444444A1", "DE5555555A1")]
+    assert len(choose_family_fetch_targets(siblings)) == 1
+
+
 def test_source_publication_variants_include_indexed_hyphenated_and_us_forms():
     assert source_publication_variants("DE1286275B")[:2] == (
         "DE1286275B",

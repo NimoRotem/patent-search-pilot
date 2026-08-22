@@ -14,6 +14,15 @@ publication from a family sibling, and two workers racing to fill in siblings of
 each do the other's work. `PARTITIONS` is fixed at 16 and a worker takes `partition_id % of == i`,
 so 1 to 16 workers run on disjoint sets without ever reseeding the pool.
 
+A DOCDB FAMILY ID OF '-1' IS NOT A FAMILY. DOCDB writes '-1' to mean "this publication has no
+simple family", and 21,862 live publications carry it. Hashing it as a family key puts every one
+of them in ONE partition, which serialises them onto a single worker and defeats the partitioning
+for that whole population. `partition_key()` maps the three sentinels ('-1', '0' and the empty
+string) onto the publication number, which is what `corpus_niche.family_key` does everywhere else
+in V3. The provisional `CorpusNicheReader` never exposed this because it emits '' for a missing
+family, and '' already fell through the old `fam or pn`; '-1' did not. Measured on the
+`patentdata` gap manifest, 3,779 of its 4,615 entries carry '-1'.
+
 LEASES have an expiry. Claiming is `FOR UPDATE SKIP LOCKED` over the partial index of pending rows
 only, so two workers never wait on each other and never take the same row. A dead worker's rows
 come back to the pool when `reap()` finds their lease expired; `attempts` is incremented at LEASE
@@ -47,6 +56,19 @@ STATES = ("pending", "leased", "done", "missing", "failed", "skipped")
 
 def worker_id() -> str:
     return f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:6]}"
+
+
+#  The three DOCDB values that mean "no simple family". Kept here rather than imported so
+#  `acquire` does not take a dependency on the manifest package for one tuple; the spelling is
+#  `corpus_niche.family_key`'s and the two are asserted equal in tests/test_fulltext_acquire.py.
+NO_FAMILY = ("", "-1", "0")
+
+
+def partition_key(family_id: str, publication_number: str) -> str:
+    """The string a partition is hashed from. A sentinel family id is no family, so the
+    publication stands for itself and lands wherever its own hash puts it."""
+    fam = str(family_id or "").strip()
+    return publication_number if fam in NO_FAMILY else fam
 
 
 def partition_of(family_key: str) -> int:
@@ -119,7 +141,7 @@ def seed(entries, manifest: str = "") -> dict:
             continue
         fam = str(e.get("family_id") or "") or ""
         rows.append((pn, fam, str(e.get("country") or "")[:4],
-                     partition_of(fam or pn), int(e.get("priority") or 100),
+                     partition_of(partition_key(fam, pn)), int(e.get("priority") or 100),
                      str(e.get("manifest") or manifest)))
     if not rows:
         return {"offered": 0, "added": 0}

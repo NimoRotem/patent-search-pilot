@@ -88,6 +88,32 @@ def test_seed_puts_one_family_in_one_partition():
     assert len(parts) == 1, f"a family was split across partitions {parts}"
 
 
+def test_the_docdb_no_family_sentinel_is_not_a_family():
+    """'-1' means DOCDB has no simple family for this publication, so it is not a key.
+
+    Defect injection: revert `seed()` to `partition_of(fam or pn)` and every one of these lands
+    in the SAME partition, which is what happens to 3,779 of the 4,615 entries in the
+    `patentdata` gap manifest. Workstream I measured 21,862 live publications carrying '-1'.
+    """
+    #  The three sentinels agree with the manifest package's own spelling. Two modules deciding
+    #  this differently is the whole bug.
+    from corpus_niche import family_key
+    for sentinel in tasks.NO_FAMILY:
+        assert family_key(sentinel, "ZZ9999999A") == "ZZ9999999A"
+        assert tasks.partition_key(sentinel, "ZZ9999999A") == "ZZ9999999A"
+    assert tasks.partition_key("FAM-42", "ZZ9999999A") == "FAM-42"
+
+    tasks.seed([{"publication_number": p, "family_id": "-1"} for p in PUBS[:8]], manifest="unit")
+    import db
+    with db.cursor(autocommit=True, readonly=True) as cur:
+        cur.execute("SELECT DISTINCT partition_id FROM fulltext_fetch_task "
+                    "WHERE publication_number = ANY(%s)", (PUBS[:8],))
+        parts = [r["partition_id"] for r in cur.fetchall()]
+    assert len(parts) > 1, (
+        f"every '-1' publication landed in one partition {parts}: the sentinel was hashed "
+        "as if it were a family")
+
+
 # ---------------------------------------------------------------------------------------------
 # leases
 # ---------------------------------------------------------------------------------------------
