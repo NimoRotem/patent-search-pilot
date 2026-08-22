@@ -449,3 +449,24 @@ def test_the_real_008_yields_exactly_one_table():
     with open(path, encoding="utf-8") as migration_file:
         sql = migration_file.read()
     assert [n for k, n in migrate.sentinels(sql) if k == "table"] == ["sources_docstore"]
+
+
+def test_no_migration_builds_an_hnsw_index_the_extension_will_refuse():
+    """pgvector 0.8.5 caps HNSW at 2000 dimensions, and `bench_emb_3072.embedding` is
+    `vector(3072)`, so `ix_bench3072_hnsw` cannot be created on any host at any scale.
+
+    It lived in `002_indexes.sql`, which is the file that builds the two indexes the live search
+    depends on, so the whole migration raised and `run.sh`'s closing `apply --only 002` failed on
+    every fresh install. A benchmark fixture must never be able to fail the corpus build. It is
+    split into 016 now, WITHOUT the 3072 index.
+    """
+    real = os.path.join(ROOT, "sql")
+    for name in sorted(os.listdir(real)):
+        if not name.endswith(".sql"):
+            continue
+        with open(os.path.join(real, name), encoding="utf-8") as fh:
+            body = fh.read()          # `sentinels` strips comments itself, so the note in 016 is
+        for _kind, index in migrate.sentinels(body):    # not mistaken for a CREATE
+            assert index != "ix_bench3072_hnsw", (
+                "%s creates an HNSW index over a 3072-dimension column, which pgvector refuses; "
+                "the migration will raise wherever it is applied" % name)

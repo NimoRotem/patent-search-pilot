@@ -2992,7 +2992,10 @@ def ranked_tail(slug):
     rows = []
     try:
         with db.cursor() as cur:
-            reps = webview.resolve_family_reps(cur, window)
+            #  THROUGH THE REPORT. Resolving this window on its own picked a different member of a
+            #  family from the one the reading charted, so `deep.get(pub)` missed and a reference
+            #  that had been read in full rendered here as unread.
+            reps = webview.reps_for(cur, rep, window)
     except Exception:
         traceback.print_exc()
         reps = {}
@@ -4767,7 +4770,7 @@ def api_more_references(slug):
     conn.autocommit = True
     cur = conn.cursor()
     try:
-        reps = webview.resolve_family_reps(cur, page)
+        reps = webview.reps_for(cur, rep, page)
     finally:
         conn.close()
     rows = []

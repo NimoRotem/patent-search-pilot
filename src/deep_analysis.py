@@ -998,8 +998,10 @@ def _extend_to(cards, report, top_n):
         conn.autocommit = True
         cur = conn.cursor()
         try:
-            reps = webview.resolve_family_reps(
-                cur, tail, subject_efd=webview.subject_efd_of(report))
+            reps = webview.reps_for(cur, report, tail)
+            #  These are read in full and charted, so their representatives are part of the record
+            #  for the same reason the screen's are.
+            webview.record_family_reps(report, reps)
         finally:
             conn.close()
     except Exception:

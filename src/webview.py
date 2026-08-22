@@ -322,7 +322,51 @@ def subject_efd_of(report):
         return None
 
 
-def resolve_family_reps(cur, family_keys, subject_efd=None):
+def record_family_reps(report, reps):
+    """Write the representatives this run CHOSE into the report, so nothing re-chooses later.
+
+    The choice is made once, at the screen, and from then on it is a fact about this report rather
+    than a query anyone may re-run. Two things break without it, and both were live:
+
+    * `_seed_families` REPLACES the representative for a document the examiner applied by number.
+      That override exists only in the screen's local `reps` dict, so every later stage that
+      resolved the family again got the ordering's pick back and cited a document the examiner
+      never used.
+    * the corpus keeps growing. A sibling that lands next week can win the ordering and silently
+      change which document an OLD report displays, while the quotes in it were read from the
+      member that won last week.
+
+    Recording is additive: a family already decided is never re-decided, because the whole point is
+    that the document which was read stays the document that is cited.
+    """
+    if report is None or not reps:
+        return report
+    have = report.get("family_reps")
+    if not isinstance(have, dict):
+        have = {}
+    for fam, r in (reps or {}).items():
+        pub = (r or {}).get("publication_number") if isinstance(r, dict) else None
+        if pub and str(fam) not in have:
+            have[str(fam)] = pub
+    report["family_reps"] = have
+    return report
+
+
+def reps_for(cur, report, family_keys):
+    """The ONE way any stage may resolve family representatives for a report.
+
+    Pins to what the report already recorded, and falls back to the date rule for families it has
+    not seen, so the screen, the reading, the rescue, the report page, the ranked list and the
+    filing package all name the same member of each family. A stage that calls
+    `resolve_family_reps` directly, without the report, is how the reading and the display came to
+    disagree in the first place.
+    """
+    pinned = [p for p in ((report or {}).get("family_reps") or {}).values() if p]
+    return resolve_family_reps(cur, family_keys, subject_efd=subject_efd_of(report),
+                               pinned=pinned or None)
+
+
+def resolve_family_reps(cur, family_keys, subject_efd=None, pinned=None):
     """Map each family_key to its best representative publication row. One query for all keys.
 
     THE REPRESENTATIVE IS THE DOCUMENT THAT GETS READ, QUOTED AND CITED, so which member wins is a
@@ -345,6 +389,11 @@ def resolve_family_reps(cur, family_keys, subject_efd=None):
     only) came back as US-11,999,030-B2 (published 2024-06-04, also 102(a)(2)) when the same family
     holds US-2020/0338695-A1, published 2020-10-29 — five months before the target's priority date,
     and therefore unconditional 102(a)(1) art.
+
+    `pinned` OUTRANKS EVERY OTHER KEY, including readability. A publication listed there was
+    already chosen for its family by the run that read it, and re-deciding it now would mean the
+    quotes in the report were verified against one document while the report cites another. Prefer
+    `reps_for`, which passes this from the report, over calling this directly.
     """
     if not family_keys:
         return {}
@@ -365,6 +414,11 @@ def resolve_family_reps(cur, family_keys, subject_efd=None):
                  #  among equals the earliest publication is the safest citation
                  "publication_date ASC NULLS LAST")
         params = [list(family_keys), subject_efd]
+    if pinned:
+        #  FIRST, ahead of readability and ahead of the date. At most one member of a family is
+        #  pinned, so this decides that family and leaves every other one to the rule below.
+        order = "(publication_number = ANY(%s)) DESC, " + order
+        params.insert(1, [str(p) for p in pinned])
     cur.execute(
         """
         WITH cand AS (
@@ -1706,7 +1760,10 @@ def build_view(report, top_n=25, deep=None):
     # demote title-only) and trim to top_n — so a demoted title-only hit is replaced by the next
     # substantive family rather than leaving a hole. report["ranked_families"] itself is untouched.
     window = report.get("ranked_families", [])[:max(top_n * 3, 60)]
-    reps = resolve_family_reps(cur, window)
+    #  The report's own choice, not a fresh one: the cards built from this are what deep_analysis
+    #  charts, so a member chosen here that the screen did not read is a card whose quotes were
+    #  verified against a different document.
+    reps = reps_for(cur, report, window)
     #  A reference deep_rank read in full and grounded is substantive by evidence; the text-shape
     #  demotion heuristic must not sink it.
     _dr = report.get("deep_rank") or {}

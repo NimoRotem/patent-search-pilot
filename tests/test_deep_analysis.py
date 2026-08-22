@@ -172,7 +172,7 @@ def test_the_reading_goes_past_the_cards_the_page_renders(monkeypatch):
 
     import webview
     monkeypatch.setattr(webview, "resolve_family_reps",
-                        lambda cur, fams, subject_efd=None: {
+                        lambda cur, fams, subject_efd=None, pinned=None: {
                             f: {"publication_number": "US-X%s-B2" % f,
                                 "title": "tail " + f, "simple_family_id": f}
                             for f in fams})

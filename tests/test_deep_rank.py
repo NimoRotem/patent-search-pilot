@@ -300,12 +300,18 @@ def test_extend_to_tops_up_from_families_the_cards_do_not_cover():
             pass
 
     seen_efd = {}
+    seen_pins = {}
 
-    def fake_reps(cur, keys, subject_efd=None):
+    def fake_reps(cur, keys, subject_efd=None, pinned=None):
         #  The cutoff has to REACH here: it decides which member of each family is read, quoted
         #  and cited. A stage that drops it silently downgrades every family it resolves from
         #  102(a)(1) art to 102(a)(2). See webview.resolve_family_reps.
+        #
+        #  `pinned` has to reach here for the same reason one step later: a family the screen
+        #  already decided must come back as the member the screen READ, or the top-up charts a
+        #  sibling whose text the quotes are not in.
         seen_efd["efd"] = subject_efd
+        seen_pins["pinned"] = pinned
         return {k: {"publication_number": "P" + k[1:], "title": k} for k in keys}
 
     import webview as wv
@@ -320,7 +326,13 @@ def test_extend_to_tops_up_from_families_the_cards_do_not_cover():
     #  F3 and F1 are already covered, so the top-up is F2, F4, F5 — never F3 again
     assert set(pubs[2:]) == {"P2", "P4", "P5"}
     assert "efd" in seen_efd, "the reading top-up resolved families without the subject's date"
+    assert "pinned" in seen_pins, (
+        "the reading top-up resolved families without the report's recorded representatives, so "
+        "it can chart a different member of a family from the one the screen read")
     assert len(pubs) == len(set(pubs))
+    #  And the top-up records what it chose, so the page and the ranked list name these documents
+    #  too rather than resolving them a third time.
+    assert report["family_reps"] == {"F2": "P2", "F4": "P4", "F5": "P5"}
 
 
 def test_deep_analysis_cache_version_was_bumped():
