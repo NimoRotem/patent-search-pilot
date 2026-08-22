@@ -868,6 +868,35 @@ def test_ensure_project_figures_draws_every_missing_spec_with_canonical_parts(mo
     assert calls[0]["numerals"] == ["10 = body", "12 = pump"]
 
 
+def test_ensure_project_figures_rechecks_cancellation_before_each_sheet(monkeypatch):
+    monkeypatch.setattr(draft_figures, "listing", lambda *a: [])
+    rendered = []
+    monkeypatch.setattr(draft_figures, "render_figure", lambda *a, **values: (
+        rendered.append(values["label"]) or {
+            "figure_id": len(rendered), "numeral_audit": {"ok": True},
+            "semantic_audit": accepted_semantic_audit(),
+            "leader_audit": accepted_leader_audit(),
+        }))
+    checks = []
+
+    def check_cancel():
+        checks.append(len(checks) + 1)
+        if len(checks) == 2:
+            raise RuntimeError("turn cancelled")
+
+    with pytest.raises(RuntimeError, match="turn cancelled"):
+        draft_figures.ensure_project_figures(
+            7, 91, sections={}, disclosure="body",
+            numeral_table=[{"numeral": "10", "part": "body"}],
+            figure_specs=[
+                {"label": "FIG. 1", "caption": "first view", "numerals": ["10"]},
+                {"label": "FIG. 2", "caption": "second view", "numerals": ["10"]},
+            ], check_cancel=check_cancel)
+
+    assert checks == [1, 2]
+    assert rendered == ["FIG. 1"]
+
+
 def test_ensure_project_figures_collects_every_failed_sheet_before_repair(monkeypatch):
     monkeypatch.setattr(draft_figures, "listing", lambda *a: [])
     attempted = []

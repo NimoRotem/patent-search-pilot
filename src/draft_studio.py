@@ -1222,15 +1222,20 @@ class TurnRunner:
         except Exception:
             pass
 
-    def _ensure_figures(self, *, turn_id: int, project_id: int, user_id: int,
+    def _ensure_figures(self, *, turn_id: int, lease: str, project_id: int, user_id: int,
                         sections: Mapping[str, str], numerals: Sequence[Mapping[str, str]],
                         figures: Sequence[Mapping[str, Any]], disclosure: str,
                         workspace: Path) -> dict[str, Any]:
         import draft_figures
         draft_figures.checkpoint_project_figures(turn_id, project_id, user_id)
+
+        def check_cancel() -> None:
+            self.repository.heartbeat(
+                turn_id, lease, stage="drawing and inspecting figures")
+
         result = draft_figures.ensure_project_figures(
             project_id, user_id, sections=sections, disclosure=disclosure,
-            numeral_table=numerals, figure_specs=figures)
+            numeral_table=numerals, figure_specs=figures, check_cancel=check_cancel)
         result["review_images"] = draft_figures.materialize_review_images(
             project_id, user_id, workspace)
         return result
@@ -1335,7 +1340,7 @@ class TurnRunner:
                     sections = snapshot["sections"]
                     self.repository.heartbeat(turn_id, lease, stage="drawing and inspecting figures")
                     generated = self._ensure_figures(
-                        turn_id=turn_id, project_id=project_id,
+                        turn_id=turn_id, lease=lease, project_id=project_id,
                         user_id=int(project["user_id"]), sections=sections,
                         numerals=snapshot["numerals"], figures=snapshot["figures"],
                         disclosure=str(project.get("disclosure_text") or ""), workspace=workspace)

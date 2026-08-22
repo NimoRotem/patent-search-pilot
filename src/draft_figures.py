@@ -2501,7 +2501,7 @@ def expected_entries(spec, numeral_table) -> list[str]:
 
 
 def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosure: str,
-                           numeral_table, figure_specs) -> dict:
+                           numeral_table, figure_specs, check_cancel=None) -> dict:
     """Generate or repair every described sheet; return only after all pixel gates pass."""
     existing = listing(project_id, user_id)
     specs = list(figure_specs or ())
@@ -2524,6 +2524,8 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
         by_key[key] = candidates[-1]
     generated, reused, results, errors = 0, 0, [], []
     for index, spec in enumerate(specs, 1):
+        if check_cancel:
+            check_cancel()
         label = str(spec.get("label") or f"FIG. {index}")
         caption = str(spec.get("caption") or "")[:4000]
         expected = expected_entries(spec, numeral_table)
