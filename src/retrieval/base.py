@@ -233,10 +233,16 @@ class RetrieverBase:
         collapsed to one anyway. Rows arrive best-first, so the first member seen is the one that
         carried the evidence and the one that inherits the family's rank, which is the same member
         `dedup_family` would have picked after fusion.
+
+        The rows are fetched and the cursor is CLOSED before the collapse runs. The collapse can
+        issue a query of its own (`hydrate_families` on a cold-shard retriever does), and a nested
+        statement inside an open cursor block on the same connection is the kind of thing that
+        works until the day the driver or the shard decides otherwise.
         """
         with self.conn.cursor() as c:
             c.execute(sql, params)
-            return self.collapse_rows(c.fetchall(), cap)
+            rows = c.fetchall()
+        return self.collapse_rows(rows, cap)
 
     def _pubs_from_chunks(self, sql, params, cap=PUB_CAP):
         """Run a chunk-level ranking query, aggregate to best-per-publication, cap.

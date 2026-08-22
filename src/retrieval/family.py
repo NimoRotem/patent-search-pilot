@@ -21,8 +21,26 @@ from __future__ import annotations
 class FamilyMixin:
     """Family key lookup, collapse and federated-id registration."""
 
+    #  Set True only on a retriever bound to a FOREIGN corpus (see `retrieval.cold.bind`). The hot
+    #  retriever preloads the whole publication -> family map in `RetrieverBase.__init__`, so the
+    #  hook below has nothing to do and the collapse must not pay for it: this flag is what keeps
+    #  the hot path exactly as expensive as it was.
+    _needs_hydration = False
+
     def family_key(self, pid):
         return self._fam.get(pid, str(pid))
+
+    def hydrate_families(self, pids):
+        """Hook: make `family_key` answerable for every id about to be collapsed.
+
+        A no-op for the hot corpus, whose map is already complete. A retriever bound to a COLD
+        SHARD replaces it with one batched lookup against that shard, because the shard holds
+        publications the hot map has never seen. Without it `family_key` falls back to `str(pid)`,
+        every cold hit is its own family, and a cold hit and a hot hit of the same disclosure both
+        survive the collapse: RRF then splits that family's votes between two ids and neither wins,
+        which is the exact failure `canonical_reps` exists to prevent locally.
+        """
+        return None
 
     def collapse_rows(self, rows, cap):
         """Chunk-level rows -> [(publication_id, score)], ONE PER FAMILY, capped at `cap` FAMILIES.
@@ -38,6 +56,9 @@ class FamilyMixin:
         the member that gets the family's slot, exactly as `dedup_family` would have chosen after
         fusion.
         """
+        if self._needs_hydration:
+            rows = list(rows)
+            self.hydrate_families([r["publication_id"] for r in rows])
         best, seen = {}, set()
         for r in rows:
             pid = r["publication_id"]
@@ -59,6 +80,9 @@ class FamilyMixin:
         rows, and the ones that pool several dense passes (qbe, crosslingual) have already
         aggregated. They collapse here instead.
         """
+        if self._needs_hydration:
+            pairs = list(pairs)
+            self.hydrate_families([p for p, _s in pairs])
         out, seen = [], set()
         for pid, sc in pairs:
             fk = self.family_key(pid)

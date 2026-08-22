@@ -30,18 +30,27 @@ Two invariants that the tests in `tests/test_retrieval_concurrency.py` exist to 
 * Results are assembled in PRESET order, never completion order. RRF consumes channels in
   iteration order, so letting a fast channel jump the queue would silently reorder ties and make
   the same query return different pages on a loaded box.
+
+LANES. A phase runs over two independent lanes, because the two have nothing in common but a
+clock. The `db` lane is the hot corpus: its bound is a share of ONE Postgres box's 100
+connections. The `remote` lane is the cold domain shards and the global tier: other hosts, other
+connections, and a 20 s shard wake that must never sit in front of a hot channel. One semaphore
+across both would let a waking shard hold a slot the dense channel needed, which is precisely the
+serialisation the cold tier exists to avoid.
 """
 from __future__ import annotations
 
 import atexit
 import os
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 import embed
 
 from . import base as _base
+from . import channels, cold, global_search
 from .base import RetrieverBase
 from .citations import CitationMixin
 from .cpc import CpcMixin
@@ -54,21 +63,29 @@ from .lexical import LexicalMixin
 from .qbe import QbeMixin
 
 #  Channel presets. A caller may also pass an explicit list of channel names.
+#
+#  `cold` and `global` are TIERS, not channels: `cold` mirrors this preset's own channels onto the
+#  woken domain shards (`cold:dense` is the same SQL as `dense`), and `global` is the 170M catalog.
+#  Both are inert and free until their backend is registered, so a preset naming them behaves
+#  exactly as it did before workstream E lands: no task, no query, no key in `channel_hits`.
 PRESETS = {
     "keyword": ["exact", "bm25"],
     "vector": ["dense"],
-    "hybrid": ["exact", "bm25", "dense", "cpc"],
-    "hybrid_rerank": ["exact", "bm25", "dense", "cpc"],
-    "agentic": ["dense", "brief_dense", "cpc", "citation", "qbe", "biblio",
-                "crosslingual"],
+    "hybrid": ["exact", "bm25", "dense", "cpc", "cold", "global"],
+    "hybrid_rerank": ["exact", "bm25", "dense", "cpc", "cold", "global"],
+    #  `exact` is in the deep presets because the agent already PRODUCES the phrases: `plan()`
+    #  asks for "exact multiword phrases to match" and passes them to `search()`, where a preset
+    #  without `exact` threw them away. See eval/RESULTS.md R9.
+    "agentic": ["dense", "brief_dense", "exact", "cpc", "citation", "qbe", "biblio",
+                "crosslingual", "cold", "global"],
     #  Claim focus BOOSTS claim text, it does not delete the rest of the patent.
     #  MEASURED (RECALL_STUDY_2026-08-02.md): this preset used to omit `dense`, so
     #  description paragraphs were unsearchable. On the case that prompted the rebuild the
     #  best passage of the #1 result was a description paragraph, the best passage of the
     #  reference the searcher named was a description paragraph, and only 10 of the 25
     #  displayed cards matched on a claim at all.
-    "claim_agentic": ["claim_dense", "dense", "brief_dense", "claim_bm25", "cpc",
-                      "citation", "qbe", "biblio", "crosslingual"],
+    "claim_agentic": ["claim_dense", "dense", "brief_dense", "claim_bm25", "exact", "cpc",
+                      "citation", "qbe", "biblio", "crosslingual", "cold", "global"],
 }
 
 
@@ -95,6 +112,22 @@ DB_CONCURRENCY = int(os.environ.get("RETRIEVAL_DB_CONCURRENCY", "6"))
 #  and crosslingual loop their vectors) do so sequentially on their own thread's connection.
 MAX_CONCURRENT_DB_OPERATIONS = DB_CONCURRENCY
 
+# ---- the remote lane -------------------------------------------------------------------------
+# The cold shards and the global tier. Separate from the database lane on purpose: these tasks
+# spend other hosts' resources, not this Postgres box's connection budget, and one of them can sit
+# for the full 20 s shard wake. Sharing the db lane's semaphore would let that wake block a hot
+# channel, which is exactly the serialisation the parallel cold tier exists to prevent.
+#
+# Two remote tasks per search (the cold tier and the global tier), so six is three overlapping
+# searches before anything queues, and a queued tier task carries its own deadline: it is skipped
+# rather than added to the critical path of a search whose local answer is already complete.
+MAX_REMOTE_CONCURRENCY = 6
+REMOTE_CONCURRENCY = int(os.environ.get("RETRIEVAL_REMOTE_CONCURRENCY",
+                                        str(MAX_REMOTE_CONCURRENCY)))
+
+DB_LANE = "db"
+REMOTE_LANE = "remote"
+
 #  Losing one of these means the answer is wrong rather than thinner, so they keep today's
 #  behaviour exactly: the exception propagates. Dense retrieval is the dominant signal in every
 #  measurement of this corpus, and a search that quietly returned only its lexical channels would
@@ -104,11 +137,24 @@ REQUIRED_CHANNELS = frozenset({"dense", "claim_dense", "brief_dense"})
 #  Enrichment. Any of these may fail without invalidating the answer, so the failure is recorded
 #  through `failclosed` (which still RAISES in benchmark mode, so no measurement is ever taken
 #  from a degraded run) and the channel contributes nothing.
+#
+#  `global` and `cold` are here because a tier that reaches another host is enrichment BY
+#  DEFINITION: a global outage or a shard that will not wake costs the art it would have added and
+#  nothing else. Their module-level wrappers already swallow, so this is the second line, not the
+#  first.
 OPTIONAL_CHANNELS = frozenset({"bm25", "claim_bm25", "exact", "cpc", "citation", "qbe",
-                               "biblio", "crosslingual"})
+                               "biblio", "crosslingual", "cold", "global"})
+
+
+def _is_optional(name):
+    """Optional by NAME or by tier. A `cold:<kind>` result is a tier product, not a channel a
+    caller asked for, so it can never be the thing that fails a search."""
+    return name in OPTIONAL_CHANNELS or cold.is_cold(name)
+
 
 _POOL = None
 _POOL_LOCK = threading.Lock()
+_REMOTE_POOL = None
 
 
 def resolve_concurrency(n=None):
@@ -145,11 +191,34 @@ def _pool():
     return _POOL
 
 
+def _remote_pool():
+    """The lane for the cold shards and the global tier. Its own pool, created on first use.
+
+    A remote worker never calls `base.worker_conn`, so it never holds a connection to the hot
+    corpus: the cold tier binds the retriever to the SHARD's connection on its own thread, and the
+    routing probe opens and closes a transient one of its own. That is why this pool's size is not
+    charged against `DB_CONNECTION_BUDGET`.
+    """
+    global _REMOTE_POOL
+    if _REMOTE_POOL is None:
+        with _POOL_LOCK:
+            if _REMOTE_POOL is None:
+                _REMOTE_POOL = ThreadPoolExecutor(max_workers=MAX_REMOTE_CONCURRENCY,
+                                                  thread_name_prefix="retrieval-remote")
+    return _REMOTE_POOL
+
+
 def shutdown_pool(timeout=10.0):
     """Close every worker's connection, then drop the pool. Idempotent."""
-    global _POOL
+    global _POOL, _REMOTE_POOL
     with _POOL_LOCK:
         pool, _POOL = _POOL, None
+        remote, _REMOTE_POOL = _REMOTE_POOL, None
+    if remote is not None:
+        try:
+            remote.shutdown(wait=False)
+        except Exception:                                              # noqa: BLE001
+            pass
     if pool is None:
         _base.close_worker_conn()          # nothing was ever forked; close this thread's, if any
         return
@@ -190,10 +259,8 @@ atexit.register(shutdown_pool)
 
 #  Every channel `search()` knows how to build. An explicit preset naming anything else is a
 #  typo, and a typo used to remove a channel silently: the builder simply had no branch for it.
-KNOWN_CHANNELS = frozenset({
-    "dense", "claim_dense", "brief_dense", "bm25", "claim_bm25", "exact", "cpc",
-    "biblio", "crosslingual", "citation", "qbe",
-})
+KNOWN_CHANNELS = frozenset(
+    set(channels.PHASE1) | set(channels.PHASE2) | set(channels.TIERS))
 
 
 def resolve_preset(config, presets=None):
@@ -224,32 +291,40 @@ def resolve_preset(config, presets=None):
     return list(dict.fromkeys(names))
 
 
-def _run_phase(tasks, bound, wide=None):
+def _run_phase(tasks, bound, wide=None, remote_bound=None):
     """Run `tasks` concurrently, at most `bound` inside the database at once.
 
-    `tasks` is an ordered sequence of (name, callable). The return is a dict in THAT order, never
-    completion order, which is what keeps the output deterministic: RRF consumes channels in
-    iteration order, so letting a fast channel jump the queue would silently reorder ties.
+    `tasks` is an ordered sequence of `(name, callable)` or `(name, callable, lane)`. A task with
+    no lane runs on the database lane, which is what every channel is. The return is a dict in
+    TASK order, never completion order, which is what keeps the output deterministic: RRF consumes
+    channels in iteration order, so letting a fast channel jump the queue would silently reorder
+    ties.
 
     Every task is submitted BEFORE any result is collected. Submitting one and blocking on it
     before submitting the next is sequential execution wearing a thread pool, and the barrier
-    tests in `test_retrieval_concurrency` exist to make that impossible to ship by accident.
+    tests in `test_retrieval_concurrency` exist to make that impossible to ship by accident. The
+    lanes matter here for the same reason: the cold tier is submitted alongside the hot channels,
+    with its own gate and its own pool, so a shard wake can never take a slot the dense channel
+    needed.
     """
     if not tasks:
         return {}
-    gate = threading.Semaphore(bound)
+    norm = [(t[0], t[1], (t[2] if len(t) > 2 else DB_LANE)) for t in tasks]
+    gates = {DB_LANE: threading.Semaphore(bound),
+             REMOTE_LANE: threading.Semaphore(int(remote_bound or REMOTE_CONCURRENCY))}
+    pools = {DB_LANE: _pool, REMOTE_LANE: _remote_pool}
     #  Captured HERE, at task creation, from the search that is submitting. Reading it inside the
     #  task would read whatever another overlapping request had most recently set.
     captured = _base.active_wide() if wide is None else bool(wide)
 
-    def guarded(fn):
+    def guarded(fn, gate):
         def run():
             with gate, _base.profile_context(captured):
                 return fn()
         return run
 
-    pool = _pool()
-    futures = [(name, pool.submit(guarded(fn))) for name, fn in tasks]   # all submitted first
+    futures = [(name, pools[lane]().submit(guarded(fn, gates[lane])))     # all submitted first
+               for name, fn, lane in norm]
 
     #  DRAIN FIRST, decide afterwards. Raising on the first failed future leaves its siblings
     #  still executing against the database while the caller already has the exception, so the
@@ -265,18 +340,18 @@ def _run_phase(tasks, bound, wide=None):
     if errors:
         #  Deterministic: the FIRST failure in task order, never whichever thread lost the race,
         #  or the error a user sees depends on scheduling.
-        for name, _fn in tasks:
+        for name, _fn, _lane in norm:
             exc = errors.get(name)
             if exc is None:
                 continue
             #  Only names explicitly listed as optional may soft-degrade. A channel nobody
             #  classified must not become optional by omission: that is how a required signal
             #  quietly disappears from an answer that still looks complete.
-            if name not in OPTIONAL_CHANNELS:
+            if not _is_optional(name):
                 raise exc
 
     out = {}
-    for name, _fn in tasks:
+    for name, _fn, _lane in norm:
         if name in results:
             out[name] = results[name]
             continue
@@ -306,6 +381,11 @@ class Result:
     # True when the query looks out-of-domain and the UI should OFFER the wider federated
     # search. Federation is never run implicitly, see federation.search_two_tier.
     federation_offered: bool = False
+    # What the tiers that are not the hot corpus did: which domains were routed to, which woke,
+    # which were queried, what failed and how long the wake took. A cold miss is invisible in the
+    # ranking by design (it is simply art that is not there), so this is the only place a reader
+    # can tell "no shard had anything" from "no shard answered".
+    tiers: dict = field(default_factory=dict)
 
     def channel_hits_ranked(self) -> dict:
         """channel_hits as {name: [(pid, score)]} so a Result can be re-fused. Only the rank
@@ -357,31 +437,45 @@ class Retriever(DenseMixin, LexicalMixin, ExactMixin, CpcMixin, CitationMixin, Q
 
         bound = resolve_concurrency(db_concurrency)
 
+        args = channels.ChannelArgs(
+            query=query, qvec=qvec, subject=subject, mode=mode, cpc_hints=cpc_hints,
+            assignee_hints=assignee_hints, phrases=phrases, alt_query_vecs=alt_query_vecs)
+        hot_names = [n for n in preset if n not in channels.TIERS]
+        p1_kinds = [n for n in hot_names if channels.phase_of(n) == 1]
+        p2_kinds = [n for n in hot_names if channels.phase_of(n) == 2]
+
+        # The cold tier mirrors THIS preset's channels onto the woken shards, and is built only
+        # when a shard backend is registered: with none, no routing query is issued and no thread
+        # is created, so a search behaves exactly as it did before the tier existed.
+        tier = None
+        if "cold" in preset and cold.available():
+            tier = cold.ColdTier(self, args, wide=wide_profile)
+        external = {}
+        tiers = {}
+
         # ---- phase 1: everything whose inputs are ready at request start ------------------
         # Ordered by the preset, so the dict RRF consumes is ordered by the preset too. A channel
         # only appears when its input exists: `exact` needs phrases, `biblio` needs assignee
         # hints, `crosslingual` needs the alternate vectors, all of which are resolved above.
-        p1 = []
-        for name in preset:
-            if name == "dense":
-                p1.append((name, lambda: self.channel_dense(qvec, subject, mode)))
-            elif name == "claim_dense":
-                p1.append((name, lambda: self.channel_claim_dense(qvec, subject, mode)))
-            elif name == "brief_dense":
-                p1.append((name, lambda: self.channel_brief_dense(qvec, subject, mode)))
-            elif name == "bm25":
-                p1.append((name, lambda: self.channel_bm25(query, subject, mode)))
-            elif name == "claim_bm25":
-                p1.append((name, lambda: self.channel_claim_bm25(query, subject, mode)))
-            elif name == "exact" and phrases:
-                p1.append((name, lambda: self.channel_exact(phrases, subject, mode)))
-            elif name == "cpc":
-                p1.append((name, lambda: self.channel_cpc(cpc_hints, subject, mode)))
-            elif name == "biblio" and assignee_hints:
-                p1.append((name, lambda: self.channel_biblio(assignee_hints, subject, mode)))
-            elif name == "crosslingual" and alt_query_vecs:
-                p1.append((name, lambda: self.channel_crosslingual(alt_query_vecs, subject, mode)))
-        ch.update(_run_phase(p1, bound, wide=wide_profile))
+        p1 = [(name, channels.thunk(self, name, args))
+              for name in p1_kinds if channels.has_input(name, args)]
+        # The remote lane, submitted in the SAME phase and therefore genuinely in parallel with
+        # the hot channels. Never after them: waiting for the local answer and then waking a shard
+        # would add the whole 20 s wake to the search instead of overlapping it.
+        if tier is not None:
+            deadline = time.monotonic() + cold.TIER_BUDGET
+            p1.append(("cold", lambda: tier.run(p1_kinds, deadline=deadline), REMOTE_LANE))
+        if "global" in preset and global_search.available():
+            g_deadline = time.monotonic() + global_search.GLOBAL_TIMEOUT
+            p1.append(("global",
+                       lambda: self._tier_global(args, wide_profile, g_deadline), REMOTE_LANE))
+        raw = _run_phase(p1, bound, wide=wide_profile)
+
+        cap = _base.SEED_PUB_CAP if wide_profile else _base.PUB_CAP
+        raw_global, raw_cold = raw.pop("global", None), raw.pop("cold", None)
+        ch.update(raw)                                  # hot channels first, in preset order
+        self._absorb_global(ch, external, raw_global)
+        self._absorb_cold(ch, raw_cold, cap)
 
         # ---- phase 2: the channels that consume the fused strong seeds --------------------
         # These are a genuine dependency, not an ordering preference: citation expands the graph
@@ -395,17 +489,34 @@ class Retriever(DenseMixin, LexicalMixin, ExactMixin, CpcMixin, CitationMixin, Q
         ch = self.canonicalise(ch)
         base_fused = self.rrf({k: v for k, v in ch.items()})
         strong = [pid for pid, _, _ in base_fused[:40]]
-        p2 = []
-        for name in preset:
-            if name == "citation":
-                p2.append((name, lambda: self.channel_citation_family(strong, subject, mode)))
-            elif name == "qbe":
-                p2.append((name, lambda: self.channel_qbe(strong, subject, mode)))
-        ch.update(_run_phase(p2, bound, wide=wide_profile))
+        args2 = args.with_seeds(strong)
+        p2 = [(name, channels.thunk(self, name, args2))
+              for name in p2_kinds if channels.has_input(name, args2)]
+        if tier is not None:
+            # Re-routed WITH the candidates, which are 50% of the documented routing mix and do
+            # not exist until the cheap tiers have answered. A domain only this evidence indicates
+            # is woken now and gets the phase 1 channels run against it too (`catch_up`), because
+            # it was not reachable when they ran.
+            deadline2 = time.monotonic() + cold.TIER_BUDGET
+            p2.append(("cold", lambda: tier.run(p2_kinds, catch_up=p1_kinds,
+                                                candidate_pids=strong, seeds=strong,
+                                                deadline=deadline2), REMOTE_LANE))
+        raw2 = _run_phase(p2, bound, wide=wide_profile)
+        raw2_cold = raw2.pop("cold", None)
+        ch.update(raw2)
+        self._absorb_cold(ch, raw2_cold, cap)
+        if tier is not None:
+            tiers["cold"] = tier.status
 
         # Re-order to the preset: `ch` is built in two passes, and channel order reaches the
-        # output through `channel_hits` and through RRF's iteration.
-        ch = {n: ch[n] for n in preset if n in ch}
+        # output through `channel_hits` and through RRF's iteration. The tier channels follow the
+        # hot ones, in the preset's own channel order, so the ordering is a property of the
+        # preset and not of which shard answered first.
+        order = [n for n in hot_names if n in ch]
+        order += [cold.cold_name(n) for n in hot_names if cold.cold_name(n) in ch]
+        if "global" in ch:
+            order.append("global")
+        ch = {n: ch[n] for n in order}
 
         # Phase 2 can introduce a different member of a family phase 1 already found, so the
         # canonicalisation is redone over the complete set before the fusion that produces the
@@ -416,7 +527,71 @@ class Retriever(DenseMixin, LexicalMixin, ExactMixin, CpcMixin, CitationMixin, Q
 
         do_rerank = (config == "hybrid_rerank") if do_rerank is None else do_rerank
         if do_rerank and fam:
-            fam = self.rerank_families(query, fam, top=min(RERANK_TOP, len(fam)))
+            fam = self.rerank_families(query, fam, top=min(RERANK_TOP, len(fam)),
+                                       external=external or None)
         return Result(ranked_pubs=[(p, s, pr) for _, p, s, pr in fam][:topk],
                       family_ranked=fam[:topk], channel_hits={k: [p for p, _ in v] for k, v in ch.items()},
-                      query=query)
+                      query=query, external=external, tiers=tiers)
+
+    # ---- the tiers that are not the hot corpus -------------------------------------------
+    def _tier_global(self, args, wide, deadline=None):
+        """The global channel: search, register the external families, fetch display records.
+
+        Runs on the remote lane and NEVER raises: `global_search`'s module wrappers swallow, and
+        this adds the budget check that a queued task needs. A global outage costs the art this
+        corpus does not hold, which is the whole point of the tier, and nothing else.
+        """
+        if deadline is not None and time.monotonic() >= deadline:
+            return {"hits": [], "external": {}, "state": "budget spent before the tier started"}
+        cap = _base.SEED_PUB_CAP if wide else _base.PUB_CAP
+        hits = global_search.search(args.query, subject=args.subject, mode=args.mode,
+                                    limit=cap, qvec=args.qvec)
+        rows, seen = [], set()
+        for item in hits or ():
+            try:
+                pid, score = item[0], float(item[1])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if pid in seen:
+                continue
+            seen.add(pid)
+            rows.append((pid, score))
+        ext_ids = [p for p, _ in rows if isinstance(p, str) and p.startswith("fed:")]
+        #  Registering the family key is what stops a global hit and a local hit of the same
+        #  disclosure appearing as two rows. `family_keys` returning {} is allowed and means each
+        #  external id is its own family: nothing is merged that should not have been.
+        for pid, fk in (global_search.family_keys(ext_ids) or {}).items():
+            if fk:
+                self.register_external(pid, fk)
+        return {"hits": self.collapse_pairs(rows, cap),
+                "external": global_search.records(ext_ids) or {},
+                "state": "ok"}
+
+    def _absorb_global(self, ch, external, part):
+        """Put the global tier's hits in under the channel name `global`, weight 0.90."""
+        if not isinstance(part, dict):
+            return
+        rows = part.get("hits") or []
+        if rows:
+            ch["global"] = rows
+        for pid, rec in (part.get("external") or {}).items():
+            external[pid] = rec
+
+    def _absorb_cold(self, ch, part, cap):
+        """Merge one cold pass into `ch`, pooling with anything an earlier pass already found.
+
+        Phase 2 can query a domain phase 1 never woke, so the same `cold:<kind>` name can arrive
+        twice. Pooling and re-collapsing is right and replacing is not: the second pass is more
+        shards, not a better answer from the same ones.
+        """
+        if not isinstance(part, dict):
+            return
+        for name, rows in part.items():
+            if name in ch:
+                pooled = {}
+                for pid, sc in list(ch[name]) + list(rows):
+                    if sc > pooled.get(pid, float("-inf")):
+                        pooled[pid] = sc
+                rows = self.collapse_pairs(
+                    sorted(pooled.items(), key=lambda t: t[1], reverse=True), cap)
+            ch[name] = list(rows)

@@ -772,6 +772,10 @@ def fuse(retriever, local, fed: FederatedResult, strategy: str = "augment",
         external=merged_ext,
         federation=fed.to_dict(),
         domain=getattr(local, "domain", None) if local else None,
+        #  Carried through: what the cold and global tiers did is a property of the local search
+        #  that produced these hits, and dropping it here would make a shard failure invisible on
+        #  exactly the two-tier path most likely to be looking for one.
+        tiers=(getattr(local, "tiers", None) or {}) if local else {},
     )
 
 
