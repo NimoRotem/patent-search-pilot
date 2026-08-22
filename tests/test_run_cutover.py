@@ -1366,3 +1366,100 @@ def test_a_live_legacy_partial_survives_the_flag_flipping_on(app_env, durable_db
     assert runstore.latest_for_slug("rollout-partial") is None, (
         "a durable duplicate was enqueued for a live legacy run")
     assert st == "ready" and rep is not None
+
+
+# =========================================================================== review round 9
+# Rollback then re-enable: an OLD terminal durable row against a NEWER live legacy run.
+
+
+def _rollback_then_reenable(monkeypatch, slug, terminal="done"):
+    """The exact sequence: durable run settles, the flag is rolled back, a genuine legacy run
+    starts for the same slug, then the flag is re-enabled with that legacy run still working."""
+    _flag(monkeypatch, True)
+    rid = runstore.enqueue(slug, dict(PAYLOAD), mode="novelty", depth="deep", lane="deep")
+    runstore.claim("old-worker", lanes=["deep"])
+    if terminal == "done":
+        runstore.finish(rid, "old-worker", status="done")
+    else:
+        runstore.fail(rid, "old-worker", "boom", retry=False)
+    assert runstore.progress_of(rid)["status"] in ("done", "failed")
+
+    _flag(monkeypatch, False)                       # rolled back
+    with webapp._JOB_LOCK:                          # a genuine legacy executor, still working
+        webapp._JOBS[slug] = {"status": "running", "msg": "Reading references",
+                              "t0": time.time(), "tok0": 0}
+    _flag(monkeypatch, True)                        # re-enabled while it is still working
+    return rid
+
+
+@pytest.mark.parametrize("terminal", ["done", "failed"])
+def test_status_prefers_a_live_legacy_run_over_an_older_terminal_durable_row(
+        app_env, durable_db, monkeypatch, terminal):
+    """THE GAP. After a rollback and a re-enable, the stale terminal row outranked a legacy
+    executor that was still working, so /status reported the search finished (or failed) while
+    it was in fact still running."""
+    slug = f"rollback-status-{terminal}"
+    _rollback_then_reenable(monkeypatch, slug, terminal)
+    monkeypatch.setattr(webapp, "_can_access_report", lambda slug_: True)
+    body = webapp.app.test_client().get(f"/status/{slug}").get_json()
+    assert body["status"] == "running", body
+    assert body["done"] is False, body
+    assert body["msg"] == "Reading references", body
+
+
+@pytest.mark.parametrize("terminal", ["done", "failed"])
+def test_events_does_not_close_on_an_older_terminal_durable_row(
+        app_env, durable_db, monkeypatch, terminal):
+    """Same sequence over SSE: the stream must not emit a terminal event and hang up on a run
+    that is still executing."""
+    slug = f"rollback-events-{terminal}"
+    _rollback_then_reenable(monkeypatch, slug, terminal)
+    monkeypatch.setattr(webapp, "_can_access_report", lambda slug_: True)
+    body, ended, _ = _drain_sse(webapp.app.test_client(), f"/events/{slug}",
+                                max_chunks=1, deadline=4.0)
+    first = json.loads(body.split("data: ", 1)[1].split("\n\n", 1)[0])
+    assert first["status"] == "running", first
+    assert first["done"] is False
+    assert not ended, "the stream closed on a stale terminal row while the run was still live"
+
+
+def test_a_live_durable_row_still_beats_stale_memory_state(app_env, durable_db, monkeypatch):
+    """The existing rule, preserved. A LIVE durable row outranks whatever is left in memory."""
+    _flag(monkeypatch, True)
+    _seed_run("still-durable", status="running")
+    with webapp._JOB_LOCK:
+        webapp._JOBS["still-durable"] = {"status": "done", "msg": "stale", "t0": time.time()}
+    monkeypatch.setattr(webapp, "_can_access_report", lambda slug_: True)
+    body = webapp.app.test_client().get("/status/still-durable").get_json()
+    assert body["msg"] != "stale"
+    assert body["done"] is False
+
+
+def test_a_terminal_durable_row_still_wins_when_no_legacy_run_is_live(app_env, durable_db,
+                                                                     monkeypatch):
+    """The other side: with nothing live in memory, the terminal durable row IS the answer, and
+    a finished search must still report finished."""
+    _flag(monkeypatch, True)
+    rid = _seed_run("terminal-alone")
+    runstore.claim("w", lanes=["deep"])
+    runstore.finish(rid, "w", status="done")
+    with webapp._JOB_LOCK:
+        webapp._JOBS.pop("terminal-alone", None)
+    monkeypatch.setattr(webapp, "_can_access_report", lambda slug_: True)
+    body = webapp.app.test_client().get("/status/terminal-alone").get_json()
+    assert body["status"] == "done", body
+
+
+def test_a_queued_legacy_placeholder_does_not_outrank_a_terminal_durable_row(
+        app_env, durable_db, monkeypatch):
+    """A queued placeholder is not an executor, so it must not mask a finished durable run."""
+    _flag(monkeypatch, True)
+    rid = _seed_run("queued-vs-terminal")
+    runstore.claim("w", lanes=["deep"])
+    runstore.finish(rid, "w", status="done")
+    with webapp._JOB_LOCK:
+        webapp._JOBS["queued-vs-terminal"] = {"status": "running", "queued": True,
+                                              "msg": "Queued", "t0": time.time()}
+    monkeypatch.setattr(webapp, "_can_access_report", lambda slug_: True)
+    body = webapp.app.test_client().get("/status/queued-vs-terminal").get_json()
+    assert body["status"] == "done", body

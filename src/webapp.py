@@ -1956,15 +1956,34 @@ def _durable_liveness(slug):
     return row.get("status") in ("queued", "running")
 
 
+#  A durable row is terminal once it has settled. A settled row is HISTORY, not state.
+_DURABLE_SETTLED = frozenset({"done", "failed", "cancelled", "canceled"})
+
+
 def _durable_run_for(slug):
-    """The persisted run for this slug, or None. Never raises: an unreachable run store must
-    degrade the STATUS view, not take the page down with it."""
+    """The persisted run that describes this slug RIGHT NOW, or None.
+
+    Never raises: an unreachable run store must degrade the status view, not take the page down.
+
+    PRECEDENCE ACROSS A ROLLBACK. A live durable row always wins, including over stale in-memory
+    state left by a finished job. But a SETTLED durable row is history, and history must not
+    outrank a legacy executor that is still working: roll the flag back, let a genuine legacy run
+    start for the same slug, re-enable, and the old terminal row would otherwise make /status and
+    /events report done or failed and hang up while the real run was still reading. A queued
+    placeholder does not count, because it is a row waiting for an executor rather than one.
+    """
     if not durable_runs_enabled():
         return None
     try:
-        return runstore.latest_for_slug(slug)
+        row = runstore.latest_for_slug(slug)
     except Exception:
         return None
+    if row and row.get("status") in _DURABLE_SETTLED:
+        with _JOB_LOCK:
+            job = _JOBS.get(slug) or {}
+        if job.get("status") in ("running", "partial") and not job.get("queued"):
+            return None                  # a live legacy executor outranks a settled durable run
+    return row
 
 
 def _durable_epoch(run):
