@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import time
 
 import pytest
@@ -380,6 +379,28 @@ def test_store_writes_the_docstore_and_the_ingest_queue(monkeypatch):
     assert put[PUBS[0]]["description"] == res.description
     assert queued[PUBS[0]]["scratch_ref"] == f"sources_docstore:{PUBS[0]}"
     assert queued[PUBS[0]]["source"] == "epo_ops"
+
+
+def test_bulk_demand_queues_behind_a_live_search_request(monkeypatch):
+    """Defect injection: put FULLTEXT_INGEST_PRIORITY back to 80 and this goes red.
+
+    `runstore.pending_ingest(limit=N)` returns the top N by priority, and a search-time request
+    takes corpus_ingest_queue's default of 100. At 80 this fetcher put tens of thousands of rows
+    in front of every live request and pushed them out of the window, which is exactly how it
+    broke test_durable_runs.py::test_repeat_demand_for_one_publication_bumps_the_count.
+    """
+    from sources import docstore
+    import runstore
+    captured = {}
+    monkeypatch.setattr(docstore, "_put_sync", lambda pn, rec: None)
+    monkeypatch.setattr(runstore, "queue_for_ingest",
+                        lambda pn, **kw: captured.update(kw) or {"id": 1})
+    monkeypatch.setattr(worker.blobstore, "enabled", lambda: False)
+    w = worker.Worker(0, 1, cascade=[])
+    asyncio.run(w.store(PUBS[0], _full("x"), None, [],
+                        {"partition_id": 0, "manifest": "unit"}))
+    assert captured["priority"] > 100, (
+        "bulk niche acquisition must queue BEHIND search-time demand")
 
 
 def test_a_gcs_failure_does_not_lose_the_text(monkeypatch):

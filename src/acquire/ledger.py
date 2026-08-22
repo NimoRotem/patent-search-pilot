@@ -14,7 +14,6 @@ happen, so a timeout does not leak budget.
 from __future__ import annotations
 
 import datetime as _dt
-import os
 
 import db
 

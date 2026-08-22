@@ -32,7 +32,6 @@ between a slow provider and a stalled worker.
 from __future__ import annotations
 
 import asyncio
-import glob
 import json
 import os
 import time
@@ -72,10 +71,6 @@ class FetchResult:
                "claims_lang": self.claims_lang, "desc_lang": self.desc_lang}
         rec.update(self.meta or {})
         return rec
-
-
-class BudgetRefused(RuntimeError):
-    """The cap for this provider is spent. A normal cascade outcome, not a failure."""
 
 
 # ---------------------------------------------------------------------------------------------
@@ -356,12 +351,18 @@ class BulkXmlProvider(Provider):
         return not self.countries or _country(pub) in self.countries
 
     def _local_paths(self, pub: str) -> list:
+        """Two layouts, both direct lookups: flat and one directory per office.
+
+        Deliberately NOT a recursive glob. `glob(root/**/PUB.xml, recursive=True)` walks the whole
+        mirror once per publication, which on a bulk corpus is a directory tree walk per document
+        and would be slower than fetching the page over the network. A mirror in a third layout
+        should be symlinked or re-laid-out, not searched.
+        """
         root = self.root
         out = []
         for ext in ("xml", "XML", "xml.gz"):
             out.append(os.path.join(root, f"{pub}.{ext}"))
             out.append(os.path.join(root, _country(pub), f"{pub}.{ext}"))
-        out.extend(sorted(glob.glob(os.path.join(root, "**", f"{pub}.xml"), recursive=True))[:1])
         return out
 
     async def fetch(self, pub: str, client: httpx.AsyncClient):

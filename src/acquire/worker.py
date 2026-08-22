@@ -39,7 +39,11 @@ IDLE_SLEEP = float(os.environ.get("FULLTEXT_IDLE_SLEEP", "30"))
 PUBLICATION_DEADLINE = float(os.environ.get("FULLTEXT_PUBLICATION_DEADLINE", "240"))
 HEARTBEAT_SECONDS = float(os.environ.get(
     "FULLTEXT_HEARTBEAT_SECONDS", str(max(15.0, tasks.LEASE_SECONDS / 4.0))))
-INGEST_PRIORITY = int(os.environ.get("FULLTEXT_INGEST_PRIORITY", "80"))
+#  BEHIND search-time demand, which uses the corpus_ingest_queue default of 100. A publication a
+#  live search asked for is more urgent to the next release than one a bulk niche sweep asked for,
+#  and `pending_ingest(limit=N)` returns the top N by priority: at 80 this fetcher put tens of
+#  thousands of rows in front of every search-time request and pushed them out of the window.
+INGEST_PRIORITY = int(os.environ.get("FULLTEXT_INGEST_PRIORITY", "150"))
 
 
 def log(msg: str) -> None:
@@ -165,7 +169,8 @@ class Worker:
         try:
             await asyncio.to_thread(
                 lambda: runstore.queue_for_ingest(
-                    pub, reason=f"niche full-text acquisition ({task.get('manifest') or 'manifest'})",
+                    pub,
+                    reason=f"niche acquisition ({task.get('manifest') or 'manifest'})",
                     source=res.provider, scratch_ref=f"sources_docstore:{pub}",
                     payload={"claims_chars": len(res.claims), "desc_chars": len(res.description),
                              "raw_uri": uris["raw_uri"], "parsed_uri": uris["parsed_uri"]},

@@ -30,7 +30,6 @@ from __future__ import annotations
 import hashlib
 import os
 import socket
-import time
 import uuid
 
 import db

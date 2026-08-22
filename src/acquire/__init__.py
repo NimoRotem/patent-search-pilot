@@ -23,7 +23,8 @@ Never `publications`, `chunks`, `claims`, `paragraphs`, `classifications`, `cita
 other live retrieval table. An insert into `chunks` is an insert into a 94 GB HNSW graph while
 production is querying it, and that has already blocked live searches. The worker calls
 `corpus_guard.arm()` at startup, so the prohibition is a property of its connections rather than
-a convention: see `worker.run()` and `tests/test_fulltext_acquire.py::test_worker_run_arms_the_corpus_guard`.
+a convention: see `worker.run()`, and
+`tests/test_fulltext_acquire.py::test_worker_run_arms_the_corpus_guard`.
 
 THE MODULES
 -----------

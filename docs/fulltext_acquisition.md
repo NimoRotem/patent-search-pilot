@@ -1,7 +1,13 @@
 # Continuous full-text acquisition
 
-Status: running. Supervisor program `patents-fulltext-acquire`, log
-`/home/nimrod_rotem/v3-logs/fulltext_acquire_0.log`.
+Status: running, two shards. Supervisor programs `patents-fulltext-acquire` (`--shard 0 --of 2`)
+and `patents-fulltext-acquire-1` (`--shard 1 --of 2`), logs
+`/home/nimrod_rotem/v3-logs/fulltext_acquire_0.log` and `_1.log`.
+
+Measured over ten minutes with both shards up, 2026-08-22: **4,752 publications an hour**, 773 of
+them answered by `serp_self` and 19 by `corpus:family`. Host load 1.06 on 8 vCPU against a 0.74
+baseline, and `https://nimo.iptorch.com/` served in 38 to 81 ms against a 38 to 85 ms baseline, so
+neither the database nor the public latency moved.
 
 ## The defect this closes
 
@@ -177,6 +183,21 @@ Scaling to four workers: copy `ops/patents-fulltext-acquire.conf` to `-1`, `-2`,
 `--shard 1/2/3 --of 4`, AND change `--of` on shard 0 to 4 in the same edit. Leaving one worker at
 `--of 1` while another runs `--of 4` is the one mistake that puts two workers on the same
 partition.
+
+## Two collisions this fetcher caused, and how they are settled
+
+**Bulk demand must queue behind a live search.** `runstore.pending_ingest(limit=N)` returns the top
+N rows by priority, and a search-time request takes `corpus_ingest_queue`'s default of 100. This
+fetcher first queued at 80, which put tens of thousands of rows in front of every live request and
+pushed them out of the window: `test_durable_runs.py::test_repeat_demand_for_one_publication_bumps_the_count`
+went red on exactly that. `worker.INGEST_PRIORITY` is now 150 and the 1,611 rows already queued
+were repriced. `test_bulk_demand_queues_behind_a_live_search_request` holds the invariant.
+
+**A migration list cannot be a literal.**
+`test_migrate.py::test_the_repo_migrations_are_discoverable_and_include_figure_images` asserted
+that the repo holds exactly 001 to 009, so any new migration turned it red for the one reason that
+is not a defect. It now asserts the invariants instead: 001 to 009 is the leading baseline,
+discovery is in numeric order, and no two files claim one version.
 
 ## What another workstream needs to know
 

@@ -365,10 +365,20 @@ def test_never_replays_001_or_002_blindly_on_an_unrecorded_database(db, sqldir):
 # --------------------------------------------------------------------------- the real repo
 
 def test_the_repo_migrations_are_discoverable_and_include_figure_images():
-    """Every schema asset must have one deterministic place in the numbered history."""
+    """Every schema asset must have one deterministic place in the numbered history.
+
+    The assertion is on the INVARIANTS, not on a literal list of versions. A list that has to be
+    edited every time a workstream adds a migration is a test that goes red for the one reason
+    that is not a defect, and it teaches whoever hits it to edit the expectation rather than read
+    it. What must hold: the historical baseline 001 to 009 is present and in order, discovery is
+    sorted numerically rather than lexically, and no two files claim one version.
+    """
     real = os.path.join(ROOT, "sql")
     migrations = migrate.discover(real)
-    assert [m.version for m in migrations] == [f"{n:03d}" for n in range(1, 10)]
+    versions = [m.version for m in migrations]
+    assert versions[:9] == [f"{n:03d}" for n in range(1, 10)], versions
+    assert versions == sorted(versions, key=int), "discovery is not in numeric order"
+    assert len(set(int(v) for v in versions)) == len(versions), "two files claim one version"
     first = next(m for m in migrations if m.version == "001")
     assert ("table", "figure_images") in migrate.sentinels(first.sql)
 
