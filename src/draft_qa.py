@@ -81,6 +81,7 @@ _DRAFT_PLACEHOLDER_RE = re.compile(
     r"|\b(?:draftsperson|drafter|illustrator)\s+(?:must|should|shall|will|to)\b"
     r")", re.IGNORECASE)
 MAX_NUMERALS_PER_SHEET = 8
+MAX_FIGURE_BRIEF_CHARS = 2800
 #  The phrase is captured in a LOOKAHEAD so the scan consumes only the article.  Consuming the
 #  noun phrase as well was a real defect: in "a tool comprising a body, a pump", the first match
 #  swallowed "tool comprising a body", so "a body" was never seen as an introduction and every
@@ -504,6 +505,24 @@ def _figure_checks(sections: Mapping[str, str],
             "Application includes a drawing plan", "fail",
             "A complete utility application must include at least one text-grounded figure brief "
             "that the drawing pipeline can render and inspect.", severity="error"))
+
+    overlong = []
+    for index, figure in enumerate(figures, 1):
+        caption = str(figure.get("caption") or "")
+        if len(caption) > MAX_FIGURE_BRIEF_CHARS:
+            label = str(figure.get("label") or f"FIG. {index}")
+            overlong.append(
+                f"{label}: {len(caption)} characters (maximum {MAX_FIGURE_BRIEF_CHARS})")
+    if overlong:
+        out.append(_check(
+            "Drawing briefs are concise and renderable", "fail",
+            "An over-specified drawing brief makes the image generator invent or miss visual "
+            "constraints. Keep only disclosure-grounded geometry, relationships, and numeral "
+            "anchors needed to identify the listed parts.", severity="error", items=overlong))
+    else:
+        out.append(_check(
+            "Drawing briefs are concise and renderable", "pass",
+            f"Every drawing brief is at most {MAX_FIGURE_BRIEF_CHARS} characters."))
 
     if figures:
         numbers = [figure_number(figure.get("label")) for figure in figures]

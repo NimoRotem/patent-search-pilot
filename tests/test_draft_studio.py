@@ -185,6 +185,23 @@ def test_an_overcrowded_drawing_sheet_is_a_filing_blocker():
     assert check["status"] == "fail" and "9 numerals" in check["items"][0]
 
 
+def test_an_overlong_drawing_brief_is_refused_before_image_generation():
+    figures = [
+        {**FIGURES[0], "caption": "plain rectangular body " * 160},
+        FIGURES[1],
+    ]
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    assert check["status"] == "fail"
+    assert "FIG. 1" in check["items"][0]
+
+    with pytest.raises(
+            draft_studio.FilingPreflightError,
+            match="Drawing briefs are concise and renderable") as caught:
+        draft_studio.validate_snapshot(
+            {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
+    assert caught.value.category == "figures_and_numerals"
+
+
 def test_letter_qualified_reference_numerals_are_compared_exactly():
     version = {**GOOD, "detailed_description":
                GOOD["detailed_description"] + " A secondary spacer 10a is beside a lug A12."}
@@ -1098,6 +1115,8 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "at least one figure" in system
     assert "Normally use two to four figures" in system
     assert "Do not list more than eight numerals on one sheet" in system
+    assert str(draft_qa.MAX_FIGURE_BRIEF_CHARS) in system
+    assert "arbitrary exact counts" in system
     assert "Never address or mention a draftsperson" in " ".join(system.split())
     assert "broadest statement of the invention that the description fully supports" in system
 

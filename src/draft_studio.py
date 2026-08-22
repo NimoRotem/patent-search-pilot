@@ -188,6 +188,10 @@ Use a structural view, system diagram, or process flow as appropriate to the dis
 Normally use two to four figures. Do not list more than eight numerals on one sheet. When more
 structure must be shown, add a focused detail or sectional sheet instead of overcrowding one image,
 then synchronize the Brief Description of the Drawings and Detailed Description.
+Keep each figure brief at or below 2800 characters. Include only disclosure-grounded geometry and
+relationships needed to identify the listed parts. Never invent arbitrary exact counts,
+proportions, relative heights, corner shapes, line counts, or placement constraints merely to
+control the renderer. If a visual constraint is not in the disclosure or specification, omit it.
 Figure files are Markdown specifications only. Never create SVG, PNG, or other image files. The
 image pipeline generates unlabeled geometry, then adds the listed numerals, FIG. label, callouts,
 and leader lines deterministically. Describe the required geometry and relationships, and list
@@ -271,6 +275,9 @@ For a figure-plan coverage failure, never delete a disclosed part, numeral defin
 supporting specification text. Redistribute labels among focused sheets, or add a focused sheet
 when necessary, and synchronize the drawing descriptions.
 
+If a figure brief is over-specified, shorten it by removing invented rendering constraints while
+preserving the authoritative text, numeral table, disclosed geometry, and required relationships.
+
 Leave no note, placeholder, question, or instruction for a person. Return the structured answer
 with `action` set to "revised" and `questions` as an empty array."""
 
@@ -319,6 +326,7 @@ _FIGURE_PLAN_CHECKS = frozenset({
     "Every drawing numeral appears in the specification",
     "Every specification numeral appears in a drawing",
     "Application includes a drawing plan",
+    "Drawing briefs are concise and renderable",
     "Figure-sheet numbering is unique and contiguous",
     "Every figure used is described",
     "Every drawing sheet is described",
