@@ -1,0 +1,20 @@
+[Unit]
+Description=patents shard agent: the honest cold / waking / hot answer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=postgres
+Group=postgres
+EnvironmentFile=/etc/default/patents-shard
+RuntimeDirectory=patents-shard
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/bin/python3 /opt/patents-shard/bin/shard_agent.py
+Restart=always
+RestartSec=2
+# The agent must answer while Postgres is still starting: that answer is `waking`, and it is the
+# only thing that distinguishes a booting shard from a dead one.
+
+[Install]
+WantedBy=multi-user.target

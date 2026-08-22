@@ -1,0 +1,30 @@
+# The shard table. THE one place a shard's identity lives; bash and Python both read this file.
+#
+# A "domain" to the router (src/retrieval/shard_router.py) is a CPC SUBCLASS, four characters.
+# There are hundreds of those and there are eight shards, so a shard owns a PREFIX SET and the
+# mapping subclass -> shard is by longest matching prefix. Every domain must land somewhere: the
+# last row is the catch-all and is also where the always-emitted "unclassified" route goes, which
+# is 1,024,320 publications, 20.6% of the corpus, that no classified shard can hold.
+#
+# The prefix sets are provisional. Workstream F builds the shard databases and owns how the corpus
+# is actually cut; when F settles it, edit this file and nothing else. Rebalancing is a data move,
+# not a code change.
+#
+# Columns, tab separated:
+#   shard    shard id, also the label and the suffix of the VM name
+#   vm       the instance name
+#   zone     the instance zone
+#   prefixes comma separated CPC prefixes this shard owns, or * for the catch-all
+#
+# Only 03-transport exists today. See README.md for the one command that creates the rest and for
+# what it costs.
+#
+#shard	vm	zone	prefixes
+01-handling	patents-shard-01-handling	us-central1-b	B21,B23,B24,B25,B26,B27,B28
+02-lifting	patents-shard-02-lifting	us-central1-b	B66,B67,B68
+03-transport	patents-shard-03-transport	us-central1-b	B60,B61,B62,B63,B64,B65
+04-mechanical	patents-shard-04-mechanical	us-central1-b	F01,F02,F03,F04,F15,F16
+05-process	patents-shard-05-process	us-central1-b	B01,B02,B03,B04,B05,B06,B07,B08,B09,B22,B29,B30,B31,B32,B33,B41,B42,B43,B44,C
+06-structures	patents-shard-06-structures	us-central1-b	D,E,F17,F21,F22,F23,F24,F25,F26,F27,F28,F41,F42
+07-instruments	patents-shard-07-instruments	us-central1-b	G,H
+08-unclassified	patents-shard-08-unclassified	us-central1-b	*

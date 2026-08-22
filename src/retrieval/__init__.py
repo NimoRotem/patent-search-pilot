@@ -15,6 +15,8 @@ callers in `src/`, `eval/` and `tests/`. The split is behaviour preserving on it
     global_search.py  SEAM: the 170M catalog + external APIs (workstream E)
     shard_router.py   SEAM: which domain shards to wake, and the routing distribution
     shard_manager.py  SEAM: shard lifecycle and connections (workstream E)
+    shard_backend.py  the GCE implementation of both shard seams. Imported, NOT installed:
+                      `shard_backend.install()` is what puts real VMs behind them.
     family.py         family identity, family collapse, federated ids
     legal.py          the citability window pushed into every channel's SQL
     fusion.py         weighted RRF, the OOD display filter, the cross-encoder head
@@ -33,7 +35,7 @@ import embed                                         # noqa: F401
 import rerank as rr                                  # noqa: F401
 
 from . import citations, cpc, dense, exact, family, fusion, global_search, legal, lexical
-from . import orchestrator, qbe, shard_manager, shard_router      # noqa: F401
+from . import orchestrator, qbe, shard_backend, shard_manager, shard_router      # noqa: F401
 from .base import (CHUNK_FETCH, EF_SEARCH, MAX_SCAN_TUPLES, PUB_CAP, SEED_CHUNK_FETCH,
                    SEED_EF_SEARCH, SEED_MAX_SCAN_TUPLES, SEED_PUB_CAP, RetrieverBase, _vec)
 from .cpc import CPC_HINT_MAX
@@ -54,7 +56,7 @@ __all__ = [
     "BM25_TERMS", "CPC_HINT_MAX", "OOD_LOCAL_RELEVANCY_FLOOR",
     "is_local_noise", "deprioritize_ood_local", "rrf", "RetrieverBase",
     "LexicalBackend", "LexicalFilters", "LexicalHit", "PostgresLexicalBackend",
-    "global_search", "shard_router", "shard_manager",
+    "global_search", "shard_router", "shard_manager", "shard_backend",
     "_vec", "_date_clause", "_rerank_progressive", "_cget",
     "db", "embed", "rr",
 ]

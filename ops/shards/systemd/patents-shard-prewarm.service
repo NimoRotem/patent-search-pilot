@@ -1,0 +1,20 @@
+[Unit]
+Description=pg_prewarm the shard so the first query does not pay for the whole index
+After=postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+EnvironmentFile=/etc/default/patents-shard
+RuntimeDirectory=patents-shard
+RuntimeDirectoryPreserve=yes
+# The background phase continues after the blocking phase returns, so this stays running past the
+# point where the shard is declared hot. RemainAfterExit keeps the unit's success visible.
+RemainAfterExit=yes
+TimeoutStartSec=3600
+ExecStart=/usr/bin/python3 /opt/patents-shard/bin/prewarm.py
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+[Unit]
+Description=patents shard Tantivy lexical index server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=postgres
+Group=postgres
+EnvironmentFile=/etc/default/patents-shard
+ExecStart=/opt/patents-shard/bin/tantivy_serve.sh
+Restart=always
+RestartSec=3
+# tantivy_serve.sh execs workstream C's server when it is installed and the stub when it is not,
+# so dropping in the binary is a restart and not a unit change.
+
+[Install]
+WantedBy=multi-user.target
