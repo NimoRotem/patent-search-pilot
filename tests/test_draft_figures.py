@@ -253,6 +253,72 @@ def test_marked_anchor_consensus_rejects_a_dot_on_neighboring_hatching():
     assert audit["review_count"] == 2
 
 
+def test_marked_anchor_consensus_accepts_two_independent_approvals_out_of_three():
+    expected = ["26 = bearing face"]
+    approved = {
+        "matches_spec": True, "summary": "center is on the boundary", "errors": [],
+        "labels": [{
+            "numeral": "26", "correct": True, "repairable": True,
+            "evidence": "the center intersects the upper boundary",
+            "suggested_x": 500, "suggested_y": 500,
+        }],
+    }
+    dissent = {
+        "matches_spec": False, "summary": "center may be below the boundary",
+        "errors": ["The center appears just below the boundary."],
+        "labels": [{
+            "numeral": "26", "correct": False, "repairable": True,
+            "evidence": "the center appears one pixel below the boundary",
+            "suggested_x": 500, "suggested_y": 490,
+        }],
+    }
+
+    audit = draft_figures.marked_anchor_consensus(
+        expected, [approved, dissent, approved])
+
+    assert audit["ok"] is True
+    assert audit["labels"][0]["correct_votes"] == 2
+    assert audit["labels"][0]["incorrect_votes"] == 1
+    assert audit["errors"] == []
+
+
+def test_marked_anchor_consensus_uses_the_median_majority_correction():
+    expected = ["26 = bearing face"]
+    approved = {
+        "matches_spec": True, "summary": "center appears correct", "errors": [],
+        "labels": [{
+            "numeral": "26", "correct": True, "repairable": True,
+            "evidence": "the center appears on the boundary",
+            "suggested_x": 500, "suggested_y": 500,
+        }],
+    }
+    rejected_left = {
+        "matches_spec": False, "summary": "move right", "errors": ["center is left"],
+        "labels": [{
+            "numeral": "26", "correct": False, "repairable": True,
+            "evidence": "the boundary is to the right",
+            "suggested_x": 620, "suggested_y": 480,
+        }],
+    }
+    rejected_right = {
+        "matches_spec": False, "summary": "move right", "errors": ["center is left"],
+        "labels": [{
+            "numeral": "26", "correct": False, "repairable": True,
+            "evidence": "the same boundary is slightly farther right",
+            "suggested_x": 660, "suggested_y": 500,
+        }],
+    }
+
+    audit = draft_figures.marked_anchor_consensus(
+        expected, [approved, rejected_left, rejected_right])
+
+    assert audit["ok"] is False and audit["incorrect"] == ["26"]
+    assert audit["labels"][0]["correct_votes"] == 1
+    assert audit["labels"][0]["incorrect_votes"] == 2
+    assert audit["labels"][0]["suggested_x"] == 640
+    assert audit["labels"][0]["suggested_y"] == 490
+
+
 def test_marked_anchor_repair_maps_a_crop_suggestion_back_to_the_source():
     raw = blank_png(1000, 1000)
     anchors = [{"numeral": "26", "x": 500, "y": 500, "visible": True,
@@ -684,7 +750,7 @@ def test_leader_review_spec_contains_only_annotation_routing():
     assert "perimeter member" not in json.dumps(specification).lower()
 
 
-def test_marked_endpoint_spec_contains_local_part_definitions_only():
+def test_marked_endpoint_spec_contains_local_part_definitions_and_targets():
     caption = (
         "The complete sheet contains three concentric rectangles and one central circle. "
         "The base 12 is the plate itself, whose edge is the largest rectangle. "
@@ -698,15 +764,31 @@ def test_marked_endpoint_spec_contains_local_part_definitions_only():
         {
             "numeral": "12", "part": "base",
             "definition": "The base 12 is the plate itself, whose edge is the largest rectangle.",
+            "target": "The base 12 is identified at a point on the left-hand quarter.",
         },
         {
             "numeral": "16", "part": "second side",
             "definition": (
                 "The second side 16 is the plain margin between the first and second rectangles."),
+            "target": "On the visible second side geometry.",
         },
     ]
     encoded = json.dumps(specification).lower()
-    assert "complete sheet" not in encoded and "identified at" not in encoded
+    assert "complete sheet" not in encoded and "identified at" in encoded
+
+
+def test_marked_endpoint_spec_keeps_a_following_target_sentence_in_the_same_bullet():
+    caption = (
+        "- The vibration device 10 is the whole rectangular assembly. "
+        "Identified on the open upper surface of its slab, not on a component block.\n"
+        "- The motor 18 is the left rectangular block. Identified on its front face.")
+
+    specification = json.loads(draft_figures._marked_endpoint_specification(
+        "FIG. 1", caption, ["10 = vibration device", "18 = motor"]))
+
+    assert specification["parts"][0]["target"] == (
+        "Identified on the open upper surface of its slab, not on a component block.")
+    assert specification["parts"][1]["target"] == "Identified on its front face."
 
 
 def test_current_visual_audits_are_bound_to_the_configured_review_model(monkeypatch):
