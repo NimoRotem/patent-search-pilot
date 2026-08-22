@@ -40,7 +40,7 @@ MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
 FIGURE_PROMPT_VERSION = "figure-v3-geometry-only"
-SEMANTIC_PROMPT_VERSION = "figure-semantic-v1"
+SEMANTIC_PROMPT_VERSION = "figure-semantic-v2-overlay-aware"
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "3")), 4))
 MIN_OCR_CONFIDENCE = float(os.environ.get("PATENT_FIGURE_OCR_CONFIDENCE", "0.85"))
@@ -633,17 +633,23 @@ def semantic_audit(expected, result) -> dict:
     unexpected = sorted(set(visible) - expected_set, key=_numeral_order)
     duplicates = sorted((value for value, count in counts.items() if count > 1),
                         key=_numeral_order)
-    errors = [str(item)[:500] for item in (result or {}).get("errors") or [] if str(item).strip()]
+    raw_errors = [str(item)[:500] for item in (result or {}).get("errors") or []
+                  if str(item).strip()]
+    ignored_overlay_feedback = [item for item in raw_errors if _overlay_feedback_only(item)]
+    errors = [item for item in raw_errors if not _overlay_feedback_only(item)]
     unexpected_text = [str(item)[:200] for item in (result or {}).get("unexpected_text") or []
                        if str(item).strip()]
     inspected = bool(result) and "matches_spec" in result
-    ok = bool(inspected and result.get("matches_spec") and not missing and not unexpected and
+    overlay_only_rejection = bool(raw_errors and ignored_overlay_feedback and not errors)
+    geometry_matches = bool(result.get("matches_spec") or overlay_only_rejection)
+    ok = bool(inspected and geometry_matches and not missing and not unexpected and
               not duplicates and not errors and not unexpected_text)
     return {
         "ok": ok, "inspected": inspected, "summary": str((result or {}).get("summary") or "")[:2000],
         "expected": sorted(expected_set, key=_numeral_order), "visible": visible,
         "missing": missing, "unexpected": unexpected, "duplicates": duplicates,
-        "errors": errors, "unexpected_text": unexpected_text, "anchors": anchors,
+        "errors": errors, "ignored_overlay_feedback": ignored_overlay_feedback,
+        "unexpected_text": unexpected_text, "anchors": anchors,
     }
 
 
@@ -655,6 +661,27 @@ def _human_text(value):
     if isinstance(value, list):
         return [_human_text(item) for item in value]
     return value
+
+
+def _overlay_feedback_only(error: str) -> bool:
+    """Labels and leaders are absent by design until the deterministic overlay phase."""
+    text = re.sub(r"\s+", " ", str(error or "")).strip().lower()
+    if not text or any(term in text for term in (
+            "unexpected text", "contains text", "visible text", "contains digits")):
+        return False
+    geometry_problem = any(term in text for term in (
+        "not visible", "not depicted", "not present", "wrong axis", "instead of", "instead,",
+        "wrong position", "wrong relationship", "not connected", "not attached",
+    ))
+    if geometry_problem:
+        return False
+    if (("reference numeral" in text or "reference number" in text) and
+            any(term in text for term in ("lack", "missing", "absent", "not shown", "no "))):
+        return True
+    if any(term in text for term in ("view legend", "figure legend", "figure label")):
+        return True
+    return bool(("leader" in text or "callout" in text) and
+                any(term in text for term in ("called out", "call out", "lack", "missing", "no ")))
 
 
 def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict:
@@ -683,7 +710,9 @@ def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict
         "visibly present, return one anchor at the centre of that part using x/y coordinates from "
         "0 to 1000 and quote concise visual evidence. Never infer a hidden part. Set matches_spec "
         "false for an absent component, wrong relationship, wrong view, contradictory geometry, "
-        "or visible text.\n\nSPECIFICATION:\n" + specification)
+        "or visible text. Reference numerals, the FIG. label, legends, callouts, and leader lines "
+        "are deliberately absent at this stage and are added later. Do not report their absence "
+        "as an error.\n\nSPECIFICATION:\n" + specification)
     started, last_error = time.time(), None
     for attempt in range(3):
         try:

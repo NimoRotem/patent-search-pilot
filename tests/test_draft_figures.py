@@ -90,6 +90,38 @@ def test_semantic_audit_normalizes_model_written_human_text():
     assert "\u2014" not in json.dumps(audit, ensure_ascii=False)
 
 
+def test_semantic_audit_ignores_only_feedback_for_the_later_label_overlay():
+    audit = draft_figures.semantic_audit(["10 = body", "12 = pump"], {
+        "matches_spec": False, "summary": "geometry is correct but labels are absent",
+        "errors": [
+            "The image lacks all specified reference numerals.",
+            "The image lacks the specified view legend.",
+            "The pump is not called out by a leader line.",
+        ],
+        "unexpected_text": [],
+        "anchors": [
+            {"numeral": "10", "x": 220, "y": 300, "visible": True,
+             "evidence": "rectangular body"},
+            {"numeral": "12", "x": 620, "y": 250, "visible": True,
+             "evidence": "pump on body"},
+        ],
+    })
+    assert audit["ok"] is True and audit["errors"] == []
+
+    audit = draft_figures.semantic_audit(["10 = body", "12 = pump"], {
+        "matches_spec": False, "summary": "wrong relationship",
+        "errors": ["The pump axis is vertical instead of horizontal."],
+        "unexpected_text": [],
+        "anchors": [
+            {"numeral": "10", "x": 220, "y": 300, "visible": True,
+             "evidence": "rectangular body"},
+            {"numeral": "12", "x": 620, "y": 250, "visible": True,
+             "evidence": "vertical pump on body"},
+        ],
+    })
+    assert audit["ok"] is False and "vertical" in audit["errors"][0]
+
+
 def test_labels_are_overlaid_deterministically_after_geometry_review():
     output = draft_figures.annotate_png(blank_png(), "FIG. 3 - side view", [
         {"numeral": "10", "x": 200, "y": 300, "visible": True, "evidence": "body"},
