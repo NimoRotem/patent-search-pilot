@@ -22,7 +22,23 @@ import auth                                                          # noqa: E40
 
 psycopg = pytest.importorskip("psycopg")
 
-ADMIN = dict(host="127.0.0.1", port=5432, user="deep", dbname="deep_research")
+#  WHERE THE THROWAWAY DATABASE LIVES.
+#  These tests need a Postgres they may CREATE DATABASE on, which the live corpus box is not. The
+#  original fixture found one by asking `docker inspect` about a container called
+#  deep-research-postgres, and on a host with no docker, which the patents VM is, all 123 of them
+#  skipped silently. That is the whole cutover: the route, the SSE stream and the worker loop,
+#  unverified on the machine the cutover is deployed to.
+#
+#  So the location is overridable, and a password in the environment is enough on its own. To run
+#  them against a throwaway cluster of your own:
+#      initdb -D /tmp/pgtest -U deep --auth=trust
+#      pg_ctl -D /tmp/pgtest -o "-p 55432 -k /tmp/pgtest" -l /tmp/pgtest/log start
+#      createdb -h /tmp/pgtest -p 55432 -U deep deep_research
+#      PATENTS_TEST_PG_PASSWORD=x PATENTS_TEST_PG_PORT=55432 PATENTS_TEST_PG_HOST=/tmp/pgtest pt ...
+ADMIN = dict(host=os.environ.get("PATENTS_TEST_PG_HOST", "127.0.0.1"),
+             port=int(os.environ.get("PATENTS_TEST_PG_PORT", "5432")),
+             user=os.environ.get("PATENTS_TEST_PG_USER", "deep"),
+             dbname=os.environ.get("PATENTS_TEST_PG_DB", "deep_research"))
 TESTDB = "patents_workercut_test_%d" % os.getpid()
 
 PAYLOAD = dict(query="a vacuum gripper with a sealing lip", subject="US1234567B2",
@@ -31,6 +47,9 @@ PAYLOAD = dict(query="a vacuum gripper with a sealing lip", subject="US1234567B2
 
 
 def _admin_password():
+    env = os.environ.get("PATENTS_TEST_PG_PASSWORD")
+    if env:
+        return env
     try:
         out = subprocess.run(
             ["docker", "inspect", "deep-research-postgres", "--format",
