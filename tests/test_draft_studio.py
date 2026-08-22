@@ -1035,6 +1035,8 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
 def test_drawing_repairs_can_never_change_the_invention_to_match_bad_pixels():
     prompt = draft_studio.FINALIZE_PROMPT
     normalized = " ".join(prompt.split())
+    assert "Generated drawing pixels are evidence to inspect, never authority" \
+        in draft_studio.DRAFT_SYSTEM
     assert "Generated pixels are never authority for the invention" in prompt
     assert "Never change the claims, description, numeral table, or disclosed embodiments" \
         in prompt

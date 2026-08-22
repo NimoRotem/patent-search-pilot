@@ -124,6 +124,12 @@ detail. Return `questions` as an empty array. The automatic review will reject t
 one unfinished marker remains. Use commas, colons, full stops, or ordinary hyphens; never use an
 em dash.
 
+DRAWINGS FOLLOW THE INVENTION
+Generated drawing pixels are evidence to inspect, never authority for the invention. The inventor
+sources govern the patent text, the patent text governs each figure brief, and each brief governs
+the rendered sheet. Never add or widen a structure, relationship, embodiment, numeral definition,
+or claim to accommodate something an image model drew. Correct or regenerate the drawing instead.
+
 WORKING AROUND THE PRIOR ART
 Read prior_art/INDEX.md and then every reference file before you write. For each one, work out
 what it actually teaches - not what its title suggests. Then:
