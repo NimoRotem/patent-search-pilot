@@ -365,10 +365,22 @@ def test_never_replays_001_or_002_blindly_on_an_unrecorded_database(db, sqldir):
 # --------------------------------------------------------------------------- the real repo
 
 def test_the_repo_migrations_are_discoverable_and_include_figure_images():
-    """Every schema asset must have one deterministic place in the numbered history."""
+    """Every schema asset must have one deterministic place in the numbered history.
+
+    The list is NOT hard coded to a range any more. It was `range(1, 10)`, which said "this repo
+    has exactly 001 to 009" and became false the moment durable execution added 012 and 013, and a
+    version number is precisely the thing a workstream is allowed to add. What must stay true is
+    that discovery returns every numbered file, exactly once, in numeric order, which is the
+    property `discover` exists for. A gap in the numbers is deliberate here: 010 and 011 belong to
+    the corpus and eval workstreams and are not in this tree.
+    """
     real = os.path.join(ROOT, "sql")
     migrations = migrate.discover(real)
-    assert [m.version for m in migrations] == [f"{n:03d}" for n in range(1, 10)]
+    on_disk = sorted(n[:3] for n in os.listdir(real) if n[:3].isdigit() and n.endswith(".sql"))
+    assert [m.version for m in migrations] == on_disk
+    assert len(set(on_disk)) == len(on_disk), "a version claimed twice has no deterministic place"
+    assert [int(m.version) for m in migrations] == sorted(int(v) for v in on_disk), \
+        "discovery must be in NUMERIC order, so 002 runs before 012"
     first = next(m for m in migrations if m.version == "001")
     assert ("table", "figure_images") in migrate.sentinels(first.sql)
 
