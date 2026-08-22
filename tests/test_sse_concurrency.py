@@ -11,6 +11,7 @@ import queue
 import threading
 import time
 import pytest
+from flask import has_request_context
 import auth
 import rerank_pool
 import webapp
@@ -30,28 +31,33 @@ def _drain(resp, deadline=10.0):
         except Exception:
             pass
         finally:
-            # Exhausting a streamed response does not itself guarantee that Flask releases the
-            # request's app context. Close it in the same thread that advanced the generator;
-            # closing from the deadline thread can race a generator that is still executing.
-            resp.close()
             q.put(None)
 
     t = threading.Thread(target=reader, daemon=True)
     t.start()
     buf, end = b"", time.time() + deadline
-    while time.time() < end:
-        try:
-            chunk = q.get(timeout=0.25)
-        except queue.Empty:
-            continue
-        if chunk is None:
-            break
-        buf += chunk
-        while b"\n\n" in buf:
-            frame, buf = buf.split(b"\n\n", 1)
-            frame = frame.decode("utf-8", "replace").strip()
-            if frame.startswith("data:"):
-                out.append(json.loads(frame[5:].strip()))
+    try:
+        while time.time() < end:
+            try:
+                chunk = q.get(timeout=0.25)
+            except queue.Empty:
+                continue
+            if chunk is None:
+                break
+            buf += chunk
+            while b"\n\n" in buf:
+                frame, buf = buf.split(b"\n\n", 1)
+                frame = frame.decode("utf-8", "replace").strip()
+                if frame.startswith("data:"):
+                    out.append(json.loads(frame[5:].strip()))
+    finally:
+        # The request and its context originate on this thread. Once the reader has exhausted the
+        # terminal generator, close here so Flask resets this thread's context token. Closing only
+        # inside the reader leaves `g` shared with later test-client requests.
+        t.join(timeout=1.0)
+        if t.is_alive():
+            raise AssertionError("the SSE reader did not terminate before its deadline")
+        resp.close()
     return out
 
 
@@ -90,6 +96,7 @@ def test_sse_emits_current_state_immediately_for_finished_report(app_client):
     frames = _drain(app_client.get(f"/events/{GOLD}"))
     assert frames, "expected at least one frame"
     assert frames[0]["ready"] is True and frames[0]["done"] is True
+    assert not has_request_context(), "the completed stream leaked its Flask request context"
 
 
 def test_sse_streams_progress_then_terminates(app_client, monkeypatch, tmp_path):
