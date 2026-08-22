@@ -40,7 +40,7 @@ MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
 FIGURE_PROMPT_VERSION = "figure-v3-geometry-only"
-SEMANTIC_PROMPT_VERSION = "figure-semantic-v3-clean-specification"
+SEMANTIC_PROMPT_VERSION = "figure-semantic-v4-visible-surfaces"
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "3")), 4))
 MIN_OCR_CONFIDENCE = float(os.environ.get("PATENT_FIGURE_OCR_CONFIDENCE", "0.85"))
@@ -118,6 +118,13 @@ DRAWING_SYSTEM = (
     "watermarks. Leave clear white space around every component. A deterministic compositor adds "
     "the exact reference numerals, leader lines, and figure label only after a separate vision "
     "review confirms that the geometry matches the specification."
+)
+
+SEMANTIC_GEOMETRY_RULES = (
+    "A named face, side, surface, opening, chamber, or boundary is visible when its underlying "
+    "line, plane, edge, or bounded space is visible. It does not need to be a physically separate "
+    "object. Give that named geometry its own anchor, even when it shares coordinates with the "
+    "larger component that defines it."
 )
 
 _SCHEMA = (
@@ -765,7 +772,8 @@ def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict
     instruction = (
         "Inspect this unlabeled utility-patent line drawing against the JSON specification below. "
         "Check the requested view, every visible component, and every stated spatial or functional "
-        "relationship. The image must contain no text or digits. For each expected part that is "
+        "relationship. " + SEMANTIC_GEOMETRY_RULES + " The image must contain no text or digits. "
+        "For each expected part that is "
         "visibly present, return one anchor at the centre of that part using x/y coordinates from "
         "0 to 1000 and quote concise visual evidence. Never infer a hidden part. Set matches_spec "
         "false for an absent component, wrong relationship, wrong view, contradictory geometry, "

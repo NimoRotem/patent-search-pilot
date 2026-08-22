@@ -81,6 +81,13 @@ def test_semantic_audit_requires_one_grounded_anchor_per_expected_part():
     assert audit["ok"] is False and audit["missing"] == ["12"]
 
 
+def test_semantic_review_treats_named_surfaces_and_spaces_as_visible_geometry():
+    guidance = draft_figures.SEMANTIC_GEOMETRY_RULES.lower()
+    for term in ("face", "side", "surface", "opening", "chamber", "boundary"):
+        assert term in guidance
+    assert "physically separate object" in guidance
+
+
 def test_semantic_audit_normalizes_model_written_human_text():
     audit = draft_figures.semantic_audit(["10 = body"], {
         "matches_spec": False, "summary": "body\u2014wrong view",
