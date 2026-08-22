@@ -40,7 +40,7 @@ MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
 FIGURE_PROMPT_VERSION = "figure-v3-geometry-only"
-SEMANTIC_PROMPT_VERSION = "figure-semantic-v2-overlay-aware"
+SEMANTIC_PROMPT_VERSION = "figure-semantic-v3-clean-specification"
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "3")), 4))
 MIN_OCR_CONFIDENCE = float(os.environ.get("PATENT_FIGURE_OCR_CONFIDENCE", "0.85"))
@@ -392,24 +392,52 @@ def numerals_for(sections, caption="", disclosure=""):
     return [f"{num} = {term}" for num, term in ordered][:40]
 
 
+_ANNOTATION_ONLY = re.compile(
+    r"\b(?:reference\s+(?:numerals?|numbers?)|labels?|legends?|leader\s+lines?|callouts?)\b",
+    re.IGNORECASE,
+)
+
+
+def _geometry_text(value, numerals=()):
+    """Remove filing annotations from prose before it reaches the image model."""
+    chunks = re.split(r"(?<=[.!?])\s+|[\r\n]+", str(value or ""))
+    text = " ".join(chunk for chunk in chunks if not _ANNOTATION_ONLY.search(chunk))
+    text = _FIGURE_ID_RE.sub("", text)
+    values = [re.escape(entry["numeral"]) for entry in numeral_entries(numerals)]
+    if values:
+        text = re.sub(
+            r"(?<![A-Za-z0-9])(?:" + "|".join(sorted(values, key=len, reverse=True)) +
+            r")(?![A-Za-z0-9])",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+    text = re.sub(r"\s+([,.;:])", r"\1", text)
+    return re.sub(r"\s+", " ", text).strip(" ,;:-")
+
+
 def build_prompt(label, caption, numerals, instruction="", spec_context=""):
     """Assemble the text handed to the image model for one figure."""
-    parts = [f"Drawing specification for {canonical_figure_label(label)}: {caption}".strip()]
-    if spec_context:
-        parts.append("Context from the specification: " + spec_context[:1200])
+    clean_caption = _geometry_text(caption, numerals) or "the disclosed structure"
+    parts = ["Drawing specification: " + clean_caption]
+    clean_context = _geometry_text(spec_context, numerals)
+    if clean_context:
+        parts.append("Context from the specification: " + clean_context[:1200])
     if numerals:
         entries = numeral_entries(numerals)
-        lines = [f"the {entry['part']}" for entry in entries if entry["part"]]
-        parts.append(
-            "The following disclosed components must be visibly present and distinguishable so a "
-            "later compositor can label them. Do not draw their names or numbers:\n- " +
-            "\n- ".join(lines))
+        lines = ["the " + clean for entry in entries
+                 if (clean := _geometry_text(entry["part"], numerals))]
+        if lines:
+            parts.append(
+                "These disclosed components must be visibly present and distinguishable:\n- " +
+                "\n- ".join(lines))
     else:
-        parts.append("Draw the disclosed structure without any text, labels, or lead lines.")
-    if instruction:
+        parts.append("Draw the disclosed structure as geometry only.")
+    clean_instruction = _geometry_text(instruction, numerals)
+    if clean_instruction:
         parts.append("CHANGE REQUESTED - apply this to the drawing supplied, keeping everything "
-                     "else the same: " + instruction[:1000])
-    parts.append("Return geometry only. Do not render the figure label or any other text.")
+                     "else the same: " + clean_instruction[:1000])
+    parts.append("Return geometry only, without text or digits.")
     return "\n\n".join(parts)[:MAX_PROMPT_CHARS]
 
 
@@ -689,7 +717,7 @@ def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict
     from google.genai.types import GenerateContentConfig, Part, ThinkingConfig
     entries = numeral_entries(numerals)
     specification = json.dumps({
-        "figure": canonical_figure_label(label), "caption": str(caption or "")[:4000],
+        "caption": _geometry_text(caption, numerals)[:4000],
         "parts": entries,
     }, ensure_ascii=False, sort_keys=True)
     spec_hash = specification_hash(label, caption, numerals)
@@ -1193,6 +1221,22 @@ def save_manual_version(project_id: int, user_id: int, figure_id: int, png: byte
             "detected_numerals": version["detected_numerals"]}
 
 
+def _semantic_has_text_contamination(semantic) -> bool:
+    if (semantic or {}).get("unexpected_text"):
+        return True
+    errors = " ".join(str(item) for item in (semantic or {}).get("errors") or [])
+    has_text_term = re.search(
+        r"\b(?:text|words?|letters?|digits?|labels?|legends?|captions?)\b", errors,
+        re.IGNORECASE,
+    )
+    has_presence_term = re.search(
+        r"\b(?:visible|unexpected|extraneous|contains?|includes?|present|appears?|rendered|drawn|shows?)\b",
+        errors,
+        re.IGNORECASE,
+    )
+    return bool(has_text_term and has_presence_term)
+
+
 def render_figure(project_id, user_id, *, label, caption, sections=None, instruction="",
                   figure_id=None, base_version=None, disclosure="", source_png=None,
                   region=None, numerals=None):
@@ -1231,7 +1275,9 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
             if correction:
                 retained = max(0, MAX_PROMPT_CHARS - len(correction) - 2)
                 candidate_prompt = prompt[:retained] + "\n\n" + correction
-            raw_png = _cached_generate(candidate_prompt, previous if attempt == 0 else raw_png)
+            retry_source = previous if attempt == 0 else (
+                None if _semantic_has_text_contamination(semantic) else raw_png)
+            raw_png = _cached_generate(candidate_prompt, retry_source)
         semantic = inspect_semantics(
             raw_png, label=label, caption=caption, numerals=numerals)
         if semantic.get("ok"):

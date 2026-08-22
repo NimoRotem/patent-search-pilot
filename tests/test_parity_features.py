@@ -195,14 +195,16 @@ def test_prompt_keeps_reference_text_out_of_image_generation():
     assert "10 = suction cup" not in p
     assert "the suction cup" in p
     assert "the pump" in p
-    assert "Do not draw their names or numbers" in p
+    assert "10" not in p and "20" not in p
+    assert "reference" not in p.lower() and "label" not in p.lower()
 
 
 def test_prompt_forbids_numerals_when_the_draft_establishes_none():
     """An invented numbering has to be renumbered by hand against the specification later, which
     is worse than a drawing with no numerals at all."""
     p = draft_figures.build_prompt("FIG. 1", "a lifter", [])
-    assert "without any text, labels, or lead lines" in p
+    assert "without text or digits" in p
+    assert "label" not in p.lower() and "lead line" not in p.lower()
 
 
 def test_figure_numeral_audit_compares_both_directions_and_duplicates():

@@ -135,6 +135,17 @@ def test_labels_are_overlaid_deterministically_after_geometry_review():
     ])
 
 
+def test_geometry_prompt_strips_every_annotation_instruction_and_reference_number():
+    prompt = draft_figures.build_prompt(
+        "FIG. 3 - sectional view",
+        "FIG. 3 shows the body 10 around the pump 12. Label body 10 with a leader line and legend.",
+        ["10 = body", "12 = pump"], spec_context="The body 10 supports the pump 12.")
+    lowered = prompt.lower()
+    assert "fig. 3" not in lowered and " 10" not in prompt and " 12" not in prompt
+    assert "leader" not in lowered and "legend" not in lowered and "label body" not in lowered
+    assert "the body" in lowered and "the pump" in lowered
+
+
 def test_render_refuses_to_store_a_semantically_wrong_drawing(monkeypatch):
     monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
     monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
@@ -147,6 +158,24 @@ def test_render_refuses_to_store_a_semantically_wrong_drawing(monkeypatch):
         draft_figures.render_figure(
             7, 91, label="FIG. 1", caption="side view of body and pump",
             numerals=["10 = body", "12 = pump"])
+
+
+def test_text_contaminated_geometry_retries_from_a_clean_canvas(monkeypatch):
+    previous_images = []
+
+    def generate(_prompt, previous=None):
+        previous_images.append(previous)
+        return blank_png()
+
+    monkeypatch.setattr(draft_figures, "_cached_generate", generate)
+    monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
+        "ok": False, "missing": [], "errors": ["image contains visible text"],
+        "unexpected_text": ["BODY"], "anchors": []})
+    with pytest.raises(draft_figures.FigureError, match="semantic"):
+        draft_figures.render_figure(
+            7, 91, label="FIG. 1", caption="side view of body",
+            numerals=["10 = body"])
+    assert previous_images == [None] * draft_figures.MAX_SEMANTIC_ATTEMPTS
 
 
 def test_render_stores_only_after_semantic_and_ocr_gates_pass(monkeypatch):
