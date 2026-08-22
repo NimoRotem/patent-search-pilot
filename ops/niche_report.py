@@ -115,6 +115,18 @@ def main(argv=None):
         by_decade[d0]["cpc_families"] += int(in_cpc)
         by_decade[d0]["publications"] += len(rec["publications"])
 
+    #  The one part of the niche with no local row at all. Which ladder rung can reach it is
+    #  decided by the office in its publication number, the same way `best_source` decides it for
+    #  a family, so "reachable only from an external source" comes with the source named.
+    external = collections.Counter()
+    ext_country = collections.Counter()
+    ext_path = os.path.join(rel, "external_only.txt")
+    if os.path.exists(ext_path):
+        for pub in open(ext_path).read().split():
+            cc = pub.split("-")[0][:2].upper() if "-" in pub else pub[:2].upper()
+            ext_country[cc] += 1
+            external[cn.best_source([cc], complete_member_exists=False)] += 1
+
     out = {
         "release_id": idx["release_id"],
         "state": idx["state"],
@@ -129,6 +141,8 @@ def main(argv=None):
         "by_decade": {str(k): dict(v) for k, v in by_decade.items()},
         "world_by_country": dict(wcountry),
         "world_by_decade": dict(wdecade),
+        "external_only_by_source": dict(external),
+        "external_only_by_country": dict(ext_country),
     }
     path = os.path.join(rel, "completeness.json")
     with open(path, "w") as fh:
@@ -193,6 +207,17 @@ def _markdown(out):
     print("|---|--:|")
     for k, v in sorted(out["best_source"].items(), key=lambda kv: -kv[1]):
         print(f"| {k} | {v:,} |")
+
+    if out.get("external_only_by_source"):
+        print("\n### Reachable only from an external source, and which one\n")
+        print("| source | publications | offices |")
+        print("|---|--:|---|")
+        bycc = out["external_only_by_country"]
+        for k, v in sorted(out["external_only_by_source"].items(), key=lambda kv: -kv[1]):
+            offices = ", ".join(f"{c} {n:,}" for c, n in
+                                sorted(bycc.items(), key=lambda kv: -kv[1])[:6]
+                                if cn.best_source([c], False) == k)
+            print(f"| {k} | {v:,} | {offices} |")
 
 
 if __name__ == "__main__":

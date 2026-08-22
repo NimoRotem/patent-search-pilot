@@ -243,10 +243,17 @@ publications** and still cannot touch the 35.9% that carries no classification.
 identical to a shard domain, because the corpus already holds those six whole and a finer core would
 only disown documents we have. The adjacency is a main group, five times cheaper than the same
 evidence at subclass granularity, and it still rolls up to exactly one shard each.
-`Boundary.shard_domains()` is the seam: it returns the 18 four-character domains the niche touches,
-using the same `symbol[:4]` definition as `retrieval.shard_router.domain_of`, so E can shard the
-manifest without re-deriving anything and a routing decision and a membership decision can never
-disagree about which subclass a symbol belongs to.
+`Boundary.shard_domains()` is the seam: it returns the four-character domains the niche touches plus
+`shard_router.UNCLASSIFIED`, and `corpus_niche.subclass_of` is `retrieval.shard_router.domain_of` to
+the letter, including for a symbol it cannot parse. That last detail is not cosmetic. If
+`subclass_of` returned `""` for an unclassified publication where the router emits
+`"unclassified"`, a shard registered under one name and a route emitted under the other would never
+meet in `shard_manager.hot_domains`, and the 1,024,320 publications that carry no classification,
+20.6% of the corpus and the population the gold lists are drawn from, would go quietly unreachable
+in the tier built to reach them. `docs/shard_and_global_seams.md` rule 5.6 states the contract and
+`tests/test_corpus_niche.py::test_subclass_of_is_domain_of_to_the_letter` holds the two functions to
+it symbol by symbol. `corpus_niche.shard_domains_of(record["cpc"])` maps a manifest family onto its
+shards and returns `["unclassified"]` for the 294,327 families that have no symbols at all.
 
 ## 7. Gold overlap, reported as an outcome
 

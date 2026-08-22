@@ -365,10 +365,19 @@ def test_never_replays_001_or_002_blindly_on_an_unrecorded_database(db, sqldir):
 # --------------------------------------------------------------------------- the real repo
 
 def test_the_repo_migrations_are_discoverable_and_include_figure_images():
-    """Every schema asset must have one deterministic place in the numbered history."""
+    """Every schema asset must have one deterministic place in the numbered history.
+
+    The assertion is that the versions are the CONTIGUOUS run 001..N with no gap and no duplicate,
+    not that N is any particular number. docs/migrations.md assigns 010 to the corpus workstream
+    and 011 to evaluation, and pinning the literal here means every one of those lands as a test
+    failure in a file that has nothing to do with them, which is how a real duplicate version gets
+    waved through as "the usual migration test failure".
+    """
     real = os.path.join(ROOT, "sql")
     migrations = migrate.discover(real)
-    assert [m.version for m in migrations] == [f"{n:03d}" for n in range(1, 10)]
+    versions = [m.version for m in migrations]
+    assert versions == [f"{n:03d}" for n in range(1, len(versions) + 1)]
+    assert len(set(versions)) == len(versions)
     first = next(m for m in migrations if m.version == "001")
     assert ("table", "figure_images") in migrate.sentinels(first.sql)
 

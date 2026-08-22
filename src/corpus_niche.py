@@ -33,6 +33,17 @@ except Exception:  # pragma: no cover
 
 MANIFEST_VERSION = 1
 
+#  THE UNCLASSIFIED SHARD HAS ONE NAME. `retrieval.shard_router` emits the literal string
+#  "unclassified" as a route and can never return a list without it, because 1,024,320
+#  publications, 20.6% of the corpus, carry no classification and they skew old and foreign, which
+#  is the population the gold citation lists are drawn from. A manifest that named the same shard
+#  `""` would register a shard `hot_domains` never matches, and that whole population would go
+#  quietly unreachable in the tier built to reach it. See docs/shard_and_global_seams.md rule 5.6.
+try:  # pragma: no cover - the real package; the constant is duplicated for a bare test import
+    from retrieval.shard_router import UNCLASSIFIED
+except Exception:  # pragma: no cover
+    UNCLASSIFIED = "unclassified"
+
 #  The rungs of the ladder in `src/sources/fulltext.py`, in the order that module tries them, and
 #  the jurisdictions each one actually serves. `best_source` names the cheapest rung that can
 #  serve a family; C may fall further down the ladder but should never fall up it.
@@ -56,10 +67,27 @@ def normalise_symbol(symbol):
 
 
 def subclass_of(symbol):
-    """CPC subclass, four characters. This is the SAME unit as a shard domain
-    (`retrieval.shard_router.domain_of`), deliberately: every niche family rolls up to exactly one
-    shard without anybody re-deriving the mapping."""
-    return normalise_symbol(symbol)[:4]
+    """CPC subclass, four characters, or `UNCLASSIFIED` when the symbol is unusable.
+
+    This is `retrieval.shard_router.domain_of` under another name, on purpose and to the letter,
+    including the unclassified case: every niche family rolls up to exactly one shard and nobody
+    re-derives the mapping. Returning `""` here instead would name the unclassified shard twice.
+    """
+    s = normalise_symbol(symbol)
+    return s[:4] if s else UNCLASSIFIED
+
+
+def shard_domains_of(symbols):
+    """The shard domains one family belongs to, best used on a manifest record's `cpc`.
+
+    A family with no usable symbol belongs to the unclassified shard, not to no shard. MEASURED on
+    release niche-2026-08-22: 294,327 of 1,607,502 niche families carry `cpc == []`, and they are
+    there because the family and citation closures put them there, so they are exactly the families
+    a classification-only shard map would lose.
+    """
+    doms = {subclass_of(s) for s in (symbols or ())}
+    doms.discard("")
+    return sorted(doms) if doms else [UNCLASSIFIED]
 
 
 def main_group_of(symbol):
@@ -152,9 +180,18 @@ class Boundary:
                 tier = "adjacent"
         return tier
 
-    def shard_domains(self):
-        """Every shard domain the niche touches, i.e. the subclass of every boundary node."""
-        return sorted(set(self.core_subclasses) | {g[:4] for g in self.adjacent_groups})
+    def shard_domains(self, include_unclassified=True):
+        """Every shard domain the niche touches, in `shard_router.domain_of` spelling.
+
+        `UNCLASSIFIED` is in the list by default because the niche really does contain unclassified
+        families: the family and citation closures put 294,327 of them there, and a shard map built
+        from the CPC nodes alone would silently drop every one.
+        """
+        doms = set(self.core_subclasses) | {subclass_of(g) for g in self.adjacent_groups}
+        doms.discard(UNCLASSIFIED)
+        if include_unclassified:
+            doms.add(UNCLASSIFIED)
+        return sorted(doms)
 
     def citation_admitted(self, category, origin):
         """Does this citation edge extend the niche?

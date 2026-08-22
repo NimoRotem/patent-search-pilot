@@ -42,13 +42,32 @@ def boundary(**over):
     ("F16B47/00", "F16B47/00", "F16B", "F16B47"),
     ("H10P72/00", "H10P72/00", "H10P", "H10P72"),
     ("  B66C1/0225 ", "B66C1/0225", "B66C", "B66C1"),
-    ("B25", "", "", ""),
-    (None, "", "", ""),
+    ("B25", "", "unclassified", ""),
+    (None, "", "unclassified", ""),
 ])
 def test_symbol_parsing(raw, norm, sub, group):
     assert cn.normalise_symbol(raw) == norm
     assert cn.subclass_of(raw) == sub
     assert cn.main_group_of(raw) == group
+
+
+def test_subclass_of_is_domain_of_to_the_letter():
+    """The integration hazard workstream G found. `shard_router` emits the literal
+    "unclassified" for a publication with no symbols; a manifest that named the same shard `""`
+    would register a shard `hot_domains` never matches, and 1,024,320 publications, 20.6% of the
+    corpus, would go unreachable in the tier built to reach them. Defect injection: change
+    `subclass_of` to return `""` and the last two cases here go red."""
+    from retrieval import shard_router
+    assert cn.UNCLASSIFIED == shard_router.UNCLASSIFIED == "unclassified"
+    for sym in ["B65G47/91", "b25j 15/0616", "Y02P70/50", "F16B47/00", "B25", "", None, "  "]:
+        assert cn.subclass_of(sym) == shard_router.domain_of(sym), sym
+
+
+def test_a_family_with_no_symbols_names_the_unclassified_shard():
+    assert cn.shard_domains_of([]) == ["unclassified"]
+    assert cn.shard_domains_of(None) == ["unclassified"]
+    assert cn.shard_domains_of(["B65G47/91", "B25J15/06"]) == ["B25J", "B65G"]
+    assert cn.shard_domains_of(["B25", ""]) == ["unclassified"]
 
 
 @pytest.mark.parametrize("sym", ["Y02P70/50", "Y10T29/49826", "Y10S901/30",
@@ -106,12 +125,14 @@ def test_core_beats_adjacent_and_nothing_beats_nothing():
     assert b.tier_of_symbols([]) is None
 
 
-def test_shard_domains_are_subclasses():
+def test_shard_domains_are_subclasses_plus_the_unclassified_route():
     """Every niche node must roll up to exactly one shard domain, so retrieval.shard_router and the
-    niche cannot disagree about which shard holds a family."""
+    niche cannot disagree about which shard holds a family. The unclassified route is in the list
+    because the closures put 294,327 unclassified families in the niche."""
     b = boundary()
-    assert b.shard_domains() == ["B25J", "B65G", "F04F", "H10P"]
-    for d in b.shard_domains():
+    assert b.shard_domains() == ["B25J", "B65G", "F04F", "H10P", "unclassified"]
+    assert b.shard_domains(include_unclassified=False) == ["B25J", "B65G", "F04F", "H10P"]
+    for d in b.shard_domains(include_unclassified=False):
         assert len(d) == 4
 
 

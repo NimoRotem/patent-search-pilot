@@ -183,6 +183,24 @@ Chinese share is ScrapingBee volume, and it should be sized before it is started
 The `pqai` and `epo_ops` rungs together are 291,907 families and both are free, which is where an
 acquisition run should start.
 
+### The 32,355 with no local row at all
+
+These are X/Y examiner citations from inside the niche that this corpus holds nothing for, not even
+a stub. Source assigned from the office in the publication number, by the same ladder:
+
+| source | publications | offices |
+|---|--:|---|
+| `epo_ops` | 13,243 | WO 12,898, EP 345 |
+| `himmpat` | 11,504 | CN 9,106, JP 2,219 |
+| `pqai` | 6,833 | US 6,833 |
+| `gpatents_direct` | 775 | DE 292, and a long tail |
+
+**20,076 of the 32,355 (62.0%) are on a free rung**, `epo_ops` or `pqai`, so the part of the niche
+this corpus cannot reach at all is mostly cheap to reach. The full list is
+`data/manifests/<release>/external_only.txt`. Note that acquiring them means INSERTING publications,
+which `docs/corpus_write_policy.md` routes through `corpus_ingest_queue` and a permanent release,
+not through the search path.
+
 ## 7. The 20.4% with no classification
 
 1,015,875 of 4,975,809 corpus publications carry no CPC symbol. A niche defined purely by CPC is
