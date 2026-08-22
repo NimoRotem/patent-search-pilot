@@ -550,6 +550,32 @@ def test_current_visual_audits_are_bound_to_the_configured_review_model(monkeypa
         semantic["marked_anchor_audit"], specification_hash=digest) is False
 
 
+def test_endpoint_review_specs_strip_geometry_only_annotation_prohibitions(monkeypatch):
+    caption = ("No word, letter, caption, label, digit, or other writing is drawn. "
+               "The body 10 is visible on the upper surface.")
+    endpoint_spec = json.loads(draft_figures._review_specification(
+        "FIG. 1", caption, ["10 = body"], geometry_only=True))
+    assert "no word" not in endpoint_spec["caption"].lower()
+    assert "body is visible" in endpoint_spec["caption"].lower()
+
+    modes = []
+    monkeypatch.setattr(
+        draft_figures, "_review_specification",
+        lambda *args, **kwargs: modes.append(kwargs["geometry_only"]) or "{}")
+    cached = iter([accepted_leader_audit(), accepted_marked_anchor_audit()])
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *args: next(cached))
+
+    draft_figures.inspect_leaders(
+        blank_png(), label="FIG. 1", caption=caption,
+        numerals=["10 = body"])
+    draft_figures.inspect_marked_anchors(
+        blank_png(), label="FIG. 1", caption=caption,
+        numerals=["10 = body"],
+        anchors=[{"numeral": "10", "x": 500, "y": 500, "visible": True}])
+
+    assert modes == [True, True]
+
+
 def test_render_refuses_to_store_a_semantically_wrong_drawing(monkeypatch):
     monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
     monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {

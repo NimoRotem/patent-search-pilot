@@ -42,9 +42,10 @@ ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
 FIGURE_PROMPT_VERSION = "figure-v3-geometry-only"
 SEMANTIC_PROMPT_VERSION = (
     "figure-semantic-v11-high-accuracy-full-spec-consensus-pixel-grounded-marked-topology")
-LEADER_PROMPT_VERSION = "figure-leader-v5-high-accuracy-full-spec-independent-consensus"
+LEADER_PROMPT_VERSION = (
+    "figure-leader-v6-high-accuracy-annotation-aware-full-spec-independent-consensus")
 MARKED_ANCHOR_PROMPT_VERSION = (
-    "figure-anchor-v3-high-accuracy-full-spec-marked-crop-consensus")
+    "figure-anchor-v4-high-accuracy-annotation-aware-full-spec-marked-crop-consensus")
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v1-exterior-connectivity"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
@@ -1548,7 +1549,7 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
 
     entries = numeral_entries(numerals)
     specification = _review_specification(
-        label, caption, numerals, geometry_only=False)
+        label, caption, numerals, geometry_only=True)
     spec_hash = specification_hash(label, caption, numerals)
     montage = _marked_anchor_montage(png, anchors, numerals)
     model = vision_model()
@@ -1663,7 +1664,7 @@ def inspect_leaders(png: bytes, *, label: str, caption: str, numerals) -> dict:
     from google.genai.types import GenerateContentConfig, Part, ThinkingConfig
     entries = numeral_entries(numerals)
     specification = _review_specification(
-        label, caption, numerals, geometry_only=False)
+        label, caption, numerals, geometry_only=True)
     spec_hash = specification_hash(label, caption, numerals)
     model = vision_model()
     key = _analysis_cache_key("leaders", png, specification, model, LEADER_PROMPT_VERSION)
@@ -1683,7 +1684,11 @@ def inspect_leaders(png: bytes, *, label: str, caption: str, numerals) -> dict:
         "the endpoint dot, and decide whether that endpoint lands on the named part, surface, "
         "opening, chamber, space, or boundary. A leader crossing a part before ending elsewhere "
         "does not identify that part. Reject a leader ending in blank space, on an unrelated "
-        "feature, or at a shared convergence point used for another numeral. Each numeral must "
+        "feature, or at a shared convergence point used for another numeral. "
+        "The expected reference numerals and the canonical FIG. label were added after the "
+        "geometry review and are required filing annotations. Never reject those expected "
+        "annotations as forbidden text. "
+        "Each numeral must "
         "have one distinct, unambiguous endpoint. Return exactly one labels record for every "
         "printed expected numeral. For each record, suggested_x and suggested_y must identify a "
         "better visible endpoint on the named geometry, using coordinates from 0 to 1000 across "
