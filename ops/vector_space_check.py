@@ -10,14 +10,26 @@ six-decimal pgvector literal this pipeline uses, so the floor is that rounding, 
 roughly 9e-11. Anything at that order is the same vector. Anything at 1e-3 or above is a different
 model, a different dimension or a normalisation that one side applies and the other does not.
 
-    python ops/vector_space_check.py            # 40 chunks across every kind
-    python ops/vector_space_check.py --n 200 --batch     # also check the Gemini Batch path
+    python ops/vector_space_check.py                    # 8 of each kind, plus CJK
+    python ops/vector_space_check.py --n 6 --batch      # also send corpus text through a batch job
 
-MEASURED 2026-08-22 on the live corpus, 40 chunks over whole/abstract/claim_own/claim_resolved/
-paragraph/figure_caption, English and CJK: max cosine distance 1.5e-10, and the stored vectors
-have norm 0.589, i.e. gemini-embedding-001 at output_dimensionality=768 is NOT unit normalised and
-must not be normalised here either. The Gemini Batch path was measured against the synchronous one
-at cosine distance 1.0e-15, so a batch vector and a sync vector are the same vector.
+MEASURED 2026-08-22 on the live corpus.
+
+**Synchronous path: max cosine distance 2.22e-16 over 56 chunks**, covering all six kinds
+(whole, abstract, claim_own, claim_resolved, paragraph, figure_caption) in English and Chinese,
+sampled from six windows spread over the 27.6M rows. 2.22e-16 is double precision epsilon: after
+the six decimal pgvector literal this pipeline writes, the vector it produces is not merely close
+to the stored one, it is the SAME LITERAL.
+
+**Gemini Batch path: max cosine distance 2.99e-12 over 12 corpus chunks**, sent through a real
+Vertex batch prediction job (`8184722921751576576`, about four minutes end to end) and compared to
+what the corpus stores, not to what the synchronous API returns. Measuring batch against sync
+would leave open the possibility that the two agree with each other and neither agrees with the
+corpus.
+
+The stored vectors have **norm 0.589**: `gemini-embedding-001` at `output_dimensionality=768` is
+NOT unit normalised, and must not be normalised here either. Normalising one side and not the
+other lands near 1e-1, a `task_type` difference near 1e-2, and both fail the 1e-7 tolerance loudly.
 """
 from __future__ import annotations
 

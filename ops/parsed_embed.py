@@ -386,9 +386,26 @@ STAGE_COLS = ("publication_id, kind, ref_id, coord, lang, text, token_count, emb
               "embed_model, embed_dim, task_type, chunker_version, corpus_release")
 
 
+#  Characters staged since `run()` last read this. A plain counter rather than a return value
+#  because every caller of `stage_vectors` is on the worker's own thread and three of them are
+#  several frames below the loop that reports progress: threading it back through
+#  `drain` -> `drain_sync` -> `collect_batch` -> `resume_batches` would change four signatures to
+#  carry one number. Without it `parsed_embed_progress.chars_done` stays at 0 for ever, which is a
+#  heartbeat column that reads as a broken job.
+_chars_staged = 0
+
+
+def take_chars_staged():
+    """-> characters staged since the last call, and reset."""
+    global _chars_staged
+    n, _chars_staged = _chars_staged, 0
+    return n
+
+
 def stage_vectors(conn, pairs):
     """`pairs`: `[(item_row, vector)]`. Writes the vectors and DELETES the queue rows, in ONE
     transaction, which is what makes the pipeline exactly-once rather than merely resumable."""
+    global _chars_staged
     if not pairs:
         return 0
     with conn.cursor() as cur:
@@ -412,6 +429,8 @@ def stage_vectors(conn, pairs):
         cur.execute("DELETE FROM parsed_embed_item WHERE item_key = ANY(%s)",
                     ([r["item_key"] for r, _ in pairs],))
     conn.commit()
+    #  After the commit, not before: a rolled back transaction must not be counted as staged.
+    _chars_staged += sum(len(r["text"] or "") for r, _ in pairs)
     return len(pairs)
 
 
@@ -673,7 +692,13 @@ def run(shard=0, shards=1, pass_name="parsed", once=False):
     t0 = time.time()
     while True:
         work = 0
-        work += resume_batches(conn, shard)
+        #  Rows collected from a finished batch job are staged HERE, not in `drain()`, and were
+        #  not being counted: `rows_done` sat at whatever the synchronous path had produced while
+        #  the batch path quietly staged tens of thousands. Observed on 2026-08-22, three jobs
+        #  collected 35,124 rows and the heartbeat still read 639.
+        collected = resume_batches(conn, shard)
+        st["rows_done"] += collected
+        work += collected
         #  Ingest only while there is room. Skipping it leaves the watermark alone, so the next
         #  round reads exactly the documents this one did not.
         queued = queued_count(conn, shard)
@@ -693,14 +718,16 @@ def run(shard=0, shards=1, pass_name="parsed", once=False):
         st["rows_done"] += staged
         st["api_calls"] += calls
         st["batch_jobs"] += jobs
+        st["chars_done"] += take_chars_staged()
         work += staged + jobs
         save_progress(conn, shard, st)
 
         if work:
             _log("progress", shard=shard, docs_seen=st["docs_seen"], docs_staged=st["docs_staged"],
                  docs_rejected=st["docs_rejected"], rows=st["rows_done"],
-                 queued=queued_count(conn, shard), api_calls=st["api_calls"],
-                 batch_jobs=st["batch_jobs"], elapsed=int(time.time() - t0))
+                 chars=st["chars_done"], queued=queued_count(conn, shard),
+                 api_calls=st["api_calls"], batch_jobs=st["batch_jobs"],
+                 elapsed=int(time.time() - t0))
         if once:
             break
         if not work:

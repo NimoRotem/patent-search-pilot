@@ -1184,3 +1184,69 @@ def test_a_full_batch_pipeline_does_not_submit_another_job(db, monkeypatch):
 
     staged, calls, jobs = pe.drain(db, TEST_SHARD, Explode())
     assert (staged, calls, jobs) == (0, 0, 0)
+
+
+def test_the_character_counter_reports_only_what_was_committed(db, monkeypatch):
+    """`chars_done` is the heartbeat that says the job is doing work rather than merely alive, and
+    it sat at 0 for ever because nothing incremented it. It must count what was COMMITTED: a
+    staging failure that rolls back and leaves the work queued has staged no characters."""
+    import parsed_embed as pe
+    monkeypatch.setattr(pe, "CORPUS_RELEASE", "test-parsed-suite")
+    monkeypatch.setattr(embed_common, "embed_texts",
+                        lambda texts, *a, **k: [[0.03] * pe.EMBED_DIM for _ in texts])
+    text = "a vacuum gripping device with a manually operable pump and an indicator"
+    pe.take_chars_staged()                                           # start from a known point
+    _queue(db, [text])
+    assert pe.drain_sync(db, TEST_SHARD)[0] == 1
+    assert pe.take_chars_staged() == len(text)
+    assert pe.take_chars_staged() == 0, "the counter must reset when it is read"
+
+    rows, _ = _queue(db, ["a second abstract that will fail to stage"])
+    with db.cursor() as cur:
+        cur.execute("SELECT id, item_key, publication_id, kind, coord, lang, text "
+                    "FROM parsed_embed_item WHERE shard = %s", (TEST_SHARD,))
+        pairs = [(r, ["not a number"] * pe.EMBED_DIM) for r in cur.fetchall()]
+    with pytest.raises(Exception):                                   # noqa: PT011
+        pe.stage_vectors(db, pairs)
+    db.rollback()
+    assert pe.take_chars_staged() == 0, "a rolled back transaction staged no characters"
+
+
+def test_rows_collected_from_a_batch_reach_the_heartbeat(db, monkeypatch):
+    """`resume_batches` stages the rows a finished batch job produced, and `run()` used to add its
+    return value to `work` and not to `rows_done`. Observed live on 2026-08-22: three jobs
+    collected 35,124 rows and `parsed_embed_progress.rows_done` still read 639, so the one number
+    an operator reads to answer "is it working" was wrong by two orders of magnitude."""
+    import parsed_embed as pe
+    monkeypatch.setattr(pe, "CORPUS_RELEASE", "test-parsed-suite")
+    texts = ["a first chunk of a vacuum lifter", "a second chunk of a vacuum lifter"]
+    _queue(db, texts)
+
+    class Done:
+        """A job that has already succeeded, which is what a restarted worker finds."""
+
+        def submit(self, items, tag=None):
+            raise AssertionError("a recorded job must be polled, never resubmitted")
+
+        def poll(self, job_name):
+            return {"state": "JOB_STATE_SUCCEEDED", "terminal": True, "ok": True,
+                    "output_dir": "gs://b/out/", "error": ""}
+
+        def collect(self, output_dir, items):
+            return {i["item_key"]: [0.04] * pe.EMBED_DIM for i in items}, {}
+
+    with db.cursor() as cur:
+        cur.execute("INSERT INTO parsed_embed_batch (state, n_items, shard, job_name) "
+                    "VALUES ('submitted', 2, %s, %s) RETURNING id",
+                    (TEST_SHARD, f"test-collect-{TEST_SHARD}"))
+        batch_id = cur.fetchone()["id"]
+        cur.execute("UPDATE parsed_embed_item SET state = 'submitted', batch_id = %s "
+                    "WHERE shard = %s", (batch_id, TEST_SHARD))
+    db.commit()
+
+    collected = pe.resume_batches(db, TEST_SHARD, Done())
+    assert collected == 2, "resume_batches must report what it staged"
+    with db.cursor() as cur:
+        cur.execute("SELECT count(*) c FROM chunks_stage_v3 WHERE publication_id = %s", (TEST_PID,))
+        assert cur.fetchone()["c"] == 2
+    assert pe.take_chars_staged() == sum(len(t) for t in texts)
