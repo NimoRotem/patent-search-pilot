@@ -512,7 +512,7 @@ def test_deterministic_leader_endpoint_has_a_vision_visible_dot():
     target_x = layout["source_x"] + round(500 * layout["source"].width / 1000)
     target_y = layout["source_y"] + round(500 * layout["source"].height / 1000)
 
-    assert output.getpixel((target_x, target_y + 4))[0] < 32
+    assert output.getpixel((target_x, target_y + 6))[0] < 32
 
 
 def test_geometry_prompt_strips_every_annotation_instruction_and_reference_number():
