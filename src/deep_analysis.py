@@ -193,7 +193,84 @@ def full_text(pub, max_chars=MAX_REFERENCE_CHARS):
             coord = ch["coord"] if isinstance(ch["coord"], dict) else {}
             if add(ch["kind"], coord, claim_chart._coord_label(ch["kind"], coord), ch["text"]):
                 out["n_paragraphs"] += 1
+
+    #  THE SCRATCH STORE, only when the corpus holds no readable body for this publication.
+    #  The durable worker may not write `claims`, `paragraphs` or `chunks` (corpus_guard, and
+    #  docs/corpus_write_policy.md), so text fetched during a search lands in `sources_docstore`
+    #  instead. Without this the reader could not see it and the reference would be LISTED rather
+    #  than read, which is the whole cost of arming the guard. Scoped to the empty case on
+    #  purpose: it can only ever add a document that was unreadable, never re-order or replace
+    #  what the corpus already holds.
+    if not out["n_claims"] and not out["n_paragraphs"]:
+        _add_scratch_text(pub, out, add)
     return out
+
+
+def _add_scratch_text(pub, out, add):
+    """Fold `sources_docstore` text for `pub` into a reference that the corpus cannot supply.
+
+    Best effort and silent on failure: an unreachable scratch store must leave the reference
+    exactly as the corpus described it, which is the behaviour that existed before this.
+    """
+    try:
+        from sources import docstore
+        rec = docstore._get_sync(pub, want_text=True) or {}
+    except Exception:                                                # noqa: BLE001
+        return 0
+    claims = str(rec.get("claims") or "").strip()
+    desc = str(rec.get("description") or "").strip()
+    if not claims and not desc:
+        return 0
+    out["found"] = True
+    if not out["title"]:
+        out["title"] = rec.get("title") or ""
+    if not out["passages"] and (rec.get("abstract") or "").strip():
+        add("abstract", {}, "abstract", rec["abstract"])
+    for i, text in enumerate(_split_units(claims)[:MAX_CLAIMS_PER_REF], 1):
+        no = _claim_number(text) or i
+        if add("claim", {"claim_no": no}, f"claim {no}", text):
+            out["n_claims"] += 1
+    for i, text in enumerate(_split_units(desc)[:MAX_PARAGRAPHS_PER_REF], 1):
+        if add("paragraph", {"para_no": i}, f"paragraph {i}", text):
+            out["n_paragraphs"] += 1
+    out["scratch"] = rec.get("fulltext_source") or "sources_docstore"
+    return out["n_claims"] + out["n_paragraphs"]
+
+
+#  "1. A gripper comprising..." / "12) The gripper of claim 1..." -> the claim's REAL number.
+_CLAIM_NO = re.compile(r"^\s*(\d{1,3})\s*[.)]\s")
+
+
+def _claim_number(text):
+    """The number a stored claim states for itself, or None.
+
+    Counting from one is right only when the blob starts at claim 1 and no claim contains a blank
+    line. Both are false often enough to matter, and a quote cited as "claim 4" when the reference
+    calls it claim 6 is a wrong citation in a legal document, so the text's own number wins.
+    """
+    m = _CLAIM_NO.match(str(text or ""))
+    return int(m.group(1)) if m else None
+
+
+def _split_units(text):
+    """One blob of stored text as the units a citation can point at.
+
+    The scratch store keeps claims and description as single strings, because that is what every
+    provider returns. A quote has to be citable as "claim 7" or "paragraph 41", so the blob is
+    split on blank lines, and on single newlines when there are none.
+
+    NOTHING IS DROPPED. An earlier version discarded units below a minimum length as noise and
+    silently lost "1. A gripper comprising a sealing lip.", a 38-character independent claim and
+    the single most important sentence in the document. A short unit costs one passage slot; a
+    missing one costs the chart a disclosure.
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+    parts = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    if len(parts) <= 1:
+        parts = [p.strip() for p in text.split("\n") if p.strip()]
+    return parts
 
 
 def _rendered(ref):

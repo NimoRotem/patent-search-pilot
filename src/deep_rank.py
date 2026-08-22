@@ -65,6 +65,7 @@ import deep_analysis
 import search_modes
 import llm
 import oracle
+import corpus_guard                # is this process allowed to write the live corpus at all
 import runctx                       # the durable run this search belongs to, if any (else no-op)
 
 VERSION = 1
@@ -794,6 +795,20 @@ def _enrich_missing_text(chosen, on_progress=None, limit=None, enrich_top=None):
     #  created per call and have no ambient run of their own.
     _ctx = runctx.active()
 
+    #  WHERE THE FETCHED TEXT IS ALLOWED TO LAND. In the durable worker the live corpus is read
+    #  only (corpus_guard), so `enrich_publication` would be refused per reference and every thin
+    #  reference would be LISTED rather than read. `stash_full_text` fetches exactly the same text
+    #  and puts it in the scratch store plus `corpus_ingest_queue`, which is where
+    #  docs/corpus_write_policy.md says search-time demand goes, and `deep_analysis.full_text`
+    #  reads it from there. Decided ONCE, here, rather than per reference, so the log says which
+    #  route the run took.
+    stash = corpus_guard.armed() and not corpus_guard.writes_allowed()
+    if stash:
+        print(f"[deep_rank] the corpus is read only in this process; full text for "
+              f"{len(thin)} text-less reference(s) goes to the scratch store and the ingest "
+              f"queue, and is read from there", flush=True)
+    _run_id = getattr(runctx.active(), "run_id", None)
+
     def one(pub):
         with runctx.adopt(_ctx):
             try:
@@ -801,10 +816,15 @@ def _enrich_missing_text(chosen, on_progress=None, limit=None, enrich_top=None):
                 #  against a 30,000/month plan, so a run whose lease was reaped must stop here
                 #  rather than after the whole enrichment wave.
                 runctx.check_cancelled(f"enrich:{pub}")
-                r = enrich.enrich_publication(pub, reembed=False)
-                ok = bool(r and r.get("ok") and (r.get("added_claims") or
-                                                 r.get("added_paragraphs") or
-                                                 r.get("added_chunks")))
+                if stash:
+                    r = enrich.stash_full_text(pub, run_id=_run_id)
+                    ok = bool(r and r.get("ok") and (r.get("claims_chars") or
+                                                     r.get("desc_chars")))
+                else:
+                    r = enrich.enrich_publication(pub, reembed=False)
+                    ok = bool(r and r.get("ok") and (r.get("added_claims") or
+                                                     r.get("added_paragraphs") or
+                                                     r.get("added_chunks")))
             except runctx.RunCancelled:
                 raise
             except Exception:
