@@ -1285,7 +1285,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                 runctx.checkpoint(slug, "fuse", {"report_path": str(_fused_path),
                                                  "budget": run_budget},
                                   n_out=len(rep.get("ranked_families") or []))
-                runctx.note_candidates([
+                runctx.note_candidates(slug, [
                     {"pub": f.get("pub"), "family_id": str(f.get("family_id") or "") or None,
                      "fused_rank": i + 1, "fused_score": f.get("score"), "stage": "fused"}
                     for i, f in enumerate((rep.get("ranked_families") or [])[:2000])
@@ -1390,7 +1390,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             _rounds = _rescue.get("rounds") if isinstance(_rescue, dict) else None
             runctx.checkpoint(slug, "rescue", {"summary": _rescue},
                               n_out=len(_rounds or []))
-            runctx.note_candidates([
+            runctx.note_candidates(slug, [
                 {"pub": c.get("pub"), "final_rank": i + 1, "final_score": c.get("score"),
                  "read_status": ("read" if c.get("chart") or c.get("read") else "unread"),
                  "stage": "final"}

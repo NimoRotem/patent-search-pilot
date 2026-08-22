@@ -116,6 +116,78 @@ def test_detector_failure_does_not_break_generation(monkeypatch):
     assert written["domain"] is None
 
 
+def test_generation_records_candidates_against_the_run_slug(monkeypatch, tmp_path):
+    recorded = []
+    report_file = tmp_path / "candidate-ledger.json"
+
+    class BoundRun:
+        run_id = "run-candidate-ledger"
+
+    class FakeAgent:
+        def __init__(self, retriever):
+            pass
+
+        def run(self, *args, **kwargs):
+            return {"elements": ["e"], "ranked_families": [
+                {"pub": "US-123-A1", "score": 0.75},
+            ]}
+
+    class FakeTrace:
+        def write(self, path):
+            return path
+
+        def unknown(self):
+            return []
+
+        def rows(self):
+            return []
+
+        def counts(self):
+            return {}
+
+    def write_report(slug, report):
+        report_file.write_text(json.dumps(report), encoding="utf-8")
+
+    monkeypatch.setattr(webapp, "CoverageAgent", FakeAgent)
+    monkeypatch.setattr(webapp, "retriever", lambda: None)
+    monkeypatch.setattr(webapp.accounts, "mark_search_running", lambda slug: None)
+    monkeypatch.setattr(webapp.domain_detect, "detect", lambda *args, **kwargs: None)
+    monkeypatch.setattr(webapp.deep_rank, "run", lambda *args, **kwargs: {})
+    monkeypatch.setattr(webapp, "_attach_prosecution", lambda report, slug: None)
+    monkeypatch.setattr(webapp, "_attach_disclosures", lambda *args, **kwargs: None)
+    monkeypatch.setattr(webapp, "_drop_self_family", lambda report: report)
+    monkeypatch.setattr(webapp, "_build_view_cached", lambda slug, report: {"cards": []})
+    monkeypatch.setattr(webapp, "_write_report", write_report)
+    monkeypatch.setattr(webapp, "_write_json_atomic", lambda path, payload: None)
+    monkeypatch.setattr(webapp, "_write_detail_preview", lambda *args, **kwargs: None)
+    monkeypatch.setattr(webapp, "_schedule_background_report_analysis",
+                        lambda *args, **kwargs: None)
+    monkeypatch.setattr(webapp.prefetch, "prefetch_top", lambda *args, **kwargs: None)
+    monkeypatch.setattr(webapp.query_claim_grid, "ensure", lambda *args, **kwargs: None)
+    monkeypatch.setattr(webapp.trace, "from_report", lambda *args, **kwargs: FakeTrace())
+    monkeypatch.setattr(webapp, "report_path", lambda slug: report_file)
+    monkeypatch.setattr(webapp.manifest, "start", lambda *args, **kwargs: {})
+    monkeypatch.setattr(webapp.manifest, "finish", lambda *args, **kwargs: None)
+    monkeypatch.setattr(webapp.run_stats, "record", lambda *args, **kwargs: None)
+    monkeypatch.setattr(webapp.runctx, "current", lambda slug: BoundRun())
+    monkeypatch.setattr(webapp.runctx, "stage_payload", lambda slug, stage: None)
+    monkeypatch.setattr(webapp.runctx, "checkpoint", lambda *args, **kwargs: None)
+    monkeypatch.setattr(webapp.runctx, "check_lease", lambda slug: None)
+    monkeypatch.setattr(webapp.runctx, "event", lambda slug, payload: None)
+    monkeypatch.setattr(
+        webapp.runctx, "note_candidates",
+        lambda slug, candidates: recorded.append((slug, list(candidates))),
+    )
+
+    webapp._generate("candidate-ledger", "q", None, "novelty")
+
+    assert [slug for slug, candidates in recorded] == ["candidate-ledger", "candidate-ledger"]
+    assert [candidates[0]["pub"] for slug, candidates in recorded] == [
+        "US-123-A1", "US-123-A1",
+    ]
+    assert [candidates[0]["stage"] for slug, candidates in recorded] == ["fused", "final"]
+
+
 def test_federate_block_survives_federation_outage(monkeypatch):
     monkeypatch.setattr(webapp.federation, "search",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
