@@ -10,15 +10,19 @@ that thing and nothing else.
 import json
 import re
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
 import draft_agent
 import draft_cite
+import draft_export
+import draft_figures
 import draft_qa
 import draft_studio
 import draft_uspto
 import draft_workspace
+import drafting
 
 
 # =============================================================================================
@@ -124,6 +128,17 @@ def test_two_numerals_for_the_same_part_are_caught():
     assert check["status"] == "fail" and "sealing ring" in check["items"][0]
 
 
+def test_every_numeral_entry_has_one_valid_number_and_one_named_part():
+    broken = NUMERALS + [{"numeral": "22", "part": ""},
+                         {"numeral": "12", "part": "different body"},
+                         {"numeral": "part-x", "part": "invalid"}]
+    check = checks_for(numerals=broken)["Every numeral-table row is complete and unique"]
+    assert check["status"] == "fail"
+    assert any("22" in item and "no part" in item for item in check["items"])
+    assert any("12" in item and "more than once" in item for item in check["items"])
+    assert any("part-x" in item and "invalid" in item for item in check["items"])
+
+
 def test_a_numeral_on_a_drawing_that_the_table_does_not_define_is_caught():
     figures = [dict(FIGURES[0]), {"label": "FIG. 2", "caption": "exploded",
                                   "numerals": ["44 mystery bracket"]}]
@@ -191,6 +206,22 @@ def test_qa_fails_closed_when_drawing_pixels_cannot_be_inspected(monkeypatch):
     assert checks["Drawing pixels were inspected"]["status"] == "fail"
 
 
+def test_qa_fails_closed_when_drawing_geometry_does_not_match_the_spec(monkeypatch):
+    import draft_figures
+    monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [{
+        "figure_label": "FIG. 1", "active_version": 2,
+        "versions": [{"version_no": 2, "detected_numerals": ["10"],
+                      "numeral_audit": {"inspected": True, "ok": True},
+                      "semantic_audit": {"inspected": True, "ok": False,
+                                         "errors": ["pump is absent"]}}],
+    }])
+    merged = draft_studio.figures_for_qa(
+        7, 91, [{"label": "FIG. 1", "caption": "view", "numerals": ["10 body"]}])
+    checks = {item["name"]: item for item in draft_qa.run_checks(
+        sections=GOOD, numerals=NUMERALS, figures=merged, allow_remote=False)}
+    assert checks["Drawing content matches its specification"]["status"] == "fail"
+
+
 def test_qa_fails_closed_when_the_drawing_store_is_unavailable(monkeypatch):
     import draft_figures
 
@@ -215,7 +246,16 @@ def test_an_undrawn_figure_spec_is_not_counted_as_visible_pixels(monkeypatch):
     checks = {item["name"]: item for item in draft_qa.run_checks(
         sections=GOOD, numerals=NUMERALS, figures=merged, allow_remote=False)}
     assert checks["Every specification numeral appears in a drawing"]["status"] == "fail"
-    assert checks["Each described figure has a drawing sheet"]["status"] == "warn"
+    assert checks["Each described figure has a drawing sheet"]["status"] == "fail"
+    assert checks["Each described figure has a drawing sheet"]["severity"] == "error"
+
+
+def test_an_application_without_a_drawing_plan_cannot_pass_the_filing_gate():
+    sections = {**GOOD, "drawing_descriptions": "Not applicable.",
+                "detailed_description": re.sub(r"\bFIG\.\s*\d+\b", "the drawings",
+                                                GOOD["detailed_description"])}
+    check = checks_for(sections, figures=[])["Application includes a drawing plan"]
+    assert check["status"] == "fail" and check["severity"] == "error"
 
 
 def test_an_orphaned_drawing_remains_in_bidirectional_qa(monkeypatch):
@@ -392,11 +432,23 @@ def test_an_empty_section_fails():
     assert checks_for(broken)["Every section is written"]["status"] == "fail"
 
 
-def test_open_drafting_notes_are_reported():
+def test_open_drafting_notes_are_a_filing_blocker():
     broken = dict(GOOD)
     broken["detailed_description"] += " [DRAFTING NOTE: confirm the ring material.]"
     check = checks_for(broken)["No unresolved drafting notes"]
-    assert check["status"] == "warn" and "ring material" in check["items"][0]
+    assert check["status"] == "fail" and check["severity"] == "error"
+    assert "ring material" in check["items"][0]
+
+
+@pytest.mark.parametrize("placeholder", [
+    "[TODO: add dimensions]", "TBD", "TO BE PROVIDED", "<INSERT MATERIAL>",
+    "{{applicant_name}}", "_______",
+])
+def test_every_placeholder_form_is_a_filing_blocker(placeholder):
+    broken = dict(GOOD)
+    broken["summary"] += " " + placeholder
+    check = checks_for(broken)["No unresolved drafting notes"]
+    assert check["status"] == "fail" and check["items"]
 
 
 # =============================================================================================
@@ -421,6 +473,22 @@ def test_a_heading_the_agent_added_back_is_dropped_but_real_headings_survive(tmp
 def test_the_numeral_table_round_trips(tmp_path):
     draft_workspace.write_numerals(tmp_path, NUMERALS)
     assert draft_workspace.read_numerals(tmp_path) == NUMERALS
+
+
+def test_a_valid_numeral_table_may_carry_extra_audit_columns(tmp_path):
+    directory = tmp_path / "draft"
+    directory.mkdir()
+    (directory / "numerals.md").write_text(
+        "# Reference numerals\n\n"
+        "| Numeral | Part | First introduced |\n"
+        "| --- | --- | --- |\n"
+        "| 10 | vacuum lifting tool | FIG. 1 |\n"
+        "| 12 | body | paragraph 12 |\n",
+        encoding="utf-8")
+    assert draft_workspace.read_numerals(tmp_path) == [
+        {"numeral": "10", "part": "vacuum lifting tool"},
+        {"numeral": "12", "part": "body"},
+    ]
 
 
 def test_figures_round_trip(tmp_path):
@@ -495,6 +563,24 @@ def test_a_legal_conclusion_is_refused():
     assert "legal conclusion" in str(caught.value)
 
 
+def test_a_placeholder_is_refused_before_a_version_can_be_saved():
+    broken = {**GOOD, "cross_reference": "[DRAFTING NOTE: confirm priority.]"}
+    with pytest.raises(Exception) as caught:
+        draft_studio.validate_sections(broken, ALLOWED)
+    assert "placeholder" in str(caught.value).lower()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("numerals", [{"numeral": "10", "part": "TBD component"}]),
+    ("figures", [{"label": "FIG. 1", "caption": "<INSERT VIEW>", "numerals": ["10"]}]),
+])
+def test_placeholders_outside_the_sections_are_refused_before_save(field, value):
+    snapshot = {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+    snapshot[field] = value
+    with pytest.raises(drafting.DraftingValidationError, match="placeholder"):
+        draft_studio.validate_snapshot(snapshot, ALLOWED)
+
+
 def test_a_citation_in_the_detailed_description_is_allowed_here():
     """Incorporation by reference is real practice; the reviewer judges it, the validator does not
     throw fifteen minutes of drafting away over it."""
@@ -532,16 +618,42 @@ def test_more_than_three_independent_claims_triggers_a_surcharge():
     assert any("independent" in s for s in draft_uspto.fee_profile(claims)["surcharges"])
 
 
+def checked_figures(*labels):
+    labels = labels or tuple(spec["label"] for spec in FIGURES)
+    out = []
+    for label in labels:
+        spec = next(item for item in FIGURES
+                    if draft_figures.figure_key(item["label"]) == draft_figures.figure_key(label))
+        expected = draft_figures.expected_entries(spec, NUMERALS)
+        out.append({"figure_label": label, "active_version": 1, "versions": [{
+            "version_no": 1, "numeral_audit": {"ok": True},
+            "semantic_audit": {"ok": True, "specification_hash":
+                               draft_figures.specification_hash(
+                                   spec["label"], spec["caption"], expected)}}]})
+    return out
+
+
+def clean_version(version_no=1, sections=None):
+    return {"version_no": version_no, "sections": sections or GOOD,
+            "citations": ["US-11223344-B2"], "numerals": NUMERALS,
+            "figure_specs": FIGURES}
+
+
+def clean_qa(version_no=1):
+    return {"version_no": version_no, "status": "complete", "verdict": "pass",
+            "checks": [], "findings": []}
+
+
 def test_readiness_blocks_on_an_open_drafting_note_and_on_a_failed_check():
-    version = {"version_no": 1, "sections": {**GOOD, "summary":
-                                             GOOD["summary"] + " [DRAFTING NOTE: get the ring "
-                                             "material.]"}, "citations": ["US-11223344-B2"]}
-    qa = {"verdict": "fail", "checks": [{"name": "Every numeral in the text is defined",
+    version = clean_version(sections={**GOOD, "summary":
+                                    GOOD["summary"] + " [DRAFTING NOTE: get the ring material.]"})
+    qa = {"version_no": 1, "status": "complete", "verdict": "fail",
+          "checks": [{"name": "Every numeral in the text is defined",
                                          "status": "fail", "severity": "error",
                                          "detail": "22 is undefined", "items": ["22"]}],
           "findings": []}
     report = draft_uspto.readiness(project={"inventors": "Dana Drafter", "applicant": "Example"},
-                                   version=version, qa=qa, figures=[{"id": 1}])
+                                   version=version, qa=qa, figures=checked_figures())
     titles = [b["title"] for b in report["blockers"]]
     assert not report["ready"]
     assert any("drafting note" in t for t in titles)
@@ -550,27 +662,94 @@ def test_readiness_blocks_on_an_open_drafting_note_and_on_a_failed_check():
 
 def test_readiness_blocks_when_no_inventor_is_named():
     report = draft_uspto.readiness(project={"inventors": "", "applicant": ""},
-                                   version={"version_no": 1, "sections": GOOD, "citations": []},
-                                   qa={"verdict": "pass", "checks": [], "findings": []},
-                                   figures=[{"id": 1}])
+                                   version=clean_version(),
+                                   qa=clean_qa(), figures=checked_figures())
     assert any("inventor" in b["title"].lower() for b in report["blockers"])
 
 
 def test_an_unreviewed_draft_is_never_reported_as_ready():
     report = draft_uspto.readiness(project={"inventors": "Dana", "applicant": "Example"},
-                                   version={"version_no": 1, "sections": GOOD, "citations": []},
+                                   version=clean_version(),
                                    qa=None, figures=[{"id": 1}])
     assert not report["ready"]
 
 
 def test_a_clean_draft_reports_no_blockers_but_still_lists_what_a_person_must_do():
     report = draft_uspto.readiness(project={"inventors": "Dana", "applicant": "Example"},
-                                   version={"version_no": 1, "sections": GOOD,
-                                            "citations": ["US-11223344-B2"]},
-                                   qa={"verdict": "pass", "checks": [], "findings": []},
-                                   figures=[{"id": 1}])
+                                   version=clean_version(),
+                                   qa=clean_qa(), figures=checked_figures())
     assert report["ready"] and len(report["remaining"]) >= 5
     assert any("oath or declaration" in item for item in report["remaining"])
+
+
+def test_readiness_rechecks_the_active_drawing_instead_of_trusting_old_qa():
+    figures = [{"figure_label": "FIG. 1", "active_version": 2, "versions": [{
+        "version_no": 2, "numeral_audit": {"ok": True},
+        "semantic_audit": {"ok": False}}]}]
+    report = draft_uspto.readiness(
+        project={"inventors": "Dana", "applicant": "Example"},
+        version=clean_version(),
+        qa=clean_qa(), figures=figures)
+    assert not report["ready"]
+    assert any("active drawings" in item["title"] for item in report["blockers"])
+
+
+def test_readiness_requires_review_for_the_exact_exported_version():
+    report = draft_uspto.readiness(
+        project={"inventors": "Dana", "applicant": "Example"},
+        version=clean_version(version_no=2),
+        qa=clean_qa(version_no=1), figures=checked_figures())
+    assert not report["ready"]
+    assert any("exact version" in item["title"].lower() for item in report["blockers"])
+
+
+def test_readiness_blocks_every_review_finding_and_nonpassing_check():
+    qa = clean_qa() | {
+        "verdict": "warn",
+        "checks": [{"name": "Ambiguous term", "status": "warn", "severity": "advisory",
+                    "detail": "The term may be unclear.", "items": []}],
+        "findings": [{"severity": "minor", "title": "Description drift",
+                      "detail": "One phrase differs.", "where": "summary"}],
+    }
+    report = draft_uspto.readiness(
+        project={"inventors": "Dana", "applicant": "Example"},
+        version=clean_version(),
+        qa=qa, figures=checked_figures())
+    titles = [item["title"] for item in report["blockers"]]
+    assert not report["ready"]
+    assert "Ambiguous term" in titles and "Description drift" in titles
+
+
+def test_readiness_rejects_todos_and_missing_or_mismatched_drawing_audits():
+    version = clean_version(sections={**GOOD, "summary": GOOD["summary"] + " TODO"})
+    report = draft_uspto.readiness(
+        project={"inventors": "Dana", "applicant": "Example"}, version=version,
+        qa=clean_qa(), figures=[{"figure_label": "FIG. 2", "active_version": 0}])
+    titles = [item["title"].lower() for item in report["blockers"]]
+    assert not report["ready"]
+    assert any("unfinished" in title for title in titles)
+    assert any("drawing" in title for title in titles)
+
+
+def test_readiness_rejects_a_previous_sheet_for_a_changed_figure_specification():
+    figures = checked_figures()
+    figures[0]["versions"][0]["semantic_audit"]["specification_hash"] = "old-specification"
+    report = draft_uspto.readiness(
+        project={"inventors": "Dana", "applicant": "Example"},
+        version=clean_version(), qa=clean_qa(), figures=figures)
+    assert not report["ready"]
+    assert any("different drawing specification" in item["items"]
+               for item in report["blockers"])
+
+
+def test_readiness_rejects_duplicate_active_sheet_numbers():
+    figures = checked_figures()
+    figures.append(dict(figures[0]))
+    report = draft_uspto.readiness(
+        project={"inventors": "Dana", "applicant": "Example"},
+        version=clean_version(), qa=clean_qa(), figures=figures)
+    assert not report["ready"]
+    assert any("duplicate" in item["title"].lower() for item in report["blockers"])
 
 
 def test_the_filing_text_numbers_its_paragraphs_and_orders_the_parts():
@@ -578,6 +757,53 @@ def test_the_filing_text_numbers_its_paragraphs_and_orders_the_parts():
     assert "[0001]" in text
     assert text.index("BACKGROUND OF THE INVENTION") < text.index("CLAIMS")
     assert text.index("CLAIMS") < text.index("ABSTRACT OF THE DISCLOSURE")
+
+
+def test_standard_exports_contain_only_clean_application_text():
+    from docx import Document
+    version = {"version_no": 1, "sections": GOOD, "status": "approved"}
+    markdown = draft_export.render_markdown({"title": GOOD["title"]}, version, [])
+    assert "WORKING DRAFT" not in markdown
+    assert "DRAFTING SOURCE TRACE" not in markdown
+    document = Document(draft_export.render_docx({"title": GOOD["title"]}, version, []))
+    text = "\n".join(
+        [paragraph.text for paragraph in document.paragraphs] +
+        [paragraph.text for section in document.sections
+         for paragraph in list(section.header.paragraphs) + list(section.footer.paragraphs)])
+    assert "WORKING DRAFT" not in text
+    assert "attorney review" not in text.lower()
+    assert "DRAFTING SOURCE TRACE" not in text
+    assert "1. A vacuum lifting tool comprising" in text
+    assert "3. The vacuum lifting tool of claim 2" in text
+
+
+def test_filing_docx_includes_every_checked_drawing_sheet():
+    import io
+    from PIL import Image
+    from docx import Document
+    image = Image.new("RGB", (640, 420), "white")
+    png = io.BytesIO()
+    image.save(png, format="PNG")
+    version = {"version_no": 1, "sections": GOOD, "citations": []}
+    output = draft_uspto.render_filing_docx(
+        {"title": GOOD["title"]}, version,
+        readiness_report={"blockers": [], "formalities": [], "remaining": [],
+                          "fees": {"total": 3, "independent": 1,
+                                   "multiple_dependent": 0, "billable": 3}},
+        figure_images=[{"label": "FIG. 1", "png": png.getvalue()}])
+    document = Document(output)
+    text = "\n".join(paragraph.text for paragraph in document.paragraphs)
+    assert len(document.inline_shapes) == 1
+    assert "DRAWING SHEETS" in text and "FIG. 1" in text
+    for forbidden in ("(not supplied)", "STILL REQUIRED", "NOT READY", "legal advice"):
+        assert forbidden.lower() not in text.lower()
+
+
+def test_filing_docx_refuses_to_export_a_blocked_version():
+    with pytest.raises(drafting.DraftingValidationError, match="filing gate"):
+        draft_uspto.render_filing_docx(
+            {"title": GOOD["title"]}, {"version_no": 1, "sections": GOOD},
+            readiness_report={"blockers": [{"title": "Drawing mismatch"}]})
 
 
 def test_paragraph_numbering_is_continuous_across_sections():
@@ -695,6 +921,7 @@ def test_the_reviewer_is_told_which_checks_already_ran(monkeypatch):
         {"name": "Numerals", "status": "fail", "detail": "22 undefined", "items": ["22"]},
         {"name": "Claims", "status": "pass", "detail": "fine", "items": []}])
     assert "22 undefined" in seen["prompt"] and "Claims" not in seen["prompt"]
+    assert "rendered-*.png" in draft_qa.REVIEW_PROMPT
 
 
 def test_a_broken_reviewer_is_a_finding_not_an_exception(monkeypatch):
@@ -707,9 +934,13 @@ def test_a_broken_reviewer_is_a_finding_not_an_exception(monkeypatch):
 
 def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     system = draft_studio.DRAFT_SYSTEM
-    for phrase in ("[DRAFTING NOTE", "prior_art/INDEX.md", "[REF:KEY]", "numerals.md",
-                   "never state or imply", "Never invent"):
+    for phrase in ("prior_art/INDEX.md", "[REF:KEY]", "numerals.md",
+                   "never state or imply", "Never invent", "Not applicable"):
         assert phrase in system, f"the drafting prompt no longer says: {phrase}"
+    assert "[DRAFTING NOTE" not in system
+    assert "Return `questions` as an empty array" in system
+    assert "No placeholder" in system
+    assert "at least one figure" in system
     assert "broadest statement of the invention that the description fully supports" in system
 
 
@@ -772,6 +1003,218 @@ def test_figure_labels_match_across_spellings():
     assert draft_studio_service._figure_key("FIG. 1") == draft_studio_service._figure_key("Fig 1")
     assert draft_studio_service._figure_key("FIGURE 2") == draft_studio_service._figure_key("FIG.2")
     assert draft_studio_service._figure_key("FIG. 1") != draft_studio_service._figure_key("FIG. 2")
+    verbose = "FIG. 2: side elevation through the pressure chamber and all conduits"
+    assert draft_studio_service._figure_key(verbose) == \
+        draft_studio_service._figure_key(verbose[:28])
+
+
+def test_filing_gate_requires_every_check_and_independent_review_to_be_clean():
+    clean = {"status": "complete", "checks": [
+        {"name": "Claims", "status": "pass"}], "findings": []}
+    assert draft_studio.filing_blockers(clean) == []
+    assert "Claims" in draft_studio.filing_blockers({
+        **clean, "checks": [{"name": "Claims", "status": "warn"}]})[0]
+    assert "Unsupported limitation" in draft_studio.filing_blockers({
+        **clean, "findings": [{"title": "Unsupported limitation"}]})[0]
+    assert "review" in draft_studio.filing_blockers({**clean, "status": "failed"})[0].lower()
+
+
+def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, tmp_path):
+    class Repository:
+        def __init__(self):
+            self.saved_versions = []
+            self.saved_reports = []
+            self.messages = []
+
+        def heartbeat(self, *_args, **_kwargs):
+            pass
+
+        def save_version(self, *_args, **kwargs):
+            self.saved_versions.append(kwargs)
+            return {"version_no": 1}
+
+        def save_qa(self, _project_id, **kwargs):
+            self.saved_reports.append(kwargs)
+            return {"id": 4, **kwargs["report"]}
+
+        def add_message(self, _project_id, role, body, **kwargs):
+            self.messages.append((role, body, kwargs))
+
+        def complete_turn(self, *_args, **kwargs):
+            return {"status": "complete", **kwargs}
+
+    class Agent:
+        DRAFT_MODEL = "draft-model"
+        DRAFT_TIMEOUT = 60
+
+        def __init__(self, repository):
+            self.calls = []
+            self.repository = repository
+
+        @staticmethod
+        def new_session_id():
+            return "new-session"
+
+        @staticmethod
+        def strings(value, **_kwargs):
+            return list(value or [])
+
+        def run(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 2:
+                assert self.repository.saved_versions == [], \
+                    "a failing intermediate draft must never be published"
+            return draft_agent.AgentRun(
+                ok=True, session_id="draft-session", model="draft-model",
+                cost_usd=0.5, duration_ms=1000,
+                result={"action": "revised", "summary": f"round {len(self.calls)}",
+                        "reasoning": [], "changes": [], "questions": [],
+                        "prior_art_strategy": "", "answer": ""})
+
+    class Workspace:
+        def __init__(self):
+            self.review_reports = []
+
+        def snapshot(self, _path):
+            return {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+
+        def _write_review(self, _path, report):
+            self.review_reports.append(report)
+
+    repository = Repository()
+    agent = Agent(repository)
+    workspace = Workspace()
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, qa=object(), workspace=workspace)
+    monkeypatch.setattr(runner, "prepare", lambda _turn: {
+        "workspace": tmp_path, "project": {"user_id": 91, "agent_session_id": "",
+                                             "latest_version_no": 0,
+                                             "disclosure_text": "disclosure"},
+        "references": [], "documents": [], "seeded": False, "had_version": False,
+        "previous_sections": {},
+    })
+    monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {"ok": True})
+    reports = iter([
+        {"status": "complete", "verdict": "fail", "summary": "fix claim support",
+         "checks": [{"name": "Claims", "status": "fail"}], "findings": [],
+         "counts": {}, "cost_usd": 0, "duration_ms": 1, "model_name": "review"},
+        {"status": "complete", "verdict": "pass", "summary": "ready",
+         "checks": [{"name": "Claims", "status": "pass"}], "findings": [],
+         "counts": {}, "cost_usd": 0, "duration_ms": 1, "model_name": "review"},
+    ])
+    monkeypatch.setattr(runner, "evaluate", lambda *args, **kwargs: next(reports))
+
+    out = runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
+                      "turn_no": 1, "kind": "initial"})
+
+    assert len(agent.calls) == 2
+    assert agent.calls[1]["resume"] is True
+    assert "did not pass" in agent.calls[1]["prompt"]
+    assert len(repository.saved_versions) == 1
+    assert len(repository.saved_reports) == 1
+    assert repository.saved_reports[0]["report"]["verdict"] == "pass"
+    assert all(message[0] != "qa" or message[1] == "ready" for message in repository.messages)
+    assert out["version"]["version_no"] == 1
+
+
+def test_invalid_workspace_is_automatic_repair_input_not_a_failed_turn(monkeypatch, tmp_path):
+    repository = Mock()
+    repository.save_version.return_value = {"version_no": 1}
+    repository.save_qa.return_value = {"id": 5, "verdict": "pass", "checks": [],
+                                       "findings": [], "counts": {}}
+    repository.complete_turn.return_value = {"status": "complete"}
+    agent = Mock()
+    agent.DRAFT_MODEL = "draft-model"
+    agent.DRAFT_TIMEOUT = 60
+    agent.new_session_id.return_value = "new-session"
+    agent.strings.side_effect = lambda value, **_kwargs: list(value or [])
+    agent.run.side_effect = [
+        draft_agent.AgentRun(ok=True, session_id="session", model="draft-model",
+                             result={"action": "revised", "summary": "initial",
+                                     "reasoning": [], "changes": [], "questions": [],
+                                     "prior_art_strategy": "", "answer": ""}),
+        draft_agent.AgentRun(ok=True, session_id="session", model="draft-model",
+                             result={"action": "revised", "summary": "repaired",
+                                     "reasoning": [], "changes": [], "questions": [],
+                                     "prior_art_strategy": "", "answer": ""}),
+    ]
+    workspace = Mock()
+    workspace.snapshot.side_effect = [
+        {"sections": {**GOOD, "cross_reference": ""}, "numerals": NUMERALS,
+         "figures": FIGURES},
+        {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES},
+    ]
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, qa=draft_qa, workspace=workspace)
+    monkeypatch.setattr(runner, "prepare", lambda _turn: {
+        "workspace": tmp_path, "project": {"user_id": 91, "agent_session_id": "",
+                                             "latest_version_no": 0,
+                                             "disclosure_text": "disclosure"},
+        "references": [], "documents": [], "seeded": False, "had_version": False,
+        "previous_sections": {},
+    })
+    monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {"ok": True})
+    monkeypatch.setattr(runner, "evaluate", lambda *args, **kwargs: {
+        "status": "complete", "verdict": "pass", "summary": "ready",
+        "checks": [], "findings": [], "counts": {}, "cost_usd": 0,
+        "duration_ms": 1, "model_name": "review"})
+
+    runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
+                "turn_no": 1, "kind": "initial"})
+
+    assert agent.run.call_count == 2
+    assert repository.save_version.call_count == 1
+    assert workspace._write_review.call_count >= 1
+    assert "missing Cross-Reference" in workspace._write_review.call_args_list[0].args[1][
+        "summary"]
+
+
+def test_initial_turn_cannot_finish_as_an_answer_without_a_filing_candidate(monkeypatch, tmp_path):
+    repository = Mock()
+    repository.save_version.return_value = {"version_no": 1}
+    repository.save_qa.return_value = {"id": 5, "verdict": "pass", "checks": [],
+                                       "findings": [], "counts": {}}
+    repository.complete_turn.return_value = {"status": "complete"}
+    agent = Mock()
+    agent.DRAFT_MODEL = "draft-model"
+    agent.DRAFT_TIMEOUT = 60
+    agent.new_session_id.return_value = "new-session"
+    agent.strings.side_effect = lambda value, **_kwargs: list(value or [])
+    agent.run.side_effect = [
+        draft_agent.AgentRun(ok=True, session_id="session", model="draft-model",
+                             result={"action": "answered", "summary": "I need more detail",
+                                     "reasoning": [], "changes": [], "questions": [],
+                                     "prior_art_strategy": "", "answer": "Please clarify."}),
+        draft_agent.AgentRun(ok=True, session_id="session", model="draft-model",
+                             result={"action": "revised", "summary": "complete application",
+                                     "reasoning": [], "changes": [], "questions": [],
+                                     "prior_art_strategy": "", "answer": ""}),
+    ]
+    workspace = Mock()
+    workspace.snapshot.return_value = {
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, qa=draft_qa, workspace=workspace)
+    monkeypatch.setattr(runner, "prepare", lambda _turn: {
+        "workspace": tmp_path, "project": {"user_id": 91, "agent_session_id": "",
+                                             "latest_version_no": 0,
+                                             "disclosure_text": "disclosure"},
+        "references": [], "documents": [], "seeded": False, "had_version": False,
+        "previous_sections": {},
+    })
+    monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {"ok": True})
+    monkeypatch.setattr(runner, "evaluate", lambda *args, **kwargs: {
+        "status": "complete", "verdict": "pass", "summary": "ready",
+        "checks": [], "findings": [], "counts": {}, "cost_usd": 0,
+        "duration_ms": 1, "model_name": "review"})
+
+    runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
+                "turn_no": 1, "kind": "initial"})
+
+    assert agent.run.call_count == 2
+    assert repository.save_version.call_count == 1
+    first_report = workspace._write_review.call_args_list[0].args[1]
+    assert "filing candidate" in first_report["summary"].lower()
 
 
 def test_a_drawing_prompt_gets_only_the_numerals_for_that_figure():
@@ -837,6 +1280,18 @@ def test_a_figure_caption_that_cross_references_another_figure_still_matches_its
                {"label": "FIG. 2 — Section on 2—2 of FIG. 1", "caption": "", "numerals": []}]
     checks = checks_for(figures=figures)
     assert "Each described figure has a drawing sheet" not in checks
+
+
+def test_figure_specifications_must_have_unique_contiguous_numbers():
+    figures = [
+        {"label": "FIG. 1: perspective", "caption": "view", "numerals": ["10"]},
+        {"label": "FIG. 1: duplicate", "caption": "other", "numerals": ["12"]},
+        {"label": "FIG. 3", "caption": "gap", "numerals": ["14"]},
+    ]
+    check = checks_for(figures=figures)["Figure-sheet numbering is unique and contiguous"]
+    assert check["status"] == "fail"
+    assert any("duplicate" in item for item in check["items"])
+    assert any("expected" in item for item in check["items"])
 
 
 def test_a_participle_after_the_noun_does_not_break_antecedent_basis():
@@ -907,6 +1362,44 @@ def test_recovery_leaves_a_turn_whose_worker_is_still_alive():
     assert service._worker_is_alive("draft-turn-999999-1") is False
     assert service._worker_is_alive("") is False
     assert service._worker_is_alive(None) is False
+
+
+@pytest.mark.parametrize("failure", [
+    drafting.DraftingValidationError("candidate failed"),
+    drafting.DraftingConflict("turn superseded"),
+])
+def test_a_failed_or_superseded_turn_restores_the_published_drawing_set(monkeypatch, failure):
+    import draft_studio_service as service
+
+    class Repository:
+        def claim_turn(self, worker_id):
+            return {"id": 31, "lease_token": "lease", "project_id": 7}
+
+        def fail_turn(self, turn_id, lease, error, retryable=True):
+            return {"status": "failed"}
+
+        def add_message(self, *args, **kwargs):
+            pass
+
+    class Runner:
+        repository = Repository()
+
+        def __init__(self):
+            self.restored = []
+
+        def run(self, claimed):
+            raise failure
+
+        def restore_figures(self, turn_id):
+            self.restored.append(turn_id)
+            return True
+
+    runner = Runner()
+    monkeypatch.setattr(service, "_RUNNER_FACTORY", lambda: runner)
+
+    service.process_one()
+
+    assert runner.restored == [31]
 
 
 def test_a_publication_number_in_prose_is_not_three_reference_numerals():

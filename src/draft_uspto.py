@@ -4,10 +4,10 @@ The last question this product has to answer is the one the user actually came f
 this?*  Answering it honestly means separating three different things that all feel like "not
 ready":
 
-  BLOCKERS      the application would be defective or incomplete as filed — an unresolved
+  BLOCKERS      the application would be defective or incomplete as filed - an unresolved
                 drafting note where a dimension should be, a citation that resolves to nothing,
                 no named inventor.  These are listed as blockers and the export says so.
-  FORMALITIES   things the USPTO will object to but which do not stop a filing date — a title
+  FORMALITIES   things the USPTO will object to but which do not stop a filing date - a title
                 over 500 characters, an abstract over 150 words.
   NOT OUR JOB   the oath or declaration, the entity-status certification, formal drawings under
                 37 CFR 1.84, the fee payment, and the attorney's own review.  These are listed as
@@ -15,7 +15,7 @@ ready":
 
 NO FEE AMOUNTS ARE PRINTED.  The counts that drive them (total claims, independent claims,
 multiple dependent claims, specification sheet count) are computed exactly, and which surcharges
-those counts trigger is stated — but the dollar figures change by fee-setting rulemaking and a
+those counts trigger is stated - but the dollar figures change by fee-setting rulemaking and a
 number baked in here would be quietly wrong within a year.  The current schedule is one link away
 and always right.
 
@@ -26,13 +26,15 @@ requirements of 37 CFR 1.52, 1.72, 1.75, 1.77 and 1.121.
 from __future__ import annotations
 
 import html
+import json
 import re
-from datetime import date
+from collections import Counter
 from io import BytesIO
 from typing import Any, Mapping, Sequence
 
 import draft_qa
 import draft_workspace
+import drafting
 
 FEE_SCHEDULE_URL = "https://www.uspto.gov/learning-and-resources/fees-and-payment/uspto-fee-schedule"
 EFS_URL = "https://patentcenter.uspto.gov/"
@@ -109,24 +111,47 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
                       "puts placeholder text into the published specification.",
             "items": "; ".join(f"{n['section']}: {n['note']}" for n in notes[:8])})
 
+    unfinished = draft_qa.find_placeholders(sections)
+    if unfinished and not notes:
+        blockers.append({
+            "title": f"{len(unfinished)} unfinished marker(s) in the application",
+            "detail": "No TODO, placeholder, blank field, or instruction may enter a filing copy.",
+            "items": "; ".join(unfinished[:8])})
+    missing_sections = [heading for key, _name, heading in draft_workspace.SECTION_FILES
+                        if not str(sections.get(key) or "").strip()]
+    if missing_sections:
+        blockers.append({
+            "title": "The application is missing required sections",
+            "detail": "Every filing section must contain final text before export.",
+            "items": "; ".join(missing_sections)})
+
     checks = list((qa or {}).get("checks") or [])
-    for check in checks:
-        if check.get("status") == "fail" and check.get("severity") == "error":
-            blockers.append({"title": check.get("name", "Consistency check failed"),
-                             "detail": check.get("detail", ""),
-                             "items": "; ".join(str(i) for i in (check.get("items") or [])[:6])})
-        elif check.get("status") == "warn" and check.get("severity") == "warn":
-            formalities.append({"title": check.get("name", ""), "detail": check.get("detail", ""),
-                                "items": "; ".join(str(i) for i in (check.get("items") or [])[:6])})
-    for finding in ((qa or {}).get("findings") or []):
-        if finding.get("severity") == "critical":
-            blockers.append({"title": finding.get("title", "Critical review finding"),
-                             "detail": finding.get("detail", ""),
-                             "items": finding.get("where", "")})
+    expected_version = int(version.get("version_no") or 0)
+    qa_version = int((qa or {}).get("version_no") or 0)
     if qa is None:
         blockers.append({"title": "This draft has not been reviewed",
                          "detail": "Run the consistency review before treating any draft as "
                                    "ready.", "items": ""})
+    elif not expected_version or qa_version != expected_version:
+        blockers.append({
+            "title": "The exact version being exported has not passed review",
+            "detail": "A review of another version cannot authorize this application text.",
+            "items": f"application version {expected_version}; review version {qa_version}"})
+    elif str(qa.get("status") or "") != "complete" or str(qa.get("verdict") or "") != "pass":
+        blockers.append({
+            "title": "The independent review did not pass",
+            "detail": str(qa.get("summary") or "The review did not return a clean verdict."),
+            "items": str(qa.get("last_error") or "")})
+
+    for check in checks:
+        if check.get("status") != "pass":
+            blockers.append({"title": check.get("name", "Consistency check failed"),
+                             "detail": check.get("detail", ""),
+                             "items": "; ".join(str(i) for i in (check.get("items") or [])[:6])})
+    for finding in ((qa or {}).get("findings") or []):
+        blockers.append({"title": finding.get("title", "Independent review finding"),
+                         "detail": finding.get("detail", ""),
+                         "items": finding.get("where", "")})
 
     if not str(project.get("inventors") or "").strip():
         blockers.append({"title": "No inventor is named",
@@ -139,22 +164,93 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
                                       "application data sheet must say who it is.", "items": ""})
 
     described = draft_qa.figures_mentioned(str(sections.get("drawing_descriptions") or ""))
-    if described and not figures:
-        formalities.append({
+    figure_specs = version.get("figure_specs") or []
+    numeral_table = version.get("numerals") or []
+    if isinstance(figure_specs, str):
+        try:
+            figure_specs = json.loads(figure_specs)
+        except json.JSONDecodeError:
+            figure_specs = []
+    if isinstance(numeral_table, str):
+        try:
+            numeral_table = json.loads(numeral_table)
+        except json.JSONDecodeError:
+            numeral_table = []
+    if not described:
+        blockers.append({
+            "title": "The application has no drawing plan",
+            "detail": "The drafting pipeline must describe and generate at least one figure that "
+                      "explains the disclosed structure or process.", "items": ""})
+    elif not figures:
+        blockers.append({
             "title": f"{len(described)} figure(s) are described but no drawing sheet exists",
             "detail": "35 USC 113 requires a drawing where one is necessary to understand the "
                       "invention. Drawings may be filed informally and corrected later, but they "
                       "must be filed.", "items": ""})
-    elif not described:
-        formalities.append({"title": "The application describes no drawings",
-                            "detail": "Most mechanical and electrical applications need at least "
-                                      "one. Confirm this one genuinely does not.", "items": ""})
+    if described and not figure_specs:
+        blockers.append({
+            "title": "The reviewed version has no drawing specifications",
+            "detail": "Each drawing sheet must be tied to the exact versioned figure brief and "
+                      "reference numeral table.", "items": ""})
+    drawn_numbers = [draft_qa.figure_number(
+        figure.get("figure_label") or figure.get("label")) for figure in figures]
+    duplicates = sorted(number for number, count in Counter(drawn_numbers).items()
+                        if number and count > 1)
+    if duplicates:
+        blockers.append({
+            "title": "The active drawing set has duplicate figure numbers",
+            "detail": "Each figure number must identify exactly one active filing sheet.",
+            "items": "; ".join(f"duplicate FIG. {value}" for value in duplicates)})
+    drawn_labels = set(drawn_numbers)
+    drawn_labels.discard("")
+    missing_drawings = sorted(described - drawn_labels)
+    extra_drawings = sorted(drawn_labels - described)
+    if missing_drawings or extra_drawings:
+        blockers.append({
+            "title": "The drawing set does not match the application text",
+            "detail": "Every described figure must have exactly one checked sheet, with no "
+                      "obsolete or extra sheet.",
+            "items": "; ".join(
+                [f"missing FIG. {value}" for value in missing_drawings] +
+                [f"unexpected FIG. {value}" for value in extra_drawings])})
+    live_drawing_failures = []
+    import draft_figures
+    specs_by_key = {draft_figures.figure_key(spec.get("label")): spec
+                    for spec in figure_specs if isinstance(spec, Mapping)}
+    for figure in figures:
+        label = figure.get("figure_label") or figure.get("label") or "drawing"
+        active = next((row for row in (figure.get("versions") or [])
+                       if int(row.get("version_no") or 0) ==
+                       int(figure.get("active_version") or 0)), None) or {}
+        if not (active.get("numeral_audit") or {}).get("ok"):
+            live_drawing_failures.append(
+                f"{label}: OCR numeral inspection did not pass")
+        if not (active.get("semantic_audit") or {}).get("ok"):
+            live_drawing_failures.append(
+                f"{label}: semantic drawing inspection did not pass")
+        spec = specs_by_key.get(draft_figures.figure_key(label))
+        if not spec:
+            live_drawing_failures.append(f"{label}: no specification exists in this version")
+        else:
+            expected = draft_figures.expected_entries(spec, numeral_table)
+            expected_hash = draft_figures.specification_hash(
+                spec.get("label") or label, spec.get("caption") or "", expected)
+            if (active.get("semantic_audit") or {}).get(
+                    "specification_hash") != expected_hash:
+                live_drawing_failures.append(
+                    f"{label}: inspection belongs to a different drawing specification")
+    if live_drawing_failures:
+        blockers.append({
+            "title": "One or more active drawings have not passed live inspection",
+            "detail": "Every filing sheet must still match its specification and reference "
+                      "numerals at download time.",
+            "items": "; ".join(live_drawing_failures[:12])})
 
     fees = fee_profile(str(sections.get("claims") or ""))
     remaining = [
         "An oath or declaration signed by every named inventor (37 CFR 1.63), or a substitute "
         "statement where one is permitted.",
-        "An Application Data Sheet (37 CFR 1.76) — the fields are pre-filled in the package.",
+        "An Application Data Sheet (37 CFR 1.76) - the fields are pre-filled in the package.",
         "Entity-status certification if claiming small or micro entity fees (37 CFR 1.27, 1.29).",
         "Formal drawings meeting 37 CFR 1.84. Nothing in this product checks sheet size, margins, "
         "line weight, shading or lettering.",
@@ -233,20 +329,20 @@ def ads_fields(project: Mapping[str, Any], version: Mapping[str, Any]) -> list[d
     return [
         {"field": "Title of invention",
          "value": str(sections.get("title") or project.get("title") or "")[:500],
-         "note": "37 CFR 1.72(a) — 500 characters maximum."},
+         "note": "37 CFR 1.72(a) - 500 characters maximum."},
         {"field": "Application type", "value": "Utility, non-provisional",
          "note": "Change this if you are filing a provisional or a design application."},
         {"field": "Inventor(s)", "value": "\n".join(inventors) or "(not supplied)",
-         "note": "37 CFR 1.41 — legal name, residence and mailing address for each."},
+         "note": "37 CFR 1.41 - legal name, residence and mailing address for each."},
         {"field": "Applicant", "value": str(project.get("applicant") or "") or "(not supplied)",
-         "note": "37 CFR 1.46 — required where the applicant is not the inventor."},
+         "note": "37 CFR 1.46 - required where the applicant is not the inventor."},
         {"field": "Domestic benefit / priority", "value": cross_reference or "(none claimed)",
-         "note": "37 CFR 1.78 — a benefit claim must appear in the ADS, not only in the "
+         "note": "37 CFR 1.78 - a benefit claim must appear in the ADS, not only in the "
                  "specification."},
         {"field": "Foreign priority", "value": "(none stated)",
-         "note": "37 CFR 1.55 — add every foreign application whose priority you claim."},
+         "note": "37 CFR 1.55 - add every foreign application whose priority you claim."},
         {"field": "Entity status", "value": "(not certified)",
-         "note": "37 CFR 1.27 / 1.29 — small or micro entity status must be certified, not "
+         "note": "37 CFR 1.27 / 1.29 - small or micro entity status must be certified, not "
                  "assumed."},
         {"field": "Correspondence address", "value": "(not supplied)", "note": "37 CFR 1.33."},
     ]
@@ -282,8 +378,12 @@ def citation_listing(version: Mapping[str, Any],
 
 def render_filing_docx(project: Mapping[str, Any], version: Mapping[str, Any], *,
                        readiness_report: Mapping[str, Any],
-                       references: Sequence[Mapping[str, Any]] = ()) -> BytesIO:
-    """The filing copy: cover checklist, ADS fields, specification, claims, abstract, IDS list."""
+                       references: Sequence[Mapping[str, Any]] = (),
+                       figure_images: Sequence[Mapping[str, Any]] = ()) -> BytesIO:
+    """Clean filing text and checked drawing sheets, with no workflow notes or placeholders."""
+    if readiness_report.get("blockers"):
+        raise drafting.DraftingValidationError(
+            "The filing gate has blockers; a filing document was not created.")
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
@@ -316,56 +416,7 @@ def render_filing_docx(project: Mapping[str, Any], version: Mapping[str, Any], *
         run.bold = bold
         run.font.size = Pt(size)
 
-    # -- cover -------------------------------------------------------------------------------
-    heading("FILING PACKAGE — PREPARED " + date.today().isoformat())
-    plain(str(sections.get("title") or project.get("title") or ""), bold=True, spacing=1.15)
-    plain("This package contains the specification, claims and abstract in filing form, the "
-          "Application Data Sheet fields as far as they are known, and the cited-art listing. It "
-          "is not a filing and it is not legal advice. Everything under “Still required” below "
-          "must be done by a person.", size=10, spacing=1.15)
-    if readiness_report.get("blockers"):
-        plain(f"NOT READY: {len(readiness_report['blockers'])} blocker(s) remain.",
-              bold=True, size=11, spacing=1.15)
-        for blocker in readiness_report["blockers"]:
-            plain(f"  • {blocker.get('title')} — {blocker.get('detail')}", size=10, spacing=1.15)
-    else:
-        plain("No blockers were found by the automated checks. That is not the same as ready to "
-              "file; see “Still required”.", bold=True, size=11, spacing=1.15)
-    for label, items in (("Formalities to settle", readiness_report.get("formalities") or []),):
-        if items:
-            plain(label, bold=True, size=11, spacing=1.15)
-            for item in items:
-                plain(f"  • {item.get('title')} — {item.get('detail')}", size=10, spacing=1.15)
-    fees = readiness_report.get("fees") or {}
-    plain("Claim counts for the fee calculation", bold=True, size=11, spacing=1.15)
-    plain(f"  {fees.get('total', 0)} claims, {fees.get('independent', 0)} independent, "
-          f"{fees.get('multiple_dependent', 0)} multiple dependent "
-          f"(counted as {fees.get('billable', 0)} for fee purposes).", size=10, spacing=1.15)
-    for surcharge in fees.get("surcharges") or []:
-        plain(f"  • {surcharge}", size=10, spacing=1.15)
-    plain(f"  Current amounts: {FEE_SCHEDULE_URL}", size=10, spacing=1.15)
-    plain("Still required", bold=True, size=11, spacing=1.15)
-    for item in readiness_report.get("remaining") or []:
-        plain(f"  • {item}", size=10, spacing=1.15)
-
-    # -- ADS ---------------------------------------------------------------------------------
-    document.add_page_break()
-    heading("APPLICATION DATA SHEET — FIELD VALUES (37 CFR 1.76)")
-    plain("Transcribe these into the Patent Center ADS form. A blank is a value we do not have, "
-          "never a value of none.", size=10, spacing=1.15)
-    table = document.add_table(rows=1, cols=3)
-    table.style = "Table Grid"
-    for cell, label in zip(table.rows[0].cells, ("Field", "Value", "Rule")):
-        cell.text = label
-        cell.paragraphs[0].runs[0].bold = True
-    for field in ads_fields(project, version):
-        row = table.add_row().cells
-        row[0].text = field["field"]
-        row[1].text = field["value"]
-        row[2].text = field["note"]
-
     # -- specification -------------------------------------------------------------------------
-    document.add_page_break()
     counter = 1
     for key, title, numbered in FILING_ORDER:
         body = str(sections.get(key) or "").strip()
@@ -393,26 +444,21 @@ def render_filing_docx(project: Mapping[str, Any], version: Mapping[str, Any], *
     heading("ABSTRACT OF THE DISCLOSURE")
     plain(str(sections.get("abstract") or "").strip())
 
-    listing = citation_listing(version, references)
-    if listing:
-        document.add_page_break()
-        heading("CITED ART — LISTING FOR AN INFORMATION DISCLOSURE STATEMENT")
-        plain("This is the listing, not an executed form. The duty of disclosure under 37 CFR "
-              "1.56 belongs to the people substantively involved in the application.",
-              size=10, spacing=1.15)
-        cites = document.add_table(rows=1, cols=5)
-        cites.style = "Table Grid"
-        for cell, label in zip(cites.rows[0].cells,
-                               ("Publication", "Kind", "Date", "Patentee", "Title")):
-            cell.text = label
-            cell.paragraphs[0].runs[0].bold = True
-        for item in listing:
-            row = cites.add_row().cells
-            row[0].text = item["publication_number"]
-            row[1].text = item["kind_code"]
-            row[2].text = item["publication_date"]
-            row[3].text = item["name_of_patentee"]
-            row[4].text = item["title"][:180]
+    if figure_images:
+        for figure in figure_images:
+            png = bytes(figure.get("png") or b"")
+            if not png:
+                continue
+            document.add_page_break()
+            heading("DRAWING SHEETS")
+            picture = document.add_paragraph()
+            picture.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            picture.add_run().add_picture(BytesIO(png), width=Inches(6.5))
+            label = str(figure.get("label") or "").strip()
+            if label:
+                caption = document.add_paragraph()
+                caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                caption.add_run(label).bold = True
 
     output = BytesIO()
     document.save(output)

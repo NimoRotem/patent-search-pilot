@@ -127,19 +127,14 @@ def test_approved_svg_and_pdf_exports_have_safe_download_contracts(compiler_clie
     assert ("export", 91, 7, "svg", 2) in service.calls
 
 
-def test_studio_has_hash_routed_compiler_pane_and_no_page_navigation():
+def test_studio_uses_automatic_checked_figures_without_a_manual_compiler_pane():
     root = Path(__file__).resolve().parents[1]
     template = (root / "templates" / "draft_studio.html").read_text()
     script = (root / "static" / "draft_studio.js").read_text()
 
-    assert 'data-pane="compiler"' in template
-    assert 'id="pane-compiler"' in template
-    assert "'compiler'" in script
-    assert "renderCompiler" in script
-    assert "#/compiler" in script
-    assert "compilerSvgUrl" in script
-    assert "move_entity" in script
-    assert "reroute_leader" in script
-    assert "delete_visible_entity" in script
-    assert 'class="manifestitem"' in script
-    assert '<div class="compilersvg">${sheet.svg}</div>' not in script
+    assert 'data-pane="compiler"' not in template
+    assert 'id="pane-compiler"' not in template
+    assert "'draft', 'review', 'figures', 'sources', 'history', 'filing'" in script
+    assert "creates every described sheet automatically" in script
+    assert "visible structure matches the specification" in script
+    assert "every label is exact and unique" in script

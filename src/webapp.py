@@ -4035,15 +4035,28 @@ def draft_figure_png(project_id, figure_id):
 def draft_figure_activate(project_id, figure_id):
     user, principal = _draft_identity()
     auth.require_csrf()
-    _figure_project(principal, project_id)
-    _figure_in_project(user["id"], project_id, figure_id)
+    project = _figure_project(principal, project_id)
+    figure = _figure_in_project(user["id"], project_id, figure_id)
     body = request.get_json(silent=True) or request.form.to_dict() or {}
     try:
         n = int(body.get("version_no"))
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "which version?"}), 400
-    if not draft_figures.set_active(figure_id, user["id"], n):
-        return jsonify({"ok": False, "error": "no such version"}), 404
+    current_no = int(project.get("latest_version_no") or 0)
+    current = next((item for item in (project.get("versions") or [])
+                    if int(item.get("version_no") or 0) == current_no), None) or {}
+    spec = next((item for item in (current.get("figure_specs") or [])
+                 if draft_figures.figure_key(item.get("label")) ==
+                 draft_figures.figure_key(figure.get("figure_label"))), None)
+    if not spec:
+        return jsonify({"ok": False, "error": "that drawing is not in the current draft"}), 409
+    expected = draft_figures.expected_entries(spec, current.get("numerals") or [])
+    expected_hash = draft_figures.specification_hash(
+        spec.get("label"), spec.get("caption"), expected)
+    if not draft_figures.set_active(
+            figure_id, user["id"], n, expected_specification_hash=expected_hash):
+        return jsonify({"ok": False,
+                        "error": "that version did not pass the current drawing specification"}), 409
     return jsonify({"ok": True, "version_no": n})
 
 
@@ -5392,32 +5405,19 @@ def drafts_list():
 
 @app.route("/drafts/new", methods=["GET", "POST"])
 def draft_new():
-    try:
-        user, principal = _draft_identity()
-    except drafting.DraftingError as exc:
-        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
-    slug = (request.values.get("search_slug") or request.values.get("slug") or "").strip()
-    selected = request.values.getlist("pubs")
-    # Selection-bar GET links encode the publications as one comma-separated value.
+    """Send every legacy intake link or form through the gated Studio pipeline."""
+    if request.method == "POST":
+        # 307 preserves the old form body and CSRF token. /drafts/start performs the only
+        # creation, launches the reviewed agent turn, and publishes nothing before all gates pass.
+        return redirect(url_for("draft_start"), code=307)
+    slug = (request.args.get("search_slug") or request.args.get("slug") or "").strip()
+    selected = request.args.getlist("pubs")
     if len(selected) == 1 and "," in selected[0]:
         selected = [value for value in selected[0].split(",") if value]
-    if request.method == "POST":
-        auth.require_csrf()
-        values = {"title": request.form.get("title", ""),
-                  "disclosure_text": request.form.get("disclosure_text", ""),
-                  "inventor_notes": request.form.get("inventor_notes", "")}
-        try:
-            service = _drafting_service()
-            project = service.create_project_with_references(
-                principal, search_slug=slug, title=values["title"],
-                disclosure_text=values["disclosure_text"], inventor_notes=values["inventor_notes"],
-                publication_numbers=selected)
-            return redirect(url_for("draft_detail", project_id=project["id"], created="1"))
-        except drafting.DraftingError as exc:
-            ctx = _draft_new_context(user, principal, slug, selected, values, str(exc))
-            return render_template("draft_new.html", **ctx), _draft_error_status(exc)
-    ctx = _draft_new_context(user, principal, slug, selected)
-    return render_template("draft_new.html", **ctx)
+    target = {"search_slug": slug} if slug else {}
+    if selected:
+        target["pubs"] = ",".join(selected)
+    return redirect(url_for("draft_start", **target))
 
 
 def _draft_detail_context(principal, project_id):
@@ -5470,11 +5470,8 @@ def _figures_for(project):
 
 @app.route("/drafts/<int:project_id>")
 def draft_detail(project_id):
-    try:
-        _user, principal = _draft_identity()
-        return render_template("draft.html", **_draft_detail_context(principal, project_id))
-    except drafting.DraftingError as exc:
-        return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
+    """Retire the unreviewed section editor without breaking saved links."""
+    return redirect(url_for("draft_studio_page", project_id=project_id))
 
 
 @app.route("/drafts/<int:project_id>/project", methods=["POST"])
@@ -5513,16 +5510,11 @@ def draft_generate(project_id):
     try:
         _user, principal = _draft_identity()
         idem = request.form.get("idempotency_key") or secrets.token_urlsafe(18)
-        job = _drafting_service().queue_generation(
-            principal, project_id, instructions=request.form.get("instructions", ""),
-            idempotency_key=idem)
-        draft_worker.kick()
-        state = job.get("status") or "queued"
-        message = ("Draft generation queued. You may leave this page safely."
-                   if state in {"queued", "running"}
-                   else f"That generation request is already {state}. Reload to start another.")
-        return redirect(url_for("draft_detail", project_id=project_id,
-                                message=message))
+        message = str(request.form.get("instructions") or "").strip() or (
+            "Finalize the current application into a complete filing-ready draft.")
+        _studio().start_turn(
+            principal, project_id, message=message, kind="revise", idempotency_key=idem)
+        return redirect(url_for("draft_studio_page", project_id=project_id))
     except drafting.DraftingError as exc:
         return _draft_error_redirect(project_id, exc)
 
@@ -5532,14 +5524,11 @@ def draft_retry(project_id, job_id):
     auth.require_csrf()
     try:
         _user, principal = _draft_identity()
-        job = _drafting_service().get_generation(principal, job_id)
-        if int(job["project_id"]) != project_id:
-            raise drafting.DraftingNotFound("Draft generation was not found.")
-        _drafting_service().retry_generation(
-            principal, job_id, idempotency_key=secrets.token_urlsafe(18))
-        draft_worker.kick()
-        return redirect(url_for("draft_detail", project_id=project_id,
-                                message="Draft generation queued again."))
+        _studio().start_turn(
+            principal, project_id,
+            message="Finalize the current application and repair every filing gate failure.",
+            kind="qa_fix", idempotency_key=f"legacy-retry-{job_id}-{secrets.token_urlsafe(8)}")
+        return redirect(url_for("draft_studio_page", project_id=project_id))
     except drafting.DraftingError as exc:
         return _draft_error_redirect(project_id, exc)
 
@@ -5561,15 +5550,12 @@ def draft_cancel(project_id, job_id):
 
 @app.route("/drafts/<int:project_id>/versions", methods=["POST"])
 def draft_save_version(project_id):
+    """Retired: direct section edits cannot bypass the text, drawing, and review gates."""
     auth.require_csrf()
     try:
         _user, principal = _draft_identity()
-        sections = {key: request.form.get(key, "") for key, _heading in drafting.SECTION_ORDER}
-        version = _drafting_service().save_edited_version(
-            principal, project_id, sections,
-            base_version_no=request.form.get("base_version_no", type=int))
-        return redirect(url_for("draft_detail", project_id=project_id,
-                                version=version["version_no"], message="Edits saved as a new version."))
+        _drafting_service().get_project(principal, project_id, include_versions=False)
+        return redirect(url_for("draft_studio_page", project_id=project_id))
     except drafting.DraftingError as exc:
         return _draft_error_redirect(project_id, exc)
 
@@ -5589,16 +5575,12 @@ def draft_version_status(project_id, version_no):
 
 @app.route("/drafts/<int:project_id>/versions/<int:version_no>/restore", methods=["POST"])
 def draft_restore_version(project_id, version_no):
+    """Retired: an old version must never become current without passing every gate again."""
     auth.require_csrf()
     try:
         _user, principal = _draft_identity()
-        service = _drafting_service()
-        prior = service.get_version(principal, project_id, version_no)
-        restored = service.save_edited_version(
-            principal, project_id, prior["sections"], base_version_no=version_no)
-        return redirect(url_for(
-            "draft_detail", project_id=project_id, version=restored["version_no"],
-            message=f"Version {version_no} restored as new version {restored['version_no']}."))
+        _drafting_service().get_version(principal, project_id, version_no)
+        return redirect(url_for("draft_studio_page", project_id=project_id))
     except drafting.DraftingError as exc:
         return _draft_error_redirect(project_id, exc)
 
@@ -5654,6 +5636,9 @@ def draft_download(project_id, fmt):
             raise drafting.DraftingNotFound("No draft version is ready to download.")
         version = service.get_version(principal, project_id, version_no)
         refs = project.get("references") or []
+        draft_studio.validate_sections(
+            version.get("sections") or {},
+            [str(reference.get("publication_number") or "") for reference in refs])
         name = draft_export.download_name(project, version_no, fmt)
         if fmt == "md":
             return Response(
@@ -6258,6 +6243,28 @@ def _readiness_for(principal, project_id):
     return project, version, report, references
 
 
+def _filing_figure_images(project):
+    """The exact active PNGs that passed both live drawing gates, in filing order."""
+    images = []
+    for figure in _figures_for(project):
+        versions = figure.get("versions") or []
+        active = next((row for row in versions
+                       if int(row.get("version_no") or 0) ==
+                       int(figure.get("active_version") or 0)), None) or {}
+        if not ((active.get("numeral_audit") or {}).get("ok") and
+                (active.get("semantic_audit") or {}).get("ok")):
+            raise drafting.DraftingValidationError(
+                f"{figure.get('figure_label') or 'A drawing'} has not passed both drawing checks.")
+        _mime, png = draft_figures.png_bytes(
+            figure["id"], project["user_id"], int(figure.get("active_version") or 0))
+        if not png:
+            raise drafting.DraftingValidationError(
+                f"{figure.get('figure_label') or 'A drawing'} has no active image.")
+        images.append({"label": draft_figures.canonical_figure_label(
+            figure.get("figure_label")), "png": png})
+    return images
+
+
 @app.route("/api/drafts/<int:project_id>/filing")
 def api_draft_filing(project_id):
     try:
@@ -6276,6 +6283,9 @@ def draft_filing_download(project_id, fmt):
     try:
         _user, principal = _draft_identity()
         project, version, report, references = _readiness_for(principal, project_id)
+        if not report.get("ready"):
+            raise drafting.DraftingValidationError(
+                "The filing gate still has blockers; no filing document was created.")
         stem = draft_export._clean_filename(str(project.get("title") or ""))
         name = f"{stem}-filing-v{version['version_no']}.{fmt}"
         if fmt == "txt":
@@ -6283,7 +6293,8 @@ def draft_filing_download(project_id, fmt):
                             headers={"Content-Disposition": f'attachment; filename="{name}"'})
         return send_file(
             draft_uspto.render_filing_docx(project, version, readiness_report=report,
-                                           references=references),
+                                           references=references,
+                                           figure_images=_filing_figure_images(project)),
             as_attachment=True, download_name=name,
             mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     except drafting.DraftingError as exc:

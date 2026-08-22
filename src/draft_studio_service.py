@@ -12,7 +12,7 @@ Two boundaries live here and they are deliberately different shapes:
 The worker runs as a thread inside the web process.  That is right for THIS deployment and worth
 saying why: the app runs one gunicorn process with sixteen threads (a second process would double
 the reranker's memory on a four-core box), so there is exactly one worker, and the turn queue is
-leased in Postgres anyway — a second process, a second host or a restart mid-turn are all handled
+leased in Postgres anyway - a second process, a second host or a restart mid-turn are all handled
 by the lease rather than by there happening to be one of us.
 """
 from __future__ import annotations
@@ -56,7 +56,7 @@ def extract_text(data: bytes, filename: str) -> dict[str, Any]:
 
     Deliberately lighter than the search front door's ``/extract``: that path spends a model pass
     building a search brief because the query depends on it.  Here the agent will read the whole
-    document itself, so the only thing needed is the text — and the only case that still costs a
+    document itself, so the only thing needed is the text - and the only case that still costs a
     model call is a scanned facsimile with no text layer, where there is no alternative.
     """
     import ingest_input
@@ -111,8 +111,12 @@ def _publication_in(head: str) -> str:
 
 
 def _figure_key(label: Any) -> str:
-    """"FIG. 1", "Fig 1" and "FIGURE 1" are the same drawing."""
-    return re.sub(r"[^0-9a-z]", "", str(label or "").lower()).replace("figure", "fig")
+    """Identify a sheet by its figure number, never by its optional caption."""
+    match = re.search(r"\bFIG(?:URE)?S?\.?\s*([0-9]+[A-Za-z]?)\b",
+                      str(label or ""), re.IGNORECASE)
+    if match:
+        return "fig-" + match.group(1).lower()
+    return re.sub(r"[^0-9a-z]+", "-", str(label or "").lower()).strip("-")
 
 
 def _expected_numerals(version: Mapping[str, Any], label: str) -> list[str] | None:
@@ -171,7 +175,7 @@ class StudioService:
         disclosure_text = str(disclosure_text or "").replace("\x00", "").strip()
         if len(disclosure_text) < 40:
             raise drafting.DraftingValidationError(
-                "Describe the invention in a little more detail — at least a couple of sentences "
+                "Describe the invention in a little more detail - at least a couple of sentences "
                 "about what it is and what it does.")
         if not title:
             title = _title_of(disclosure_text)[:240] or "Untitled invention"
@@ -229,7 +233,7 @@ class StudioService:
             # to re-enter the disclosure and re-upload the art to find out the same thing.
             self.repository.add_message(
                 project["id"], "system",
-                f"The first draft could not be started: {exc} Everything you supplied is saved — "
+                f"The first draft could not be started: {exc} Everything you supplied is saved - "
                 "send a message here to try again once that is fixed.")
         return project
 
@@ -333,7 +337,7 @@ class StudioService:
             origin="manual")
         self.repository.add_message(
             project_id, "system",
-            f"{canonical} — {record.get('title') or 'untitled'} — added as prior art "
+            f"{canonical} - {record.get('title') or 'untitled'} - added as prior art "
             f"(found in {record.get('source')}). It reaches the drafting agent with your next "
             "message; a turn already running was given the sources it started with.")
         return record
@@ -437,7 +441,7 @@ class StudioService:
         """The drawings, as the SPEC the agent wrote joined to the image (if one was drawn yet).
 
         Two halves of the same thing kept in one list on purpose: a figure specification with no
-        drawing is the actionable state — it is what the Draw button acts on — and a drawing whose
+        drawing is the actionable state - it is what the Draw button acts on - and a drawing whose
         specification the agent has since removed is the other, which is worth seeing rather than
         silently hiding.
         """
@@ -458,13 +462,15 @@ class StudioService:
                            int((image or {}).get("active_version") or 0)), None) or {}
             expected = list(spec.get("numerals") or [])
             audit = dict(active.get("numeral_audit") or {})
+            semantic = dict(active.get("semantic_audit") or {})
             detected = list(active.get("detected_numerals") or [])
             out.append({"label": spec.get("label"), "caption": spec.get("caption"),
                         # QA reads the detected pixels when inspection succeeded. Expected stays
                         # separate so the UI can explain and repair either side of a mismatch.
                         "numerals": detected if audit.get("inspected") else expected,
                         "expected_numerals": expected, "detected_numerals": detected,
-                        "numeral_audit": audit, "drawn": bool(image),
+                        "numeral_audit": audit, "semantic_audit": semantic,
+                        "drawn": bool(image),
                         "figure_id": (image or {}).get("id"),
                         "active_version": (image or {}).get("active_version"),
                         "n_versions": (image or {}).get("n_versions") or 0,
@@ -479,6 +485,7 @@ class StudioService:
                         "expected_numerals": [],
                         "detected_numerals": list(active.get("detected_numerals") or []),
                         "numeral_audit": dict(active.get("numeral_audit") or {}),
+                        "semantic_audit": dict(active.get("semantic_audit") or {}),
                         "drawn": True, "figure_id": orphan.get("id"),
                         "active_version": orphan.get("active_version"),
                         "n_versions": orphan.get("n_versions") or 0,
@@ -610,7 +617,7 @@ class StudioService:
         """Re-review the current version without drafting anything.
 
         Useful after the user edits a section by hand, and after a citation that was unreachable
-        becomes reachable — a report is a point-in-time reading, not a permanent verdict.
+        becomes reachable - a report is a point-in-time reading, not a permanent verdict.
 
         Runs in the BACKGROUND. A review is minutes of model time; holding a request thread open
         for it would be a request the browser or a proxy eventually gives up on, and the page
@@ -654,8 +661,8 @@ def _opening_note(has_report_art: bool, slug: str, uploads: int) -> str:
         parts.append(f"{uploads} uploaded document(s) are attached.")
     if not parts:
         parts.append("No prior art is attached yet. The draft will be written from your "
-                     "description alone, and the agent will say so. Add references any time — "
-                     "by publication number, by uploading a document, or by running a search — "
+                     "description alone, and the agent will say so. Add references any time - "
+                     "by publication number, by uploading a document, or by running a search - "
                      "and ask for a revision.")
     parts.append("Drafting now. This takes a few minutes; you can leave the page.")
     return " ".join(parts)
@@ -694,10 +701,14 @@ def process_one() -> dict[str, Any] | None:
         _stamp(running=False, last_result="complete", last_error=None)
         return outcome
     except drafting.DraftingValidationError as exc:
-        # The agent produced something we will not store — an empty section, a citation to a
+        # The agent produced something we will not store - an empty section, a citation to a
         # document it was not given.  Retryable: the next attempt sees the reason in its request.
         return _fail(runner, claimed, str(exc), retryable=True)
     except drafting.DraftingConflict as exc:
+        try:
+            runner.restore_figures(int(claimed["id"]))
+        except Exception:
+            traceback.print_exc()
         _stamp(running=False, last_result="superseded", last_error=str(exc)[:400])
         return None
     except Exception as exc:                                   # noqa: BLE001 - durable boundary
@@ -707,6 +718,10 @@ def process_one() -> dict[str, Any] | None:
 
 def _fail(runner: draft_studio.TurnRunner, claimed: Mapping[str, Any], error: str, *,
           retryable: bool) -> dict[str, Any] | None:
+    try:
+        runner.restore_figures(int(claimed["id"]))
+    except Exception:
+        traceback.print_exc()
     try:
         result = runner.repository.fail_turn(claimed["id"], claimed["lease_token"], error,
                                              retryable=retryable)
@@ -719,7 +734,7 @@ def _fail(runner: draft_studio.TurnRunner, claimed: Mapping[str, Any], error: st
             runner.repository.add_message(
                 claimed["project_id"], "system",
                 "The drafting agent could not finish that turn: " + error[:600] +
-                " Nothing in your draft was changed. Try again, or rephrase what you asked for.",
+                " No application version was published. Try again, or rephrase what you asked for.",
                 turn_id=claimed["id"])
         except Exception:                                      # noqa: BLE001
             pass
@@ -787,7 +802,7 @@ def recover_interrupted_turns() -> int:
     A turn's completion is recorded by the process that ran it.  A deploy or an OOM halfway
     through leaves the row saying `running` with a lease nobody holds; without this the project
     says "drafting…" for ever and the user waits for a process that no longer exists.  The lease
-    is simply expired here so the ordinary claim path picks it up on the next poll — which also
+    is simply expired here so the ordinary claim path picks it up on the next poll - which also
     means a turn that has already exhausted its attempts fails honestly instead of looping.
 
     A turn whose claiming PROCESS IS STILL ALIVE is left alone.  Expiring its lease would let a

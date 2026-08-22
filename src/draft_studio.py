@@ -7,11 +7,11 @@ after every single iteration whether or not anyone asked for it.
 
 WHAT AN ITERATION IS
     user message  ->  workspace built from Postgres  ->  drafting agent edits the files
-                  ->  sections read back and validated  ->  new immutable version
-                  ->  reviewer runs  ->  report stored  ->  both posted into the conversation
+                  ->  text validation  ->  checked drawing generation  ->  independent review
+                  ->  automatic repair until clean  ->  immutable version and report published
 
 Everything durable lives in Postgres and the workspace is a rebuildable cache, so a restart in the
-middle of a fifteen-minute drafting run loses the run, not the project — and the recovery pass
+middle of a fifteen-minute drafting run loses the run, not the project - and the recovery pass
 turns an abandoned lease back into a queued turn instead of a project stuck saying "drafting…"
 for ever.
 
@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 import threading
@@ -48,6 +49,8 @@ except ModuleNotFoundError:                    # prompt/validation tests need no
 MAX_MESSAGE_CHARS = 20_000
 MAX_TURNS_LISTED = 200
 LEASE_SECONDS = 2400                           # a full drafting turn plus its review
+MAX_FINALIZATION_ROUNDS = max(
+    2, min(int(os.environ.get("DRAFT_FINALIZATION_ROUNDS", "4")), 6))
 _SCHEMA_LOCK = threading.Lock()
 _SCHEMA_READY = False
 _MIGRATION = Path(__file__).resolve().parents[1] / "sql" / "006_draft_agent.sql"
@@ -68,7 +71,7 @@ TURN_SCHEMA = {
         "reasoning": {"type": "array", "items": {"type": "string"}},
         "changes": {"type": "array", "items": {"type": "string"}},
         "prior_art_strategy": {"type": "string"},
-        "questions": {"type": "array", "items": {"type": "string"}},
+        "questions": {"type": "array", "items": {"type": "string"}, "maxItems": 0},
         "answer": {"type": "string"},
     },
     "required": ["action", "summary", "reasoning", "changes", "prior_art_strategy", "questions",
@@ -80,23 +83,30 @@ DRAFT_SYSTEM = """You are drafting a US utility patent application. You work by 
 this workspace; the files ARE the draft.
 
 WHAT YOU ARE AND ARE NOT
-You produce a technically faithful working draft for a patent attorney to review and file. You do
-not give legal advice and you never state or imply that anything is patentable, novel,
+You produce complete, internally consistent, filing-ready patent application text and drawing
+specifications. You do not give legal advice and you never state or imply that anything is patentable, novel,
 non-obvious, valid, infringing, or clear to practise. Write the application; leave the conclusions
 to the attorney who signs it.
 
 THE ONE RULE THAT OUTRANKS EVERY OTHER
 The inventor's disclosure (input/disclosure.md) and what the user tells you in conversation are
 the ONLY authority for what the invention is. Prior art in prior_art/ is context to write AROUND,
-never a source to borrow from. If a fact a filing-quality draft needs is missing — a dimension, a
-material, a step, an inventor name, a priority claim — write `[DRAFTING NOTE: what you need and
-why]` in place of it and list it in your questions. Never invent it. An invented structure is the
-one failure that cannot be repaired later, because nobody reading the draft can tell it was
-invented.
+never a source to borrow from. Never invent a core structure, relationship, result, measurement,
+or experimental fact. When an optional implementation detail is not supplied, write supported
+functional language and disclosed alternatives without choosing a made-up value. Omit an
+unsupported optional limitation from the claims. If no related application or priority claim was
+supplied, write `Not applicable.` in the Cross-Reference section; never delete the section.
+
+FILING-CLEAN OUTPUT IS ABSOLUTE
+No placeholder, drafting note, TODO, TBD, blank field, instruction to a draftsperson, question to
+the inventor, or request for confirmation may appear anywhere in draft/, draft/numerals.md, or
+figures/. Resolve each issue conservatively from the disclosure or omit the unsupported optional
+detail. Return `questions` as an empty array. The automatic review will reject the entire turn if
+one unfinished marker remains.
 
 WORKING AROUND THE PRIOR ART
 Read prior_art/INDEX.md and then every reference file before you write. For each one, work out
-what it actually teaches — not what its title suggests. Then:
+what it actually teaches - not what its title suggests. Then:
   * Draft the independent claims so that each one recites, in its own terms, at least one concrete
     feature or relationship that no reference in prior_art/ discloses, and make that feature do
     real technical work in the invention rather than being an arbitrary addition. Say in your
@@ -116,8 +126,8 @@ CLAIMS: BROAD BUT DEFENSIBLE
     is scope given away for nothing.
   * Defensible means: every limitation is described in the detailed description, in the same
     words; nothing is claimed that the description does not enable a skilled reader to build.
-  * Include a graduated ladder of dependent claims — the next-narrowest fallback first, then
-    genuinely different embodiments — so that if claim 1 falls there is somewhere to retreat to
+  * Include a graduated ladder of dependent claims - the next-narrowest fallback first, then
+    genuinely different embodiments - so that if claim 1 falls there is somewhere to retreat to
     that is still worth having. A dependent claim that adds a trivial or purely aesthetic
     limitation is wasted; each one should add a feature you could argue independently.
   * Write independent claims in more than one statutory class where the disclosure supports it
@@ -137,9 +147,10 @@ REFERENCE NUMERALS
 Keep draft/numerals.md in step with the text at all times: every numeral used anywhere appears
 there exactly once against one part name, and every part has one numeral. Introduce a numeral the
 first time its part is named ("a suction cup 10"), and use the same words for it every time after.
-Figures live in figures/, one file per drawing, listing the numerals that appear on it — a numeral
+Figures live in figures/, one file per drawing, listing the numerals that appear on it - a numeral
 on a drawing that is not in the table, or a part described as visible in a figure whose file does
-not list it, is a defect the review will find.
+not list it, is a defect the review will find. Every application must include at least one figure.
+Use a structural view, system diagram, or process flow as appropriate to the disclosed invention.
 
 FILES
   input/disclosure.md     the invention (read-only authority)
@@ -151,7 +162,7 @@ FILES
   draft/01-title.md … draft/09-abstract.md    the application, body text only, no heading lines
   draft/numerals.md       the reference-numeral table
   figures/                one file per drawing
-  review/previous-qa.md   what the reviewer found last time — fix it
+  review/previous-qa.md   what the reviewer found last time - fix it
   tools/patent_lookup.py  `python3 tools/patent_lookup.py US-9108319-B2` reads a publication out
                           of the local corpus of millions of patents. Use it when you need what a
                           reference ACTUALLY says, or to check a publication before citing it.
@@ -159,15 +170,15 @@ FILES
 HOW TO WORK
 Read before you write: the request, the conversation, the disclosure, the current draft, the
 review. Then edit only what the request and the review require. A request to narrow one claim is
-not licence to reword the background — an unnecessary rewrite destroys the user's own edits and
+not licence to reword the background - an unnecessary rewrite destroys the user's own edits and
 makes the change log useless.
 
 FINISH by returning the structured answer. `reasoning` is read by the user and is the record of
-why this draft is the shape it is: give the actual decisions — which feature you put in claim 1
+why this draft is the shape it is: give the actual decisions - which feature you put in claim 1
 and what it clears, what you deliberately left out of the independent claim and why, where the
 description had to be widened to support a claim. Not a restatement of what you did."""
 
-FIRST_TURN_PROMPT = """Write the first working draft of this US patent application.
+FIRST_TURN_PROMPT = """Write the complete filing-ready draft of this US patent application.
 
 Read, in this order: input/request.md, input/brief.md, input/disclosure.md, every file in
 prior_art/ (start with INDEX.md), and anything in input/materials/.
@@ -175,8 +186,9 @@ prior_art/ (start with INDEX.md), and anything in input/materials/.
 %(seeded)s
 
 Then write every section in draft/, build draft/numerals.md, and write one file per drawing in
-figures/ for the figures this invention needs. Give the drawings enough detail that a draftsperson
-could produce them: what view it is, what is shown, and which numerals appear on it.
+figures/ for the figures this invention needs. Specify the view, the visible structures and
+relationships, and the exact numerals that appear. The image pipeline will draw these files
+automatically, so make every instruction final and self-contained.
 
 Return the structured answer with `action` set to "revised"."""
 
@@ -185,7 +197,7 @@ REVISE_PROMPT = """Continue drafting this application.
 The user's request for this turn is in input/request.md. The reviewer's report on the current
 draft is in review/previous-qa.md.
 
-Do what the user asked. Then fix anything in the review that is genuinely wrong — and if you
+Do what the user asked. Then fix anything in the review that is genuinely wrong - and if you
 think a review finding is mistaken, leave the draft alone and say why in your summary rather than
 changing good text to silence a check.
 
@@ -194,10 +206,21 @@ Change only what needs changing. If the request is a question rather than a chan
 
 Return the structured answer."""
 
+FINALIZE_PROMPT = """The current draft did not pass the automatic filing gate.
+
+Read review/previous-qa.md, then fix every listed mechanical check and every independently
+verified finding. Do not argue with a finding in the structured response. If wording triggered a
+false positive, make the draft unambiguous enough that the check passes without changing the
+invention. Keep the reference-numeral table, drawing descriptions, detailed description, claims,
+and every file in figures/ synchronized.
+
+Leave no note, placeholder, question, or instruction for a person. Return the structured answer
+with `action` set to "revised" and `questions` as an empty array."""
+
 QUESTION_PROMPT = """The user has asked a question about this draft rather than asking for a
 change. Their question is in input/request.md.
 
-Read whatever you need in order to answer it accurately — the draft, the prior art, the
+Read whatever you need in order to answer it accurately - the draft, the prior art, the
 disclosure. Answer in `answer`, set `action` to "answered", and do not edit any file.
 
 If answering honestly requires a change to the draft, say so in your answer and ask them to
@@ -218,6 +241,19 @@ def build_prompt(kind: str, *, seeded: bool = False) -> str:
     return REVISE_PROMPT
 
 
+def filing_blockers(report: Mapping[str, Any]) -> list[str]:
+    """Reasons a workspace cannot be published as a filing-ready version."""
+    blockers: list[str] = []
+    if str(report.get("status") or "") != "complete":
+        blockers.append("The independent review did not complete.")
+    for check in report.get("checks") or ():
+        if str(check.get("status") or "") != "pass":
+            blockers.append(f"Mechanical check did not pass: {check.get('name') or 'unnamed'}")
+    for finding in report.get("findings") or ():
+        blockers.append(f"Independent review finding: {finding.get('title') or 'unnamed'}")
+    return list(dict.fromkeys(blockers))
+
+
 def figures_for_qa(project_id: int, user_id: int,
                    figure_specs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     """Replace requested numerals with vision-detected pixels for every drawn sheet."""
@@ -233,7 +269,7 @@ def figures_for_qa(project_id: int, user_id: int,
                 for item in figure_specs]
 
     def key(value):
-        return re.sub(r"[^0-9a-z]", "", str(value or "").lower()).replace("figure", "fig")
+        return draft_figures.figure_key(value)
 
     by_label = {key(item.get("figure_label")): item for item in drawn}
     out = []
@@ -249,10 +285,12 @@ def figures_for_qa(project_id: int, user_id: int,
                            if int(version.get("version_no") or 0) ==
                            int(image.get("active_version") or 0)), None) or {}
             audit = active.get("numeral_audit") or {}
+            semantic = active.get("semantic_audit") or {}
             item["drawn"] = bool(active)
             if audit.get("inspected"):
                 item["numerals"] = list(active.get("detected_numerals") or [])
             item["numeral_audit"] = dict(audit)
+            item["semantic_audit"] = dict(semantic)
         out.append(item)
     # Stored sheets whose figure specification disappeared are still real pixels. Include them so
     # an unexpected numeral or obsolete drawing cannot vanish from QA merely because the text side
@@ -262,10 +300,12 @@ def figures_for_qa(project_id: int, user_id: int,
                        if int(version.get("version_no") or 0) ==
                        int(image.get("active_version") or 0)), None) or {}
         audit = active.get("numeral_audit") or {}
+        semantic = active.get("semantic_audit") or {}
         out.append({"label": image.get("figure_label"), "caption": image.get("caption") or "",
                     "numerals": (list(active.get("detected_numerals") or [])
                                  if audit.get("inspected") else []),
                     "drawn": bool(active), "orphan": True, "numeral_audit": dict(audit)})
+        out[-1]["semantic_audit"] = dict(semantic)
     return out
 
 
@@ -313,13 +353,34 @@ def validate_sections(sections: Mapping[str, str],
                     f"{heading} cites {canonical}, which is not among this project's sources.")
 
     joined = "\n".join(out.values())
+    placeholders = draft_qa.find_placeholders(out)
+    if placeholders:
+        raise drafting.DraftingValidationError(
+            "The draft contains an unresolved placeholder: " + placeholders[0] + ".")
     for pattern in drafting._LEGAL_CONCLUSION_PATTERNS:
         found = pattern.search(joined)
         if found:
             raise drafting.DraftingValidationError(
-                f"The draft states a legal conclusion ({found.group(0)!r}). A working draft "
+                f"The draft states a legal conclusion ({found.group(0)!r}). An application "
                 "describes the invention; it does not conclude on patentability or infringement.")
     return out
+
+
+def validate_snapshot(snapshot: Mapping[str, Any],
+                      allowed_references: Sequence[str] = ()) -> dict[str, Any]:
+    """Validate every agent-owned filing artifact before any image call or version save."""
+    sections = validate_sections(snapshot.get("sections") or {}, allowed_references)
+    numerals = [dict(item) for item in (snapshot.get("numerals") or ())]
+    figures = [dict(item) for item in (snapshot.get("figures") or ())]
+    markers = []
+    markers.extend(draft_qa.placeholders_in_text(
+        "Reference numeral table", json.dumps(numerals, ensure_ascii=False)))
+    markers.extend(draft_qa.placeholders_in_text(
+        "Drawing specifications", json.dumps(figures, ensure_ascii=False)))
+    if markers:
+        raise drafting.DraftingValidationError(
+            "The filing artifacts contain an unresolved placeholder: " + markers[0] + ".")
+    return {"sections": sections, "numerals": numerals, "figures": figures}
 
 
 def citations_of(sections: Mapping[str, str]) -> list[str]:
@@ -335,8 +396,8 @@ def citations_of(sections: Mapping[str, str]) -> list[str]:
 def project_title_from(version_no: int, sections: Mapping[str, str]) -> str:
     """The title the project should take from a newly saved version, or '' to leave it alone.
 
-    The FIRST version names the project. Until one exists the title is a placeholder — usually the
-    opening line of whatever the user pasted — so the drafts list and the page header show a
+    The FIRST version names the project. Until one exists the title is a placeholder - usually the
+    opening line of whatever the user pasted - so the drafts list and the page header show a
     sentence where the invention's title belongs. Only the first version does this, so a
     deliberate rename later is never undone.
     """
@@ -736,6 +797,10 @@ class StudioRepository:
                             "updated_at=now() WHERE id=%s", (version_no, project["id"]))
             cur.execute("UPDATE app_draft_turns SET version_no=%s,updated_at=now() WHERE id=%s",
                         (version_no, turn["id"]))
+            # The text version and acceptance of its checked drawing set are one transaction.
+            # A worker crash can therefore never publish one while rolling the other back.
+            cur.execute("UPDATE app_draft_figure_turn_checkpoints SET accepted_at=now() "
+                        "WHERE turn_id=%s", (turn["id"],))
             return version
 
     def complete_turn(self, turn_id: int, lease_token: str, *, result: Mapping[str, Any],
@@ -834,7 +899,7 @@ class StudioRepository:
 # Running one turn
 # =============================================================================================
 class TurnRunner:
-    """Executes one claimed turn: build, draft, publish, review, post."""
+    """Execute one turn and publish only after every text, drawing, and review gate passes."""
 
     def __init__(self, repository: StudioRepository, drafting_repository:
                  drafting.DraftingRepository, *, agent=draft_agent, qa=draft_qa,
@@ -902,6 +967,43 @@ class TurnRunner:
                 "previous_sections": loaded["sections"] or {}}
 
     # -- the turn --------------------------------------------------------------------------------
+    def _run_agent(self, *, turn_id: int, lease: str, workspace: Path, prompt: str,
+                   session_id: str, resume: bool, transcript: Path,
+                   stage: str) -> draft_agent.AgentRun:
+        self.repository.heartbeat(turn_id, lease, stage=stage)
+        beat = _Heartbeat(self.repository, turn_id, lease, stage)
+        beat.start()
+        try:
+            run = self.agent.run(
+                workspace=workspace, prompt=prompt, system_prompt=DRAFT_SYSTEM,
+                schema=TURN_SCHEMA, session_id=session_id, resume=resume,
+                model=self.agent.DRAFT_MODEL, timeout=self.agent.DRAFT_TIMEOUT,
+                transcript=transcript, cancel=beat.cancelled)
+        finally:
+            beat.stop()
+        if not run.ok:
+            raise (drafting.DraftingConflict("Stopped at your request.") if run.cancelled
+                   else StudioError(run.error or "The drafting agent did not finish."))
+        return run
+
+    def _ensure_figures(self, *, turn_id: int, project_id: int, user_id: int,
+                        sections: Mapping[str, str], numerals: Sequence[Mapping[str, str]],
+                        figures: Sequence[Mapping[str, Any]], disclosure: str,
+                        workspace: Path) -> dict[str, Any]:
+        import draft_figures
+        draft_figures.checkpoint_project_figures(turn_id, project_id, user_id)
+        result = draft_figures.ensure_project_figures(
+            project_id, user_id, sections=sections, disclosure=disclosure,
+            numeral_table=numerals, figure_specs=figures)
+        result["review_images"] = draft_figures.materialize_review_images(
+            project_id, user_id, workspace)
+        return result
+
+    @staticmethod
+    def restore_figures(turn_id: int) -> bool:
+        import draft_figures
+        return draft_figures.restore_project_figure_checkpoint(turn_id)
+
     def run(self, turn: Mapping[str, Any]) -> dict[str, Any]:
         turn_id, lease = int(turn["id"]), turn["lease_token"]
         project_id = int(turn["project_id"])
@@ -925,89 +1027,146 @@ class TurnRunner:
         #  that answered a question without producing a version would make the next turn pass an
         #  existing id as if it were new. Continue the thread whenever there is one.
         prior_session = str(project.get("agent_session_id") or "")
-        self.repository.heartbeat(turn_id, lease, stage="drafting")
-        beat = _Heartbeat(self.repository, turn_id, lease, "drafting")
-        beat.start()
-        try:
-            run = self.agent.run(
-                workspace=workspace, prompt=prompt, system_prompt=DRAFT_SYSTEM,
-                schema=TURN_SCHEMA,
-                session_id=prior_session or self.agent.new_session_id(),
-                resume=bool(prior_session),
-                model=self.agent.DRAFT_MODEL, timeout=self.agent.DRAFT_TIMEOUT,
-                transcript=transcript, cancel=beat.cancelled)
-        finally:
-            beat.stop()
-        if not run.ok:
-            #  A stop is the user's decision, not a failure to retry.
-            raise (drafting.DraftingConflict("Stopped at your request.") if run.cancelled
-                   else StudioError(run.error or "The drafting agent did not finish."))
-
-        result = run.result
+        run = self._run_agent(
+            turn_id=turn_id, lease=lease, workspace=workspace, prompt=prompt,
+            session_id=prior_session or self.agent.new_session_id(), resume=bool(prior_session),
+            transcript=transcript, stage="drafting")
+        runs = [run]
+        result = dict(run.result)
         action = str(result.get("action") or "revised")
-        version = None
-        checks_context: dict[str, Any] = {}
 
-        #  An answered turn edits nothing. If the agent touched a file anyway, the edit is simply
-        #  not read: the next turn rebuilds draft/ from the stored version, so the workspace can
-        #  never quietly become the record.
-        if action != "answered":
+        #  Only an explicit question on an existing application may complete without a filing
+        #  candidate. An initial or revision turn that answers instead of drafting is fed back as
+        #  a gate failure and automatically resumed.
+        candidate_required = bool(first or kind != "question")
+        if action == "answered" and not candidate_required:
+            self.repository.add_message(
+                project_id, "agent", str(result.get("answer") or "")[:MAX_MESSAGE_CHARS],
+                turn_id=turn_id, payload={"action": action, "summary": result.get("summary"),
+                                          "version_no": None, "cost_usd": run.cost_usd,
+                                          "steps": run.steps[-80:]})
+            completed = self.repository.complete_turn(
+                turn_id, lease, result=result, session_id=run.session_id,
+                cost_usd=run.cost_usd, duration_ms=run.duration_ms, model_name=run.model,
+                transcript_path=str(transcript))
+            return {"turn": completed, "version": None}
+        answered_without_candidate = action == "answered"
+
+        report: dict[str, Any] | None = None
+        snapshot: dict[str, Any] = {}
+        sections: dict[str, str] = {}
+        for review_index in range(MAX_FINALIZATION_ROUNDS):
+            if review_index:
+                repair = self._run_agent(
+                    turn_id=turn_id, lease=lease, workspace=workspace,
+                    prompt=FINALIZE_PROMPT, session_id=runs[-1].session_id,
+                    resume=True, transcript=transcript, stage="repairing the draft")
+                runs.append(repair)
+                result = dict(repair.result)
+                action = "revised"
+
             self.repository.heartbeat(turn_id, lease, stage="checking the draft")
-            snapshot = self.workspace.snapshot(workspace)
-            sections = validate_sections(snapshot["sections"], allowed)
-            if sections != context["previous_sections"]:
-                version = self.repository.save_version(
-                    turn_id, lease, sections=sections, citations=citations_of(sections),
-                    change_note=str(result.get("summary") or "")[:4000],
-                    model_name=run.model, numerals=snapshot["numerals"],
-                    figures=snapshot["figures"])
-            checks_context = {"sections": sections, "numerals": snapshot["numerals"],
-                              "figures": snapshot["figures"]}
+            if answered_without_candidate and review_index == 0:
+                check = {"name": "Complete filing candidate", "status": "fail",
+                         "severity": "error",
+                         "detail": "The drafting turn answered without producing an application.",
+                         "items": ["Produce the complete filing candidate without asking a question."]}
+                report = {
+                    "status": "failed", "verdict": "fail",
+                    "summary": "The agent did not produce the required filing candidate.",
+                    "checks": [check], "findings": [],
+                    "counts": draft_qa.counts_for([check], []), "cost_usd": 0.0,
+                    "duration_ms": 0, "model_name": "", "last_error": check["detail"],
+                }
+            else:
+                try:
+                    snapshot = validate_snapshot(self.workspace.snapshot(workspace), allowed)
+                    sections = snapshot["sections"]
+                    self.repository.heartbeat(turn_id, lease, stage="drawing and inspecting figures")
+                    generated = self._ensure_figures(
+                        turn_id=turn_id, project_id=project_id,
+                        user_id=int(project["user_id"]), sections=sections,
+                        numerals=snapshot["numerals"], figures=snapshot["figures"],
+                        disclosure=str(project.get("disclosure_text") or ""), workspace=workspace)
+                    if not generated.get("ok"):
+                        raise StudioError("One or more drawing sheets did not pass inspection.")
+                    self.repository.heartbeat(turn_id, lease, stage="independent review")
+                    report = self.evaluate(
+                        project_id, version_no=int(project.get("latest_version_no") or 0) + 1,
+                        workspace=workspace, allowed=allowed, sections=sections,
+                        numerals=snapshot["numerals"], figures=snapshot["figures"],
+                        review_index=review_index)
+                except drafting.DraftingConflict:
+                    raise
+                except Exception as exc:                         # a failed gate becomes repair input
+                    traceback.print_exc()
+                    check = {"name": "Automatic filing candidate checks",
+                             "status": "fail", "severity": "error",
+                             "detail": str(exc)[:1200], "items": [str(exc)[:600]]}
+                    report = {
+                        "status": "failed", "verdict": "fail",
+                        "summary": "The automatic filing gate did not pass: " + str(exc)[:1000],
+                        "checks": [check], "findings": [],
+                        "counts": draft_qa.counts_for([check], []), "cost_usd": 0.0,
+                        "duration_ms": 0, "model_name": "", "last_error": str(exc)[:1200],
+                    }
 
-        #  The agent's own message goes up BEFORE the review runs, so the user reads the draft
-        #  while it is being checked rather than after.
+            blockers = filing_blockers(report)
+            if not blockers:
+                break
+            self.workspace._write_review(workspace, report)
+            if review_index + 1 >= MAX_FINALIZATION_ROUNDS:
+                raise drafting.DraftingValidationError(
+                    "The automatic filing gate could not clear: " + "; ".join(blockers[:8]))
+
+        version = None
+        final_run = runs[-1]
+        if sections != context["previous_sections"]:
+            version = self.repository.save_version(
+                turn_id, lease, sections=sections, citations=citations_of(sections),
+                change_note=str(result.get("summary") or "")[:4000],
+                model_name=final_run.model, numerals=snapshot["numerals"],
+                figures=snapshot["figures"])
+        else:
+            # The accepted turn may have repaired only the pixels for an unchanged specification.
+            import draft_figures
+            draft_figures.commit_project_figure_checkpoint(turn_id)
+        version_no = int((version or {}).get("version_no") or
+                         project.get("latest_version_no") or 0) or None
+
+        total_cost = sum(item.cost_usd for item in runs)
+        total_duration = sum(item.duration_ms for item in runs)
+        steps = [step for item in runs for step in item.steps][-80:]
         self.repository.add_message(
             project_id, "agent",
             str(result.get("answer") or result.get("summary") or "")[:MAX_MESSAGE_CHARS],
             turn_id=turn_id,
             payload={"action": action, "summary": result.get("summary"),
-                     "reasoning": draft_agent.strings(result.get("reasoning")),
-                     "changes": draft_agent.strings(result.get("changes")),
-                     "questions": draft_agent.strings(result.get("questions"), limit=12),
-                     "prior_art_strategy": result.get("prior_art_strategy"),
-                     "version_no": (version or {}).get("version_no"),
-                     "cost_usd": run.cost_usd, "steps": run.steps[-80:]})
-
-        #  THE REVIEW HAPPENS INSIDE THE TURN, not after it. Completing the turn first would tell
-        #  the page the iteration was over while a second agent was still reading the draft: the
-        #  spinner stops, the poller goes idle, and the report lands minutes later with nothing
-        #  having said it was coming. It is also why a review failure must NOT fail the turn — the
-        #  draft is already published and re-running it would redraft a good version.
-        if checks_context:
-            self.repository.heartbeat(turn_id, lease, stage="reviewing")
-            try:
-                self.review(project_id, turn_id=turn_id,
-                            version_no=(version or {}).get("version_no"),
-                            workspace=workspace, allowed=allowed, **checks_context)
-            except Exception:                              # noqa: BLE001 - never lose the draft
-                traceback.print_exc()
-                self.repository.add_message(
-                    project_id, "system",
-                    "The consistency review could not run on this version. The draft is saved; "
-                    "use “Re-run the review” to try again.", turn_id=turn_id)
+                     "reasoning": self.agent.strings(result.get("reasoning")),
+                     "changes": self.agent.strings(result.get("changes")),
+                     "questions": [], "prior_art_strategy": result.get("prior_art_strategy"),
+                     "version_no": version_no, "cost_usd": total_cost, "steps": steps})
+        self._publish_review(
+            project_id, turn_id=turn_id, version_no=version_no,
+            workspace=workspace, report=report or {})
 
         completed = self.repository.complete_turn(
-            turn_id, lease, result=result, session_id=run.session_id, cost_usd=run.cost_usd,
-            duration_ms=run.duration_ms, model_name=run.model,
+            turn_id, lease, result=result, session_id=final_run.session_id, cost_usd=total_cost,
+            duration_ms=total_duration, model_name=final_run.model,
             transcript_path=str(transcript))
+        try:
+            import draft_figures
+            draft_figures.discard_project_figure_checkpoint(turn_id)
+        except Exception:
+            traceback.print_exc()
         return {"turn": completed, "version": version}
 
     # -- review -----------------------------------------------------------------------------------
-    def review(self, project_id: int, *, turn_id: int | None, version_no: int | None,
-               workspace: Path, allowed: Sequence[str], sections: Mapping[str, str],
-               numerals: Sequence[Mapping[str, str]],
-               figures: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-        """The automatic post-iteration review. Never raises: a broken reviewer is a finding."""
+    def evaluate(self, project_id: int, *, version_no: int | None, workspace: Path,
+                 allowed: Sequence[str], sections: Mapping[str, str],
+                 numerals: Sequence[Mapping[str, str]], figures: Sequence[Mapping[str, Any]],
+                 review_index: int = 0) -> dict[str, Any]:
+        """Evaluate a workspace without publishing either the version or the report."""
         started = time.time()
         qa_figures = list(figures)
         try:
@@ -1023,7 +1182,8 @@ class TurnRunner:
             traceback.print_exc()
             checks = [{"name": "Mechanical checks", "status": "fail", "severity": "warn",
                        "detail": f"The checks could not run ({type(exc).__name__}).", "items": []}]
-        transcript = workspace / ".agent" / f"review-{version_no or 0:04d}.jsonl"
+        transcript = workspace / ".agent" / (
+            f"review-{version_no or 0:04d}-{int(review_index) + 1:02d}.jsonl")
         outcome = self.qa.review(workspace, checks=checks, transcript=transcript)
         findings = outcome.get("findings") or []
         verdict = self.qa.verdict_for(checks, findings)
@@ -1039,25 +1199,42 @@ class TurnRunner:
             "model_name": outcome.get("model") or "",
             "last_error": outcome.get("error") or "",
         }
-        saved = self.repository.save_qa(project_id, turn_id=turn_id, version_no=version_no,
-                                        report=report)
+        return report
+
+    def _publish_review(self, project_id: int, *, turn_id: int | None,
+                        version_no: int | None, workspace: Path,
+                        report: Mapping[str, Any]) -> dict[str, Any]:
+        saved = self.repository.save_qa(
+            project_id, turn_id=turn_id, version_no=version_no, report=report)
         self.repository.add_message(
-            project_id, "qa", report["summary"], turn_id=turn_id,
-            payload={"verdict": verdict, "counts": report["counts"],
+            project_id, "qa", str(report.get("summary") or ""), turn_id=turn_id,
+            payload={"verdict": report.get("verdict"), "counts": report.get("counts") or {},
                      "qa_id": saved.get("id"), "version_no": version_no,
-                     "failed": self.qa.failed_check_names(checks)})
+                     "failed": draft_qa.failed_check_names(report.get("checks") or [])})
         try:
             self.workspace._write_review(workspace, saved)
         except Exception:                                       # noqa: BLE001 - cosmetic only
             pass
         return saved
 
+    def review(self, project_id: int, *, turn_id: int | None, version_no: int | None,
+               workspace: Path, allowed: Sequence[str], sections: Mapping[str, str],
+               numerals: Sequence[Mapping[str, str]],
+               figures: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+        """Run and persist an explicit review requested outside the drafting loop."""
+        report = self.evaluate(
+            project_id, version_no=version_no, workspace=workspace, allowed=allowed,
+            sections=sections, numerals=numerals, figures=figures)
+        return self._publish_review(
+            project_id, turn_id=turn_id, version_no=version_no,
+            workspace=workspace, report=report)
+
 
 class _Heartbeat:
     """Renew the lease while a run that can take fifteen minutes is in flight.
 
     It is also how Stop reaches the model. The lease is the authority: when the user cancels, the
-    turn row stops being `running` and the next renewal is refused — which is exactly the moment
+    turn row stops being `running` and the next renewal is refused - which is exactly the moment
     to kill the subprocess. Without this the button would mark the turn cancelled while the agent
     kept working, kept holding a core, and kept spending.
     """

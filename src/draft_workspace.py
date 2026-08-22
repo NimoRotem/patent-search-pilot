@@ -6,13 +6,13 @@ moment a whole application was handled as a single string:
   * an agent can Edit one section without rewriting the other eight, so a request to "narrow claim
     1" does not silently reword the background;
   * Grep across the tree is how the reviewer answers "is numeral 34 introduced before it is used"
-    and "does every claim term appear in the description" — questions that need the whole document
+    and "does every claim term appear in the description" - questions that need the whole document
     at once but only a few lines of it at a time;
   * a version is a diff of named files, which is what makes the change log readable.
 
 Everything here is REBUILDABLE from Postgres.  The workspace is a cache, not the record: deleting
 it loses nothing, and ``build`` recreates it from the project, its references, its uploaded
-documents and the stored version.  That is deliberate — an agent has write access to this tree, so
+documents and the stored version.  That is deliberate - an agent has write access to this tree, so
 nothing irreplaceable may live in it.
 
 LAYOUT
@@ -62,7 +62,7 @@ MAX_TOTAL_REFERENCE_CHARS = 900_000
 MAX_DOCUMENT_CHARS = 120_000
 
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
-_NUMERAL_ROW_RE = re.compile(r"^\s*\|?\s*(\d{1,4}[a-zA-Z]?)\s*\|\s*([^|]+?)\s*\|?\s*$")
+_NUMERAL_CELL_RE = re.compile(r"^\d{1,4}[a-zA-Z]?$", re.IGNORECASE)
 
 
 def root() -> Path:
@@ -104,7 +104,7 @@ def write_sections(workspace: Path, sections: Mapping[str, str]) -> None:
     draft.mkdir(parents=True, exist_ok=True)
     for key, name, heading in SECTION_FILES:
         body = _clean(sections.get(key), 400_000)
-        _write(draft / name, f"<!-- {heading} — body text only, no heading line. -->\n\n{body}")
+        _write(draft / name, f"<!-- {heading} - body text only, no heading line. -->\n\n{body}")
 
 
 def read_sections(workspace: Path) -> dict[str, str]:
@@ -142,7 +142,7 @@ def _same_heading(found: str, expected: str) -> bool:
 
 
 # ---------------------------------------------------------------------------------------------
-# Reference numerals — the single most-broken thing in a machine-drafted application
+# Reference numerals - the single most-broken thing in a machine-drafted application
 # ---------------------------------------------------------------------------------------------
 def write_numerals(workspace: Path, numerals: Sequence[Mapping[str, Any]]) -> None:
     rows = "\n".join(
@@ -166,10 +166,10 @@ def read_numerals(workspace: Path) -> list[dict[str, str]]:
     for line in raw.splitlines():
         if not line.strip().startswith("|"):
             continue
-        match = _NUMERAL_ROW_RE.match(line)
-        if not match:
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 2 or not _NUMERAL_CELL_RE.fullmatch(cells[0]):
             continue
-        numeral, part = match.group(1).strip(), match.group(2).strip()
+        numeral, part = cells[0], cells[1]
         if not numeral or part.lower() in ("part", "---", "") or set(part) <= {"-", " "}:
             continue
         out.append({"numeral": numeral, "part": part})
@@ -221,7 +221,7 @@ def read_figures(workspace: Path) -> list[dict[str, Any]]:
         if not numerals:
             #  A drawing brief written as prose rather than as a bullet list is the normal case, not
             #  a malformed one: the agent describes the view and names the parts inline. The check
-            #  that matters — "is every numeral on this sheet defined in the table" — needs the
+            #  that matters - "is every numeral on this sheet defined in the table" - needs the
             #  numerals wherever they are, so they are read out of the whole file when no explicit
             #  list was given.
             import draft_qa
@@ -262,7 +262,7 @@ def build(*, project: Mapping[str, Any], references: Sequence[Mapping[str, Any]]
         for _key, name, heading in SECTION_FILES:
             path = workspace / "draft" / name
             if not path.exists():
-                _write(path, f"<!-- {heading} — body text only, no heading line. -->\n")
+                _write(path, f"<!-- {heading} - body text only, no heading line. -->\n")
     if numerals or not (workspace / "draft" / NUMERALS_FILE).exists():
         write_numerals(workspace, numerals)
     #  Written unconditionally, including empty: the workspace mirrors the stored version, so a
@@ -365,7 +365,7 @@ def _write_prior_art(workspace: Path, references: Sequence[Mapping[str, Any]],
         publication = _clean(document.get("publication_number"), 64) or f"UPLOAD-{index:02d}"
         title = _clean(document.get("title") or document.get("filename"), 300)
         body = "\n".join([
-            f"# {publication} — {title}", "",
+            f"# {publication} - {title}", "",
             "> Uploaded by the user. Cite it as `[REF:%s]`. It has NOT been ranked or read by the "
             "search pipeline, so nothing about its relevance is established beyond the user's own "
             "note." % publication, "",
@@ -395,7 +395,7 @@ def _reference_body(reference: Mapping[str, Any], snapshot: Mapping[str, Any],
         "upload": "Uploaded by the user.",
     }.get(origin, origin)
     parts = [
-        f"# {publication} — {_clean(reference.get('title'), 400)}", "",
+        f"# {publication} - {_clean(reference.get('title'), 400)}", "",
         f"- Citation key: `[REF:{publication}]`",
         f"- Provenance: {provenance}",
     ]
@@ -423,7 +423,7 @@ def _write_review(workspace: Path, qa_report: Mapping[str, Any] | None) -> None:
     if not qa_report:
         _write(path, "# Previous review\n\n(no review has run yet)")
         return
-    lines = [f"# Previous review — verdict: {qa_report.get('verdict', 'unknown')}", "",
+    lines = [f"# Previous review - verdict: {qa_report.get('verdict', 'unknown')}", "",
              _clean(qa_report.get("summary"), 8000), ""]
     findings = qa_report.get("findings") or []
     checks = [c for c in (qa_report.get("checks") or []) if c.get("status") != "pass"]
@@ -438,12 +438,12 @@ def _write_review(workspace: Path, qa_report: Mapping[str, Any] | None) -> None:
         for finding in findings:
             lines.append(
                 f"- **[{finding.get('severity', 'minor')}] {_clean(finding.get('title'), 300)}** "
-                f"({_clean(finding.get('where'), 120)}) — {_clean(finding.get('detail'), 3000)}")
+                f"({_clean(finding.get('where'), 120)}) - {_clean(finding.get('detail'), 3000)}")
             if finding.get("fix"):
                 lines.append(f"  - Suggested fix: {_clean(finding.get('fix'), 2000)}")
         lines.append("")
-    lines += ["Fix every one of these that is genuinely wrong. If you believe one is mistaken, say",
-              "so in your summary and explain why rather than silently ignoring it."]
+    lines += ["Fix every listed item before returning. If an advisory is a false positive, make",
+              "the wording or figure specification unambiguous enough that the check passes."]
     _write(path, "\n".join(lines))
 
 
@@ -540,7 +540,7 @@ def seed_sections_from_document(text: str) -> dict[str, str]:
 
     Deliberately conservative.  Anything it cannot place with confidence goes to
     ``detailed_description`` rather than being dropped, and the agent is told in its prompt that
-    this split was mechanical and may be wrong — so a mis-split shows up as something to fix on
+    this split was mechanical and may be wrong - so a mis-split shows up as something to fix on
     turn one instead of as silently lost text.
     """
     body = _clean(text, 400_000)
