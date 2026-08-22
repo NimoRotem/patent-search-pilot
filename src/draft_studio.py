@@ -300,12 +300,13 @@ _DRAWING_INSPECTION_CHECK = "Every drawing sheet passes geometry, leader, and OC
 
 def restore_text_after_drawing_only_review(workspace: Path, snapshot: Mapping[str, Any],
                                            report: Mapping[str, Any]) -> bool:
-    """Keep image-model artifacts from becoming patent text during an automatic repair.
+    """Keep image-model artifacts from changing filing sources during an automatic repair.
 
     A drawing-only review may edit figure briefs, but it has no authority to change the filing
-    text or redefine a numeral. Restore those two sources after the agent returns while leaving
-    every figure-file edit in place. Mixed reviews are not locked because a source-fidelity,
-    claim-support, or other text finding may legitimately require a text repair.
+    text, redefine a numeral, add or remove a sheet, or move a numeral between sheets. Restore
+    those sources after the agent returns while retaining corrected geometry instructions inside
+    each existing figure brief. Mixed reviews are not locked because a source-fidelity,
+    claim-support, or other text finding may legitimately require a broader repair.
     """
     checks = [item for item in (report.get("checks") or [])
               if str(item.get("status") or "") != "pass"]
@@ -318,11 +319,46 @@ def restore_text_after_drawing_only_review(workspace: Path, snapshot: Mapping[st
         return False
     sections = human_text(dict(snapshot.get("sections") or {}))
     numerals = human_text([dict(item) for item in (snapshot.get("numerals") or [])])
-    if (draft_workspace.read_sections(workspace) == sections and
-            draft_workspace.read_numerals(workspace) == numerals):
+    baseline_figures = human_text(
+        [dict(item) for item in (snapshot.get("figures") or [])])
+    current_figures = human_text(draft_workspace.read_figures(workspace))
+    used_current: set[int] = set()
+    locked_figures = []
+    for index, baseline in enumerate(baseline_figures):
+        baseline_number = draft_qa.figure_number(baseline.get("label"))
+        match = next(((item_index, item)
+                      for item_index, item in enumerate(current_figures)
+                      if item_index not in used_current and baseline_number and
+                      draft_qa.figure_number(item.get("label")) == baseline_number), None)
+        if match is None and index < len(current_figures) and index not in used_current:
+            candidate = current_figures[index]
+            if not baseline_number and str(candidate.get("label") or "").strip().lower() == \
+                    str(baseline.get("label") or "").strip().lower():
+                match = (index, candidate)
+        current = match[1] if match else None
+        if match:
+            used_current.add(match[0])
+        locked_figures.append({
+            "label": str(baseline.get("label") or f"FIG. {index + 1}"),
+            "caption": str((current or baseline).get("caption") or ""),
+            "numerals": list(baseline.get("numerals") or []),
+        })
+    comparable_current = [{
+        "label": str(item.get("label") or ""),
+        "caption": str(item.get("caption") or ""),
+        "numerals": list(item.get("numerals") or []),
+    } for item in current_figures]
+    sections_changed = draft_workspace.read_sections(workspace) != sections
+    numerals_changed = draft_workspace.read_numerals(workspace) != numerals
+    figures_changed = comparable_current != locked_figures
+    if not (sections_changed or numerals_changed or figures_changed):
         return False
-    draft_workspace.write_sections(workspace, sections)
-    draft_workspace.write_numerals(workspace, numerals)
+    if sections_changed:
+        draft_workspace.write_sections(workspace, sections)
+    if numerals_changed:
+        draft_workspace.write_numerals(workspace, numerals)
+    if figures_changed:
+        draft_workspace.write_figures(workspace, locked_figures)
     return True
 
 
@@ -1276,8 +1312,8 @@ class TurnRunner:
                         workspace, prior_snapshot, prior_report):
                     changes = list(result.get("changes") or [])
                     changes.append(
-                        "Preserved the filing text and numeral definitions because every "
-                        "reported blocker concerned generated drawings only.")
+                        "Preserved the filing text, numeral definitions, and figure membership "
+                        "because every reported blocker concerned generated drawings only.")
                     result["changes"] = changes
 
             self.repository.heartbeat(turn_id, lease, stage="checking the draft")

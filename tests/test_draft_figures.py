@@ -45,6 +45,10 @@ def accepted_semantic_audit(**values):
             "ok": True, "inspected": True,
             "version": draft_figures.PIXEL_ANCHOR_VERSION,
         },
+        "topology_audit": {
+            "ok": True, "inspected": False, "required": False,
+            "version": draft_figures.CLOSED_REGION_AUDIT_VERSION,
+        },
         "marked_anchor_audit": accepted_marked_anchor_audit(**marked_values),
         **values,
     }
@@ -246,12 +250,17 @@ def test_only_the_current_two_trace_semantic_review_is_accepted():
             "ok": True, "inspected": True,
             "version": draft_figures.PIXEL_ANCHOR_VERSION,
         },
+        "topology_audit": {
+            "ok": True, "inspected": False, "required": False,
+            "version": draft_figures.CLOSED_REGION_AUDIT_VERSION,
+        },
         "marked_anchor_audit": accepted_marked_anchor_audit(),
     }
     assert draft_figures.current_semantic_audit(current) is True
     assert draft_figures.current_semantic_audit({**current, "review_count": 1}) is False
     assert draft_figures.current_semantic_audit({**current, "prompt_version": "old"}) is False
     assert draft_figures.current_semantic_audit({**current, "pixel_anchor_audit": {}}) is False
+    assert draft_figures.current_semantic_audit({**current, "topology_audit": {}}) is False
     assert draft_figures.current_semantic_audit({**current, "marked_anchor_audit": {}}) is False
     assert draft_figures.current_semantic_audit({"ok": True}) is False
 
@@ -289,6 +298,34 @@ def test_pixel_grounding_keeps_enclosed_bodies_and_intentional_empty_spaces():
 
     assert audit["ok"] is True and audit["adjusted"] == []
     assert [(item["x"], item["y"]) for item in anchors] == [(500, 400), (500, 780)]
+
+
+def test_closed_region_audit_enforces_an_explicit_exact_shape_count():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    for box in ((100, 100, 900, 900), (200, 200, 800, 800), (300, 300, 700, 700)):
+        draw.rounded_rectangle(box, radius=80, outline="black", width=8)
+    draw.ellipse((450, 450, 550, 550), outline="black", width=8)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+    specification = (
+        "The sheet contains exactly four shapes. Each shape is a single closed curve. "
+        "No hatching is present.")
+
+    accepted = draft_figures.closed_region_audit(raw.getvalue(), specification)
+    assert accepted["ok"] is True and accepted["observed"] == 4
+
+    draw.rounded_rectangle((380, 380, 620, 620), radius=50, outline="black", width=8)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+    rejected = draft_figures.closed_region_audit(raw.getvalue(), specification)
+    assert rejected["ok"] is False and rejected["observed"] == 5
+    assert "exactly 4" in rejected["errors"][0]
+
+
+def test_closed_region_audit_is_not_required_without_an_exact_closed_shape_clause():
+    audit = draft_figures.closed_region_audit(blank_png(), "A perspective view of a housing.")
+    assert audit["ok"] is True and audit["required"] is False
 
 
 def test_pixel_grounding_snaps_an_enclosed_line_feature_to_its_stroke():

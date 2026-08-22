@@ -40,11 +40,12 @@ MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
 FIGURE_PROMPT_VERSION = "figure-v3-geometry-only"
-SEMANTIC_PROMPT_VERSION = "figure-semantic-v8-consensus-pixel-grounded-marked-endpoints"
+SEMANTIC_PROMPT_VERSION = "figure-semantic-v9-consensus-pixel-grounded-marked-topology"
 LEADER_PROMPT_VERSION = "figure-leader-v3-independent-consensus"
 MARKED_ANCHOR_PROMPT_VERSION = "figure-anchor-v1-marked-crop-consensus"
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v1-exterior-connectivity"
+CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "3")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 3
 MAX_OCR_CLEAN_RETRIES = 2
@@ -995,6 +996,79 @@ def _apply_pixel_grounding(png: bytes, numerals, semantic: dict) -> dict:
     return out
 
 
+def _expected_closed_region_count(caption: str) -> int | None:
+    """Read an explicit exact count only when the brief says the shapes are closed."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    match = re.search(
+        r"\bexactly\s+(\d{1,2}|" + "|".join(_SMALL_NUMBERS[1:]) +
+        r")\s+(?:separate\s+)?(?:closed\s+)?"
+        r"(shapes?|outlines?|curves?|loops?)\b", text)
+    closed_shapes = re.search(
+        r"\b(?:single\s+|continuous\s+|separate\s+)?closed\s+"
+        r"(?:shapes?|outlines?|curves?|loops?)\b", text)
+    if not match or not closed_shapes:
+        return None
+    count_text = match.group(1)
+    value = int(count_text) if count_text.isdigit() else _SMALL_NUMBERS.index(count_text)
+    return value if 1 <= value <= 40 else None
+
+
+def closed_region_audit(png: bytes, caption: str) -> dict:
+    """Count substantial enclosed white regions when the brief gives an exact closed count."""
+    expected = _expected_closed_region_count(caption)
+    base = {
+        "version": CLOSED_REGION_AUDIT_VERSION,
+        "required": expected is not None,
+        "expected": expected,
+        "observed": None,
+        "areas": [],
+        "errors": [],
+    }
+    if expected is None:
+        return {**base, "ok": True, "inspected": False}
+    try:
+        import numpy as np
+        from PIL import Image, ImageOps
+        from scipy import ndimage
+
+        gray = np.asarray(ImageOps.grayscale(Image.open(io.BytesIO(png)).convert("RGB")))
+        white = gray >= 225
+        labels, count = ndimage.label(white, structure=np.ones((3, 3), dtype="uint8"))
+        border_labels = set(np.unique(np.concatenate(
+            (labels[0, :], labels[-1, :], labels[:, 0], labels[:, -1]))))
+        component_areas = np.bincount(labels.ravel())
+        minimum_area = max(64, round(gray.size * 0.00035))
+        areas = sorted((int(component_areas[index]) for index in range(1, count + 1)
+                        if index not in border_labels and
+                        int(component_areas[index]) >= minimum_area), reverse=True)
+    except Exception as exc:
+        return {
+            **base, "ok": False, "inspected": False,
+            "errors": ["Closed-region topology inspection failed: " + str(exc)[:240]],
+        }
+    observed = len(areas)
+    ok = observed == expected
+    errors = [] if ok else [
+        f"Closed-region topology requires exactly {expected} substantial enclosed region(s), "
+        f"but the pixels contain {observed}."]
+    return {
+        **base, "ok": ok, "inspected": True, "observed": observed,
+        "areas": areas[:40], "minimum_area": minimum_area, "errors": errors,
+    }
+
+
+def _apply_topology_audit(png: bytes, caption: str, semantic: dict) -> dict:
+    out = dict(semantic or {})
+    audit = closed_region_audit(png, caption)
+    out["topology_audit"] = audit
+    if not audit.get("ok"):
+        out["ok"] = False
+        errors = list(out.get("errors") or [])
+        errors.extend(str(item) for item in audit.get("errors") or [])
+        out["errors"] = errors
+    return out
+
+
 def _current_semantic_model_audit(value) -> bool:
     """Validate the independent model traces before deterministic pixel grounding."""
     if isinstance(value, str):
@@ -1024,10 +1098,14 @@ def current_semantic_audit(value) -> bool:
     if not isinstance(value, dict) or not _current_semantic_model_audit(value):
         return False
     pixel = value.get("pixel_anchor_audit") or {}
+    topology = value.get("topology_audit") or {}
     marked = value.get("marked_anchor_audit") or {}
     return bool(
         isinstance(pixel, dict) and pixel.get("ok") and pixel.get("inspected") and
         pixel.get("version") == PIXEL_ANCHOR_VERSION and
+        isinstance(topology, dict) and topology.get("ok") and
+        topology.get("version") == CLOSED_REGION_AUDIT_VERSION and
+        (not topology.get("required") or topology.get("inspected")) and
         current_marked_anchor_audit(
             marked, specification_hash=str(value.get("specification_hash") or "")))
 
@@ -2266,6 +2344,7 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
             raw_png, label=label, caption=caption, numerals=numerals)
         if semantic.get("ok"):
             semantic = _apply_pixel_grounding(raw_png, numerals, semantic)
+            semantic = _apply_topology_audit(raw_png, caption, semantic)
             if semantic.get("ok"):
                 break
         problems = list(semantic.get("errors") or [])
@@ -2313,6 +2392,7 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
                 raw_png, label=label, caption=caption, numerals=numerals)
             if semantic.get("ok"):
                 semantic = _apply_pixel_grounding(raw_png, numerals, semantic)
+                semantic = _apply_topology_audit(raw_png, caption, semantic)
             if not semantic.get("ok"):
                 continue
             png, labels, leaders, anchors, pixel_audit = _compose_checked_sheet(
