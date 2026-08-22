@@ -413,9 +413,17 @@ version is ever deployed, `embed_common.py` has to be copied to `$HOME` in the s
 backfill stops on an import error.
 
 `patent-results` must never be restarted: one search can run over an hour, a restart kills it, and
-a second restart leaves the run interrupted and needing a manual re-run. It was restarted twice on
-2026-08-22, at 15:25 and 15:55, by a deliberate `supervisorctl` stop from inside a workstream. The
-rule exists; it was broken.
+a second restart leaves the run interrupted and needing a manual re-run.
+
+**It was restarted five times on 2026-08-22**, at 15:25, 15:55, 16:29, 16:48 and 17:10. Every one
+of them is `waiting for patent-results to stop` in `/var/log/supervisor/supervisord.log`, which is
+a deliberate `supervisorctl` command and not a crash or an autorestart. **None of them is
+attributable.** There is no cron entry, no `cron.d` file, no watchdog script anywhere under
+`/home/nimrod_rotem` that issues it, and by the time this was checked no agent process was left on
+the box to ask. So the rule was broken five times by sessions that have since exited, and whatever
+did it will do it again unless somebody finds it. The next session should treat that as a real
+open item, not as background noise: a live search that dies at minute fifty looks exactly like a
+search that failed.
 
 Never `pkill` on a pattern, this host runs other people's agents. Kill by port:
 `lsof -ti tcp:PORT | xargs kill`.
