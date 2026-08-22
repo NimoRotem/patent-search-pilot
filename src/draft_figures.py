@@ -34,7 +34,7 @@ from pydantic import BaseModel, Field
 
 MAX_FIGURES = 40
 MAX_VERSIONS_PER_FIGURE = 20
-MAX_PROMPT_CHARS = 4000
+MAX_PROMPT_CHARS = 12000
 MAX_PNG_BYTES = 8 * 1024 * 1024
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
@@ -554,26 +554,45 @@ def _geometry_text(value, numerals=()):
 def build_prompt(label, caption, numerals, instruction="", spec_context=""):
     """Assemble the text handed to the image model for one figure."""
     clean_caption = _geometry_text(caption, numerals) or "the disclosed structure"
-    parts = ["Drawing specification: " + clean_caption]
+    caption_block = "Drawing specification: " + clean_caption
     clean_context = _geometry_text(spec_context, numerals)
-    if clean_context:
-        parts.append("Context from the specification: " + clean_context[:1200])
+    context_block = ("Context from the specification: " + clean_context[:1200]
+                     if clean_context else "")
+    required = []
     if numerals:
         entries = numeral_entries(numerals)
         lines = ["the " + clean for entry in entries
                  if (clean := _geometry_text(entry["part"], numerals))]
         if lines:
-            parts.append(
+            required.append(
                 "These disclosed components must be visibly present and distinguishable:\n- " +
                 "\n- ".join(lines))
     else:
-        parts.append("Draw the disclosed structure as geometry only.")
+        required.append("Draw the disclosed structure as geometry only.")
     clean_instruction = _geometry_text(instruction, numerals)
     if clean_instruction:
-        parts.append("CHANGE REQUESTED - apply this to the drawing supplied, keeping everything "
-                     "else the same: " + clean_instruction[:1000])
-    parts.append("Return geometry only, without text or digits.")
-    return "\n\n".join(parts)[:MAX_PROMPT_CHARS]
+        required.append("CHANGE REQUESTED - apply this to the drawing supplied, keeping everything "
+                        "else the same: " + clean_instruction[:1000])
+    required.append("Return geometry only, without text or digits.")
+
+    # The old whole-string slice silently removed the component list and the final no-text rule
+    # whenever an agent supplied a detailed drawing brief. Reserve those mandatory blocks first,
+    # then spend the remaining budget on the figure-specific geometry and optional context.
+    required_text = "\n\n".join(required)
+    prefix_budget = max(0, MAX_PROMPT_CHARS - len(required_text) - 2)
+    if context_block and len(caption_block) + 2 + len(context_block) <= prefix_budget:
+        prefix = caption_block + "\n\n" + context_block
+    else:
+        marker = " ... "
+        if len(caption_block) <= prefix_budget:
+            prefix = caption_block
+        elif prefix_budget <= len(marker):
+            prefix = caption_block[:prefix_budget]
+        else:
+            head = max(1, (prefix_budget - len(marker)) * 2 // 3)
+            tail = prefix_budget - len(marker) - head
+            prefix = caption_block[:head] + marker + (caption_block[-tail:] if tail else "")
+    return ((prefix + "\n\n") if prefix else "") + required_text
 
 
 # ---------------------------------------------------------------------------
@@ -2038,6 +2057,18 @@ def create_figure(project_id, user_id, label, caption="", sort_order=0):
         return dict(cur.fetchone())
 
 
+def update_figure_metadata(figure_id, user_id, label, caption="", sort_order=0) -> bool:
+    """Keep a retained sheet aligned with the current filing specification."""
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute(
+            "UPDATE app_draft_figures SET figure_label=%s,caption=%s,sort_order=%s,"
+            "updated_at=now() WHERE id=%s AND user_id=%s",
+            (str(label)[:80], str(caption)[:400], int(sort_order),
+             int(figure_id), int(user_id)))
+        return bool(cur.rowcount)
+
+
 def add_version(figure_id, *, prompt, instruction, numerals, png, mime="image/png",
                 detected_numerals=(), audit=None, semantic_audit=None, leader_audit=None,
                 base_png=None, source_kind="generated"):
@@ -2476,6 +2507,17 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
         expected = expected_entries(spec, numeral_table)
         expected_hash = specification_hash(label, caption, expected)
         current = by_key.get(figure_key(label))
+        canonical_label = canonical_figure_label(label)
+        stored_caption = caption[:400]
+        if (current and (
+                str(current.get("figure_label") or "") != canonical_label or
+                str(current.get("caption", stored_caption)) != stored_caption or
+                int(current.get("sort_order", index)) != index)):
+            update_figure_metadata(
+                current["id"], user_id, canonical_label, stored_caption, index)
+            current["figure_label"] = canonical_label
+            current["caption"] = stored_caption
+            current["sort_order"] = index
         active = next((item for item in (current or {}).get("versions") or []
                        if int(item.get("version_no") or 0) ==
                        int((current or {}).get("active_version") or 0)), None) or {}

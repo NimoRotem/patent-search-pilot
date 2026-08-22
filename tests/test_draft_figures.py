@@ -496,6 +496,22 @@ def test_geometry_prompt_removes_section_marks_and_spells_geometric_numbers():
     assert "section line" not in prompt.lower()
 
 
+def test_long_geometry_prompt_keeps_components_change_request_and_no_text_rule():
+    caption = "A rigid frame surrounds a central opening with parallel bearing faces. " * 180
+    prompt = draft_figures.build_prompt(
+        "FIG. 1 - perspective view", caption,
+        ["10 = rigid base", "12 = transverse pump", "14 = square fastener"],
+        instruction="Move the square fastener onto the open top face.",
+        spec_context="The rigid base carries the transverse pump.")
+
+    assert len(prompt) <= draft_figures.MAX_PROMPT_CHARS
+    assert "the rigid base" in prompt
+    assert "the transverse pump" in prompt
+    assert "the square fastener" in prompt
+    assert "CHANGE REQUESTED" in prompt
+    assert prompt.endswith("Return geometry only, without text or digits.")
+
+
 def test_render_refuses_to_store_a_semantically_wrong_drawing(monkeypatch):
     monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
     monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
@@ -840,7 +856,7 @@ def test_obsolete_and_duplicate_sheets_are_archived_without_losing_history(monke
               "leader_audit": accepted_leader_audit(specification_hash=digest)}
     monkeypatch.setattr(draft_figures, "listing", lambda *a: [
         {"id": 2, "figure_label": "FIG. 1", "active_version": 1, "versions": [active]},
-        {"id": 3, "figure_label": "FIG. 1: newer", "active_version": 1, "versions": [active]},
+        {"id": 3, "figure_label": "FIG. 1", "active_version": 1, "versions": [active]},
         {"id": 4, "figure_label": "FIG. 9", "active_version": 1, "versions": [active]},
     ])
     archived = []
@@ -854,6 +870,38 @@ def test_obsolete_and_duplicate_sheets_are_archived_without_losing_history(monke
         figure_specs=[spec])
     assert archived == [2, 4]
     assert out["archived"] == 2 and out["reused"] == 1
+
+
+def test_existing_figure_metadata_is_refreshed_from_the_current_spec(monkeypatch):
+    spec = {"label": "FIG. 2 - current sectional view", "caption": "current caption",
+            "numerals": ["10"]}
+    digest = draft_figures.specification_hash(
+        spec["label"], spec["caption"], ["10 = body"])
+    active = {
+        "version_no": 4,
+        "numeral_audit": {"ok": True, "expected": ["10"]},
+        "semantic_audit": accepted_semantic_audit(specification_hash=digest),
+        "leader_audit": accepted_leader_audit(specification_hash=digest),
+    }
+    monkeypatch.setattr(draft_figures, "listing", lambda *a: [{
+        "id": 8, "figure_label": "FIG. 2 - stale label", "caption": "stale caption",
+        "sort_order": 99, "active_version": 4, "versions": [active],
+    }])
+    updates = []
+    monkeypatch.setattr(
+        draft_figures, "update_figure_metadata",
+        lambda *args: updates.append(args), raising=False)
+    monkeypatch.setattr(
+        draft_figures, "render_figure",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("checked sheet should be reused")))
+    monkeypatch.setattr(draft_figures, "archive_figure", lambda *a: True)
+
+    out = draft_figures.ensure_project_figures(
+        7, 91, sections={}, disclosure="body",
+        numeral_table=[{"numeral": "10", "part": "body"}], figure_specs=[spec])
+
+    assert out["ok"] is True and out["reused"] == 1
+    assert updates == [(8, 91, "FIG. 2", "current caption", 1)]
 
 
 def test_a_previous_leader_review_is_never_reused(monkeypatch):
