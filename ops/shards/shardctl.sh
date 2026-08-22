@@ -18,6 +18,7 @@
 #   ./shardctl.sh start|stop <shard>
 #   ./shardctl.sh wake <shard> [timeout]   start and wait for hot, printing the measured time
 #   ./shardctl.sh health <shard>           the agent's JSON
+#   ./shardctl.sh verify-ids <shard>       shard ids ARE the hot corpus ids, or exit 1
 #   ./shardctl.sh ready <shard> [gen]      flip shard_status to ready  (workstream F's seam)
 #   ./shardctl.sh building <shard> [note]  flip it back
 #   ./shardctl.sh egress on|off <shard>    temporary external address, for apt only
@@ -350,8 +351,23 @@ _shard_psql() {
       -d "$PGDB_SHARD" -v ON_ERROR_STOP=1 -tAX "$@"
 }
 
+cmd_verify_ids() {
+  #  A shard's publication ids MUST be the hot corpus's ids. See ops/shards/verify_ids.py for why
+  #  a mismatch is a wrong answer that looks like a right one rather than a failure.
+  local s="$1"; need "$s"; shift
+  PYTHONPATH="$REPO/src" "$PY" "$HERE/verify_ids.py" "$s" "$@"
+}
+
 cmd_ready() {
   local s="$1"; need "$s"; local gen="${2:-manual}"
+  #  THE ID GATE. `ready` is the only thing that can make a shard `hot`, so it is the only place
+  #  that can stop a renumbered shard being queried. A mismatch here is not a slow shard or an
+  #  empty one: it is a hot family silently attributed to a cold document, and nothing downstream
+  #  can see it. SHARD_SKIP_ID_CHECK=1 exists for a shard whose hot corpus is unreachable, and
+  #  using it is a decision somebody has to type.
+  if [ "${SHARD_SKIP_ID_CHECK:-0}" != "1" ]; then
+    cmd_verify_ids "$s" || die "$s failed the publication id check; refusing to mark it ready"
+  fi
   _shard_psql "$s" -c "INSERT INTO shard_status (shard, state, generation, n_chunks, note)
        VALUES ('$s','ready','$gen',(SELECT count(*) FROM chunks),'marked ready by shardctl')
        ON CONFLICT (shard) DO UPDATE SET state='ready', generation=EXCLUDED.generation,
@@ -404,6 +420,7 @@ case "${1:-}" in
   wake)       shift; cmd_wake "$@" ;;
   health)     shift; cmd_health "$@" ;;
   ready)      shift; cmd_ready "$@" ;;
+  verify-ids) shift; cmd_verify_ids "$@" ;;
   building)   shift; cmd_building "$@" ;;
   egress)     shift; cmd_egress "$@" ;;
   reap)       shift; cmd_reap "$@" ;;

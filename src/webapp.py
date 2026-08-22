@@ -179,6 +179,12 @@ def valid_slug(slug):
 # unnecessary , see rerank_pool.py for the full rationale and the RSS measurements.
 rerank_pool.install()
 
+# The cold domain shards, behind shard_manager and shard_router. OFF unless SHARD_BACKEND_ENABLED
+# is set: with no corpus on a shard the cold tier can only ever pay for a routing query and some
+# VM time and return nothing. See shard_backend.install_if_enabled for the whole argument.
+from retrieval import shard_backend as _shard_backend   # noqa: E402
+_shard_backend.install_if_enabled()
+
 
 class _PrefixMiddleware:
     """Serve the app under an optional URL prefix supplied by a reverse proxy via the

@@ -76,6 +76,13 @@ def execute(run, worker, heartbeat):
     ctx = runctx.RunContext(run["run_id"], slug, attempt=run.get("attempts") or 1,
                             worker=worker, heartbeat=heartbeat)
     runctx.bind(slug, ctx)
+    #  Every shard this run wakes takes its lease in this run's name. Without it `_lease` has no
+    #  run to attribute to, `shard_leases` stays empty, and the idle reaper falls back to the
+    #  instance's own start time, which keeps a shard up for the full idle window after a search
+    #  that finished in twenty seconds. The heartbeat thread already refreshes shard leases
+    #  (`runstore.Heartbeat._loop`) and the `finally` below already releases them.
+    from retrieval import shard_backend
+    shard_backend.bind_run(run["run_id"])
     try:
         resume_stage, done = runstore.resume_point(run["run_id"])
         if done:
@@ -95,6 +102,7 @@ def execute(run, worker, heartbeat):
             raise RuntimeError("the pipeline finished without writing a report")
     finally:
         runctx.unbind(slug)
+        shard_backend.bind_run(None)
         runstore.release_shards(run["run_id"])
 
 

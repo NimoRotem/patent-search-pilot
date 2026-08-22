@@ -82,7 +82,55 @@ def test_the_real_shard_table_routes_every_domain_somewhere():
     assert len(real) == 8, "the architecture is eight shards"
     for domain in ("B66C", "B25J", "B65G", "B23Q", "F16B", "G06F", "A61B", "unclassified", "ZZZZ"):
         assert shard_backend.shard_of(domain, real) is not None, domain
-    assert shard_backend.shard_of("unclassified", real).shard == "08-unclassified"
+    unclassified = shard_backend.shard_of(shard_router.UNCLASSIFIED, real)
+    assert unclassified is not None and unclassified.shard == "domain_08"
+
+
+def test_the_unclassified_shard_answers_to_both_of_its_names():
+    """`shard_router.domain_of` returns "unclassified" where `corpus_niche.subclass_of` returns "".
+    They are the SAME 1,024,320 publications, 20.6% of the corpus. A shard reachable under only
+    one of the two names makes that share quietly unreachable, and `hot_domains` would never
+    match it because it compares the router's spelling against the manager's."""
+    real = shard_backend.load_table()
+    by_router = shard_backend.shard_of(shard_router.UNCLASSIFIED, real)
+    by_niche = shard_backend.shard_of("", real)
+    assert by_router is not None and by_niche is not None
+    assert by_router.shard == by_niche.shard == "domain_08"
+    #  And the catch-all covers a symbol the partition has never seen, which is the same problem.
+    assert shard_backend.shard_of("ZZ99", real).shard == "domain_08"
+
+
+def test_the_shard_table_is_workstream_o_s_partition_and_not_a_second_one():
+    """There must not be two eight way partitions of the CPC subclasses. A subclass loaded onto
+    one shard and routed to another is a shard that wakes, is queried and answers nothing, which
+    downstream is indistinguishable from a genuine miss."""
+    real = shard_backend.load_table()
+    seen = {}
+    for s in real:
+        for p in s.prefixes:
+            if p == "*":
+                continue
+            assert p not in seen, f"{p} is on both {seen.get(p)} and {s.shard}"
+            seen[p] = s.shard
+    #  602 entries in workstream O's plan: 601 CPC subclasses plus the `unclassified` route,
+    #  which route() always emits and which the plan assigns like any other domain.
+    assert len(seen) == 602, f"the partition covers {len(seen)} domains, not 602"
+    assert seen.get("UNCLASSIFIED") == "domain_08"
+
+
+def test_every_shard_is_in_a_zone_and_no_zone_holds_the_whole_fleet():
+    """MEASURED 2026-08-22: a c4-highmem-16 `start` in us-central1-b fails with
+    ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS, and a TERMINATED VM holds no capacity reservation,
+    so this is the cold tier's steady state failure mode and not a build time one. Eight shards in
+    one zone means one stockout takes the whole cold tier out at once."""
+    real = shard_backend.load_table()
+    zones = {}
+    for s in real:
+        assert s.zone, f"{s.shard} has no zone"
+        zones.setdefault(s.zone, []).append(s.shard)
+    assert len(zones) >= 3, f"the fleet is concentrated in {sorted(zones)}"
+    assert max(len(v) for v in zones.values()) <= len(real) // 2, \
+        f"one zone holds too much of the fleet: {zones}"
 
 
 def test_a_longer_prefix_wins_and_a_shard_id_routes_to_itself():
@@ -139,21 +187,104 @@ def test_a_ready_shard_is_hot_and_hands_back_a_connection(monkeypatch):
     assert b.state("B65G") == "hot"
 
     made = []
-
-    class Conn:
-        closed = False
-
-        def close(self):
-            self.closed = True
-
-    import psycopg
-    monkeypatch.setattr(psycopg, "connect", lambda *a, **k: made.append(k) or Conn())
+    monkeypatch.setattr("psycopg.connect", lambda *a, **k: made.append(k) or RecordingConn())
     conn = b.connection("B65G")
     assert conn is not None
     assert made and "default_transaction_read_only=on" in made[0].get("options", ""), \
         "a retrieval connection to a shard must be read only, like the corpus path"
     b.release("B65G", conn)
     assert b.connection("B65G") is conn, "release must return the connection to the pool"
+
+
+# ------------------------------------------------------------------ the session reset on release
+class RecordingCursor:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, params=None):
+        if self.conn.execute_error:
+            raise RuntimeError(self.conn.execute_error)
+        self.conn.executed.append(sql)
+
+    def close(self):
+        return None
+
+
+class RecordingConn:
+    """A connection that remembers every statement, so the reset is checkable rather than assumed."""
+
+    def __init__(self, execute_error=""):
+        self.closed = False
+        self.executed = []
+        self.rollbacks = 0
+        self.execute_error = execute_error
+
+    def cursor(self):
+        return RecordingCursor(self)
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closed = True
+
+
+def test_release_resets_the_session_before_the_connection_is_pooled(monkeypatch):
+    """REQUIRED BY docs/shard_and_global_seams.md. `cold.bind` applies the ANN scan profile
+    (hnsw.ef_search and friends) to whatever connection it is handed, exactly as the hot path does
+    to its own. A pool that hands a connection back without resetting it gives the NEXT caller the
+    previous caller's scan width: a narrow element pass that follows a wide seed pass would run at
+    seed width, silently, at a different recall. Nothing fails; the answer is just different."""
+    inst = {"vm-transport": {"status": "RUNNING", "ip": "10.0.0.1"}}
+    b = backend(inst, probe=lambda *a, **k: health(), dsn_for=lambda s: "host=x")
+    monkeypatch.setattr("psycopg.connect", lambda *a, **k: RecordingConn())
+
+    conn = b.connection("B65G")
+    conn.executed.append("SET hnsw.ef_search = 900")          # what cold.bind does
+    b.release("B65G", conn)
+
+    assert "RESET ALL" in conn.executed, "release pooled a connection without resetting it"
+    assert conn.rollbacks == 1, "a connection in a failed transaction refuses RESET; roll back first"
+    assert not conn.closed
+    assert b.connection("B65G") is conn
+
+
+def test_release_does_not_deallocate_prepared_statements(monkeypatch):
+    """RESET ALL and NOT `DISCARD ALL`. DISCARD ALL implies DEALLOCATE ALL, which throws away the
+    server side prepared statements psycopg is still tracking client side, and the next query on
+    that connection fails with `prepared statement "_pg3_N" does not exist`."""
+    inst = {"vm-transport": {"status": "RUNNING", "ip": "10.0.0.1"}}
+    b = backend(inst, probe=lambda *a, **k: health(), dsn_for=lambda s: "host=x")
+    monkeypatch.setattr("psycopg.connect", lambda *a, **k: RecordingConn())
+    conn = b.connection("B65G")
+    b.release("B65G", conn)
+    joined = " ".join(conn.executed).upper()
+    assert "DISCARD" not in joined and "DEALLOCATE" not in joined
+
+
+def test_a_connection_that_will_not_reset_is_closed_and_never_pooled(monkeypatch):
+    """Defect injection: if the reset itself fails we do not know what is set on that session, so
+    reusing it would leak exactly the state the reset exists to remove."""
+    inst = {"vm-transport": {"status": "RUNNING", "ip": "10.0.0.1"}}
+    b = backend(inst, probe=lambda *a, **k: health(), dsn_for=lambda s: "host=x")
+    conns = []
+
+    def connect(*a, **k):
+        c = RecordingConn(execute_error="server closed the connection unexpectedly")
+        conns.append(c)
+        return c
+
+    monkeypatch.setattr("psycopg.connect", connect)
+    conn = b.connection("B65G")
+    b.release("B65G", conn)
+    assert conn.closed, "a connection that would not reset was put back in the pool"
+    assert b.connection("B65G") is not conn
 
 
 def test_ensure_gives_up_at_the_timeout_and_reports_waking():
@@ -417,3 +548,160 @@ def test_a_missing_tantivy_never_blocks_the_dense_channel(monkeypatch):
     snap = agent.snapshot()
     assert snap["state"] == "hot"
     assert snap["tantivy"]["available"] is False
+
+
+# =========================================================================== the real backend
+# driving the real cold tier, against `retrieval.testing`'s synthetic shard. The point of that
+# fixture living in `src/` is that the double and the real implementation are asserted by the same
+# harness; these are those assertions, with the GCE calls and the psycopg connect faked and
+# EVERYTHING ELSE the production code path.
+def _cold_double(**attrs):
+    """A Retriever with no database behind it, as tests/test_retrieval_cold.py builds one."""
+    from retrieval import Retriever
+    r = object.__new__(Retriever)
+    r._fam = {}
+    r._wide = False
+    r.scan_profile = lambda wide=False: None
+    r.channel_citation_family = lambda *a, **k: []
+    r.channel_qbe = lambda *a, **k: []
+    for k, v in attrs.items():
+        setattr(r, k, v)
+    return r
+
+
+@pytest.fixture
+def real_backend_over_synthetic_shards(monkeypatch):
+    """`shard_backend.ShardBackend` registered on both seams, with a fake GCE underneath and
+    `retrieval.testing`'s synthetic shard as the thing on the other end of the connection."""
+    from retrieval import cold, testing
+
+    domains = ("B25J", "B65G")                          # domain_03 and domain_02 in the real table
+    shards = {d: testing.shard(d, docs=[(100 + i, f"FAM-{d}-{i}") for i in range(3)])
+              for d in domains}
+    real = shard_backend.load_table()
+    instances = {}
+    for d in domains:
+        sh = shard_backend.shard_of(d, real)
+        instances[sh.vm] = {"status": "TERMINATED", "ip": f"10.9.0.{len(instances) + 1}"}
+
+    b = shard_backend.ShardBackend(table=real, gce=FakeGce(instances),
+                                   probe=lambda ip, port=0, timeout=0: health(),
+                                   dsn_for=lambda s: f"host={s.vm}")
+
+    def connect(dsn, **kw):
+        for d in domains:
+            if shard_backend.shard_of(d, real).vm in str(dsn):
+                return testing.FakeConnection(shards[d])
+        raise AssertionError(f"unexpected dsn {dsn!r}")
+
+    monkeypatch.setattr("psycopg.connect", connect)
+    monkeypatch.setattr(cold, "route_connection",
+                        lambda: testing.routing_connection(
+                            prior={"B25J": 900, "B65G": 600, shard_router.UNCLASSIFIED: 100}))
+    shard_router.reset_prior()
+    shard_backend.install(b)
+    try:
+        yield b, shards
+    finally:
+        shard_router.reset_prior()
+        testing.reset()
+
+
+def test_the_real_backend_wakes_routes_and_serves_the_cold_tier(real_backend_over_synthetic_shards):
+    """End to end through the production seams: route -> wake -> ensure -> connection -> the same
+    channel SQL -> release. Every hop is the real `ShardBackend`; only GCE and psycopg are faked."""
+    from retrieval import cold
+    b, shards = real_backend_over_synthetic_shards
+
+    assert shard_manager.available(), "install() did not register the manager seam"
+    assert shard_router.available(), "install() did not register the router seam"
+
+    r = _cold_double(channel_dense=lambda *a, **k: [("hot1", 3.0), ("hot2", 2.0)])
+    res = r.search("a vacuum gripper", config=["dense", "cold"], db_concurrency=2)
+
+    cold_channels = [name for name in res.channel_hits if cold.is_cold(name)]
+    assert cold_channels, f"no cold channel ran; tiers={res.tiers}"
+    #  `opened`/`released` are the SyntheticShardManager's counters; the real backend is the
+    #  manager here, so what proves a shard was served is that its SQL log has a channel query in
+    #  it, and that the ids that came back are the shard's own.
+    served = {d: sh for d, sh in shards.items() if sh.sql_log}
+    assert served, "no synthetic shard was ever connected to"
+    kinds = {kind for sh in served.values() for kind, _s, _p in sh.sql_log}
+    assert kinds - {"set", "unknown", "families"}, \
+        f"a shard was connected to but no channel query ran on it: {kinds}"
+    cold_ids = {pid for name in cold_channels for pid in res.channel_hits[name]}
+    assert cold_ids & {d.publication_id for sh in served.values() for d in sh.docs}, \
+        "the cold channel returned nothing the shards actually hold"
+    assert b._pool, "release did not pool a single connection"
+
+
+def test_the_real_release_resets_the_session_on_the_path_cold_actually_uses(
+        real_backend_over_synthetic_shards):
+    """Not the unit test of `_reset_session` but the wiring: the connection `cold._query_domain`
+    hands back through `shard_manager.release` must carry a RESET before it is pooled, because
+    `cold.bind` set the ANN scan profile on it."""
+    b, shards = real_backend_over_synthetic_shards
+    r = _cold_double(channel_dense=lambda *a, **k: [("hot1", 3.0)])
+    r.search("a vacuum gripper", config=["dense", "cold"], db_concurrency=2)
+
+    used = [sh for sh in shards.values() if sh.sql_log]
+    assert used, "no shard was queried"
+    for sh in used:
+        statements = [s for _kind, s, _p in sh.sql_log]
+        assert any(s.startswith("SET hnsw.ef_search") for s in statements), \
+            "cold.bind no longer applies the scan profile; this test is asserting nothing"
+        assert "RESET ALL" in statements, \
+            f"{sh.domain} was pooled without resetting the scan profile: {statements[-3:]}"
+
+
+def test_uninstall_puts_both_seams_back_to_inert(real_backend_over_synthetic_shards):
+    shard_backend.uninstall()
+    assert not shard_manager.available()
+    assert not shard_router.available()
+    assert shard_manager.connection("B25J") is None
+    assert shard_manager.ensure(["B25J"], timeout=0.1) == {"B25J": "unknown"}
+
+
+# =========================================================================== registration
+def test_the_backend_is_not_registered_unless_the_environment_says_so(monkeypatch):
+    """The default is OFF and it is a corpus decision, not a code one. A registered backend makes
+    `cold.available()` True, which costs a routing query and VM time on every search; until a
+    release is loaded every shard answers `building`, so the cold tier can only pay and return
+    nothing."""
+    monkeypatch.delenv("SHARD_BACKEND_ENABLED", raising=False)
+    assert shard_backend.enabled() is False
+    assert shard_backend.install_if_enabled() is None
+    assert not shard_manager.available()
+
+
+def test_the_environment_switch_registers_both_seams(monkeypatch):
+    monkeypatch.setenv("SHARD_BACKEND_ENABLED", "1")
+    assert shard_backend.enabled() is True
+    b = shard_backend.install_if_enabled(table=table(), gce=FakeGce({}),
+                                         probe=lambda *a, **k: None)
+    assert b is not None
+    assert shard_manager.available() and shard_router.available()
+
+
+def test_a_backend_that_cannot_be_built_does_not_stop_the_app(monkeypatch):
+    """Defect injection: constructing the backend raises. The seams must keep their inert
+    defaults rather than the import failing and taking the hot search path with it."""
+    monkeypatch.setenv("SHARD_BACKEND_ENABLED", "1")
+    monkeypatch.setattr(shard_backend, "ShardBackend",
+                        lambda **kw: (_ for _ in ()).throw(RuntimeError("no shard table")))
+    assert shard_backend.install_if_enabled() is None
+    assert not shard_manager.available()
+
+
+def test_the_worker_binds_the_run_so_a_lease_has_an_owner():
+    """`bind_run` had zero callers, so every wake took no lease and the reaper fell back to the
+    instance's own start time: a shard stayed up for the whole idle window after a search that
+    finished in twenty seconds."""
+    import inspect
+
+    from runner import worker
+    src = inspect.getsource(worker.execute)
+    assert "shard_backend.bind_run(run[\"run_id\"])" in src, \
+        "the worker no longer attributes shard leases to the run it is executing"
+    assert "shard_backend.bind_run(None)" in src, \
+        "the worker no longer clears the bound run when the search finishes"

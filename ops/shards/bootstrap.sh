@@ -5,7 +5,9 @@
 # What it puts on the box:
 #   PostgreSQL 17 + pgvector + pg_prewarm, tuned for c4-highmem-16 and a read-mostly vector shard
 #   the shard agent   (:8639)  the honest cold / waking / hot answer
-#   Tantivy           (:8635)  workstream C owns the index; this owns that a process is there
+#   Tantivy           (:8635)  the real extension module, unpacked from the wheel in the payload;
+#                              workstream C owns the schema and what is indexed, this owns that
+#                              Tantivy is installed, listening and telling the truth about itself
 #   the prewarm unit             so the first query after a start does not pay for the whole index
 #
 # Deliberately NOT here: the schema and the data. `shardctl.sh schema` applies the repo's own
@@ -173,13 +175,40 @@ SHARD_TANTIVY_PORT=$SHARD_TANTIVY_PORT
 SHARD_PREWARM_STATE=/run/patents-shard/prewarm.json
 SHARD_PREWARM_BLOCKING_MB=${SHARD_PREWARM_BLOCKING_MB:-6144}
 SHARD_TANTIVY_INDEX=/opt/patents-shard/tantivy/index
+SHARD_TANTIVY_LIB=/opt/patents-shard/lib
 ENV
 
-install -d -m 0755 /opt/patents-shard/bin /opt/patents-shard/tantivy
-install -m 0755 "$PAYLOAD/shard_agent.py"   /opt/patents-shard/bin/shard_agent.py
-install -m 0755 "$PAYLOAD/prewarm.py"       /opt/patents-shard/bin/prewarm.py
-install -m 0755 "$PAYLOAD/tantivy_serve.sh" /opt/patents-shard/bin/tantivy_serve.sh
-install -m 0755 "$PAYLOAD/tantivy_stub.py"  /opt/patents-shard/bin/tantivy_stub.py
+install -d -m 0755 /opt/patents-shard/bin /opt/patents-shard/tantivy /opt/patents-shard/lib
+install -m 0755 "$PAYLOAD/shard_agent.py"     /opt/patents-shard/bin/shard_agent.py
+install -m 0755 "$PAYLOAD/prewarm.py"         /opt/patents-shard/bin/prewarm.py
+install -m 0755 "$PAYLOAD/tantivy_serve.sh"   /opt/patents-shard/bin/tantivy_serve.sh
+install -m 0755 "$PAYLOAD/tantivy_server.py"  /opt/patents-shard/bin/tantivy_server.py
+
+# ------------------------------------------------------------------ 4b. the Tantivy extension
+#  Unpacked from the wheel with python3's own zipfile rather than installed with pip, on purpose.
+#  A shard has NO route to PyPI: it is private IP only and the external address it borrows for apt
+#  is taken off again at the end of bootstrap. A wheel is a zip, python3 is on the image, and
+#  unpacking it into a directory on PYTHONPATH needs neither pip nor apt nor a network, so this
+#  step is re-runnable on a shard with no egress at all. The wheel is shipped in the payload by
+#  shardctl.sh, which fetches it once on the controller and caches it.
+WHEEL="$(ls "$PAYLOAD"/tantivy-*.whl 2>/dev/null | head -1 || true)"
+if [ -n "$WHEEL" ]; then
+  log "unpacking $(basename "$WHEEL") into /opt/patents-shard/lib"
+  rm -rf /opt/patents-shard/lib/tantivy /opt/patents-shard/lib/tantivy-*.dist-info
+  python3 -m zipfile -e "$WHEEL" /opt/patents-shard/lib
+  chmod -R a+rX /opt/patents-shard/lib
+  if PYTHONPATH=/opt/patents-shard/lib python3 -c "import tantivy" 2>/dev/null; then
+    log "tantivy imports on this shard"
+  else
+    #  A wheel that will not import is NOT a bootstrap failure. tantivy_server.py reports
+    #  `state: missing, available: false`, the lexical channel falls back to Postgres, and that
+    #  is the existing fail soft contract. A shard that refused to finish bootstrapping over it
+    #  would take the dense channel down with it, which is the far bigger loss.
+    log "WARNING: the tantivy wheel will not import here; the server will report it as missing"
+  fi
+else
+  log "no tantivy wheel in the payload; the lexical server will report state=missing"
+fi
 install -m 0644 "$PAYLOAD/systemd/patents-shard-agent.service"   /etc/systemd/system/
 install -m 0644 "$PAYLOAD/systemd/patents-shard-prewarm.service" /etc/systemd/system/
 install -m 0644 "$PAYLOAD/systemd/patents-shard-tantivy.service" /etc/systemd/system/

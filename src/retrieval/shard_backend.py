@@ -66,6 +66,18 @@ HEALTH_TIMEOUT = float(os.environ.get("SHARD_HEALTH_TIMEOUT", "2.0"))
 INSTANCE_CACHE_SECONDS = float(os.environ.get("SHARD_INSTANCE_CACHE_SECONDS", "3.0"))
 POLL_SECONDS = float(os.environ.get("SHARD_POLL_SECONDS", "1.0"))
 MAX_POOLED = int(os.environ.get("SHARD_MAX_POOLED_CONNECTIONS", "4"))
+#  How many times a `start` that failed on ZONE CAPACITY is reissued, and how long to wait between
+#  attempts. MEASURED 2026-08-22: `instances.start` on a TERMINATED c4-highmem-16 in us-central1-b
+#  fails with ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS and the same call succeeds minutes later.
+#  A stopped VM holds no capacity reservation, so this is a permanent property of the cold tier and
+#  not a one-off. The retry runs OFF the wake path: `ensure` never waits for it.
+START_RETRIES = int(os.environ.get("SHARD_START_RETRIES", "5"))
+START_RETRY_SECONDS = float(os.environ.get("SHARD_START_RETRY_SECONDS", "20"))
+START_OP_TIMEOUT = float(os.environ.get("SHARD_START_OP_TIMEOUT", "60"))
+#  Capacity errors, and only capacity errors, are worth reissuing. A permission or quota error will
+#  never clear by asking again.
+_CAPACITY_CODES = ("ZONE_RESOURCE_POOL_EXHAUSTED", "RESOURCE_POOL_EXHAUSTED",
+                   "QUOTA_EXCEEDED_ZONE_RESOURCE", "RESOURCE_AVAILABILITY")
 
 _COLD_STATUSES = {"TERMINATED", "STOPPED", "STOPPING", "SUSPENDED", "SUSPENDING"}
 _UP_STATUSES = {"PROVISIONING", "STAGING", "RUNNING"}
@@ -229,6 +241,40 @@ class GceClient:
     def stop(self, vm, zone):
         return self._act(vm, zone, "stop")
 
+    def operation(self, name, zone):
+        """One zone operation by name. -> the operation body."""
+        url = f"{self.BASE}/projects/{self.project()}/zones/{zone}/operations/{name}"
+        return self._call("GET", url)
+
+    def wait_operation(self, op, zone, timeout=30.0, interval=0.5):
+        """Poll a zone operation to DONE. -> (ok, error_code, message).
+
+        MEASURED 2026-08-22: a `start` POST returns `status: RUNNING` with no error even when the
+        zone has no capacity, and the operation reaches DONE about six seconds later carrying
+        `error.errors[0].code = ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS`. So a start that will
+        fail is knowable well inside the 20 s wake budget, but only by asking.
+        """
+        name = (op or {}).get("name")
+        if not name:
+            return True, "", ""
+        deadline = time.time() + float(timeout)
+        body = op
+        while True:
+            if (body or {}).get("status") == "DONE":
+                break
+            if time.time() >= deadline:
+                return False, "TIMEOUT", f"operation {name} still {(body or {}).get('status')}"
+            time.sleep(interval)
+            try:
+                body = self.operation(name, zone)
+            except Exception as e:                                       # noqa: BLE001
+                return False, "UNREACHABLE", str(e)[:200]
+        err = (body or {}).get("error") or {}
+        errors = err.get("errors") or []
+        if not errors:
+            return True, "", ""
+        return False, str(errors[0].get("code") or "ERROR"), str(errors[0].get("message") or "")[:300]
+
 
 def probe_agent(ip, port=AGENT_PORT, timeout=HEALTH_TIMEOUT):
     """The shard's own health payload, or None when it is not answering."""
@@ -286,6 +332,7 @@ class ShardBackend(shard_manager.ShardManagerBackend, shard_router.ShardRouterBa
         self._pool = {}
         self._pool_lock = threading.Lock()
         self._starting = {}
+        self._start_errors = {}
         self._start_lock = threading.Lock()
 
     # -- identity -----------------------------------------------------------------------------
@@ -408,10 +455,26 @@ class ShardBackend(shard_manager.ShardManagerBackend, shard_router.ShardRouterBa
                                options="-c default_transaction_read_only=on")
 
     def release(self, domain, conn):
+        """Give a connection back. RESETS THE SESSION FIRST, and closes it if that fails.
+
+        `cold.bind` applies the ANN scan profile to whatever connection it is handed
+        (`hnsw.ef_search`, `hnsw.iterative_scan`, `hnsw.max_scan_tuples`), exactly as the hot path
+        does to its own, because a dense channel at the shard's defaults is a different query. A
+        pool that hands a connection back without resetting it therefore hands the NEXT caller the
+        previous caller's scan width: a narrow element pass that ran after a wide seed pass would
+        silently run at seed width, which is slower and a different recall, and nothing would fail.
+        `docs/shard_and_global_seams.md` requires the reset; this is it.
+        """
         if conn is None:
             return
         shard = self.shard_for(domain)
         if shard is None or getattr(conn, "closed", True):
+            self._close(conn)
+            return
+        if not self._reset_session(conn):
+            #  A connection we could not clean is not safe to reuse: we do not know what is set on
+            #  it. Closing costs one reconnect, which is cheaper than a wrong scan profile that
+            #  never announces itself.
             self._close(conn)
             return
         with self._pool_lock:
@@ -420,6 +483,31 @@ class ShardBackend(shard_manager.ShardManagerBackend, shard_router.ShardRouterBa
                 pool.append(conn)
                 return
         self._close(conn)
+
+    @staticmethod
+    def _reset_session(conn):
+        """Undo every `SET` this connection has seen. -> False when the connection is unusable.
+
+        RESET ALL and NOT `DISCARD ALL`. `DISCARD ALL` implies `DEALLOCATE ALL`, which throws away
+        the server side prepared statements psycopg is still tracking client side, and the next
+        query on that connection fails with `prepared statement "_pg3_N" does not exist`. RESET ALL
+        returns every run-time parameter to its session default, which for a connection opened with
+        `options=-c default_transaction_read_only=on` is still `on`: a startup packet value IS the
+        session default, so the read only guard survives the reset. There is a test for exactly
+        that, because getting it wrong makes a cold shard writable and nothing would say so.
+        """
+        #  A connection left in a failed transaction refuses everything, RESET included, so the
+        #  rollback comes first. On an autocommit connection with nothing open it is a no-op.
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        try:
+            with conn.cursor() as cur:
+                cur.execute("RESET ALL")
+            return True
+        except Exception:
+            return False
 
     @staticmethod
     def _close(conn):
@@ -455,23 +543,78 @@ class ShardBackend(shard_manager.ShardManagerBackend, shard_router.ShardRouterBa
         leases = self._lease(s for s in want.values() if s.shard not in absent)
         return {"woken": woken, "already": already, "absent": absent,
                 "state": "ok", "routes": domains, "unrouted": unknown,
-                "leases": leases, "run_id": self.run_id()}
+                "leases": leases, "run_id": self.run_id(),
+                "errors": {k: v for k, v in self.start_errors().items() if k in want}}
 
     # -- lifecycle ----------------------------------------------------------------------------
     def _start(self, shard):
-        """Start once. Two channels routing to the same shard in the same second must not send
-        two start calls, and GCE answers the second one with a 400 rather than a shrug."""
+        """Start once, and watch the operation off the wake path.
+
+        Two channels routing to the same shard in the same second must not send two start calls,
+        and GCE answers the second one with a 400 rather than a shrug, so the issue is deduped.
+
+        THE WATCHER IS WHY THIS IS NOT ONE LINE. A `start` POST returns success and the operation
+        fails six seconds later with a zone capacity error, leaving the instance TERMINATED. The
+        search must not wait for that: `ensure` polls state, sees TERMINATED, reports `cold` and
+        moves on, which is the fail-soft contract. But somebody has to reissue the start, or the
+        shard stays down until the next query happens to ask for it. A daemon thread does the
+        reissue and records the last error, which `wake()` returns so a run can say WHY a domain
+        contributed nothing.
+        """
         with self._start_lock:
             last = self._starting.get(shard.shard, 0.0)
             if time.time() - last < 30.0:
                 return False
             self._starting[shard.shard] = time.time()
         try:
-            self.gce.start(shard.vm, shard.zone)
-            return True
-        except Exception:
+            op = self.gce.start(shard.vm, shard.zone)
+        except Exception as e:                                            # noqa: BLE001
             traceback.print_exc()
+            self._record_start_error(shard, "CALL_FAILED", str(e)[:200])
             return False
+        t = threading.Thread(target=self._watch_start, args=(shard, op), daemon=True)
+        t.start()
+        return True
+
+    def _record_start_error(self, shard, code, message):
+        with self._start_lock:
+            if code:
+                self._start_errors[shard.shard] = {"code": code, "message": message,
+                                                   "at": time.time()}
+            else:
+                self._start_errors.pop(shard.shard, None)
+
+    def _watch_start(self, shard, op):
+        """Follow a start operation and reissue it while the zone has no capacity."""
+        for attempt in range(1, START_RETRIES + 1):
+            try:
+                ok, code, message = self.gce.wait_operation(op, shard.zone,
+                                                            timeout=START_OP_TIMEOUT)
+            except Exception as e:                                        # noqa: BLE001
+                ok, code, message = False, "UNREACHABLE", str(e)[:200]
+            if ok:
+                self._record_start_error(shard, "", "")
+                return True
+            self._record_start_error(shard, code, message)
+            if not any(c in code for c in _CAPACITY_CODES) or attempt >= START_RETRIES:
+                return False
+            time.sleep(START_RETRY_SECONDS)
+            self.gce._cache.pop((shard.vm, shard.zone), None)
+            info = self.gce.instance(shard.vm, shard.zone, max_age=0.0) or {}
+            if (info.get("status") or "").upper() in _UP_STATUSES:
+                self._record_start_error(shard, "", "")
+                return True                       # somebody else got it up
+            try:
+                op = self.gce.start(shard.vm, shard.zone)
+            except Exception as e:                                        # noqa: BLE001
+                self._record_start_error(shard, "CALL_FAILED", str(e)[:200])
+                return False
+        return False
+
+    def start_errors(self):
+        """The last start failure per shard, or {} when every start has stuck."""
+        with self._start_lock:
+            return {k: dict(v) for k, v in self._start_errors.items()}
 
     def stop(self, shard):
         try:
@@ -677,6 +820,38 @@ def install(backend=None, **kw):
     shard_manager.register_backend(_INSTALLED)
     shard_router.register_backend(_INSTALLED)
     return _INSTALLED
+
+
+def enabled():
+    return str(os.environ.get("SHARD_BACKEND_ENABLED", "")).strip().lower() \
+        in ("1", "true", "yes", "on")
+
+
+def install_if_enabled(**kw):
+    """Install only when `SHARD_BACKEND_ENABLED` says so. -> the backend, or None.
+
+    THE DEFAULT IS OFF, AND IT IS A CORPUS DECISION, NOT A CODE ONE. Registering a backend is what
+    makes `cold.available()` True, and that has two costs a search pays whether or not a shard
+    holds anything: `shard_router.route` reads the corpus-wide prior, and `wake` starts VMs at
+    $1.04 an hour each. Until workstream O has loaded a release onto a shard, every one of them
+    answers `shard_status.state = 'building'`, so `ensure` reports `waking`, `hot_domains` returns
+    nothing and the cold tier contributes nothing: the search would pay the routing query and the
+    VM time for a guaranteed empty answer. Flipping this on is therefore the same decision as
+    "there is a corpus on the shards", and it belongs in the environment of whoever took it.
+
+    Called at import from `webapp.py`, which is the one place a search is served from, so there is
+    exactly one registration point and no module registers itself as a side effect of being
+    imported.
+    """
+    if not enabled():
+        return None
+    try:
+        return install(**kw)
+    except Exception:
+        #  A backend that cannot be built must not stop the app serving hot searches. The seams
+        #  keep their inert defaults, which is the fail-soft contract.
+        traceback.print_exc()
+        return None
 
 
 def uninstall():

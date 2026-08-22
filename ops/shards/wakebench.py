@@ -48,8 +48,19 @@ def one_cycle(backend, shard, limit=600.0):
 
     marks = {}
     t0 = time.time()
-    backend.gce.start(shard.vm, shard.zone)
+    op = backend.gce.start(shard.vm, shard.zone)
     marks["start_api_returned"] = round(time.time() - t0, 1)
+    #  A `start` POST returns success and the operation can still fail on zone capacity about six
+    #  seconds later, leaving the instance TERMINATED. Without this the benchmark waits out its
+    #  whole limit staring at a VM that was never going to come up, and reports a wake time of
+    #  None as if the shard were merely slow.
+    ok, code, message = backend.gce.wait_operation(op, shard.zone, timeout=90.0)
+    marks["start_operation"] = round(time.time() - t0, 1)
+    if not ok:
+        marks["HOT"] = None
+        marks["start_failed"] = code
+        marks["start_message"] = message
+        return marks
     while time.time() - t0 < limit:
         info = backend.gce.instance(shard.vm, shard.zone, max_age=0.0) or {}
         status = (info.get("status") or "").upper()
@@ -92,8 +103,9 @@ def main(argv=None):
         marks = one_cycle(backend, shard, a.limit)
         results.append(marks)
         if not a.json:
-            for k in ("start_api_returned", "instance_RUNNING", "agent_answering",
-                      "agent_first_state", "postgres_accepting", "HOT", "prewarm_blocking_ms"):
+            for k in ("start_api_returned", "start_operation", "start_failed", "start_message",
+                      "instance_RUNNING", "agent_answering", "agent_first_state",
+                      "postgres_accepting", "HOT", "prewarm_blocking_ms"):
                 if k in marks:
                     print(f"    {k:22s} {marks[k]}", flush=True)
 
