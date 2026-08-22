@@ -895,3 +895,27 @@ Live example, recorded end to end through nginx: address from the forwarded chai
 macOS via the client hints, `en-GB,en;q=0.9,he;q=0.8`, referred from mail.google.com, **47s on
 page, 63% scrolled, 3024×1964 screen at 2× DPR, window 1512×900, Asia/Jerusalem, 12 cores, 8 GB** —
 and the four curl probes in the same log correctly marked automated.
+
+---
+
+## 17. V3: the offline corpus release builder (2026-08-22, workstream O)
+
+**Where the builder database is.** `CORPUS_RELEASE_DSN`, and it has **no default and never will**:
+a default is a way to point an HNSW build at production by forgetting an environment variable.
+It is a PostgreSQL 17 cluster named **`relbuild`** on **`127.0.0.1:5544`** on the patents VM,
+database `relbuild`, role `relbuild`, pgvector 0.8.6, data directory
+`/var/lib/postgresql/17/relbuild`. Loopback only. The password lives in `patent-search-pilot/.env`
+and nowhere else; `local all all trust` in that cluster's `pg_hba.conf` is the way back in if it is
+lost. Release snapshots land in `/home/nimrod_rotem/v3-releases/<release_id>/`.
+
+Full detail, including the `set_dsn.sh` rotation bug that already lost the password once, is in
+`docs/corpus_release.md`.
+
+**The second DSN.** `CORPUS_SOURCE_DSN` is the corpus to *read*, falling back to the `PG*` variables
+in `.env`, which is live. `source.connect_source()` sets `default_transaction_read_only=on` as a
+session GUC at connect time, so Postgres enforces read-only rather than this repo's discipline.
+psycopg's `conn.read_only` would not: it applies on `BEGIN`, and an autocommit connection never
+issues one.
+
+**Interface.** `ops/build_release.py` (mirror, assign, plan, build, stats, verify, activate,
+rollback, restore, demand) and `ops/corpus_sizing.py` (the shard arithmetic, no database needed).
