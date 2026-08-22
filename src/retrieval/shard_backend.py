@@ -947,6 +947,10 @@ def prewake_subject(subject_number, conn=None):
             conn = own
         try:
             with conn.cursor() as cur:
+                #  Two index scans, `ix_pub_number` then `ix_class_pub`, total cost 12.95 on the
+                #  live corpus (EXPLAIN, 2026-08-22). This runs on the search path, and
+                #  `publications` is 5M rows and `classifications` 6.8M in one subclass alone, so
+                #  it is worth knowing rather than assuming that it is not a scan.
                 cur.execute("SELECT cl.symbol FROM classifications cl "
                             "  JOIN publications p ON p.id = cl.publication_id "
                             " WHERE p.publication_number = %s "
