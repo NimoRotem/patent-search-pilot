@@ -5,7 +5,9 @@ Written BEFORE the deploy, deliberately. The rollback is the part that has to ex
 ## What the cutover changes
 
 `patent-results` stops executing searches. It writes a row into `search_runs` and reads progress
-back out of it; `patent-search-worker` claims the row and does the work in its own process. So
+back out of it; `patent-search-worker-quick` and `patent-search-worker-deep` claim the row and do
+the work in their own processes, one per lane so a cents-class interactive search never queues
+behind a multi-hour attack. So
 `sudo supervisorctl restart patent-results` no longer kills a search in flight, which is the
 defect this exists to fix: the app was restarted seven times on 2026-08-22, the worst measured
 deep search takes 5h01m, and a typical one exceeds an hour, so a long search could not survive to
@@ -16,7 +18,7 @@ Two flags, opposite failure directions on purpose:
 | Flag | On | Unparseable |
 |---|---|---|
 | `DURABLE_SEARCH_RUNS` on `patent-results` | route and SSE read `search_runs` | OFF, loudly, legacy path. Refusing to serve the site over a typo is the worse failure |
-| `DURABLE_WORKER_ENABLED` on `patent-search-worker` | the worker may claim and spend | REFUSES TO START. Guessing "on" spends money |
+| `DURABLE_WORKER_ENABLED` on both workers | the worker may claim and spend | REFUSES TO START. Guessing "on" spends money |
 
 ## Rollback, in order of how much you want to undo
 
@@ -34,10 +36,11 @@ sudo supervisorctl reread
 sudo supervisorctl restart patent-results
 ```
 
-### 2. Stop the worker as well.
+### 2. Stop the workers as well.
 
 ```
-sudo supervisorctl stop patent-search-worker
+sudo supervisorctl stop patent-search-worker-quick
+sudo supervisorctl stop patent-search-worker-deep
 ```
 
 Runs it was holding stay `running` with an expired lease and no worker. They are not lost: they
@@ -59,7 +62,7 @@ git checkout $(cat /home/nimrod_rotem/v3/L-cutover/data/cutover_snapshot/deploye
 sudo cp /home/nimrod_rotem/v3/L-cutover/data/cutover_snapshot/patent-results.conf \
         /etc/supervisor/conf.d/patent-results.conf
 sudo rm -f /etc/supervisor/conf.d/patent-search-worker.conf
-sudo supervisorctl stop patent-search-worker
+sudo supervisorctl stop patent-search-worker-quick patent-search-worker-deep
 sudo supervisorctl reread
 sudo supervisorctl restart patent-results
 ```
