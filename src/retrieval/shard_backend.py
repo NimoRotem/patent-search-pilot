@@ -62,6 +62,9 @@ IDLE_MINUTES = float(os.environ.get("SHARD_IDLE_MINUTES", "15"))
 #  cannot be serving a query for anybody if nothing can reach it, and burn is not a safe default.
 HARD_IDLE_MINUTES = float(os.environ.get("SHARD_HARD_IDLE_MINUTES", "60"))
 HEALTH_TIMEOUT = float(os.environ.get("SHARD_HEALTH_TIMEOUT", "2.0"))
+#  An instance label that stops the reaper touching a shard at all. For a corpus load, which runs
+#  for hours, holds no search lease and is idle between batches.
+HOLD_LABEL = os.environ.get("SHARD_HOLD_LABEL", "reap-hold")
 #  A wake poll is cheap; the instance describe behind it is not, so it is cached for this long.
 INSTANCE_CACHE_SECONDS = float(os.environ.get("SHARD_INSTANCE_CACHE_SECONDS", "3.0"))
 POLL_SECONDS = float(os.environ.get("SHARD_POLL_SECONDS", "1.0"))
@@ -74,6 +77,10 @@ MAX_POOLED = int(os.environ.get("SHARD_MAX_POOLED_CONNECTIONS", "4"))
 START_RETRIES = int(os.environ.get("SHARD_START_RETRIES", "5"))
 START_RETRY_SECONDS = float(os.environ.get("SHARD_START_RETRY_SECONDS", "20"))
 START_OP_TIMEOUT = float(os.environ.get("SHARD_START_OP_TIMEOUT", "60"))
+#  How long after issuing a start the instance may still report TERMINATED and be called `waking`
+#  rather than `cold`. MEASURED: `instances.start` returns in under a second and the instance
+#  reaches RUNNING 8.7 to 17.5 s later, having reported TERMINATED for the first several of those.
+START_GRACE_SECONDS = float(os.environ.get("SHARD_START_GRACE_SECONDS", "90"))
 #  Capacity errors, and only capacity errors, are worth reissuing. A permission or quota error will
 #  never clear by asking again.
 _CAPACITY_CODES = ("ZONE_RESOURCE_POOL_EXHAUSTED", "RESOURCE_POOL_EXHAUSTED",
@@ -221,7 +228,8 @@ class GceClient:
             body = self._call("GET", url)
             nics = body.get("networkInterfaces") or [{}]
             info = {"status": body.get("status", ""), "ip": nics[0].get("networkIP", ""),
-                    "last_start": body.get("lastStartTimestamp", "")}
+                    "last_start": body.get("lastStartTimestamp", ""),
+                    "labels": dict(body.get("labels") or {})}
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 info = None
@@ -377,6 +385,16 @@ class ShardBackend(shard_manager.ShardManagerBackend, shard_router.ShardRouterBa
             return "unknown", None
         status = (info.get("status") or "").upper()
         if status in _COLD_STATUSES:
+            #  A start we JUST issued is `waking`, not `cold`. GCE reports TERMINATED for several
+            #  seconds after `instances.start` returns, and the previous version read that back
+            #  immediately, concluded the shard was cold, and `ensure` returned in 1.6 s having
+            #  woken nothing: every wake through the seam failed while `wakebench`, which polls
+            #  GCE directly, succeeded. Found by ops/shards/lifecycle.py against a real VM.
+            #
+            #  A start that FAILED is cold again at once, not after the grace period, because
+            #  `_watch_start` has recorded why and the answer is that it is not coming.
+            if self._recently_started(shard):
+                return "waking", None
             return "cold", None
         if status not in _UP_STATUSES:
             return "unknown", None
@@ -566,6 +584,8 @@ class ShardBackend(shard_manager.ShardManagerBackend, shard_router.ShardRouterBa
             if time.time() - last < 30.0:
                 return False
             self._starting[shard.shard] = time.time()
+            #  A previous failure must not make this attempt look already dead.
+            self._start_errors.pop(shard.shard, None)
         try:
             op = self.gce.start(shard.vm, shard.zone)
         except Exception as e:                                            # noqa: BLE001
@@ -575,6 +595,13 @@ class ShardBackend(shard_manager.ShardManagerBackend, shard_router.ShardRouterBa
         t = threading.Thread(target=self._watch_start, args=(shard, op), daemon=True)
         t.start()
         return True
+
+    def _recently_started(self, shard):
+        """True while a start we issued could still be taking effect and has not failed."""
+        with self._start_lock:
+            since = time.time() - self._starting.get(shard.shard, 0.0)
+            failed = self._start_errors.get(shard.shard)
+        return since < START_GRACE_SECONDS and not failed
 
     def _record_start_error(self, shard, code, message):
         with self._start_lock:
@@ -733,6 +760,8 @@ class ShardBackend(shard_manager.ShardManagerBackend, shard_router.ShardRouterBa
         """Stop every running shard nobody is using. -> [{shard, action, reason}].
 
         THE ORDER OF THE TESTS IS THE SAFETY PROPERTY.
+          0. an instance labelled `reap-hold` is never touched, because a corpus load is not a
+             search, holds no lease, and is idle between batches,
           1. expire the leases nobody heartbeats, so a dead run stops holding a VM open,
           2. a held lease keeps the shard, full stop,
           3. inside the idle window, keep,
@@ -758,6 +787,18 @@ class ShardBackend(shard_manager.ShardManagerBackend, shard_router.ShardRouterBa
                 traceback.print_exc()
                 continue
             if not info or (info.get("status") or "").upper() not in _UP_STATUSES:
+                continue
+
+            #  A HOLD BEATS EVERY OTHER TEST. A corpus load runs for hours, holds no search lease
+            #  because it is not a search, and is idle between batches, so the in-flight-query
+            #  rule below is not enough to protect it: the reaper would stop the VM in one of the
+            #  gaps and lose the load. `shardctl.sh hold on <shard>` sets the label; whoever is
+            #  loading a shard sets it and takes it off, and it is visible in
+            #  `gcloud compute instances list --format='...labels...'` rather than in a file
+            #  somewhere.
+            if str((info.get("labels") or {}).get(HOLD_LABEL, "")).lower() in ("1", "on", "true"):
+                out.append({"shard": shard.shard, "action": "keep",
+                            "reason": f"{HOLD_LABEL}={info['labels'][HOLD_LABEL]} on the instance"})
                 continue
 
             if self.held(shard):

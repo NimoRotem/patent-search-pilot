@@ -934,3 +934,74 @@ def test_ready_refuses_a_shard_that_fails_the_id_check():
     body = script.split("cmd_ready() {", 1)[1].split("\ncmd_", 1)[0]
     assert "cmd_verify_ids" in body, "ready no longer runs the publication id check"
     assert "refusing to mark it ready" in body
+
+
+# =========================================================================== the reap hold
+def test_a_held_instance_is_never_reaped_however_idle(monkeypatch):
+    """A corpus load runs for hours, holds no SEARCH lease because it is not a search, and is idle
+    between batches, so the in-flight-query rule cannot protect it on its own. The reaper would
+    stop the VM in one of the gaps and lose the load. `reap-hold` beats every other test."""
+    inst = {"vm-transport": {"status": "RUNNING", "ip": "10.0.0.1",
+                             "labels": {"reap-hold": "on"}}}
+    b = backend(inst, probe=lambda *a, **k: health())
+    monkeypatch.setattr(b, "held", lambda shard: 0)
+    monkeypatch.setattr(b, "idle_seconds", lambda shard: 99999.0)
+    monkeypatch.setattr(b, "activity", lambda shard: 0)
+    actions = {x["shard"]: x for x in b.reap(idle_minutes=0.0, hard_idle_minutes=0.0)}
+    assert actions["03-transport"]["action"] == "keep"
+    assert "reap-hold" in actions["03-transport"]["reason"]
+    assert ("stop", "vm-transport") not in b.gce.calls
+
+
+def test_without_the_hold_the_same_shard_is_stopped(monkeypatch):
+    """Defect injection for the test above: remove the label and the identical shard goes."""
+    inst = {"vm-transport": {"status": "RUNNING", "ip": "10.0.0.1", "labels": {}}}
+    b = backend(inst, probe=lambda *a, **k: health())
+    monkeypatch.setattr(b, "held", lambda shard: 0)
+    monkeypatch.setattr(b, "idle_seconds", lambda shard: 99999.0)
+    monkeypatch.setattr(b, "activity", lambda shard: 0)
+    actions = {x["shard"]: x for x in b.reap(idle_minutes=0.0, hard_idle_minutes=0.0)}
+    assert actions["03-transport"]["action"] == "stop"
+    assert ("stop", "vm-transport") in b.gce.calls
+
+
+def test_a_start_in_flight_is_waking_not_cold(monkeypatch):
+    """REGRESSION, found by ops/shards/lifecycle.py against a real VM. GCE reports TERMINATED for
+    several seconds after `instances.start` returns. `_state_of` read that back immediately,
+    called the shard cold, and `ensure` returned in 1.6 s having woken nothing: every wake through
+    the seam failed while wakebench, which polls GCE directly, succeeded."""
+
+    class SlowGce(FakeGce):
+        """A start that takes effect later, which is what a real one does."""
+
+        def start(self, vm, zone):
+            self.calls.append(("start", vm))
+            return {"name": "op-1", "status": "RUNNING"}
+
+        def wait_operation(self, op, zone, timeout=30.0, interval=0.0):
+            return True, "", ""
+
+    inst = {"vm-transport": {"status": "TERMINATED", "ip": ""}}
+    b = shard_backend.ShardBackend(table=table(), gce=SlowGce(inst),
+                                   probe=lambda *a, **k: None)
+    assert b.state("B65G") == "cold", "an untouched TERMINATED shard is cold"
+    out = b.ensure(["B65G"], timeout=1.0)
+    assert out == {"B65G": "waking"}, \
+        f"a start we just issued was reported as {out}; the wake gave up before GCE moved"
+    assert b.gce.calls == [("start", "vm-transport")]
+
+
+def test_a_start_the_zone_refused_is_cold_again_at_once(monkeypatch):
+    """The other half: `waking` must not become a blanket excuse. Once the operation has come back
+    with a capacity error the shard is not coming up, and a search must be told so immediately
+    rather than spending its whole wake budget on it."""
+    monkeypatch.setattr(shard_backend, "START_RETRY_SECONDS", 0.0)
+    monkeypatch.setattr(shard_backend, "START_RETRIES", 1)
+    inst = {"vm-transport": {"status": "TERMINATED", "ip": ""}}
+    b = shard_backend.ShardBackend(table=table(), gce=FakeGce(inst, capacity_failures=99),
+                                   probe=lambda *a, **k: None)
+    b._start(b.shard_for("B65G"))
+    deadline = time.time() + 5.0
+    while time.time() < deadline and not b.start_errors():
+        time.sleep(0.05)
+    assert b.state("B65G") == "cold", "a shard the zone refused was still being waited for"

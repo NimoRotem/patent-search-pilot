@@ -22,6 +22,7 @@
 #   ./shardctl.sh ready <shard> [gen]      flip shard_status to ready  (workstream F's seam)
 #   ./shardctl.sh building <shard> [note]  flip it back
 #   ./shardctl.sh egress on|off <shard>    temporary external address, for apt only
+#   ./shardctl.sh hold on|off <shard>      stop the reaper touching it, for a corpus load
 #   ./shardctl.sh reap [--dry-run]         the lease driven idle shutdown
 #   ./shardctl.sh cost [n]                 what n shards cost, standing and running
 set -euo pipefail
@@ -40,6 +41,9 @@ IMAGE_PROJECT="${SHARD_IMAGE_PROJECT:-debian-cloud}"
 #  A c4 create that hits a zone stockout clears on retry; see cmd_create.
 CREATE_RETRIES="${SHARD_CREATE_RETRIES:-6}"
 CREATE_RETRY_SECONDS="${SHARD_CREATE_RETRY_SECONDS:-20}"
+#  Starting a TERMINATED c4 hits the same stockout; a stopped VM holds no capacity reservation.
+START_RETRIES="${SHARD_START_RETRIES:-20}"
+START_RETRY_SECONDS="${SHARD_START_RETRY_SECONDS:-30}"
 #  The fleet's own service account, the same one every other patents VM runs as. A shard needs an
 #  identity to pull its corpus release out of GCS when workstream F loads it; with none it can only
 #  ever be filled by pushing over ssh.
@@ -121,8 +125,13 @@ cmd_status() {
       else
         state="waking"; reason="agent not answering"
       fi
-    elif [ "$st" = "TERMINATED" ] || [ "$st" = "SUSPENDED" ]; then
+    elif [ "$st" = "TERMINATED" ] || [ "$st" = "SUSPENDED" ] || [ "$st" = "STOPPING" ] \
+         || [ "$st" = "SUSPENDING" ]; then
       state="cold"
+    elif [ "$st" = "PROVISIONING" ] || [ "$st" = "STAGING" ]; then
+      #  Named, because this is the state an operator most wants to see during a wake and the
+      #  previous version printed a bare dash for it, which reads like "no answer".
+      state="waking"; reason="instance is $st"
     elif [ "$st" = "ABSENT" ]; then
       state="absent"; reason="not created"
     fi
@@ -345,9 +354,30 @@ cmd_schema() {
 }
 
 cmd_start() {
+  #  RETRIED ON A CAPACITY ERROR, for the same reason `create` is. MEASURED 2026-08-22, four times
+  #  in us-central1-b: `instances start` on a TERMINATED c4-highmem-16 fails with
+  #  ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS. A stopped VM holds no capacity reservation, so a
+  #  shard is not guaranteed to come back just because it exists, and this is the operator path
+  #  where waiting is the right answer. The SEARCH path does not wait: shard_backend._start
+  #  reissues on a background thread and `ensure` reports `cold` and moves on.
   local s="$1"; need "$s"
-  gcloud compute instances start "$(vm_of "$s")" --zone "$(zone_of "$s")" --quiet >/dev/null
-  echo "$s starting"
+  local vm zone attempt=1 err rc
+  vm="$(vm_of "$s")"; zone="$(zone_of "$s")"
+  while :; do
+    err="$(mktemp)"; rc=0
+    gcloud compute instances start "$vm" --zone "$zone" --quiet >/dev/null 2>"$err" || rc=$?
+    [ "$rc" = "0" ] && { rm -f "$err"; echo "$s starting"; return 0; }
+    if grep -qE 'ZONE_RESOURCE_POOL_EXHAUSTED|does not have enough resources available|STOCKOUT' "$err" \
+       && [ "$attempt" -lt "$START_RETRIES" ]; then
+      #  Backoff, capped: a stockout clears when the zone frees a machine, not sooner for asking
+      #  politely, and an uncapped ramp would leave the last attempts hours apart.
+      local wait=$(( START_RETRY_SECONDS * attempt )); [ "$wait" -gt 120 ] && wait=120
+      echo "  $vm: $zone has no c4 capacity on attempt $attempt/$START_RETRIES; retrying in ${wait}s" >&2
+      rm -f "$err"; sleep "$wait"; attempt=$(( attempt + 1 )); continue
+    fi
+    cat "$err" >&2; rm -f "$err"
+    die "could not start $vm in $zone after $attempt attempt(s)"
+  done
 }
 
 cmd_stop() {
@@ -413,6 +443,21 @@ cmd_building() {
        WHERE shard='$s' RETURNING shard || ' ' || state"
 }
 
+cmd_hold() {
+  #  Stop the idle reaper touching a shard. A corpus load runs for hours, holds no SEARCH lease
+  #  because it is not a search, and is idle between batches, so the reaper's in-flight-query rule
+  #  is not enough to protect it on its own.
+  local mode="$1" s="$2"; need "$s"
+  local vm zone; vm="$(vm_of "$s")"; zone="$(zone_of "$s")"
+  case "$mode" in
+    on)  gcloud compute instances add-labels "$vm" --zone "$zone" --labels reap-hold=on --quiet \
+           && echo "$s is held: the reaper will not stop it. TAKE IT OFF WHEN THE LOAD IS DONE." ;;
+    off) gcloud compute instances remove-labels "$vm" --zone "$zone" --labels reap-hold --quiet \
+           && echo "$s is no longer held" ;;
+    *)   die "hold on|off <shard>" ;;
+  esac
+}
+
 cmd_reap() {
   PYTHONPATH="$REPO/src" "$PY" "$HERE/idle_reaper.py" "$@"
 }
@@ -455,6 +500,7 @@ case "${1:-}" in
   verify-ids) shift; cmd_verify_ids "$@" ;;
   building)   shift; cmd_building "$@" ;;
   egress)     shift; cmd_egress "$@" ;;
+  hold)       shift; cmd_hold "$@" ;;
   reap)       shift; cmd_reap "$@" ;;
   cost)       shift; cmd_cost "$@" ;;
   *) sed -n '2,/^set -euo/p' "$0" | sed '$d'; exit 1 ;;
