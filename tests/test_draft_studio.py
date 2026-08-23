@@ -1236,6 +1236,9 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "Do not list more than eight numerals on one sheet" in system
     assert str(draft_qa.MAX_FIGURE_BRIEF_CHARS) in system
     assert "arbitrary exact counts" in system
+    assert "Numeral endpoint instructions identify the part" in system
+    assert "broad interior target" in draft_studio.FINALIZE_PROMPT
+    assert "Replace ordinal geometry references" in draft_studio.FINALIZE_PROMPT
     assert "Never address or mention a draftsperson" in " ".join(system.split())
     assert "broadest statement of the invention that the description fully supports" in system
 
