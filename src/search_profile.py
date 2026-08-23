@@ -177,7 +177,12 @@ _CLAIMS = Profile(
         #  The claim-reach slots were 184 reads outside every other knob on the first budgeted
         #  run. 60 at round-robin still guarantees every claim its strongest candidates.
         "CLAIM_REACH_CAP": 60,
-        "BATCH_TAIL_MAX": 120,
+        #  The sweep's cost is CALLS, docs x limitation groups, not documents: at the old caps a
+        #  21-claim subject queued a 760-call sweep, which alone is twenty minutes. 4 per
+        #  limitation across 60 documents keeps the sweep near the 899-run's measured ~2 s/call
+        #  shape without starving any claim.
+        "BATCH_PER_LIM": 4,
+        "BATCH_TAIL_MAX": 60,
     },
 )
 
