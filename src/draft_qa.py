@@ -103,6 +103,14 @@ _DISCONNECTED_ENDPOINT_TARGET_RE = re.compile(
     r"\b(?:above|below|outside|beside|next\s+to|adjacent\s+to)\b[^.\n]{0,100}"
     r"\b(?:line|edge|boundary|face|surface|body|part|member)\b",
     re.IGNORECASE)
+_DRAWN_TILE_OR_FLOOR_RE = re.compile(
+    r"\b(?:tile|floor)\b[^.\n]{0,120}\b(?:fills?|appears?|is\s+drawn|is\s+shown|"
+    r"carries|supports)\b",
+    re.IGNORECASE)
+_NO_OTHER_PANEL_RE = re.compile(
+    r"\b(?:the\s+)?(?:one|only)\s+(?:slab|plate|panel)\b[^.\n]{0,140}"
+    r"\bno\s+other\b[^.\n]{0,80}\b(?:slab|plate|panel)\b",
+    re.IGNORECASE)
 _ARBITRARY_EXACT_ENDPOINT_TARGET_RE = re.compile(
     r"\bidentified\b(?=[^.\n]{0,260}\b(?:"
     r"cent(?:er|re)|midpoint|mid-point|mid[- ]?(?:height|width|depth)|halfway|quarter|"
@@ -572,6 +580,11 @@ def _figure_checks(sections: Mapping[str, str],
             brief_issues.append(
                 f"{label}: disconnected endpoint target places a numeral in empty paper "
                 "beside the named part; identify the part itself or its full boundary")
+        if (_DRAWN_TILE_OR_FLOOR_RE.search(caption) and
+                _NO_OTHER_PANEL_RE.search(caption)):
+            brief_issues.append(
+                f"{label}: contradictory sheet exclusivity requires a drawn tile or floor "
+                "while also saying no other slab, plate, or panel is drawn")
         for exact_target in _ARBITRARY_EXACT_ENDPOINT_TARGET_RE.finditer(caption):
             brief_issues.append(
                 f"{label}: arbitrary exact endpoint target {exact_target.group(0)[:180]!r}; "
