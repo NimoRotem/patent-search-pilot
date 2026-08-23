@@ -35,6 +35,10 @@ POLL_SECONDS = max(2.0, float(os.environ.get("DRAFT_TURN_POLL_SECONDS", "5")))
 MAX_UPLOAD_BYTES = 24 * 1024 * 1024
 MAX_DOCUMENTS = 40
 MAX_MANUAL_REFERENCES = 60
+MAX_AUTOMATIC_FILING_REPAIR_TURNS = max(
+    1, min(int(os.environ.get("DRAFT_AUTOMATIC_REPAIR_TURNS", "3")), 6))
+_AUTOMATIC_FILING_REPAIR_KEY = re.compile(r"^auto-filing-repair-(\d+)-(\d+)$")
+_FILING_GATE_EXHAUSTED = "The automatic filing gate could not clear:"
 
 _STOP = threading.Event()
 _WAKE = threading.Event()
@@ -734,15 +738,66 @@ def _fail(runner: draft_studio.TurnRunner, claimed: Mapping[str, Any], error: st
         return None
     _stamp(running=False, last_result=result.get("status"), last_error=error[:400])
     if result.get("status") == "failed":
+        continuation = _continue_terminal_filing_repair(
+            runner.repository, claimed, result, error)
         try:
+            if continuation == "queued":
+                message = (
+                    "The candidate did not pass every filing check in that turn. Automatic "
+                    "repair has continued from the saved candidate in a new turn. No action is "
+                    "required.")
+            elif continuation == "limit":
+                message = (
+                    "The candidate still did not pass every filing check after the automatic "
+                    "repair safety limit. The candidate and its exact QA findings remain saved, "
+                    "and no application version was published.")
+            else:
+                message = (
+                    "The drafting agent could not finish that turn: " + error[:600] +
+                    " No application version was published. Try again, or rephrase what you "
+                    "asked for.")
             runner.repository.add_message(
-                claimed["project_id"], "system",
-                "The drafting agent could not finish that turn: " + error[:600] +
-                " No application version was published. Try again, or rephrase what you asked for.",
-                turn_id=claimed["id"])
+                claimed["project_id"], "system", message, turn_id=claimed["id"])
         except Exception:                                      # noqa: BLE001
             pass
     return result
+
+
+def _continue_terminal_filing_repair(repository: Any, claimed: Mapping[str, Any],
+                                     result: Mapping[str, Any], error: str) -> str:
+    """Start the next bounded QA turn when a complete candidate exhausted this turn's gates."""
+    if not str(error).startswith(_FILING_GATE_EXHAUSTED):
+        return ""
+    prior_key = str(result.get("idempotency_key") or claimed.get("idempotency_key") or "")
+    matched = _AUTOMATIC_FILING_REPAIR_KEY.fullmatch(prior_key)
+    if matched:
+        origin_turn_id = int(matched.group(1))
+        sequence = int(matched.group(2)) + 1
+    else:
+        origin_turn_id = int(result.get("id") or claimed["id"])
+        sequence = 1
+    if sequence > MAX_AUTOMATIC_FILING_REPAIR_TURNS:
+        return "limit"
+
+    project_id = int(result.get("project_id") or claimed["project_id"])
+    user_id = int(result.get("requested_by_user_id") or claimed["requested_by_user_id"])
+    revision = int(result.get("project_revision") or claimed["project_revision"])
+    try:
+        repository.enqueue_turn_safely(
+            project_id, user_id, kind="qa_fix",
+            user_message=(
+                "Continue automatic filing repair from the saved candidate and its previous QA "
+                "report. Resolve every blocker, regenerate any rejected drawing geometry, rerun "
+                "all text, source-fidelity, OCR, numeral, leader, and visual checks, and publish "
+                "only after every gate passes. This is corrective QA, not new invention "
+                "disclosure."),
+            project_revision=revision,
+            idempotency_key=f"auto-filing-repair-{origin_turn_id}-{sequence}")
+        kick()
+    except Exception:                                          # noqa: BLE001
+        traceback.print_exc()
+        return ""
+    return "queued"
 
 
 def _loop() -> None:
