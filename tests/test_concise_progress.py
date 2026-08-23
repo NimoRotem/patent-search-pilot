@@ -43,6 +43,11 @@ def report(tmp_path, monkeypatch):
         "title": "T", "inventors": ["X"], "publication_date": "2002-01-01",
         "priority_date": "2001-01-01"})
     monkeypatch.setattr(cd, "subject_facts", lambda label: {"efd": None, "assignees": []})
+    #  Both fixture quotations have to be findable in the fixture's source text: a row whose
+    #  quotation cannot be verified is dropped, and a document that loses every row is refused, so
+    #  without this one of the two documents silently disappears and the count is wrong.
+    monkeypatch.setattr(webapp, "_concise_source_text",
+                        lambda pub: "It has a base element 141 and a flexible suction body.")
     webapp._CONCISE_JOBS.clear()
     return slug
 

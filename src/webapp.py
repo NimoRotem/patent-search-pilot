@@ -5472,9 +5472,14 @@ def concise_progress(slug):
     if not j:
         return jsonify({"state": "idle"})
     total, done = int(j.get("total") or 0), int(j.get("done") or 0)
+    #  `blocked` and the verdict travel with the progress because the build runs in a
+    #  thread and the page was rendered before it started. A document dropped for
+    #  unverifiable quotations would otherwise never appear and never be explained.
     return jsonify({"state": j.get("state"), "done": done, "total": total,
                     "pct": round(100.0 * done / total, 1) if total else 0.0,
                     "msg": j.get("msg") or "", "error": j.get("error"),
+                    "blocked": j.get("blocked") or [],
+                    "verdict": j.get("verdict") or "",
                     "elapsed": int(time.time() - float(j.get("t0") or time.time()))})
 
 
@@ -5683,8 +5688,13 @@ def concise_descriptions(slug):
              + concise_description.candidates(rep_for_pick, deep, limit=40))
     subject = _concise_subject(slug, request.form if request.method == "POST" else None)
     if request.method == "GET":
+        #  The build runs in a thread and the page reloads when it finishes, so what the
+        #  build DECIDED has to be read back from the job or it is lost at that reload.
+        j = _concise_job(slug) or {}
         return render_template("concise.html", slug=slug, cands=cands,
-                               docs=_concise_built(slug), subject=subject, error=None)
+                               docs=_concise_built(slug), subject=subject, error=None,
+                               blocked=j.get("blocked") or [],
+                               verdict=j.get("verdict") or "")
 
     pubs = [p.strip() for p in request.form.getlist("pubs") if p.strip()]
     if not pubs:
@@ -5766,16 +5776,17 @@ def concise_descriptions(slug):
             #  rebuild that selects a different set leaves a stale file wearing a number this one
             #  has reused , twelve files for a ten-document package, two of them "Document 7",
             #  and the zip carries both. Measured on adhoc-8dcf2436929a.
-            for stale in out.glob("ConciseDescription_*"):
-                try:
-                    stale.unlink()
-                except OSError:
-                    traceback.print_exc()
-            for stale in out.glob("*.model.json"):
-                try:
-                    stale.unlink()
-                except OSError:
-                    traceback.print_exc()
+            #  EVERY artefact of the previous build, not only the descriptions. A copy
+            #  or a translation left behind for an item this build no longer lists
+            #  would be filed as part of a submission it does not belong to.
+            for pattern in ("ConciseDescription_*", "*.model.json", "00_*", "01_*",
+                            "40_Copy_*", "50_Translation_*", "MANIFEST.csv",
+                            "READ_ME_FIRST.txt"):
+                for stale in out.glob(pattern):
+                    try:
+                        stale.unlink()
+                    except OSError:
+                        traceback.print_exc()
             for k, d in enumerate(docs, 1):
                 _concise_set(slug, done=len(pubs) + k,
                              msg="Writing document %d of %d: %s" % (k, len(docs), d["pub"]))
@@ -5795,8 +5806,18 @@ def concise_descriptions(slug):
             #  things 1.290(d) asks for, and nothing told the practitioner what the other ones
             #  were. The non-English translation is the only gap nothing else can close.
             _concise_set(slug, done=len(pubs) + len(docs),
-                         msg="Building the document list, statements and translations")
-            _concise_package(out, docs, subject)
+                         msg="Building the document list, statements and translations",
+                         blocked=[{"pub": b.get("pub"), "why": b.get("why")}
+                                  for b in blocked])
+            findings = _concise_package(out, docs, subject, report=rep_for_pick) or []
+            try:
+                import submission
+                _state, _sentence = submission.verdict(findings)
+                _concise_set(slug, verdict="%s: %s" % (
+                    {"ok": "Ready to file", "action": "Ready, with decisions for you",
+                     "blocked": "Not ready to file"}[_state], _sentence))
+            except Exception:
+                traceback.print_exc()
             n = len(docs)
             _concise_set(slug, state="done", done=2 * len(pubs) + 1,
                          msg="%d document%s ready" % (n, "" if n == 1 else "s"))
@@ -5860,41 +5881,74 @@ def concise_document(slug, n):
                            error=err, saved=saved)
 
 
-def _concise_package(out, docs, subject):
-    """Write the document list, the statements, the translations and the README. Never raises.
+def _concise_package(out, docs, subject, report=None):
+    """Assemble everything 1.290 requires beside the concise descriptions, then AUDIT the result.
 
-    A failure here must not lose the concise descriptions, which are the expensive part and are
-    already on disk by the time this runs.
+    Never raises: a failure here must not lose the descriptions, which are the expensive part and
+    are already on disk by the time this runs. Every stage records its own failure into the audit
+    instead, because a packet that quietly lacks a translation is worse than one that says so.
     """
+    import concise_render
+    import submission
     import submission_package as sp
-    translations = {}
+
+    copies, translations = {}, {}
     for d in docs:
-        if not sp.needs_translation(d):
-            continue
-        try:
-            got = sp.fetch_translation(d.get("pub"))
-        except Exception:                                                 # noqa: BLE001
-            traceback.print_exc()
-            got = {}
-        if got:
-            translations[d.get("pub")] = got
+        pub, n = d.get("pub"), d.get("n")
+        stem = re.sub(r"[^A-Za-z0-9]+", "", pub or "doc")
+        if submission.needs_copy(d):
             try:
-                (out / ("Translation_Doc%s_%s.pdf" % (
-                    d["n"], re.sub(r"[^A-Za-z0-9]+", "", d["pub"] or "doc")))).write_bytes(
-                        sp.translation_pdf(d, got, subject))
-            except Exception:
+                blob = sp.fetch_copy(pub)
+            except Exception:                                             # noqa: BLE001
                 traceback.print_exc()
-    for name, fn in (("00_DocumentList.pdf", lambda: sp.document_list(docs, subject, translations)),
-                     ("01_Statements_and_Fee.pdf", lambda: sp.statements(docs, subject))):
+                blob = b""
+            if blob:
+                copies[pub] = True
+                (out / ("40_Copy_Doc%02d_%s.pdf" % (n, stem))).write_bytes(blob)
+        if submission.needs_translation(d):
+            try:
+                got = sp.fetch_translation(pub)
+            except Exception:                                             # noqa: BLE001
+                traceback.print_exc()
+                got = {}
+            if got:
+                translations[pub] = got
+                try:
+                    (out / ("50_Translation_Doc%02d_%s.pdf" % (n, stem))).write_bytes(
+                        sp.translation_pdf(d, got, subject))
+                except Exception:
+                    traceback.print_exc()
+
+    pub_date, first_rej, noa = submission.prosecution_dates(report or {})
+    win = submission.window(pub_date, first_rej, noa)
+    #  The exemption is only claimed when it is actually available; three or fewer items WITHOUT
+    #  the 1.290(g) statement still pays the fee (MPEP 1134.01).
+    exemption = submission.exemption_available(len(docs))
+    findings = submission.audit(docs, subject, copies, translations, win,
+                                exemption_claimed=exemption)
+    for name, fn in (
+            ("00_AUDIT.pdf", lambda: submission.audit_pdf(findings, docs, subject, win)),
+            ("01_DocumentList_and_Statements.pdf",
+             lambda: submission.document_list_and_statements(
+                 docs, subject, copies, translations, win, exemption_claimed=exemption)),
+            ("MANIFEST.csv", lambda: submission.manifest_csv(docs, copies, translations)),
+    ):
         try:
-            (out / name).write_bytes(fn())
+            blob = fn()
+            (out / name).write_bytes(blob if isinstance(blob, bytes) else blob.encode("utf-8"))
         except Exception:
             traceback.print_exc()
     try:
-        (out / "00_READ_ME_before_filing.txt").write_text(
-            sp.readme(docs, subject, translations), encoding="utf-8")
+        state, sentence = submission.verdict(findings)
+        (out / "READ_ME_FIRST.txt").write_text(
+            "%s\n\n%s\n\n%s\n\nOpen 00_AUDIT.pdf for every requirement of 37 CFR 1.290, the "
+            "paragraph it comes from, and whether this packet satisfies it.\n"
+            % (concise_render.running_head(subject).replace("Re: ", ""),
+               {"ok": "READY TO FILE", "action": "READY, SUBJECT TO THE DECISIONS IN THE AUDIT",
+                "blocked": "NOT READY TO FILE"}[state], sentence), encoding="utf-8")
     except Exception:
         traceback.print_exc()
+    return findings
 
 
 @app.route("/report/<slug>/concise.zip")
@@ -5918,8 +5972,14 @@ def concise_zip(slug):
     #  `.model.json` are working files and stay out.
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for p in sorted(d.iterdir()):
-            if p.suffix in (".pdf", ".docx") or p.name.endswith("_before_filing.txt"):
-                z.write(p, arcname=p.name)
+            if p.suffix == ".md" or p.name.endswith(".model.json"):
+                continue
+            if p.suffix in (".pdf", ".docx", ".csv", ".txt"):
+                #  The descriptions sort between the list and the copies rather than
+                #  by their own name, so the archive reads in filing order.
+                arc = ("10_" + p.name) if p.name.startswith("ConciseDescription_") \
+                    else p.name
+                z.write(p, arcname=arc)
                 n += 1
     if not n:
         abort(404)

@@ -223,8 +223,10 @@ def test_both_statements_are_on_the_paper():
 
 def test_the_zip_carries_the_whole_package():
     body = open(os.path.join(ROOT, "src", "webapp.py"), encoding="utf-8").read()
-    assert "_concise_package(out, docs, subject)" in body, "the extra papers are never built"
-    assert '_before_filing.txt' in body, "the zip drops the note saying what is missing"
+    assert "_concise_package(out, docs, subject, report=" in body, (
+        "the extra papers are never built, or are built without the report the timing check needs")
+    assert "READ_ME_FIRST.txt" in body, "the zip drops the note that carries the verdict"
+    assert "00_AUDIT.pdf" in body, "the packet has no audit"
 
 
 # ------------------------------------------------------------------ 5. identification fields only

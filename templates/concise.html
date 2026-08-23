@@ -35,11 +35,21 @@
 {#  What the compliance pass refused or merged. Shown BEFORE the download list on purpose: a
     document that was dropped is a decision the practitioner has to agree with, and finding out
     afterwards that a reference is missing is worse than being told why. #}
+{#  THE VERDICT, where the practitioner lands after the build. The audit paper in the packet says
+    the same thing at length; this is so the answer is on screen without opening a PDF. #}
+{% if verdict %}
+<div class="card" style="margin:1em 0;padding:.7em 1em">
+  <b>{{ verdict }}</b>
+  <p class="small muted" style="margin:.3em 0 0">Every requirement of 37 CFR 1.290 is listed in
+    <b>00_AUDIT.pdf</b> in the archive, with the paragraph it comes from and whether this packet
+    satisfies it.</p>
+</div>
+{% endif %}
 {% if blocked %}
 <div class="warn" style="margin:1em 0">
-  <b>Not filed &mdash; these do not qualify as prior art against the target's effective filing date:</b>
+  <b>Not filed. These were refused and are not in the packet:</b>
   <ul style="margin:.4em 0 0 1.1em">
-    {% for b in blocked %}<li><b>{{ b.pub }}</b> &mdash; {{ b.why }}</li>{% endfor %}
+    {% for b in blocked %}<li><b>{{ b.pub }}</b>: {{ b.why }}</li>{% endfor %}
   </ul>
 </div>
 {% endif %}

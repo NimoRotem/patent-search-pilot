@@ -1,4 +1,14 @@
-"""The rest of a 37 CFR 1.290 submission: the document list, the statements, and translations.
+"""Fetching the two attachments a 1.290 submission needs: the legible copy and the translation.
+
+SUPERSEDED IN PART. The document list, the statements, the fee position and the audit moved to
+`submission.py`, which builds them from the rule rather than from a template, because the rule is
+the specification and the packet has to be checked against it rather than merely shaped like it.
+What is left here is the acquisition: getting the copy and the translation, which is I/O and has
+nothing to do with the paperwork.
+
+Original note, still true:
+
+The rest of a 37 CFR 1.290 submission: the document list, the statements, and translations.
 
 WHAT WAS MISSING. The archive held concise descriptions and nothing else, which is one of the
 several things 1.290(d) requires. A practitioner downloading it had a folder of well-formed
@@ -91,6 +101,26 @@ def fetch_translation(pub, timeout=120.0):
             return {}
         return {"text": text, "claims": str(claims), "source": str(rec.get("source") or "")}
     return {}
+
+
+def fetch_copy(pub):
+    """A legible copy of the publication, as PDF bytes, or b"". Never raises.
+
+    1.290(d)(3) wants the document itself for anything that is not a U.S. patent or U.S. patent
+    application publication. The corpus already holds facsimiles for a large part of the niche, so
+    this is usually a disk read: JP-2019155534-A is a seven-page A4 copy already on this box.
+    """
+    try:
+        import enrich_display
+        canon = enrich_display._canonical_pubkey(pub)
+        path = enrich_display.PDFDIR / ("%s.pdf" % canon)
+        if path.exists() and path.stat().st_size > 2048:
+            blob = path.read_bytes()
+            #  A truncated or HTML-error body saved with a .pdf name is not a legible copy.
+            return blob if blob[:5] == b"%PDF-" else b""
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+    return b""
 
 
 def outstanding(docs, translations):

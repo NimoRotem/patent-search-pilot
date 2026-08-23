@@ -42,6 +42,13 @@ def report(tmp_path, monkeypatch):
         "title": "Vacuum Gripper", "inventors": ["Nimrod Rotem"],
         "publication_date": "2022-08-16", "priority_date": "2018-05-09"})
     monkeypatch.setattr(cd, "subject_facts", lambda label: {"efd": None, "assignees": []})
+    #  THE FIXTURE'S QUOTE HAS TO BE IN THE FIXTURE'S SOURCE. `verify_quotes` re-reads the real
+    #  corpus text for US-11413727-B2, which of course does not contain this invented passage, and
+    #  a row whose quotation cannot be found is now dropped rather than filed unquoted. Without
+    #  this the build produced nothing and the failure looked like a route bug.
+    monkeypatch.setattr(webapp, "_concise_source_text",
+                        lambda pub: "The gripper has a base element 141 having an elliptical "
+                                    "track 148 around its periphery.")
     webapp._CONCISE_JOBS.clear()
     return slug
 

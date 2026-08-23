@@ -428,6 +428,27 @@ def apply(docs, subject, source_text_for, mode="novelty", target_assignees=None,
         if sc:
             c["self_collision"] = sc
         c["quotes"] = verify_quotes(d, source_text_for(d["pub"]))
+        #  A QUOTATION THAT FAILED VERIFICATION INVALIDATES THE ROW THAT OFFERED IT.
+        #
+        #  `verify_quotes` used to blank the quote and keep the row, which left the paper asserting
+        #  "this document discloses X" with nothing behind it. That is worse than saying nothing on
+        #  two counts: MPEP 1134.01 says a bare assertion of relevance is not a concise description,
+        #  and the row came from a pass whose own quotation could not be found in the document, so
+        #  the assertion is exactly the one least worth trusting.
+        #
+        #  Only rows that OFFERED a passage and lost it are dropped. A row whose bar was "taught,
+        #  no quotable passage" never claimed one and is untouched.
+        before = len(d["rows"])
+        d["rows"] = [r for r in d["rows"] if not r.get("quote_unverified")]
+        c["rows_dropped"] = before - len(d["rows"])
+        if not d["rows"]:
+            #  Nothing survived, so there is no description to file. A document with no described
+            #  relevance may not be listed: 1.290(d)(2).
+            blocked.append({"pub": d["pub"],
+                            "why": "every row for this document rested on a quotation that could "
+                                   "not be found in the document itself, so there is nothing left "
+                                   "to describe"})
+            continue
         c["translation"] = translate_rows(d)
         edits = []
         for r in d["rows"]:
