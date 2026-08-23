@@ -575,10 +575,59 @@ def test_marked_anchor_montage_preserves_the_endpoint_pixel_inside_a_red_ring():
         raw.getvalue(), [{"numeral": "26", "x": 501, "y": 501, "visible": True}],
         ["26 = bearing face"]))).convert("RGB")
 
-    center_x = 16 + (420 - 360) // 2 + 360 // 2
-    center_y = 16 + 58 + 360 // 2
+    assert montage.width >= 600
+    center_x = 16 + 16 + 240 + 16 + 320 // 2
+    center_y = 16 + 72 + 320 // 2
     assert all(channel < 80 for channel in montage.getpixel((center_x, center_y)))
-    assert montage.getpixel((center_x + 19, center_y))[0] > 180
+    assert montage.getpixel((center_x + 17, center_y))[0] > 180
+
+
+def test_compose_continues_an_eight_round_checkpoint_after_context_upgrade(monkeypatch):
+    raw = blank_png(1000, 1000)
+    anchors = [{"numeral": "22", "x": 300, "y": 300,
+                "visible": True, "evidence": "chamber"}]
+    accepted_pixel = {
+        "ok": True, "inspected": True,
+        "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [], "allowed_spaces": [], "ungrounded": [],
+    }
+    monkeypatch.setattr(draft_figures, "_marked_progress_get", lambda *a, **k: {
+        "anchors": anchors, "certificates": {}, "attempts": 8,
+    })
+    monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
+    monkeypatch.setattr(
+        draft_figures, "_ground_anchors_to_pixels",
+        lambda _png, _numerals, values: ([dict(item) for item in values],
+                                         dict(accepted_pixel)))
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["22"], "figure_label": "FIG. 3",
+        "other_text": [], "confidence": 0.99})
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [],
+        "labels": [{"numeral": "22", "correct": True, "evidence": "leader reaches dot"}],
+    })
+    marked_calls = []
+
+    def inspect_marked(*_args, **_kwargs):
+        marked_calls.append(True)
+        return {
+            "ok": True, "inspected": True, "errors": [], "incorrect": [],
+            "missing": [], "labels": [{
+                "numeral": "22", "correct": True, "repairable": True,
+                "evidence": "the full-sheet overview identifies the chamber",
+                "suggested_x": 500, "suggested_y": 500,
+                "correct_votes": 3, "incorrect_votes": 0,
+            }],
+        }
+
+    monkeypatch.setattr(draft_figures, "inspect_marked_anchors", inspect_marked)
+    _png, _labels, leaders, _anchors, _pixel = draft_figures._compose_checked_sheet(
+        raw, label="FIG. 3", caption="chamber", numerals=["22 = chamber"],
+        semantic={"anchors": anchors, "pixel_anchor_audit": dict(accepted_pixel)})
+
+    assert marked_calls == [True]
+    assert leaders["ok"] is True
+    assert leaders["marked_anchor_audit"]["inspection_rounds"] == 9
 
 
 def test_only_the_current_two_trace_semantic_review_is_accepted():
