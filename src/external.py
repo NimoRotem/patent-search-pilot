@@ -905,6 +905,34 @@ def citable(families, subject_obj, mode) -> list:
     return [f for f in families if f[2] in ok]
 
 
+def credit_sources(cands, fam_of, kept):
+    """Which source put which family in front of the reader. -> ({src: n}, {src: n_unique})
+
+    `stats[src]["hits"]` counts what an adapter RETURNED, which is the wrong unit and flatters the
+    noisiest one: measured on a live run, bigquery_gpatents returned 9,979 rows and
+    serpapi_gpatents 400, out of 12,480 candidates that fused down to 393 families. What a reader
+    is entitled to know is how many families a source contributed to the ranking, and how many of
+    those NO OTHER source found, because that second number is the one that says whether a
+    subscription is earning its place.
+
+    Counted over `kept`, the families that survived fusion, so a source is never credited with a
+    document that was cut. A family two sources both found is credited to both and is unique to
+    neither. Its own function so it can be tested without a network fan-out.
+    """
+    by_source: dict = {}
+    for c in cands or ():
+        fam = fam_of.get(_norm((c or {}).get("pub_number") or ""))
+        if fam in kept:
+            by_source.setdefault(str((c or {}).get("source") or "external"), set()).add(fam)
+    finders: dict = {}
+    for src, fams in by_source.items():
+        for fam in fams:
+            finders.setdefault(fam, set()).add(src)
+    return ({s: len(f) for s, f in by_source.items()},
+            {s: sum(1 for fam in fams if len(finders.get(fam) or ()) == 1)
+             for s, fams in by_source.items()})
+
+
 def run(query_specs, brief: str = "", claims=None, on_event=None) -> dict:
     """Plan, fan out, materialise, rank. Never raises.
 
@@ -973,23 +1001,7 @@ def run(query_specs, brief: str = "", claims=None, on_event=None) -> dict:
             if fam in keep_fams and fam not in pid_of and k in placed:
                 pid_of[fam] = placed[k][0]
         fams = [(f, s, pid_of[f]) for f, s in ranked if f in pid_of]
-        #  WHICH SOURCE ACTUALLY PUT A FAMILY IN FRONT OF THE READER. `stats[src]["hits"]` counts
-        #  what an adapter RETURNED, which is tens of thousands of rows and answers nothing a
-        #  reader asked: a source can return 9,979 hits and contribute nothing that survives.
-        #  Counted over the families that were kept, and `unique` is the ones no other source
-        #  found, which is the only number that says whether a subscription is earning its place.
-        by_source: dict = {}
-        for c in cands:
-            fam = fam_of.get(_norm(c.get("pub_number") or ""))
-            if fam in pid_of:
-                by_source.setdefault(str(c.get("source") or "external"), set()).add(fam)
-        finders: dict = {}
-        for src, fs in by_source.items():
-            for f in fs:
-                finders.setdefault(f, set()).add(src)
-        families_by_source = {s: len(f) for s, f in by_source.items()}
-        unique_by_source = {s: sum(1 for f in fs if len(finders.get(f) or ()) == 1)
-                            for s, fs in by_source.items()}
+        families_by_source, unique_by_source = credit_sources(cands, fam_of, pid_of)
     except Exception as e:
         traceback.print_exc()
         return {"ok": False, "families": [], "error": f"ranking failed: {str(e)[:200]}",

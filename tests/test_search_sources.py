@@ -100,48 +100,56 @@ def test_the_receipt_carries_the_sources():
 # --------------------------------------------------------------- counting families at the source
 
 def test_external_counts_families_not_returned_rows():
-    """The counting rule, over the real shape `external.run` works with: a candidate belongs to a
-    source and resolves to a family, and only the families that SURVIVED fusion are credited.
+    """THE REAL FUNCTION, not a copy of it in a test. `credit_sources` is split out of the fan-out
+    precisely so this needs no network.
 
-    Mirrors the code rather than importing it, because `run()` is a network fan-out. The guard
-    against drift is the next test, which asserts the real function computes both keys.
+    A candidate belongs to a source and resolves to a family; only families that survived fusion
+    are credited; a family two sources found is credited to both and unique to neither.
     """
+    import external
+
     cands = [
         {"pub_number": "US-1-A", "source": "pqai"},
-        {"pub_number": "US-2-A", "source": "pqai"},
-        {"pub_number": "US-2-A", "source": "uspto"},      # same family, found twice
+        {"pub_number": "US 2,222,222 A", "source": "pqai"},   # a different spelling of US-2-A
+        {"pub_number": "US-2-A", "source": "uspto"},          # same family, found twice
         {"pub_number": "US-3-A", "source": "uspto"},
-        {"pub_number": "US-4-A", "source": "openalex"},   # did not survive fusion
+        {"pub_number": "US-4-A", "source": "openalex"},       # did not survive fusion
+        {"pub_number": "US-5-A"},                             # no source named
     ]
-    fam_of = {"US1A": "F1", "US2A": "F2", "US3A": "F3", "US4A": "F4"}
-    pid_of = {"F1": 1, "F2": 2, "F3": 3}                  # F4 was cut
+    fam_of = {external._norm("US-1-A"): "F1", external._norm("US-2-A"): "F2",
+              external._norm("US 2,222,222 A"): "F2", external._norm("US-3-A"): "F3",
+              external._norm("US-4-A"): "F4", external._norm("US-5-A"): "F5"}
+    kept = {"F1": 1, "F2": 2, "F3": 3, "F5": 5}               # F4 was cut
 
-    def _norm(s):
-        return "".join(ch for ch in str(s).upper() if ch.isalnum())
+    families, unique = external.credit_sources(cands, fam_of, kept)
+    assert families == {"pqai": 2, "uspto": 2, "external": 1}
+    assert "openalex" not in families, "a source was credited with a family that was cut"
+    assert unique == {"pqai": 1, "uspto": 1, "external": 1}, \
+        "F2 was found by pqai and uspto and is unique to neither"
 
-    by_source = {}
-    for c in cands:
-        fam = fam_of.get(_norm(c["pub_number"]))
-        if fam in pid_of:
-            by_source.setdefault(c["source"], set()).add(fam)
-    finders = {}
-    for src, fs in by_source.items():
-        for f in fs:
-            finders.setdefault(f, set()).add(src)
 
-    assert {s: len(f) for s, f in by_source.items()} == {"pqai": 2, "uspto": 2}
-    assert "openalex" not in by_source, "a source was credited with a family that was cut"
-    unique = {s: sum(1 for f in fs if len(finders[f]) == 1) for s, fs in by_source.items()}
-    assert unique == {"pqai": 1, "uspto": 1}, "F2 was found by both and is unique to neither"
+def test_crediting_survives_an_empty_fan_out():
+    import external
+    assert external.credit_sources([], {}, {}) == ({}, {})
+    assert external.credit_sources(None, {}, {}) == ({}, {})
 
 
 def test_external_run_records_both_keys():
-    """Anchored on the ASSIGNMENT, so deleting the counting deletes the green."""
+    """`run()` is a network fan-out, so the wiring is checked at the seams: it calls the counter,
+    it returns both keys, and summary() forwards them. Without the last one nothing reaches the
+    report however well the counting works."""
+    import external
+
     body = open(os.path.join(ROOT, "src", "external.py"), encoding="utf-8").read()
-    assert "families_by_source = {" in body and "unique_by_source = {" in body
+    assert "credit_sources(cands, fam_of, pid_of)" in body, "run() no longer credits its sources"
     assert '"families_by_source": families_by_source' in body
-    #  and summary() has to pass them on, or nothing reaches the report
-    assert '"families_by_source": ext.get("families_by_source")' in body
+
+    out = external.summary({"ok": True, "families_by_source": {"pqai": 7},
+                            "unique_families_by_source": {"pqai": 4},
+                            "stats": {"pqai": {"hits": 900}}})
+    assert out["families_by_source"] == {"pqai": 7}
+    assert out["unique_families_by_source"] == {"pqai": 4}
+    assert out["per_source"] == {"pqai": 900}, "the returned-row count must survive alongside it"
 
 
 def test_the_history_page_renders_the_source_table():
