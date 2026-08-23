@@ -202,6 +202,33 @@ def test_an_overlong_drawing_brief_is_refused_before_image_generation():
     assert caught.value.category == "figures_and_numerals"
 
 
+def test_a_legacy_figure_label_cut_off_mid_word_is_refused_before_drawing():
+    figures = [{
+        **FIGURES[0],
+        "label": "FIG. 2 - Side elevation in vertical section, showing the cha",
+        "caption": "The chamber 22 is bounded by the perimeter member 24.",
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "cut off mid-word" in check["items"][0]
+
+
+def test_a_complete_word_at_character_sixty_is_not_treated_as_a_cutoff():
+    prefix = "FIG. 1 - "
+    label = prefix + ("x" * (60 - len(prefix) - len("view"))) + "view"
+    figures = [{
+        **FIGURES[0],
+        "label": label,
+        "caption": "The view shows the body 12 and pump 14.",
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "pass"
+
+
 def test_a_self_contradictory_endpoint_target_is_refused_before_drawing():
     figures = [{
         **FIGURES[0],
