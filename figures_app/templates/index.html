@@ -146,8 +146,9 @@ form.addEventListener('submit', async (event) => {
   let started;
   try {
     const response = await fetch(CREATE_URL, {method: 'POST', body});
-    started = await response.json();
-    if (!response.ok) throw new Error(started.error || 'could not start');
+    started = await readJson(response);
+    if (!response.ok) throw new Error(started.error || ('the server answered ' + response.status));
+    if (response.status === 401) throw new Error('your session has expired, please sign in again');
   } catch (problem) {
     err.textContent = problem.message;
     err.style.display = 'block';
@@ -158,10 +159,24 @@ form.addEventListener('submit', async (event) => {
   poll(started.job_id, started.url);
 });
 
+// A failure that is not JSON is still a failure worth naming. Parsing blindly turned a 500
+// into "Unexpected token '<'", which tells the user nothing at all.
+async function readJson(response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch (problem) {
+    if (response.status === 401 || response.redirected) {
+      return {error: 'your session has expired, please reload the page and sign in again'};
+    }
+    return {error: 'the server answered ' + response.status + ' ' + response.statusText};
+  }
+}
+
 async function poll(jobId, target) {
   try {
     const response = await fetch(STATUS_URL.replace('JOB', jobId));
-    const state = await response.json();
+    const state = await readJson(response);
     pbar.style.width = Math.max(2, state.pct || 2) + '%';
     pmsg.textContent = state.message || state.stage || '';
     if (state.state === 'done') { window.location = target; return; }

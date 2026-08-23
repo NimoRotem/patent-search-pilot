@@ -163,3 +163,110 @@ def test_a_job_can_be_deleted(client):
     job_id = _fixture_job(web)
     assert http.delete(f"/v1/jobs/{job_id}").status_code == 200
     assert not (web.JOBS_DIR / job_id).exists()
+
+
+# ---------------------------------------------------------------------------
+# Creating a job. Nothing exercised this route, and a TypeError in it reached a
+# user as "Unexpected token '<'" because the 500 came back as an HTML page.
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def client_no_pipeline(client, monkeypatch):
+    """The web layer with the compiler stubbed: this is about the route, not the pipeline."""
+    web, http = client
+    started: list[tuple] = []
+    monkeypatch.setattr(web, "_start",
+                        lambda job_id, config, upload, link: started.append(
+                            (job_id, config, upload, link)))
+    return web, http, started
+
+
+def test_creating_a_job_answers_json(client_no_pipeline):
+    web, http, started = client_no_pipeline
+    response = http.post("/v1/jobs", data={"url": "US-11338449-B2",
+                                           "jurisdiction": "uspto_utility"})
+    assert response.status_code == 202, response.get_data(as_text=True)
+    assert response.mimetype == "application/json"
+    payload = response.get_json()
+    assert web._JOB_ID.match(payload["job_id"])
+    assert payload["url"].endswith(payload["job_id"])
+    assert len(started) == 1
+
+    # The state it wrote is readable, and carries the job id every page reads back.
+    state = web._read_state(payload["job_id"])
+    assert state["job_id"] == payload["job_id"]
+    assert state["owner_user_id"] == 1
+    assert state["source"] == "US-11338449-B2"
+    assert state["config"]["jurisdiction"] == "uspto_utility"
+    assert http.get("/").status_code == 200      # the job list renders with it
+
+
+def test_creating_a_job_from_a_file_answers_json(client_no_pipeline):
+    import io
+
+    _web, http, started = client_no_pipeline
+    response = http.post("/v1/jobs", data={
+        "file": (io.BytesIO(b"A PATENT\n\nDETAILED DESCRIPTION\nThe sensor 120 is disclosed.\n"),
+                 "draft.txt")})
+    assert response.status_code == 202
+    assert started[0][2][1] == "draft.txt"
+
+
+def test_a_submission_with_nothing_attached_is_refused_in_json(client_no_pipeline):
+    _web, http, _started = client_no_pipeline
+    response = http.post("/v1/jobs", data={})
+    assert response.status_code == 400
+    assert response.mimetype == "application/json"
+    assert "patent" in response.get_json()["error"]
+
+
+def test_a_failed_submission_does_not_leak_a_concurrency_slot(client, monkeypatch):
+    """The worker thread releases the slot. Anything that fails before it exists must too, or
+    two bad submissions leave the app permanently 'busy' with nothing running."""
+    web, http = client
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(web, "_start", explode)
+    for _ in range(web.MAX_CONCURRENT + 2):
+        response = http.post("/v1/jobs", data={"url": "US-1-B2"})
+        assert response.status_code == 500
+        assert response.mimetype == "application/json"
+        assert "boom" in response.get_json()["detail"]
+
+    monkeypatch.setattr(web, "_start", lambda *a, **k: None)
+    assert http.post("/v1/jobs", data={"url": "US-1-B2"}).status_code == 202
+
+
+def test_an_api_failure_is_json_not_an_html_page(client, monkeypatch):
+    """The defect the user actually saw: a 500 rendered as HTML, and the browser reported
+    'Unexpected token <' instead of anything about what went wrong."""
+    web, http = client
+    monkeypatch.setattr(web, "_start", lambda *a, **k: (_ for _ in ()).throw(ValueError("no")))
+    response = http.post("/v1/jobs", data={"url": "US-1-B2"})
+    assert response.mimetype == "application/json"
+    body = response.get_data(as_text=True)
+    assert not body.lstrip().startswith("<")
+    assert response.get_json()["status"] == 500
+
+
+def test_an_upload_over_the_cap_is_json_not_an_html_page(client):
+    import io
+
+    web, http = client
+    oversize = b"x" * (web.MAX_UPLOAD_BYTES + 2048)
+    response = http.post("/v1/jobs", data={"file": (io.BytesIO(oversize), "big.pdf")})
+    assert response.status_code == 413
+    assert response.mimetype == "application/json"
+    assert not response.get_data(as_text=True).lstrip().startswith("<")
+
+
+def test_a_signed_out_api_call_is_401_json_not_a_login_page(client):
+    """A fetch() follows a redirect and gets HTML. An API caller gets a 401 and a login URL."""
+    web, http = client
+    web.app.before_request_funcs = {}
+    web.authgate.install(web.app)
+    response = http.post("/v1/jobs", data={"url": "US-1-B2"})
+    assert response.status_code == 401
+    assert response.mimetype == "application/json"
+    assert response.get_json()["login"]

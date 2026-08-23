@@ -138,8 +138,14 @@ def current_user() -> Optional[dict]:
     return user
 
 
+# Paths whose callers are programs, not browsers. They get a 401 with a login URL rather than a
+# redirect to a login PAGE: a fetch() follows the redirect, receives HTML and fails with
+# "Unexpected token '<'", which tells the user nothing about having been signed out.
+_API_PREFIXES = ("/v1/", "/api/")
+
+
 def _wants_json() -> bool:
-    if request.path.startswith("/api/"):
+    if request.path.startswith(_API_PREFIXES):
         return True
     accept = request.headers.get("accept", "")
     return "application/json" in accept and "text/html" not in accept

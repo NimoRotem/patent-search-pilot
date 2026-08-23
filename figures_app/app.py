@@ -25,6 +25,7 @@ from typing import Optional
 
 from flask import (Flask, abort, jsonify, render_template, request, send_file,
                    send_from_directory, url_for)
+from werkzeug.exceptions import HTTPException
 
 import authgate
 from pfc.ingest import IngestError
@@ -103,6 +104,10 @@ def _write_state(job_id: str, **changes) -> dict:
     with _lock:
         state = _read_state(job_id) or {}
         state.update(changes)
+        # Recorded here rather than passed in by every caller: doing the latter is what produced
+        # `_write_state(job_id, job_id=job_id, ...)`, a TypeError that reached a user because
+        # nothing exercised the route that made the call.
+        state["job_id"] = job_id
         state["updated_at"] = datetime.now(timezone.utc).isoformat()
         path = _state_path(job_id)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -208,15 +213,23 @@ def create_job():
         return jsonify({"error": "the compiler is already working on as many patents as this "
                                  "box will take, please try again shortly"}), 429
 
-    _sweep()
-    job_id = uuid.uuid4().hex
-    config = _config_from_form(request.form)
-    _write_state(job_id, job_id=job_id, owner_user_id=int(authgate.user().get("id") or 0),
-                 state="running", status="QUEUED", stage="INGEST", pct=2,
-                 message="Reading the patent", source=(link or (upload[1] if upload else "")),
-                 config=config.model_dump(),
-                 created_at=datetime.now(timezone.utc).isoformat())
-    _start(job_id, config, upload, link)
+    # The slot is released by the worker thread. Anything that fails BEFORE that thread exists
+    # has to hand it back here, or two failed submissions leave the app permanently "busy" with
+    # no job running.
+    try:
+        _sweep()
+        job_id = uuid.uuid4().hex
+        config = _config_from_form(request.form)
+        _write_state(job_id, owner_user_id=int(authgate.user().get("id") or 0),
+                     state="running", status="QUEUED", stage="INGEST", pct=2,
+                     message="Reading the patent",
+                     source=(link or (upload[1] if upload else "")),
+                     config=config.model_dump(),
+                     created_at=datetime.now(timezone.utc).isoformat())
+        _start(job_id, config, upload, link)
+    except Exception:
+        _slots.release()
+        raise
     return jsonify({"job_id": job_id, "status": "QUEUED",
                     "url": url_for("results", job_id=job_id)}), 202
 
@@ -290,6 +303,37 @@ def job_delete(job_id: str):
     _owned_state(job_id)
     shutil.rmtree(_job_dir(job_id), ignore_errors=True)
     return jsonify({"deleted": job_id})
+
+
+# ---------------------------------------------------------------------------
+# errors
+# ---------------------------------------------------------------------------
+def _is_api_request() -> bool:
+    return request.path.startswith("/v1/") or request.path.startswith("/api/")
+
+
+@app.errorhandler(HTTPException)
+def _http_error(error: HTTPException):
+    """An API path answers JSON however it fails.
+
+    Flask's default handlers render HTML, so a 413 or a 500 on /v1/jobs reached the browser as
+    a login-shaped page and `response.json()` failed with "Unexpected token '<'" — a message
+    that says nothing about what went wrong. Every API failure now carries its reason.
+    """
+    if _is_api_request():
+        return jsonify({"error": error.description or error.name,
+                        "status": error.code}), (error.code or 500)
+    return error
+
+
+@app.errorhandler(Exception)
+def _unhandled(error: Exception):
+    traceback.print_exc()
+    if _is_api_request():
+        return jsonify({"error": "the server failed on that request",
+                        "detail": f"{type(error).__name__}: {error}"[:300],
+                        "status": 500}), 500
+    raise error
 
 
 @app.get("/healthz")
