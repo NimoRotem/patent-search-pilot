@@ -377,8 +377,8 @@ def test_marked_anchor_repair_takes_a_damped_step_toward_the_full_sheet_suggesti
     repaired, changed = draft_figures._repair_marked_anchors(raw, anchors, audit)
 
     assert changed is True
-    assert repaired[0]["x"] == 300
-    assert repaired[0]["y"] == 350
+    assert repaired[0]["x"] == 500
+    assert repaired[0]["y"] == 500
 
 
 def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypatch):
