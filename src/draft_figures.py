@@ -3543,7 +3543,7 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
                 retained = max(0, MAX_PROMPT_CHARS - len(correction) - 2)
                 candidate_prompt = prompt[:retained] + "\n\n" + correction
             retry_source = previous if attempt == 0 else (
-                None if _semantic_has_text_contamination(semantic) else raw_png)
+                None if attempt == 2 or _semantic_has_text_contamination(semantic) else raw_png)
             raw_png = _cached_generate(candidate_prompt, retry_source)
             active_generation = (candidate_prompt, retry_source)
         semantic = inspect_semantics(
