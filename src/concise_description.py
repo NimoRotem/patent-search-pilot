@@ -382,7 +382,7 @@ _SYS = (
 )
 
 
-def phrase(doc, tier="strong"):
+def phrase(doc, tier="strong", model=None):
     """Fill in `summary` and each row's `disclosure`, grounded in the cells. Best-effort.
 
     A failure here must not lose the document: every row already carries the reader's own note,
@@ -407,8 +407,10 @@ def phrase(doc, tier="strong"):
                  for r in doc["rows"]],
     }
     try:
+        #  `model`, when a person chose one in the rebuild dialog, pins this call to it
+        #  instead of letting the strong tier pick. Unset is the default behaviour.
         got = llm.chat_json(_SYS, json.dumps(payload, ensure_ascii=False),
-                            max_tokens=8000, tier=tier) or {}
+                            max_tokens=8000, tier=tier, provider=model) or {}
     except Exception:
         traceback.print_exc()
         return doc
@@ -720,7 +722,8 @@ def office_action_doc(cand, subject, n=1):
     }
 
 
-def build(deep, pubs, subject, start_at=1, do_phrase=True, on_progress=None, report=None):
+def build(deep, pubs, subject, start_at=1, do_phrase=True, on_progress=None,
+          report=None, model=None):
     """-> [document model] ready to render, one per requested publication.
 
     A `pub` prefixed `OA:` is a file-wrapper document, not a publication: it is built from the
@@ -762,7 +765,7 @@ def build(deep, pubs, subject, start_at=1, do_phrase=True, on_progress=None, rep
             "rows": rows,
         }
         if do_phrase:
-            phrase(doc)
+            phrase(doc, model=model)
         if not doc["summary"]:
             t = (b.get("title") or "").strip()
             doc["summary"] = ("This document discloses %s%s." % (t[0].lower(), t[1:]) if t

@@ -1942,6 +1942,11 @@ tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
 .histdetail .hxnote{margin:.3rem 0 0;line-height:1.4}
 /*  Which databases the search drew from. Small, quiet and readable at a glance: an attorney
     checking a result wants the list of sources and their contribution, not a dashboard. */
+/*  The prompt, shown verbatim in the rebuild dialog. Monospace and scrollable: it is a long
+    instruction and the point is that it can be read, not that it looks tidy. */
+.promptbox{max-height:16rem;overflow:auto;white-space:pre-wrap;word-break:break-word;
+  font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg2,#fafafa);
+  border:1px solid var(--border,#e6e6e6);border-radius:4px;padding:.6rem;margin:.35rem 0 0}
 .histdetail .hxsrc{margin:.5rem 0 .1rem}
 .histdetail .srctbl{border-collapse:collapse;margin-top:.3rem;font-size:.82rem;min-width:min(100%,26rem)}
 .histdetail .srctbl th{text-align:left;font-weight:600;color:var(--muted,#666);

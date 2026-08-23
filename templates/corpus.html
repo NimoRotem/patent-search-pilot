@@ -82,7 +82,7 @@
       <tr>
         <td><b>{{ x.label }}</b></td>
         <td class="small">{{ x.purpose or x.note or '' }}</td>
-        <td class="small">{% if x.live %}<span style="color:#155f38">searched</span>{% else %}<span class="muted">not available</span>{% endif %}</td>
+        <td class="small">{% if x.live and x.in_report %}<span style="color:#155f38">searched</span>{% elif x.live %}<span style="color:#7a5b00">separate page</span>{% else %}<span class="muted">not available</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -96,6 +96,19 @@
     databases that answered it.
   </p>
   {% endif %}
+  {#
+    The table above describes the RETRIEVAL ENGINE's fan-out, which is a separate app. EU
+    registered designs are held by this app instead, on their own page, because a design has
+    no claims and no description and does not belong in a patent report's ranking. Without
+    this line a reader sees "EUIPO: not available" here and a Designs tab in the nav, and has
+    no way to reconcile them.
+  #}
+  <p class="small muted" style="margin:.6em 0 0">
+    <b>EU registered designs</b> are searched separately, on the
+    <a href="{{ request.script_root }}/designs">Designs</a> page. They protect appearance
+    rather than function, carry no claims to read, and are therefore not part of the fan-out
+    above and never enter a patent report's ranking.
+  </p>
   {% else %}
   <p class="small muted" style="margin-top:0">
     The list of external databases could not be read from the retrieval engine just now. This says

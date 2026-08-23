@@ -66,14 +66,22 @@ def test_account_and_report_chrome_use_the_compact_release_contract():
     assert "Shared administrator" not in base + login + admin
     assert "admin-password" not in login
     assert "APP_PASSWORD" not in auth_source and "legacy_admin" not in auth_source
-    assert 'class="scopewarning"' in report
+    #  The out-of-domain banner was REMOVED from the report on request, 2026-08-23: every search
+    #  fans out to ten external databases now, so "this query fell outside the indexed field" was
+    #  warning about a corpus-only answer the tool had stopped giving. The verdict is still
+    #  computed and still stored on the report; it is simply not a banner.
+    assert 'class="scopewarning"' not in report
     assert 'class="runsummary"' in report and "Read more" in report
     assert 'class="archivecompact"' in report
     assert 'class="tail reportlimits"' in report
     assert report.count('<span class="th">Identified but not readable here</span>') == 0
     assert report.count('<span class="th">Coverage ledger</span>') == 0
     assert report.count('<span class="th">Search scope and measured reliability</span>') == 0
-    assert ".scopewarning-pop" in css and ".runsummary" in css and ".archivecompact" in css
+    #  EVERY SECTION STARTS SHUT. Two of them carried `open`, which put the claim ledger and the
+    #  Office history between the header and the first result.
+    assert 'class="tail ledgerblock" open' not in report
+    assert "<details open" not in report
+    assert ".runsummary" in css and ".archivecompact" in css
 
 
 def test_parser_collects_a_gold_family_group():

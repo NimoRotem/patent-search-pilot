@@ -746,6 +746,19 @@ def account():
                     preferred_jurisdiction=request.form.get("preferred_jurisdiction", "US"))
                 g.patent_user = user
                 message = "Account preferences saved."
+            elif action == "share":
+                #  ONE password for every link this account publishes. Set once here, copied onto
+                #  each report at publish time, never shown again. Clearing it also stops anything
+                #  new being published automatically, which is the only safe meaning of "no
+                #  password": see public_report.autopublish.
+                user = accounts.set_share_password(
+                    user["id"], request.form.get("share_password", ""))
+                user = accounts.set_autopublish(
+                    user["id"], request.form.get("autopublish") == "1")
+                g.patent_user = user
+                message = ("Share settings saved." if user.get("has_share_password") else
+                           "Share password cleared. New reports will not be published "
+                           "automatically until one is set.")
             elif action == "password":
                 new = request.form.get("new_password", "")
                 if new != request.form.get("new_password_confirm", ""):

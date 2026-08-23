@@ -259,6 +259,7 @@ def external_sources(timeout: float = 6.0):
                     "key": key,
                     "label": federation.source_label(key),
                     "live": bool(s.get("search_available")),
+                    "in_report": bool(s.get("in_report_fanout", True)),
                     "purpose": SOURCE_PURPOSE.get(key, ""),
                     "note": _clean(s.get("note")),
                     "reason": _clean(s.get("reason")),

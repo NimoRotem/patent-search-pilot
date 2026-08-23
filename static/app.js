@@ -46,8 +46,13 @@ const padPub = raw => {
 const gp  = pub => 'https://patents.google.com/patent/' + (padPub(pub) || (pub || '').replace(/-/g, '')) + '/en';
 const esp = pub => { const p = padPub(pub) || (pub || '').replace(/-/g, '');
   return 'https://worldwide.espacenet.com/patent/search/publication/' + p + '?q=pn%3D' + p; };
-const figUrl = (pub, file) => B + '/figures/' + encodeURIComponent(pub) + '/' + encodeURIComponent(file);
-/* A figure entry is EITHER a locally-recovered file (served from /figures/<pub>/<file>) OR a
+/*  /refdrawing/, not /figures/. The figure compiler is a separate app mounted at /figures/ on this
+    host with an `^~` nginx location, which beats every regex, so reference drawings served from
+    /figures/<pub>/<file> reached the compiler and came back as a 302 to its login. A redirected
+    <img> renders as a broken one, which is why every drawing on every report looked missing while
+    the files were on disk all along. See webapp.REFDRAW_PREFIX. */
+const figUrl = (pub, file) => B + '/refdrawing/' + encodeURIComponent(pub) + '/' + encodeURIComponent(file);
+/* A figure entry is EITHER a locally-recovered file (served from /refdrawing/<pub>/<file>) OR a
    lemad-Mongo remote entry ({file:null, thumbnail, full} Google-CDN URLs). One accessor each for
    the list/thumbnail size and the full-resolution size, so every render site handles both shapes. */
 const figThumb = (pub, im) => (im && im.file) ? figUrl(pub, im.file) : ((im && (im.thumbnail || im.full)) || '');
@@ -2265,6 +2270,62 @@ async function streamNewCards(){
   };
   setTimeout(tick, 3000);
 }
+
+/* ── rebuild settings ─────────────────────────────────────────────────────────────────────────
+   "Manage / rebuild" used to jump straight to the document picker, so the model, the prompt and
+   the compliance pass were all implicit in a step that spends a model call per document. The
+   dialog shows them, then submits to the same route. Loaded on first open, never on page load. */
+(function buildSettings() {
+  var btn = document.querySelector('[data-buildsettings]');
+  var dlg = document.getElementById('buildDlg');
+  if (!btn || !dlg || !dlg.showModal) return;
+  var loaded = false;
+
+  function esc2(x){ return String(x == null ? '' : x)
+    .replace(/[&<>"]/g, function (c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  function paint(d) {
+    var sel = document.getElementById('buildModel');
+    var opts = ['<option value="">Default for this pass (' + esc2(d.default_tier) + ' tier)</option>'];
+    (d.models || []).forEach(function (m) {
+      /*  An unavailable model is SHOWN and disabled, with the reason. Hiding it makes the list
+          look like the whole world and turns "why can I not pick sonnet" into a support question. */
+      opts.push('<option value="' + esc2(m.name) + '"' + (m.available ? '' : ' disabled') + '>'
+        + esc2(m.name) + ': ' + esc2(m.model) + ' (' + esc2(m.tier) + ' tier)'
+        + (m.available ? '' : ', unavailable: ' + esc2(m.why)) + '</option>');
+    });
+    sel.innerHTML = opts.join('');
+    document.getElementById('buildModelNote').textContent = d.default_note || '';
+    document.getElementById('buildPromptWhere').textContent =
+      (d.prompt && (d.prompt.name + ' · ' + d.prompt.where + ' · max ' + d.prompt.max_tokens + ' tokens')) || '';
+    document.getElementById('buildPrompt').textContent = (d.prompt && d.prompt.text) || '';
+    document.getElementById('buildKnobs').innerHTML = (d.settings || []).map(function (s) {
+      if (s.key === 'skip_compliance')
+        return '<label class="small"><input type="checkbox" name="skip_compliance" value="1"> <b>'
+          + esc2(s.label) + '</b><br><span class="muted">' + esc2(s.help) + '</span></label>';
+      return '<label class="small"><b>' + esc2(s.label) + '</b><br>'
+        + '<input class="input" style="max-width:8rem" type="number" min="1" value="1" name="'
+        + esc2(s.key) + '"><br><span class="muted">' + esc2(s.help) + '</span></label>';
+    }).join('');
+  }
+
+  btn.addEventListener('click', function () {
+    dlg.showModal();
+    if (loaded) return;
+    loaded = true;
+    fetch((window.APP_BASE || '') + '/api/build-settings', {credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(paint)
+      .catch(function () {
+        /*  The dialog must not become a dead end because one fetch failed: the submit button
+            posts to the builder either way, which is exactly what the old link did. */
+        document.getElementById('buildModelNote').textContent =
+          'The model list could not be read, so this rebuild will use the default.';
+      });
+  });
+  var close = document.getElementById('buildClose');
+  if (close) close.addEventListener('click', function () { dlg.close(); });
+})();
 
 /* ── the public link: publish, password, revoke ───────────────────────────────────────────────
    The owner's control. Everything it does is one POST; the dialog exists so a password and a

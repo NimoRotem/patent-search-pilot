@@ -115,8 +115,11 @@ def cached_tokens() -> int:
 
 
 class _Provider:
-    def __init__(self, name, tier, call, concurrency, env=None, note="", rate=1.0):
+    def __init__(self, name, tier, call, concurrency, env=None, note="", rate=1.0, model=""):
         self.name, self.tier, self._call, self.note = name, tier, call, note
+        #  The model id is otherwise sealed inside the `call` closure, so nothing could name the
+        #  model a provider actually reaches. A UI that offers a choice has to be able to say it.
+        self.model = model or name
         self.env = env
         self.sem = threading.Semaphore(concurrency)
         self.concurrency = concurrency
@@ -268,20 +271,25 @@ def _meta(model):
 #  Anthropic throttled at 24 concurrent calls on 60k-character prompts.
 _ALL = {
     "vertex-flash": _Provider("vertex-flash", "fast", _vertex("gemini-2.5-flash"), 48,
-                              rate=5.97, note="5.97 calls/s at 24 workers"),
+                              rate=5.97, note="5.97 calls/s at 24 workers",
+                              model="gemini-2.5-flash"),
     "haiku": _Provider("haiku", "fast", _anthropic("claude-haiku-4-5-20251001"), 48,
-                       env="ANTHROPIC_API_KEY", rate=7.96, note="7.96 calls/s at 24 workers"),
+                       env="ANTHROPIC_API_KEY", rate=7.96, note="7.96 calls/s at 24 workers",
+                       model="claude-haiku-4-5-20251001"),
     "muse": _Provider("muse", "fast", _meta("muse-spark-1.2"), 12, env="META_API_KEY",
-                      rate=0.99, note="reasoning model, 0.99 calls/s — capacity and diversity"),
+                      rate=0.99, note="reasoning model, 0.99 calls/s, capacity and diversity",
+                      model="muse-spark-1.2"),
     "sonnet": _Provider("sonnet", "strong", _anthropic("claude-sonnet-4-5-20250929"), 24,
-                        env="ANTHROPIC_API_KEY", rate=3.0),
+                        env="ANTHROPIC_API_KEY", rate=3.0,
+                        model="claude-sonnet-4-5-20250929"),
     #  Claude Sonnet 5: rejects sampling params (temperature=None omits it) and thinks adaptively
     #  by default, which is unwanted latency on short structured judgments — disabled explicitly.
     #  Not in any tier by default; opt in with MODEL_POOL_STRONG=sonnet5,vertex-flash for an A/B.
     "sonnet5": _Provider("sonnet5", "strong",
                          _anthropic("claude-sonnet-5", temperature=None, thinking_off=True), 24,
-                         env="ANTHROPIC_API_KEY", rate=3.0),
-    "vertex-pro": _Provider("vertex-pro", "strong", _vertex("gemini-2.5-pro"), 16, rate=2.0),
+                         env="ANTHROPIC_API_KEY", rate=3.0, model="claude-sonnet-5"),
+    "vertex-pro": _Provider("vertex-pro", "strong", _vertex("gemini-2.5-pro"), 16, rate=2.0,
+                            model="gemini-2.5-pro"),
 }
 
 
@@ -337,8 +345,36 @@ def _describe_error(p, e):
     return f"{p.name}: {type(e).__name__}: {str(e)[:120]} {body}"
 
 
-def call(system, user, max_tokens=1200, tier="fast"):
-    """Ask the tier. -> (text, provider_name, prompt_tokens, completion_tokens).
+def choices():
+    """Every provider a caller may ask for by name, with whether it can be used right now.
+
+    -> [{"name", "tier", "model", "available", "why"}]
+
+    For the UI that lets a reader pick the model behind a rebuild. `available` is the pool's own
+    answer, so a provider whose key is missing or which is in cooldown says so rather than being
+    offered and then quietly swapped underneath.
+    """
+    out = []
+    for name, p in _ALL.items():
+        why = ""
+        if p.env and not os.environ.get(p.env):
+            why = "%s is not set on this host" % p.env
+        elif not p.available():
+            why = "temporarily latched off after repeated failures"
+        out.append({"name": name, "tier": p.tier, "model": getattr(p, "model", "") or name,
+                    "available": p.available(), "why": why,
+                    "note": getattr(p, "note", "") or ""})
+    out.sort(key=lambda d: (not d["available"], d["tier"], d["name"]))
+    return out
+
+
+def call(system, user, max_tokens=1200, tier="fast", provider=None):
+    """Ask the tier, or one named provider. -> (text, provider_name, prompt_tokens, completion_tokens).
+
+    `provider` pins the call to one member of `_ALL` by name. It is for a person who has asked for
+    a specific model, so it does NOT silently fall back to the tier: an unknown or unavailable name
+    raises, because quietly answering from a different model than the one someone chose makes the
+    comparison they were running meaningless. Everything else about the call is unchanged.
 
     CAPACITY-AWARE, NOT ROUND-ROBIN, and the difference is the whole reason a third provider is
     worth adding. Round-robin hands 1/N of the calls to the slowest member whatever the queue looks
@@ -358,7 +394,18 @@ def call(system, user, max_tokens=1200, tier="fast"):
     still sees a real exception rather than a silent empty string.
     """
     last = None
-    ps = _order(tier)
+    if provider:
+        p = _ALL.get(str(provider))
+        if p is None:
+            raise ValueError("unknown model %r; known: %s"
+                             % (provider, ", ".join(sorted(_ALL))))
+        if not p.available():
+            raise RuntimeError("model %r is not available on this host: %s"
+                               % (provider, (p.env and not os.environ.get(p.env))
+                                  and ("%s is not set" % p.env) or "latched off after failures"))
+        ps = [p]
+    else:
+        ps = _order(tier)
 
     def attempt(p, blocking):
         """-> (text, pt, ct) on success, None if busy or failed. Sets `last` on failure."""

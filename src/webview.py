@@ -852,6 +852,21 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
     }
 
 
+#  ODP's own `downloadUrl` carries the document id as the last path segment and needs an
+#  `X-API-KEY` HEADER, which a browser link cannot send. Linking it directly made every PDF under
+#  "Documents read" a 403. Rewritten to our proxy, which holds the key: see webapp.odp_document.
+_ODP_DL_RE = re.compile(r"/download/applications/([A-Za-z0-9._-]{1,64})/([A-Za-z0-9._-]{1,64})\.pdf",
+                        re.I)
+
+
+def _odp_pdf_href(doc):
+    """A link a reader can actually open, or "" when we cannot build one."""
+    m = _ODP_DL_RE.search(str((doc or {}).get("pdf") or ""))
+    if not m:
+        return ""
+    return "/odp-document/%s/%s.pdf" % (m.group(1), m.group(2))
+
+
 def build_prosecution_view(report):
     """What the USPTO file wrapper already says about this family, or None.
 
@@ -864,7 +879,7 @@ def build_prosecution_view(report):
     mined = p.get("mined") or {}
     if not dossier and not mined:
         return None
-    docs = mined.get("documents") or []
+    docs = [dict(d, pdf_href=_odp_pdf_href(d)) for d in (mined.get("documents") or [])]
     applied = [a for a in (mined.get("applied") or []) if a.get("pub")]
     if not (dossier.get("family") or docs or applied):
         return None

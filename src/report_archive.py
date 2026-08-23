@@ -367,7 +367,9 @@ def _image_urls(card, display):
             continue
         url = image.get("full") or image.get("src_url") or image.get("thumbnail")
         if not url and image.get("file"):
-            url = (f"{PUBLIC_BASE_URL}/figures/{quote(card['pub'], safe='')}/"
+            #  /refdrawing/, not /figures/: nginx gives /figures/ to the figure compiler on this
+            #  host, so an archived URL under the old prefix fetches that app's login page.
+            url = (f"{PUBLIC_BASE_URL}/refdrawing/{quote(card['pub'], safe='')}/"
                    f"{quote(str(image['file']), safe='')}")
         if not url:
             continue

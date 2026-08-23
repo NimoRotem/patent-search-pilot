@@ -45,14 +45,15 @@
                 onclick="openDetail('{{ c.pub }}')" aria-label="Open the full document for {{ c.pub }}">
           {% if c.images %}
             {% set im0 = c.images[0] %}
-            {#  A locally-recovered figure has a filename (served from /figures/<pub>/<file>); a
+            {#  A locally-recovered figure has a filename (served from /refdrawing/<pub>/<file>,
+                NOT /figures/, which nginx gives to the figure compiler: see webapp.REFDRAW_PREFIX); a
                 lemad-Mongo figure has file=null and a remote Google-CDN thumbnail URL that renders
                 directly — nothing was downloaded. Both render here at first paint, no click.
                 loading="eager": figures are cheap CDN URLs (no download), so every card's hero
                 shows immediately, iptorch-style, instead of only the ~2 above-fold ones. decoding
                 stays async so decode never blocks first paint. #}
             <img loading="eager" decoding="async"
-                 src="{% if im0.file %}{{ request.script_root }}/figures/{{ c.pub }}/{{ im0.file }}{% else %}{{ im0.thumbnail or im0.full }}{% endif %}"
+                 src="{% if im0.file %}{{ request.script_root }}/refdrawing/{{ c.pub }}/{{ im0.file }}{% else %}{{ im0.thumbnail or im0.full }}{% endif %}"
                  alt="{% if im0.from_pdf %}Page{% else %}Figure{% endif %} 1 of {{ c.pub }}">
             <span class="figbadge">{{ c.n_images }} fig{{ 's' if c.n_images != 1 else '' }}</span>
             <span class="zoomhint" aria-hidden="true">🔍</span>
