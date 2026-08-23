@@ -109,15 +109,18 @@ def test_artwork_with_text_on_it_is_refused(figure, profile, neighbourhood, monk
     assert "text on it" in drawn.failed
 
 
-def test_artwork_showing_an_undisclosed_part_is_refused(figure, profile, neighbourhood,
+def test_an_unmatched_shape_is_reported_not_thrown_away(figure, profile, neighbourhood,
                                                         monkeypatch):
-    """The failure mode of prompting for a technical drawing: it adds the bracket."""
+    """Whether a shape is a separate component or the contour of a listed one is a judgement the
+    reader is not reliable at. It rejected two good drawings of a housing for having a recessed
+    centre, so it reports instead."""
     graph, _plan, spec = figure
     area = Box(x=254.0, y=254.0, width=1400.0, height=1000.0)
     _patch(monkeypatch, _located(spec, area, unlisted=["a mounting bracket", "a cable"]))
     drawn = referencemode.draw_figure(spec, graph, profile, neighbourhood, object())
-    assert not drawn.ok
-    assert "does not disclose" in drawn.failed
+    assert drawn.ok, "a drawing is not discarded on the reader's opinion of a shape"
+    assert any("mounting bracket" in note for note in drawn.notes)
+    assert any("check the drawing" in note for note in drawn.notes)
 
 
 def test_a_part_that_cannot_be_found_is_reported_not_invented(
@@ -195,3 +198,105 @@ def test_the_prompt_names_only_the_parts_this_figure_specifies(figure):
     for node in excluded:
         if node is not None and len(node.canonical_name) > 6:
             assert node.canonical_name not in prompt
+
+
+def test_boilerplate_in_a_caption_is_not_an_unnumbered_part():
+    """"...of the presently disclosed subject matter" names no component.
+
+    Reading it as one put every figure of US-2024/0246200-A1 into NEEDS_TEXT_UPDATE for a part
+    that does not exist.
+    """
+    from pfc.spec import unnumbered_components
+
+    caption = ("shows a bottom perspective view of a vacuum gripper according to one example "
+               "of the presently disclosed subject matter")
+    assert unnumbered_components(caption, {}) == []
+
+
+def test_an_arrangement_is_not_demanded_as_a_line_on_generated_artwork(
+        figure, profile, neighbourhood, monkeypatch):
+    """A pump inside a housing is shown by being drawn inside it, not by a connector."""
+    graph, plan, spec = figure
+    assert spec.relations, "the fixture needs a relationship for this to mean anything"
+    area = Box(x=254.0, y=254.0, width=1400.0, height=1000.0)
+    _patch(monkeypatch, _located(spec, area))
+    drawn = referencemode.draw_figure(spec, graph, profile, neighbourhood, object())
+    assert not drawn.scene.edges, "a raster sheet carries no connector lines"
+    bundle = FigureBundle(spec=spec, scene=drawn.scene, svg=drawn.svg, artwork=drawn.artwork)
+    context = ValidationContext(graph=graph, profile=profile, plan=plan, figure=bundle)
+    assert "SEM004" not in {i.rule_id for i in blocking(validate_figure(context))}
+
+
+def test_a_containers_own_leader_is_not_called_ambiguous(figure, profile, neighbourhood,
+                                                         monkeypatch):
+    """It lands on its own outline, which has the parts it holds just inside it."""
+    graph, plan, spec = figure
+    area = Box(x=254.0, y=254.0, width=1400.0, height=1000.0)
+    located = _located(spec, area)
+    holder = spec.entities[0].entity_id
+    located.encloses.add(holder)
+    located.boxes[holder] = Box(x=area.x + 10, y=area.y + 10,
+                                width=area.width - 20, height=area.height - 20)
+    _patch(monkeypatch, located)
+    drawn = referencemode.draw_figure(spec, graph, profile, neighbourhood, object())
+    bundle = FigureBundle(spec=spec, scene=drawn.scene, svg=drawn.svg, artwork=drawn.artwork)
+    context = ValidationContext(graph=graph, profile=profile, plan=plan, figure=bundle)
+    offenders = [i for i in blocking(validate_figure(context))
+                 if i.rule_id == "GEO009" and i.entity_id == holder]
+    assert not offenders
+
+
+def test_a_part_nested_inside_another_makes_that_other_one_a_container(
+        figure, profile, neighbourhood, monkeypatch):
+    """The reader ticks ``encloses_others`` for housings and misses a track holding a seal.
+
+    Measured on US-2024/0246200-A1: numeral 142, the leakage seal element, sits wholly inside
+    numeral 148, the track. Its leader has nowhere to land that is not inside 148, so GEO009 was
+    unsatisfiable and three identical correction attempts blocked the figure.
+    """
+    graph, plan, spec = figure
+    area = Box(x=254.0, y=254.0, width=1400.0, height=1000.0)
+    located = _located(spec, area)
+    outer, inner = spec.entities[0].entity_id, spec.entities[1].entity_id
+    located.boxes[outer] = Box(x=area.x + 400, y=area.y + 300, width=540, height=200)
+    located.boxes[inner] = Box(x=area.x + 490, y=area.y + 340, width=360, height=115)
+    assert outer not in located.encloses, "the reader did not say so; the boxes have to"
+
+    _patch(monkeypatch, located)
+    drawn = referencemode.draw_figure(spec, graph, profile, neighbourhood, object())
+    holder = next(n for n in drawn.scene.nodes if n.entity_id == outer)
+    assert holder.is_container
+
+    bundle = FigureBundle(spec=spec, scene=drawn.scene, svg=drawn.svg, artwork=drawn.artwork)
+    context = ValidationContext(graph=graph, profile=profile, plan=plan, figure=bundle)
+    offenders = [i for i in blocking(validate_figure(context))
+                 if i.rule_id == "GEO009" and i.entity_id == inner]
+    assert not offenders, "a nested part's leader cannot avoid the part it is nested in"
+
+
+def test_two_parts_the_reader_could_not_tell_apart_do_not_become_containers():
+    """Identical boxes mean neither encloses the other, or every scene loses GEO009."""
+    from pfc.layout.traced import enclosing, holds
+
+    same = Box(x=100, y=100, width=400, height=300)
+    twin = Box(x=100, y=100, width=400, height=300)
+    assert not holds(same, twin)
+    assert enclosing({"a": same, "b": twin}) == set()
+
+
+def test_numerals_located_at_one_place_are_reported_not_rejected(figure):
+    """Four numerals on one outline is what a reader returns when it gave up.
+
+    It is also what a sealing lip, a groove and a flange on the same rim honestly look like, so
+    this is a note for a human rather than grounds for redrawing.
+    """
+    graph, _plan, spec = figure
+    shared = Box(x=604, y=1202, width=1046, height=424)
+    ids = [entity.entity_id for entity in spec.entities[:3]]
+    located = Located(boxes={eid: shared.model_copy() for eid in ids}, ok=True)
+
+    assert imagegrounding.defects(located, spec, graph) == []
+    notes = imagegrounding.concerns(located, graph)
+    assert any("same place" in note for note in notes)
+    numerals = [graph.entity(eid).reference_numeral for eid in ids]
+    assert all(numeral in notes[-1] for numeral in numerals)

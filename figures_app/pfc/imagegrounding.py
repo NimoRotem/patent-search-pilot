@@ -6,14 +6,16 @@ boxes to the same layout code that places numerals on a deterministic sheet. The
 leaders and the figure caption are therefore still drawn by the renderer, still checked by the
 geometry rules, and still bound to the reference registry.
 
-It also does the two rejections that make the mode safe to run at all:
+It also does the one rejection that makes the mode safe to run at all: **any text on the drawing
+is a defect**. A reference numeral written by an image model is a numeral nobody can trust and it
+will collide with the real one, so a sheet with characters on it is thrown away and redrawn.
 
-* **any text on the drawing is a defect.** A reference numeral written by an image model is a
-  numeral nobody can trust, and it will collide with the real one. A sheet with characters on it
-  is thrown away and redrawn.
-* **any object that is not on the list is a defect.** That is the failure mode of prompting an
-  image model for a technical drawing: it adds the bracket, the bolt, the cable that such a
-  device usually has. The patent did not disclose them.
+Shapes the reader cannot match to a listed part are REPORTED rather than rejected. That was a
+rejection and it was wrong: shown a perspective drawing of a housing, a reader lists its rim, its
+recessed centre and its panel faces as objects, because they are objects, and on
+US-2024/0246200-A1 that discarded two good drawings before falling back to the schematic.
+Whether a shape is a separate component or the contour of a listed one is a judgement the reader
+is not reliable at, so it goes in front of a human instead.
 
 A part that cannot be found is not fatal by itself — a small part may genuinely be hidden behind
 another in a perspective view — but its numeral has nowhere to point, so the figure is short of
@@ -129,16 +131,66 @@ def locate(png: bytes, spec: FigureSpec, graph: PatentGraph, area: Box,
 
 
 def defects(located: Located, spec: FigureSpec, graph: PatentGraph) -> list[str]:
-    """Reasons this sheet has to be redrawn rather than corrected."""
+    """Reasons this sheet has to be redrawn rather than reported.
+
+    Only text. It is unambiguous, it is checkable, and a numeral this compiler did not place is
+    one nobody can trace to the description.
+
+    An "undisclosed part" is deliberately NOT here, though it was. A reader shown a perspective
+    drawing of a housing lists its recessed centre, its rim and its panel faces as objects,
+    because they are objects; measured on US-2024/0246200-A1 it rejected two perfectly good
+    drawings that way and fell back to the schematic. Whether a shape is a separate component or
+    the contour of a listed one is a judgement the reader is not reliable at, so it is reported
+    for a human to look at (see :func:`concerns`) rather than acted on.
+    """
     reasons: list[str] = []
     if located.visible_text:
         shown = ", ".join(repr(item) for item in located.visible_text[:4])
         reasons.append(
             f"the generated artwork has text on it ({shown}), and every numeral on a sheet has "
             "to be one this compiler placed")
-    if located.unlisted:
-        shown = "; ".join(located.unlisted[:3])
-        reasons.append(
-            f"the generated artwork shows parts the patent does not disclose for this figure "
-            f"({shown})")
     return reasons
+
+
+def concerns(located: Located, graph: Optional[PatentGraph] = None) -> list[str]:
+    """Worth a human's eye, not worth discarding the drawing over."""
+    notes: list[str] = []
+    if located.unlisted:
+        shown = "; ".join(located.unlisted[:4])
+        notes.append(
+            f"an independent reader saw shapes in the generated artwork it could not match to a "
+            f"part of this figure ({shown}); check the drawing shows nothing the patent does "
+            f"not disclose")
+    notes.extend(_shared_boxes(located, graph))
+    return notes
+
+
+def _label(entity_id: str, graph: Optional[PatentGraph]) -> str:
+    entity = graph.entity(entity_id) if graph is not None else None
+    if entity is None:
+        return entity_id
+    return entity.reference_numeral or entity.canonical_name or entity_id
+
+
+def _shared_boxes(located: Located, graph: Optional[PatentGraph]) -> list[str]:
+    """Numerals the reader could not tell apart, because it gave them one box between them.
+
+    Not a defect on its own: a sealing lip, a groove and a flange on the same rim genuinely share
+    an outline, and a draughtsman points at three places on it. But it is also what a reader
+    returns when it gave up and handed back the parent's box for every child, and the two look
+    identical from here, so it goes in front of a human.
+    """
+    groups: dict[tuple[int, int, int, int], list[str]] = {}
+    for entity_id, box in located.boxes.items():
+        key = (round(box.x), round(box.y), round(box.width), round(box.height))
+        groups.setdefault(key, []).append(entity_id)
+    notes = []
+    for shared in groups.values():
+        if len(shared) < 3:
+            continue
+        names = ", ".join(_label(entity_id, graph) for entity_id in sorted(shared))
+        notes.append(
+            f"{len(shared)} reference numerals ({names}) were located at exactly the same place "
+            f"in the artwork, so their leaders all point at one outline; check the drawing tells "
+            f"those parts apart")
+    return notes

@@ -17,9 +17,18 @@ Rules:
 3. **Report every piece of text you can see on the drawing**, in `visible_text`. Digits, letters,
    captions, anything. If there is none, return an empty list. This matters: the drawing is
    supposed to carry no text at all, and anything you find is a defect.
-4. **Report anything drawn that is not on the list**, in `unlisted_objects`, described in your
-   own words. A drawing that has grown a component nobody asked for is a drawing that has to be
-   redone.
+4. **Report any separate COMPONENT that is not on the list**, in `unlisted_objects`.
+
+   A component is a distinct part: a bracket, a cable, a fastener, a motor, a hose. Something
+   that would have its own reference numeral in a patent.
+
+   A face, an edge, a rim, a recess, a panel, a chamfer, a corner, a surface, a region or a
+   contour of a part that IS on the list is **not** an unlisted component. Neither is a shape
+   you cannot name. Do not report those. A drawing of a housing has faces and edges and a
+   recessed centre; none of them is a component the patent forgot to mention.
+
+   If you are not sure whether something is a separate component or part of the shape of a
+   listed one, leave it out.
 5. Where the same kind of part appears more than once and the list names them separately (a
    first plate and a second plate), match them left to right, then top to bottom, and say in
    `note` that is what you did.

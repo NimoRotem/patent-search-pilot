@@ -320,6 +320,12 @@ class MissingRelation(ValidationRule):
         figure = context.figure
         if figure is None:
             return []
+        if figure.scene.artwork:
+            # The arrangement was given to the image model in words and the parts were then
+            # found in what it drew. A pump inside a housing is shown by being drawn inside it,
+            # not by a connector line, and there are no connector lines on this kind of sheet.
+            # Demanding one refused every reference-guided figure that had any relation at all.
+            return []
         drawn = {edge.relation_id for edge in figure.scene.edges}
         relations = {relation.id: relation for relation in context.graph.relations}
         nodes = {node.entity_id: node for node in figure.scene.nodes}

@@ -149,6 +149,12 @@ _DRAWING_WORDS = frozenset({
     "invention", "disclosure", "portion", "part", "arrangement",
     "principle", "overview", "summary", "top", "bottom", "side", "front", "rear", "isometric",
     "exploded", "enlarged", "close", "up",
+    # Drafting boilerplate. "FIG. 1 shows ... of the presently disclosed subject matter" names no
+    # component, and reading it as one put every figure of US-2024/0246200-A1 into
+    # NEEDS_TEXT_UPDATE for a part that does not exist.
+    "presently", "disclosed", "subject", "matter", "present", "instant", "herein", "described",
+    "accordance", "according", "one", "another", "second", "third", "first", "certain",
+    "various", "some", "further", "alternative", "preferred", "illustrative", "non", "limiting",
 })
 
 _CAPTION_PHRASE = re.compile(

@@ -13,6 +13,14 @@ Two things differ, and both are recorded on the scene rather than special-cased 
   boxes a reader returns for them intersect. Treating that as a defect would refuse every
   drawing this mode produces, so the overlap rule stands down for a raster-backed scene and
   says so.
+
+Containment is taken from the boxes, not only from the reader's word for it. A reader ticks
+``encloses_others`` for the things it thinks of as housings and leaves it off a part that merely
+happens to hold another one: on US-2024/0246200-A1 it did exactly that for the track (148) that
+the leakage seal element (142) sits in. A numeral for a nested part then has nowhere to point
+that is not inside its neighbour, GEO009 is unsatisfiable, and the figure blocks after three
+identical correction attempts. One box lying inside another is a fact about the boxes, so it is
+read off them.
 """
 from __future__ import annotations
 
@@ -24,6 +32,35 @@ from ..profiles import DrawingProfile
 from ..schemas import Box, FigureSpec, LayoutNode, LayoutScene, PatentGraph
 from .leaders import place_labels
 
+# How much bigger a box has to be before holding another one makes it that one's container.
+# Two parts a reader could not tell apart come back with the same box, and neither encloses the
+# other; a part genuinely sitting inside another is comfortably clear of this.
+ENCLOSURE_RATIO = 1.25
+# Slack on the containment test, as a fraction of the inner box, for a reader that clipped an
+# edge by a pixel.
+ENCLOSURE_SLACK = 0.06
+
+
+def holds(outer: Box, inner: Box) -> bool:
+    """Is ``inner`` sitting inside ``outer``, rather than merely overlapping it?"""
+    if outer is inner:
+        return False
+    outer_area = outer.width * outer.height
+    inner_area = inner.width * inner.height
+    if inner_area <= 0 or outer_area < inner_area * ENCLOSURE_RATIO:
+        return False
+    pad_x = inner.width * ENCLOSURE_SLACK
+    pad_y = inner.height * ENCLOSURE_SLACK
+    return (outer.x <= inner.x + pad_x and outer.y <= inner.y + pad_y and
+            outer.right >= inner.right - pad_x and outer.bottom >= inner.bottom - pad_y)
+
+
+def enclosing(boxes: dict[str, Box]) -> set[str]:
+    """Which of these boxes hold another one, whatever the reader called them."""
+    return {outer_id for outer_id, outer in boxes.items()
+            if any(holds(outer, inner) for inner_id, inner in boxes.items()
+                   if inner_id != outer_id)}
+
 
 def build(spec: FigureSpec, graph: PatentGraph, located: Located, profile: DrawingProfile,
           *, artwork_box: Box, sheet_number: int = 1, sheet_total: int = 1,
@@ -31,6 +68,7 @@ def build(spec: FigureSpec, graph: PatentGraph, located: Located, profile: Drawi
     area = Box(x=profile.drawing_left, y=profile.drawing_top,
                width=profile.drawing_width, height=profile.drawing_height)
     roles = {entity.entity_id: entity.role for entity in spec.entities}
+    geometric = enclosing(located.boxes)
 
     nodes: list[LayoutNode] = []
     for entity in sorted(spec.entities, key=lambda e: sort_key(e.reference_numeral or "")):
@@ -38,7 +76,8 @@ def build(spec: FigureSpec, graph: PatentGraph, located: Located, profile: Drawi
         if box is None:
             continue
         entity_node = graph.entity(entity.entity_id)
-        encloses = entity.entity_id in located.encloses or entity.role == "boundary"
+        encloses = (entity.entity_id in located.encloses or entity.role == "boundary"
+                    or entity.entity_id in geometric)
         nodes.append(LayoutNode(
             entity_id=entity.entity_id,
             reference_numeral=entity.reference_numeral,

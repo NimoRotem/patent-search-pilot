@@ -8,15 +8,15 @@
 
 The value is that the drawing looks like a patent drawing. The safety is that everything which
 carries meaning — which parts, which numerals, which relationships — comes from the FigureSpec
-and never from the image model, and that the two rejections below are unconditional:
+and never from the image model, and that text on the generated artwork is an unconditional
+rejection: a numeral this compiler did not place is one nobody can trace to the description.
 
-* text on the generated artwork means the sheet is redrawn, because a numeral this compiler did
-  not place is a numeral nobody can trace to the description;
-* a part on the sheet that the figure does not specify means the sheet is redrawn, because that
-  is precisely how an image model adds the bracket the patent never disclosed.
+Shapes a reader cannot match to a listed part are reported for a human rather than rejected; see
+``imagegrounding.defects`` for why that line moved.
 
-Both are retried a bounded number of times and then the figure falls back to the deterministic
-renderer, which always produces something correct even when it produces something plain.
+A rejection is retried a bounded number of times and then the figure falls back to the
+deterministic renderer, which always produces something correct even when it produces something
+plain.
 """
 from __future__ import annotations
 
@@ -98,6 +98,7 @@ def draw_figure(spec: FigureSpec, graph: PatentGraph, profile: DrawingProfile,
                 continue
             out.failed = problems[0]
             return out
+        out.notes.extend(imagegrounding.concerns(located, graph))
         if not located.ok:
             out.notes.append(
                 f"attempt {attempt + 1} was redrawn: none of the parts could be found in it")

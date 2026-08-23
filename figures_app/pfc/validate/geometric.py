@@ -163,6 +163,10 @@ class AmbiguousLeader(ValidationRule):
             owner = nodes.get(label.entity_id)
             if owner is None:
                 continue
+            if owner.is_container:
+                # A container's leader lands on its own outline, which by definition has the
+                # parts it holds just inside it. That is not ambiguity, it is containment.
+                continue
             end = (label.leader_points[-1].x, label.leader_points[-1].y)
             for node in figure.scene.nodes:
                 if node.entity_id == label.entity_id or node.is_container:
