@@ -83,6 +83,31 @@ def _client():
     return draft_figures
 
 
+_SIZE_WORDS = {"small": "small", "medium": "", "large": "large"}
+
+
+def _appearance_of(node) -> str:
+    """The simple recognisable element already settled for this part, in words.
+
+    The compiler decides once per part what kind of thing it is drawing, and the cross-figure
+    rules hold every figure to that decision. Until this was passed through, the image model
+    never saw it: it was told "release button" with no further guidance and drew a desktop
+    computer monitor on a vacuum gripper. Saying which element to draw is what makes the same
+    part the same part in FIG. 1 and FIG. 4.
+    """
+    appearance = getattr(node, "appearance", None)
+    symbol = getattr(appearance, "symbol", "") or ""
+    if not symbol or symbol == "generic_component":
+        # Nothing was settled, and inventing one here would defeat the point of settling it.
+        return ""
+    kind = symbol.replace("_", " ")
+    size = _SIZE_WORDS.get(getattr(appearance, "size", "medium") or "medium", "")
+    orientation = getattr(appearance, "orientation", "") or ""
+    words = [word for word in (size, orientation if orientation != "horizontal" else "", kind)
+             if word]
+    return f", drawn as a simple {' '.join(words)}"
+
+
 def _describe_parts(spec: FigureSpec, graph: PatentGraph) -> tuple[list[str], list[str]]:
     """The parts and the arrangement, in the drafter's own words."""
     from .numerals import sort_key
@@ -96,7 +121,7 @@ def _describe_parts(spec: FigureSpec, graph: PatentGraph) -> tuple[list[str], li
         if node.shape_hint_grounded and node.shape_hint:
             shape = f", which the description calls {node.shape_hint}"
         role = " (the enclosing part)" if entity.role == "boundary" else ""
-        parts.append(f"{node.canonical_name}{shape}{role}")
+        parts.append(f"{node.canonical_name}{shape}{_appearance_of(node)}{role}")
 
     relations = {relation.id: relation for relation in graph.relations}
     human = {

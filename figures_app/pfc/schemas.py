@@ -153,7 +153,8 @@ VisualClass = Literal[
     "belt", "conveyor", "wheel", "gripper", "suction_cup", "cutter", "nozzle",
     # electrical, optical and control
     "coil", "magnet", "power", "sensor", "heater", "filter", "adhesive", "lens", "antenna",
-    "display", "interface", "processor", "controller", "memory", "storage", "network",
+    "display", "interface", "button", "knob", "processor", "controller", "memory",
+    "storage", "network",
     # flowchart-only
     "process_step", "decision", "terminator", "data_store",
 ]

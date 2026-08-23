@@ -205,3 +205,29 @@ def test_a_hatched_symbol_is_hatched_and_is_quick_about_it(profile, name):
     assert time.monotonic() - started < 0.5, "hatching should be instant"
     # An outline plus a real run of hatch lines, not an outline on its own.
     assert len(points) >= 8, f"{name} drew {len(points)} points, so it is not hatched"
+
+
+def test_a_button_is_a_button_and_not_a_computer_screen():
+    """A release button on a vacuum gripper came back drawn as a desktop monitor.
+
+    "Release button" had no class of its own, so it fell to "interface", and the interface
+    symbol is a screen on a stand. In a mechanical filing that is not a near miss.
+    """
+    from pfc.render import symbols
+    from pfc.visualclass import classify
+
+    for name in ("release button", "push button", "actuating button", "knob", "trigger"):
+        assert classify(name) == "button", name
+    assert symbols.SYMBOLS["button"] is not symbols.SYMBOLS["display"]
+    assert symbols.SYMBOLS["interface"] is symbols.SYMBOLS["display"], (
+        "a console still reads as a panel; only the button moved")
+    # A limit switch is a sensor, not something a hand presses.
+    assert classify("limit switch") == "sensor"
+
+
+def test_every_symbol_has_an_aspect_and_every_aspect_has_a_symbol():
+    """A class in one table and not the other lays out at the wrong proportion in silence."""
+    from pfc.render import symbols
+
+    assert set(symbols.SYMBOLS) - set(symbols.ASPECT) == set()
+    assert set(symbols.ASPECT) - set(symbols.SYMBOLS) == set()

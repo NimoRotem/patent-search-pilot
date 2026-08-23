@@ -65,6 +65,12 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "heater": ("heater", "heating element", "resistor", "furnace", "oven", "hot plate"),
     "display": ("display", "screen", "monitor", "touchscreen", "indicator"),
     "interface": ("interface", "user interface", "panel interface", "keypad", "console"),
+    # Ahead of "interface", which draws a monitor. A release button on a vacuum gripper came out
+    # as a desktop computer screen because a button had no class of its own to be sorted into.
+    # "switch" stays with the sensor above it: in a mechanical patent it is far more often a
+    # limit or pressure switch than something a hand presses.
+    "button": ("button", "push button", "pushbutton", "release button", "knob", "trigger",
+               "actuating button"),
     # "unit" and "module" are absent for the same reason as "line": a lifting unit is not a
     # processor, and an adhesive module is not a chip.
     "processor": ("processor", "controller", "microcontroller", "cpu", "chip", "circuit",

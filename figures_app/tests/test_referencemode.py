@@ -433,3 +433,33 @@ def test_the_path_is_put_back_after_a_pilot_import(tmp_path, monkeypatch):
     pilot.module("harmless")
     assert sys.path == before + [str(src)], "the search app's src stayed at the front"
     pilot._ensure_path.cache_clear()
+
+
+def test_the_image_model_is_told_which_element_to_draw(figure):
+    """The settled appearance never reached the prompt, so consistency stopped at the renderer.
+
+    The compiler decides once per part what simple recognisable element it stands for, and the
+    cross-figure rules hold every figure to that. The image model was told only the part's name:
+    given "release button" with nothing else it drew a desktop computer monitor.
+    """
+    graph, _plan, spec = figure
+    node = graph.entity(spec.entities[0].entity_id)
+    node.appearance.symbol = "suction_cup"
+    node.appearance.size = "large"
+
+    prompt = generate.build_prompt(spec, graph, reference_count=3)
+    assert "suction cup" in prompt
+    assert "large" in prompt
+    assert "suction_cup" not in prompt, "the underscore is a code name, not a drawing instruction"
+
+
+def test_a_part_with_nothing_settled_gets_no_invented_element(figure):
+    """Guessing here would defeat the point of settling it once."""
+    graph, _plan, spec = figure
+    for entity in spec.entities:
+        node = graph.entity(entity.entity_id)
+        if node is not None:
+            node.appearance.symbol = "generic_component"
+
+    prompt = generate.build_prompt(spec, graph, reference_count=3)
+    assert "drawn as a simple" not in prompt

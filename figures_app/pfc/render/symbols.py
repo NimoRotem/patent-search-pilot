@@ -44,6 +44,7 @@ ASPECT: dict[str, float] = {
     "generic_component": 1.5, "actuator": 2.0, "controller": 1.3, "interface": 1.4,
     "storage": 1.1, "network": 1.4, "boundary": 1.5, "conveyor": 2.8, "arm": 2.6,
     "gripper": 1.2, "wheel": 1.0, "cutter": 1.2, "beam": 3.0, "frame": 1.6,
+    "button": 1.0, "knob": 1.0, "data_store": 1.1,
 }
 
 _HATCH_STEP_MM = 1.6
@@ -405,6 +406,22 @@ def _display(doc: SvgDocument, box: Box) -> None:
                                                                 box.bottom)])
 
 
+def _button(doc: SvgDocument, box: Box) -> None:
+    """A push button: a round cap standing proud of the surface it is set into.
+
+    It exists because it was missing. "Release button" was classified as an interface, the
+    interface symbol is a desktop monitor, and a vacuum gripper patent came back with a computer
+    screen on FIG. 1.
+    """
+    side = min(box.width, box.height)
+    seat = Box(x=box.cx - side / 2, y=box.cy - side / 2, width=side, height=side)
+    doc.rect(seat, radius=side * 0.18)
+    cap = side * 0.62
+    doc.circle(Box(x=box.cx - cap / 2, y=box.cy - cap / 2, width=cap, height=cap))
+    inner = cap * 0.55
+    doc.circle(Box(x=box.cx - inner / 2, y=box.cy - inner / 2, width=inner, height=inner))
+
+
 def _processor(doc: SvgDocument, box: Box) -> None:
     """An integrated device: a body with pins. The pin count is notation."""
     body = Box(x=box.x + box.width * 0.14, y=box.y + box.height * 0.1,
@@ -519,6 +536,7 @@ SYMBOLS: dict[str, Callable[[SvgDocument, Box], None]] = {
     "piston": _piston, "actuator": _piston, "nozzle": _nozzle,
     "suction_cup": _suction_cup, "fastener": _fastener, "seal": _seal,
     "filter": _filter, "heater": _heater, "display": _display, "interface": _display,
+    "button": _button, "knob": _button,
     "processor": _processor, "controller": _processor, "memory": _memory,
     "storage": _memory, "data_store": _memory, "antenna": _antenna, "network": _antenna,
     "lens": _lens, "opening": _opening, "connector": _connector,
