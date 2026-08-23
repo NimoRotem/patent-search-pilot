@@ -266,6 +266,20 @@ def test_a_broad_stable_numeral_target_remains_renderable(target):
     assert check["status"] == "pass"
 
 
+def test_preflight_reports_every_over_specific_figure_before_drawing():
+    figures = [
+        {**FIGURES[0], "caption": "The pump 14 is visible. Identified at its centre."},
+        {**FIGURES[1], "caption": "The ring 16 is visible. Identified at its topmost point."},
+    ]
+
+    with pytest.raises(draft_studio.FilingPreflightError) as caught:
+        draft_studio.validate_snapshot(
+            {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
+
+    assert "FIG. 1" in str(caught.value)
+    assert "FIG. 2" in str(caught.value)
+
+
 def test_an_explicit_figure_numeral_declaration_must_match_the_sheet_list():
     figures = [
         {
