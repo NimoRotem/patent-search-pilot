@@ -97,6 +97,8 @@ _ARBITRARY_EXACT_ENDPOINT_TARGET_RE = re.compile(
     r"one[- ](?:third|quarter)|topmost|bottommost|"
     r"near\s+(?:the\s+)?(?:left|right|upper|lower)\s+end|"
     r"towards?\b[^.\n]{0,50}\bend|"
+    r"(?:left|right)-hand\s+(?:part|portion|half|region)|"
+    r"(?:left|right|upper|lower)\s+(?:half|portion)|"
     r"(?:first|second|third|fourth)\s+"
     r"(?:rectangle|ring|band|line|edge|face|surface|member|shape|body)\b"
     r"))[^.\n]*",

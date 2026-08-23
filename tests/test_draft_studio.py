@@ -230,6 +230,7 @@ def test_a_self_contradictory_endpoint_target_is_refused_before_drawing():
     "Identified at the topmost point of the ring.",
     "Identified on the upright line near the left end.",
     "Identified halfway along the boundary toward its right end.",
+    "Identified well inside the left-hand part of the chamber.",
     "Identified on the second rectangle.",
 ])
 def test_an_arbitrary_exact_numeral_target_is_refused_before_drawing(target):
