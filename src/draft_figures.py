@@ -53,7 +53,7 @@ LEADER_PROMPT_VERSION = (
 MARKED_ANCHOR_PROMPT_VERSION = (
     "figure-anchor-v14-gridded-sheet-actionable-coordinate-certificate-majority")
 CROSS_PROVIDER_PROMPT_VERSION = (
-    "figure-anchor-crosscheck-v1-anthropic-opus-final-pixel-veto")
+    "figure-anchor-crosscheck-v2-anthropic-opus-coordinate-repair")
 MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
     MARKED_ANCHOR_PROMPT_VERSION,
     "figure-anchor-v13-gridded-sheet-current-coordinate-certificate-majority",
@@ -2040,7 +2040,29 @@ def cross_provider_endpoint_audit(expected, result) -> dict:
     """Normalize the independent provider's final-pixel veto without trusting its boolean."""
     result = _human_text(dict(result or {}))
     expected_set = {item["numeral"] for item in numeral_entries(expected)}
-    labels = [dict(item) for item in result.get("labels") or [] if isinstance(item, dict)]
+    labels = []
+    for item in result.get("labels") or []:
+        if not isinstance(item, dict):
+            continue
+        record = {
+            "numeral": _clean_numeral(item.get("numeral")),
+            "correct": item.get("correct") is True,
+            "evidence": str(item.get("evidence") or "")[:1000],
+        }
+        if not record["correct"] and item.get("repairable") is True:
+            try:
+                suggested_x = int(item.get("suggested_x"))
+                suggested_y = int(item.get("suggested_y"))
+            except (TypeError, ValueError, OverflowError):
+                suggested_x = suggested_y = -1
+            if 0 <= suggested_x <= 1000 and 0 <= suggested_y <= 1000:
+                record.update({
+                    "repairable": True,
+                    "suggested_x": suggested_x,
+                    "suggested_y": suggested_y,
+                })
+        record.setdefault("repairable", False)
+        labels.append(record)
     observed = [_clean_numeral(item.get("numeral")) for item in labels]
     observed = [value for value in observed if value]
     counts = Counter(observed)
@@ -2169,8 +2191,13 @@ def inspect_cross_provider_endpoints(png: bytes, *, label: str, caption: str,
     user = (
         "Inspect every endpoint against this specification. Return keys matches_spec (boolean), "
         "summary (string), errors (array of strings), and labels (array). Every labels item must "
-        "contain numeral (string), correct (boolean), and concrete pixel evidence (string). A "
-        "logical contradiction or ambiguous target is an error and must make matches_spec false.\n\n"
+        "contain numeral (string), correct (boolean), and concrete pixel evidence (string). For "
+        "each incorrect endpoint whose requested target is visible and unambiguous, also return "
+        "repairable true plus suggested_x and suggested_y as integer coordinates from 0 to 1000 "
+        "across the full supplied image, with 0,0 at its top-left and 1000,1000 at its "
+        "bottom-right. Those coordinates must identify the replacement terminal-dot location, "
+        "not numeral text or a leader segment. Otherwise return repairable false. A logical "
+        "contradiction or ambiguous target is an error and must make matches_spec false.\n\n"
         "SPECIFICATION:\n" + specification)
     payload = {
         "model": model,
@@ -2847,6 +2874,26 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             coordinate_history=coordinate_history)
     else:
         _record_anchor_coordinate_history(coordinate_history, anchors)
+
+    def repair_cross_provider_veto(value: dict, *, attempts: int) -> bool:
+        """Map Opus final-sheet coordinates back to geometry, then recheck every gate."""
+        nonlocal anchors, pixel_audit
+        audit = value.get("cross_provider_audit") or {}
+        incorrect = {_clean_numeral(item) for item in audit.get("incorrect") or []}
+        protected = set(_anchor_positions(anchors)) - incorrect
+        repaired, changed = _repair_leader_anchors(
+            raw_png, anchors, audit, scale=used_scale, protected=protected)
+        if not changed:
+            return False
+        anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, repaired)
+        _record_anchor_coordinate_history(coordinate_history, anchors)
+        _prune_marked_coordinate_certificates(marked_certificates, anchors)
+        _marked_progress_put(
+            raw_png, label=label, caption=caption, numerals=numerals,
+            anchors=anchors, certificates=marked_certificates,
+            attempts=attempts, coordinate_history=coordinate_history)
+        return bool(pixel_audit.get("ok"))
+
     marked_attempts = (
         range(completed_marked_attempts, MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS)
         if completed_marked_attempts < MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS
@@ -2907,6 +2954,10 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             certified["specification_hash"] = specification_hash(label, caption, numerals)
             marked = _apply_cross_provider_endpoint_gate(
                 certified, png, label=label, caption=caption, numerals=numerals)
+            if marked.get("ok"):
+                break
+            if repair_cross_provider_veto(marked, attempts=marked_attempt + 1):
+                continue
             break
         expected_numerals = {
             entry["numeral"] for entry in numeral_entries(numerals)}
@@ -2965,6 +3016,15 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             certified["specification_hash"] = specification_hash(label, caption, numerals)
             marked = _apply_cross_provider_endpoint_gate(
                 certified, png, label=label, caption=caption, numerals=numerals)
+            if marked.get("ok"):
+                _marked_progress_put(
+                    raw_png, label=label, caption=caption, numerals=numerals,
+                    anchors=anchors, certificates=marked_certificates,
+                    attempts=marked_attempt + 1,
+                    coordinate_history=coordinate_history)
+                break
+            if repair_cross_provider_veto(marked, attempts=marked_attempt + 1):
+                continue
             _marked_progress_put(
                 raw_png, label=label, caption=caption, numerals=numerals,
                 anchors=anchors, certificates=marked_certificates,

@@ -558,6 +558,97 @@ def test_cross_provider_veto_rejects_unanimous_same_provider_certificate(monkeyp
     assert (final_anchors[0]["x"], final_anchors[0]["y"]) == (400, 565)
 
 
+def test_cross_provider_veto_coordinates_are_repaired_and_recertified(monkeypatch):
+    raw = blank_png(1000, 1000)
+    anchors = [{"numeral": "10", "x": 400, "y": 565, "visible": True,
+                "evidence": "upper-block top face"}]
+    accepted_pixel = {
+        "ok": True, "inspected": True, "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [], "allowed_spaces": [], "ungrounded": [],
+    }
+    monkeypatch.setattr(draft_figures, "_marked_progress_get", lambda *a, **k: {
+        "anchors": anchors,
+        "certificates": {"10": {
+            "x": 400, "y": 565, "attempt": 1,
+            "label": {
+                "numeral": "10", "correct": True,
+                "evidence": "three same-provider reviewers approved this coordinate",
+                "correct_votes": 3, "incorrect_votes": 0,
+            },
+        }},
+        "attempts": 1, "coordinate_history": {"10": [(400, 565)]},
+    })
+    monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
+    monkeypatch.setattr(
+        draft_figures, "_ground_anchors_to_pixels",
+        lambda _png, _numerals, values: ([dict(item) for item in values],
+                                         dict(accepted_pixel)))
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
+        "other_text": [], "confidence": 0.99,
+    })
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [], "missing": [],
+        "labels": [{"numeral": "10", "correct": True, "evidence": "route is clear"}],
+    })
+    marked_calls = []
+
+    def marked(_png, **kwargs):
+        marked_calls.append([dict(item) for item in kwargs["anchors"]])
+        return {
+            "ok": True, "inspected": True, "errors": [], "incorrect": [],
+            "labels": [{
+                "numeral": "10", "correct": True, "repairable": True,
+                "evidence": "the moved dot is on the top face",
+                "suggested_x": 700, "suggested_y": 400,
+            }],
+        }
+
+    monkeypatch.setattr(draft_figures, "inspect_marked_anchors", marked)
+    layout = draft_figures._annotation_layout(raw, anchors, 1.0)
+    desired_x, desired_y = 700, 400
+    suggested_x = round(
+        (layout["source_x"] + desired_x * layout["source"].width / 1000) *
+        1000 / layout["canvas_width"])
+    suggested_y = round(
+        (layout["source_y"] + desired_y * layout["source"].height / 1000) *
+        1000 / layout["canvas_height"])
+    cross_calls = []
+
+    def cross_provider(*_args, **_kwargs):
+        cross_calls.append(True)
+        if len(cross_calls) == 1:
+            return {
+                "ok": False, "inspected": True, "incorrect": ["10"],
+                "missing": [], "unexpected": [], "duplicates": [],
+                "errors": ["Numeral 10 is on the front face, not the required top face."],
+                "labels": [{
+                    "numeral": "10", "correct": False, "repairable": True,
+                    "evidence": "the top face center is visible",
+                    "suggested_x": suggested_x, "suggested_y": suggested_y,
+                }],
+            }
+        return accepted_cross_provider_audit(
+            labels=[{"numeral": "10", "correct": True,
+                     "evidence": "the moved dot is on the top face"}],
+            incorrect=[], errors=[])
+
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_endpoints", cross_provider)
+
+    _png, labels, leaders, final_anchors, pixel = draft_figures._compose_checked_sheet(
+        raw, label="FIG. 1", caption="10 identified on the upper-block top face.",
+        numerals=["10 = vibration device"],
+        semantic={"anchors": anchors, "pixel_anchor_audit": dict(accepted_pixel)})
+
+    marked_audit = leaders["marked_anchor_audit"]
+    assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
+    assert len(cross_calls) == 2 and len(marked_calls) == 1
+    assert abs(final_anchors[0]["x"] - desired_x) <= 2
+    assert abs(final_anchors[0]["y"] - desired_y) <= 2
+    assert marked_audit["cross_provider_audit"]["ok"] is True
+
+
 def test_cross_provider_endpoint_review_uses_anthropic_pixels_and_normalizes_its_veto(
         monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
@@ -579,7 +670,9 @@ def test_cross_provider_endpoint_review_uses_anthropic_pixels_and_normalizes_its
                 ```json
                 {"matches_spec": false, "summary": "wrong face", "errors": [],
                  "labels": [{"numeral": "10", "correct": false,
-                              "evidence": "dot is in the front polygon"}]}
+                              "evidence": "dot is in the front polygon",
+                              "repairable": true,
+                              "suggested_x": 640, "suggested_y": 225}]}
                 ```
             """}],
         }
@@ -593,10 +686,15 @@ def test_cross_provider_endpoint_review_uses_anthropic_pixels_and_normalizes_its
 
     assert audit["ok"] is False and audit["inspected"] is True
     assert audit["incorrect"] == ["10"] and audit["review_count"] == 1
+    assert audit["labels"][0]["repairable"] is True
+    assert audit["labels"][0]["suggested_x"] == 640
+    assert audit["labels"][0]["suggested_y"] == 225
     assert audit["model_name"] == "claude-opus-5"
     assert len(calls) == 1 and calls[0][1] == "test-anthropic-key"
     assert calls[0][0]["thinking"] == {"type": "disabled"}
     assert calls[0][0]["messages"][0]["content"][0]["type"] == "image"
+    prompt = calls[0][0]["messages"][0]["content"][1]["text"]
+    assert "suggested_x" in prompt and "0 to 1000" in prompt
     assert saved and saved[0][1]["provider"] == "anthropic"
 
 
