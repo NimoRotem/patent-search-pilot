@@ -554,8 +554,7 @@ def _figure_checks(sections: Mapping[str, str],
             brief_issues.append(
                 f"{label}: contradictory endpoint target places a point on a surface and "
                 "also above, below, or outside that same surface")
-        exact_target = _ARBITRARY_EXACT_ENDPOINT_TARGET_RE.search(caption)
-        if exact_target:
+        for exact_target in _ARBITRARY_EXACT_ENDPOINT_TARGET_RE.finditer(caption):
             brief_issues.append(
                 f"{label}: arbitrary exact endpoint target {exact_target.group(0)[:180]!r}; "
                 "identify a broad interior region, stable named part, or full boundary instead")

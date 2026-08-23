@@ -277,6 +277,23 @@ def test_an_arbitrary_exact_numeral_target_is_refused_before_drawing(target):
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
 
+def test_every_arbitrary_target_on_one_sheet_is_reported_together():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "The pump 14 is visible. Identified at the centre of its face. "
+            "The ring 16 is visible. Identified at its topmost point."
+        ),
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    issues = [item for item in check["items"] if item.startswith("FIG. 1")]
+
+    assert len(issues) == 2
+    assert "centre" in issues[0]
+    assert "topmost" in issues[1]
+
+
 @pytest.mark.parametrize("target", [
     "Identified well inside its flat front face.",
     "Identified at any point along the boundary line.",
