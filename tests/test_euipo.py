@@ -484,3 +484,81 @@ def test_the_corpus_page_reconciles_its_source_table_with_the_designs_page(app_c
 
 def test_the_designs_page_is_reachable_from_every_page(app_client):
     assert 'href="/designs"' in app_client.get("/corpus").get_data(as_text=True)
+
+
+# --------------------------------------------------------------------------- lookup by number
+def test_a_design_number_resolves_through_the_details_route(app_client, monkeypatch):
+    """A design number is not a publication number, so the registers Lookup reads do not hold
+    it and pasting one used to come back 'could not be resolved'."""
+    from sources import euipo as _e
+    monkeypatch.setattr(_e, "design_details",
+                        lambda num: {"design_number": num, "title": "Suction cups for attachment",
+                                     "applicants": ["Ecovacs Robotics Co., Ltd."], "views": [1, 2],
+                                     "publication_date": "2018-09-19", "deferred": False})
+    r = app_client.get("/api/designs/005632742-0001")
+    assert r.status_code == 200
+    assert r.get_json()["title"] == "Suction cups for attachment"
+
+
+def test_the_details_route_validates_the_number(app_client):
+    for bad in ("../etc", "005632742", "abc-0001"):
+        assert app_client.get("/api/designs/%s" % bad).status_code == 404
+
+
+def test_the_details_route_surfaces_an_upstream_failure(app_client, monkeypatch):
+    from sources import euipo as _e
+
+    def boom(num):
+        raise httpx.ConnectError("euipo down")
+    monkeypatch.setattr(_e, "design_details", boom)
+    r = app_client.get("/api/designs/005632742-0001")
+    assert r.status_code == 502
+    assert "euipo down" in r.get_json()["error"]
+
+
+def test_lookup_accepts_a_design_number_and_says_so(app_client):
+    html = app_client.get("/patentlookup").get_data(as_text=True)
+    assert "005632742-0001" in html
+    assert "/api/designs/" in html, "the page must resolve design numbers itself"
+    assert "/designs" in html
+
+
+# --------------------------------------------------------------------------- the merged page
+def test_factory_redirects_into_the_corpus_page(app_client):
+    """Two pages showing two different publication counts, with nothing saying they were
+    different databases, read as one of them being wrong. They are one page now."""
+    r = app_client.get("/factory")
+    assert r.status_code in (301, 302)
+    assert r.headers["Location"].endswith("/corpus#factory")
+
+
+def test_the_corpus_page_carries_the_factory(app_client):
+    html = app_client.get("/corpus").get_data(as_text=True)
+    assert 'id="factory"' in html
+    assert 'id="pulseState"' in html
+    assert "/api/factory/pulse" in html
+    for element in ("tPublications", "tFamilies", "tVectors", "tEmbedded", "tClaims", "tDesc",
+                    "barEmbed", "barClaims", "barDesc", "barBudget",
+                    "ratesBody", "queueBody", "histBody", "pulseFoot"):
+        assert 'id="%s"' % element in html, element
+
+
+def test_the_merged_page_says_the_two_counts_are_different_databases(app_client):
+    """The whole defect. /factory reported 1.77M publications while /corpus reported 4.98M and
+    both were right. A reader has to be told that before they see the second set of numbers."""
+    html = app_client.get("/corpus").get_data(as_text=True)
+    assert "not the figures above" in html
+    assert "staging database" in html
+    assert "The corpus a search reads today" in html
+
+
+def test_the_factory_page_is_gone_from_the_nav(app_client):
+    html = app_client.get("/corpus").get_data(as_text=True)
+    assert ">Factory</a>" not in html
+
+
+def test_there_is_only_one_main_element(app_client):
+    """factory.html opened its own <main id="main"> inside base.html's, so the merged page would
+    have carried a duplicate id if the markup had been pasted across unchanged."""
+    html = app_client.get("/corpus").get_data(as_text=True)
+    assert html.count('id="main"') == 1
