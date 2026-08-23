@@ -97,6 +97,32 @@ def display_record(pub: str) -> dict[str, Any]:
         return {}
 
 
+def fetch_fulltext(pub: str, timeout: float = 120.0) -> dict[str, Any]:
+    """The search app's full-text acquisition ladder, for one publication.
+
+    Docstore, then PQAI, then EPO OPS, then Google Patents direct, then the paid backstop —
+    cheapest first, everything it finds persisted for the next caller. This is the answer to a
+    publication whose facsimile is an image-only scan: the text exists, in English, in a source
+    this box already reaches, and the compiler's job is to ask rather than to give up.
+
+    Returns ``{title, abstract, claims, description, source}``; empty on any failure.
+    """
+    try:
+        sources = module("sources")
+        payload = sources.fetch_fulltext([pub], timeout=timeout) or {}
+    except Exception:
+        return {}
+    # The ladder keys its result by the CANONICAL spelling, which is not always the one it was
+    # asked for: "US-20240324075-A1" comes back as "US20240324075A1". Take the one record that
+    # is not the summary rather than guessing the spelling.
+    for key, record in payload.items():
+        if key == "_summary" or not isinstance(record, dict):
+            continue
+        if record.get("description") or record.get("claims"):
+            return dict(record)
+    return {}
+
+
 def figure_dir(pub: str) -> Optional[Path]:
     try:
         return module("enrich_display").FIGDIR / pub

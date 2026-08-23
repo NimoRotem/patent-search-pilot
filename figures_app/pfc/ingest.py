@@ -6,8 +6,15 @@ What is new here is what a figure compiler needs and a search engine does not:
 
 * **The description, in full.** A search runs happily on an abstract and the claims. Reference
   numerals live in the detailed description, so a compiler that cannot read it has nothing to
-  work with. The publication record often carries no description at all, and the facsimile PDF
-  always does, so the PDF is preferred and the record is the fallback.
+  work with, and "no numerals" is the one input from which no figure can be drawn at all.
+
+  So there is a ladder, and every rung of it is needed. The filed facsimile is the document
+  itself and is tried first. A great many publications, though, are on Google only as an
+  image-only scan: measured on US-2024/0324075-A1, whose PDF has no text layer and whose
+  publication record carries no description, so the compiler had an abstract, two claims, no
+  numerals and nothing to draw. Its full 15,000-character description is free from the search
+  app's acquisition ladder, which the compiler now asks before it gives up. The publication
+  record is the last resort rather than the first.
 * **The applicant's own drawings, kept separate.** They are extracted, stored and shown beside
   the generated figures for comparison, and they are never read into the semantic model. The
   compiler's whole claim is that it drew the figure from the words; tracing the filed drawing
@@ -177,15 +184,26 @@ def ingest_link(raw: str, on_stage: Stage = None) -> IngestResult:
     record = pilot.display_record(pub)
     notes = [f"resolved publication {pub}"]
 
+    # The ladder of text sources, in the order that costs least and is most authoritative first.
+    # The filed facsimile is the document itself and also carries the drawing sheets, so it is
+    # tried first; a great many publications, though, have only an image-only scan on Google, and
+    # for those the words exist elsewhere. Giving up at the scan was the defect: measured on
+    # US-2024/0324075-A1, whose PDF has no text layer at all and whose full 15,000-character
+    # description is free from the acquisition ladder.
     text, images, urls = _text_from_pdf(pub, record, notes, on_stage)
     if len(parse.normalize(text)) < MIN_USEFUL_TEXT:
+        _stage(on_stage, "read", "the facsimile carries no text; asking the full-text sources")
+        text = _text_from_ladder(pub, record, notes)
+    if len(parse.normalize(text)) < MIN_USEFUL_TEXT:
         text = _text_from_record(record, notes)
+    if not images and not urls:
         images, urls = _images_from_record(pub, record, notes)
 
     if len(parse.normalize(text)) < MIN_USEFUL_TEXT:
         raise IngestError(
-            f"nothing this box can reach carries the full text of {pub}. Upload the PDF and the "
-            "compiler will read it from that instead.")
+            f"nothing this box can reach carries the full text of {pub}: its facsimile is an "
+            "image-only scan and no text source holds the description. Upload the document and "
+            "the compiler will read it from that instead.")
 
     document = _document(
         text, origin="link", origin_label=pub, title=str(record.get("title") or ""),
@@ -201,7 +219,7 @@ def ingest_link(raw: str, on_stage: Stage = None) -> IngestResult:
 
 def _text_from_pdf(pub: str, record: dict, notes: list[str],
                    on_stage: Stage) -> tuple[str, list[bytes], list[str]]:
-    """The facsimile PDF is the only source that reliably carries the description."""
+    """The filed facsimile: its words when it has a text layer, its drawings either way."""
     pdf_dir = pilot.pdf_dir()
     if pdf_dir is None:
         return "", [], []
@@ -217,46 +235,92 @@ def _text_from_pdf(pub: str, record: dict, notes: list[str],
             return "", [], []
     read = pilot.read_pdf(str(path))
     text = read.get("text") or ""
-    if not read.get("text_layer") or len(text) < MIN_USEFUL_TEXT:
-        notes.append("the published PDF is a scan with no text layer")
-        return "", [], []
-    notes.append(f"read the published document: {read.get('n_pages') or 0} page(s), "
-                 f"{len(text):,} characters")
+    scanned = not read.get("text_layer") or len(text) < MIN_USEFUL_TEXT
+
+    # The drawings are lifted whether or not the text could be read. A scan has no words for the
+    # compiler, but its sheets are exactly what the comparison view needs, and throwing them away
+    # because the text failed left a job with words from one source and no filed drawings at all.
     _stage(on_stage, "figures", "extracting the drawings that were filed")
     images = pilot.figures_from_pdf(str(path))[:MAX_ORIGINAL_FIGURES]
     if images:
         notes.append(f"{len(images)} drawing sheet(s) taken from the published document, for "
                      "comparison only")
+
+    if scanned:
+        notes.append("the published PDF is a scan with no text layer")
+        return "", images, []
+    notes.append(f"read the published document: {read.get('n_pages') or 0} page(s), "
+                 f"{len(text):,} characters")
     return text, images, []
 
 
-def _text_from_record(record: dict, notes: list[str]) -> str:
-    """Fallback: whatever text the publication record itself carries."""
+def _text_from_ladder(pub: str, record: dict, notes: list[str]) -> str:
+    """The search app's full-text ladder: docstore, PQAI, EPO OPS, Google direct, then paid.
+
+    This is what makes a scanned publication usable. The text is composed back into headed
+    sections rather than handed over raw, because the parser finds the description and the brief
+    description of the drawings by their headings, and a source that returns three fields has
+    thrown those headings away.
+    """
+    fetched = pilot.fetch_fulltext(pub)
+    description = str(fetched.get("description") or "").strip()
+    claims = str(fetched.get("claims") or "").strip()
+    if not description and not claims:
+        return ""
+    source = str(fetched.get("source") or "a full-text source")
+    notes.append(
+        f"the facsimile carries no text, so the document was read from {source}: "
+        f"{len(description):,} characters of description, {len(claims):,} of claims")
+    return _compose_sections(
+        title=str(fetched.get("title") or record.get("title") or ""),
+        abstract=str(fetched.get("abstract") or record.get("abstract") or ""),
+        description=description, claims=claims)
+
+
+# A source that returns {description, claims} has dropped the document's own headings. The
+# leading "Description" / "Claims" line some of them add is noise, not a heading.
+_LEADING_LABEL = re.compile(r"^\s*(?:description|claims?|abstract)\s*[:.]?\s*$",
+                            re.I | re.MULTILINE)
+
+
+def _compose_sections(*, title: str, abstract: str, description: str, claims: str) -> str:
+    """Field-shaped text -> a document the section parser can read.
+
+    Any headings the description carries of its own ("BRIEF DESCRIPTION OF THE DRAWINGS") are
+    left exactly where they are and open their own sections; the markers added here only cover
+    the material that arrived with no heading at all.
+    """
     parts: list[str] = []
-    title = str(record.get("title") or "").strip()
-    if title:
-        parts.append(title)
-    abstract = str(record.get("abstract") or "").strip()
-    if abstract:
-        parts.append("ABSTRACT\n" + abstract)
+    if title.strip():
+        parts.append(title.strip())
+    if abstract.strip():
+        parts.append("ABSTRACT\n" + abstract.strip())
+    if description.strip():
+        body = _LEADING_LABEL.sub("", description.strip(), count=1).strip()
+        parts.append("DETAILED DESCRIPTION\n" + body)
+    if claims.strip():
+        body = _LEADING_LABEL.sub("", claims.strip(), count=1).strip()
+        parts.append("CLAIMS\n" + body)
+    return "\n\n".join(parts)
+
+
+def _text_from_record(record: dict, notes: list[str]) -> str:
+    """Last resort: whatever text the publication record itself carries."""
     description = record.get("description")
     if isinstance(description, list):
         description = "\n\n".join(str(item) for item in description)
     description = str(description or "").strip()
-    if description:
-        parts.append("DETAILED DESCRIPTION\n" + description)
-        notes.append("the description came from the publication record rather than the PDF")
     claims = record.get("claims")
-    if isinstance(claims, list):
-        claims_text = "\n".join(str(item) for item in claims)
+    claims_text = ("\n".join(str(item) for item in claims) if isinstance(claims, list)
+                   else str(claims or "")).strip()
+    if description:
+        notes.append("the description came from the publication record rather than the PDF")
     else:
-        claims_text = str(claims or "")
-    if claims_text.strip():
-        parts.append("CLAIMS\n" + claims_text.strip())
-    if not description:
         notes.append("no source this box can reach carries the description of this publication, "
                      "so only the abstract and claims were available")
-    return "\n\n".join(parts)
+    return _compose_sections(title=str(record.get("title") or ""),
+                             abstract=str(record.get("abstract") or ""),
+                             description=description, claims=claims_text)
 
 
 def _images_from_record(pub: str, record: dict, notes: list[str]
