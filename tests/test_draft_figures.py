@@ -1023,6 +1023,68 @@ def test_compose_retries_layout_without_moving_a_certified_endpoint(monkeypatch)
     assert (final_anchors[0]["x"], final_anchors[0]["y"]) == (200, 200)
 
 
+def test_compose_retains_a_passing_layout_scale_across_endpoint_repairs(monkeypatch):
+    raw = blank_png(1000, 1000)
+    anchors = [{"numeral": "10", "x": 200, "y": 200,
+                "visible": True, "evidence": "left face"}]
+    accepted_pixel = {
+        "ok": True, "inspected": True, "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [], "allowed_spaces": [], "ungrounded": [],
+    }
+    monkeypatch.setattr(draft_figures, "_marked_progress_get", lambda *a, **k: None)
+    monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
+    monkeypatch.setattr(
+        draft_figures, "_ground_anchors_to_pixels",
+        lambda _png, _numerals, values: ([dict(item) for item in values],
+                                         dict(accepted_pixel)))
+    scales = []
+
+    def annotate(_png, _label, _anchors, *, scale):
+        scales.append(scale)
+        return raw
+
+    monkeypatch.setattr(draft_figures, "annotate_png", annotate)
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
+        "other_text": [], "confidence": 0.99,
+    })
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: {
+        "ok": scales[-1] >= 1.8, "inspected": True,
+        "errors": [] if scales[-1] >= 1.8 else ["route is ambiguous"],
+        "incorrect": [] if scales[-1] >= 1.8 else ["10"], "missing": [],
+        "labels": [{"numeral": "10", "correct": scales[-1] >= 1.8,
+                    "evidence": "route inspection"}],
+    })
+    marked_calls = []
+
+    def inspect_marked(*_args, **_kwargs):
+        marked_calls.append(True)
+        correct = len(marked_calls) > 1
+        return {
+            "ok": correct, "inspected": True,
+            "errors": [] if correct else ["endpoint misses the left face"],
+            "incorrect": [] if correct else ["10"], "missing": [],
+            "labels": [{
+                "numeral": "10", "correct": correct, "repairable": True,
+                "evidence": "endpoint inspection", "suggested_x": 250,
+                "suggested_y": 250, "correct_votes": 3 if correct else 0,
+                "incorrect_votes": 0 if correct else 3,
+            }],
+        }
+
+    monkeypatch.setattr(draft_figures, "inspect_marked_anchors", inspect_marked)
+    monkeypatch.setattr(draft_figures, "inspect_cross_provider_endpoints", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [], "labels": [],
+    })
+
+    _png, labels, leaders, _final_anchors, pixel = draft_figures._compose_checked_sheet(
+        raw, label="FIG. 1", caption="base", numerals=["10 = base"],
+        semantic={"anchors": anchors, "pixel_anchor_audit": dict(accepted_pixel)})
+
+    assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
+    assert scales == [1.0, 1.35, 1.8, 1.8]
+
+
 def test_compose_does_not_let_leader_routing_move_a_geometry_endpoint(monkeypatch):
     raw = blank_png(1000, 1000)
     anchors = [{"numeral": "10", "x": 200, "y": 200,

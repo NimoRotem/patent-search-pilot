@@ -2911,9 +2911,9 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
         range(completed_marked_attempts, MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS)
         if completed_marked_attempts < MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS
         else (completed_marked_attempts,))
+    layout_scales = (1.0, 1.35, 1.8, 2.2)
+    leader_scale_index = 0
     for marked_attempt in marked_attempts:
-        layout_scales = (1.0, 1.35, 1.8, 2.2)
-        leader_scale_index = 0
         for _leader_attempt in range(MAX_LEADER_REPAIR_ATTEMPTS):
             labels = {}
             used_scale_index = leader_scale_index
