@@ -25,7 +25,8 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import correct as correction
-from . import appearance, ingest, numerals, plan as planning, spec as speccing
+from . import appearance, ingest, neighbours as neighbours_mod, numerals
+from . import plan as planning, referencemode, spec as speccing
 from . import vision, visualclass
 from .extract import extract_graph
 from .ground import ParagraphIndex, make_grounder
@@ -132,7 +133,8 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
                 pass
 
     reasoner = None
-    verifier = None
+    verifier = None      # reads a FINISHED sheet back, to check it
+    locator = None       # reads GENERATED artwork, to find the parts and place numerals on them
     notes: list[str] = []
     if use_models:
         try:
@@ -146,6 +148,17 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
             except ModelUnavailable as exc:
                 notes.append(f"no vision model is available ({exc}); the figures were not read "
                              "back independently")
+        # Locating the parts in generated artwork is part of DRAWING the figure, not of checking
+        # it, so it does not answer to `verification_level`. Sharing the switch meant asking for
+        # no verification silently turned the reference-guided mode off and fell every figure
+        # back to the schematic.
+        if config.figure_style == "reference_guided":
+            try:
+                locator = verifier or vision_verifier(log=call_log)
+            except ModelUnavailable as exc:
+                notes.append(f"no vision model is available ({exc}), so the reference-guided "
+                             "drawings could not be grounded and every figure was drawn from "
+                             "its specification instead")
 
     # -- INGEST / PARSE -----------------------------------------------------
     stage("INGEST")
@@ -193,6 +206,14 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
 
     stage("BUILD_FIGURE_SPECS")
     profile = load_profile(config.jurisdiction)
+    # The neighbouring patents are found once for the job, not once per figure: the same handful
+    # of examiner-cited documents is the right reference for every sheet, and fetching their
+    # drawings is the expensive part.
+    neighbourhood = neighbours_mod.Neighbourhood()
+    if config.figure_style == "reference_guided":
+        stage("PLAN_FIGURES")
+        neighbourhood = neighbours_mod.find(document.publication_number)
+        notes.extend(neighbourhood.notes)
     results: list[FigureResult] = []
     bundles: list[FigureBundle] = []
     specs = {}
@@ -233,13 +254,19 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
     ordered = sorted(specs.items(), key=lambda item: sort_key(item[1].figure_number))
     done = [0]
 
+    earlier_artwork: list = []
+
     def compile_one(numbered) -> Optional[FigureBundle]:
         sheet_number, (figure_id, spec) = numbered
         record = next(row for row in results if row.figure_id == figure_id)
         try:
             bundle = _compile_figure(spec, graph, profile, figure_plan, config, record,
                                      verifier, call_log, paths,
-                                     sheet_number=sheet_number, sheet_total=total_sheets)
+                                     sheet_number=sheet_number, sheet_total=total_sheets,
+                                     neighbourhood=(neighbourhood
+                                                    if config.figure_style == "reference_guided"
+                                                    else None),
+                                     locator=locator, earlier=earlier_artwork)
         except UnsupportedFigure as exc:
             record.status = "BLOCKED"
             record.reason = str(exc)
@@ -265,9 +292,16 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
         return bundle
 
     if ordered:
-        with ThreadPoolExecutor(max_workers=min(FIGURE_WORKERS, len(ordered))) as pool:
-            bundles = [bundle for bundle in pool.map(compile_one, enumerate(ordered, 1))
+        if config.figure_style == "reference_guided":
+            # Sequential on purpose. Each generated figure becomes a reference for the next, and
+            # that chaining is the whole reason the housing in FIG. 1 is still the same housing
+            # in FIG. 2. Running them concurrently would trade the consistency for the speed.
+            bundles = [bundle for bundle in map(compile_one, enumerate(ordered, 1))
                        if bundle is not None]
+        else:
+            with ThreadPoolExecutor(max_workers=min(FIGURE_WORKERS, len(ordered))) as pool:
+                bundles = [bundle for bundle in pool.map(compile_one, enumerate(ordered, 1))
+                           if bundle is not None]
 
     # -- FINAL / EXPORT -----------------------------------------------------
     stage("FINAL_VALIDATE")
@@ -354,16 +388,42 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
 
 def _compile_figure(spec, graph, profile, figure_plan, config: JobConfig,
                     record: FigureResult, verifier, call_log, paths: JobPaths, *,
-                    sheet_number: int, sheet_total: int) -> FigureBundle:
+                    sheet_number: int, sheet_total: int,
+                    neighbourhood=None, locator=None,
+                    earlier: Optional[list] = None) -> FigureBundle:
     """One figure, from its specification to a checked sheet.
 
     Everything after the graph happens here, so the whole of a figure's fate — laid out,
     rendered, measured, repaired, read back, measured again — is one function that can be run
     for one figure without reference to any other.
     """
-    scene = build_scene(spec, graph, profile, sheet_number=sheet_number,
-                        sheet_total=sheet_total)
-    bundle = FigureBundle(spec=spec, scene=scene, svg=render_svg(scene, profile))
+    bundle: Optional[FigureBundle] = None
+    if config.figure_style == "reference_guided" and neighbourhood is not None:
+        drawn = referencemode.draw_figure(
+            spec, graph, profile, neighbourhood, locator,
+            earlier=list(earlier or ()), sheet_number=sheet_number, sheet_total=sheet_total)
+        record.corrections_applied.extend(drawn.notes)
+        if drawn.ok:
+            bundle = FigureBundle(spec=spec, scene=drawn.scene, svg=drawn.svg,
+                                  artwork=drawn.artwork)
+            record.artwork_references = list(drawn.references)
+            if earlier is not None:
+                earlier.append(drawn.artwork)
+            _write_json(paths.debug / f"{_stem(spec.figure_number)}_artwork.json",
+                        {"references": drawn.references, "notes": drawn.notes})
+            (paths.figures / f"{_stem(spec.figure_number)}_art.png").write_bytes(drawn.artwork)
+        else:
+            # A figure that could not be generated or grounded is drawn the deterministic way
+            # rather than left out. Something correct and plain beats nothing.
+            record.corrections_applied.append(
+                f"the reference-guided drawing was not usable ({drawn.failed}), so this figure "
+                "was drawn from the specification instead")
+
+    if bundle is None:
+        scene = build_scene(spec, graph, profile, sheet_number=sheet_number,
+                            sheet_total=sheet_total)
+        bundle = FigureBundle(spec=spec, scene=scene, svg=render_svg(scene, profile))
+    scene = bundle.scene
     record.status = "RENDERED"
 
     context = ValidationContext(graph=graph, profile=profile, plan=figure_plan,
@@ -377,7 +437,7 @@ def _compile_figure(spec, graph, profile, figure_plan, config: JobConfig,
         if not outcome.changed:
             break
         bundle.scene = outcome.scene
-        bundle.svg = render_svg(bundle.scene, profile)
+        bundle.svg = render_svg(bundle.scene, profile, bundle.artwork)
         record.corrections_applied.extend(outcome.applied)
         context.figure = bundle
         issues = validate_figure(context)
@@ -395,7 +455,7 @@ def _compile_figure(spec, graph, profile, figure_plan, config: JobConfig,
             if not outcome.changed:
                 break
             bundle.scene = outcome.scene
-            bundle.svg = render_svg(bundle.scene, profile)
+            bundle.svg = render_svg(bundle.scene, profile, bundle.artwork)
             record.corrections_applied.extend(outcome.applied)
             context.figure = bundle
             issues = validate_figure(context)

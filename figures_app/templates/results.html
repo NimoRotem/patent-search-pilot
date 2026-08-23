@@ -185,6 +185,12 @@
     </details>
   {% endif %}
 
+  {% if figure.artwork_references %}
+    <p class="muted" style="margin-top:10px">The artwork for this figure was generated in the
+    idiom of {{ figure.artwork_references|length }} sheet(s) from neighbouring patents
+    ({{ figure.artwork_references|join(', ') }}). Every reference numeral on it was placed by the
+    renderer, not by the image model.</p>
+  {% endif %}
   {% if figure.source_evidence %}
     <p class="muted" style="margin-top:10px">Built from
       {% for pid in figure.source_evidence[:10] %}<span class="mono">{{ pid }}</span>{{ ", " if not loop.last }}{% endfor %}

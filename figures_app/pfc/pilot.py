@@ -206,6 +206,37 @@ def fetch_fulltext(pub: str, timeout: float = 120.0) -> dict[str, Any]:
     return {}
 
 
+def fetch_image(url: str, timeout: float = 30.0) -> bytes:
+    """One drawing sheet from a patent image CDN.
+
+    Only the hosts the search app already fetches from. The URL comes out of a publication
+    record this box built, never out of anything a user typed, so there is no path from a pasted
+    string to an arbitrary address; the allow-list is belt and braces on top of that.
+    """
+    from urllib.parse import urlparse
+
+    allowed = {"patentimages.storage.googleapis.com", "storage.googleapis.com",
+               "worldwide.espacenet.com", "ops.epo.org"}
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except Exception:
+        return b""
+    if host not in allowed:
+        return b""
+    try:
+        import requests
+
+        response = requests.get(url, timeout=timeout,
+                                headers={"User-Agent": "rotem-patent-figure-compiler/1.0"})
+        if response.status_code != 200:
+            return b""
+        blob = response.content or b""
+        return blob if blob[:4] in (b"\x89PNG", b"\xff\xd8\xff\xe0", b"\xff\xd8\xff\xe1",
+                                    b"GIF8") or blob[:2] == b"\xff\xd8" else b""
+    except Exception:
+        return b""
+
+
 def figure_dir(pub: str) -> Optional[Path]:
     try:
         return module("enrich_display").FIGDIR / pub

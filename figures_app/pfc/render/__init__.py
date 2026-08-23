@@ -14,7 +14,7 @@ from typing import Optional
 
 from ..profiles import DrawingProfile
 from ..schemas import LayoutScene
-from . import block, common, flowchart, mechanical
+from . import block, common, flowchart, mechanical, traced
 
 RENDERER_VERSION = common.RENDERER_VERSION
 
@@ -27,7 +27,11 @@ class ExportUnavailable(RuntimeError):
     """No converter on this machine can turn the SVG into the requested format."""
 
 
-def render_svg(scene: LayoutScene, profile: DrawingProfile) -> str:
+def render_svg(scene: LayoutScene, profile: DrawingProfile,
+               artwork: bytes = b"") -> str:
+    """One scene -> one SVG. Deterministic: same scene, same artwork, same bytes."""
+    if scene.artwork:
+        return traced.render(scene, profile, artwork)
     if scene.figure_type == "flowchart":
         return flowchart.render(scene, profile)
     if scene.figure_type in _PHYSICAL:

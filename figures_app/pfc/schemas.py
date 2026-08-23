@@ -519,6 +519,11 @@ class LayoutScene(Strict):
     caption: str = ""
     sheet_number: int = 1
     sheet_total: int = 1
+    # True when the drawing itself is a generated raster and the nodes are only there to carry
+    # the numerals and be measured. The renderer paints the raster and no outlines; the overlap
+    # rule stands down, because parts genuinely overlap in a perspective view.
+    artwork: bool = False
+    artwork_box: Optional[Box] = None
 
     def node(self, entity_id: str) -> Optional[LayoutNode]:
         return next((n for n in self.nodes if n.entity_id == entity_id), None)
@@ -580,6 +585,9 @@ class FigureResult(Strict):
     pdf_path: str = ""
     png_path: str = ""
     original_matches: list[int] = Field(default_factory=list)
+    # Which neighbouring patents' sheets the generated artwork was shown, so a drawing can be
+    # traced to what it was conditioned on.
+    artwork_references: list[str] = Field(default_factory=list)
 
 
 class ValidationReport(Strict):
@@ -657,9 +665,16 @@ class SemanticDiff(Strict):
 Jurisdiction = Literal["generic", "uspto_utility", "pct", "epo"]
 
 
+FigureStyle = Literal["patent_line_art", "reference_guided"]
+
+
 class JobConfig(Strict):
     jurisdiction: Jurisdiction = "generic"
-    figure_style: Literal["patent_line_art"] = "patent_line_art"
+    # ``patent_line_art``    every line drawn by the renderer from the specification.
+    # ``reference_guided``   the artwork generated in the idiom of neighbouring patents, with the
+    #                        numerals still composited by the renderer. Falls back to the first
+    #                        for any figure it cannot draw or ground.
+    figure_style: FigureStyle = "patent_line_art"
     allow_new_reference_numbers: bool = False
     verification_level: Literal["off", "standard", "strict"] = "standard"
     max_figures: int = Field(default=12, ge=1, le=40)

@@ -18,6 +18,12 @@
     </div>
     <p class="hint">Google Patents and Espacenet links are recognised, as is a bare publication
     number. The link itself is never fetched: only the publication number is read out of it.</p>
+    <p class="hint"><strong>Reference-guided</strong> looks up the patents the examiner cited
+    against this one, shows their drawings to an image model as an example of the idiom, and asks
+    for <em>this</em> patent's arrangement in that style. The artwork is generated; the reference
+    numerals are not — they are placed by the same code that places them on a schematic, and a
+    sheet the model writes any text on is thrown away and redrawn. It needs a publication number,
+    and any figure it cannot draw or ground falls back to the schematic.</p>
 
     <div class="row" style="margin-top:14px">
       <div>
@@ -36,6 +42,13 @@
           <option value="generic" selected>Generic</option>
           <option value="pct">PCT (Rule 11)</option>
           <option value="epo">EPO (Rule 46 EPC)</option>
+        </select>
+      </div>
+      <div>
+        <label for="figure_style">Drawing style</label>
+        <select id="figure_style" name="figure_style">
+          <option value="patent_line_art" selected>Schematic, drawn from the text alone</option>
+          <option value="reference_guided">Reference-guided, in the idiom of neighbouring patents</option>
         </select>
       </div>
       <div>

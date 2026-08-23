@@ -467,7 +467,7 @@ class DeterministicRender(ValidationRule):
             return []
         from ..render import render_svg
 
-        if render_svg(figure.scene, context.profile) != figure.svg:
+        if render_svg(figure.scene, context.profile, figure.artwork) != figure.svg:
             return [self.issue(
                 "The rendered drawing is not reproducible from its own layout, so the checks "
                 "made against that layout do not describe this file.")]

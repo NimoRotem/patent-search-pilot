@@ -28,6 +28,9 @@ class FigureBundle:
     spec: FigureSpec
     scene: LayoutScene
     svg: str = ""
+    # The generated artwork, when there is any. Held here so re-rendering the scene reproduces
+    # the same file byte for byte, which is what RND001 checks.
+    artwork: bytes = b""
 
 
 @dataclass

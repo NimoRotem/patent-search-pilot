@@ -178,6 +178,7 @@ def _config_from_form(form) -> JobConfig:
     payload = {
         "jurisdiction": form.get("jurisdiction") or "generic",
         "verification_level": form.get("verification_level") or "standard",
+        "figure_style": form.get("figure_style") or "patent_line_art",
         "allow_new_reference_numbers": flag("allow_new_reference_numbers"),
     }
     if form.get("max_figures"):

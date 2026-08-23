@@ -28,6 +28,11 @@ from ..schemas import Box, LayoutEdge, LayoutLabel, LayoutNode, LayoutScene, Poi
 # Cost weights. Their ratios are the policy; their absolute values are arbitrary.
 COST_OUTSIDE = 10_000.0
 COST_AMBIGUOUS = 4_000.0
+# A numeral printed ON generated artwork is unreadable in a way a numeral beside a schematic box
+# is not: the artwork has lines everywhere. On a raster-backed sheet the numerals belong in the
+# white margin around the drawing, with the leader crossing into it. That is also the convention
+# a draughtsman uses.
+COST_ON_ARTWORK = 2_500.0
 COST_HITS_NODE = 1_200.0
 COST_LABEL_OVERLAP = 900.0
 COST_LEADER_CROSS = 400.0
@@ -116,7 +121,7 @@ def _ambiguous(target: tuple[float, float], owner: LayoutNode,
 def _cost(profile: DrawingProfile, node: LayoutNode, label_point: tuple[float, float],
           route: list[Point], target: tuple[float, float], nodes: list[LayoutNode],
           edges: list[LayoutEdge], placed: list[LayoutLabel], area: Box,
-          numeral: str) -> float:
+          numeral: str, artwork: Optional[Box] = None) -> float:
     box = _label_box(profile, numeral, label_point[0], label_point[1])
     if not (area.x <= box.x and area.y <= box.y and box.right <= area.right
             and box.bottom <= area.bottom):
@@ -126,6 +131,8 @@ def _cost(profile: DrawingProfile, node: LayoutNode, label_point: tuple[float, f
 
     cost = COST_DISTANCE * distance(label_point, target)
     cost += COST_BEND * (len(route) - 2)
+    if artwork is not None and box.overlaps(artwork):
+        cost += COST_ON_ARTWORK
 
     # A numeral printed ON the outline of the thing it names is as hard to read as one printed
     # over its neighbour, and the leader is what does the naming. The owner is NOT exempt from
@@ -179,13 +186,20 @@ def place_labels(scene: LayoutScene, profile: DrawingProfile, *, seed: int = 0) 
     labelled.sort(key=lambda node: (node.depth, sort_key(node.reference_numeral or "")))
     placed: list[LayoutLabel] = []
     area = scene.drawing_area
+    artwork = scene.artwork_box if scene.artwork else None
+    if artwork is not None:
+        # Reach far enough to clear the artwork, whatever size it came out.
+        reaches = _REACH + (max(artwork.width, artwork.height) / max(
+            1.0, profile.reference_height) * 0.55,)
+    else:
+        reaches = _REACH
 
     for offset, node in enumerate(labelled):
         numeral = node.reference_numeral or ""
         best: Optional[tuple[float, tuple[float, float], list[Point]]] = None
         directions = _DIRECTIONS[(seed + offset) % len(_DIRECTIONS):] + \
             _DIRECTIONS[:(seed + offset) % len(_DIRECTIONS)]
-        for reach in _REACH:
+        for reach in reaches:
             for dx, dy in directions:
                 norm = math.hypot(dx, dy) or 1.0
                 span = max(node.box.width, node.box.height) / 2 + profile.reference_height * reach
@@ -200,7 +214,7 @@ def place_labels(scene: LayoutScene, profile: DrawingProfile, *, seed: int = 0) 
                 origin = _leader_origin(profile, numeral, label_point, target)
                 for route in _routes(origin, target):
                     cost = _cost(profile, node, label_point, route, target, scene.nodes,
-                                 scene.edges, placed, area, numeral)
+                                 scene.edges, placed, area, numeral, artwork)
                     if best is None or cost < best[0]:
                         best = (cost, label_point, route)
             if best is not None and best[0] < COST_HITS_NODE:
@@ -233,13 +247,16 @@ def relocate(scene: LayoutScene, profile: DrawingProfile, numerals: Iterable[str
     moving = [label for label in scene.labels if label.reference_numeral in wanted]
     by_entity = {node.entity_id: node for node in scene.nodes}
     area = scene.drawing_area
+    artwork = scene.artwork_box if scene.artwork else None
+    reaches = _REACH if artwork is None else _REACH + (
+        max(artwork.width, artwork.height) / max(1.0, profile.reference_height) * 0.55,)
 
     for label in sorted(moving, key=lambda item: sort_key(item.reference_numeral)):
         node = by_entity.get(label.entity_id)
         if node is None:
             continue
         best: Optional[tuple[float, tuple[float, float], list[Point]]] = None
-        for reach in _REACH:
+        for reach in reaches:
             for dx, dy in _DIRECTIONS:
                 norm = math.hypot(dx, dy) or 1.0
                 span = max(node.box.width, node.box.height) / 2 + profile.reference_height * reach
@@ -251,7 +268,7 @@ def relocate(scene: LayoutScene, profile: DrawingProfile, numerals: Iterable[str
                 origin = _leader_origin(profile, label.reference_numeral, label_point, target)
                 for route in _routes(origin, target):
                     cost = _cost(profile, node, label_point, route, target, scene.nodes,
-                                 scene.edges, keep, area, label.reference_numeral)
+                                 scene.edges, keep, area, label.reference_numeral, artwork)
                     if best is None or cost < best[0]:
                         best = (cost, label_point, route)
         if best is None:

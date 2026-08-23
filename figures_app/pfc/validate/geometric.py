@@ -34,6 +34,11 @@ class ComponentOverlap(ValidationRule):
         figure = context.figure
         if figure is None:
             return []
+        if figure.scene.artwork:
+            # The parts were located in a drawing, not placed on a grid. In a perspective view a
+            # pump behind a housing wall gives boxes that intersect, and that is the drawing
+            # being correct. Refusing it would refuse every sheet this mode produces.
+            return []
         gap = context.profile.min_component_gap
         issues: list[ValidationIssue] = []
         for first, second in combinations(figure.scene.nodes, 2):
@@ -344,7 +349,7 @@ class Monochrome(ValidationRule):
 
         svg = figure.svg
         issues = []
-        if "<image" in svg:
+        if "<image" in svg and not figure.scene.artwork:
             issues.append(self.issue("The drawing embeds a raster image."))
         colours = {value.lower() for value in re.findall(r"#[0-9A-Fa-f]{3,6}", svg)}
         stray = colours - {"#000000", "#ffffff"}
