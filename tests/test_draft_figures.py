@@ -565,6 +565,28 @@ def test_compose_resumes_repaired_coordinates_after_a_process_restart(monkeypatc
             "FIG. 2", "bearing face", ["26 = bearing face"]))
 
 
+def test_leader_repair_never_moves_an_endpoint_with_a_coordinate_certificate():
+    raw = blank_png(1000, 1000)
+    anchors = [
+        {"numeral": "10", "x": 200, "y": 200, "visible": True},
+        {"numeral": "12", "x": 800, "y": 800, "visible": True},
+    ]
+    audit = {
+        "incorrect": ["10", "12"],
+        "labels": [
+            {"numeral": "10", "suggested_x": 500, "suggested_y": 500},
+            {"numeral": "12", "suggested_x": 500, "suggested_y": 500},
+        ],
+    }
+
+    repaired, changed = draft_figures._repair_leader_anchors(
+        raw, anchors, audit, scale=1.0, protected={"10"})
+
+    assert changed is True
+    assert (repaired[0]["x"], repaired[0]["y"]) == (200, 200)
+    assert (repaired[1]["x"], repaired[1]["y"]) != (800, 800)
+
+
 def test_marked_anchor_montage_preserves_the_endpoint_pixel_inside_a_red_ring():
     image = Image.new("RGB", (400, 400), "white")
     ImageDraw.Draw(image).point((200, 200), fill="black")
@@ -939,6 +961,33 @@ def test_geometry_spec_strips_arbitrary_annotation_point_placement():
     assert "breaks through that edge" in cleaned
     assert "identified at" not in cleaned and "identified by a point" not in cleaned
     assert specification["caption"] == cleaned
+    assert specification["endpoint_targets"] == [
+        {
+            "numeral": "16",
+            "part": "second side",
+            "definition": "The second side 16 is the straight lower edge of the slab.",
+            "target": (
+                "The second side 16 is identified at one point on that lower edge, at the exact "
+                "horizontal center of the sheet."
+            ),
+        },
+        {
+            "numeral": "30",
+            "part": "extraction opening",
+            "definition": (
+                "The extraction opening 30 breaks through that edge at the horizontal center."
+            ),
+            "target": "On the visible extraction opening geometry.",
+        },
+        {
+            "numeral": "36",
+            "part": "covering element",
+            "definition": "covering element",
+            "target": (
+                "The covering element 36 is identified by a point inside its right-hand quarter."
+            ),
+        },
+    ]
 
 
 def test_long_geometry_prompt_keeps_components_change_request_and_no_text_rule():
