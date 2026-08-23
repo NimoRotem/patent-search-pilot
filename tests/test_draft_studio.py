@@ -250,6 +250,27 @@ def test_a_self_contradictory_endpoint_target_is_refused_before_drawing():
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
 
+def test_a_drawn_tile_cannot_coexist_with_a_no_other_panel_constraint():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "A large plain tile fills the lower part of the sheet. The base 12 is the lowest "
+            "slab of the assembly, the one slab on the sheet; no other slab, plate or panel is "
+            "drawn."
+        ),
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "contradictory sheet exclusivity" in check["items"][0].lower()
+    with pytest.raises(
+            draft_studio.FilingPreflightError,
+            match="Drawing briefs are concise and renderable"):
+        draft_studio.validate_snapshot(
+            {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
+
+
 def test_an_endpoint_deliberately_disconnected_from_its_named_part_is_refused():
     figures = [{
         **FIGURES[0],
