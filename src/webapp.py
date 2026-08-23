@@ -682,7 +682,7 @@ def _run_job(slug, query, subject, mode, gated, wide=False, doc_token=None,
                       search_focus=search_focus, **extra)
     finally:
         if gated and auth.run_gate:
-            auth.run_gate.end(depth=depth)
+            auth.run_gate.end(depth=search_profile.lane_for(depth))
         run_queue.mark_finished(slug, ok=report_path(slug).exists())
 
 
@@ -1823,7 +1823,7 @@ def ensure_report(slug, query=None, subject=None, mode="novelty", regen=False, w
     # Reserve a generation slot AFTER claiming the slug (so the claim can be released cleanly).
     gated = False
     if auth.run_gate:
-        ok, why = auth.run_gate.try_begin(depth=depth)
+        ok, why = auth.run_gate.try_begin(depth=search_profile.lane_for(depth))
         if not ok:
             if from_queue:
                 with _JOB_LOCK:                    # restore the placeholder; row stays queued
@@ -2010,10 +2010,11 @@ def _enqueue_durable_run(slug, query, subject, mode, wide, doc_token, search_foc
         #  gunicorn processes and the worker each keep their own counters and would each believe
         #  they hold the last slot.
         gate = auth.run_gate
-        caps = _lane_caps(gate, depth)
+        lane = search_profile.lane_for(depth)
+        caps = _lane_caps(gate, lane)
         run_id, created, admitted = runstore.enqueue_admitted(
             slug, payload, search_mode=_durable_search_mode(doc_token), mode=mode, depth=depth,
-            lane=depth, daily_cap=caps["daily_cap"], max_concurrent=caps["max_concurrent"])
+            lane=lane, daily_cap=caps["daily_cap"], max_concurrent=caps["max_concurrent"])
     except Exception:
         #  No `_JOBS.pop` here. The durable branch does not own a memory claim, and a legacy run
         #  started before the flag flipped may still be executing behind one; deleting it would
@@ -2526,6 +2527,29 @@ def corpus_page():
     return render_template("corpus.html", title="Corpus", p=corpus_profile.profile())
 
 
+@app.route("/factory")
+def factory_page():
+    """The corpus factory while it is running.
+
+    The numbers come from a snapshot the factory publishes to object storage once a minute, not
+    from a database this process can reach: the search tier has no route to the staging database
+    and should not have one. Staleness is computed from the snapshot's own timestamp, so a dead
+    publisher reads as stale instead of as zero.
+    """
+    if not auth.auth_enabled(app) or auth.current_user() or auth.is_loopback():
+        return render_template("factory.html", title="Factory")
+    return redirect(url_for("auth.login", next=request.script_root + "/factory"))
+
+
+@app.route("/api/factory/pulse")
+def factory_pulse_api():
+    """What the Factory tab polls. Never 500s on a factory that is down; it reports that it is."""
+    if auth.auth_enabled(app) and not (auth.current_user() or auth.is_loopback()):
+        return jsonify({"ok": False, "error": "sign in to read factory status"}), 403
+    import factory_pulse
+    return jsonify(factory_pulse.view())
+
+
 @app.route("/patentlookup")
 def patent_lookup():
     """The register lookup, inside the search app.
@@ -2758,8 +2782,12 @@ def run():
     #  is the full claim-by-claim attack (unchanged pipeline) and is what the quick report's
     #  escalate button re-runs with. Defaults preserve today's behavior: deep unless asked, and
     #  the gates below only bite when their env flags are set.
-    depth = request.form.get("depth", "").strip() or "deep"
-    if depth not in ("quick", "deep"):
+    #  PHASE 1 IS THE DEFAULT. A search that has not been asked for a claim chart buys the
+    #  find phase, which is minutes, and the report page offers the heavier phases as named,
+    #  separate purchases. Before this, every upload with claims bought the full attack: measured
+    #  at 3,097 to 7,243 seconds, one at 36,042, whether or not anybody wanted the chart.
+    depth = request.form.get("depth", "").strip() or "quick"
+    if depth not in ("quick", "ledger", "deep"):
         return _error_response({"error": "unknown_depth", "depth": depth}, 400,
                                f"Unknown search depth: {depth}")
     if depth == "deep" and not user and os.environ.get("DEEP_REQUIRES_LOGIN", "0") != "0":
@@ -2767,8 +2795,8 @@ def run():
         #  quick (rather than a login wall) keeps the public flow alive and makes the escalate
         #  button the login prompt.
         depth = "quick"
-    if depth == "quick":
-        wide = False                       # local corpus only: no external APIs on the quick tier
+    if depth in ("quick", "ledger"):
+        wide = False                       # local corpus only: no external APIs before phase 3
     if not query:
         return redirect(url_for("index"))
     #  OUT-OF-DOMAIN: STILL DETECTED, NO LONGER A GATE.
@@ -3239,9 +3267,13 @@ def report(slug):
     #  The tier this report was made at, and everything the escalate form needs to re-run the
     #  same inputs at full depth.
     view["depth"] = rep.get("depth") or depth
-    if view["depth"] == "quick":
+    if view["depth"] in ("quick", "ledger"):
+        #  What the next phase needs to re-run the same inputs. `next_phases` is what the page
+        #  offers: a find report can buy the ledger or the grid, a ledger report can buy the grid.
         view["escalate"] = {"query": query or rep.get("query") or "", "mode": mode,
-                            "doc_token": doc_token or "", "search_focus": search_focus}
+                            "doc_token": doc_token or "", "search_focus": search_focus,
+                            "next_phases": (["ledger", "deep"] if view["depth"] == "quick"
+                                            else ["deep"])}
     #  The filing artefacts belong on the report itself, not only on a share of it: the owner is
     #  the one who builds them and the most likely person to come back for them.
     view["concise_docs"] = _concise_built(slug)
