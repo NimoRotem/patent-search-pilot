@@ -290,6 +290,9 @@ _LINE_ANCHOR_PART_RE = re.compile(
     r"pulling element|ring)\b", re.IGNORECASE)
 _EXPLICIT_LINE_TARGET_RE = re.compile(
     r"(?:\b(?:on|along|at)\b[^.;|]{0,80}\b(?:boundary|edge|line|centerline)\b|"
+    r"\b(?:top|bottom|upper|lower|horizontal|vertical|contact)\s+"
+    r"(?:(?:horizontal|vertical)\s+)?(?:boundary\s+)?(?:edge|line)\b|"
+    r"\b(?:boundary|edge|line)\s+(?:forming|defining)\b|"
     r"\b(?:cable|cord|handle|loop|path|pulling element|ring|cross ?bar|outline|curve|"
     r"stroke)\b)", re.IGNORECASE)
 _MAX_ANCHOR_SNAP = 220
