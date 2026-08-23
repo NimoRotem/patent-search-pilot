@@ -1653,6 +1653,33 @@ def test_marked_endpoint_spec_keeps_a_following_target_sentence_in_the_same_bull
     assert specification["parts"][1]["target"] == "Identified on its front face."
 
 
+def test_marked_endpoint_spec_splits_inline_bullets_before_matching_targets():
+    caption = (
+        "Geometry to be drawn - The base 12 is a broad rectangular slab. "
+        "Identified in the open stretch midway between the column and the nearer handle upright. "
+        "- The handle 44 is an inverted U with two uprights and one crossbar. "
+        "Identified on the crossbar, midway along it.")
+
+    specification = json.loads(draft_figures._marked_endpoint_specification(
+        "FIG. 1", caption, ["12 = base", "44 = handle"]))
+
+    assert specification["parts"] == [
+        {
+            "numeral": "12", "part": "base",
+            "definition": "The base 12 is a broad rectangular slab.",
+            "target": (
+                "Identified in the open stretch midway between the column and the nearer "
+                "handle upright."),
+        },
+        {
+            "numeral": "44", "part": "handle",
+            "definition": (
+                "The handle 44 is an inverted U with two uprights and one crossbar."),
+            "target": "Identified on the crossbar, midway along it.",
+        },
+    ]
+
+
 def test_current_visual_audits_are_bound_to_the_configured_review_model(monkeypatch):
     monkeypatch.setattr(draft_figures, "vision_model", lambda: "gemini-2.5-pro")
     digest = "a" * 64
