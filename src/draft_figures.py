@@ -2575,9 +2575,11 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
                 png, label=label, caption=caption, numerals=numerals)
             if leaders.get("ok"):
                 break
+            # The leader review owns routing legibility, not geometry. Endpoint coordinates
+            # remain under the semantic and marked-coordinate reviews even before certification.
             anchors, changed = _repair_leader_anchors(
                 raw_png, anchors, leaders, scale=used_scale,
-                protected=marked_certificates)
+                protected=_anchor_positions(anchors))
             if not changed:
                 if used_scale_index + 1 < len(layout_scales):
                     leader_scale_index = used_scale_index + 1
