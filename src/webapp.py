@@ -5694,7 +5694,7 @@ def concise_descriptions(slug):
         return render_template("concise.html", slug=slug, cands=cands,
                                docs=_concise_built(slug), subject=subject, error=None,
                                blocked=j.get("blocked") or [],
-                               verdict=j.get("verdict") or "")
+                               verdict=j.get("verdict") or _concise_verdict_on_disk(slug))
 
     pubs = [p.strip() for p in request.form.getlist("pubs") if p.strip()]
     if not pubs:
@@ -5881,6 +5881,25 @@ def concise_document(slug, n):
     return render_template("concise_doc.html", slug=slug, n=n, stem=paths["stem"],
                            markdown=paths["md"].read_text(encoding="utf-8"),
                            error=err, saved=saved)
+
+
+def _concise_verdict_on_disk(slug):
+    """The packet's own verdict, read back from READ_ME_FIRST.txt. -> str
+
+    The job dict holds it while the process lives, and a restart empties that dict while the packet
+    sits on disk unchanged: the page then showed no verdict for a package that has one. The note in
+    the packet is the durable copy, so it is the one to read when the job is gone.
+    """
+    try:
+        p = CONCISE_DIR / slug / "READ_ME_FIRST.txt"
+        if not p.exists():
+            return ""
+        lines = [l.strip() for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+        #  line 0 is the application, line 1 the banner, line 2 the sentence.
+        return ": ".join(lines[1:3]) if len(lines) > 2 else (lines[1] if len(lines) > 1 else "")
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return ""
 
 
 def _concise_package(out, docs, subject, report=None):
