@@ -1347,9 +1347,7 @@ class TurnRunner:
         seeded = False
         retry_snapshot = None
 
-        candidate = None
-        if int(turn.get("attempts") or 0) > 1:
-            candidate = self.repository.retry_candidate(int(turn["id"]))
+        candidate = self.repository.retry_candidate(int(turn["id"]))
         if not candidate:
             candidate = self.repository.latest_retry_candidate(
                 project_id, before_turn_id=int(turn["id"]))
