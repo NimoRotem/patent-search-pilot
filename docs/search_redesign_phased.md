@@ -54,11 +54,13 @@ each is resumable and cancellable on its own.
 | phase | what it is | who starts it | target wall clock |
 |---|---|---|---|
 | 0 intake | parse the input patent or description, split claims into limitations, build the query set | automatic | 5 to 20 s |
-| 1 find | batch embed, parallel ANN and BM25, family and element aggregation, cheap passage rerank | automatic | p50 20 s, p95 45 s |
-| 2 ledger | passage-level verification of the top families, claim and limitation coverage with grounded quotes | button: "Build claim ledger" | 1 to 3 min |
-| 3 grid | full read of the references that matter, refutation, rarity and coverage ranking, the claim by prior-art grid | button: "Build claim x prior-art grid" | 2 to 5 min |
-| 4 rescue | targeted search for limitations nothing covered, narrow read | button, or automatic tail of phase 3 | 30 to 120 s |
-| 5 submission | 37 CFR 1.290 concise descriptions, IDS listing, exports, deliverable package | button: "Prepare third-party preissuance" | under 60 s, no new retrieval |
+| 1 find | retrieval plus the candidate passage matrix. No legal disclosure assertions | automatic | p50 20 s, p95 45 s |
+| 2 ledger | passage verification into a real disclosure ledger | button: "Build claim ledger" | 1 to 3 min |
+| 3 grid | deep full-document analysis for the strongest references | button: "Build claim x prior-art grid" | 2 to 5 min |
+| 4 rescue | targeted recall rescue for limitations nothing covered | button, or automatic tail of phase 3 | 30 to 120 s |
+| 5 submission | the legal and export package: 37 CFR 1.290 papers, IDS listing, exports | button: "Prepare third-party preissuance" | under 60 s, no new retrieval |
+
+The line the phase names exist to hold: **semantic similarity is candidate evidence, a verified disclosure requires reading.** Phase 1 may never call anything disclosed.
 
 A user who wanted "what is out there" stops after phase 1 and has paid seconds of compute. A user
 attacking a patent pays for phases 2 and 3 deliberately, sees the estimate before clicking, and gets
@@ -107,10 +109,13 @@ This is the whole latency fix and it is an infrastructure change, not an algorit
   today, `claim_own` plus `claim_resolved` is 4.17M of 13.0M chunks, against 7.22M description
   paragraphs. A claims plus abstract index is small enough to be resident on one machine. Build it
   as its own index and query it first.
-* **Store vectors as `halfvec`.** fp16 halves the index at 768 dimensions, and dimension is already
-  measured saturated for us (768, 1024 and 3072 all scored 0.8251 identically), so there is no
-  quality argument for the extra bytes. The build already exists in flight as
-  `ix_chunks_hnsw_half`.
+* **Keep fp32 unless residency actually requires fp16.** The 768 / 1024 / 3072 result (all scored
+  0.8251) says DIMENSION is saturated for us. It says nothing about quantization, and our own
+  halfvec probe measured top-100 overlap as low as 83% on one query, so fp16 is a recall change
+  until proven otherwise. At 4.17M claim and abstract chunks, fp32 at 768 dimensions is a few GB
+  of vectors plus its graph, which fits a dedicated box with room to spare. Reach for `halfvec`
+  only when a partition genuinely will not stay resident, and re-measure top-100 overlap on the
+  gold queries before it becomes the default.
 * **Shard description paragraphs across the shard VMs.** `src/retrieval/shard_router.py`,
   `shard_manager.py`, `cold.py` and `global_search.py` are already deployed and inert because no
   backend is registered. Register the shard fleet as that backend. The eight `c4-highmem-16` shard
@@ -118,14 +123,22 @@ This is the whole latency fix and it is an infrastructure change, not an algorit
 * **Bound the probe instead of scanning.** Phase 1 runs with `hnsw.ef_search` 100 to 200 and
   iterative scan off, so latency is bounded and predictable. Phase 4 rescue may raise it, because
   there the query count is tiny.
-* **Fan out concurrently.** One connection per query through pgbouncer, pool bounded at 32 to 64.
-  120 queries times 4 channels is about 480 probes; at 5 to 30 ms each on a resident index with
-  64-way concurrency that is 2 to 5 seconds of wall clock.
+* **Fan out concurrently, bounded by what the box actually has.** One connection per query through
+  pgbouncer, with the pool sized from the resident node's connection and CPU budget rather than
+  from a number in a design document. 120 queries times 4 channels is about 480 probes, and the
+  point is that a resident index turns the whole retrieval stage into tens of seconds instead of
+  ten minutes; the exact concurrency is a tuning result, measured per node, not a constant. Start
+  conservative, raise it while p95 stays flat, stop when it does not.
 
 Channels in phase 1, all peers, all cheap: `claim_dense`, `paragraph_dense`, `bm25` (Tantivy, being
-built now on `niche_full_v1`), `exact` phrase for terms of art. Citation, CPC, QBE and biblio move
-to phase 4, because their job is recovering what dense missed and that only matters once we know
-what is missing.
+built now on `niche_full_v1`), `exact` phrase for terms of art.
+
+**CPC and citation expansion stay in phase 1, and they do not block it.** They have demonstrated
+independent recall value, and a phase that drops them is a phase that loses art dense and lexical
+both miss. Run them off the first dense results, concurrently, and fold whatever has landed when
+the page is assembled: the phase 1 deadline belongs to dense plus BM25, and a slow graph expansion
+degrades to fewer candidates rather than to a slower page. QBE and biblio move to phase 4, where
+recovering what the head missed is the actual job.
 
 ### 5.3 Aggregate without a model
 
@@ -188,10 +201,13 @@ its slot to eight confident rows from documents nobody would file. Keep 40 per l
 
 Only now does anything read a whole patent, and only the references phase 2 says matter.
 
-* **One call per reference, not one per element.** All limitations for that reference in a single
-  request. The current `analyse_reference` already batches features at 24 and claims at
-  `DEEP_CLAIM_BATCH`, and making those batches concurrent bought 2.1x. Sizing the read set at 20 to
-  40 rather than 150 to 250 is where the order of magnitude comes from.
+* **Small limitation groups per reference, run concurrently. NOT one giant call.** Our own sweep
+  says a bigger batch loses disclosures: over the four references an attorney filed, batch 12
+  produced 58 disclosed cells, batch 4 produced 66, batch 2 produced 88. Ask each reference about
+  2 to 4 related limitations at a time, in parallel, and cache the document context so the full
+  text is not retransmitted per group. The order of magnitude comes from the READ SET (20 to 40
+  references instead of 150 to 250) and from concurrency, which bought 2.1x on its own, never from
+  cramming a reference's whole checklist into one request.
 * **Full text comes from the niche corpus, never from a paid provider at query time.** Today the
   pipeline buys full text for up to 400 references mid-search because the corpus is thin. That is
   what the factory exists to end. A missing document becomes a factory job and the search proceeds
@@ -230,7 +246,7 @@ built from.
 
 | stage | today, measured | after | why |
 |---|---|---|---|
-| local retrieval | 678 to 932 s | 5 to 30 s | resident halfvec indexes, sharded paragraphs, one batched embed, 64-way concurrency |
+| local retrieval | 678 to 932 s | 5 to 30 s | resident indexes, sharded paragraphs, one batched embed, bounded concurrency |
 | external fan-out | 65 to 101 s, concurrent | unchanged in phase 1, off by default | it is free wall clock but it is not the constraint: control run was 1/22 with it off against 0/22 with it on |
 | pre-search paid text | up to 400 fetches | 0 | acquisition is the factory's job and runs offline |
 | screen | 2,500 candidates, 33 s | deleted | the screen exists because retrieval order was untrustworthy; vector aggregation replaces it |
@@ -260,7 +276,7 @@ Serving plane:
 | VM | role |
 |---|---|
 | app | `nimo.iptorch.com`, gunicorn, routes and rendering only, no search work in process |
-| claims index | the resident claims plus abstract halfvec HNSW for the whole niche, plus Tantivy |
+| claims index | the resident claims plus abstract HNSW for the whole niche, fp32 by default, plus Tantivy |
 | shard 1..8 | description paragraph partitions, `c4-highmem-16`, registered through `shard_router` |
 | phase-1 workers | many, short, cheap, one lane |
 | phase-2/3 workers | few, long, LLM heavy, their own lane and their own concurrency cap |
@@ -276,7 +292,7 @@ which was proven when a live run survived a restart of `patent-results` with `at
 1. **Split the phases behind a flag on the current retrieval.** No new infrastructure. The user gets
    results and a set of buttons; the heavy stages stop running unasked. This alone converts most
    searches from two hours to minutes because most searches do not need phase 3.
-2. **Build the claims plus abstract halfvec index on `niche_full_v1` and point phase 1 at it**,
+2. **Build the claims plus abstract index on `niche_full_v1` and point phase 1 at it**,
    keeping the current path as a fallback. Measure on the two attorney gold sets and the two-subject
    benchmark before switching the default.
 3. **Delete the 2,500 candidate screen for claim attacks**, replacing it with the phase 1
