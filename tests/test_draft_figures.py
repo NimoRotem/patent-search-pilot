@@ -2007,6 +2007,31 @@ def test_text_contaminated_geometry_retries_from_a_clean_canvas(monkeypatch):
     assert all(not re.search(r"\d", prompt) for prompt in prompts)
 
 
+def test_third_semantic_attempt_resets_repeatedly_rejected_geometry(monkeypatch):
+    generated = []
+
+    def generate(_prompt, previous=None):
+        png = blank_png(width=640 + len(generated))
+        generated.append((previous, png))
+        return png
+
+    monkeypatch.setattr(draft_figures, "_cached_generate", generate)
+    monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
+        "ok": False, "missing": [],
+        "errors": ["unexpected dashed line remains inside the slab"], "anchors": [],
+    })
+
+    with pytest.raises(draft_figures.FigureError, match="semantic"):
+        draft_figures.render_figure(
+            7, 91, label="FIG. 2", caption="sectioned slab",
+            numerals=["12 = base"])
+
+    assert generated[0][0] is None
+    assert generated[1][0] == generated[0][1]
+    assert generated[2][0] is None
+    assert generated[3][0] == generated[2][1]
+
+
 def test_semantically_rejected_generation_is_evicted_from_cache(monkeypatch):
     discarded = []
     monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: blank_png())
