@@ -60,6 +60,7 @@ MARKED_ANCHOR_THINKING_BUDGET = 2048
 SEMANTIC_REVIEW_COUNT = 2
 LEADER_REVIEW_COUNT = 2
 MARKED_ANCHOR_REVIEW_COUNT = 3
+MARKED_ANCHOR_CORRECTION_GAIN = 0.25
 MIN_OCR_CONFIDENCE = float(os.environ.get("PATENT_FIGURE_OCR_CONFIDENCE", "0.85"))
 
 
@@ -2196,10 +2197,10 @@ def _repair_marked_anchors(raw_png: bytes, anchors, audit: dict) -> tuple[list, 
         if not (0 <= suggested_x <= 1000 and 0 <= suggested_y <= 1000):
             continue
         current_x, current_y = int(item.get("x") or 0), int(item.get("y") or 0)
-        delta_x = (((suggested_x - 500) * crop_span / 1000) * 1000 /
-                   max(1, source.width - 1))
-        delta_y = (((suggested_y - 500) * crop_span / 1000) * 1000 /
-                   max(1, source.height - 1))
+        delta_x = ((((suggested_x - 500) * crop_span / 1000) * 1000 /
+                    max(1, source.width - 1)) * MARKED_ANCHOR_CORRECTION_GAIN)
+        delta_y = ((((suggested_y - 500) * crop_span / 1000) * 1000 /
+                    max(1, source.height - 1)) * MARKED_ANCHOR_CORRECTION_GAIN)
         new_x = round(min(max(current_x + delta_x, 0), 1000))
         new_y = round(min(max(current_y + delta_y, 0), 1000))
         if (new_x, new_y) != (int(item.get("x") or 0), int(item.get("y") or 0)):

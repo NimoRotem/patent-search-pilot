@@ -319,7 +319,7 @@ def test_marked_anchor_consensus_uses_the_median_majority_correction():
     assert audit["labels"][0]["suggested_y"] == 490
 
 
-def test_marked_anchor_repair_maps_a_crop_suggestion_back_to_the_source():
+def test_marked_anchor_repair_takes_a_damped_step_toward_the_crop_suggestion():
     raw = blank_png(1000, 1000)
     anchors = [{"numeral": "26", "x": 500, "y": 500, "visible": True,
                 "evidence": "bearing face"}]
@@ -335,7 +335,7 @@ def test_marked_anchor_repair_maps_a_crop_suggestion_back_to_the_source():
     repaired, changed = draft_figures._repair_marked_anchors(raw, anchors, audit)
 
     assert changed is True
-    assert 615 <= repaired[0]["x"] <= 625
+    assert 528 <= repaired[0]["x"] <= 532
     assert repaired[0]["y"] == 500
 
 
@@ -394,7 +394,7 @@ def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypat
 
     assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
     assert len(marked_calls) == 6 and len(leader_calls) == 6
-    assert anchors[0]["x"] > 560
+    assert anchors[0]["x"] > 525
     assert leaders["marked_anchor_audit"]["ok"] is True
 
 
