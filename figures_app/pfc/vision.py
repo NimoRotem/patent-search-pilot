@@ -36,6 +36,13 @@ CONFIDENT = 0.6
 # How far, as a fraction of the sheet diagonal, an observed numeral may sit from where the
 # renderer put it before the two are treated as different things.
 POSITION_TOLERANCE = 0.14
+# Drift is REPORTED, not blocking, and this is why. The renderer placed the numeral, so the scene
+# is the truth and the reader's box is an estimate of it; where the numeral sits is already
+# checked deterministically by the geometry rules and by re-rendering the scene. Measured on
+# US-2024/0246200-A1 the reader missed by 66 to 139 mm on every figure of a purely deterministic
+# run, whose placement was provably correct, and blocked all four. A rule that fails correct
+# output is measuring its instrument.
+DRIFT_SEVERITY = "warning"
 
 _WORD = re.compile(r"[a-z0-9]+")
 
@@ -129,8 +136,8 @@ def diff(spec: FigureSpec, scene: LayoutScene, observed: ObservedFigure,
             drift = math.hypot(placed[0] - expected_at[0], placed[1] - expected_at[1])
             if drift / diagonal > POSITION_TOLERANCE:
                 result.reference_target_mismatches.append({
-                    "reference": numeral, "reason": "printed somewhere other than where the "
-                                                    "layout places it",
+                    "reference": numeral, "measured": "position",
+                    "reason": "printed somewhere other than where the layout places it",
                     "drift_mm": round(profile.mm(drift), 1)})
                 continue
         if captioned and reference.target_description:
@@ -139,7 +146,7 @@ def diff(spec: FigureSpec, scene: LayoutScene, observed: ObservedFigure,
             seen_words = _tokens(reference.target_description)
             if expected_words and seen_words and not (expected_words & seen_words):
                 result.reference_target_mismatches.append({
-                    "reference": numeral,
+                    "reference": numeral, "measured": "target",
                     "reason": "its leader appears to end on a different component",
                     "expected": (node.caption if node else ""),
                     "observed": reference.target_description[:120]})
@@ -233,9 +240,16 @@ def issues_from_diff(result: SemanticDiff, observed: ObservedFigure,
         add("VIS002", f"An independent reader saw reference numeral {numeral} on the sheet, and "
                       "it does not belong to this figure.", reference_numeral=numeral)
     for item in result.reference_target_mismatches:
+        # Two different questions under one rule id. "Its leader ends on a different component"
+        # is a judgement about the drawing that nothing deterministic can make, and it blocks.
+        # "It is printed somewhere else" second-guesses a coordinate this compiler wrote, which
+        # the geometry rules already check; see DRIFT_SEVERITY.
+        drift = item.get("measured") == "position"
         add("VIS003", f"Reference numeral {item.get('reference')} does not read as naming the "
                       f"object it is bound to ({item.get('reason')}).",
-            repair="rebind_leader", reference_numeral=str(item.get("reference") or ""),
+            severity=DRIFT_SEVERITY if drift else "blocking",
+            repair="none" if drift else "rebind_leader",
+            reference_numeral=str(item.get("reference") or ""),
             detail=item)
     for item in result.direction_mismatches:
         add("VIS004", f"The connection between {item.get('from')} and {item.get('to')} does not "

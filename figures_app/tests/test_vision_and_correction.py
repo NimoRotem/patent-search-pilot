@@ -156,3 +156,51 @@ def test_a_defect_that_needs_the_text_to_change_is_never_redrawn_away(figure, pr
 
 def test_correction_gives_up_rather_than_looping():
     assert correction.MAX_ATTEMPTS == 3
+
+
+def test_a_readers_estimate_of_where_a_numeral_sits_does_not_block_the_figure(figure, profile):
+    """The renderer placed it. A vision model's guess at the coordinate is not evidence.
+
+    Measured on US-2024/0246200-A1: a purely deterministic run, whose numeral placement is
+    checked by the geometry rules and re-verified by re-rendering, had the reader miss by 66 to
+    139 mm on every figure and blocked all four.
+    """
+    _graph, _plan, spec, scene, svg = figure
+    observed = observe(svg)
+    reference = next(item for item in observed.visible_references
+                     if item.reference in {label.reference_numeral for label in scene.labels})
+    reference.confidence = 0.95
+    reference.bbox = [10.0, 10.0, 40.0, 30.0]          # nowhere near where it was drawn
+    reference.target_description = ""
+
+    result = vision.diff(spec, scene, observed, profile, image_size=(1000, 1000))
+    drifted = [item for item in result.reference_target_mismatches
+               if item.get("measured") == "position"]
+    assert drifted, "the drift was not measured at all"
+
+    issues = vision.issues_from_diff(result, observed, spec.figure_id)
+    offending = [issue for issue in issues
+                 if issue.rule_id == "VIS003" and issue.detail.get("measured") == "position"]
+    assert offending, "the drift was not reported"
+    assert all(issue.severity == "warning" for issue in offending)
+    assert not [issue for issue in blocking(issues) if issue.rule_id == "VIS003"]
+
+
+def test_a_leader_reading_as_a_different_component_still_blocks(figure, profile):
+    """The half of VIS003 that needs eyes: nothing deterministic can make this judgement."""
+    _graph, _plan, spec, scene, svg = figure
+    observed = observe(svg)
+    labelled = {label.reference_numeral: label for label in scene.labels}
+    captioned = next(node for node in scene.nodes if node.caption)
+    numeral = next(numeral for numeral, label in labelled.items()
+                   if label.entity_id == captioned.entity_id)
+
+    reference = next(item for item in observed.visible_references if item.reference == numeral)
+    reference.confidence = 0.95
+    reference.target_description = "a completely unrelated widget nobody mentioned"
+
+    result = vision.diff(spec, scene, observed, profile)
+    issues = vision.issues_from_diff(result, observed, spec.figure_id)
+    blockers = [issue for issue in blocking(issues)
+                if issue.rule_id == "VIS003" and issue.detail.get("measured") == "target"]
+    assert blockers, "a leader that reads as naming another part has to block"
