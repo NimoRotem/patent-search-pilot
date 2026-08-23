@@ -221,16 +221,35 @@
   <p class="hint">Read from the description before any model was involved. Nothing on any sheet
   carries a numeral that is not in this table.</p>
   <table>
-    <tr><th>Numeral</th><th>Name</th><th>Also called</th><th>Mentions</th></tr>
+    <tr><th>Numeral</th><th>Name</th><th>Drawn as</th><th>Decided by</th><th>Mentions</th></tr>
     {% for entity in graph.entities %}
     <tr>
       <td class="mono">{{ entity.reference_numeral }}</td>
-      <td>{{ entity.canonical_name }}</td>
-      <td class="muted">{{ entity.aliases[:3]|join(', ') }}</td>
+      <td>{{ entity.canonical_name }}
+        {% if entity.aliases %}<div class="muted">also: {{ entity.aliases[:2]|join(', ') }}</div>{% endif %}</td>
+      <td>
+        {% if entity.appearance and entity.appearance.symbol != 'generic_component' %}
+          {{ entity.appearance.symbol.replace('_', ' ') }}
+          <span class="muted">{{ entity.appearance.size }}{% if entity.appearance.orientation == 'vertical' %}, upright{% endif %}</span>
+        {% else %}<span class="muted">plain outline</span>{% endif %}
+      </td>
+      <td class="muted">
+        {% set who = entity.appearance.source if entity.appearance else 'default' %}
+        {% if who == 'disclosed' %}the description
+        {% elif who == 'model' %}read from the text
+        {% elif who == 'keyword' %}its name
+        {% else %}nothing settled it{% endif %}
+        {% if entity.appearance and entity.appearance.note %}
+          <div style="font-size:12px">{{ entity.appearance.note }}</div>{% endif %}
+      </td>
       <td class="muted">{{ entity.attributes.mention_count }}</td>
     </tr>
     {% endfor %}
   </table>
+  <p class="hint" style="margin-top:10px">How a part is drawn is decided once, here, and every
+  figure uses that decision. A part is only drawn as a recognisable element when the description
+  settles what kind of thing it is; otherwise it is a plain outline. Cross-figure checks
+  (CON001 to CON004) then verify the drawings that actually came out agree with each other.</p>
 
   {% if graph.discarded %}
   <details style="margin-top:14px">

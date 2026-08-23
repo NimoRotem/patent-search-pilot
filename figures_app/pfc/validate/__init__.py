@@ -6,10 +6,11 @@ from typing import Sequence
 from ..schemas import ValidationIssue
 from .engine import (VALIDATION_VERSION, FigureBundle, ValidationContext, ValidationRule,
                      blocking, run_rules, warnings)
+from .consistency import CONSISTENCY_RULES
 from .geometric import GEOMETRY_RULES
 from .semantic import SEMANTIC_RULES
 
-ALL_RULES: list[ValidationRule] = [*SEMANTIC_RULES, *GEOMETRY_RULES]
+ALL_RULES: list[ValidationRule] = [*SEMANTIC_RULES, *GEOMETRY_RULES, *CONSISTENCY_RULES]
 
 
 def validate_figure(context: ValidationContext) -> list[ValidationIssue]:

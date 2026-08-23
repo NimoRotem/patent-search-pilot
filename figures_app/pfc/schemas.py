@@ -189,6 +189,44 @@ CONTAINMENT_PREDICATES = frozenset({"contains", "inside", "surrounds"})
 Direction = Literal["subject_to_object", "object_to_subject", "bidirectional", "none"]
 
 
+Orientation = Literal["horizontal", "vertical"]
+RelativeSize = Literal["small", "medium", "large"]
+
+# How much of the available cell each relative size takes. A housing that dwarfs the sensor
+# inside it is what a real drawing looks like; everything the same size is what a block diagram
+# looks like.
+SIZE_SCALE: dict[str, float] = {"small": 0.62, "medium": 1.0, "large": 1.55}
+
+
+class Appearance(Strict):
+    """How one component is drawn, decided ONCE for the whole document.
+
+    This is the object that makes consistency structural rather than hoped for. An entity's
+    appearance is settled before any figure is laid out and every figure then draws that entity
+    from this record, so the same battery cannot come out as a battery on one sheet and a box on
+    the next. A different view may turn it or resize the sheet around it; it may not redraw it.
+
+    ``source`` says who decided, which is what lets a reviewer tell a disclosed shape from a
+    conventional one:
+
+      ``disclosed``  the description states the shape ("the housing is cylindrical")
+      ``model``      a reasoning pass chose the symbol from the library for this component
+      ``keyword``    the component's own name matched the symbol table
+      ``default``    nothing settled it, so it is a plain outline
+    """
+
+    symbol: str = "generic_component"
+    orientation: Orientation = "horizontal"
+    size: RelativeSize = "medium"
+    source: Literal["disclosed", "model", "keyword", "default"] = "default"
+    note: str = Field(default="", max_length=200)
+
+    @property
+    def key(self) -> str:
+        """What must match across figures. Orientation may legitimately differ by view."""
+        return f"{self.symbol}/{self.size}"
+
+
 class Entity(Strict):
     id: str = Field(min_length=1, max_length=120)
     canonical_name: str = Field(min_length=1, max_length=300)
@@ -199,6 +237,7 @@ class Entity(Strict):
     visual_class: VisualClass = "generic_component"
     shape_hint: Optional[ShapeHint] = None
     shape_hint_grounded: bool = False
+    appearance: Appearance = Field(default_factory=Appearance)
     attributes: dict[str, Any] = Field(default_factory=dict)
     embodiment_scope: list[str] = Field(default_factory=list)
     evidence: list[Evidence] = Field(min_length=1)
@@ -206,8 +245,9 @@ class Entity(Strict):
 
     @model_validator(mode="after")
     def _shape_needs_grounding(self):
-        # An ungrounded shape hint is exactly the failure mode the spec names: inventing the
-        # appearance of a component from its name. If it is not grounded it is not a hint.
+        # A shape HINT is a claim that the document states a shape, so it still has to be
+        # grounded. Choosing a conventional symbol is a separate decision and lives on
+        # `appearance`, where it records who chose it.
         if self.shape_hint is not None and not self.shape_hint_grounded:
             raise ValueError("a shape hint must be grounded in the document")
         if self.reference_numeral and self.numeral_status == "NONE":
@@ -427,9 +467,11 @@ class LayoutNode(Strict):
     reference_numeral: Optional[str] = None
     caption: str = ""
     shape: NodeShape = "box"
-    # The conventional symbol this part is drawn with, chosen from its disclosed class. Empty
-    # means a plain outline, which is what a part of unsettled kind gets.
+    # The symbol this part is drawn with, taken from the entity's settled appearance. Empty
+    # means a plain outline. Carried onto the node so a validator can compare what was drawn on
+    # one sheet with what was drawn on another without re-deriving anything.
     symbol: str = ""
+    orientation: Orientation = "horizontal"
     box: Box
     depth: int = 0
     is_container: bool = False

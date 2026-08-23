@@ -50,7 +50,8 @@ INGEST -> PARSE -> EXTRACT -> RECONCILE -> PLAN -> SPEC
 | Spec | `pfc/spec.py` | What one figure shows. Bound to the paragraphs that name that figure. |
 | Layout | `pfc/layout/` | Layered for diagrams, top-to-bottom for flowcharts, containment-nested for physical views. Leaders by scored search. |
 | Render | `pfc/render/` | One renderer per figure family. SVG is the artifact; PDF and PNG are conversions of it. |
-| Validate | `pfc/validate/` | 30-odd rules over grounding, references, semantics, geometry and office rules. |
+| Appearance | `pfc/appearance.py` | How each part is drawn, settled once for the document. |
+| Validate | `pfc/validate/` | 40-odd rules over grounding, references, semantics, geometry, cross-figure consistency and office rules. |
 | Vision | `pfc/vision.py` | The sheet read back independently, then compared in ordinary code. |
 | Correct | `pfc/correct.py` | The narrowest repair that owns the defect. Three attempts, then blocked with a diagnosis. |
 
@@ -85,7 +86,7 @@ cd ~/patent-figures/figures_app
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ./run.sh                       # :8637, behind nginx at /figures
 
-.venv/bin/python -m pytest tests/ -q      # 74 tests, no network, no model calls
+.venv/bin/python -m pytest tests/ -q      # 292 tests, no network, no model calls
 .venv/bin/python -m eval.run --dataset test_patents/golden
 ```
 
@@ -108,13 +109,43 @@ DELETE /v1/jobs/{id}               delete the job and its artifacts
 Jobs are owned by the account that created them and are invisible to any other; artifacts are
 served only through the owning session. Retention defaults to 30 days.
 
+## How a component gets drawn
+
+A simple, recognisable element. A battery looks like a battery, a coil like a coil, a substrate
+like a hatched slab. That is what makes a drawing worth looking at; the earlier rule against it
+produced pages of identical rectangles.
+
+The freedom is bounded in two ways.
+
+**Decided once.** An entity's appearance — symbol, orientation, relative size — is settled before
+any figure is laid out, and every figure reads it off the entity. Two sheets cannot disagree
+about what a part looks like because there is one record and they both use it. Four authors, in
+order: a shape the description states, then a reasoning pass that reads the sentences, then the
+part's own name, then a plain outline. Who decided is recorded and shown on the results page.
+
+**Checked afterwards.** A record nobody verifies is a hope, and a renderer or a correction pass
+can still diverge from it:
+
+| | | |
+|---|---|---|
+| `CON001` | one part, one symbol, on every sheet | blocking |
+| `CON002` | one kind of part, one symbol, across the document | warning |
+| `CON003` | two parts that appear together twice keep their size order | warning |
+| `CON004` | a part is only turned where the figure genuinely is a different view | warning |
+
+What is still refused is designing the part: choosing a symbol to show a feature, a count, a
+dimension or a mechanism the description does not state. The drawing may say "this is a pump".
+It may not decide the pump is centrifugal. A part whose kind the document does not settle stays
+a plain outline, and on a real patent roughly half of them do.
+
 ## What it will not do
 
 1. Use an image model anywhere in the pipeline.
 2. Let a model emit an SVG string or a coordinate.
 3. Invent a reference numeral, or move an existing one.
-4. Draw a component's shape because it recognises the component's name.
-5. Draw two embodiments as though they held at once.
-6. Trace, or read geometry from, the drawings the applicant filed.
-7. Mark a figure `VALIDATED` while any blocking check fails.
-8. Repair a semantic defect by redrawing until it stops being reported.
+4. Draw a feature, a count or a dimension the description does not state.
+5. Draw the same component two different ways on two sheets.
+6. Draw two embodiments as though they held at once.
+7. Trace, or read geometry from, the drawings the applicant filed.
+8. Mark a figure `VALIDATED` while any blocking check fails.
+9. Repair a semantic defect by redrawing until it stops being reported.

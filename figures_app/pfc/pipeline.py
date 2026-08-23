@@ -25,7 +25,8 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import correct as correction
-from . import ingest, numerals, plan as planning, spec as speccing, vision, visualclass
+from . import appearance, ingest, numerals, plan as planning, spec as speccing
+from . import vision, visualclass
 from .extract import extract_graph
 from .ground import ParagraphIndex, make_grounder
 from .layout import UnsupportedFigure, build_scene
@@ -172,10 +173,11 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
     # The extractor names a class from the paragraphs where it can. Anything still on the
     # default gets one from the drafter's own words for it, which is what decides the symbol it
     # is drawn with. Deliberately last, so the text always beats the keyword table.
-    classified = visualclass.classify_all(graph.entities)
-    if classified:
-        notes.append(f"{classified} part(s) were drawn with the conventional symbol for what "
-                     "the description calls them; the rest are plain outlines")
+    visualclass.classify_all(graph.entities)
+    # How each part is DRAWN is settled here, once, for the whole document. Every figure then
+    # reads it off the entity, which is what makes the same part recognisably the same on every
+    # sheet; the CON rules check the drawings that actually came out.
+    appearance.decide(graph, reasoner, notes)
     if graph.blocking_conflicts:
         notes.append(f"{len(graph.blocking_conflicts)} reference-numeral conflict(s) in the "
                      "draft are reported rather than repaired")
@@ -332,6 +334,7 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
 
     _write_json(paths.root / "document.json", document.model_dump())
     _write_json(paths.root / "patent_graph.json", graph.model_dump())
+    _write_json(paths.root / "appearance.json", appearance.summary(graph.entities))
     _write_json(paths.root / "validation_report.json", report.model_dump())
     _write_json(paths.root / "manifest.json", manifest.model_dump())
     _write_json(paths.root / "figure_index.json", [

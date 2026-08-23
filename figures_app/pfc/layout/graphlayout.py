@@ -349,6 +349,11 @@ def layout_graph(spec: FigureSpec, graph: PatentGraph, profile: DrawingProfile,
             reference_numeral=node.entity.reference_numeral,
             caption=(node.entity.canonical_name if (node.lines or captions) else ""),
             shape=_shape_for(node.entity, bool(node.children)),  # type: ignore[arg-type]
+            # The same settled appearance a mechanical view would use. A block diagram draws
+            # boxes, so it does not paint the symbol, but it records which one this part has so
+            # the cross-figure rules compare like with like.
+            symbol=("" if node.children else node.entity.appearance.symbol),
+            orientation=node.entity.appearance.orientation,
             box=node.box, depth=_depth(node), is_container=bool(node.children),
             role=roles.get(node.entity.id, "primary"))  # type: ignore[arg-type]
         for node in sorted(everything, key=lambda n: (_depth(n),

@@ -17,6 +17,7 @@ import math
 from typing import Optional
 
 from ..geometry import boundary_point, ellipse_boundary_point, union
+from .. import appearance
 from ..render import symbols
 from ..numerals import sort_key
 from ..profiles import DrawingProfile
@@ -40,22 +41,24 @@ MIN_SCALE = 0.25
 MAX_SCALE = 2.2
 
 
-def _primitive(entity: Entity, is_container: bool) -> tuple[str, str, float]:
-    """``(shape, symbol, width/height)`` for one part.
+def _primitive(entity: Entity, is_container: bool) -> tuple[str, str, float, float]:
+    """``(shape, symbol, width/height, size multiplier)`` from the entity's SETTLED appearance.
 
-    A shape the document states wins over the class convention, because it is a disclosure about
-    THIS part. Otherwise the part is drawn with the symbol for its class, at the proportion that
-    symbol reads best at. A class with no symbol falls through to a plain outline.
+    Nothing is decided here. The appearance was chosen once for the whole document before any
+    figure was laid out, which is what makes the same part come out recognisably the same on
+    every sheet; this only reads it. A container is still drawn as a plain outline whatever its
+    appearance says, because it is holding other parts and a symbol around them would read as
+    part of them.
     """
+    symbol, ratio, scale = appearance.geometry(entity)
     if is_container:
-        return ("container", "", 1.4)
+        return ("container", "", 1.4, max(scale, 1.0))
     if entity.shape_hint_grounded and entity.shape_hint in _SHAPE_BY_HINT:
-        shape, ratio = _SHAPE_BY_HINT[entity.shape_hint]
-        return (shape, "", ratio)
-    klass = entity.visual_class
-    if symbols.has_symbol(klass) and klass != "generic_component":
-        return ("box", klass, symbols.aspect(klass))
-    return ("box", "", symbols.aspect("generic_component"))
+        shape, hint_ratio = _SHAPE_BY_HINT[entity.shape_hint]
+        return (shape, symbol if symbols.has_symbol(symbol) else "", hint_ratio, scale)
+    if symbols.has_symbol(symbol) and symbol != "generic_component":
+        return ("box", symbol, ratio, scale)
+    return ("box", "", ratio, scale)
 
 
 class _Part:
@@ -140,7 +143,7 @@ def layout_mechanical(spec: FigureSpec, graph: PatentGraph, profile: DrawingProf
 
     def arrange(group: list[_Part]) -> Box:
         for part in group:
-            shape, symbol, ratio = _primitive(part.entity, bool(part.children))
+            shape, symbol, ratio, scale = _primitive(part.entity, bool(part.children))
             part.shape = shape
             part.symbol = symbol
             if part.children:
@@ -151,8 +154,13 @@ def layout_mechanical(spec: FigureSpec, graph: PatentGraph, profile: DrawingProf
                 for child in part.children:
                     _shift(child, pad - inner.x, pad - inner.y)
             else:
-                height = max(profile.min_node_height, unit / max(ratio, 0.4))
-                part.box = Box(x=0.0, y=0.0, width=max(profile.min_node_width, height * ratio),
+                # The relative size the appearance settled: a housing is drawn larger than the
+                # sensor inside it, which is what an assembly looks like and what a page of
+                # equal rectangles does not.
+                height = max(profile.min_node_height * 0.7,
+                             unit / max(ratio, 0.4) * scale)
+                part.box = Box(x=0.0, y=0.0,
+                               width=max(profile.min_node_width * 0.7, height * ratio),
                                height=height)
         ordered = _order_siblings(group, arrangement)
         columns, _ = _grid(len(ordered))
@@ -194,6 +202,7 @@ def layout_mechanical(spec: FigureSpec, graph: PatentGraph, profile: DrawingProf
         LayoutNode(entity_id=part.entity.id,
                    reference_numeral=part.entity.reference_numeral,
                    caption="", shape=part.shape, symbol=part.symbol,  # type: ignore[arg-type]
+                   orientation=part.entity.appearance.orientation,
                    box=part.box, depth=_depth(part), is_container=bool(part.children),
                    role=roles.get(part.entity.id, "primary"))  # type: ignore[arg-type]
         for part in sorted(everything,
