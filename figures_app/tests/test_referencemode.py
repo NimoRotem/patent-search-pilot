@@ -384,3 +384,52 @@ def test_the_record_is_asked_more_than_once_before_its_absence_is_believed(monke
 
     assert len(calls) == 2, "it gave up on the first failure"
     assert "carries no citations" not in " ".join(found.notes)
+
+
+def test_a_stray_module_on_the_path_does_not_silently_become_the_search_apps(tmp_path,
+                                                                             monkeypatch):
+    """A ``/tmp/config.py`` from another app made enrich_display point its data dir at ``/data``.
+
+    The search app's modules import each other by bare name, and the directory of whatever
+    script started the process is always first on sys.path. So the search app's own src has to
+    win for the duration of its own imports.
+    """
+    from pfc import pilot
+
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "config.py").write_text("WHOSE = 'the search app'\n")
+    (src / "thing.py").write_text("import config\nWHOSE = config.WHOSE\n")
+
+    stray = tmp_path / "stray"
+    stray.mkdir()
+    (stray / "config.py").write_text("WHOSE = 'somebody else'\n")
+
+    monkeypatch.setattr(pilot, "PILOT_SRC", src)
+    monkeypatch.setattr(pilot, "PILOT_ROOT", tmp_path)
+    pilot._ensure_path.cache_clear()
+    monkeypatch.syspath_prepend(str(stray))
+    for name in ("config", "thing"):
+        monkeypatch.delitem(__import__("sys").modules, name, raising=False)
+
+    assert pilot.module("thing").WHOSE == "the search app"
+    pilot._ensure_path.cache_clear()
+
+
+def test_the_path_is_put_back_after_a_pilot_import(tmp_path, monkeypatch):
+    """Prepending permanently would shadow this app's own top-level ``app`` module."""
+    import sys
+
+    from pfc import pilot
+
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "harmless.py").write_text("VALUE = 1\n")
+    monkeypatch.setattr(pilot, "PILOT_SRC", src)
+    monkeypatch.setattr(pilot, "PILOT_ROOT", tmp_path)
+    pilot._ensure_path.cache_clear()
+
+    before = list(sys.path)
+    pilot.module("harmless")
+    assert sys.path == before + [str(src)], "the search app's src stayed at the front"
+    pilot._ensure_path.cache_clear()

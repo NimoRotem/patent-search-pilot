@@ -27,6 +27,9 @@ from typing import Any, Optional
 PILOT_ROOT = Path(os.environ.get(
     "PILOT_ROOT", os.path.expanduser("~/patent-search-pilot"))).resolve()
 PILOT_SRC = PILOT_ROOT / "src"
+# The bare names the search app's own modules import. Worth naming in an import failure, because
+# a file of one of these names anywhere earlier on sys.path silently becomes the search app's.
+PILOT_BARE_IMPORTS = ("config", "db", "enrich", "pubnorm", "mongo_corpus", "sources")
 
 
 class PilotUnavailable(RuntimeError):
@@ -44,14 +47,45 @@ def _ensure_path() -> bool:
     return True
 
 
+def _shadows(name: str) -> str:
+    """Where a already-loaded module of this name came from, if not from the search app."""
+    loaded = sys.modules.get(name)
+    origin = getattr(loaded, "__file__", "") or ""
+    if origin and not origin.startswith(str(PILOT_SRC)):
+        return origin
+    return ""
+
+
 def module(name: str):
-    """Import one search-app module, or raise :class:`PilotUnavailable`."""
+    """Import one search-app module, or raise :class:`PilotUnavailable`.
+
+    The search app's modules import each other by bare name (``import config``, ``import db``),
+    so whatever is first on ``sys.path`` wins those names, and the directory of whatever script
+    started the process is always first. A stray ``/tmp/config.py`` left by another app made
+    ``enrich_display`` compute its data directory as ``/data`` and fail with a permission error
+    that named neither the shadowing file nor the shadowed one.
+
+    So the search app's ``src`` goes to the front for the duration of the import and comes
+    straight back off. Permanently would be wrong in the other direction: this app has its own
+    top-level ``app`` and the search app has one too.
+    """
     if not _ensure_path():
         raise PilotUnavailable(f"{PILOT_SRC} is not present")
+    src = str(PILOT_SRC)
+    saved = list(sys.path)
+    sys.path.insert(0, src)
     try:
         return __import__(name)
     except Exception as exc:  # pragma: no cover - depends on the deployment
-        raise PilotUnavailable(f"could not import {name}: {exc}") from exc
+        detail = f"could not import {name}: {exc}"
+        shadowed = [f"{other} from {where}" for other in PILOT_BARE_IMPORTS
+                    for where in (_shadows(other),) if where]
+        if shadowed:
+            detail += (f" (something else on this box already owns the name(s) it imports: "
+                       f"{'; '.join(shadowed[:3])})")
+        raise PilotUnavailable(detail) from exc
+    finally:
+        sys.path[:] = saved
 
 
 def available() -> bool:

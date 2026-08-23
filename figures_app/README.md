@@ -117,7 +117,7 @@ produced pages of identical rectangles.
 
 The freedom is bounded in two ways.
 
-**Decided once.** An entity's appearance — symbol, orientation, relative size — is settled before
+**Decided once.** An entity's appearance (symbol, orientation, relative size) is settled before
 any figure is laid out, and every figure reads it off the entity. Two sheets cannot disagree
 about what a part looks like because there is one record and they both use it. Four authors, in
 order: a shape the description states, then a reasoning pass that reads the sentences, then the
