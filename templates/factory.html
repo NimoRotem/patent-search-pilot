@@ -139,14 +139,15 @@
     ]);
 
     const parse = d.queues.parse || {}, pool = d.queues.pool || {}, batches = d.queues.batches || {};
+    const poolValue = (value) => d.pool_error ? "unknown" : n(value || 0);
     rows("queueBody", [
       ["Parse pending", n(parse.pending || 0)],
       ["Parse running", n(parse.leased || 0)],
       ["Parse done", n(parse.completed || 0)],
       ["Parse at retry ceiling", n(d.queues.parse_stuck)],
-      ["Acquisition pending", n(pool.pending || 0)],
-      ["Acquisition done", n(pool.done || 0)],
-      ["Acquisition hits, last 5 min", n(d.queues.pool_hits_5m)],
+      ["Acquisition pending", poolValue(pool.pending)],
+      ["Acquisition done", poolValue(pool.done)],
+      ["Acquisition hits, last 5 min", poolValue(d.queues.pool_hits_5m)],
       ["Embedding batches in flight", n(batches.submitted || 0)],
       ["Embedding batches succeeded", n(batches.succeeded || 0)],
       ["Chunks awaiting embedding", n(d.headline.embedding_pending)],
@@ -165,7 +166,8 @@
       body.appendChild(tr);
     });
     set("pulseFoot", "Snapshot taken " + (d.generated_at || "") + ", collected in "
-        + (d.collect_ms || 0) + " ms. This page refreshes every 60 seconds.");
+        + (d.collect_ms || 0) + " ms. This page refreshes every 60 seconds."
+        + (d.pool_error ? "  Acquisition pool unreadable: " + d.pool_error : ""));
   }
 
   function poll() {
