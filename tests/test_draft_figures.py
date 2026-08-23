@@ -991,6 +991,19 @@ def test_deterministic_leader_endpoint_has_a_vision_visible_dot():
     assert output.getpixel((target_x, target_y + 6))[0] < 32
 
 
+def test_center_endpoints_route_opposite_a_right_endpoint_on_the_same_row():
+    anchors = [
+        {"numeral": "16", "x": 500, "y": 900, "visible": True},
+        {"numeral": "24", "x": 845, "y": 500, "visible": True},
+        {"numeral": "30", "x": 500, "y": 500, "visible": True},
+    ]
+
+    layout = draft_figures._annotation_layout(blank_png(), anchors, 1.0)
+
+    assert {item["numeral"] for item in layout["left_items"]} == {"16", "30"}
+    assert {item["numeral"] for item in layout["right_items"]} == {"24"}
+
+
 def test_geometry_prompt_strips_every_annotation_instruction_and_reference_number():
     prompt = draft_figures.build_prompt(
         "FIG. 3 - sectional view",

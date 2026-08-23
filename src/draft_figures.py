@@ -2118,7 +2118,7 @@ def _annotation_layout(png: bytes, anchors, scale: float) -> dict:
     source = ImageOps.grayscale(source).point(lambda value: 255 if value > 205 else 0).convert("RGB")
     entries = [dict(item) for item in anchors or () if item.get("visible") and
                _clean_numeral(item.get("numeral"))]
-    left_items = [item for item in entries if int(item.get("x") or 0) < 500]
+    left_items = [item for item in entries if int(item.get("x") or 0) <= 500]
     right_items = [item for item in entries if item not in left_items]
     font_size = max(24, round(26 * float(scale)))
     row = font_size + 10
