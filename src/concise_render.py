@@ -31,13 +31,35 @@ def _esc(s):
     return _html.escape(str(s or ""))
 
 
+def running_head(subject):
+    """The line at the head and foot of every page of the filed paper.
+
+    "Re: U.S. Application No. 19/318,450 (Publication No. US 2026/0070232 A1)"
+
+    THIS USED TO PRINT THE PUBLICATION NUMBER UNDER THE WORDS "App No." whenever the application
+    number was blank, which is how a filed document came to say `Re: U.S. App No. US 2026/0070232
+    A1`. A publication number is not an application number and a paper that says it is, is wrong on
+    its face. With no application number the line names the publication AS a publication instead.
+    """
+    app = str(subject.get("app_no") or "").strip()
+    pub = str(subject.get("pub_no") or "").strip()
+    if app and pub:
+        return "Re: U.S. Application No. %s (Publication No. %s)" % (app, pub)
+    if app:
+        return "Re: U.S. Application No. %s" % app
+    if pub:
+        return "Re: U.S. Publication No. %s" % pub
+    return "Re: the above-identified application"
+
+
 def subject_line(subject):
-    """U.S. Application No. 18/915,337 (US 2025/0033224 A1) — "Title" — Inventor."""
+    """U.S. Application No. 18/915,337 (Publication No. US 2025/0033224 A1), "Title", Inventor."""
     bits = []
     if subject.get("app_no"):
         bits.append("U.S. Application No. %s" % subject["app_no"])
     if subject.get("pub_no"):
-        bits.append("(%s)" % subject["pub_no"] if bits else subject["pub_no"])
+        bits.append("(Publication No. %s)" % subject["pub_no"] if bits
+                    else "U.S. Publication No. %s" % subject["pub_no"])
     head = " ".join(bits)
     tail = []
     if subject.get("title"):
@@ -82,10 +104,20 @@ def _right_bits(row):
 def filing_notes(doc_model):
     """The lines a practitioner must read before signing this paper.
 
-    Deliberately ON the document rather than only in the UI: the paper is what gets reviewed and
-    the paper is what gets filed, so anything the machine changed or could not verify travels with
-    it. Everything here is about the SUBMISSION, not about patentability, so it is safe to leave in
-    place — but most of it should be checked and then the block deleted before filing.
+    NEVER RENDERED INTO THE PDF OR THE DOCX. They used to be, under a heading that asked the reader
+    to "delete this block before filing", and the obvious thing happened: they were filed. Two of
+    them are actively harmful in front of an examiner. The translation note is addressed to the
+    practitioner and says so in its own words; and
+
+        "5 of 14 quotations could not be found in the stored text of this reference and were
+         removed"
+
+    is a statement, on the face of a paper filed at the Office, that the process which produced it
+    failed its own source verification. A caveat that is safe in a review tool is not safe on a
+    filing, and an instruction to delete something is not a control.
+
+    They are shown on the build page instead, next to the download links, which is where the
+    practitioner reviews the package. The paper carries only what is filed.
     """
     c = doc_model.get("compliance") or {}
     out = []
@@ -138,7 +170,7 @@ def _styles():
 def to_pdf(doc_model) -> bytes:
     st = _styles()
     subj = doc_model["subject"]
-    running = "Re: U.S. App No. %s" % (subj.get("app_no") or subj.get("pub_no") or "")
+    running = running_head(subj)
     buf = io.BytesIO()
 
     def _page(canv, docobj):
@@ -162,12 +194,15 @@ def to_pdf(doc_model) -> bytes:
     b = doc_model["biblio"]
     story.append(Paragraph("Document %s: %s (“Document %s”)" % (
         doc_model["n"], _esc(b["label"]), doc_model["n"]), st["doc"]))
+    #  1.290(e) IDENTIFICATION ONLY. A U.S. publication is identified by its publication
+    #  number, its first named inventor and its publication date. Assignee and earliest
+    #  priority date were neither required nor safe to print: assignment changes hands over
+    #  time and these values come from a cache that does not always match the current public
+    #  record, so the paper asserted ownership facts it had no need to assert.
     for lbl, val in (("First Named Inventor", b.get("inventor")),
-                     ("Assignee", b.get("assignee")),
                      ("Issue Date" if b.get("kind") == "patent" else "Publication Date",
                       b.get("issue_date_pretty")),
-                     ("Title", b.get("title")),
-                     ("Earliest Priority Date", b.get("priority_date_pretty"))):
+                     ("Title", b.get("title"))):
         if val:
             story.append(Paragraph("<i>%s:</i> %s" % (_esc(lbl), _esc(val)), st["bib"]))
 
@@ -199,14 +234,9 @@ def to_pdf(doc_model) -> bytes:
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
     story.append(tbl)
-    notes = filing_notes(doc_model)
-    if notes:
-        story.append(Paragraph("Filing notes", st["doc"]))
-        story.append(Paragraph(
-            "Prepared for the practitioner, not for the examiner. Confirm each line and delete "
-            "this block before filing.", st["run"]))
-        for label, text in notes:
-            story.append(Paragraph("<b>%s.</b> %s" % (_esc(label), _esc(text)), st["cite"]))
+    #  NO FILING NOTES ON THE PAPER. See filing_notes: they are for the practitioner and are shown
+    #  on the build page. One of them announced that quotations had failed verification, on a
+    #  document filed at the Office.
     tmpl.build(story)
     return buf.getvalue()
 
@@ -232,7 +262,7 @@ def to_docx(doc_model) -> bytes:
     normal.font.size = Pt(11)
     normal.element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
 
-    running = "Re: U.S. App No. %s" % (subj.get("app_no") or subj.get("pub_no") or "")
+    running = running_head(subj)
     for holder in (s.header, s.footer):
         p = holder.paragraphs[0]
         p.text = running
@@ -249,12 +279,11 @@ def to_docx(doc_model) -> bytes:
     dp = d.add_paragraph()
     dp.add_run("Document %s: %s (“Document %s”)" % (
         doc_model["n"], b["label"], doc_model["n"])).bold = True
+    #  Identification fields only. See the note in to_pdf.
     for lbl, val in (("First Named Inventor", b.get("inventor")),
-                     ("Assignee", b.get("assignee")),
                      ("Issue Date" if b.get("kind") == "patent" else "Publication Date",
                       b.get("issue_date_pretty")),
-                     ("Title", b.get("title")),
-                     ("Earliest Priority Date", b.get("priority_date_pretty"))):
+                     ("Title", b.get("title"))):
         if val:
             p = d.add_paragraph()
             p.paragraph_format.left_indent = Inches(0.28)
@@ -298,19 +327,8 @@ def to_docx(doc_model) -> bytes:
                 for run in p.runs:
                     run.font.size = Pt(10.5)
 
-    notes = filing_notes(doc_model)
-    if notes:
-        h = d.add_paragraph()
-        h.add_run("Filing notes").bold = True
-        sub = d.add_paragraph()
-        sub.add_run("Prepared for the practitioner, not for the examiner. Confirm each line and "
-                    "delete this block before filing.").italic = True
-        for label, text in notes:
-            p = d.add_paragraph()
-            p.paragraph_format.left_indent = Inches(0.14)
-            p.add_run("%s. " % label).bold = True
-            p.add_run(text)
-
+    #  NO FILING NOTES HERE EITHER. The DOCX is the copy the attorney marks up and then files, so
+    #  anything left in it is a thing that gets filed. See filing_notes.
     buf = io.BytesIO()
     d.save(buf)
     return buf.getvalue()

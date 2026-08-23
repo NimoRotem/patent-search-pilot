@@ -5519,6 +5519,19 @@ def _concise_built(slug):
                 pass
             row["pub"] = bits[2]
     out = [r for r in by_stem.values() if r.get("pdf") or r.get("docx")]
+    #  THE FILING NOTES BELONG HERE, not on the paper. They used to be printed into the PDF under
+    #  an instruction to delete them before filing, and they were filed: one of them announced on
+    #  the face of an Office paper that quotations had failed verification. The model.json beside
+    #  each document carries the compliance record, so the notes are read back from there and
+    #  shown next to the download links, which is where the package is actually reviewed.
+    import concise_render
+    for r in out:
+        try:
+            mp = d / ("ConciseDescription_Doc%s_%s.model.json" % (r["n"], r["pub"]))
+            if mp.exists():
+                r["notes"] = concise_render.filing_notes(json.loads(mp.read_text()))
+        except Exception:
+            traceback.print_exc()
     out.sort(key=lambda r: r["n"])
     return out
 
@@ -5546,12 +5559,35 @@ def _concise_subject(slug, form=None):
             pub_no = pretty.split("Publication No.", 1)[1].strip()
     except Exception:
         pass
+    #  THE APPLICATION NUMBER IS ALREADY KNOWN, so do not make somebody retype it. The file
+    #  wrapper this search read names the application it belongs to; leaving the field blank is
+    #  how a filed paper came to read `Re: U.S. App No. US 2026/0070232 A1`, which is a
+    #  publication number wearing the words "application number".
+    app_no = (form.get("app_no") or "").strip()
+    if not app_no:
+        try:
+            rep = _load_report(slug) or {}
+            found = (((rep.get("prosecution") or {}).get("dossier") or {})
+                     .get("subject") or {}).get("app") or ""
+            app_no = _pretty_app_no(found)
+        except Exception:
+            traceback.print_exc()
     return {
-        "app_no": (form.get("app_no") or "").strip(),
+        "app_no": app_no,
         "pub_no": (form.get("pub_no") or pub_no or "").strip(),
         "title": (form.get("title") or "").strip(),
         "inventor": (form.get("inventor") or "").strip(),
     }
+
+
+def _pretty_app_no(raw):
+    """19318450 -> "19/318,450". A US serial is written series/serial, and the Office writes it
+    that way on every paper it sends. Anything that is not eight digits is returned untouched
+    rather than mangled into a shape it is not."""
+    digits = re.sub(r"\D", "", str(raw or ""))
+    if len(digits) != 8:
+        return str(raw or "").strip()
+    return "%s/%s,%s" % (digits[:2], digits[2:5], digits[5:])
 
 
 @app.route("/api/build-settings")
@@ -5723,6 +5759,12 @@ def concise_descriptions(slug):
                     traceback.print_exc()
                 (out / ("%s.model.json" % concise_render.filename(d, "x")[:-2])).write_text(
                     json.dumps(d, ensure_ascii=False, indent=1))
+            #  THE REST OF THE SUBMISSION. A folder of concise descriptions is one of the several
+            #  things 1.290(d) asks for, and nothing told the practitioner what the other ones
+            #  were. The non-English translation is the only gap nothing else can close.
+            _concise_set(slug, done=len(pubs) + len(docs),
+                         msg="Building the document list, statements and translations")
+            _concise_package(out, docs, subject)
             n = len(docs)
             _concise_set(slug, state="done", done=2 * len(pubs) + 1,
                          msg="%d document%s ready" % (n, "" if n == 1 else "s"))
@@ -5786,6 +5828,43 @@ def concise_document(slug, n):
                            error=err, saved=saved)
 
 
+def _concise_package(out, docs, subject):
+    """Write the document list, the statements, the translations and the README. Never raises.
+
+    A failure here must not lose the concise descriptions, which are the expensive part and are
+    already on disk by the time this runs.
+    """
+    import submission_package as sp
+    translations = {}
+    for d in docs:
+        if not sp.needs_translation(d):
+            continue
+        try:
+            got = sp.fetch_translation(d.get("pub"))
+        except Exception:                                                 # noqa: BLE001
+            traceback.print_exc()
+            got = {}
+        if got:
+            translations[d.get("pub")] = got
+            try:
+                (out / ("Translation_Doc%s_%s.pdf" % (
+                    d["n"], re.sub(r"[^A-Za-z0-9]+", "", d["pub"] or "doc")))).write_bytes(
+                        sp.translation_pdf(d, got, subject))
+            except Exception:
+                traceback.print_exc()
+    for name, fn in (("00_DocumentList.pdf", lambda: sp.document_list(docs, subject, translations)),
+                     ("01_Statements_and_Fee.pdf", lambda: sp.statements(docs, subject))):
+        try:
+            (out / name).write_bytes(fn())
+        except Exception:
+            traceback.print_exc()
+    try:
+        (out / "00_READ_ME_before_filing.txt").write_text(
+            sp.readme(docs, subject, translations), encoding="utf-8")
+    except Exception:
+        traceback.print_exc()
+
+
 @app.route("/report/<slug>/concise.zip")
 def concise_zip(slug):
     """Every filing artefact for this search in one archive.
@@ -5802,9 +5881,12 @@ def concise_zip(slug):
     import zipfile
     buf = _io.BytesIO()
     n = 0
+    #  THE WHOLE PACKAGE, not only the descriptions: the document list, the statements, the
+    #  translations and the note saying what a human still has to attach. The `.md` and
+    #  `.model.json` are working files and stay out.
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for p in sorted(d.iterdir()):
-            if p.name.startswith("ConciseDescription_") and p.suffix in (".pdf", ".docx"):
+            if p.suffix in (".pdf", ".docx") or p.name.endswith("_before_filing.txt"):
                 z.write(p, arcname=p.name)
                 n += 1
     if not n:

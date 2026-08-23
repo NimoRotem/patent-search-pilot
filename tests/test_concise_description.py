@@ -208,10 +208,19 @@ def test_docx_is_a_docx():
 
 
 def test_the_subject_line_reads_as_the_examples_do():
+    """The parenthetical is LABELLED "Publication No." since 2026-08-23.
+
+    A bare number in brackets beside an application number leaves the reader to work out which is
+    which, and the same ambiguity one line up is what let a filed paper say `Re: U.S. App No. US
+    2026/0070232 A1`. Both lines name what each number is now.
+    """
     line = cr.subject_line({"app_no": "18/915,337", "pub_no": "US 2025/0033224 A1",
                             "title": "Portable vacuum gripper", "inventor": "Nhon Hoa Nguyen"})
-    assert line == ("U.S. Application No. 18/915,337 (US 2025/0033224 A1) — "
+    assert line == ("U.S. Application No. 18/915,337 (Publication No. US 2025/0033224 A1) — "
                     "“Portable vacuum gripper” — Nhon Hoa Nguyen")
+    #  and with no application number it is never presented as one
+    assert cr.subject_line({"pub_no": "US 2025/0033224 A1"}) == \
+        "U.S. Publication No. US 2025/0033224 A1"
 
 
 def test_filenames_are_stable_and_safe():

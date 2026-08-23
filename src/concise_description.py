@@ -70,15 +70,38 @@ def _display(pub, allow_fetch=True):
         return disp
 
 
+def _is_latin(name):
+    """True when every letter in `name` can be typeset by the filing font.
+
+    The PDF is Times-Roman, which has no CJK glyphs: a kanji name came out as a row of solid black
+    boxes on a paper filed at the USPTO. U+2E80 is the start of the CJK radicals block, above every
+    Latin, accented Latin and punctuation codepoint we care about.
+    """
+    return all(ord(c) < 0x2E80 for c in str(name or ""))
+
+
 def _first_inventor(disp):
+    """The first named inventor, in a script a US filing can carry.
+
+    THE ROMANISED NAME IS ALREADY IN THE RECORD and was being passed over. For JP-2019155534-A the
+    enrichment holds `["勇星 木村", "Yusei Kimura", "勇星 木村", ...]` and this returned the first
+    entry, so the filed PDF showed black boxes where the inventor's name belongs. Nothing is
+    transliterated here: a kanji reading is ambiguous and inventing one puts a name on a filing
+    that nobody verified. We only PREFER a Latin form the source already supplied, and fall back to
+    the original when there is none, which the renderer then typesets in a font that can draw it.
+    """
     inv = disp.get("inventors") or []
     if isinstance(inv, str):
         inv = [inv]
+    names = []
     for i in inv:
         name = (i.get("name") if isinstance(i, dict) else str(i or "")).strip()
-        if name:
+        if name and name not in names:
+            names.append(name)
+    for name in names:
+        if _is_latin(name):
             return name
-    return ""
+    return names[0] if names else ""
 
 
 def _us_style(pub):
