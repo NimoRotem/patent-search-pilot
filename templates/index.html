@@ -144,7 +144,9 @@
         The badge is driven by the same fact the engine uses (does the input carry claims), so it
         cannot disagree with what actually runs. Server-rendered default, flipped by the extract
         step the moment a document turns out to have claims.  #}
-    <div class="kindbadge" id="kindBadge" data-kind="concept">
+    {#  Hidden, not deleted (owner call 2026-08-23): the caveat narration came off the page,
+        but the extract step's script still writes here and a missing node would throw.  #}
+    <div class="kindbadge" id="kindBadge" data-kind="concept" hidden>
       <span class="kindname" id="kindName">Concept search</span>
       <span class="kindeta" id="kindEta">about 12-30 minutes</span>
       <span class="kindwhat small muted" id="kindWhat">Breaks the description into its distinct

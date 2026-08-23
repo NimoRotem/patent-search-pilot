@@ -3303,6 +3303,7 @@ def report(slug):
     #  The filing artefacts belong on the report itself, not only on a share of it: the owner is
     #  the one who builds them and the most likely person to come back for them.
     view["concise_docs"] = _concise_built(slug)
+    view["has_reading"] = _has_reading(slug)
     view["concise_built"] = len(view["concise_docs"])
     return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
 
@@ -5276,6 +5277,7 @@ def shared_report(token):
     view["share_token"] = token
     view["read_only"] = True
     view["concise_docs"] = _concise_built(slug)
+    view["has_reading"] = _has_reading(slug)
     return render_template("report.html", v=view, read_only=True, share_token=token,
                            ood=None, corpus=corpus_facts.facts())
 
@@ -5364,6 +5366,7 @@ def public_report_page(slug):
     #  usually the person who needs the papers, and hiding them behind an account defeats the
     #  point of publishing the report at all.
     view["concise_docs"] = _concise_built(slug)
+    view["has_reading"] = _has_reading(slug)
     visit_key = public_report.record_visit(slug, request, unlocked=_public_unlocked(slug))
     resp = make_response(render_template(
         "report.html", v=view, read_only=True, layout="base_public.html", share_token=None,
@@ -5451,6 +5454,30 @@ def shared_report_logo(token):
 #  what may appear on it; the important one is that no citation is ever written by a model.
 
 CONCISE_DIR = REPORTS / "concise"
+
+
+#  {slug: (deep.json mtime, verdict)}. The report page asks on every render whether this search
+#  has a reading worth offering the 1.290 flow for, and the honest answer lives INSIDE deep.json:
+#  a find run writes the file with no references, so existence alone said yes to a page that
+#  would then redirect straight back. Parsed once per file change, remembered after.
+_HAS_READING: dict = {}
+
+
+def _has_reading(slug):
+    path = REPORTS / ("%s.deep.json" % slug)
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return False
+    cached = _HAS_READING.get(slug)
+    if cached and cached[0] == mtime:
+        return cached[1]
+    try:
+        verdict = bool((json.loads(path.read_text()).get("references") or []))
+    except Exception:
+        verdict = False
+    _HAS_READING[slug] = (mtime, verdict)
+    return verdict
 
 
 def _concise_deep(slug):
@@ -5697,11 +5724,10 @@ def concise_descriptions(slug):
         auth.require_csrf()
     deep = _concise_deep(slug)
     if not deep or not (deep.get("references") or []):
-        return render_template("concise.html", slug=slug, cands=[], docs=[],
-                               subject=_concise_subject(slug), error=(
-                                   "This report has no full-text reading stage, so there is no "
-                                   "per-claim evidence to describe. Re-run the search at depth "
-                                   "'deep' first."))
+        #  Nothing to describe means nothing to show: the report page's phase bar carries the
+        #  one real action, running the full search. A dead-end page with an instruction on it
+        #  is a button that should not have existed.
+        return redirect(url_for("report", slug=slug))
     import concise_description
     import concise_render
     #  The REPORT, not {}: the picker ranks on what the ledger says each reference kills and on

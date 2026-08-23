@@ -41,10 +41,9 @@
     <div class="phasenow">
       <span class="pill pilllive">{{ 'Phase 1 · find' if v.depth == 'quick' else 'Phase 2 · claim ledger' }}</span>
       <div class="rf-msg">{% if v.depth == 'quick' %}These are the references the search found,
-        with the passage that matched each requirement. They are candidate evidence: nothing here
-        has been verified as a disclosure yet, and no document has been read in full.
+        with the passage that matched each requirement.
         {% else %}Every requirement has been put to the retrieved passages and the ledger below is
-        the result. No document has been read in full yet.{% endif %}</div>
+        the result.{% endif %}</div>
     </div>
     <div class="phasebuys">
       
@@ -388,7 +387,7 @@
           preissuance submission under 37 CFR 1.290, so this is a primary action on every finished
           report, not a link buried in the run line — which is where it lived until 2026-08-19 and
           why nobody found it. Owner only: it spends a model call per document. #}
-      {% if current_user and not read_only %}<a class="btn sm" href="{{ request.script_root }}/report/{{ v.slug }}/concise"
+      {% if current_user and not read_only and v.has_reading %}<a class="btn sm" href="{{ request.script_root }}/report/{{ v.slug }}/concise"
          title="Build a concise description of relevance for each reference, ready to file as a third-party preissuance submission">Generate third-party submission{% if v.concise_built %} ({{ v.concise_built }}) ✓{% endif %}</a>{% endif %}
       {% if current_user and not read_only %}<form method="post" action="{{ request.script_root }}/drafts/start" class="inlineform directdraft">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
