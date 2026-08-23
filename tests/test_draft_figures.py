@@ -541,6 +541,15 @@ def test_six_rejected_repairs_snapped_to_the_same_coordinate_are_stalled():
     assert draft_figures._stalled_marked_anchor_numerals(history, ["26"]) == ["26"]
 
 
+def test_six_rejected_repairs_within_the_same_sheet_region_are_stalled():
+    history = {"36": [
+        (756, 750), (800, 800), (800, 750),
+        (875, 725), (812, 820), (810, 823),
+    ]}
+
+    assert draft_figures._stalled_marked_anchor_numerals(history, ["36"]) == ["36"]
+
+
 def test_cross_provider_veto_rejects_unanimous_same_provider_certificate(monkeypatch):
     raw = blank_png(1000, 1000)
     anchors = [{"numeral": "10", "x": 400, "y": 565, "visible": True,
