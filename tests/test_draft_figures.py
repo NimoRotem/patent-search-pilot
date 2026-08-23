@@ -652,7 +652,7 @@ def test_compose_continues_an_eight_round_checkpoint_after_context_upgrade(monke
     assert leaders["marked_anchor_audit"]["inspection_rounds"] == 9
 
 
-def test_only_the_current_two_trace_semantic_review_is_accepted():
+def test_only_compatible_two_trace_semantic_reviews_are_accepted():
     current = {
         "ok": True, "inspected": True,
         "model_name": draft_figures.vision_model(),
@@ -669,6 +669,13 @@ def test_only_the_current_two_trace_semantic_review_is_accepted():
         "marked_anchor_audit": accepted_marked_anchor_audit(),
     }
     assert draft_figures.current_semantic_audit(current) is True
+    assert draft_figures.current_semantic_audit({
+        **current,
+        "prompt_version": (
+            "figure-semantic-v12-high-accuracy-geometry-only-consensus-"
+            "pixel-grounded-marked-topology"
+        ),
+    }) is True
     assert draft_figures.current_semantic_audit({**current, "review_count": 1}) is False
     assert draft_figures.current_semantic_audit({**current, "prompt_version": "old"}) is False
     assert draft_figures.current_semantic_audit({**current, "pixel_anchor_audit": {}}) is False

@@ -42,6 +42,10 @@ ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
 FIGURE_PROMPT_VERSION = "figure-v5-exact-geometry-without-annotation-placement"
 SEMANTIC_PROMPT_VERSION = (
     "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology")
+SEMANTIC_COMPATIBLE_PROMPT_VERSIONS = frozenset((
+    SEMANTIC_PROMPT_VERSION,
+    "figure-semantic-v12-high-accuracy-geometry-only-consensus-pixel-grounded-marked-topology",
+))
 LEADER_PROMPT_VERSION = (
     "figure-leader-v7-high-accuracy-routing-only-independent-consensus")
 MARKED_ANCHOR_PROMPT_VERSION = (
@@ -1240,7 +1244,7 @@ def _current_semantic_model_audit(value) -> bool:
     return bool(
         value.get("ok") and value.get("inspected") and
         value.get("model_name") == vision_model() and
-        value.get("prompt_version") == SEMANTIC_PROMPT_VERSION and
+        value.get("prompt_version") in SEMANTIC_COMPATIBLE_PROMPT_VERSIONS and
         review_count == SEMANTIC_REVIEW_COUNT)
 
 
