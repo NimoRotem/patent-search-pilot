@@ -39,6 +39,11 @@
     <div><span class="fldl">With an abstract</span> {% if snap.families %}{{ '{:,}'.format(snap.families[0].with_abstract) }}{% else %}&mdash;{% endif %}</div>
     <div><span class="fldl">With claims parsed</span> {% if snap.claims %}{{ '{:,}'.format(snap.claims[0].pubs) }}{% if f.publications %} <span class="cc">{{ (100 * snap.claims[0].pubs / f.publications)|round(0)|int }}%</span>{% endif %}{% else %}&mdash;{% endif %}</div>
   </div>
+  <p class="small muted" style="margin:.55em 0 0">
+    Publications and disk size are read live. Families, abstracts, claims and the office breakdown
+    take minutes to count and were last recomputed
+    {% if p.snapshot_age_days is none %}never{% elif p.snapshot_age_days < 0.05 %}minutes ago{% elif p.snapshot_age_days < 1 %}{{ (p.snapshot_age_days * 24)|round(0)|int }} hour{{ '' if (p.snapshot_age_days * 24)|round(0)|int == 1 else 's' }} ago{% else %}{{ p.snapshot_age_days|round(0)|int }} day{{ '' if p.snapshot_age_days|round(0)|int == 1 else 's' }} ago{% endif %}.
+  </p>
   <p class="small muted" style="margin:.7em 0 0">
     Built by taking every publication in eight CPC groups covering vacuum and suction gripping and
     lifting, then everything those publications cite or are cited by. That is why it spans
@@ -114,11 +119,9 @@
       from English abstracts and machine translation, so a CN document can rank correctly on
       meaning and still need a verified translation before it goes into a submission.</li>
     {% endif %}
-    {#  "0.0 days ago" is not English. Hours under a day, days after that. #}
-    <li><b>The counts on this page were last recomputed
-      {% if p.snapshot_age_days is none %}never{% elif p.snapshot_age_days < 0.05 %}minutes ago{% elif p.snapshot_age_days < 1 %}{{ (p.snapshot_age_days * 24)|round(0)|int }} hour{{ '' if (p.snapshot_age_days * 24)|round(0)|int == 1 else 's' }} ago{% else %}{{ p.snapshot_age_days|round(0)|int }} day{{ '' if p.snapshot_age_days|round(0)|int == 1 else 's' }} ago{% endif %}.</b>
-      Publication and family totals move as acquisition runs; the live figures are the ones on
-      each report.</li>
+    <li><b>The corpus is still growing.</b> Acquisition runs continuously, so the totals above move
+      from day to day. The figures that matter to a given search are the ones recorded on that
+      search's own report.</li>
     <li><b>Nothing here is a legal opinion.</b> The system finds and reads documents and says what
       they disclose. Whether that anticipates a claim is a judgement for the attorney signing it.</li>
   </ul>

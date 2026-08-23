@@ -100,7 +100,18 @@ def test_the_seed_branches_are_the_field_definition_not_the_ingest():
 
 
 def test_the_page_says_when_the_snapshot_was_taken():
+    """A two-day-old count must not read as a live one.
+
+    This used to require a `snapshot` chip on each of the four snapshot-derived numbers. The page
+    is customer-facing now and four chips of our jargon in the middle of the figures is worse than
+    one plain sentence, so the PROPERTY is asserted instead of that mechanism: the page names when
+    the slow counts were taken, and says which figures are live so the reader can tell them apart.
+    A chip on every row would satisfy this too.
+    """
     html = open("templates/corpus.html").read()
-    assert "snapshot_age_days" in html
-    #  and every snapshot-sourced number is labelled as one
-    assert html.count('class="cc">snapshot<') >= 4
+    assert "snapshot_age_days" in html, "the page never says how old the counted figures are"
+    assert "recomputed" in html
+    #  and it distinguishes them from the ones read live, or "last recomputed" reads as if it
+    #  applied to every number on the page
+    assert "read live" in html or 'class="cc">snapshot<' in html, (
+        "the page does not say which figures are live and which are counted periodically")
