@@ -74,7 +74,8 @@ _DEPENDENCY_RE = re.compile(
 _RANGE_RE = re.compile(r"(\d{1,3})\s*(?:-|\u2013|\u2014|to|through)\s*(\d{1,3})", re.IGNORECASE)
 _DRAFT_PLACEHOLDER_RE = re.compile(
     r"(?:"
-    r"\[(?:DRAFTING\s+NOTE|TODO|TBD|TBC|PLACEHOLDER|INSERT)(?::[^\]]*)?\]"
+    r"\[(?:DRAFTING\s+NOTE|TODO|TBD|TBC|PLACEHOLDER|INSERT|VERIFY|CONFIRM|CHECK|MISSING)"
+    r"(?::[^\]]*)?\]"
     r"|(?-i:\bTODO\b)"
     r"|\b(?:TBD|TBC)\b"
     r"|\bTO\s+BE\s+(?:DETERMINED|PROVIDED|CONFIRMED|INSERTED)\b"
@@ -83,6 +84,11 @@ _DRAFT_PLACEHOLDER_RE = re.compile(
     r"|_{5,}"
     r"|\bfor\s+(?:the\s+)?(?:draftsperson|drafter|illustrator)\s+only\b"
     r"|\b(?:draftsperson|drafter|illustrator)\s+(?:must|should|shall|will|to)\b"
+    r"|\bconfirm\s+with\s+(?:the\s+)?(?:inventor|applicant|client|drafter)\b"
+    r"|\b(?:inventor|applicant|client)\s+(?:must|should|needs?\s+to|is\s+to)\s+"
+    r"(?:confirm|provide|supply|insert|verify|specify|identify|select|review|complete)\b"
+    r"|\bmanually\s+(?:add|insert|replace|complete|update|draw|label)\b"
+    r"|\bhuman\s+intervention\s+(?:is\s+)?(?:required|needed|necessary)\b"
     r")", re.IGNORECASE)
 MAX_NUMERALS_PER_SHEET = 8
 MAX_FIGURE_BRIEF_CHARS = 2800
