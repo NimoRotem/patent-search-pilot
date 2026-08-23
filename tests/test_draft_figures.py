@@ -836,6 +836,8 @@ def test_closed_region_audit_recognizes_contains_count_and_nothing_else():
     )
 
     assert draft_figures._expected_closed_region_count(specification) == 4
+    assert draft_figures._expected_closed_region_count(
+        "The sheet holds exactly four closed lines and nothing else.") == 4
 
 
 def test_deterministic_nested_plan_has_exactly_three_rectangles_and_one_circle():
@@ -852,6 +854,12 @@ def test_deterministic_nested_plan_has_exactly_three_rectangles_and_one_circle()
     assert audit["ok"] is True and audit["observed"] == 4
     assert draft_figures._deterministic_nested_plan_png(
         "A perspective view of a rectangular housing and a circular port.") is None
+    rewritten = (
+        "The sheet holds exactly four closed lines and nothing else: a large rectangle, a "
+        "second rectangle within it, a third rectangle within that, and a circle within the "
+        "third. Counting the lines gives four, three rectangular and one circular."
+    )
+    assert draft_figures._deterministic_nested_plan_png(rewritten) is not None
 
 
 def test_render_uses_deterministic_nested_plan_after_generated_counts_fail(monkeypatch):
