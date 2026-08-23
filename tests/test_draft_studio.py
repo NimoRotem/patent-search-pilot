@@ -278,6 +278,8 @@ def test_an_endpoint_deliberately_disconnected_from_its_named_part_is_refused():
     "Identified on the upright line near the left end.",
     "Identified halfway along the boundary toward its right end.",
     "Identified well inside the left-hand part of the chamber.",
+    "Identified in the band along the right side of the sheet.",
+    "Identified in the margin along the bottom of the sheet.",
     "Identified on the second rectangle.",
 ])
 def test_an_arbitrary_exact_numeral_target_is_refused_before_drawing(target):
