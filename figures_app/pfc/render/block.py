@@ -50,14 +50,22 @@ def _draw_node(doc: SvgDocument, node: LayoutNode) -> None:
         if node.is_container:
             # A container's name belongs on its own top edge, where it cannot be read as the
             # name of something inside it.
+            from .. import textfit
+            lines, size = textfit.fit(
+                profile, node.caption, node.box.width - profile.container_padding * 1.2,
+                height * 1.4, height, profile.min_reference_height, 1)
             doc.text(node.box.x + profile.container_padding * 0.6,
-                     node.box.y + height * 1.4, node.caption, height=height,
+                     node.box.y + size * 1.4, lines[0] if lines else "", height=size,
                      data_caption_for=node.entity_id)
         else:
             from .. import textfit
-            lines = textfit.wrap(profile, node.caption,
-                                 node.box.width - height * 1.2, height, 3)
-            doc.text_block(lines, node.box.cx, node.box.cy, height=height,
+            # Against the final box, not the one the layout engine first asked for: the
+            # assembly may have been scaled to the sheet since, and a caption sized before
+            # that scaling is a caption printed over itself.
+            lines, size = textfit.fit(
+                profile, node.caption, node.box.width - height * 1.2,
+                node.box.height - height * 0.6, height, profile.min_reference_height, 3)
+            doc.text_block(lines, node.box.cx, node.box.cy, height=size,
                            data_caption_for=node.entity_id)
     doc.close_group()
 

@@ -196,8 +196,9 @@ def layout_mechanical(spec: FigureSpec, graph: PatentGraph, profile: DrawingProf
         source, target = by_id.get(relation.subject), by_id.get(relation.object)
         if source is None or target is None:
             continue
-        if _nests(source, target) or _nests(target, source):
-            continue
+        # A nested pair with a second disclosed relationship is drawn from the inner outline to
+        # the enclosing one, not dropped. Dropping it left the relation specified, absent, and
+        # blocking on a defect no correction could reach.
         start = _edge_point(source, (target.box.cx, target.box.cy))
         end = _edge_point(target, (source.box.cx, source.box.cy))
         directed = relation.direction == "subject_to_object"
@@ -223,11 +224,6 @@ def _edge_point(node: LayoutNode, toward: tuple[float, float]) -> tuple[float, f
     if node.shape in {"circle", "ellipse", "cylinder"}:
         return ellipse_boundary_point(node.box, toward)
     return boundary_point(node.box, toward)
-
-
-def _nests(outer: LayoutNode, inner: LayoutNode) -> bool:
-    return (outer.is_container and outer.box.x <= inner.box.x and outer.box.y <= inner.box.y
-            and inner.box.right <= outer.box.right and inner.box.bottom <= outer.box.bottom)
 
 
 def _move(part: _Part, x: float, y: float) -> None:

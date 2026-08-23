@@ -61,6 +61,30 @@ def block_height(lines: list[str], height: float, leading: float = 1.25) -> floa
     return max(0.0, len(lines) * height * leading)
 
 
+def fit(profile: DrawingProfile, text: str, width: float, height: float,
+        preferred_size: float, min_size: float, max_lines: int = 3
+        ) -> tuple[list[str], float]:
+    """The largest legible type size at which a caption fits inside a box.
+
+    Sizing the caption once and then scaling the drawing to the sheet is what puts two words on
+    top of each other: the box shrinks and the type does not. So the renderer asks for a fit
+    against the FINAL box, and gets back both the lines and the size to draw them at.
+
+    The size never goes below the profile's minimum character height — a caption too small to
+    read is not a fit — and when even the minimum will not do, the text is elided, which is
+    visible, rather than allowed to overflow, which is a clipped element.
+    """
+    size = max(min_size, preferred_size)
+    while size > min_size:
+        lines = wrap(profile, text, width, size, max_lines)
+        if lines and block_height(lines, size) <= height:
+            return lines, size
+        size *= 0.9
+    lines = wrap(profile, text, width, min_size, max_lines)
+    usable = max(1, int(height // (min_size * 1.25)))
+    return lines[:usable], min_size
+
+
 def block_width(profile: DrawingProfile, lines: list[str], height: float) -> float:
     return max((measure(profile, line, height) for line in lines), default=0.0)
 

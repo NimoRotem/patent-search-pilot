@@ -209,6 +209,12 @@ def diff(spec: FigureSpec, scene: LayoutScene, observed: ObservedFigure,
     return result
 
 
+def _as_numeral(value) -> str:
+    """A reference numeral, if that is what the verifier returned, else empty."""
+    text = str(value or "").strip()
+    return text.upper() if re.fullmatch(r"[A-Za-z]?\d{1,4}[A-Za-z]?", text) else ""
+
+
 def issues_from_diff(result: SemanticDiff, observed: ObservedFigure,
                      figure_id: str) -> list[ValidationIssue]:
     """The diff, turned into typed issues with the repair each one actually needs."""
@@ -246,12 +252,25 @@ def issues_from_diff(result: SemanticDiff, observed: ObservedFigure,
     for description in result.possible_unexpected_objects:
         add("VIS008", f"An object was seen that this figure does not specify: {description!r}.",
             severity="warning", detail={"description": description})
-    for numeral in observed.overlapping_labels:
-        add("VIS009", f"Reference numeral {numeral} was reported as overlapping another.",
-            repair="move_label", reference_numeral=str(numeral)[:8])
-    for numeral in observed.ambiguous_leaders:
-        add("VIS010", f"The leader for {numeral} was reported as pointing somewhere ambiguous.",
-            repair="reroute_leader", reference_numeral=str(numeral)[:8])
+    # A verifier answers these two in whatever form it likes: sometimes a numeral, sometimes a
+    # sentence describing what it saw. Both are useful; only the first can drive a repair, so
+    # only the first sets a reference for the correction loop to act on.
+    for item in observed.overlapping_labels:
+        numeral = _as_numeral(item)
+        add("VIS009",
+            (f"Reference numeral {numeral} was reported as overlapping another."
+             if numeral else f"Overlapping text was reported on the sheet: {str(item)[:160]}"),
+            severity="blocking" if numeral else "warning",
+            repair="move_label" if numeral else "none",
+            reference_numeral=numeral or None)
+    for item in observed.ambiguous_leaders:
+        numeral = _as_numeral(item)
+        add("VIS010",
+            (f"The leader for {numeral} was reported as pointing somewhere ambiguous."
+             if numeral else f"An ambiguous leader was reported: {str(item)[:160]}"),
+            severity="blocking" if numeral else "warning",
+            repair="reroute_leader" if numeral else "none",
+            reference_numeral=numeral or None)
     return issues
 
 

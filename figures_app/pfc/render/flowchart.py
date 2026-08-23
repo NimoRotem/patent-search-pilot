@@ -40,9 +40,12 @@ def _draw_step(doc: SvgDocument, node: LayoutNode) -> None:
         inner_width = node.box.width - profile.caption_height * 1.4
 
     height = profile.caption_height
-    lines = textfit.wrap(profile, node.caption, max(height * 4, inner_width), height,
-                         MAX_STEP_LINES)
-    doc.text_block(lines, node.box.cx, node.box.cy, height=height,
+    inner_height = (node.box.height * 0.55 if node.shape == "diamond"
+                    else node.box.height - height * 0.6)
+    lines, size = textfit.fit(profile, node.caption, max(height * 4, inner_width),
+                              inner_height, height, profile.min_reference_height,
+                              MAX_STEP_LINES)
+    doc.text_block(lines, node.box.cx, node.box.cy, height=size,
                    data_caption_for=node.entity_id)
     doc.close_group()
 

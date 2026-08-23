@@ -379,20 +379,32 @@ def _route(spec: FigureSpec, relations: dict[str, Relation],
         target = nodes.get(relation.object)
         if source is None or target is None:
             continue
-        # A line from a child to its own container would be drawn from inside the container to
-        # its edge, which reads as a defect rather than a connection.
         if _encloses(source, target) or _encloses(target, source):
-            continue
-        prefer = "horizontal" if abs(source.box.cx - target.box.cx) >= \
-            abs(source.box.cy - target.box.cy) else "vertical"
-        start = boundary_point(source.box, (target.box.cx, target.box.cy))
-        end = boundary_point(target.box, (source.box.cx, source.box.cy))
-        points = orthogonal_route(start, end, prefer)
-        # Re-anchor on the real elbow so the line leaves and meets each box squarely.
-        if len(points) == 3:
-            start = boundary_point(source.box, (points[1].x, points[1].y))
-            end = boundary_point(target.box, (points[1].x, points[1].y))
-            points = [Point(x=start[0], y=start[1]), points[1], Point(x=end[0], y=end[1])]
+            # A part and the housing it sits in, with a SECOND disclosed relationship between
+            # them: an electrical connection to the enclosure, a shaft passing through it. This
+            # used to be skipped on the grounds that a line from inside a box to its own wall
+            # reads oddly, and the result was worse than odd — the relation was in the
+            # specification, absent from the drawing, and the figure blocked on a defect no
+            # correction could reach. It is drawn: a short straight run from the inner outline
+            # to the enclosing one, which is the convention a draughtsman uses for exactly this.
+            inner, outer = ((source, target) if _encloses(target, source)
+                            else (target, source))
+            start = boundary_point(inner.box, (outer.box.cx, outer.box.cy))
+            end = boundary_point(outer.box, (inner.box.cx, inner.box.cy))
+            points = [Point(x=start[0], y=start[1]), Point(x=end[0], y=end[1])]
+            if inner is target:
+                points.reverse()
+        else:
+            prefer = "horizontal" if abs(source.box.cx - target.box.cx) >= \
+                abs(source.box.cy - target.box.cy) else "vertical"
+            start = boundary_point(source.box, (target.box.cx, target.box.cy))
+            end = boundary_point(target.box, (source.box.cx, source.box.cy))
+            points = orthogonal_route(start, end, prefer)
+            # Re-anchor on the real elbow so the line leaves and meets each box squarely.
+            if len(points) == 3:
+                start = boundary_point(source.box, (points[1].x, points[1].y))
+                end = boundary_point(target.box, (points[1].x, points[1].y))
+                points = [Point(x=start[0], y=start[1]), points[1], Point(x=end[0], y=end[1])]
         directed = relation.direction == "subject_to_object"
         out.append(LayoutEdge(
             relation_id=relation.id, from_entity=relation.subject, to_entity=relation.object,
