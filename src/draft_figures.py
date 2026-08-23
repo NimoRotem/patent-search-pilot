@@ -41,7 +41,7 @@ MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
 FIGURE_PROMPT_VERSION = "figure-v5-exact-geometry-without-annotation-placement"
 SEMANTIC_PROMPT_VERSION = (
-    "figure-semantic-v12-high-accuracy-geometry-only-consensus-pixel-grounded-marked-topology")
+    "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology")
 LEADER_PROMPT_VERSION = (
     "figure-leader-v7-high-accuracy-routing-only-independent-consensus")
 MARKED_ANCHOR_PROMPT_VERSION = (
@@ -1541,11 +1541,16 @@ def _review_specification(label: str, caption: str, numerals, *, geometry_only: 
     """Build one complete specification shared by every visual review gate."""
     caption_text = (_geometry_text(caption, numerals) if geometry_only
                     else str(caption or ""))
-    return json.dumps({
+    specification = {
         "figure_label": canonical_figure_label(label),
         "caption": caption_text[:MAX_PROMPT_CHARS],
         "parts": numeral_entries(numerals),
-    }, ensure_ascii=False, sort_keys=True)
+    }
+    if geometry_only:
+        endpoint_specification = json.loads(
+            _marked_endpoint_specification(label, caption, numerals))
+        specification["endpoint_targets"] = endpoint_specification["parts"]
+    return json.dumps(specification, ensure_ascii=False, sort_keys=True)
 
 
 def _leader_routing_spec(label: str, numerals) -> str:
@@ -1639,9 +1644,10 @@ def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict
         "Inspect this unlabeled utility-patent line drawing against the JSON specification below. "
         "Check the requested view, every visible component, and every stated spatial or functional "
         "relationship. " + SEMANTIC_GEOMETRY_RULES + " The image must contain no text or digits. "
-        "For each expected part that is "
-        "visibly present, return one anchor at the centre of that part using x/y coordinates from "
-        "0 to 1000 and quote concise visual evidence. Never infer a hidden part. Set matches_spec "
+        "For each expected part that is visibly present, return one anchor using x/y coordinates "
+        "from 0 to 1000 and quote concise visual evidence. Follow that part's endpoint_targets "
+        "target exactly when it is present; do not substitute a generic component center or a "
+        "nearby boundary. Never infer a hidden part. Set matches_spec "
         "false for an absent component, wrong relationship, wrong view, contradictory geometry, "
         "or visible text. Reference numerals, the FIG. label, legends, callouts, and leader lines "
         "are deliberately absent at this stage and are added later. Do not report their absence "
@@ -2142,9 +2148,11 @@ def annotate_png(png: bytes, label: str, anchors, *, scale: float = 1.0) -> byte
     return out.getvalue()
 
 
-def _repair_leader_anchors(raw_png: bytes, anchors, audit: dict, *, scale: float) -> tuple[list, bool]:
+def _repair_leader_anchors(raw_png: bytes, anchors, audit: dict, *, scale: float,
+                           protected=()) -> tuple[list, bool]:
     """Map reviewer-suggested final-sheet points back into the geometry coordinate system."""
     repaired = [dict(item) for item in anchors or ()]
+    protected_numerals = {_clean_numeral(value) for value in protected or ()}
     layout = _annotation_layout(raw_png, repaired, scale)
     source = layout["source"]
     records = {_clean_numeral(item.get("numeral")): item
@@ -2154,7 +2162,7 @@ def _repair_leader_anchors(raw_png: bytes, anchors, audit: dict, *, scale: float
     for item in repaired:
         numeral = _clean_numeral(item.get("numeral"))
         record = records.get(numeral)
-        if not record or numeral not in incorrect:
+        if not record or numeral not in incorrect or numeral in protected_numerals:
             continue
         try:
             canvas_x = int(record.get("suggested_x")) * layout["canvas_width"] / 1000
@@ -2342,7 +2350,8 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             if leaders.get("ok"):
                 break
             anchors, changed = _repair_leader_anchors(
-                raw_png, anchors, leaders, scale=used_scale)
+                raw_png, anchors, leaders, scale=used_scale,
+                protected=marked_certificates)
             if not changed:
                 break
             anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
