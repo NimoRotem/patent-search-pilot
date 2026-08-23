@@ -443,6 +443,48 @@ def test_marked_anchor_repair_breaks_a_two_coordinate_cycle():
     assert repaired[0]["y"] == 594
 
 
+def test_compose_rejects_a_tight_cluster_of_six_uncertified_coordinates(monkeypatch):
+    raw = blank_png(1000, 1000)
+    anchors = [{"numeral": "10", "x": 400, "y": 565, "visible": True,
+                "evidence": "open surface"}]
+    accepted_pixel = {
+        "ok": True, "inspected": True, "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [], "allowed_spaces": [], "ungrounded": [],
+    }
+    monkeypatch.setattr(draft_figures, "_marked_progress_get", lambda *a, **k: {
+        "anchors": anchors, "certificates": {}, "attempts": 6,
+        "coordinate_history": {"10": [
+            (383, 550), (375, 565), (410, 575),
+            (408, 568), (410, 550), (400, 565),
+        ]},
+    })
+    monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
+    monkeypatch.setattr(
+        draft_figures, "_ground_anchors_to_pixels",
+        lambda _png, _numerals, values: ([dict(item) for item in values],
+                                         dict(accepted_pixel)))
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
+        "other_text": [], "confidence": 0.99,
+    })
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [], "missing": [],
+        "labels": [{"numeral": "10", "correct": True, "evidence": "route is clear"}],
+    })
+    monkeypatch.setattr(
+        draft_figures, "inspect_marked_anchors",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("stalled geometry must regenerate before another review")))
+
+    _png, labels, leaders, final_anchors, pixel = draft_figures._compose_checked_sheet(
+        raw, label="FIG. 1", caption="open surface", numerals=["10 = device"],
+        semantic={"anchors": anchors, "pixel_anchor_audit": dict(accepted_pixel)})
+
+    assert labels["ok"] is True and leaders["ok"] is False and pixel["ok"] is True
+    assert "regenerate" in leaders["marked_anchor_audit"]["errors"][0].lower()
+    assert (final_anchors[0]["x"], final_anchors[0]["y"]) == (400, 565)
+
+
 def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypatch):
     raw = blank_png(1000, 1000)
     initial = [{"numeral": "26", "x": 500, "y": 500,
