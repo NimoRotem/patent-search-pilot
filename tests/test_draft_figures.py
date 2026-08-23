@@ -755,6 +755,69 @@ def test_compose_retries_layout_without_moving_a_certified_endpoint(monkeypatch)
     assert (final_anchors[0]["x"], final_anchors[0]["y"]) == (200, 200)
 
 
+def test_compose_does_not_let_leader_routing_move_a_geometry_endpoint(monkeypatch):
+    raw = blank_png(1000, 1000)
+    anchors = [{"numeral": "10", "x": 200, "y": 200,
+                "visible": True, "evidence": "left face"}]
+    accepted_pixel = {
+        "ok": True, "inspected": True, "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [], "allowed_spaces": [], "ungrounded": [],
+    }
+    monkeypatch.setattr(draft_figures, "_marked_progress_get", lambda *a, **k: None)
+    monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
+    monkeypatch.setattr(
+        draft_figures, "_ground_anchors_to_pixels",
+        lambda _png, _numerals, values: ([dict(item) for item in values],
+                                         dict(accepted_pixel)))
+    scales = []
+
+    def annotate(_png, _label, _anchors, *, scale):
+        scales.append(scale)
+        return raw
+
+    monkeypatch.setattr(draft_figures, "annotate_png", annotate)
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
+        "other_text": [], "confidence": 0.99,
+    })
+    leader_calls = []
+
+    def inspect_leaders(*_args, **_kwargs):
+        leader_calls.append(True)
+        if len(leader_calls) == 1:
+            return {
+                "ok": False, "inspected": True, "errors": ["route is ambiguous"],
+                "incorrect": ["10"], "missing": [], "labels": [{
+                    "numeral": "10", "correct": False, "evidence": "route is ambiguous",
+                    "suggested_x": 500, "suggested_y": 500,
+                }],
+            }
+        return {
+            "ok": True, "inspected": True, "errors": [], "incorrect": [], "missing": [],
+            "labels": [{"numeral": "10", "correct": True,
+                        "evidence": "larger layout has a continuous route"}],
+        }
+
+    monkeypatch.setattr(draft_figures, "inspect_leaders", inspect_leaders)
+    monkeypatch.setattr(draft_figures, "inspect_marked_anchors", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [], "missing": [],
+        "labels": [{
+            "numeral": "10", "correct": True, "repairable": True,
+            "evidence": "the endpoint remains on the left face",
+            "suggested_x": 500, "suggested_y": 500,
+            "correct_votes": 3, "incorrect_votes": 0,
+        }],
+    })
+
+    _png, labels, leaders, final_anchors, pixel = draft_figures._compose_checked_sheet(
+        raw, label="FIG. 1", caption="base", numerals=["10 = base"],
+        semantic={"anchors": anchors, "pixel_anchor_audit": dict(accepted_pixel)})
+
+    assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
+    assert scales[:2] == [1.0, 1.35]
+    assert (final_anchors[0]["x"], final_anchors[0]["y"]) == (200, 200)
+
+
 def test_marked_anchor_heading_states_the_exact_full_sheet_coordinate():
     heading = draft_figures._marked_anchor_heading(
         {"numeral": "26", "x": 501, "y": 502}, {"26": "bearing face"})
@@ -1525,7 +1588,7 @@ def test_render_refuses_a_false_positive_when_marked_endpoint_is_on_neighboring_
     assert len(discarded) == 1
 
 
-def test_render_automatically_moves_a_rejected_leader_to_the_reviewed_feature(monkeypatch):
+def test_render_reroutes_a_rejected_leader_without_moving_the_reviewed_feature(monkeypatch):
     accept_pixel_grounding(monkeypatch)
     raw = blank_png()
     initial = [{"numeral": "10", "x": 200, "y": 300,
@@ -1564,10 +1627,10 @@ def test_render_automatically_moves_a_rejected_leader_to_the_reviewed_feature(mo
     result = draft_figures.render_figure(
         7, 91, label="FIG. 1", caption="body", numerals=["10 = body"])
     assert result["leader_audit"]["ok"] is True and len(calls) == 2
-    assert saved[0]["semantic_audit"]["anchors"][0]["x"] > 700
+    assert saved[0]["semantic_audit"]["anchors"][0]["x"] == 200
 
 
-def test_leader_repair_cannot_move_a_grounded_endpoint_back_into_blank_paper(monkeypatch):
+def test_leader_routing_cannot_move_a_grounded_endpoint_into_blank_paper(monkeypatch):
     image = Image.new("RGB", (1000, 1000), "white")
     ImageDraw.Draw(image).rectangle((200, 200, 800, 600), outline="black", width=8)
     out = io.BytesIO()
@@ -1612,8 +1675,8 @@ def test_leader_repair_cannot_move_a_grounded_endpoint_back_into_blank_paper(mon
             "pixel_anchor_audit"]})
 
     assert leaders["ok"] is True and len(calls) == 2
-    assert pixel["ok"] is True and pixel["adjusted"][0]["numeral"] == "10"
-    assert 590 <= anchors[0]["y"] <= 610
+    assert pixel["ok"] is True
+    assert (anchors[0]["x"], anchors[0]["y"]) == (500, 400)
 
 
 def test_text_contaminated_geometry_retries_from_a_clean_canvas(monkeypatch):
