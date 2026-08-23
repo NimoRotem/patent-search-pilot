@@ -4,7 +4,9 @@ No paid APIs are hit: SerpApi (enrich.fetch_details) and the LLM (llm.chat_json)
 Vertex embeddings are replaced with deterministic hash-seeded vectors so dense/match queries run
 fast and reproducibly. The real Postgres is read (fast). The reranker is never triggered (tests
 use cached reports/views, not live agent runs)."""
-import os, sys, hashlib
+import hashlib
+import os
+import sys
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -48,7 +50,11 @@ def _det_vec(text, dim=768):
 @pytest.fixture(autouse=True)
 def no_paid_apis(monkeypatch):
     """Mock the paid/external calls for every test."""
-    import embed, enrich, llm
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_REQUIRED", "0")
+    import embed
+    import enrich
+    import llm
     monkeypatch.setattr(embed, "embed_query", lambda text, dim=768, **k: _det_vec(text, dim))
     monkeypatch.setattr(embed, "embed_texts",
                         lambda texts, dim=768, **k: [_det_vec(t, dim) for t in texts])
