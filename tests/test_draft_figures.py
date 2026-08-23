@@ -421,6 +421,28 @@ def test_marked_anchor_repair_uses_the_grid_grounded_full_sheet_suggestion():
     assert repaired[0]["y"] == 800
 
 
+def test_marked_anchor_repair_breaks_a_two_coordinate_cycle():
+    raw = blank_png(1000, 1000)
+    anchors = [{"numeral": "10", "x": 500, "y": 563, "visible": True,
+                "evidence": "front face"}]
+    audit = {
+        "incorrect": ["10"],
+        "labels": [{
+            "numeral": "10", "correct": False, "repairable": True,
+            "evidence": "the other endpoint is the opposite edge of the face",
+            "suggested_x": 500, "suggested_y": 625,
+        }],
+    }
+
+    repaired, changed = draft_figures._repair_marked_anchors(
+        raw, anchors, audit,
+        coordinate_history={"10": [(500, 625), (500, 563)]})
+
+    assert changed is True
+    assert repaired[0]["x"] == 500
+    assert repaired[0]["y"] == 594
+
+
 def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypatch):
     raw = blank_png(1000, 1000)
     initial = [{"numeral": "26", "x": 500, "y": 500,

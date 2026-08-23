@@ -904,20 +904,51 @@ def _marked_progress_get(raw_png: bytes, *, label: str, caption: str,
         certificates[numeral] = {
             "x": x, "y": y, "attempt": attempt, "label": label_record,
         }
-    return {"anchors": anchors, "certificates": certificates, "attempts": attempts}
+    coordinate_history = {}
+    raw_history = value.get("coordinate_history") or {}
+    if isinstance(raw_history, dict):
+        for raw_numeral, points in raw_history.items():
+            numeral = _clean_numeral(raw_numeral)
+            if numeral not in expected or not isinstance(points, list):
+                continue
+            for point in points[-MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS:]:
+                if not isinstance(point, (list, tuple)) or len(point) != 2:
+                    continue
+                try:
+                    x, y = int(point[0]), int(point[1])
+                except (TypeError, ValueError, OverflowError):
+                    continue
+                if 0 <= x <= 1000 and 0 <= y <= 1000:
+                    coordinate_history.setdefault(numeral, []).append((x, y))
+    _record_anchor_coordinate_history(coordinate_history, anchors)
+    return {
+        "anchors": anchors, "certificates": certificates, "attempts": attempts,
+        "coordinate_history": coordinate_history,
+    }
 
 
 def _marked_progress_put(raw_png: bytes, *, label: str, caption: str, numerals,
-                         anchors, certificates: dict, attempts: int) -> None:
+                         anchors, certificates: dict, attempts: int,
+                         coordinate_history=None) -> None:
     """Durably replace partial endpoint progress after each completed correction round."""
     if "PYTEST_CURRENT_TEST" in os.environ:
         return
+    history = {
+        _clean_numeral(key): [tuple(point) for point in value]
+        for key, value in (coordinate_history or {}).items()
+        if _clean_numeral(key) and isinstance(value, list)
+    }
+    _record_anchor_coordinate_history(history, anchors)
     result = {
         "version": MARKED_PROGRESS_VERSION,
         "specification_hash": specification_hash(label, caption, numerals),
         "anchors": [dict(item) for item in anchors or ()],
         "certificates": {str(key): dict(value)
                          for key, value in (certificates or {}).items()},
+        "coordinate_history": {
+            key: [list(point) for point in value]
+            for key, value in history.items()
+        },
         "attempts": int(attempts),
     }
     ensure_schema()
@@ -2350,7 +2381,8 @@ def _repair_leader_anchors(raw_png: bytes, anchors, audit: dict, *, scale: float
     return repaired, changed
 
 
-def _repair_marked_anchors(raw_png: bytes, anchors, audit: dict) -> tuple[list, bool]:
+def _repair_marked_anchors(raw_png: bytes, anchors, audit: dict, *,
+                           coordinate_history=None) -> tuple[list, bool]:
     """Apply the reviewer's grid-grounded global full-sheet correction."""
     repaired = [dict(item) for item in anchors or ()]
     records = {_clean_numeral(item.get("numeral")): item
@@ -2370,6 +2402,14 @@ def _repair_marked_anchors(raw_png: bytes, anchors, audit: dict) -> tuple[list, 
         if not (0 <= suggested_x <= 1000 and 0 <= suggested_y <= 1000):
             continue
         current_x, current_y = int(item.get("x") or 0), int(item.get("y") or 0)
+        prior_positions = {
+            (int(point[0]), int(point[1]))
+            for point in (coordinate_history or {}).get(numeral, ())
+            if isinstance(point, (list, tuple)) and len(point) == 2
+        }
+        if (suggested_x, suggested_y) in prior_positions:
+            suggested_x = round((current_x + suggested_x) / 2)
+            suggested_y = round((current_y + suggested_y) / 2)
         delta_x = (suggested_x - current_x) * MARKED_ANCHOR_CORRECTION_GAIN
         delta_y = (suggested_y - current_y) * MARKED_ANCHOR_CORRECTION_GAIN
         new_x = round(min(max(current_x + delta_x, 0), 1000))
@@ -2391,6 +2431,15 @@ def _anchor_positions(anchors) -> dict[str, tuple[int, int]]:
         except (TypeError, ValueError, OverflowError):
             continue
     return positions
+
+
+def _record_anchor_coordinate_history(coordinate_history: dict, anchors) -> None:
+    """Retain enough final-sheet positions to detect and damp a reviewer two-cycle."""
+    for numeral, point in _anchor_positions(anchors).items():
+        history = coordinate_history.setdefault(numeral, [])
+        if not history or tuple(history[-1]) != point:
+            history.append(point)
+            del history[:-MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS]
 
 
 def _prune_marked_coordinate_certificates(certificates: dict, anchors) -> None:
@@ -2479,6 +2528,7 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
     used_scale = 1.0
     marked = {}
     marked_certificates = {}
+    coordinate_history = {}
     completed_marked_attempts = 0
     progress = _marked_progress_get(
         raw_png, label=label, caption=caption, numerals=numerals)
@@ -2486,13 +2536,21 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
         anchors = [dict(item) for item in progress["anchors"]]
         marked_certificates = {
             str(key): dict(value) for key, value in progress["certificates"].items()}
+        coordinate_history = {
+            str(key): [tuple(point) for point in value]
+            for key, value in progress.get("coordinate_history", {}).items()
+        }
         completed_marked_attempts = int(progress["attempts"])
         anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
+        _record_anchor_coordinate_history(coordinate_history, anchors)
         _prune_marked_coordinate_certificates(marked_certificates, anchors)
         _marked_progress_put(
             raw_png, label=label, caption=caption, numerals=numerals,
             anchors=anchors, certificates=marked_certificates,
-            attempts=completed_marked_attempts)
+            attempts=completed_marked_attempts,
+            coordinate_history=coordinate_history)
+    else:
+        _record_anchor_coordinate_history(coordinate_history, anchors)
     marked_attempts = (
         range(completed_marked_attempts, MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS)
         if completed_marked_attempts < MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS
@@ -2527,11 +2585,12 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
                 break
             leader_scale_index = 0
             anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
+            _record_anchor_coordinate_history(coordinate_history, anchors)
             _prune_marked_coordinate_certificates(marked_certificates, anchors)
             _marked_progress_put(
                 raw_png, label=label, caption=caption, numerals=numerals,
                 anchors=anchors, certificates=marked_certificates,
-                attempts=marked_attempt)
+                attempts=marked_attempt, coordinate_history=coordinate_history)
             if not pixel_audit.get("ok"):
                 leaders = dict(leaders)
                 leaders["ok"] = False
@@ -2581,31 +2640,37 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             _marked_progress_put(
                 raw_png, label=label, caption=caption, numerals=numerals,
                 anchors=anchors, certificates=marked_certificates,
-                attempts=marked_attempt + 1)
+                attempts=marked_attempt + 1,
+                coordinate_history=coordinate_history)
             break
         if marked_attempt + 1 >= MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS:
             _marked_progress_put(
                 raw_png, label=label, caption=caption, numerals=numerals,
                 anchors=anchors, certificates=marked_certificates,
-                attempts=marked_attempt + 1)
+                attempts=marked_attempt + 1,
+                coordinate_history=coordinate_history)
             break
         repair_audit = dict(marked)
         repair_audit["incorrect"] = [
             numeral for numeral in marked.get("incorrect") or []
             if _clean_numeral(numeral) not in marked_certificates]
-        anchors, changed = _repair_marked_anchors(raw_png, anchors, repair_audit)
+        anchors, changed = _repair_marked_anchors(
+            raw_png, anchors, repair_audit, coordinate_history=coordinate_history)
         if not changed:
             _marked_progress_put(
                 raw_png, label=label, caption=caption, numerals=numerals,
                 anchors=anchors, certificates=marked_certificates,
-                attempts=marked_attempt + 1)
+                attempts=marked_attempt + 1,
+                coordinate_history=coordinate_history)
             break
         anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
+        _record_anchor_coordinate_history(coordinate_history, anchors)
         _prune_marked_coordinate_certificates(marked_certificates, anchors)
         _marked_progress_put(
             raw_png, label=label, caption=caption, numerals=numerals,
             anchors=anchors, certificates=marked_certificates,
-            attempts=marked_attempt + 1)
+            attempts=marked_attempt + 1,
+            coordinate_history=coordinate_history)
         if not pixel_audit.get("ok"):
             leaders = dict(leaders)
             leaders["ok"] = False
