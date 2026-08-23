@@ -54,6 +54,10 @@ TITLE_CHAR_LIMIT = 500               # 37 CFR 1.72(a)
 _FIG_RE = re.compile(r"\bFIGS?\.?\s*([0-9]+[A-Za-z]?)", re.IGNORECASE)
 _FIG_RANGE_RE = re.compile(r"\bFIGS?\.?\s*([0-9]+[A-Za-z]?)\s*(?:-|–|\u2014|to|through|and)\s*"
                            r"([0-9]+[A-Za-z]?)", re.IGNORECASE)
+_FIGURE_NUMERAL_DECLARATION_RE = re.compile(
+    r"(?im)^[ \t>*_#-]*(?:reference\s+)?numerals?\s+"
+    r"(?:appearing|shown|included)(?:\s+on\s+(?:this|the)\s+(?:figure|sheet))?"
+    r"\s*:\s*[*_ ]*([^\n]+)$")
 _NUMERAL_IN_TEXT_RE = re.compile(
     r"(?<![\w.\-/])([a-z]?\d{1,4}[a-z]?)(?![\w%°]|\s*(?:%|percent))",
     re.IGNORECASE)
@@ -523,6 +527,37 @@ def _figure_checks(sections: Mapping[str, str],
         out.append(_check(
             "Drawing briefs are concise and renderable", "pass",
             f"Every drawing brief is at most {MAX_FIGURE_BRIEF_CHARS} characters."))
+
+    declaration_issues = []
+    for index, figure in enumerate(figures, 1):
+        caption = str(figure.get("caption") or "")
+        match = _FIGURE_NUMERAL_DECLARATION_RE.search(caption)
+        if not match:
+            continue
+        declared = set(numerals_used(match.group(1)))
+        listed = {_drawing_numeral(item) for item in figure.get("numerals") or []}
+        listed.discard("")
+        if declared == listed:
+            continue
+        missing = sorted(listed - declared, key=_numeral_sort)
+        extra = sorted(declared - listed, key=_numeral_sort)
+        details = []
+        if missing:
+            details.append("missing from declaration " + ", ".join(missing))
+        if extra:
+            details.append("not in sheet list " + ", ".join(extra))
+        declaration_issues.append(
+            f"{figure.get('label') or f'FIG. {index}'}: " + "; ".join(details))
+    if declaration_issues:
+        out.append(_check(
+            "Figure brief numeral declarations match sheet lists", "fail",
+            "A drawing brief explicitly declares a different numeral set from the sheet's "
+            "machine-readable list. Reconcile the brief and list before generating an image.",
+            severity="error", items=declaration_issues))
+    elif figures:
+        out.append(_check(
+            "Figure brief numeral declarations match sheet lists", "pass",
+            "Every explicit numeral declaration agrees with its sheet list."))
 
     if figures:
         numbers = [figure_number(figure.get("label")) for figure in figures]

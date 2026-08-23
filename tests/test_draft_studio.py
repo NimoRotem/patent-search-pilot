@@ -202,6 +202,32 @@ def test_an_overlong_drawing_brief_is_refused_before_image_generation():
     assert caught.value.category == "figures_and_numerals"
 
 
+def test_an_explicit_figure_numeral_declaration_must_match_the_sheet_list():
+    figures = [
+        {
+            **FIGURES[0],
+            "caption": (
+                "A side elevation of the body and pump.\n\n"
+                "**Numerals appearing on this figure:** 10, 12"
+            ),
+        },
+        FIGURES[1],
+    ]
+    check = checks_for(figures=figures)[
+        "Figure brief numeral declarations match sheet lists"]
+
+    assert check["status"] == "fail"
+    assert "FIG. 1" in check["items"][0]
+    assert "14" in check["items"][0]
+
+    with pytest.raises(
+            draft_studio.FilingPreflightError,
+            match="Figure brief numeral declarations match sheet lists") as caught:
+        draft_studio.validate_snapshot(
+            {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
+    assert caught.value.category == "figures_and_numerals"
+
+
 def test_letter_qualified_reference_numerals_are_compared_exactly():
     version = {**GOOD, "detailed_description":
                GOOD["detailed_description"] + " A secondary spacer 10a is beside a lug A12."}
