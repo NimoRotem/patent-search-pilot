@@ -1069,6 +1069,20 @@ def test_readiness_rejects_todos_and_missing_or_mismatched_drawing_audits():
     assert any("drawing" in title for title in titles)
 
 
+@pytest.mark.parametrize("field,value", [
+    ("numerals", [{"numeral": "10", "part": "TBD component"}] + NUMERALS[1:]),
+    ("figure_specs", [{**FIGURES[0], "caption": "[VERIFY: complete the view]"}] + FIGURES[1:]),
+])
+def test_readiness_rescans_versioned_drawing_sources_for_editorial_markers(field, value):
+    version = {**clean_version(), field: value}
+    report = draft_uspto.readiness(
+        project={"inventors": "Dana", "applicant": "Example"},
+        version=version, qa=clean_qa(), figures=checked_figures())
+    assert not report["ready"]
+    assert any("unfinished marker" in item["title"].lower()
+               for item in report["blockers"])
+
+
 def test_readiness_rejects_a_previous_sheet_for_a_changed_figure_specification():
     figures = checked_figures()
     figures[0]["versions"][0]["semantic_audit"]["specification_hash"] = "old-specification"

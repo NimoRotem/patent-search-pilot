@@ -176,6 +176,17 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
             numeral_table = json.loads(numeral_table)
         except json.JSONDecodeError:
             numeral_table = []
+    drawing_markers = []
+    drawing_markers.extend(draft_qa.placeholders_in_text(
+        "Reference numeral table", json.dumps(numeral_table, ensure_ascii=False)))
+    drawing_markers.extend(draft_qa.placeholders_in_text(
+        "Drawing specifications", json.dumps(figure_specs, ensure_ascii=False)))
+    if drawing_markers:
+        blockers.append({
+            "title": f"{len(drawing_markers)} unfinished marker(s) in the drawing sources",
+            "detail": "No note, placeholder, confirmation request, or manual instruction may "
+                      "enter a filing package.",
+            "items": "; ".join(drawing_markers[:8])})
     if not described:
         blockers.append({
             "title": "The application has no drawing plan",
