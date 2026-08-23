@@ -5779,9 +5779,11 @@ def concise_descriptions(slug):
             #  EVERY artefact of the previous build, not only the descriptions. A copy
             #  or a translation left behind for an item this build no longer lists
             #  would be filed as part of a submission it does not belong to.
+            #  `Translation_*` and `*_before_filing.txt` are the names an earlier build used. A
+            #  package built before the rename kept them, and they were still going into the zip.
             for pattern in ("ConciseDescription_*", "*.model.json", "00_*", "01_*",
-                            "40_Copy_*", "50_Translation_*", "MANIFEST.csv",
-                            "READ_ME_FIRST.txt"):
+                            "40_Copy_*", "50_Translation_*", "Translation_*", "Copy_*",
+                            "*_before_filing.txt", "MANIFEST.csv", "READ_ME_FIRST.txt"):
                 for stale in out.glob(pattern):
                     try:
                         stale.unlink()
