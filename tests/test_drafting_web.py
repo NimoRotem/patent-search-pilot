@@ -153,6 +153,7 @@ def test_draft_library_and_intake_render(draft_client):
     client, _service = draft_client
     library = client.get("/drafts")
     assert library.status_code == 200
+    assert client.get("/drafts/").status_code == 200
     library_body = library.get_data(as_text=True)
     assert "US patent drafts" in library_body
     assert "Classic one-shot draft" not in library_body
