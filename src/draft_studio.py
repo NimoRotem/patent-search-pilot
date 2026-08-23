@@ -116,8 +116,7 @@ def _gate_resume_report(runs: Sequence[draft_agent.AgentRun],
 def _gate_resume_run(context: Mapping[str, Any], turn: Mapping[str, Any]
                      ) -> draft_agent.AgentRun | None:
     """Restore an agent result only for the same interrupted leased turn."""
-    if (int(turn.get("attempts") or 0) <= 1 or
-            int(context.get("resuming_candidate_turn_id") or 0) != int(turn["id"])):
+    if int(context.get("resuming_candidate_turn_id") or 0) != int(turn["id"]):
         return None
     prepared = context.get("prepared_qa")
     marker = prepared.get(_GATE_RESUME_KEY) if isinstance(prepared, Mapping) else None
