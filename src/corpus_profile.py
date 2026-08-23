@@ -200,6 +200,11 @@ SOURCE_PURPOSE = {
     "himmpat": "English full text for CN, JP and KR publications.",
     "gpatents_direct": "Google Patents queried directly, for full text and its translations.",
     "gpatents_scrape": "A fallback reader for Google Patents pages the API route misses.",
+    "web_patent_fallback": "A last-resort reader for patent pages the other routes could not "
+                           "fetch.",
+    "scrapingbee_patents": "A paid fetcher used only when a page refuses the free routes.",
+    "firecrawl_patents": "A paid fetcher used only when a page refuses the free routes.",
+    "tavily_patents": "A paid fetcher used only when a page refuses the free routes.",
 }
 _SOURCES_TTL = float(os.environ.get("CORPUS_SOURCES_TTL", "600"))
 _sources_cache: dict = {"at": 0.0, "value": None}

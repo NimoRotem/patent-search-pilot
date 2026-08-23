@@ -33,7 +33,8 @@
     <div><span class="fldl">Publications</span> <b>{{ '{:,}'.format(f.publications or 0) }}</b></div>
     <div><span class="fldl">Patent families</span> {% if snap.families %}<b>{{ '{:,}'.format(snap.families[0].families) }}</b>{% else %}&mdash;{% endif %}</div>
     <div><span class="fldl">Published between</span> {{ f.min_year }} and {{ f.max_date_str }}</div>
-    <div><span class="fldl">Offices</span> {{ snap.by_country|length if snap.by_country else 0 }}, led by
+    {# The snapshot keeps the sixteen largest offices, so this must not be read as a total. #}
+    <div><span class="fldl">Largest offices</span>
       {% for r in (snap.by_country or [])[:5] %}{{ r.country }}{{ ', ' if not loop.last }}{% endfor %}</div>
     <div><span class="fldl">With an abstract</span> {% if snap.families %}{{ '{:,}'.format(snap.families[0].with_abstract) }}{% else %}&mdash;{% endif %}</div>
     <div><span class="fldl">With claims parsed</span> {% if snap.claims %}{{ '{:,}'.format(snap.claims[0].pubs) }}{% if f.publications %} <span class="cc">{{ (100 * snap.claims[0].pubs / f.publications)|round(0)|int }}%</span>{% endif %}{% else %}&mdash;{% endif %}</div>
@@ -113,8 +114,9 @@
       from English abstracts and machine translation, so a CN document can rank correctly on
       meaning and still need a verified translation before it goes into a submission.</li>
     {% endif %}
+    {#  "0.0 days ago" is not English. Hours under a day, days after that. #}
     <li><b>The counts on this page were last recomputed
-      {% if p.snapshot_age_days is not none %}{{ p.snapshot_age_days }} day{{ '' if p.snapshot_age_days == 1 else 's' }} ago{% else %}never{% endif %}.</b>
+      {% if p.snapshot_age_days is none %}never{% elif p.snapshot_age_days < 0.05 %}minutes ago{% elif p.snapshot_age_days < 1 %}{{ (p.snapshot_age_days * 24)|round(0)|int }} hour{{ '' if (p.snapshot_age_days * 24)|round(0)|int == 1 else 's' }} ago{% else %}{{ p.snapshot_age_days|round(0)|int }} day{{ '' if p.snapshot_age_days|round(0)|int == 1 else 's' }} ago{% endif %}.</b>
       Publication and family totals move as acquisition runs; the live figures are the ones on
       each report.</li>
     <li><b>Nothing here is a legal opinion.</b> The system finds and reads documents and says what
@@ -144,7 +146,7 @@
   </tbody></table></div>
   {% endif %}
 
-  <h3 style="margin:1.2em 0 .3em">Every office in the corpus</h3>
+  <h3 style="margin:1.2em 0 .3em">The sixteen largest offices</h3>
   {% if snap.by_country %}
   <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Office</th><th>Publications</th><th>Share</th></tr></thead><tbody>
     {% for r in snap.by_country %}
