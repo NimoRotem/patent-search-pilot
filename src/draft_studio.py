@@ -1432,6 +1432,33 @@ class TurnRunner:
         except Exception:
             return
         detail = str(error)[:1200]
+        prior_report: dict[str, Any] = {}
+        try:
+            candidate = self.repository.retry_candidate(turn_id)
+            stored_report = candidate.get("qa_report") if isinstance(candidate, Mapping) else None
+            if isinstance(stored_report, Mapping) and (
+                    stored_report.get("checks") or stored_report.get("findings")):
+                prior_report = human_text(dict(stored_report))
+        except Exception:
+            pass
+        if prior_report:
+            summary = str(prior_report.get("summary") or "").strip()
+            prior_report["summary"] = (
+                summary + " The automatic repair run stopped after preserving this candidate; "
+                "resume the listed filing-gate repairs."
+            ).strip()
+            prior_report["last_error"] = detail
+            prior_report["interruption"] = {
+                "detail": detail,
+                "action": "Resume the saved candidate and complete the listed repairs.",
+            }
+            self.repository.save_retry_candidate(
+                turn_id, lease, snapshot=snapshot, report=prior_report)
+            try:
+                self.workspace._write_review(workspace, prior_report)
+            except Exception:
+                pass
+            return
         check = {
             "name": "Drafting run completed",
             "status": "fail",
