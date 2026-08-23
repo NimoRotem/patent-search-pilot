@@ -174,6 +174,10 @@ _CLAIMS = Profile(
         "BLIND_RESCUE_MAX": 12,
         "CONCEPT_PASS_TOP": 60,
         "RESCUE_CLAIMS": 0,
+        #  The claim-reach slots were 184 reads outside every other knob on the first budgeted
+        #  run. 60 at round-robin still guarantees every claim its strongest candidates.
+        "CLAIM_REACH_CAP": 60,
+        "BATCH_TAIL_MAX": 120,
     },
 )
 

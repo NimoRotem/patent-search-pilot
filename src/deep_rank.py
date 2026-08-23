@@ -641,6 +641,7 @@ _ENV_KNOB = {
     "BATCH_PER_LIM": "DEEP_RANK_BATCH_PER_LIM",
     "BATCH_TAIL_MAX": "DEEP_RANK_BATCH_TAIL_MAX",
     "RESCUE_CLAIMS": "DEEP_RANK_RESCUE_CLAIMS",
+    "CLAIM_REACH_CAP": "DEEP_RANK_CLAIM_REACH_CAP",
 }
 
 
@@ -663,7 +664,9 @@ def _budget(overrides):
             #  Zero here means "this depth did not set it": the caller falls back to the
             #  quick or deep constant, so a budget that omits the tail changes nothing.
             "BATCH_PER_LIM": 0, "BATCH_TAIL_MAX": 0,
-            "RESCUE_CLAIMS": 1 if RESCUE_CLAIMS else 0}
+            "RESCUE_CLAIMS": 1 if RESCUE_CLAIMS else 0,
+            #  0 = unlimited, the historical behaviour. A ten-minute profile sets a cap.
+            "CLAIM_REACH_CAP": 0}
     applied = set()
     for k, v in (overrides or {}).items():
         if k not in base or v is None:
@@ -1401,7 +1404,8 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
             by_pub_row = {r["pub"]: r for r in rows}
             #  Quick tier: reach_map still feeds the batch tail, but nothing claims a
             #  full-document read slot , there is no full-read wave to claim from.
-            for pub in ([] if quick else claim_reach.quota(reach_map)):
+            for pub in ([] if quick else claim_reach.quota(
+                    reach_map, cap=(B["CLAIM_REACH_CAP"] or None))):
                 r = by_pub_row.get(pub)
                 if r is not None and pub not in seen:
                     chosen.append(r)

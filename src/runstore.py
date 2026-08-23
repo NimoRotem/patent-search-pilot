@@ -483,7 +483,12 @@ TEST_SLUG_PREFIX = "test-"
 #  Default FAIL SAFE, so a new production entry point is isolated without having to know this
 #  exists. The suite flips it once, in tests/conftest.py.
 ALLOW_TEST_SLUGS = False
-_LIVE_ONLY_SQL = "AND slug NOT LIKE 'test-%%'"
+#  'test%', not 'test-%': on 2026-08-23 the restarted deep worker claimed testq-f64e31773d0a
+#  and spent real model calls decomposing a fixture, because the guard knew one test prefix and
+#  the suite had grown a second. Production cannot produce a test-leading slug for the same
+#  reason as before: search_slug returns adhoc-<sha1>, the bench harness writes bench-*, and the
+#  gold ids are a fixed list.
+_LIVE_ONLY_SQL = "AND slug NOT LIKE 'test%%'"
 
 
 def _live_only():
