@@ -65,6 +65,8 @@ CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 4
 MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS = 12
+MARKED_ANCHOR_STALL_WINDOW = 6
+MARKED_ANCHOR_STALL_SPAN = 80
 MAX_OCR_CLEAN_RETRIES = 2
 LEADER_THINKING_BUDGET = 2048
 SEMANTIC_THINKING_BUDGET = 2048
@@ -2442,6 +2444,31 @@ def _record_anchor_coordinate_history(coordinate_history: dict, anchors) -> None
             del history[:-MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS]
 
 
+def _stalled_marked_anchor_numerals(coordinate_history: dict, pending) -> list[str]:
+    """Find endpoints whose repeated rejected positions remain in one small region."""
+    stalled = []
+    for raw_numeral in pending or ():
+        numeral = _clean_numeral(raw_numeral)
+        points = []
+        for point in (coordinate_history or {}).get(numeral, ()):
+            if not isinstance(point, (list, tuple)) or len(point) != 2:
+                continue
+            try:
+                x, y = int(point[0]), int(point[1])
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if 0 <= x <= 1000 and 0 <= y <= 1000:
+                points.append((x, y))
+        points = points[-MARKED_ANCHOR_STALL_WINDOW:]
+        if len(points) < MARKED_ANCHOR_STALL_WINDOW:
+            continue
+        xs, ys = zip(*points)
+        if (max(xs) - min(xs) <= MARKED_ANCHOR_STALL_SPAN and
+                max(ys) - min(ys) <= MARKED_ANCHOR_STALL_SPAN):
+            stalled.append(numeral)
+    return sorted(set(stalled), key=_numeral_order)
+
+
 def _prune_marked_coordinate_certificates(certificates: dict, anchors) -> None:
     """Invalidate prior approval as soon as any later gate moves that endpoint."""
     positions = _anchor_positions(anchors)
@@ -2611,10 +2638,38 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             certified["specification_hash"] = specification_hash(label, caption, numerals)
             marked = certified
             break
+        expected_numerals = {
+            entry["numeral"] for entry in numeral_entries(numerals)}
+        pending = sorted(
+            expected_numerals - set(marked_certificates), key=_numeral_order)
+        stalled = (
+            _stalled_marked_anchor_numerals(coordinate_history, pending)
+            if marked_attempt >= MARKED_ANCHOR_STALL_WINDOW else [])
+        if stalled:
+            marked = {
+                "ok": False, "inspected": True,
+                "summary": (
+                    "Repeated endpoint reviews stayed inside a rejected coordinate "
+                    "cluster; the geometry or target brief must be regenerated."),
+                "errors": [
+                    f"Numeral {numeral} stayed within a rejected coordinate cluster; "
+                    "regenerate the underlying geometry or make its target brief unambiguous."
+                    for numeral in stalled
+                ],
+                "expected": sorted(expected_numerals, key=_numeral_order),
+                "observed": sorted(expected_numerals, key=_numeral_order),
+                "incorrect": pending, "missing": [], "unexpected": [],
+                "duplicates": [], "labels": [], "stalled": stalled,
+                "review_count": MARKED_ANCHOR_REVIEW_COUNT,
+                "inspection_rounds": marked_attempt,
+                "prompt_version": MARKED_ANCHOR_PROMPT_VERSION,
+            }
+            _marked_progress_put(
+                raw_png, label=label, caption=caption, numerals=numerals,
+                anchors=anchors, certificates=marked_certificates,
+                attempts=marked_attempt, coordinate_history=coordinate_history)
+            break
         if marked_attempt >= MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS:
-            pending = sorted(
-                {entry["numeral"] for entry in numeral_entries(numerals)} -
-                set(marked_certificates), key=_numeral_order)
             marked = {
                 "ok": False, "inspected": True,
                 "summary": "The durable endpoint correction limit was exhausted.",
