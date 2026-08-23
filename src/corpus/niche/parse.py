@@ -626,28 +626,83 @@ def parse_source(
     raise ValueError(f"unsupported patent source media type: {media_type or 'unknown'}")
 
 
+def _mapping(value) -> dict:
+    """A stored field that should be an object, when the source recorded something else."""
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def item_text(item) -> str:
+    """The technical text of a claim or paragraph in any shape a source has ever stored it in."""
+    if isinstance(item, Mapping):
+        return str(item.get("text") or item.get("raw_text") or "")
+    if isinstance(item, (list, tuple)):
+        return " ".join(str(part) for part in item if part)
+    return str(item or "")
+
+
+def coerce_claims(values, language: str = "") -> list[dict]:
+    """Claims as objects, whatever the stored shape was.
+
+    A source that recorded its claims as plain strings is not a defect for the chunker to
+    discover: the chunker reads `claim["text"]` and a string there raises AttributeError, which
+    is exactly how 19,403 publications failed to become chunks."""
+    items = [item for item in (values or []) if item or item == 0]
+    if not items:
+        return []
+    if all(isinstance(item, Mapping) for item in items):
+        return [dict(item) for item in items]
+    return normalize_claims(items, language)
+
+
+def coerce_paragraphs(values, language: str = "") -> list[dict]:
+    """Description paragraphs as objects, preserving boundaries and any location a source gave."""
+    output = []
+    for index, item in enumerate(values or [], 1):
+        paragraph = dict(item) if isinstance(item, Mapping) else {"text": item_text(item)}
+        text = _clean_text(paragraph.get("text") or paragraph.get("raw_text") or "")
+        if not text:
+            continue
+        paragraph_id = str(paragraph.get("id") or paragraph.get("paragraph_id") or f"p{index:05d}")
+        output.append({
+            "id": paragraph_id,
+            "text": text,
+            "section": str(paragraph.get("section") or ""),
+            "page": paragraph.get("page"),
+            "language": str(paragraph.get("language") or language),
+            "source_location": str(
+                paragraph.get("source_location") or f"paragraph:{paragraph_id}"
+            ),
+        })
+    return output
+
+
 def merge_parsed(existing: dict | None, incoming: dict) -> dict:
     """Merge complementary parsed sources without blanking richer technical text."""
     if not existing:
-        return incoming
+        return {
+            **incoming,
+            "claims": coerce_claims(incoming.get("claims"), str(incoming.get("language") or "")),
+            "description_paragraphs": coerce_paragraphs(
+                incoming.get("description_paragraphs"), str(incoming.get("language") or "")
+            ),
+        }
     merged = dict(existing)
     for key in ("title", "abstract"):
         old, new = str(existing.get(key) or ""), str(incoming.get(key) or "")
         merged[key] = new if len(new) > len(old) else old
     merged["family_id"] = incoming.get("family_id") or existing.get("family_id") or ""
     merged["language"] = existing.get("language") or incoming.get("language") or ""
+    language = str(merged["language"] or "")
 
-    def richer(key):
-        old = list(existing.get(key) or [])
-        new = list(incoming.get(key) or [])
-        old_score = (sum(len(str(item.get("text") or item.get("raw_text") or item))
-                         for item in old), len(old))
-        new_score = (sum(len(str(item.get("text") or item.get("raw_text") or item))
-                         for item in new), len(new))
+    def richer(key, coerce):
+        old = coerce(existing.get(key), language)
+        new = coerce(incoming.get(key), language)
+        old_score = (sum(len(item_text(item)) for item in old), len(old))
+        new_score = (sum(len(item_text(item)) for item in new), len(new))
         return new if new_score > old_score else old
 
-    merged["claims"] = richer("claims")
-    merged["description_paragraphs"] = richer("description_paragraphs")
+    merged["claims"] = richer("claims", coerce_claims)
+    merged["description_paragraphs"] = richer("description_paragraphs", coerce_paragraphs)
 
     def deduplicated(values):
         seen = set()
@@ -668,19 +723,23 @@ def merge_parsed(existing: dict | None, incoming: dict) -> dict:
         merged[key] = deduplicated([
             *(existing.get(key) or []), *(incoming.get(key) or [])
         ])
-    dates = dict(existing.get("dates") or {})
-    for key, value in (incoming.get("dates") or {}).items():
+    dates = _mapping(existing.get("dates"))
+    for key, value in _mapping(incoming.get("dates")).items():
         if value and not dates.get(key):
             dates[key] = value
     merged["dates"] = dates
-    histories = list(existing.get("source_history") or [existing.get("source") or {}])
-    new_source = incoming.get("source") or {}
+    histories = [
+        _mapping(entry)
+        for entry in (existing.get("source_history") or [existing.get("source")])
+        if entry
+    ]
+    new_source = _mapping(incoming.get("source"))
     if new_source and new_source not in histories:
         histories.append(new_source)
-    merged["source"] = incoming.get("source") or existing.get("source") or {}
+    merged["source"] = new_source or _mapping(existing.get("source"))
     merged["source_history"] = histories
-    old_complete = existing.get("completeness") or {}
-    new_complete = incoming.get("completeness") or {}
+    old_complete = _mapping(existing.get("completeness"))
+    new_complete = _mapping(incoming.get("completeness"))
     merged["completeness"] = {
         key: bool(old_complete.get(key) or new_complete.get(key))
         for key in (
