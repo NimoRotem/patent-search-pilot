@@ -1347,6 +1347,23 @@ def test_pixel_grounding_snaps_an_exterior_object_anchor_to_visible_ink():
     assert 495 <= anchors[0]["x"] <= 505 and 590 <= anchors[0]["y"] <= 610
 
 
+def test_pixel_grounding_rejects_an_endpoint_on_the_sheet_boundary():
+    image = Image.new("RGB", (1000, 1000), "white")
+    ImageDraw.Draw(image).line((100, 13, 900, 13), fill="black", width=5)
+    out = io.BytesIO()
+    image.save(out, format="PNG")
+
+    _, audit = draft_figures._ground_anchors_to_pixels(
+        out.getvalue(), ["14 = first side"], [{
+            "numeral": "14", "x": 750, "y": 13, "visible": True,
+            "evidence": "a point on the top horizontal edge line of the slab",
+        }])
+
+    assert audit["ok"] is False
+    assert audit["ungrounded"][0]["numeral"] == "14"
+    assert "sheet boundary" in audit["ungrounded"][0]["reason"]
+
+
 def test_pixel_grounding_keeps_enclosed_bodies_and_intentional_empty_spaces():
     image = Image.new("RGB", (1000, 1000), "white")
     ImageDraw.Draw(image).rectangle((200, 200, 800, 600), outline="black", width=8)
