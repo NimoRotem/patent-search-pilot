@@ -103,6 +103,7 @@ _ARBITRARY_EXACT_ENDPOINT_TARGET_RE = re.compile(
     r"(?:rectangle|ring|band|line|edge|face|surface|member|shape|body)\b"
     r"))[^.\n]*",
     re.IGNORECASE)
+_LEGACY_FIGURE_LABEL_LIMIT = 60
 #  The phrase is captured in a LOOKAHEAD so the scan consumes only the article.  Consuming the
 #  noun phrase as well was a real defect: in "a tool comprising a body, a pump", the first match
 #  swallowed "tool comprising a body", so "a body" was never seen as an introduction and every
@@ -534,6 +535,21 @@ def _figure_checks(sections: Mapping[str, str],
         if len(caption) > MAX_FIGURE_BRIEF_CHARS:
             brief_issues.append(
                 f"{label}: {len(caption)} characters (maximum {MAX_FIGURE_BRIEF_CHARS})")
+        if len(label) == _LEGACY_FIGURE_LABEL_LIMIT:
+            ending = re.search(r"([A-Za-z]{3,})$", label)
+            fragment = ending.group(1).lower() if ending else ""
+            caption_words = {
+                word.lower() for word in re.findall(r"[A-Za-z]{3,}", caption)
+            }
+            completions = sorted(
+                word for word in caption_words
+                if len(word) > len(fragment) and word.startswith(fragment)
+            )
+            if fragment and fragment not in caption_words and completions:
+                brief_issues.append(
+                    f"{label}: label appears cut off mid-word at the legacy "
+                    f"{_LEGACY_FIGURE_LABEL_LIMIT}-character limit; complete "
+                    f"{fragment!r}, for example as {completions[0]!r}")
         if _CONTRADICTORY_ENDPOINT_TARGET_RE.search(caption):
             brief_issues.append(
                 f"{label}: contradictory endpoint target places a point on a surface and "
