@@ -288,6 +288,10 @@ _EMPTY_ANCHOR_PART_RE = re.compile(
 _LINE_ANCHOR_PART_RE = re.compile(
     r"\b(?:boundary|cable|cord|edge|electrical supply|handle|line|loop|path|"
     r"pulling element|ring)\b", re.IGNORECASE)
+_EXPLICIT_LINE_TARGET_RE = re.compile(
+    r"(?:\b(?:on|along|at)\b[^.;|]{0,80}\b(?:boundary|edge|line|centerline)\b|"
+    r"\b(?:cable|cord|handle|loop|path|pulling element|ring|cross ?bar|outline|curve|"
+    r"stroke)\b)", re.IGNORECASE)
 _MAX_ANCHOR_SNAP = 220
 
 _SCHEMA = (
@@ -1150,7 +1154,10 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         part = parts.get(numeral, "")
         is_exterior = bool(exterior[pixel_y, pixel_x])
         is_empty_space = bool(_EMPTY_ANCHOR_PART_RE.search(part))
-        requires_ink = bool(_LINE_ANCHOR_PART_RE.search(part)) and not is_empty_space
+        evidence = str(item.get("evidence") or "")
+        requires_ink = bool(
+            _LINE_ANCHOR_PART_RE.search(part) or _EXPLICIT_LINE_TARGET_RE.search(evidence)
+        ) and not is_empty_space
         if is_exterior and is_empty_space:
             allowed_spaces.append({"numeral": numeral, "part": part, "x": x, "y": y})
         elif is_exterior or requires_ink:
@@ -2601,12 +2608,18 @@ def annotate_png(png: bytes, label: str, anchors, *, scale: float = 1.0) -> byte
             text_x = 28 if side_name == "left" else canvas.width - 28 - width
             text_y = y - font_size // 2
             line_x = text_x + width + 8 if side_name == "left" else text_x - 8
-            routes.append((line_x, y, target_x, target_y, text_x, text_y, numeral))
+            preserve_target = bool(_EXPLICIT_LINE_TARGET_RE.search(
+                str(item.get("evidence") or "")))
+            routes.append((
+                line_x, y, target_x, target_y, text_x, text_y, numeral, preserve_target))
     halo_radius = dot_radius + 4
-    for _line_x, _y, target_x, target_y, _text_x, _text_y, _numeral in routes:
+    for (_line_x, _y, target_x, target_y, _text_x, _text_y, _numeral,
+         preserve_target) in routes:
+        if preserve_target:
+            continue
         draw.ellipse((target_x - halo_radius, target_y - halo_radius,
                       target_x + halo_radius, target_y + halo_radius), fill="white")
-    for line_x, y, target_x, target_y, text_x, text_y, numeral in routes:
+    for line_x, y, target_x, target_y, text_x, text_y, numeral, _preserve_target in routes:
         draw.line((line_x, y, target_x, target_y), fill="black",
                   width=max(2, font_size // 10))
         draw.ellipse((target_x - dot_radius, target_y - dot_radius,

@@ -1269,6 +1269,24 @@ def test_pixel_grounding_keeps_a_planar_surface_endpoint_inside_its_region(part)
     assert (anchors[0]["x"], anchors[0]["y"]) == (150, 150)
 
 
+def test_pixel_grounding_snaps_a_face_endpoint_when_evidence_requires_a_contact_line():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((100, 100, 900, 900), outline="black", width=8)
+    draw.line((100, 500, 900, 500), fill="black", width=8)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["26 = bearing face"], [{
+            "numeral": "26", "x": 300, "y": 540, "visible": True,
+            "evidence": "a point on the contact line where the leg meets the base",
+        }])
+
+    assert audit["ok"] is True and audit["adjusted"][0]["numeral"] == "26"
+    assert 495 <= anchors[0]["y"] <= 505
+
+
 def test_closed_region_audit_enforces_an_explicit_exact_shape_count():
     image = Image.new("RGB", (1000, 1000), "white")
     draw = ImageDraw.Draw(image)
@@ -1580,6 +1598,26 @@ def test_terminal_dot_has_a_white_halo_when_it_lands_on_black_geometry():
 
     assert output.getpixel((target_x, target_y))[0] < 32
     assert output.getpixel((target_x, target_y + 8))[0] > 240
+
+
+def test_terminal_dot_does_not_erase_an_explicit_boundary_target():
+    image = Image.new("RGB", (640, 420), "white")
+    ImageDraw.Draw(image).line((0, 210, 639, 210), fill="black", width=6)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+    anchors = [{
+        "numeral": "26", "x": 500, "y": 500, "visible": True,
+        "evidence": "a point on the contact line where the leg meets the base",
+    }]
+    layout = draft_figures._annotation_layout(raw.getvalue(), anchors, 1.0)
+
+    output = Image.open(io.BytesIO(
+        draft_figures.annotate_png(raw.getvalue(), "FIG. 2", anchors)))
+    target_x = layout["source_x"] + round(500 * layout["source"].width / 1000)
+    target_y = layout["source_y"] + round(500 * layout["source"].height / 1000)
+
+    assert output.getpixel((target_x, target_y))[0] < 32
+    assert output.getpixel((target_x + 9, target_y))[0] < 32
 
 
 def test_center_endpoints_route_opposite_a_right_endpoint_on_the_same_row():
