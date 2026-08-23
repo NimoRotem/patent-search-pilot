@@ -85,7 +85,7 @@ cd ~/patent-figures/figures_app
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ./run.sh                       # :8637, behind nginx at /figures
 
-.venv/bin/python -m pytest tests/ -q      # 65 tests, no network, no model calls
+.venv/bin/python -m pytest tests/ -q      # 74 tests, no network, no model calls
 .venv/bin/python -m eval.run --dataset test_patents/golden
 ```
 
