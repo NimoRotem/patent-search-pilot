@@ -531,6 +531,16 @@ def test_compose_rejects_a_tight_cluster_of_six_uncertified_coordinates(monkeypa
     assert (final_anchors[0]["x"], final_anchors[0]["y"]) == (400, 565)
 
 
+def test_six_rejected_repairs_snapped_to_the_same_coordinate_are_stalled():
+    anchors = [{"numeral": "26", "x": 500, "y": 520, "visible": True}]
+    history = {}
+
+    for _attempt in range(draft_figures.MARKED_ANCHOR_STALL_WINDOW):
+        draft_figures._record_rejected_anchor_coordinates(history, anchors, ["26"])
+
+    assert draft_figures._stalled_marked_anchor_numerals(history, ["26"]) == ["26"]
+
+
 def test_cross_provider_veto_rejects_unanimous_same_provider_certificate(monkeypatch):
     raw = blank_png(1000, 1000)
     anchors = [{"numeral": "10", "x": 400, "y": 565, "visible": True,
