@@ -70,15 +70,38 @@ def _display(pub, allow_fetch=True):
         return disp
 
 
+def _is_latin(name):
+    """True when every letter in `name` can be typeset by the filing font.
+
+    The PDF is Times-Roman, which has no CJK glyphs: a kanji name came out as a row of solid black
+    boxes on a paper filed at the USPTO. U+2E80 is the start of the CJK radicals block, above every
+    Latin, accented Latin and punctuation codepoint we care about.
+    """
+    return all(ord(c) < 0x2E80 for c in str(name or ""))
+
+
 def _first_inventor(disp):
+    """The first named inventor, in a script a US filing can carry.
+
+    THE ROMANISED NAME IS ALREADY IN THE RECORD and was being passed over. For JP-2019155534-A the
+    enrichment holds `["勇星 木村", "Yusei Kimura", "勇星 木村", ...]` and this returned the first
+    entry, so the filed PDF showed black boxes where the inventor's name belongs. Nothing is
+    transliterated here: a kanji reading is ambiguous and inventing one puts a name on a filing
+    that nobody verified. We only PREFER a Latin form the source already supplied, and fall back to
+    the original when there is none, which the renderer then typesets in a font that can draw it.
+    """
     inv = disp.get("inventors") or []
     if isinstance(inv, str):
         inv = [inv]
+    names = []
     for i in inv:
         name = (i.get("name") if isinstance(i, dict) else str(i or "")).strip()
-        if name:
+        if name and name not in names:
+            names.append(name)
+    for name in names:
+        if _is_latin(name):
             return name
-    return ""
+    return names[0] if names else ""
 
 
 def _us_style(pub):
@@ -382,7 +405,7 @@ _SYS = (
 )
 
 
-def phrase(doc, tier="strong"):
+def phrase(doc, tier="strong", model=None):
     """Fill in `summary` and each row's `disclosure`, grounded in the cells. Best-effort.
 
     A failure here must not lose the document: every row already carries the reader's own note,
@@ -407,8 +430,10 @@ def phrase(doc, tier="strong"):
                  for r in doc["rows"]],
     }
     try:
+        #  `model`, when a person chose one in the rebuild dialog, pins this call to it
+        #  instead of letting the strong tier pick. Unset is the default behaviour.
         got = llm.chat_json(_SYS, json.dumps(payload, ensure_ascii=False),
-                            max_tokens=8000, tier=tier) or {}
+                            max_tokens=8000, tier=tier, provider=model) or {}
     except Exception:
         traceback.print_exc()
         return doc
@@ -720,7 +745,8 @@ def office_action_doc(cand, subject, n=1):
     }
 
 
-def build(deep, pubs, subject, start_at=1, do_phrase=True, on_progress=None, report=None):
+def build(deep, pubs, subject, start_at=1, do_phrase=True, on_progress=None,
+          report=None, model=None):
     """-> [document model] ready to render, one per requested publication.
 
     A `pub` prefixed `OA:` is a file-wrapper document, not a publication: it is built from the
@@ -762,7 +788,7 @@ def build(deep, pubs, subject, start_at=1, do_phrase=True, on_progress=None, rep
             "rows": rows,
         }
         if do_phrase:
-            phrase(doc)
+            phrase(doc, model=model)
         if not doc["summary"]:
             t = (b.get("title") or "").strip()
             doc["summary"] = ("This document discloses %s%s." % (t[0].lower(), t[1:]) if t

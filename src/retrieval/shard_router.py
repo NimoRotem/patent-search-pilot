@@ -67,16 +67,25 @@ def domain_of(symbol):
 def domains_of_publications(conn, pids, weights=None):
     """{domain: weight} for a set of local publication ids.
 
-    A publication with several symbols spreads its weight across their domains rather than voting
-    once per symbol, so a heavily classified document does not out-vote a sparsely classified one
-    (that miscount is exactly what makes `channel_cpc`'s count(*) ranking meaningless). A
-    publication with NO classification votes for the unclassified route, which is how 20.6% of the
-    corpus keeps a way in.
+    A publication with several symbols spreads its weight across the DOMAINS those symbols name,
+    rather than voting once per symbol, so a heavily classified document does not out-vote a
+    sparsely classified one (that miscount is exactly what makes `channel_cpc`'s count(*) ranking
+    meaningless). A publication with NO classification votes for the unclassified route, which is
+    how 20.6% of the corpus keeps a way in.
+
+    `weights` IS THE ELECTORAL ROLL, not a set of adjustments. A pid that is absent from a supplied
+    weights map does not vote at all. It used to fall back to a full vote of 1.0, which inverted
+    the family dedup it exists to implement: `_rank_weighted` suppresses every member of a family
+    after the first, so the five suppressed members of a six-member family each voted 1.0 while the
+    one that survived voted 1/41. MEASURED on the regression that found it: one family took 98.6%
+    of the routing distribution away from a genuinely distinct candidate.
     """
     pids = [p for p in (pids or []) if not isinstance(p, str)]
+    w = dict(weights or {})
+    if w:
+        pids = [p for p in pids if float(w.get(p, 0.0)) > 0]
     if not pids:
         return {}
-    w = dict(weights or {})
     rows = {}
     with conn.cursor() as c:
         c.execute("SELECT publication_id, symbol FROM classifications "
@@ -124,6 +133,14 @@ def historical_prior(conn, refresh=False):
             counts = {}
         _PRIOR = _normalise(counts)
         return _PRIOR
+
+
+def reset_prior():
+    """Drop the cached corpus-wide prior. For tests and for a process that has just been told the
+    corpus changed; nothing on the search path should call it."""
+    global _PRIOR
+    with _PRIOR_LOCK:
+        _PRIOR = None
 
 
 def _normalise(d):
@@ -229,6 +246,14 @@ _BACKEND = _NoWake()
 def register_backend(backend):
     global _BACKEND
     _BACKEND = backend or _NoWake()
+
+
+def backend():
+    return _BACKEND
+
+
+def available() -> bool:
+    return not isinstance(_BACKEND, _NoWake)
 
 
 def wake(routes):

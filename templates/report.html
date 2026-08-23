@@ -85,21 +85,11 @@
   <div id="refiningStages" hidden></div>
   {% endif %}
 
-  {#  Kept above the results, and kept short. This is not a caveat about the tool, it is a fact
-      about THIS query: it fell outside the indexed field, so the list below is adjacent art.
-      The reason remains available on hover or click without consuming a full line. #}
-  {% if v.domain and v.domain.should_federate %}
-  <details class="scopewarning">
-    <summary><span class="ci" aria-hidden="true">⚠</span>
-      <span>{% if v.domain.in_domain %}Weak indexed match{% else %}Outside indexed field{% endif %}</span>
-      <span class="vh">Show why these results need extra care</span>
-    </summary>
-    <div class="scopewarning-pop" role="note">
-      <b>{% if v.domain.in_domain %}Weak match for the indexed field{% else %}Outside the indexed field{% endif %}</b>
-      <p>{{ v.domain.reason }} Treat these as adjacent art.</p>
-    </div>
-  </details>
-  {% endif %}
+  {#  The "Outside indexed field" banner was removed on request, 2026-08-23. Every search fans out
+      to ten external databases now, so a query outside the local corpus is no longer answered from
+      the corpus alone, and warning about it on every such report was telling the reader something
+      that had stopped being true. The verdict is still computed and still recorded on the report;
+      it is simply not shown as a banner. #}
 
   <!-- ── compact header ──────────────────────────────────────────────────── -->
   <div class="rhead">
@@ -367,8 +357,13 @@
         {% endfor %}
       </ul>
       <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}/concise.zip">Download all as .zip</a>
+      {#  Opens the settings dialog rather than jumping straight to the builder: a rebuild spends a
+          model call per document, and which model, which prompt and whether the compliance pass
+          runs are exactly what somebody wants to see before spending it. The dialog's own button
+          goes on to the builder, so the old route is one click further, never unreachable. #}
       {% if current_user and not read_only %}
-      <a class="btn ghost sm" href="{{ request.script_root }}/report/{{ v.slug }}/concise">Manage / rebuild</a>
+      <button type="button" class="btn ghost sm" data-buildsettings="{{ v.slug }}"
+              aria-haspopup="dialog">Manage / rebuild</button>
       {% endif %}
     </section>
     {% endif %}
@@ -452,8 +447,10 @@
         documents that carry it with a quote, a location and a date. The element grid below still
         answers the other question (what does THIS reference teach) and is the only view a
         disclosure-only search has. #}
+    {#  Shut, like every other section here. Open, these two put the ledger and the Office history
+        between the header and the first result, which is not what a reader came to the page for. #}
     {% if v.prosecution and v.prosecution.available %}
-    <details class="tail ledgerblock" open>
+    <details class="tail ledgerblock">
       <summary><span class="th">What the Office already decided</span>
         <span class="ts">{% if v.prosecution.subject_app %}application {{ v.prosecution.subject_app }} · {% endif %}
           {{ v.prosecution.family|length }} relative(s) ·
@@ -496,7 +493,11 @@
           {% for d in v.prosecution.documents %}
           <div class="llim"><div class="lltext"><b>{{ d.description }}</b>
             <span class="cc">{{ d.app }} · {{ d.date }}</span>
-            {% if d.pdf %}<a class="pnlink" href="{{ d.pdf }}" target="_blank" rel="noopener">PDF</a>{% endif %}</div>
+            {#  Through our own proxy, never ODP's `downloadUrl`. That URL needs an X-API-KEY
+                header, which a link cannot carry, so linking it directly made every PDF here a
+                403. `d.pdf_href` is built server-side; the raw `d.pdf` is kept on the record for
+                the fetcher and is not a link. #}
+            {% if d.pdf_href %}<a class="pnlink" href="{{ d.pdf_href }}" target="_blank" rel="noopener">PDF</a>{% endif %}</div>
             {% if d.summary %}<div class="llq" style="margin-top:.2rem">{{ d.summary }}</div>{% endif %}</div>
           {% endfor %}
         </div>
@@ -512,7 +513,7 @@
     {% endif %}
 
     {% if v.ledger and v.ledger.available %}
-    <details class="tail ledgerblock" open>
+    <details class="tail ledgerblock">
       <summary><span class="th">Claim ledger</span>
         <span class="ts">{{ v.ledger.n_limitations }} limitations across {{ v.ledger.n_claims }} claims ·
           {{ v.ledger.counts.get('covered', 0) }} covered ·
@@ -793,10 +794,12 @@
           </div>
         </div>
         </section>
-        <section class="overviewsection">
-          <h4>Search scope and measured reliability</h4>
-        {% with variant='results' %}{% include "_scope.html" %}{% endwith %}
-        </section>
+        {#  The scope-and-reliability block was removed from the report on request, 2026-08-23.
+            It is still rendered in full on /about and on the out-of-domain page, which is where a
+            reader goes to ask what the tool covers. Repeating it at the foot of every report, with
+            the recall figure and the audit bases, read as a disclaimer on the reader's own result.
+            The coverage facts that belong to THIS search are in "Coverage, text recovery and
+            search scope" just above, and /coverage carries the corpus and the source list. #}
       </div>
     </details>
   </div>
@@ -919,6 +922,40 @@
       <button type="button" class="btn ghost sm danger" id="publishRevoke" hidden>Revoke link</button>
       <span class="grow"></span>
       <button class="btn ghost sm" value="close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+{#  BUILD SETTINGS. A rebuild spends a model call per document, so the things that change its
+    output are shown before it starts rather than being implicit: which model, the exact prompt the
+    drafting pass sends, and the two knobs. The form posts to the same builder route the link used
+    to go to, so nothing new is reachable from here that was not reachable before. #}
+<dialog id="buildDlg" class="dlg">
+  <form id="buildForm" method="post"
+        action="{{ request.script_root }}/report/{{ v.slug }}/concise"
+        class="stack" style="min-width:min(42rem,92vw)">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h3 class="h3" style="margin-top:0">Rebuild the submission documents</h3>
+    <p class="small muted" style="margin-top:0">One model call per document, phrasing the
+      "Relevant disclosure" column from evidence this search already verified. Nothing here invents
+      a finding: the rows, quotations and coordinates are fixed before this runs.</p>
+
+    <label class="small" for="buildModel"><b>Model</b></label>
+    <select id="buildModel" name="model" class="input" style="max-width:30rem"></select>
+    <p class="small muted" id="buildModelNote"></p>
+
+    <details>
+      <summary class="small"><b>The prompt this sends</b></summary>
+      <p class="small muted" id="buildPromptWhere" style="margin:.4em 0 .2em"></p>
+      <pre id="buildPrompt" class="promptbox"></pre>
+    </details>
+
+    <div id="buildKnobs" class="stack" style="gap:.5rem"></div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+      <button type="submit" class="btn sm">Choose documents and rebuild</button>
+      <span class="grow"></span>
+      <button type="button" class="btn ghost sm" id="buildClose">Cancel</button>
     </div>
   </form>
 </dialog>

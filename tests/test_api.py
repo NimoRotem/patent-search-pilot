@@ -51,19 +51,38 @@ def test_history_lists_examples_and_past_searches(app_client):
     assert "Your searches" in html
 
 
-def test_results_page_keeps_the_scope_disclosure(app_client):
-    """Clearing the SEARCH page must not clear the RESULTS page. This is the safeguard that stops
-    a thin result set being read as a clear field, and it stays at the point of decision."""
+def test_the_scope_disclosure_is_not_on_the_report(app_client):
+    """REVERSED ON REQUEST, 2026-08-23, and recorded here rather than deleted.
+
+    This used to assert the opposite: the scope-and-reliability block was repeated at the foot of
+    every report so a thin result set could not be read as a clear field. Two things changed. Every
+    search now fans out to ten external databases, so "one indexed field, measured recall well
+    below completeness" had stopped describing what a search does; and the block sat under the
+    reader's OWN result, where a recall figure and three audit bases read as a disclaimer on their
+    findings rather than as the scope of the tool.
+
+    The disclosure itself is unchanged and is still rendered IN FULL where somebody goes to ask
+    what the tool covers, which the next assertions hold shut. Removing it there too would be a
+    different decision and nobody has made it.
+    """
     html = app_client.get(f"/report/{GOLD}").get_data(as_text=True)
-    assert "Search scope and measured reliability" in html
-    assert "Absence of results is not evidence of absence" in html
+    assert "Search scope and measured reliability" not in html
+    assert "Absence of results is not evidence of absence" not in html
+    assert "Outside indexed field" not in html
+
+    body = app_client.get("/about").get_data(as_text=True)
+    assert "Search scope and measured reliability" in body
+    assert "Absence of results is not evidence of absence" in body
 
 
 def test_gold_report_renders(app_client):
     r = app_client.get(f"/report/{GOLD}")
     assert r.status_code == 200
     html = r.get_data(as_text=True)
-    assert "claim chart" in html.lower()
+    #  The grid, by its own heading. This used to look for the words "claim chart", which reached
+    #  the page only through the scope block's "rationales and claim charts are drafting aids"
+    #  sentence, so it was passing on the disclaimer rather than on the grid being rendered.
+    assert ("Claim × prior-art grid" in html) or ("Element × reference grid" in html)
     assert html.count('class="refcard"') >= 10
 
 

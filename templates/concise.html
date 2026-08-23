@@ -67,6 +67,18 @@
           <a href="{{ url_for('concise_document', slug=slug, n=d.n) }}"><b>Preview &amp; edit</b></a> ·
           <a href="{{ url_for('concise_download', slug=slug, name=d.pdf) }}">PDF</a> ·
           <a href="{{ url_for('concise_download', slug=slug, name=d.docx) }}">DOCX</a>
+          {#  Read these HERE. They are no longer printed into the paper: one of them said, on a
+              document filed at the Office, that quotations had failed verification. #}
+          {% if d.notes %}
+          <details class="small" style="margin-top:.35rem">
+            <summary>{{ d.notes|length }} note{{ '' if d.notes|length == 1 else 's' }} to check before filing</summary>
+            <ul style="margin:.3rem 0 0 1.1rem;line-height:1.5">
+              {% for label, text in d.notes %}<li><b>{{ label }}.</b> {{ text }}</li>{% endfor %}
+            </ul>
+            <p class="muted" style="margin:.35rem 0 0">These are for you, not for the examiner, and
+              are deliberately not printed into the PDF or the DOCX.</p>
+          </details>
+          {% endif %}
         </td>
       </tr>
     {% endfor %}

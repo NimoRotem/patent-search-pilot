@@ -1553,6 +1553,19 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                              shared_process=shared, report=rep)
         except Exception:
             traceback.print_exc()
+        #  THE PUBLIC LINK, MINTED WITH THE REPORT. An owner who shares every report should not
+        #  have to click Publish on each one. Guarded twice: only for the account that owns the
+        #  search, and only when that account has set a share password, because a link with no
+        #  password would turn every finished search into a document anyone holding the URL can
+        #  read. `autopublish` returns {} and says nothing when either is missing.
+        try:
+            owner_id = rep.get("owner_user_id") or accounts.search_owner(slug)
+            if owner_id:
+                import public_report
+                public_report.autopublish(int(owner_id), slug,
+                                          title=(rep.get("query") or "")[:200])
+        except Exception:
+            traceback.print_exc()
         if "PYTEST_CURRENT_TEST" not in os.environ:
             try:
                 #  ONCE PER RUN, NOT ONCE PER ATTEMPT. A run that is retried three times owes the
@@ -2526,6 +2539,84 @@ def patent_lookup():
     return redirect(url_for("auth.login", next=request.script_root + "/patentlookup"))
 
 
+# --------------------------------------------------------------------------- EU designs
+#  A registered Community design is prior art for APPEARANCE, and it is the one EU right that
+#  neither Google Patents nor BigQuery carries. It is answered here rather than inside a patent
+#  report on purpose: an RCD has no claims, no description and no abstract, so routing it through
+#  the normal candidate path would insert permanently text-less rows into the corpus (see the
+#  note at the top of src/sources/euipo.py) and `webview.substance_order` drops design families
+#  from a patent report anyway. Separate question, separate page, no corpus write.
+_DESIGN_NUMBER_RE = re.compile(r"^\d{6,9}-\d{4}$")
+
+
+def _design_number_or_404(design_number):
+    """A design number, validated. It is interpolated into an upstream URL path, so anything
+    that is not exactly `NNNNNNNNN-NNNN` is refused rather than escaped."""
+    num = str(design_number or "").strip()
+    if not _DESIGN_NUMBER_RE.match(num):
+        abort(404)
+    return num
+
+
+@app.route("/designs")
+def designs_page():
+    """Search EU registered designs by what the product IS."""
+    if not auth.auth_enabled(app) or auth.current_user() or auth.is_loopback():
+        return render_template("designs.html", title="EU registered designs")
+    return redirect(url_for("auth.login", next=request.script_root + "/designs"))
+
+
+@app.route("/api/designs")
+def api_designs():
+    """Registered Community designs matching a phrase, optionally bounded to prior art.
+
+    `before` is the subject's priority date: a design applied for on or after it cannot
+    anticipate, and bounding upstream keeps the rows that could never qualify off the wire.
+    """
+    if auth.auth_enabled(app) and not (auth.current_user() or auth.is_loopback()):
+        abort(401)
+    from sources import euipo as _euipo
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify({"designs": [], "error": "no query"}), 400
+    before = (request.args.get("before") or "").strip()
+    try:
+        res = _euipo.search_designs(q, before=before)
+    except ValueError as exc:
+        #  A query with no distinctive words. The adapter refuses it rather than matching the
+        #  whole register, and saying so is more use than an empty list.
+        return jsonify({"designs": [], "error": str(exc)}), 400
+    except Exception as exc:                                              # noqa: BLE001
+        #  A dead credential or a changed contract must be VISIBLE. Reporting zero designs
+        #  here would be indistinguishable from "the EU register holds nothing like this".
+        traceback.print_exc()
+        return jsonify({"designs": [], "error": f"{type(exc).__name__}: {exc}"}), 502
+    return jsonify(res)
+
+
+@app.route("/api/designs/<design_number>/view/<int:order>")
+def api_design_view(design_number, order):
+    """One drawing of a design.
+
+    Proxied rather than linked: the EUIPO image endpoints need our OAuth token and our client
+    id, so the browser cannot fetch them itself. A registration is immutable once published,
+    so the response is cacheable for a long time and each drawing is fetched once per viewer.
+    """
+    if auth.auth_enabled(app) and not (auth.current_user() or auth.is_loopback()):
+        abort(401)
+    from sources import euipo as _euipo
+    num = _design_number_or_404(design_number)
+    if not 1 <= order <= 100:
+        abort(404)
+    thumb = request.args.get("full") != "1"
+    try:
+        blob = _euipo.design_view(num, order, thumbnail=thumb)
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        abort(404)
+    return Response(blob, mimetype="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
 @app.route("/api/search/<slug>/stats")
 def api_search_stats(slug):
     """What this search was and what it cost. Read on EXPAND, never for a whole list.
@@ -2550,6 +2641,17 @@ def api_search_stats(slug):
     p = run_stats.path_for(REPORTS, slug)
     rep = None if os.path.exists(p) else _load_report(slug)
     st = run_stats.load(REPORTS, slug, report=rep, seconds=seconds)
+    #  A receipt written before `sources` existed does not carry it, and which databases were
+    #  searched is exactly what a reader checking a result needs. Derived from the report, on
+    #  expand, for that one search: the same cost a search with no receipt at all already pays,
+    #  and only until its receipt is rewritten.
+    if not st.get("sources"):
+        try:
+            found = run_stats.sources_of(rep if rep is not None else _load_report(slug))
+            if found:
+                st = dict(st, sources=found)
+        except Exception:
+            traceback.print_exc()
     meta = {}
     try:
         mp = REPORTS / ("%s.meta.json" % slug)
@@ -2983,16 +3085,21 @@ def ranked_tail(slug):
     except ValueError:
         start, n = 0, 120
     window = fams[start:start + n]
-    deep = {}
-    try:
-        d = deep_analysis.result(slug, REPORTS) or {}
-        deep = d.get("by_pub") or {}
-    except Exception:
-        pass
+    #  THE READING RECORD LIVES ON THE REPORT, under `deep_rank.by_pub`. This used to ask
+    #  `deep_analysis.result(slug)` for a `by_pub` key that function has never produced, so the
+    #  Screened, Read and Cells columns were empty on EVERY report ever rendered by this page,
+    #  including ones where 324 of 340 references were read in full. The page exists to show that a
+    #  reference the pipeline found, read and ranked is not unreachable, and it was showing "-".
+    deep = ((rep.get("deep_rank") or {}).get("by_pub")) or {}
     rows = []
     try:
         with db.cursor() as cur:
-            reps = webview.resolve_family_reps(cur, window)
+            #  THROUGH THE REPORT for the second half of the same problem: resolving this window on
+            #  its own picked a different member of a family from the one the reading charted, so
+            #  `deep.get(pub)` would miss even once it is looking in the right place. Measured on
+            #  four dated reports, the two orderings disagreed on 14% to 36% of the top 180
+            #  families.
+            reps = webview.reps_for(cur, rep, window)
     except Exception:
         traceback.print_exc()
         reps = {}
@@ -4305,6 +4412,25 @@ def _safe_pub(pub):
     return bool(pub) and len(pub) <= 40 and bool(_PUB_RE.match(pub))
 
 
+#  ---- reference drawings ----------------------------------------------------------------------
+#  SERVED FROM /refdrawing/, NOT /figures/, and the reason is nginx rather than taste.
+#
+#  The figure compiler is a separate app mounted at `/figures/` on this host:
+#
+#      location ^~ /figures/ { proxy_pass http://patents_figures/; }   # 127.0.0.1:8637
+#
+#  `^~` wins over every regex location in nginx, so once that mount existed there was no pattern
+#  that could route `/figures/<pub>/<file>` back here. Every reference drawing on every report went
+#  to the compiler instead, which answered 302 to its own login, and a browser renders a redirected
+#  <img> as a broken one. That is why the whole page looked as though no drawings existed while 59
+#  of 60 cards had a figure resolved and on disk.
+#
+#  The old path stays registered below so anything already holding one keeps working; nothing
+#  emits it any more. `REFDRAW_PREFIX` is the single definition every producer reads.
+REFDRAW_PREFIX = "/refdrawing"
+
+
+@app.route("%s/<pub>/<path:fname>" % REFDRAW_PREFIX)
 @app.route("/figures/<pub>/<path:fname>")
 def figures(pub, fname):
     if not _safe_pub(pub) or not _FNAME_RE.match(fname):   # reject traversal / odd names early
@@ -4315,6 +4441,39 @@ def figures(pub, fname):
     if not (d / fname).exists():
         abort(404)
     return send_from_directory(d, fname)                    # Flask safe_join is the second guard
+
+
+#  A file-wrapper PDF sits behind USPTO ODP's API key. The report used to link ODP's own
+#  `downloadUrl` straight into the page, which is a 403 in a browser: the key travels as an
+#  `X-API-KEY` header and a link cannot carry one. Every "PDF" under Documents read was dead.
+#  Proxied here instead, with the key attached, for a reader who may already see the report.
+_ODP_DOC_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+@app.route("/odp-document/<appnum>/<docid>.pdf")
+def odp_document(appnum, docid):
+    """Stream one USPTO file-wrapper document. -> application/pdf
+
+    Reachable by anyone who can already read a report that cites it: the document is a public
+    Office paper, and the only thing being withheld is our API key.
+    """
+    if not (_ODP_DOC_RE.match(appnum) and _ODP_DOC_RE.match(docid)):
+        abort(404)
+    import family_dossier
+    import prosecution
+    blob = prosecution.fetch_pdf({"app": appnum, "code": "web",
+                                  "pdf": "%s/download/applications/%s/%s.pdf"
+                                         % (family_dossier.BASE, appnum, docid)})
+    if not blob:
+        #  Say which door closed. A bare 404 here reads as "no such document", and the usual cause
+        #  is a missing or spent API key on our side, which is our problem and not the reader's.
+        return Response(
+            "This Office document could not be fetched from the USPTO just now. "
+            "It is public: it can be read at https://patentcenter.uspto.gov/ under application "
+            "%s." % appnum, status=502, mimetype="text/plain")
+    return Response(blob, mimetype="application/pdf", headers={
+        "Content-Disposition": 'inline; filename="%s-%s.pdf"' % (appnum, docid),
+        "Cache-Control": "private, max-age=3600"})
 
 
 @app.route("/api/figs")
@@ -4767,7 +4926,7 @@ def api_more_references(slug):
     conn.autocommit = True
     cur = conn.cursor()
     try:
-        reps = webview.resolve_family_reps(cur, page)
+        reps = webview.reps_for(cur, rep, page)
     finally:
         conn.close()
     rows = []
@@ -5360,6 +5519,19 @@ def _concise_built(slug):
                 pass
             row["pub"] = bits[2]
     out = [r for r in by_stem.values() if r.get("pdf") or r.get("docx")]
+    #  THE FILING NOTES BELONG HERE, not on the paper. They used to be printed into the PDF under
+    #  an instruction to delete them before filing, and they were filed: one of them announced on
+    #  the face of an Office paper that quotations had failed verification. The model.json beside
+    #  each document carries the compliance record, so the notes are read back from there and
+    #  shown next to the download links, which is where the package is actually reviewed.
+    import concise_render
+    for r in out:
+        try:
+            mp = d / ("ConciseDescription_Doc%s_%s.model.json" % (r["n"], r["pub"]))
+            if mp.exists():
+                r["notes"] = concise_render.filing_notes(json.loads(mp.read_text()))
+        except Exception:
+            traceback.print_exc()
     out.sort(key=lambda r: r["n"])
     return out
 
@@ -5387,12 +5559,68 @@ def _concise_subject(slug, form=None):
             pub_no = pretty.split("Publication No.", 1)[1].strip()
     except Exception:
         pass
+    #  THE APPLICATION NUMBER IS ALREADY KNOWN, so do not make somebody retype it. The file
+    #  wrapper this search read names the application it belongs to; leaving the field blank is
+    #  how a filed paper came to read `Re: U.S. App No. US 2026/0070232 A1`, which is a
+    #  publication number wearing the words "application number".
+    app_no = (form.get("app_no") or "").strip()
+    if not app_no:
+        try:
+            rep = _load_report(slug) or {}
+            found = (((rep.get("prosecution") or {}).get("dossier") or {})
+                     .get("subject") or {}).get("app") or ""
+            app_no = _pretty_app_no(found)
+        except Exception:
+            traceback.print_exc()
     return {
-        "app_no": (form.get("app_no") or "").strip(),
+        "app_no": app_no,
         "pub_no": (form.get("pub_no") or pub_no or "").strip(),
         "title": (form.get("title") or "").strip(),
         "inventor": (form.get("inventor") or "").strip(),
     }
+
+
+def _pretty_app_no(raw):
+    """19318450 -> "19/318,450". A US serial is written series/serial, and the Office writes it
+    that way on every paper it sends. Anything that is not eight digits is returned untouched
+    rather than mangled into a shape it is not."""
+    digits = re.sub(r"\D", "", str(raw or ""))
+    if len(digits) != 8:
+        return str(raw or "").strip()
+    return "%s/%s,%s" % (digits[:2], digits[2:5], digits[5:])
+
+
+@app.route("/api/build-settings")
+def api_build_settings():
+    """What a rebuild will use, and what it could use instead.
+
+    Read by the Manage / rebuild dialog. It shows the model choice, the exact prompt the drafting
+    pass sends, and the knobs that change the output, because "rebuild" with no visible settings
+    asks somebody to spend a model call per document on trust.
+    """
+    import concise_description
+    import model_pool
+    return jsonify({
+        "models": model_pool.choices(),
+        "default_tier": "strong",
+        "default_note": ("Unset uses the strong tier, which picks the fastest healthy model in "
+                         "that pool at the moment of the call."),
+        "prompt": {
+            "name": "Relevant disclosure column, 37 CFR 1.290",
+            "where": "concise_description._SYS",
+            "max_tokens": 8000,
+            "text": concise_description._SYS,
+        },
+        "settings": [
+            {"key": "start_at", "label": "First document number",
+             "help": "Document numbering starts here. Use it when a package is filed in parts."},
+            {"key": "skip_compliance", "label": "Skip the compliance pass",
+             "help": "The compliance pass re-verifies every quotation against the reference's own "
+                     "stored text, checks prior-art status against the subject's filing date, and "
+                     "collapses one document per family. Skipping it is for a draft, never for a "
+                     "filing."},
+        ],
+    })
 
 
 @app.route("/report/<slug>/concise", methods=["GET", "POST"])
@@ -5453,6 +5681,18 @@ def concise_descriptions(slug):
     #  not touch `request` at all.
     start_at = int(request.form.get("start_at") or 1)
     skip_compliance = request.form.get("skip_compliance") == "1"
+    #  A model the reader picked in the rebuild dialog. Validated here rather than in the worker:
+    #  an unknown name must fail the request in front of the person who typed it, not eight
+    #  documents into a background build.
+    chosen_model = (request.form.get("model") or "").strip() or None
+    if chosen_model:
+        import model_pool
+        ok = {m["name"] for m in model_pool.choices() if m["available"]}
+        if chosen_model not in ok:
+            return render_template(
+                "concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
+                error=("%s is not a model this host can use right now. Available: %s"
+                       % (chosen_model, ", ".join(sorted(ok)) or "none"))), 400
     mode = "novelty"
     meta_p = REPORTS / ("%s.meta.json" % slug)
     if meta_p.exists():
@@ -5477,6 +5717,7 @@ def concise_descriptions(slug):
         try:
             docs = concise_description.build(
                 deep, pubs, subject, start_at=start_at, report=rep_for_pick,
+                model=chosen_model,
                 on_progress=lambda n, msg: _concise_set(slug, done=n, msg=msg))
             blocked, family_notes = [], []
             if not skip_compliance:
@@ -5518,6 +5759,12 @@ def concise_descriptions(slug):
                     traceback.print_exc()
                 (out / ("%s.model.json" % concise_render.filename(d, "x")[:-2])).write_text(
                     json.dumps(d, ensure_ascii=False, indent=1))
+            #  THE REST OF THE SUBMISSION. A folder of concise descriptions is one of the several
+            #  things 1.290(d) asks for, and nothing told the practitioner what the other ones
+            #  were. The non-English translation is the only gap nothing else can close.
+            _concise_set(slug, done=len(pubs) + len(docs),
+                         msg="Building the document list, statements and translations")
+            _concise_package(out, docs, subject)
             n = len(docs)
             _concise_set(slug, state="done", done=2 * len(pubs) + 1,
                          msg="%d document%s ready" % (n, "" if n == 1 else "s"))
@@ -5581,6 +5828,43 @@ def concise_document(slug, n):
                            error=err, saved=saved)
 
 
+def _concise_package(out, docs, subject):
+    """Write the document list, the statements, the translations and the README. Never raises.
+
+    A failure here must not lose the concise descriptions, which are the expensive part and are
+    already on disk by the time this runs.
+    """
+    import submission_package as sp
+    translations = {}
+    for d in docs:
+        if not sp.needs_translation(d):
+            continue
+        try:
+            got = sp.fetch_translation(d.get("pub"))
+        except Exception:                                                 # noqa: BLE001
+            traceback.print_exc()
+            got = {}
+        if got:
+            translations[d.get("pub")] = got
+            try:
+                (out / ("Translation_Doc%s_%s.pdf" % (
+                    d["n"], re.sub(r"[^A-Za-z0-9]+", "", d["pub"] or "doc")))).write_bytes(
+                        sp.translation_pdf(d, got, subject))
+            except Exception:
+                traceback.print_exc()
+    for name, fn in (("00_DocumentList.pdf", lambda: sp.document_list(docs, subject, translations)),
+                     ("01_Statements_and_Fee.pdf", lambda: sp.statements(docs, subject))):
+        try:
+            (out / name).write_bytes(fn())
+        except Exception:
+            traceback.print_exc()
+    try:
+        (out / "00_READ_ME_before_filing.txt").write_text(
+            sp.readme(docs, subject, translations), encoding="utf-8")
+    except Exception:
+        traceback.print_exc()
+
+
 @app.route("/report/<slug>/concise.zip")
 def concise_zip(slug):
     """Every filing artefact for this search in one archive.
@@ -5597,9 +5881,12 @@ def concise_zip(slug):
     import zipfile
     buf = _io.BytesIO()
     n = 0
+    #  THE WHOLE PACKAGE, not only the descriptions: the document list, the statements, the
+    #  translations and the note saying what a human still has to attach. The `.md` and
+    #  `.model.json` are working files and stay out.
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for p in sorted(d.iterdir()):
-            if p.name.startswith("ConciseDescription_") and p.suffix in (".pdf", ".docx"):
+            if p.suffix in (".pdf", ".docx") or p.name.endswith("_before_filing.txt"):
                 z.write(p, arcname=p.name)
                 n += 1
     if not n:
@@ -5829,11 +6116,11 @@ def compare():
             if imgs:
                 im0 = imgs[0]
                 # A lemad-Mongo figure has file=None and a remote Google-CDN thumbnail/full URL;
-                # a locally-recovered figure has a filename served from /figures/<pub>/<file>. A
-                # root-relative "/figures/..." path is prefixed with script_root in the template;
-                # an absolute remote URL is used verbatim (the template only prefixes local paths).
+                # a locally-recovered figure has a filename served from REFDRAW_PREFIX/<pub>/<file>.
+                # A root-relative path is prefixed with script_root in the template; an absolute
+                # remote URL is used verbatim (the template only prefixes local paths).
                 if im0.get("file"):
-                    img = img_full = f"/figures/{pub}/{im0['file']}"
+                    img = img_full = f"{REFDRAW_PREFIX}/{pub}/{im0['file']}"
                 else:
                     img = im0.get("thumbnail") or im0.get("full")
                     img_full = im0.get("full") or im0.get("thumbnail")
@@ -6060,7 +6347,7 @@ def _structured_drafting_notes(values) -> str:
     return "\n".join(parts)
 
 
-@app.route("/drafts")
+@app.route("/drafts", strict_slashes=False)
 def drafts_list():
     try:
         user, principal = _draft_identity()

@@ -38,7 +38,7 @@ def report(tmp_path, monkeypatch):
     }
     (tmp_path / ("%s.deep.json" % slug)).write_text(json.dumps(deep))
     (tmp_path / ("%s.meta.json" % slug)).write_text(json.dumps({"mode": "novelty"}))
-    monkeypatch.setattr(cd, "phrase", lambda doc, tier="strong": doc)
+    monkeypatch.setattr(cd, "phrase", lambda doc, tier="strong", model=None: doc)
     monkeypatch.setattr(cd, "_display", lambda pub, allow_fetch=True: {
         "title": "T", "inventors": ["X"], "publication_date": "2002-01-01",
         "priority_date": "2001-01-01"})

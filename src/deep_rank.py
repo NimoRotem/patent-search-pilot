@@ -67,6 +67,7 @@ import llm
 import oracle
 import corpus_guard                # is this process allowed to write the live corpus at all
 import runctx                       # the durable run this search belongs to, if any (else no-op)
+from retrieval.family import family_key_sql
 
 VERSION = 1
 
@@ -384,7 +385,7 @@ def _seed_families(cur, report, families, reps):
             "SELECT p.id, p.publication_number, p.kind_code, p.country, p.title, p.abstract, "
             "       p.publication_date, p.filing_date, p.earliest_priority_date, "
             "       p.simple_family_id, p.tier, p.facsimile_path, "
-            "       COALESCE(NULLIF(p.simple_family_id,''), p.publication_number) AS fam, "
+            f"       {family_key_sql('p')} AS fam, "
             "       (SELECT count(*) FROM claims c WHERE c.publication_id=p.id) AS n_claims, "
             "       (SELECT count(*) FROM chunks ch WHERE ch.publication_id=p.id "
             "        AND ch.embedding IS NOT NULL) AS n_emb "
@@ -1279,12 +1280,16 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
         cur = conn.cursor()
         #  The cutoff the whole search already runs against decides WHICH member of each
         #  family is read, quoted and ultimately cited. See webview.resolve_family_reps.
-        reps = webview.resolve_family_reps(cur, ranked[:B["SCREEN_TOP"]],
-                                           subject_efd=webview.subject_efd_of(report))
+        reps = webview.reps_for(cur, report, ranked[:B["SCREEN_TOP"]])
         #  THE EXAMINER'S OWN REFERENCES GO IN AS THEMSELVES. See _seed_families: the family
         #  representative is chosen on dates and text, but a document an examiner APPLIED is the
         #  document to read, not whichever sibling the ordering prefers.
         families, seed_fams = _seed_families(cur, report, ranked[:B["SCREEN_TOP"]], reps)
+        #  RECORDED AFTER THE SEED OVERRIDE, because the override is part of the choice. From here
+        #  the report page, the ranked list, the reading top-up, the rescue and the filing package
+        #  all read this map instead of asking the ordering again, so the document that was read is
+        #  the document that is quoted and the document that is cited.
+        webview.record_family_reps(report, reps)
         rows = _candidate_rows(cur, families, reps, B["SCREEN_TOP"] + len(seed_fams))
     finally:
         conn.close()
@@ -1624,7 +1629,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
                               {c.get("pub") for c in charts if c.get("pub")}),
                 exclude_families={r["fam"] for r in rows},
                 enrich=lambda chosen: _enrich_missing_text(chosen, on_progress=emit),
-                ledger=ledger, emit=emit)
+                ledger=ledger, emit=emit, report=report)
             if rescued_refs:
                 charts.extend(rescued_refs)
         except runctx.RunCancelled:

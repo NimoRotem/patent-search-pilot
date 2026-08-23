@@ -12,6 +12,7 @@ import hashlib
 import re
 import secrets
 import threading
+import traceback
 from datetime import datetime, timedelta, timezone
 
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -42,6 +43,13 @@ _SCHEMA = (
     "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS default_inventors text NOT NULL DEFAULT ''",
     "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS preferred_jurisdiction text NOT NULL DEFAULT 'US'",
     "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS session_version integer NOT NULL DEFAULT 1",
+    #  THE SHARE PASSWORD, SET ONCE. Every finished report gets its public link automatically, and
+    #  this is the password that guards it. Stored as a HASH, like every other password here: it is
+    #  copied onto each published report and never needs to be read back, so there is no reason to
+    #  hold the plaintext. Empty means no default has been set, and nothing is auto-published until
+    #  one is, because a link with no password is a report anyone who guesses the slug can read.
+    "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS share_password_hash text NOT NULL DEFAULT ''",
+    "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS autopublish boolean NOT NULL DEFAULT true",
     """CREATE TABLE IF NOT EXISTS app_saved_searches (
          id bigserial PRIMARY KEY,
          user_id bigint NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
@@ -140,7 +148,65 @@ def public_user(row):
         return None
     out = dict(row)
     out.pop("password_hash", None)
+    #  Same rule for the share password: the hash never leaves this module. The page needs to know
+    #  only WHETHER one is set, so that is what it gets.
+    out["has_share_password"] = bool(out.pop("share_password_hash", "") or "")
     return out
+
+
+def set_share_password(user_id, password):
+    """The one password that guards this user's automatically published links.
+
+    Stored hashed and copied onto each report at publish time, so it is set once and never shown
+    again. An empty password CLEARS it, which also stops anything new being auto-published.
+    """
+    from werkzeug.security import generate_password_hash
+    ensure_schema()
+    password = (password or "").strip()
+    if password and len(password) < 6:
+        raise ValueError("A share password needs at least six characters.")
+    with db.cursor() as cur:
+        cur.execute("UPDATE app_users SET share_password_hash=%s, updated_at=now() "
+                    "WHERE id=%s RETURNING *",
+                    (generate_password_hash(password) if password else "", int(user_id)))
+        return public_user(cur.fetchone())
+
+
+def search_owner(slug):
+    """The account that ran this search, or None. -> user_id
+
+    A report on disk does not record who asked for it; `app_saved_searches` does. Used by the
+    automatic public link, which must be minted for the owner and nobody else.
+    """
+    ensure_schema()
+    try:
+        with db.cursor() as cur:
+            cur.execute("SELECT user_id FROM app_saved_searches WHERE slug=%s "
+                        "ORDER BY created_at LIMIT 1", (slug,))
+            row = cur.fetchone()
+        return int(row["user_id"]) if row and row.get("user_id") else None
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return None
+
+
+def share_defaults(user_id):
+    """-> {"autopublish": bool, "password_hash": str}. The publisher reads this, nothing else."""
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("SELECT autopublish, share_password_hash FROM app_users WHERE id=%s",
+                    (int(user_id),))
+        row = cur.fetchone() or {}
+    return {"autopublish": bool(row.get("autopublish")),
+            "password_hash": str(row.get("share_password_hash") or "")}
+
+
+def set_autopublish(user_id, on):
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("UPDATE app_users SET autopublish=%s, updated_at=now() WHERE id=%s RETURNING *",
+                    (bool(on), int(user_id)))
+        return public_user(cur.fetchone())
 
 
 def create_user(email: str, full_name: str, password: str):

@@ -419,7 +419,9 @@ def admit_waiting(lane, daily_cap, max_concurrent, limit=None):
         cur.execute("SELECT count(*) n FROM search_runs WHERE lane=%s "
                     "AND charged_day = (now() AT TIME ZONE 'UTC')::date", (lane,))
         spent = int((cur.fetchone() or {}).get("n") or 0)
-        cur.execute(_OUTSTANDING_SQL, (lane,))
+        #  Counted on the same terms it is admitted on, or the lane reserves concurrency for
+        #  fixture rows production will never claim and a real search waits behind them.
+        cur.execute(_OUTSTANDING_SQL + " " + _live_only(), (lane,))
         running = int((cur.fetchone() or {}).get("n") or 0)
 
         room = min(int(daily_cap) - spent, int(max_concurrent) - running)
@@ -434,6 +436,7 @@ def admit_waiting(lane, daily_cap, max_concurrent, limit=None):
                         WHERE run_id IN (
                             SELECT run_id FROM search_runs
                              WHERE lane=%s AND status='queued' AND NOT admitted
+                             """ + _live_only() + """
                              ORDER BY priority, enqueued_at
                              LIMIT %s)
                         RETURNING run_id""", (lane, room))
@@ -460,12 +463,41 @@ def queue_position(run_id):
 #  ONE STATEMENT, ONE TRANSACTION. The CTE takes the row lock with SKIP LOCKED and the UPDATE
 #  releases it on commit, so the window in which any row is locked is the width of one UPDATE.
 #  Two workers polling at the same instant take two different rows; neither blocks.
+#  ---- fixture rows are not production work ---------------------------------------------------
+#  The suite runs against this database on purpose: `search_runs` has foreign keys into the corpus
+#  and a separate store could not honour them. That was harmless while no worker existed. It stopped
+#  being harmless the moment the durable workers went live, because a queued row is a queued row:
+#  MEASURED 2026-08-22, the production quick worker claimed `test-durable-*` and `test-resume-*`
+#  rows straight out of `test_durable_runs.py` and ran real searches on them, spending model calls
+#  on fixtures and failing them, while the tests that created them went red because their own
+#  `claim()` found nothing left to claim.
+#
+#  Admission is the second half of the same defect: `admit_waiting` was admitting those rows too,
+#  and an admitted row counts against the lane's concurrency in `_OUTSTANDING_SQL`, so fixtures
+#  could hold a slot a real search was waiting for.
+#
+#  A reserved slug prefix is enough because production cannot produce one: `search_slug` returns
+#  `adhoc-<sha1>`, the bench harness writes `bench-*`, and the gold ids are a fixed list.
+#  `test_run_store_isolation.py` holds all three of those shut.
+TEST_SLUG_PREFIX = "test-"
+#  Default FAIL SAFE, so a new production entry point is isolated without having to know this
+#  exists. The suite flips it once, in tests/conftest.py.
+ALLOW_TEST_SLUGS = False
+_LIVE_ONLY_SQL = "AND slug NOT LIKE 'test-%%'"
+
+
+def _live_only():
+    """The SQL that keeps production off fixture rows. Empty inside the suite."""
+    return "" if ALLOW_TEST_SLUGS else _LIVE_ONLY_SQL
+
+
 _CLAIM_SQL_TEMPLATE = """
 WITH picked AS (
     SELECT run_id
       FROM search_runs
      WHERE status = 'queued'
        AND {admitted_clause}
+       {live_only}
        AND (%(lanes)s::text[] IS NULL OR lane = ANY(%(lanes)s::text[]))
      ORDER BY priority, enqueued_at
      FOR UPDATE SKIP LOCKED
@@ -519,7 +551,8 @@ def claim(worker, lanes=None, lease_seconds=None, admitted_only=None):
                 "after require_admission_schema().")
         want = admission_capable() if admitted_only is None else True
         clause = "admitted" if want else "true"
-        cur.execute(_CLAIM_SQL_TEMPLATE.format(admitted_clause=clause),
+        cur.execute(_CLAIM_SQL_TEMPLATE.format(admitted_clause=clause,
+                                               live_only=_live_only()),
                     {"lanes": list(lanes) if lanes else None,
                                  "worker": worker,
                                  "lease": float(lease_seconds or LEASE_SECONDS)})

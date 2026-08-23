@@ -19,6 +19,18 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 os.environ.setdefault("SESSION_COOKIE_PATH", "/")
 os.environ.setdefault("SESSION_COOKIE_NAME", "session")
 
+#  THE SUITE MAY SEE ITS OWN RUN ROWS; PRODUCTION MAY NOT. The durable tests create real rows in
+#  the real `search_runs`, because that table has foreign keys into the corpus and cannot live in
+#  a separate database. `runstore.ALLOW_TEST_SLUGS` defaults to False so the live workers skip
+#  anything under the `test-` prefix, which is the fix for the live quick worker claiming
+#  `test-durable-*` rows and running real searches on them. Flipped here, once, so the tests can
+#  still claim what they create. Set at import time, before any test module imports runstore.
+try:
+    import runstore as _runstore
+    _runstore.ALLOW_TEST_SLUGS = True
+except Exception:                     # a checkout without the durable store still collects
+    pass
+
 
 def _det_vec(text, dim=768):
     """Deterministic unit-ish vector seeded by the text — same text -> same vector."""

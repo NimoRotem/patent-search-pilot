@@ -81,7 +81,7 @@ def _record_usage(prompt_tokens=0, completion_tokens=0):
 
 @retry(wait=wait_exponential(min=1, max=20), stop=stop_after_attempt(5),
        retry=retry_if_exception_type(Exception))
-def _call(system, user, max_tokens, tier="fast"):
+def _call(system, user, max_tokens, tier="fast", provider=None):
     """One answer from the requested tier. -> (text, provider, prompt_tokens, completion_tokens).
 
     Routed through model_pool rather than bound to one client, because the stage that dominates a
@@ -90,11 +90,15 @@ def _call(system, user, max_tokens, tier="fast"):
     configured the pool is exactly the Vertex client this used to hold, so behaviour is unchanged.
     """
     import model_pool
-    return model_pool.call(system, user, max_tokens, tier=tier)
+    return model_pool.call(system, user, max_tokens, tier=tier, provider=provider)
 
 
-def chat_json(system, user, max_tokens=1200, tier="fast"):
+def chat_json(system, user, max_tokens=1200, tier="fast", provider=None):
     """-> parsed JSON, or {} .
+
+    `provider` pins the call to one named model instead of the tier, for a person who asked for a
+    specific one. It raises rather than falling back, because answering from a different model than
+    the one somebody chose is worse than telling them it is unavailable.
 
     `tier` picks the model pool. "fast" for volume — screening thousands of candidates, the first
     full-text read of hundreds of references — where every answer is gated downstream by grounding,
@@ -113,7 +117,7 @@ def chat_json(system, user, max_tokens=1200, tier="fast"):
     """
     import failclosed
     try:
-        text, _provider, pt, ct = _call(system, user, max_tokens, tier=tier)
+        text, _provider, pt, ct = _call(system, user, max_tokens, tier=tier, provider=provider)
     except Exception as e:
         return failclosed.fallback("llm.chat_json", f"{type(e).__name__}: {str(e)[:160]}",
                                    {}, kind="llm_call_failed")

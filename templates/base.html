@@ -41,6 +41,7 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
         <a href="{{ request.script_root }}/" class="navitem{% if endpoint == 'index' %} active{% endif %}"{% if endpoint == 'index' %} aria-current="page"{% endif %}>Search</a>
         <a href="{{ request.script_root }}/history" class="navitem{% if endpoint == 'history' %} active{% endif %}"{% if endpoint == 'history' %} aria-current="page"{% endif %}>History</a>
         <a href="{{ request.script_root }}/patentlookup" class="navitem{% if endpoint == 'patent_lookup' %} active{% endif %}"{% if endpoint == 'patent_lookup' %} aria-current="page"{% endif %}>Lookup</a>
+        <a href="{{ request.script_root }}/designs" class="navitem{% if endpoint == 'designs_page' %} active{% endif %}"{% if endpoint == 'designs_page' %} aria-current="page"{% endif %}>Designs</a>
         <a href="{{ request.script_root }}/corpus" class="navitem{% if endpoint == 'corpus_page' %} active{% endif %}"{% if endpoint == 'corpus_page' %} aria-current="page"{% endif %}>Corpus</a>
         {% if current_user %}
           <a href="{{ request.script_root }}/library" class="navitem{% if endpoint == 'library' %} active{% endif %}"{% if endpoint == 'library' %} aria-current="page"{% endif %}>Library</a>

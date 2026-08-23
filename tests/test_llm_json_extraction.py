@@ -54,7 +54,7 @@ def test_chat_json_does_not_flag_a_fenced_answer_as_truncated():
     incomplete", so a complete answer from a provider without a JSON mode was being treated as a
     degraded one."""
     mod = _real_llm()
-    mod._call = lambda s, u, m, tier="fast": (
+    mod._call = lambda s, u, m, tier="fast", provider=None: (
         '```json\n{"disclosures":[{"text":"x"}]}\n```', "test", 1, 1)
     out = mod.chat_json("sys", "user")
     assert out == {"disclosures": [{"text": "x"}]}
@@ -63,7 +63,7 @@ def test_chat_json_does_not_flag_a_fenced_answer_as_truncated():
 
 def test_chat_json_still_flags_a_genuinely_truncated_answer():
     mod = _real_llm()
-    mod._call = lambda s, u, m, tier="fast": (
+    mod._call = lambda s, u, m, tier="fast", provider=None: (
         '{"disclosures":[{"text":"a"},{"text":"b"},{"text":', "test", 1, 1)
     out = mod.chat_json("sys", "user")
     assert out.get("_truncated") is True

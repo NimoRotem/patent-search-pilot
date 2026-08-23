@@ -8,9 +8,11 @@ import os
 import re
 import sys
 
-sys.path.insert(0, "/home/nimrod_rotem/patent-search-pilot/src")
-import db
-import pubnorm
+#  Relative to this file. See the note in citation_recall.py: a hardcoded deployed path here puts
+#  production at the front of sys.path for anything that imports this, including a test run.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+import db          # noqa: E402
+import pubnorm     # noqa: E402
 
 #  The citation list is an ARGUMENT, never a constant: this is a ruler, and a ruler with the
 #  answer written on it measures nothing. Pass publication numbers separated by commas or spaces.

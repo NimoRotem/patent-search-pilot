@@ -185,6 +185,23 @@ def test_an_overcrowded_drawing_sheet_is_a_filing_blocker():
     assert check["status"] == "fail" and "9 numerals" in check["items"][0]
 
 
+def test_an_overlong_drawing_brief_is_refused_before_image_generation():
+    figures = [
+        {**FIGURES[0], "caption": "plain rectangular body " * 160},
+        FIGURES[1],
+    ]
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    assert check["status"] == "fail"
+    assert "FIG. 1" in check["items"][0]
+
+    with pytest.raises(
+            draft_studio.FilingPreflightError,
+            match="Drawing briefs are concise and renderable") as caught:
+        draft_studio.validate_snapshot(
+            {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
+    assert caught.value.category == "figures_and_numerals"
+
+
 def test_letter_qualified_reference_numerals_are_compared_exactly():
     version = {**GOOD, "detailed_description":
                GOOD["detailed_description"] + " A secondary spacer 10a is beside a lug A12."}
@@ -1098,6 +1115,8 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "at least one figure" in system
     assert "Normally use two to four figures" in system
     assert "Do not list more than eight numerals on one sheet" in system
+    assert str(draft_qa.MAX_FIGURE_BRIEF_CHARS) in system
+    assert "arbitrary exact counts" in system
     assert "Never address or mention a draftsperson" in " ".join(system.split())
     assert "broadest statement of the invention that the description fully supports" in system
 
@@ -1186,6 +1205,34 @@ def test_figure_plan_repairs_keep_authoritative_text_and_numerals(tmp_path):
     assert draft_workspace.read_numerals(tmp_path) == NUMERALS
     assert [{key: item[key] for key in ("label", "caption", "numerals")}
             for item in draft_workspace.read_figures(tmp_path)] == revised_figures
+
+
+def test_source_locks_never_restore_an_empty_or_incomplete_baseline(tmp_path):
+    draft_workspace.write_sections(tmp_path, GOOD)
+    draft_workspace.write_numerals(tmp_path, NUMERALS)
+    draft_workspace.write_figures(tmp_path, FIGURES)
+    before = draft_workspace.snapshot(tmp_path)
+    figure_plan_report = {
+        "checks": [{
+            "name": "Drawing briefs are concise and renderable",
+            "status": "fail", "category": "figures_and_numerals",
+        }],
+        "findings": [],
+    }
+    drawing_report = {
+        "checks": [{
+            "name": "Every drawing sheet passes geometry, leader, and OCR inspection",
+            "status": "fail", "category": "figures_and_numerals",
+        }],
+        "findings": [],
+    }
+
+    assert not draft_studio.restore_sources_after_figure_plan_review(
+        tmp_path, {}, figure_plan_report)
+    assert draft_workspace.snapshot(tmp_path) == before
+    assert not draft_studio.restore_text_after_drawing_only_review(
+        tmp_path, {"sections": GOOD}, drawing_report)
+    assert draft_workspace.snapshot(tmp_path) == before
 
 
 def test_mixed_review_does_not_lock_a_legitimate_source_repair(tmp_path):
@@ -1304,6 +1351,97 @@ def test_default_finalization_budget_allows_drawing_and_text_repair_rounds():
     assert draft_studio.MAX_FINALIZATION_ROUNDS == 6
 
 
+def test_valid_candidate_is_checkpointed_before_the_long_drawing_gate(monkeypatch, tmp_path):
+    repository = Mock()
+    agent = Mock()
+    agent.DRAFT_MODEL = "draft-model"
+    agent.DRAFT_TIMEOUT = 60
+    agent.new_session_id.return_value = "new-session"
+    agent.run.return_value = draft_agent.AgentRun(
+        ok=True, session_id="draft-session", model="draft-model",
+        cost_usd=0.5, duration_ms=1000,
+        result={"action": "revised", "summary": "complete candidate",
+                "reasoning": [], "changes": [], "questions": [],
+                "prior_art_strategy": "", "answer": ""})
+    workspace = Mock()
+    workspace.snapshot.return_value = {
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, qa=draft_qa, workspace=workspace)
+    monkeypatch.setattr(runner, "prepare", lambda _turn: {
+        "workspace": tmp_path,
+        "project": {"user_id": 91, "agent_session_id": "", "latest_version_no": 0,
+                    "disclosure_text": "disclosure"},
+        "references": [{"publication_number": ALLOWED[0]}], "documents": [],
+        "seeded": False, "had_version": False, "resuming_candidate": False,
+        "previous_sections": {},
+    })
+    monkeypatch.setattr(
+        runner, "_ensure_figures",
+        lambda **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt()))
+
+    with pytest.raises(KeyboardInterrupt):
+        runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
+                    "turn_no": 1, "kind": "initial", "attempts": 1})
+
+    checkpoint = repository.save_retry_candidate.call_args.kwargs
+    assert checkpoint["snapshot"]["sections"] == GOOD
+    assert checkpoint["report"]["_gate_resume"]["session_id"] == "draft-session"
+    assert checkpoint["report"]["_gate_resume"]["result"]["summary"] == \
+        "complete candidate"
+
+
+def test_restart_resumes_a_checkpointed_candidate_without_rerunning_the_agent(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_figures, "discard_project_figure_checkpoint",
+                        lambda _turn_id: False)
+    repository = Mock()
+    repository.save_version.return_value = {"version_no": 2}
+    repository.save_qa.return_value = {
+        "id": 5, "verdict": "pass", "checks": [], "findings": [], "counts": {}}
+    repository.complete_turn.return_value = {"status": "complete"}
+    agent = Mock()
+    agent.DRAFT_MODEL = "draft-model"
+    agent.DRAFT_TIMEOUT = 60
+    agent.strings.side_effect = lambda value, **_kwargs: list(value or [])
+    workspace = Mock()
+    workspace.snapshot.return_value = {
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, qa=draft_qa, workspace=workspace)
+    gate_resume = {
+        "session_id": "draft-session", "model": "draft-model", "cost_usd": 0.5,
+        "duration_ms": 1000, "num_turns": 1, "steps": [],
+        "result": {"action": "revised", "summary": "complete candidate",
+                   "reasoning": [], "changes": [], "questions": [],
+                   "prior_art_strategy": "", "answer": ""},
+    }
+    monkeypatch.setattr(runner, "prepare", lambda _turn: {
+        "workspace": tmp_path,
+        "project": {"user_id": 91, "agent_session_id": "draft-session",
+                    "latest_version_no": 1, "disclosure_text": "disclosure"},
+        "references": [{"publication_number": ALLOWED[0]}], "documents": [],
+        "seeded": False, "had_version": True, "resuming_candidate": True,
+        "resuming_candidate_turn_id": 3,
+        "prepared_snapshot": {"sections": GOOD, "numerals": NUMERALS,
+                              "figures": FIGURES},
+        "prepared_qa": {"_gate_resume": gate_resume},
+        "previous_sections": {},
+    })
+    monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {"ok": True})
+    monkeypatch.setattr(runner, "evaluate", lambda *args, **kwargs: {
+        "status": "complete", "verdict": "pass", "summary": "ready",
+        "checks": [], "findings": [], "counts": {}, "cost_usd": 0,
+        "duration_ms": 1, "model_name": "review"})
+
+    runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
+                "turn_no": 1, "kind": "initial", "attempts": 1})
+
+    agent.run.assert_not_called()
+    assert repository.save_version.call_count == 1
+    assert repository.complete_turn.call_args.kwargs["session_id"] == "draft-session"
+
+
 def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, tmp_path):
     class Repository:
         def __init__(self):
@@ -1409,7 +1547,9 @@ def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, t
     assert workspace.review_reports[0]["checks"][0]["items"] == [
         "FIG. 2: wrong fastener axis", "FIG. 7: missing process arrow"]
     assert repository.retry_candidates[0][0]["sections"] == GOOD
-    assert repository.retry_candidates[0][1]["verdict"] == "fail"
+    assert "_gate_resume" in repository.retry_candidates[0][1]
+    assert any(report["verdict"] == "fail" for _snapshot, report
+               in repository.retry_candidates)
     assert out["version"]["version_no"] == 1
 
 
@@ -1827,6 +1967,85 @@ def test_resumed_figure_plan_repair_is_source_locked_before_validation(monkeypat
             for item in saved["figures"]] == revised_figures
 
 
+def test_preflight_failure_retains_the_full_candidate_as_the_repair_source_lock(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_figures, "discard_project_figure_checkpoint",
+                        lambda _turn_id: False)
+    repository = Mock()
+    repository.save_version.return_value = {"version_no": 2}
+    repository.save_qa.return_value = {
+        "id": 5, "verdict": "pass", "checks": [], "findings": [], "counts": {}}
+    repository.complete_turn.return_value = {"status": "complete"}
+    agent = Mock()
+    agent.DRAFT_MODEL = "draft-model"
+    agent.DRAFT_TIMEOUT = 60
+    agent.new_session_id.return_value = "new-session"
+    agent.strings.side_effect = lambda value, **_kwargs: list(value or [])
+    overlong_figures = [
+        {**FIGURES[0], "caption": "plain rectangular body " * 160},
+        FIGURES[1],
+    ]
+    repaired_figures = [
+        {**FIGURES[0], "caption": "plain rectangular body"},
+        FIGURES[1],
+    ]
+
+    def run_agent(**_kwargs):
+        if agent.run.call_count == 1:
+            return draft_agent.AgentRun(
+                ok=True, session_id="session", model="draft-model",
+                result={"action": "revised", "summary": "candidate",
+                        "reasoning": [], "changes": [], "questions": [],
+                        "prior_art_strategy": "", "answer": ""})
+        draft_workspace.write_sections(tmp_path, {
+            key: ("FIG. 1 is an assembly view. FIG. 2 is a ring view."
+                  if key == "drawing_descriptions" else "")
+            for key, _name, _heading in draft_workspace.SECTION_FILES
+        })
+        draft_workspace.write_numerals(tmp_path, [])
+        draft_workspace.write_figures(tmp_path, repaired_figures)
+        return draft_agent.AgentRun(
+            ok=True, session_id="session", model="draft-model",
+            result={"action": "revised", "summary": "shortened drawing brief",
+                    "reasoning": [], "changes": [], "questions": [],
+                    "prior_art_strategy": "", "answer": ""})
+
+    agent.run.side_effect = run_agent
+    draft_workspace.write_sections(tmp_path, GOOD)
+    draft_workspace.write_numerals(tmp_path, NUMERALS)
+    draft_workspace.write_figures(tmp_path, overlong_figures)
+    workspace = Mock()
+    workspace.snapshot.side_effect = lambda _path: draft_workspace.snapshot(tmp_path)
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, qa=draft_qa, workspace=workspace)
+    monkeypatch.setattr(runner, "prepare", lambda _turn: {
+        "workspace": tmp_path,
+        "project": {"user_id": 91, "agent_session_id": "", "latest_version_no": 1,
+                    "disclosure_text": "disclosure"},
+        "references": [{"publication_number": ALLOWED[0]}], "documents": [],
+        "seeded": False, "had_version": True, "resuming_candidate": False,
+        "previous_sections": {},
+    })
+    monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {"ok": True})
+    monkeypatch.setattr(runner, "evaluate", lambda *args, **kwargs: {
+        "status": "complete", "verdict": "pass", "summary": "ready",
+        "checks": [], "findings": [], "counts": {}, "cost_usd": 0,
+        "duration_ms": 1, "model_name": "review"})
+
+    runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
+                "turn_no": 2, "kind": "revise"})
+
+    assert agent.run.call_count == 2
+    first_report = workspace._write_review.call_args_list[0].args[1]
+    assert first_report["checks"][0]["category"] == "figures_and_numerals"
+    saved = repository.save_version.call_args.kwargs
+    assert saved["sections"]["claims"] == GOOD["claims"]
+    assert saved["sections"]["detailed_description"] == GOOD["detailed_description"]
+    assert saved["numerals"] == NUMERALS
+    assert [{key: item[key] for key in ("label", "caption", "numerals")}
+            for item in saved["figures"]] == repaired_figures
+
+
 def test_answering_a_question_does_not_discard_an_unpublished_candidate(monkeypatch, tmp_path):
     repository = Mock()
     repository.complete_turn.return_value = {"status": "complete"}
@@ -2000,6 +2219,31 @@ def test_recovery_leaves_a_turn_whose_worker_is_still_alive():
     assert service._worker_is_alive("draft-turn-999999-1") is False
     assert service._worker_is_alive("") is False
     assert service._worker_is_alive(None) is False
+
+
+def test_restart_recovery_does_not_spend_a_drafting_attempt(monkeypatch):
+    import db
+    import draft_studio_service as service
+
+    queries = []
+
+    class Cursor:
+        def execute(self, query, params=()):
+            queries.append((query, params))
+
+        def fetchall(self):
+            return [{"id": 33, "claimed_by": "draft-turn-999999-1"}]
+
+    @contextmanager
+    def cursor_factory(**_kwargs):
+        yield Cursor()
+
+    monkeypatch.setattr(db, "cursor", cursor_factory)
+
+    assert service.recover_interrupted_turns() == 1
+    update = next(query for query, _params in queries
+                  if "stage='resuming after a restart'" in query)
+    assert "attempts=greatest(0,attempts-1)" in update
 
 
 @pytest.mark.parametrize("failure", [

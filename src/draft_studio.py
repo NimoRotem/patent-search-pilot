@@ -51,6 +51,7 @@ MAX_TURNS_LISTED = 200
 LEASE_SECONDS = 2400                           # a full drafting turn plus its review
 MAX_FINALIZATION_ROUNDS = max(
     2, min(int(os.environ.get("DRAFT_FINALIZATION_ROUNDS", "6")), 6))
+_GATE_RESUME_KEY = "_gate_resume"
 _SCHEMA_LOCK = threading.Lock()
 _SCHEMA_READY = False
 _MIGRATION = Path(__file__).resolve().parents[1] / "sql" / "006_draft_agent.sql"
@@ -85,6 +86,57 @@ def human_text(value: Any) -> Any:
     if isinstance(value, tuple):
         return tuple(human_text(item) for item in value)
     return value
+
+
+def _gate_resume_report(runs: Sequence[draft_agent.AgentRun],
+                        result: Mapping[str, Any]) -> dict[str, Any]:
+    """Persist enough agent state to resume deterministic gates after a process restart."""
+    final = runs[-1]
+    steps = [dict(step) for run in runs for step in run.steps if isinstance(step, Mapping)]
+    return {
+        "status": "running",
+        "verdict": "pending",
+        "summary": "The filing candidate is complete. Automatic drawing and review checks "
+                   "are continuing.",
+        "checks": [],
+        "findings": [],
+        "counts": {},
+        _GATE_RESUME_KEY: human_text({
+            "session_id": final.session_id,
+            "model": final.model,
+            "cost_usd": sum(run.cost_usd for run in runs),
+            "duration_ms": sum(run.duration_ms for run in runs),
+            "num_turns": sum(run.num_turns for run in runs),
+            "steps": steps[-80:],
+            "result": dict(result),
+        }),
+    }
+
+
+def _gate_resume_run(context: Mapping[str, Any], turn: Mapping[str, Any]
+                     ) -> draft_agent.AgentRun | None:
+    """Restore an agent result only for the same interrupted leased turn."""
+    if int(context.get("resuming_candidate_turn_id") or 0) != int(turn["id"]):
+        return None
+    prepared = context.get("prepared_qa")
+    marker = prepared.get(_GATE_RESUME_KEY) if isinstance(prepared, Mapping) else None
+    if not isinstance(marker, Mapping) or not isinstance(marker.get("result"), Mapping):
+        return None
+    session_id = str(marker.get("session_id") or "")
+    if not session_id:
+        return None
+    steps = [dict(step) for step in (marker.get("steps") or [])
+             if isinstance(step, Mapping)]
+    return draft_agent.AgentRun(
+        ok=True,
+        result=human_text(dict(marker["result"])),
+        session_id=session_id,
+        model=str(marker.get("model") or ""),
+        cost_usd=float(marker.get("cost_usd") or 0),
+        duration_ms=int(marker.get("duration_ms") or 0),
+        num_turns=int(marker.get("num_turns") or 0),
+        steps=human_text(steps),
+    )
 
 
 # =============================================================================================
@@ -188,6 +240,10 @@ Use a structural view, system diagram, or process flow as appropriate to the dis
 Normally use two to four figures. Do not list more than eight numerals on one sheet. When more
 structure must be shown, add a focused detail or sectional sheet instead of overcrowding one image,
 then synchronize the Brief Description of the Drawings and Detailed Description.
+Keep each figure brief at or below 2800 characters. Include only disclosure-grounded geometry and
+relationships needed to identify the listed parts. Never invent arbitrary exact counts,
+proportions, relative heights, corner shapes, line counts, or placement constraints merely to
+control the renderer. If a visual constraint is not in the disclosure or specification, omit it.
 Figure files are Markdown specifications only. Never create SVG, PNG, or other image files. The
 image pipeline generates unlabeled geometry, then adds the listed numerals, FIG. label, callouts,
 and leader lines deterministically. Describe the required geometry and relationships, and list
@@ -271,6 +327,9 @@ For a figure-plan coverage failure, never delete a disclosed part, numeral defin
 supporting specification text. Redistribute labels among focused sheets, or add a focused sheet
 when necessary, and synchronize the drawing descriptions.
 
+If a figure brief is over-specified, shorten it by removing invented rendering constraints while
+preserving the authoritative text, numeral table, disclosed geometry, and required relationships.
+
 Leave no note, placeholder, question, or instruction for a person. Return the structured answer
 with `action` set to "revised" and `questions` as an empty array."""
 
@@ -319,6 +378,7 @@ _FIGURE_PLAN_CHECKS = frozenset({
     "Every drawing numeral appears in the specification",
     "Every specification numeral appears in a drawing",
     "Application includes a drawing plan",
+    "Drawing briefs are concise and renderable",
     "Figure-sheet numbering is unique and contiguous",
     "Every figure used is described",
     "Every drawing sheet is described",
@@ -355,10 +415,13 @@ def restore_text_after_drawing_only_review(workspace: Path, snapshot: Mapping[st
         return False
     if any(str(item.get("category") or "") != "figures_and_numerals" for item in findings):
         return False
-    sections = human_text(dict(snapshot.get("sections") or {}))
-    numerals = human_text([dict(item) for item in (snapshot.get("numerals") or [])])
+    baseline_snapshot = candidate_snapshot_for_repair(snapshot)
+    if baseline_snapshot is None:
+        return False
+    sections = baseline_snapshot["sections"]
+    numerals = baseline_snapshot["numerals"]
     baseline_figures = human_text(
-        [dict(item) for item in (snapshot.get("figures") or [])])
+        [dict(item) for item in baseline_snapshot["figures"]])
     current_figures = human_text(draft_workspace.read_figures(workspace))
     used_current: set[int] = set()
     locked_figures = []
@@ -419,14 +482,16 @@ def restore_sources_after_figure_plan_review(workspace: Path, snapshot: Mapping[
     if any(_report_item_category(item) != "figures_and_numerals" for item in blockers):
         return False
 
-    baseline_sections = human_text(dict(snapshot.get("sections") or {}))
+    baseline_snapshot = candidate_snapshot_for_repair(snapshot)
+    if baseline_snapshot is None:
+        return False
+    baseline_sections = baseline_snapshot["sections"]
     current_sections = human_text(draft_workspace.read_sections(workspace))
     locked_sections = dict(baseline_sections)
     locked_sections["drawing_descriptions"] = str(
         current_sections.get("drawing_descriptions") or
         baseline_sections.get("drawing_descriptions") or "")
-    baseline_numerals = human_text(
-        [dict(item) for item in (snapshot.get("numerals") or [])])
+    baseline_numerals = baseline_snapshot["numerals"]
 
     sections_changed = current_sections != locked_sections
     numerals_changed = draft_workspace.read_numerals(workspace) != baseline_numerals
@@ -634,6 +699,7 @@ def candidate_preflight_report(report: Mapping[str, Any] | None,
                                error: Exception) -> dict[str, Any]:
     """Add the current gate failure to an older candidate's repair instructions."""
     out = human_text(dict(report or {}))
+    out.pop(_GATE_RESUME_KEY, None)
     name = "Saved candidate passes the current filing preflight"
     superseded = {name, "Drafting run completed"}
     checks = [dict(item) for item in (out.get("checks") or [])
@@ -1331,6 +1397,9 @@ class TurnRunner:
         return {"workspace": workspace, "project": project, "references": loaded["references"],
                 "documents": documents, "seeded": seeded, "had_version": loaded["sections"] is not None,
                 "resuming_candidate": retry_snapshot is not None,
+                "resuming_candidate_turn_id": (int(candidate.get("turn_id") or turn["id"])
+                                                 if retry_snapshot is not None and candidate
+                                                 else None),
                 "prepared_snapshot": {"sections": sections or {}, "numerals": numerals,
                                       "figures": figures},
                 "prepared_qa": latest_qa or {},
@@ -1433,15 +1502,20 @@ class TurnRunner:
         #  that answered a question without producing a version would make the next turn pass an
         #  existing id as if it were new. Continue the thread whenever there is one.
         prior_session = str(project.get("agent_session_id") or "")
-        try:
-            run = self._run_agent(
-                turn_id=turn_id, lease=lease, workspace=workspace, prompt=prompt,
-                session_id=prior_session or self.agent.new_session_id(), resume=bool(prior_session),
-                transcript=transcript, stage="drafting")
-        except StudioError as exc:
-            self._checkpoint_interrupted_agent(
-                turn_id=turn_id, lease=lease, workspace=workspace, allowed=allowed, error=exc)
-            raise
+        run = _gate_resume_run(context, turn)
+        if run is None:
+            try:
+                run = self._run_agent(
+                    turn_id=turn_id, lease=lease, workspace=workspace, prompt=prompt,
+                    session_id=prior_session or self.agent.new_session_id(),
+                    resume=bool(prior_session), transcript=transcript, stage="drafting")
+            except StudioError as exc:
+                self._checkpoint_interrupted_agent(
+                    turn_id=turn_id, lease=lease, workspace=workspace, allowed=allowed, error=exc)
+                raise
+        else:
+            self.repository.heartbeat(
+                turn_id, lease, stage="resuming automatic filing checks")
         runs = [run]
         result = human_text(dict(run.result))
         action = str(result.get("action") or "revised")
@@ -1523,8 +1597,20 @@ class TurnRunner:
                 }
             else:
                 try:
-                    snapshot = validate_snapshot(self.workspace.snapshot(workspace), allowed)
+                    raw_snapshot = self.workspace.snapshot(workspace)
+                    # A new deterministic rule may reject a structurally complete candidate.
+                    # Retain that full candidate before validation so the following repair round
+                    # has an authoritative source-lock baseline. Assigning only after validation
+                    # leaves ``snapshot`` empty and lets a figure-only repair erase every filing
+                    # section when the lock restores the empty value.
+                    repair_snapshot = candidate_snapshot_for_repair(raw_snapshot)
+                    if repair_snapshot is not None:
+                        snapshot = repair_snapshot
+                    snapshot = validate_snapshot(raw_snapshot, allowed)
                     sections = snapshot["sections"]
+                    self.repository.save_retry_candidate(
+                        turn_id, lease, snapshot=snapshot,
+                        report=_gate_resume_report(runs, result))
                     self.repository.heartbeat(turn_id, lease, stage="drawing and inspecting figures")
                     generated = self._ensure_figures(
                         turn_id=turn_id, lease=lease, project_id=project_id,

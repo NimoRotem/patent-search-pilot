@@ -367,20 +367,36 @@ def test_never_replays_001_or_002_blindly_on_an_unrecorded_database(db, sqldir):
 def test_the_repo_migrations_are_discoverable_and_include_figure_images():
     """Every schema asset must have one deterministic place in the numbered history.
 
-    The list is NOT hard coded to a range any more. It was `range(1, 10)`, which said "this repo
-    has exactly 001 to 009" and became false the moment durable execution added 012 and 013, and a
-    version number is precisely the thing a workstream is allowed to add. What must stay true is
-    that discovery returns every numbered file, exactly once, in numeric order, which is the
-    property `discover` exists for. A gap in the numbers is deliberate here: 010 and 011 belong to
-    the corpus and eval workstreams and are not in this tree.
+    This used to assert the literal list 001 through 009, which made it a tripwire that every
+    workstream adding a migration trips at once for a reason that has nothing to do with their
+    change. What actually has to hold is the property: discovery finds exactly the numbered files
+    on disk, in ascending numeric order, with no duplicate version, and the adopted history 001
+    through 009 is still there and still in front.
+
+    THREE WORKSTREAMS WROTE THIS FIX INDEPENDENTLY (B, C and H) and two of them asserted a
+    CONTIGUOUS run 001..N. That is the stricter property and it is the wrong one: the numbering is
+    deliberately sparse. 011 is held empty because no V3 workstream owns the eval gold set, so a
+    contiguity assertion goes red on the integrated tree for the one reason that is not a defect.
+    Gaps are a decision; a DUPLICATE is the failure worth catching, and that is what the third
+    assertion below is.
     """
     real = os.path.join(ROOT, "sql")
     migrations = migrate.discover(real)
-    on_disk = sorted(n[:3] for n in os.listdir(real) if n[:3].isdigit() and n.endswith(".sql"))
-    assert [m.version for m in migrations] == on_disk
-    assert len(set(on_disk)) == len(on_disk), "a version claimed twice has no deterministic place"
-    assert [int(m.version) for m in migrations] == sorted(int(v) for v in on_disk), \
-        "discovery must be in NUMERIC order, so 002 runs before 012"
+    found = [m.version for m in migrations]
+
+    on_disk = sorted(
+        (name for name in os.listdir(real) if migrate.VERSION_RE.match(name)),
+        key=lambda name: int(migrate.VERSION_RE.match(name).group(1)),
+    )
+    assert [m.filename for m in migrations] == on_disk, "discovery must find every numbered file"
+    assert found == sorted(found, key=int), "order must be numeric, so 002 runs before 010"
+    assert len({int(v) for v in found}) == len(found), (
+        "a duplicate version number is never a coincidence, and 009 and 9 are one version")
+
+    adopted_history = [f"{n:03d}" for n in range(1, 10)]
+    assert found[: len(adopted_history)] == adopted_history, (
+        "001 through 009 are recorded in the live ledger and must keep their numbers")
+
     first = next(m for m in migrations if m.version == "001")
     assert ("table", "figure_images") in migrate.sentinels(first.sql)
 
@@ -433,3 +449,24 @@ def test_the_real_008_yields_exactly_one_table():
     with open(path, encoding="utf-8") as migration_file:
         sql = migration_file.read()
     assert [n for k, n in migrate.sentinels(sql) if k == "table"] == ["sources_docstore"]
+
+
+def test_no_migration_builds_an_hnsw_index_the_extension_will_refuse():
+    """pgvector 0.8.5 caps HNSW at 2000 dimensions, and `bench_emb_3072.embedding` is
+    `vector(3072)`, so `ix_bench3072_hnsw` cannot be created on any host at any scale.
+
+    It lived in `002_indexes.sql`, which is the file that builds the two indexes the live search
+    depends on, so the whole migration raised and `run.sh`'s closing `apply --only 002` failed on
+    every fresh install. A benchmark fixture must never be able to fail the corpus build. It is
+    split into 016 now, WITHOUT the 3072 index.
+    """
+    real = os.path.join(ROOT, "sql")
+    for name in sorted(os.listdir(real)):
+        if not name.endswith(".sql"):
+            continue
+        with open(os.path.join(real, name), encoding="utf-8") as fh:
+            body = fh.read()          # `sentinels` strips comments itself, so the note in 016 is
+        for _kind, index in migrate.sentinels(body):    # not mistaken for a CREATE
+            assert index != "ix_bench3072_hnsw", (
+                "%s creates an HNSW index over a 3072-dimension column, which pgvector refuses; "
+                "the migration will raise wherever it is applied" % name)

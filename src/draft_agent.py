@@ -64,6 +64,9 @@ MAX_BUDGET_USD = float(os.environ.get("DRAFT_AGENT_MAX_USD", "12"))
 AUTH_MODE = os.environ.get("DRAFT_AGENT_AUTH", "auto").strip().lower()
 if AUTH_MODE not in {"auto", "subscription", "api"}:
     AUTH_MODE = "auto"
+RATE_LIMIT_RETRIES = max(0, min(int(os.environ.get("DRAFT_AGENT_RATE_LIMIT_RETRIES", "2")), 3))
+RATE_LIMIT_RETRY_SECONDS = max(
+    1, min(int(os.environ.get("DRAFT_AGENT_RATE_LIMIT_RETRY_SECONDS", "65")), 300))
 
 # The lookup helper the agent may run.  Bash is otherwise unusable: the allow-list below is the
 # only command auto-approved, and with `--permission-mode acceptEdits` anything else is refused
@@ -420,6 +423,31 @@ def _subscription_limit_error(error: str) -> bool:
         ("hit your" in text and "limit" in text and "reset" in text))
 
 
+def _rate_limit_error(error: str) -> bool:
+    text = str(error or "").lower()
+    return bool(
+        re.search(r"(?:^|\D)429(?:\D|$)", text) or
+        "rate limit" in text or
+        "tokens per minute" in text or
+        "too many requests" in text)
+
+
+def _wait_for_rate_limit_retry(seconds: int,
+                               cancel: threading.Event | None = None) -> bool:
+    """Wait through a provider window while still honoring a user cancellation."""
+    deadline = time.monotonic() + max(0, int(seconds))
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return True
+        interval = min(1.0, remaining)
+        if cancel is not None:
+            if cancel.wait(interval):
+                return False
+        else:
+            time.sleep(interval)
+
+
 def _missing_session_error(error: str) -> bool:
     text = str(error or "").lower()
     return "session" in text and any(
@@ -431,6 +459,33 @@ def _merge_attempts(previous: AgentRun, current: AgentRun, message: str) -> Agen
     current.duration_ms += previous.duration_ms
     current.num_turns += previous.num_turns
     current.steps = previous.steps + [{"kind": "system", "text": message}] + current.steps
+    return current
+
+
+def _run_with_rate_limit_retries(common: Mapping[str, Any], *, auth_mode: str) -> AgentRun:
+    """Retry transient per-minute limits without weakening the independent-session boundary."""
+    current = _run_once(**common, auth_mode=auth_mode)
+    for retry_index in range(RATE_LIMIT_RETRIES):
+        cancel = common.get("cancel")
+        if (current.ok or current.cancelled or not _rate_limit_error(current.error) or
+                (cancel is not None and cancel.is_set())):
+            return current
+        delay = RATE_LIMIT_RETRY_SECONDS * (retry_index + 1)
+        if not _wait_for_rate_limit_retry(delay, cancel=cancel):
+            current.cancelled = True
+            current.error = "Stopped at your request."
+            return current
+        retry_session = current.session_id or str(common.get("session_id") or "")
+        retry_resume = bool(common.get("resume") and retry_session)
+        if not retry_resume:
+            retry_session = new_session_id()
+        retried = _run_once(
+            **{**common, "session_id": retry_session, "resume": retry_resume},
+            auth_mode=auth_mode)
+        current = _merge_attempts(
+            current, retried,
+            f"The provider rate limit was reached, so the run waited {delay} seconds and "
+            "retried automatically.")
     return current
 
 
@@ -467,7 +522,7 @@ def run(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str
         else:
             raise AgentUnavailable("No Claude subscription token or API key is configured.")
 
-    first = _run_once(**common, auth_mode=mode)
+    first = _run_with_rate_limit_retries(common, auth_mode=mode)
     if (mode != "subscription" or first.ok or first.cancelled or
             not api_key or not _subscription_limit_error(first.error) or
             (cancel is not None and cancel.is_set())):
@@ -478,8 +533,8 @@ def run(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str
     fallback_resume = bool(resume and fallback_session)
     if not fallback_resume:
         fallback_session = new_session_id()
-    fallback = _run_once(
-        **{**common, "session_id": fallback_session, "resume": fallback_resume},
+    fallback = _run_with_rate_limit_retries(
+        {**common, "session_id": fallback_session, "resume": fallback_resume},
         auth_mode="api")
     fallback = _merge_attempts(
         first, fallback,
@@ -488,8 +543,8 @@ def run(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str
     if not (fallback_resume and not fallback.ok and _missing_session_error(fallback.error)):
         return fallback
 
-    fresh = _run_once(
-        **{**common, "session_id": new_session_id(), "resume": False}, auth_mode="api")
+    fresh = _run_with_rate_limit_retries(
+        {**common, "session_id": new_session_id(), "resume": False}, auth_mode="api")
     return _merge_attempts(
         fallback, fresh,
         "The prior conversation session was unavailable to the API account, so the run "

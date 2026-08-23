@@ -46,6 +46,7 @@ import json
 import os
 import re
 import secrets
+import traceback
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -105,7 +106,32 @@ def ensure_schema():
 # ---------------------------------------------------------------------------
 # publishing
 # ---------------------------------------------------------------------------
-def publish(user_id, slug, password=None, title="", clear_password=False) -> dict:
+def autopublish(user_id, slug, title="") -> dict:
+    """Publish a finished report under the owner's own share password. -> the row, or {}.
+
+    Called when a search completes, so the link exists before anyone asks for it: an owner who
+    shares every report should not have to click Publish every time.
+
+    IT DOES NOTHING WITHOUT A SHARE PASSWORD. The link is the access control, and an unguessable
+    slug is not a password: publishing automatically with no password would quietly turn every
+    finished search into a document anyone holding the URL can read, which is not a default anybody
+    chose. No password set means no automatic link, and the account page says so.
+
+    Never raises: a search must not fail over its share link.
+    """
+    try:
+        import accounts
+        d = accounts.share_defaults(user_id)
+        if not d.get("autopublish") or not d.get("password_hash"):
+            return {}
+        return publish(user_id, slug, title=title, password_hash=d["password_hash"])
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return {}
+
+
+def publish(user_id, slug, password=None, title="", clear_password=False,
+            password_hash=None) -> dict:
     """Publish (or re-publish) a report. -> the row.
 
     Re-publishing an existing link keeps its visit history: an owner who changes the password has
@@ -122,7 +148,9 @@ def publish(user_id, slug, password=None, title="", clear_password=False) -> dic
             #  check — and a bare 404 would tell them their own report does not exist. One link per
             #  report, owned by whoever published it first, and the second person is told so.
             return {"error": "already_published_by_another_user"}
-        pw = None
+        #  `password_hash` is an ALREADY-HASHED value, which is how the owner's one share password
+        #  reaches a report without the plaintext ever being stored or passed around.
+        pw = password_hash or None
         if password:
             pw = generate_password_hash(password)
         if row:

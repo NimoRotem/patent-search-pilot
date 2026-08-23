@@ -1,99 +1,158 @@
 {% extends "base.html" %}
-{% block title %}Corpus | Rotem Patents{% endblock %}
+{% block title %}Coverage | Rotem Patents{% endblock %}
 {% block body %}
 {#
-  What is in our own database, measured.
+  What this system searches, for the person relying on the result.
 
-  A search that lands outside the indexed field already says so, and that message is the only place
-  the scope was ever stated. It tells a reader what the corpus is NOT without telling them what it
-  IS. This page is the other half: how big, how old, which offices, which classifications, how it
-  is embedded, on what machine, and what a second field would cost.
+  WHO THIS IS FOR. A patent attorney deciding how much weight a search carries. That reader needs
+  four things: what is in the corpus, which other databases were searched, how current it all is,
+  and where the gaps are. They do not need our index sizes, our machine types or our roadmap, and
+  putting those first buried the answer. The engineering detail is still here, under the fold, so
+  nothing was lost by shortening the page.
 
   Sizes are catalogue reads. Totals are the app's hourly-cached facts. The counts that take minutes
   of I/O are snapshotted and shown with the date they were taken, because a page that recomputes
-  53 million classification rows on view is a page that times out.
+  53 million classification rows on view is a page that times out. The external source list is read
+  from the retrieval engine and cached for ten minutes.
 #}
 {% set f = p.facts %}
 {% set s = p.sizes %}
 {% set snap = p.snapshot %}
 {% set pr = p.projections %}
+{% set ext = p.external_sources %}
 
-<h1 style="margin-bottom:.15em">The corpus</h1>
+<h1 style="margin-bottom:.15em">Coverage</h1>
 <p class="small muted" style="margin-top:0">
-  What this system searches, measured on the database itself. Sizes and settings are live; the
-  counts marked <span class="cc">snapshot</span> take minutes to compute and were last taken
-  {% if p.snapshot_age_days is not none %}{{ p.snapshot_age_days }} day{{ '' if p.snapshot_age_days == 1 else 's' }} ago{% else %}never{% endif %}.
+  What a search on this system actually looks at: our own patent corpus, plus the external patent
+  databases it searches alongside it. Every number here is measured, not estimated.
 </p>
 
 <div class="card" style="margin:1em 0;padding:1em">
-  <h2 style="margin-top:0">What it covers</h2>
-  <p class="small" style="margin-top:0">
-    The corpus was built by pulling every publication classified in eight CPC groups, and then
-    everything those publications cite or are cited by. That is why it reaches
-    <b>{{ (snap.classifications[0].subclasses if snap.classifications else 0) }}</b> CPC subclasses
-    while being <i>about</i> eight: a vacuum gripper patent also carries its robotics, conveying and
-    fastening classifications, and those came with it.
+  <h2 style="margin-top:0">The corpus</h2>
+  <div class="hxgrid">
+    <div><span class="fldl">Publications</span> <b>{{ '{:,}'.format(f.publications or 0) }}</b></div>
+    <div><span class="fldl">Patent families</span> {% if snap.families %}<b>{{ '{:,}'.format(snap.families[0].families) }}</b>{% else %}&mdash;{% endif %}</div>
+    <div><span class="fldl">Published between</span> {{ f.min_year }} and {{ f.max_date_str }}</div>
+    {# The snapshot keeps the sixteen largest offices, so this must not be read as a total. #}
+    <div><span class="fldl">Largest offices</span>
+      {% for r in (snap.by_country or [])[:5] %}{{ r.country }}{{ ', ' if not loop.last }}{% endfor %}</div>
+    <div><span class="fldl">With an abstract</span> {% if snap.families %}{{ '{:,}'.format(snap.families[0].with_abstract) }}{% else %}&mdash;{% endif %}</div>
+    <div><span class="fldl">With claims parsed</span> {% if snap.claims %}{{ '{:,}'.format(snap.claims[0].pubs) }}{% if f.publications %} <span class="cc">{{ (100 * snap.claims[0].pubs / f.publications)|round(0)|int }}%</span>{% endif %}{% else %}&mdash;{% endif %}</div>
+  </div>
+  <p class="small muted" style="margin:.55em 0 0">
+    Publications and disk size are read live. Families, abstracts, claims and the office breakdown
+    take minutes to count and were last recomputed
+    {% if p.snapshot_age_days is none %}never{% elif p.snapshot_age_days < 0.05 %}minutes ago{% elif p.snapshot_age_days < 1 %}{{ (p.snapshot_age_days * 24)|round(0)|int }} hour{{ '' if (p.snapshot_age_days * 24)|round(0)|int == 1 else 's' }} ago{% else %}{{ p.snapshot_age_days|round(0)|int }} day{{ '' if p.snapshot_age_days|round(0)|int == 1 else 's' }} ago{% endif %}.
   </p>
-  <table class="tbl"><thead><tr><th>Seed CPC</th><th>What it is</th></tr></thead><tbody>
-    {% for c in p.seed_cpc %}<tr><td><b>{{ c.code }}</b></td><td class="small">{{ c.title }}</td></tr>{% endfor %}
-  </tbody></table>
-  <p class="small muted" style="margin:.6em 0 0">
-    These eight are also the <b>field definition</b>: the out-of-domain detector calibrates against
-    them, so a search whose nearest documents are not classified here is reported as adjacent art
-    rather than relevant art. Widening the ingest is safe; re-pointing the detector is a separate,
-    measured step, which is why the two lists are separate constants.
-    {% if not p.ingest_is_seed %}<br><b>The ingest is currently wider than the field definition:</b>
-    {{ p.ingest_cpc|join(', ') }}.{% endif %}
+  <p class="small muted" style="margin:.7em 0 0">
+    Built by taking every publication in eight CPC groups covering vacuum and suction gripping and
+    lifting, then everything those publications cite or are cited by. That is why it spans
+    {{ (snap.classifications[0].subclasses if snap.classifications else 0) }} CPC subclasses while
+    being <i>about</i> eight: a vacuum gripper patent carries its robotics, conveying and fastening
+    classifications too, and those came with it.
   </p>
+  <details style="margin-top:.6em">
+    <summary class="small">The eight seed groups, and what "out of domain" means</summary>
+    <table class="tbl" style="margin-top:.5em"><thead><tr><th>Seed CPC</th><th>What it is</th></tr></thead><tbody>
+      {% for c in p.seed_cpc %}<tr><td><b>{{ c.code }}</b></td><td class="small">{{ c.title }}</td></tr>{% endfor %}
+    </tbody></table>
+    <p class="small muted" style="margin:.6em 0 0">
+      These eight also define the field. A search whose nearest documents are not classified here
+      is reported as adjacent art rather than relevant art, so you are told when a question has
+      landed outside what this corpus covers instead of being handed a confident thin answer.
+      {% if not p.ingest_is_seed %}<br><b>The ingest is currently wider than the field definition:</b>
+      {{ p.ingest_cpc|join(', ') }}.{% endif %}
+    </p>
+  </details>
 </div>
 
 <div class="card" style="margin:1em 0;padding:1em">
-  <h2 style="margin-top:0">Size</h2>
-  <div class="hxgrid">
-    <div><span class="fldl">Publications</span> <b>{{ '{:,}'.format(f.publications or 0) }}</b></div>
-    <div><span class="fldl">Patent families</span> {% if snap.families %}{{ '{:,}'.format(snap.families[0].families) }} <span class="cc">snapshot</span>{% else %}—{% endif %}</div>
-    <div><span class="fldl">Embedded chunks</span> <b>{{ '{:,}'.format(f.chunks or 0) }}</b></div>
-    <div><span class="fldl">Coverage</span> {{ f.min_year }} to {{ f.max_date_str }}</div>
-    <div><span class="fldl">With an abstract</span> {% if snap.families %}{{ '{:,}'.format(snap.families[0].with_abstract) }} <span class="cc">snapshot</span>{% else %}—{% endif %}</div>
-    <div><span class="fldl">With parsed claims</span> {% if snap.claims %}{{ '{:,}'.format(snap.claims[0].pubs) }} publications, {{ '{:,}'.format(snap.claims[0].rows) }} claims <span class="cc">snapshot</span>{% else %}—{% endif %}</div>
-    <div><span class="fldl">Classification rows</span> {% if snap.classifications %}{{ '{:,}'.format(snap.classifications[0].rows) }} over {{ '{:,}'.format(snap.classifications[0].groups) }} CPC groups <span class="cc">snapshot</span>{% else %}—{% endif %}</div>
-    <div><span class="fldl">Database on disk</span> <b>{{ s.database.size if s.database else '—' }}</b></div>
-  </div>
-  {% if snap.claims and f.publications %}
+  <h2 style="margin-top:0">Databases searched alongside it</h2>
+  {% if ext %}
+  <p class="small" style="margin-top:0">
+    Every search fans out to these as well as to the corpus above, so a document this corpus never
+    ingested can still reach your report. Each search records what each source contributed: open a
+    search in <a href="{{ url_for('history') }}">your history</a> to see the family count per
+    source for that run.
+  </p>
+  <div style="overflow-x:auto"><table class="tbl">
+    <thead><tr><th>Source</th><th>What it adds</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for x in ext %}
+      <tr>
+        <td><b>{{ x.label }}</b></td>
+        <td class="small">{{ x.purpose or x.note or '' }}</td>
+        <td class="small">{% if x.live and x.in_report %}<span style="color:#155f38">searched</span>{% elif x.live %}<span style="color:#7a5b00">separate page</span>{% else %}<span class="muted">not available</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% set off = ext|rejectattr('live')|list %}
+  {% if off %}
   <p class="small muted" style="margin:.6em 0 0">
-    Only <b>{{ (100 * snap.claims[0].pubs / f.publications)|round(1) }}%</b> of publications have
-    their claims parsed into rows. That is the single biggest gap in the corpus and it is what
-    decides whether a document can be charted claim by claim rather than read as prose.
+    Not currently available:
+    {% for x in off %}<b>{{ x.label }}</b>{% if x.reason %} ({{ x.reason|truncate(120) }}){% endif %}{{ '; ' if not loop.last }}{% endfor %}.
+    A source that is off is named rather than hidden, because a search is only as wide as the
+    databases that answered it.
+  </p>
+  {% endif %}
+  {#
+    The table above describes the RETRIEVAL ENGINE's fan-out, which is a separate app. EU
+    registered designs are held by this app instead, on their own page, because a design has
+    no claims and no description and does not belong in a patent report's ranking. Without
+    this line a reader sees "EUIPO: not available" here and a Designs tab in the nav, and has
+    no way to reconcile them.
+  #}
+  <p class="small muted" style="margin:.6em 0 0">
+    <b>EU registered designs</b> are searched separately, on the
+    <a href="{{ request.script_root }}/designs">Designs</a> page. They protect appearance
+    rather than function, carry no claims to read, and are therefore not part of the fan-out
+    above and never enter a patent report's ranking.
+  </p>
+  {% else %}
+  <p class="small muted" style="margin-top:0">
+    The list of external databases could not be read from the retrieval engine just now. This says
+    nothing about whether they are working; it means this page could not reach the engine to ask.
   </p>
   {% endif %}
 </div>
 
 <div class="card" style="margin:1em 0;padding:1em">
-  <h2 style="margin-top:0">Where it comes from</h2>
-  {% if snap.by_country %}
-  <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Office</th><th>Publications</th><th>Share</th></tr></thead><tbody>
-    {% for r in snap.by_country %}
-    <tr><td><b>{{ r.country }}</b></td><td>{{ '{:,}'.format(r.n) }}</td>
-      <td class="small muted">{{ (100 * r.n / (f.publications or 1))|round(1) }}%</td></tr>
-    {% endfor %}
-  </tbody></table></div>
-  <p class="small muted" style="margin:.6em 0 0">
-    Chinese publications are the largest single block. They are indexed from their English
-    abstracts and machine-translated text where the source had it, which is why a CN document can
-    rank on meaning and still need a verified translation before it goes in a submission.
-  </p>
-  {% else %}<p class="small muted">No snapshot yet.</p>{% endif %}
+  <h2 style="margin-top:0">Limits worth knowing</h2>
+  <ul class="small" style="margin:.2em 0 0 1.1em;line-height:1.65">
+    {% if snap.claims and f.publications %}
+    <li><b>{{ (100 * snap.claims[0].pubs / f.publications)|round(0)|int }}% of publications have
+      their claims parsed into rows.</b> The rest can be read and quoted as prose but cannot be
+      charted claim by claim, which is the difference between "this document discloses the feature"
+      and "this document anticipates claim 4".</li>
+    {% endif %}
+    {% if snap.by_country and snap.by_country[0].country == 'CN' %}
+    <li><b>Chinese publications are the largest single block</b>
+      ({{ (100 * snap.by_country[0].n / (f.publications or 1))|round(0)|int }}%). They are indexed
+      from English abstracts and machine translation, so a CN document can rank correctly on
+      meaning and still need a verified translation before it goes into a submission.</li>
+    {% endif %}
+    <li><b>The corpus is still growing.</b> Acquisition runs continuously, so the totals above move
+      from day to day. The figures that matter to a given search are the ones recorded on that
+      search's own report.</li>
+    <li><b>Nothing here is a legal opinion.</b> The system finds and reads documents and says what
+      they disclose. Whether that anticipates a claim is a judgement for the attorney signing it.</li>
+  </ul>
 </div>
 
-<div class="card" style="margin:1em 0;padding:1em">
-  <h2 style="margin-top:0">How it is indexed</h2>
+<details class="card" style="margin:1em 0 2em;padding:1em">
+  <summary><b>Technical detail</b> <span class="cc">how it is indexed, what it runs on, what widening it would cost</span></summary>
+
+  <h3 style="margin:1em 0 .3em">How it is indexed</h3>
   <div class="hxgrid">
     <div><span class="fldl">Embedding model</span> {{ p.embedding.model }} <span class="cc">{{ p.embedding.provider }}</span></div>
     <div><span class="fldl">Dimensions</span> <b>{{ p.embedding.dims }}</b> <span class="cc">{{ p.embedding.shortening }}</span></div>
     <div><span class="fldl">Asymmetric</span> <span class="small">{{ p.embedding.asymmetric }}</span></div>
     <div><span class="fldl">Storage</span> <span class="small">{{ p.embedding.storage }}</span></div>
-    <div><span class="fldl">Server</span> {{ s.server or '—' }}</div>
-    <div><span class="fldl">pgvector</span> {{ (s.extensions or {}).get('vector', '—') }}</div>
+    <div><span class="fldl">Embedded chunks</span> <b>{{ '{:,}'.format(f.chunks or 0) }}</b></div>
+    <div><span class="fldl">Server</span> {{ s.server or '&mdash;' }} <span class="cc">pgvector {{ (s.extensions or {}).get('vector', '?') }}</span></div>
+    <div><span class="fldl">Database on disk</span> <b>{{ s.database.size if s.database else '&mdash;' }}</b></div>
+    <div><span class="fldl">Classification rows</span> {% if snap.classifications %}{{ '{:,}'.format(snap.classifications[0].rows) }} over {{ '{:,}'.format(snap.classifications[0].groups) }} CPC groups{% else %}&mdash;{% endif %}</div>
   </div>
   {% if snap.chunk_kinds %}
   <p class="small" style="margin:.8em 0 .2em"><b>What is embedded.</b> A publication is not one
@@ -102,25 +161,34 @@
     {% for r in snap.chunk_kinds %}<tr><td>{{ r.kind }}</td><td>{{ '{:,}'.format(r.n) }}</td></tr>{% endfor %}
   </tbody></table></div>
   {% endif %}
-  <p class="small" style="margin:.8em 0 .2em"><b>The largest objects on disk.</b></p>
+
+  <h3 style="margin:1.2em 0 .3em">The sixteen largest offices</h3>
+  {% if snap.by_country %}
+  <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Office</th><th>Publications</th><th>Share</th></tr></thead><tbody>
+    {% for r in snap.by_country %}
+    <tr><td><b>{{ r.country }}</b></td><td>{{ '{:,}'.format(r.n) }}</td>
+      <td class="small muted">{{ (100 * r.n / (f.publications or 1))|round(1) }}%</td></tr>
+    {% endfor %}
+  </tbody></table></div>
+  {% endif %}
+
+  <h3 style="margin:1.2em 0 .3em">The largest objects on disk</h3>
   <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Table</th><th>Total</th><th>Rows on disk</th><th>Indexes</th></tr></thead><tbody>
     {% for t in s.tables[:8] %}<tr><td>{{ t.tbl }}</td><td><b>{{ t.total }}</b></td><td>{{ t.heap }}</td><td>{{ t.idx }}</td></tr>{% endfor %}
   </tbody></table></div>
   <div style="overflow-x:auto;margin-top:.5em"><table class="tbl"><thead><tr><th>Index</th><th>On</th><th>Method</th><th>Size</th></tr></thead><tbody>
     {% for i in s.indexes[:6] %}<tr><td>{{ i.idx }}</td><td>{{ i.tbl }}</td><td>{{ i.method }}</td><td><b>{{ i.size }}</b></td></tr>{% endfor %}
   </tbody></table></div>
-</div>
 
-<div class="card" style="margin:1em 0;padding:1em">
-  <h2 style="margin-top:0">The machines</h2>
+  <h3 style="margin:1.2em 0 .3em">The machines</h3>
   <div class="hxgrid">
-    <div><span class="fldl">Database</span> <b>{{ p.db_host.name }}</b> · {{ p.db_host.machine_type }}
-      · {{ p.db_host.vcpu }} vCPU · {{ p.db_host.ram_gb }} GB RAM
-      · {{ p.db_host.disk_gb }} GB {{ p.db_host.disk_type }}</div>
-    <div><span class="fldl">Application</span> <b>{{ p.app_host.name }}</b> · {{ p.app_host.machine_type }}
-      · {{ p.app_host.vcpu }} vCPU · {{ p.app_host.ram_gb }} GB RAM</div>
-    <div><span class="fldl">shared_buffers</span> {{ (s.settings or {}).get('shared_buffers', '—') }}</div>
-    <div><span class="fldl">effective_cache_size</span> {{ (s.settings or {}).get('effective_cache_size', '—') }}</div>
+    <div><span class="fldl">Database</span> <b>{{ p.db_host.name }}</b> &middot; {{ p.db_host.machine_type }}
+      &middot; {{ p.db_host.vcpu }} vCPU &middot; {{ p.db_host.ram_gb }} GB RAM
+      &middot; {{ p.db_host.disk_gb }} GB {{ p.db_host.disk_type }}</div>
+    <div><span class="fldl">Application</span> <b>{{ p.app_host.name }}</b> &middot; {{ p.app_host.machine_type }}
+      &middot; {{ p.app_host.vcpu }} vCPU &middot; {{ p.app_host.ram_gb }} GB RAM</div>
+    <div><span class="fldl">shared_buffers</span> {{ (s.settings or {}).get('shared_buffers', '&mdash;') }}</div>
+    <div><span class="fldl">effective_cache_size</span> {{ (s.settings or {}).get('effective_cache_size', '&mdash;') }}</div>
   </div>
   {% if pr and not pr.index_fits_in_ram %}
   <p class="warn small" style="margin:.7em 0 0">
@@ -130,11 +198,9 @@
     and it is the first thing that gets worse when the corpus grows.
   </p>
   {% endif %}
-</div>
 
-{% if pr %}
-<div class="card" style="margin:1em 0;padding:1em">
-  <h2 style="margin-top:0">What a second field would cost</h2>
+  {% if pr %}
+  <h3 style="margin:1.2em 0 .3em">What a second field would cost</h3>
   <p class="small" style="margin-top:0">
     Arithmetic on what is already measured here, with the ratio beside each answer so the sum can
     be checked rather than trusted. Measured now:
@@ -159,11 +225,9 @@
     resize; <b>the index outgrowing RAM is what changes how the product feels</b>, and it already
     has.
   </p>
-</div>
-{% endif %}
+  {% endif %}
 
-<div class="card" style="margin:1em 0 2em;padding:1em">
-  <h2 style="margin-top:0">What I would do, in order</h2>
+  <h3 style="margin:1.2em 0 .3em">Widening it, in order</h3>
   <ol class="small" style="margin:.2em 0 0 1.1em;line-height:1.6">
     <li><b>Halve the index before adding anything to it.</b> pgvector
       {{ (s.extensions or {}).get('vector', '') }} has <code>halfvec</code>: 16-bit floats, half the
@@ -191,5 +255,5 @@
       it changes <i>which</i> documents get read. The bill moves when the screen has more plausible
       candidates and the budget is raised to match.</li>
   </ol>
-</div>
+</details>
 {% endblock %}

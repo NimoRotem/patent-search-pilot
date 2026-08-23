@@ -109,7 +109,7 @@ h1,h2,h3{color:var(--navy)}
         {% if c.description %}<h4>Description excerpt</h4>{% for para in c.description[:2] %}<p>{% if para.para_no %}[{{ para.para_no }}] {% endif %}{{ para.text }}</p>{% endfor %}{% endif %}
       </div>
     </div>
-    {% if c.images %}{% set im0 = c.images[0] %}<img class="refimg" src="{% if im0.file %}{{ request.script_root }}/figures/{{ c.pub }}/{{ im0.file }}{% else %}{{ im0.full or im0.thumbnail }}{% endif %}" alt="Lead drawing of {{ c.pub }}">{% endif %}</div>
+    {% if c.images %}{% set im0 = c.images[0] %}<img class="refimg" src="{% if im0.file %}{{ request.script_root }}/refdrawing/{{ c.pub }}/{{ im0.file }}{% else %}{{ im0.full or im0.thumbnail }}{% endif %}" alt="Lead drawing of {{ c.pub }}">{% endif %}</div>
   </div>
   {% endfor %}
   <p class="small muted" style="margin-top:20px"><b>Absence of results is not evidence of absence of

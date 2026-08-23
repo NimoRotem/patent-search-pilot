@@ -37,7 +37,7 @@ def report(tmp_path, monkeypatch):
     (tmp_path / ("%s.meta.json" % slug)).write_text(json.dumps({"subject": "US-20250033224-A1"}))
     #  Keep the build offline: no model call, no enrichment fetch.
     import concise_description as cd
-    monkeypatch.setattr(cd, "phrase", lambda doc, tier="strong": doc)
+    monkeypatch.setattr(cd, "phrase", lambda doc, tier="strong", model=None: doc)
     monkeypatch.setattr(cd, "_display", lambda pub, allow_fetch=True: {
         "title": "Vacuum Gripper", "inventors": ["Nimrod Rotem"],
         "publication_date": "2022-08-16", "priority_date": "2018-05-09"})

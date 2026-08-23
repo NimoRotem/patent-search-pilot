@@ -272,7 +272,7 @@ def plan(claims, brief="", title="", independents=(), description=""):
 # the search itself
 # ---------------------------------------------------------------------------
 def find_candidates(plans, subject, mode, exclude_pubs, exclude_families, retriever,
-                    per_claim=PER_CLAIM, cap=MAX_NEW, emit=None, texts=None):
+                    per_claim=PER_CLAIM, cap=MAX_NEW, emit=None, texts=None, report=None):
     """Run the orphan queries and return new candidates, round-robin by claim.
 
     ROUND-ROBIN, NOT BEST-FIRST. Fusing every orphan claim's results into one list and taking the
@@ -405,8 +405,12 @@ def find_candidates(plans, subject, mode, exclude_pubs, exclude_families, retrie
         conn.autocommit = True
         try:
             with conn.cursor() as cur:
-                reps = webview.resolve_family_reps(
-                    cur, order, subject_efd=getattr(subject, 'efd', None))
+                #  Through the report when there is one, so a family the reading already decided
+                #  keeps the member it read. Without a report there is nothing to agree with, and
+                #  the subject's own date is the best rule left.
+                reps = (webview.reps_for(cur, report, order) if report is not None
+                        else webview.resolve_family_reps(
+                            cur, order, subject_efd=getattr(subject, 'efd', None)))
         finally:
             conn.close()
     except Exception:
@@ -481,7 +485,7 @@ def _apply_charts(charts, stored):
 
 def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief="", title="",
         description="", exclude_pubs=(), exclude_families=(), enrich=None, ledger=None,
-        emit=None):
+        emit=None, report=None):
     """Rescue the orphaned claims. Returns (new_charts, summary).
 
     Raises nothing but `runctx.RunCancelled`, which is not a failure of the rescue: it means this
@@ -643,7 +647,7 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
         cands = []
         try:
             cands = find_candidates(plans, subject, mode, exclude_pubs, exclude_families, retriever,
-                                    emit=emit,
+                                    emit=emit, report=report,
                                     texts={c["label"]: c.get("text") or "" for c in claim_items})
         except Exception:
             traceback.print_exc()

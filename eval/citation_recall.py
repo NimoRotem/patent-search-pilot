@@ -9,14 +9,22 @@ Family level on purpose: a citation is satisfied by any member of its DOCDB simp
 the report shows one card per family. Nothing here is specific to one subject patent.
 """
 import json
+import os
 import re
 import sys
 
-sys.path.insert(0, "/home/nimrod_rotem/patent-search-pilot/src")
-import db
-import pubnorm
+#  RELATIVE TO THIS FILE, never the deployed checkout. Hardcoding
+#  `/home/nimrod_rotem/patent-search-pilot/src` here put the DEPLOYED tree at the front of
+#  `sys.path` for the whole process, and pytest imports this module during collection: from that
+#  moment every module not already cached was imported from production instead of the worktree
+#  under test. It was invisible until a signature changed on one side, and then it read as a
+#  mysterious order-dependent failure. A test run must only ever import the tree it is testing.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(_ROOT, "src"))
+import db          # noqa: E402
+import pubnorm     # noqa: E402
 
-REPORTS = "/home/nimrod_rotem/patent-search-pilot/data/reports"
+REPORTS = os.environ.get("PATENTS_REPORTS_DIR") or os.path.join(_ROOT, "data", "reports")
 
 
 def norm(s):

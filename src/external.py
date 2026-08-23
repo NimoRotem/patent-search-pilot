@@ -905,6 +905,34 @@ def citable(families, subject_obj, mode) -> list:
     return [f for f in families if f[2] in ok]
 
 
+def credit_sources(cands, fam_of, kept):
+    """Which source put which family in front of the reader. -> ({src: n}, {src: n_unique})
+
+    `stats[src]["hits"]` counts what an adapter RETURNED, which is the wrong unit and flatters the
+    noisiest one: measured on a live run, bigquery_gpatents returned 9,979 rows and
+    serpapi_gpatents 400, out of 12,480 candidates that fused down to 393 families. What a reader
+    is entitled to know is how many families a source contributed to the ranking, and how many of
+    those NO OTHER source found, because that second number is the one that says whether a
+    subscription is earning its place.
+
+    Counted over `kept`, the families that survived fusion, so a source is never credited with a
+    document that was cut. A family two sources both found is credited to both and is unique to
+    neither. Its own function so it can be tested without a network fan-out.
+    """
+    by_source: dict = {}
+    for c in cands or ():
+        fam = fam_of.get(_norm((c or {}).get("pub_number") or ""))
+        if fam in kept:
+            by_source.setdefault(str((c or {}).get("source") or "external"), set()).add(fam)
+    finders: dict = {}
+    for src, fams in by_source.items():
+        for fam in fams:
+            finders.setdefault(fam, set()).add(src)
+    return ({s: len(f) for s, f in by_source.items()},
+            {s: sum(1 for fam in fams if len(finders.get(fam) or ()) == 1)
+             for s, fams in by_source.items()})
+
+
 def run(query_specs, brief: str = "", claims=None, on_event=None) -> dict:
     """Plan, fan out, materialise, rank. Never raises.
 
@@ -973,6 +1001,7 @@ def run(query_specs, brief: str = "", claims=None, on_event=None) -> dict:
             if fam in keep_fams and fam not in pid_of and k in placed:
                 pid_of[fam] = placed[k][0]
         fams = [(f, s, pid_of[f]) for f, s in ranked if f in pid_of]
+        families_by_source, unique_by_source = credit_sources(cands, fam_of, pid_of)
     except Exception as e:
         traceback.print_exc()
         return {"ok": False, "families": [], "error": f"ranking failed: {str(e)[:200]}",
@@ -985,6 +1014,8 @@ def run(query_specs, brief: str = "", claims=None, on_event=None) -> dict:
             "stats": res.get("stats") or {}, "errors": res.get("errors") or [],
             "n_candidates": len(cands), "n_records": len(records), "n_in_corpus": len(have),
             "n_new": n_new, "n_channels": len(chans),
+            "families_by_source": families_by_source,
+            "unique_families_by_source": unique_by_source,
             "n_families": len(fams), "elapsed": round(time.time() - t0, 1),
             "error": res.get("error") or ""}
 
@@ -996,6 +1027,10 @@ def summary(ext: dict) -> dict:
     per_source = {k: v.get("hits", 0) for k, v in (ext.get("stats") or {}).items()}
     return {
         "ok": bool(ext.get("ok")),
+        #  Families kept, per source, and how many of them nothing else found. `per_source` below
+        #  is the raw returned-row count and is a different unit: keep both, never conflate them.
+        "families_by_source": ext.get("families_by_source") or {},
+        "unique_families_by_source": ext.get("unique_families_by_source") or {},
         "aspects": [{"name": a.get("name"), "cpc": a.get("cpc"),
                      "keywords": a.get("keywords", [])[:6]}
                     for a in (ext.get("aspects") or [])],
