@@ -1204,6 +1204,15 @@ WHAT TO CHECK, in this order of importance:
    that appears to have been added or widened merely to legitimize geometry or an object visible
    only in a generated sheet. Compare the source wording with the candidate and quote both.
 
+   Build a source ledger before returning: trace every independent and dependent claim limitation,
+   every numbered part, and every specific structure, relationship, result, material, shape,
+   position, connection, or variant in the text and drawings to an exact passage in the inventor's
+   disclosure or conversation. The candidate's own detailed description cannot support a claim if
+   the candidate introduced the detail. Common engineering knowledge is not source support. Nor are
+   plausibility, prior art, a renderer's need for concrete geometry, or the usefulness of a detail.
+   Report every untraced item as critical even when it is optional, conventional, or included only
+   in a dependent claim. Do not limit this audit to what seems like the core invention.
+
 2. FIGURES, NUMERALS AND DESCRIPTIONS AGREE.
    Every reference numeral labels one part and only that part, everywhere it appears. The part a
    numeral labels in the detailed description is the part it labels in draft/numerals.md and on
