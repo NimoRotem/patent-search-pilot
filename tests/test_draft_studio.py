@@ -1797,6 +1797,43 @@ def test_an_agent_budget_stop_checkpoints_the_valid_workspace_for_retry(monkeypa
     assert "continue" in report["summary"].lower()
 
 
+def test_an_interrupted_repair_keeps_the_existing_filing_gate_findings(tmp_path):
+    prior_report = {
+        "status": "failed",
+        "verdict": "fail",
+        "summary": "Two drawing endpoints require automatic repair.",
+        "checks": [{
+            "name": "Every drawing sheet passes inspection",
+            "status": "fail",
+            "severity": "error",
+            "items": ["FIG. 2: numeral 26 misses the bearing face"],
+        }],
+        "findings": [{"title": "FIG. 2 endpoint mismatch", "severity": "major"}],
+        "counts": {"checks": 1, "checks_failed": 1, "findings": 1, "major": 1},
+    }
+    repository = Mock()
+    repository.retry_candidate.return_value = {
+        "snapshot": {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES},
+        "qa_report": prior_report,
+    }
+    workspace = Mock()
+    workspace.snapshot.return_value = {
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=Mock(), qa=draft_qa, workspace=workspace)
+
+    runner._checkpoint_interrupted_agent(
+        turn_id=3, lease="lease", workspace=tmp_path, allowed=ALLOWED,
+        error=draft_studio.StudioError("Reached maximum repair budget"))
+
+    saved = repository.save_retry_candidate.call_args.kwargs["report"]
+    assert saved["checks"] == prior_report["checks"]
+    assert saved["findings"] == prior_report["findings"]
+    assert saved["counts"] == prior_report["counts"]
+    assert saved["summary"].startswith(prior_report["summary"])
+    assert "maximum repair budget" in saved["last_error"]
+
+
 def test_terminal_failure_retains_candidate_until_a_project_completes(monkeypatch):
     queries = []
 
