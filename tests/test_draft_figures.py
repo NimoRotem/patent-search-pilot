@@ -1463,6 +1463,30 @@ def test_deterministic_nested_plan_has_exactly_three_rectangles_and_one_circle()
     assert draft_figures._deterministic_nested_plan_png(rewritten) is not None
 
 
+def test_deterministic_nested_plan_scales_the_circle_to_one_third_of_inner_rectangle():
+    specification = (
+        "The whole sheet contains four outlines and nothing else. From the outside inward, "
+        "draw three nested rectangles and one circle at the centre. The diameter of the circle "
+        "is about one-third of the width of the third rectangle. Each outline is drawn once as "
+        "one closed line."
+    )
+
+    image = Image.open(io.BytesIO(
+        draft_figures._deterministic_nested_plan_png(specification))).convert("L")
+    row = [x for x in range(image.width) if image.getpixel((x, image.height // 2)) < 32]
+    runs = []
+    for x in row:
+        if not runs or x > runs[-1][-1] + 1:
+            runs.append([x])
+        else:
+            runs[-1].append(x)
+    centers = [round((run[0] + run[-1]) / 2) for run in runs]
+    inner_width = centers[5] - centers[2]
+    circle_diameter = centers[4] - centers[3]
+
+    assert 0.30 <= circle_diameter / inner_width <= 0.36
+
+
 def test_render_uses_deterministic_nested_plan_after_generated_counts_fail(monkeypatch):
     bad = blank_png(1000, 800)
     specification = (
