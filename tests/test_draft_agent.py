@@ -135,3 +135,44 @@ def test_api_rate_limit_retry_keeps_a_resumed_drafting_session(monkeypatch, tmp_
         (True, "draft-session"),
         (True, "draft-session"),
     ]
+
+
+def test_resumed_run_restarts_from_workspace_when_conversation_is_missing(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "subscription")
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "subscription-token")
+    monkeypatch.setattr(draft_agent, "new_session_id", lambda: "replacement-session")
+    calls = []
+
+    def run_once(**values):
+        calls.append(values)
+        if len(calls) == 1:
+            return draft_agent.AgentRun(
+                session_id=values["session_id"], model="opus",
+                error="No conversation found with session ID: missing-session",
+                duration_ms=10)
+        return draft_agent.AgentRun(
+            ok=True, session_id=values["session_id"], model="opus",
+            result={"action": "revised"}, duration_ms=30)
+
+    monkeypatch.setattr(draft_agent, "_run_once", run_once)
+
+    result = draft_agent.run(
+        workspace=Path(tmp_path), prompt="repair", system_prompt="system", schema={},
+        session_id="missing-session", resume=True)
+
+    assert result.ok is True
+    assert [(call["resume"], call["session_id"]) for call in calls] == [
+        (True, "missing-session"),
+        (False, "replacement-session"),
+    ]
+    assert result.duration_ms == 40
+    assert any("fresh session" in step["text"].lower() for step in result.steps)
+
+
+def test_structured_cli_error_details_are_not_discarded():
+    assert draft_agent._final_error({
+        "subtype": "error_during_execution",
+        "result": "",
+        "errors": ["No conversation found with session ID: missing-session"],
+    }) == "No conversation found with session ID: missing-session"
