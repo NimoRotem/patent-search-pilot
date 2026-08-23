@@ -303,10 +303,16 @@ _VERTICAL_LINE_TARGET_RE = re.compile(
     r"\b(?:left|right)\s+(?:vertical\s+)?(?:edge|line|boundary)\b|"
     r"\bvertical\s+(?:edge|line|boundary)\b",
     re.IGNORECASE)
+_BROAD_INTERIOR_TARGET_RE = re.compile(
+    r"\bwell\s+inside\b|\bwhite\s+(?:space|margin|region)\b|"
+    r"\bclear\s+of\s+(?:both|all)\b",
+    re.IGNORECASE)
+_HATCHED_TARGET_RE = re.compile(r"\bhatch\w*\b", re.IGNORECASE)
 _NEGATED_TARGET_RE = re.compile(
     r"\b(?:not|never|excluding|excluded|exclude|clear\s+of|away\s+from|rather\s+than)\b",
     re.IGNORECASE)
 _MAX_ANCHOR_SNAP = 220
+_MIN_BROAD_INTERIOR_CLEARANCE = 24
 
 _SCHEMA = (
     """CREATE TABLE IF NOT EXISTS app_draft_figures (
@@ -1259,6 +1265,9 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         requires_ink = bool(
             _LINE_ANCHOR_PART_RE.search(part) or _has_explicit_line_target(evidence)
         ) and not is_empty_space
+        requires_broad_interior = bool(
+            _BROAD_INTERIOR_TARGET_RE.search(evidence)
+        ) and not _HATCHED_TARGET_RE.search(evidence) and not requires_ink and not is_exterior
         if is_exterior and is_empty_space:
             allowed_spaces.append({"numeral": numeral, "part": part, "x": x, "y": y})
         elif is_exterior or requires_ink:
@@ -1281,6 +1290,23 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                     ungrounded.append({
                         "numeral": numeral, "part": part,
                         "reason": f"nearest visible geometry is {distance:.1f} units away",
+                    })
+            else:
+                ungrounded.append({
+                    "numeral": numeral, "part": part,
+                    "reason": "the drawing contains no visible geometry",
+                })
+        elif requires_broad_interior:
+            if len(ink_x):
+                distance_sq = ((ink_norm_x - x) ** 2) + ((ink_norm_y - y) ** 2)
+                clearance = sqrt(float(distance_sq.min()))
+                if clearance < _MIN_BROAD_INTERIOR_CLEARANCE:
+                    ungrounded.append({
+                        "numeral": numeral, "part": part,
+                        "reason": (
+                            f"broad interior target has only {clearance:.1f} units of clearance "
+                            "from visible lines; widen the target region or place the endpoint "
+                            "deeper inside it"),
                     })
             else:
                 ungrounded.append({

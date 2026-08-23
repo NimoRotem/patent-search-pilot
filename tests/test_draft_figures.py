@@ -1367,6 +1367,61 @@ def test_pixel_grounding_keeps_a_planar_surface_endpoint_inside_its_region(part)
     assert (anchors[0]["x"], anchors[0]["y"]) == (150, 150)
 
 
+def test_pixel_grounding_rejects_a_narrow_white_margin_for_a_broad_interior_target():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((100, 100, 900, 900), outline="black", width=8)
+    draw.rectangle((122, 122, 878, 878), outline="black", width=8)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    _, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["16 = second side"], [{
+            "numeral": "16", "x": 111, "y": 500, "visible": True,
+            "evidence": "well inside the white space margin, clear of both boundary lines",
+        }])
+
+    assert audit["ok"] is False
+    assert audit["ungrounded"][0]["numeral"] == "16"
+    assert "clearance" in audit["ungrounded"][0]["reason"]
+
+
+def test_pixel_grounding_accepts_a_wide_white_margin_for_a_broad_interior_target():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((100, 100, 900, 900), outline="black", width=8)
+    draw.rectangle((250, 250, 750, 750), outline="black", width=8)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["16 = second side"], [{
+            "numeral": "16", "x": 175, "y": 500, "visible": True,
+            "evidence": "well inside the white space margin, clear of both boundary lines",
+        }])
+
+    assert audit["ok"] is True and audit["ungrounded"] == []
+    assert (anchors[0]["x"], anchors[0]["y"]) == (175, 500)
+
+
+def test_pixel_grounding_does_not_apply_white_clearance_to_hatched_material():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((100, 100, 900, 900), outline="black", width=8)
+    draw.line((100, 510, 900, 510), fill="black", width=4)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["12 = base"], [{
+            "numeral": "12", "x": 500, "y": 500, "visible": True,
+            "evidence": "well inside the hatching and clear of both boundary lines",
+        }])
+
+    assert audit["ok"] is True and audit["ungrounded"] == []
+    assert (anchors[0]["x"], anchors[0]["y"]) == (500, 500)
+
+
 @pytest.mark.parametrize("evidence", [
     "a point on the contact line where the leg meets the base",
     "the top horizontal line of the uppermost hatched layer",
