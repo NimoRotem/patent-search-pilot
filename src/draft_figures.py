@@ -1168,15 +1168,15 @@ def _expected_closed_region_count(caption: str) -> int | None:
     match = re.search(
         r"\bexactly\s+" + number +
         r"\s+(?:separate\s+)?(?:closed\s+)?"
-        r"(shapes?|outlines?|curves?|loops?)\b", text)
+        r"(shapes?|outlines?|curves?|loops?|lines?)\b", text)
     if not match:
         match = re.search(
             r"\bcontains?\s+" + number +
             r"\s+(?:separate\s+)?(?:closed\s+)?"
-            r"(shapes?|outlines?|curves?|loops?)\s+and\s+nothing\s+else\b", text)
+            r"(shapes?|outlines?|curves?|loops?|lines?)\s+and\s+nothing\s+else\b", text)
     closed_shapes = re.search(
         r"\b(?:single\s+|continuous\s+|separate\s+)?closed\s+"
-        r"(?:shapes?|outlines?|curves?|loops?)\b", text)
+        r"(?:shapes?|outlines?|curves?|loops?|lines?)\b", text)
     closed_shapes = closed_shapes or re.search(
         r"\beach(?:\s+(?:shape|outline|curve|loop))?\s+is\s+drawn\b[^.]{0,80}"
         r"\bclosed\s+(?:line|curve)\b", text)
@@ -1292,10 +1292,13 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
     """Render an exact simple nested plan when a raster model cannot honor the count."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
     if (_expected_closed_region_count(text) != 4 or
-            not re.search(r"\bthree\s+(?:nested\s+)?rectangles?\b", text) or
-            not re.search(r"\b(?:one\s+circle|circle\s+at\s+the\s+cent(?:er|re))\b", text) or
+            not re.search(r"\bthree\s+(?:(?:nested\s+)?rectangles?|rectangular)\b", text) or
+            not re.search(
+                r"\b(?:one\s+(?:circle|circular)|circle\s+at\s+the\s+cent(?:er|re))\b",
+                text) or
             not ("nested" in text or "outside inward" in text or
-                 "outside to inside" in text)):
+                 "outside to inside" in text or
+                 ("second rectangle within" in text and "third rectangle within" in text))):
         return None
     from PIL import Image, ImageDraw
 
