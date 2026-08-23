@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import correct as correction
-from . import ingest, numerals, plan as planning, spec as speccing, vision
+from . import ingest, numerals, plan as planning, spec as speccing, vision, visualclass
 from .extract import extract_graph
 from .ground import ParagraphIndex, make_grounder
 from .layout import UnsupportedFigure, build_scene
@@ -169,6 +169,13 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
     graph = extract_graph(document, registry, description, reasoner,
                           grounder=make_grounder(reasoner))
     stage("RECONCILE_GRAPH")
+    # The extractor names a class from the paragraphs where it can. Anything still on the
+    # default gets one from the drafter's own words for it, which is what decides the symbol it
+    # is drawn with. Deliberately last, so the text always beats the keyword table.
+    classified = visualclass.classify_all(graph.entities)
+    if classified:
+        notes.append(f"{classified} part(s) were drawn with the conventional symbol for what "
+                     "the description calls them; the rest are plain outlines")
     if graph.blocking_conflicts:
         notes.append(f"{len(graph.blocking_conflicts)} reference-numeral conflict(s) in the "
                      "draft are reported rather than repaired")

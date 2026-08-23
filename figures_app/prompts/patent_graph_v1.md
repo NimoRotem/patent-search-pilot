@@ -60,7 +60,16 @@ Return ONLY a JSON object of this shape:
 ```
 
 `entity_type` is one of: component, system, assembly, material, region, signal, data, step,
-actor, other. `visual_class` is one of: generic_component, housing, plate, shaft, tube,
-chamber, opening, connector, sensor, actuator, controller, processor, memory, storage, network,
-interface, power, boundary. Choose `generic_component` whenever the paragraphs do not make a
-more specific class certain.
+actor, other.
+
+`visual_class` chooses the conventional drawing symbol for the class of thing the applicant
+named. It is one of: generic_component, boundary, housing, chamber, plate, substrate,
+electrode, shaft, tube, opening, connector, seal, fastener, frame, beam, arm, workpiece, motor,
+pump, valve, piston, actuator, spring, gear, bearing, roller, belt, conveyor, wheel, gripper,
+suction_cup, cutter, nozzle, coil, magnet, power, sensor, heater, filter, adhesive, lens,
+antenna, display, interface, processor, controller, memory, storage, network.
+
+Choose the class from what the paragraphs say the component IS, not from what it is made of: a
+"conductive substrate" is a substrate. Choose `generic_component` whenever the paragraphs do not
+make a more specific class certain — a plain outline is the right drawing for a part whose kind
+the document does not settle.

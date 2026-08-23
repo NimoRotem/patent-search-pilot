@@ -128,3 +128,20 @@ def test_a_flowchart_is_drawn_top_to_bottom(profile):
     assert ys == sorted(ys)
     assert all(edge.arrow_at_end for edge in scene.edges)
     assert {label.reference_numeral for label in scene.labels} == {"502", "504", "506"}
+
+
+def test_a_numeral_never_sits_on_the_outline_it_names(housing_document, profile):
+    """A numeral printed on its own object's edge is as unreadable as one over its neighbour."""
+    graph, registry = make_graph(housing_document, [
+        ("110", "contains", "120", "none"),
+        ("130", "controls", "140", "subject_to_object"),
+    ])
+    spec = _figure_one(housing_document, graph, registry)
+    scene = build_scene(spec, graph, profile)
+    by_entity = {node.entity_id: node for node in scene.nodes}
+    for label in scene.labels:
+        node = by_entity[label.entity_id]
+        if node.is_container:
+            continue        # a part's numeral legitimately sits inside its housing
+        assert not label.box.overlaps(node.box), (
+            f"{label.reference_numeral} is printed on the outline of the object it names")

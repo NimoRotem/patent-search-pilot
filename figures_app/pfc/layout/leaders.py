@@ -127,6 +127,12 @@ def _cost(profile: DrawingProfile, node: LayoutNode, label_point: tuple[float, f
     cost = COST_DISTANCE * distance(label_point, target)
     cost += COST_BEND * (len(route) - 2)
 
+    # A numeral printed ON the outline of the thing it names is as hard to read as one printed
+    # over its neighbour, and the leader is what does the naming. The owner is NOT exempt from
+    # this: exempting it let 112 sit on its own box edge with the leader stubbed into a corner.
+    if box.overlaps(node.box.inflated(profile.min_label_gap)):
+        cost += COST_HITS_NODE
+
     for other in nodes:
         if other.entity_id == node.entity_id:
             continue

@@ -429,9 +429,13 @@ def _numeral_conflicts(registry: dict[str, RegistryEntry]) -> list[Conflict]:
             type="REFERENCE_NUMERAL_COLLISION", severity="blocking",
             reference_numeral=numeral,
             message=(f"Reference numeral {numeral} is used for two different things: "
-                     f"{item['names'][0]!r} and {item['names'][1]!r}. The draft has to say "
-                     "which before a figure can print that numeral."),
+                     f"{item['names'][0]!r} ({item['counts'][0]} time"
+                     f"{'' if item['counts'][0] == 1 else 's'}) and "
+                     f"{item['names'][1]!r} ({item['counts'][1]} time"
+                     f"{'' if item['counts'][1] == 1 else 's'}). The draft has to say which "
+                     "before a figure can print that numeral."),
             entity_ids=[entity_id_for(numeral)],
+            readings=item.get("readings") or [],
             evidence=item["evidence"][:4]))
     for item in duplicate_numerals(registry):
         out.append(Conflict(

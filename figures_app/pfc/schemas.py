@@ -139,14 +139,23 @@ EntityType = Literal[
     "signal", "data", "step", "actor", "other",
 ]
 
-# The primitive library. A visual class says how conservatively a thing may be drawn; it never
-# says what the thing looks like in the world. "generic_component" is the honest default and is
-# what an entity gets whenever the document does not disclose a shape.
+# The symbol library. A visual class chooses the conventional NOTATION for the class of thing
+# the applicant named — the coil symbol for a coil, hatching for a cut substrate — and never a
+# dimension, a count or a feature the document did not state. "generic_component" is the honest
+# default and is what most entities get. See pfc/visualclass.py for where the line is drawn.
 VisualClass = Literal[
-    "generic_component", "housing", "plate", "shaft", "tube", "chamber", "opening",
-    "connector", "sensor", "actuator", "controller", "processor", "memory", "storage",
-    "network", "interface", "power", "process_step", "decision", "terminator",
-    "data_store", "boundary",
+    "generic_component", "boundary",
+    # structure
+    "housing", "chamber", "plate", "substrate", "electrode", "shaft", "tube", "opening",
+    "connector", "seal", "fastener", "frame", "beam", "arm", "workpiece",
+    # motion and power
+    "motor", "pump", "valve", "piston", "actuator", "spring", "gear", "bearing", "roller",
+    "belt", "conveyor", "wheel", "gripper", "suction_cup", "cutter", "nozzle",
+    # electrical, optical and control
+    "coil", "magnet", "power", "sensor", "heater", "filter", "adhesive", "lens", "antenna",
+    "display", "interface", "processor", "controller", "memory", "storage", "network",
+    # flowchart-only
+    "process_step", "decision", "terminator", "data_store",
 ]
 
 ShapeHint = Literal[
@@ -236,6 +245,9 @@ class Conflict(Strict):
     entity_ids: list[str] = Field(default_factory=list)
     relation_ids: list[str] = Field(default_factory=list)
     reference_numeral: Optional[str] = None
+    # One entry per competing reading: {name, uses, paragraph_id, quote}. A collision report
+    # has to show BOTH readings or a reader cannot check it.
+    readings: list[dict[str, Any]] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
 
 
@@ -415,6 +427,9 @@ class LayoutNode(Strict):
     reference_numeral: Optional[str] = None
     caption: str = ""
     shape: NodeShape = "box"
+    # The conventional symbol this part is drawn with, chosen from its disclosed class. Empty
+    # means a plain outline, which is what a part of unsettled kind gets.
+    symbol: str = ""
     box: Box
     depth: int = 0
     is_container: bool = False

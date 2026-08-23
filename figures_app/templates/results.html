@@ -62,7 +62,24 @@
   {% for conflict in graph.conflicts %}
     <div class="issue {{ 'warn' if conflict.severity == 'warning' else '' }}">
       <span class="rid">{{ conflict.type }}</span>{{ conflict.message }}
-      {% if conflict.evidence %}
+      {% if conflict.readings %}
+        {# One quotation per reading. Showing two quotations of the SAME reading asserts a
+           collision and then fails to demonstrate it, which reads as a false positive. #}
+        <table style="margin-top:8px;background:transparent">
+          <tr><th>Read as</th><th>Uses</th><th>Where the draft says so</th></tr>
+          {% for reading in conflict.readings %}
+          <tr>
+            <td><strong>{{ reading.name }}</strong></td>
+            <td class="muted">{{ reading.uses }}</td>
+            <td class="muted">
+              {% if reading.quote %}<span class="mono">{{ reading.paragraph_id }}</span>
+                — “…{{ reading.quote[:170] }}…”
+              {% else %}<em>no quotation found</em>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+      {% elif conflict.evidence %}
         <div class="muted" style="margin-top:5px">
           {% for item in conflict.evidence[:2] %}
             <div><span class="mono">{{ item.paragraph_id }}</span> — “{{ item.quote[:180] }}”</div>

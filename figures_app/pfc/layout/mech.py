@@ -17,23 +17,20 @@ import math
 from typing import Optional
 
 from ..geometry import boundary_point, ellipse_boundary_point, union
+from ..render import symbols
 from ..numerals import sort_key
 from ..profiles import DrawingProfile
 from ..schemas import (Box, Entity, FigureSpec, LayoutEdge, LayoutNode, LayoutScene,
                        PatentGraph, Point, Relation)
 
-# The primitive library, keyed by what the document actually disclosed. Everything a patent does
-# not describe the shape of comes out as a plain rectangle.
+# A shape the document states in words OVERRIDES the class symbol: "the housing 110 is
+# cylindrical" is a disclosure about this housing, where the housing symbol is only the
+# convention for housings in general.
 _SHAPE_BY_HINT = {
     "rectangular": ("box", 1.6), "planar": ("plate", 2.6), "circular": ("circle", 1.0),
     "spherical": ("circle", 1.0), "elliptical": ("ellipse", 1.5),
     "annular": ("ellipse", 1.4), "cylindrical": ("cylinder", 1.1),
     "tubular": ("tube", 2.4), "conical": ("box", 1.4),
-}
-_SHAPE_BY_CLASS = {
-    "housing": ("box", 1.5), "plate": ("plate", 2.4), "shaft": ("shaft", 3.0),
-    "tube": ("tube", 2.4), "chamber": ("chamber", 1.4), "opening": ("opening", 1.0),
-    "connector": ("box", 1.2), "boundary": ("container", 1.5),
 }
 
 _ARRANGEMENT = {"above": (0, -1), "below": (0, 1)}
@@ -43,18 +40,26 @@ MIN_SCALE = 0.25
 MAX_SCALE = 2.2
 
 
-def _primitive(entity: Entity, is_container: bool) -> tuple[str, float]:
+def _primitive(entity: Entity, is_container: bool) -> tuple[str, str, float]:
+    """``(shape, symbol, width/height)`` for one part.
+
+    A shape the document states wins over the class convention, because it is a disclosure about
+    THIS part. Otherwise the part is drawn with the symbol for its class, at the proportion that
+    symbol reads best at. A class with no symbol falls through to a plain outline.
+    """
     if is_container:
-        return ("container", 1.4)
+        return ("container", "", 1.4)
     if entity.shape_hint_grounded and entity.shape_hint in _SHAPE_BY_HINT:
-        return _SHAPE_BY_HINT[entity.shape_hint]
-    if entity.visual_class in _SHAPE_BY_CLASS:
-        return _SHAPE_BY_CLASS[entity.visual_class]
-    return ("box", 1.4)
+        shape, ratio = _SHAPE_BY_HINT[entity.shape_hint]
+        return (shape, "", ratio)
+    klass = entity.visual_class
+    if symbols.has_symbol(klass) and klass != "generic_component":
+        return ("box", klass, symbols.aspect(klass))
+    return ("box", "", symbols.aspect("generic_component"))
 
 
 class _Part:
-    __slots__ = ("entity", "children", "parent", "box", "shape")
+    __slots__ = ("entity", "children", "parent", "box", "shape", "symbol")
 
     def __init__(self, entity: Entity):
         self.entity = entity
@@ -62,6 +67,7 @@ class _Part:
         self.parent: Optional[_Part] = None
         self.box = Box(x=0.0, y=0.0, width=1.0, height=1.0)
         self.shape = "box"
+        self.symbol = ""
 
 
 def _grid(count: int) -> tuple[int, int]:
@@ -134,8 +140,9 @@ def layout_mechanical(spec: FigureSpec, graph: PatentGraph, profile: DrawingProf
 
     def arrange(group: list[_Part]) -> Box:
         for part in group:
-            shape, ratio = _primitive(part.entity, bool(part.children))
+            shape, symbol, ratio = _primitive(part.entity, bool(part.children))
             part.shape = shape
+            part.symbol = symbol
             if part.children:
                 inner = arrange(part.children)
                 pad = profile.container_padding
@@ -186,7 +193,7 @@ def layout_mechanical(spec: FigureSpec, graph: PatentGraph, profile: DrawingProf
     nodes = [
         LayoutNode(entity_id=part.entity.id,
                    reference_numeral=part.entity.reference_numeral,
-                   caption="", shape=part.shape,  # type: ignore[arg-type]
+                   caption="", shape=part.shape, symbol=part.symbol,  # type: ignore[arg-type]
                    box=part.box, depth=_depth(part), is_container=bool(part.children),
                    role=roles.get(part.entity.id, "primary"))  # type: ignore[arg-type]
         for part in sorted(everything,

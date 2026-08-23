@@ -241,8 +241,20 @@ def sort_key(numeral: str) -> tuple[int, str, str]:
     return (int(match.group(2)), match.group(1).upper(), match.group(3).upper())
 
 
+def _example(entry: RegistryEntry, normalized: str) -> Optional[Mention]:
+    """The first mention that actually reads as this name."""
+    return next((m for m in entry.mentions if m.normalized == normalized), None)
+
+
 def collisions(registry: dict[str, RegistryEntry]) -> list[dict]:
-    """Numerals whose competing names are too different and too frequent to be variants."""
+    """Numerals whose competing names are too different and too frequent to be variants.
+
+    Each reading is returned with a quotation that shows THAT reading. Returning the numeral's
+    first few mentions instead was a real reporting defect: on US-2024/0324075-A1, numeral 124
+    is genuinely both an impedance sensor and a first conductive substrate, and the report
+    quoted the sensor twice, so it asserted a collision and then failed to show one. A finding
+    a reader cannot check is a finding they are right to disbelieve.
+    """
     out: list[dict] = []
     for entry in registry.values():
         total = entry.count
@@ -252,10 +264,24 @@ def collisions(registry: dict[str, RegistryEntry]) -> list[dict]:
                 continue
             if _related(canonical, name):
                 continue
+            readings = []
+            for label, key, uses in ((entry.canonical_name, canonical, total - count),
+                                     (name, name, count)):
+                mention = _example(entry, key)
+                readings.append({
+                    "name": label, "uses": uses,
+                    "paragraph_id": mention.paragraph_id if mention else "",
+                    "quote": mention.quote if mention else "",
+                })
             out.append({
-                "numeral": entry.numeral, "names": [entry.canonical_name, name],
+                "numeral": entry.numeral,
+                "names": [entry.canonical_name, name],
                 "counts": [total - count, count],
-                "evidence": entry.evidence(),
+                "readings": readings,
+                "evidence": [Evidence(section_id=m.section_id, paragraph_id=m.paragraph_id,
+                                      quote_start=m.start, quote_end=m.end, quote=m.quote)
+                             for m in (_example(entry, canonical), _example(entry, name))
+                             if m is not None],
             })
     return out
 

@@ -95,3 +95,35 @@ def test_claims_are_not_a_source_of_numerals():
     registry = numerals.build_registry(parse.description_paragraphs(document.paragraphs))
     assert "999" not in registry
     assert "120" in registry
+
+
+def test_a_collision_is_reported_with_a_quote_for_each_reading():
+    """Two quotations of the same reading assert a collision and fail to show one.
+
+    Modelled on US-2024/0324075-A1, where 124 really is both an impedance sensor and a first
+    conductive substrate, and the report quoted the sensor twice.
+    """
+    document = make_document(
+        "A DEVICE\n\nDETAILED DESCRIPTION\n"
+        "The device 112 comprises a power supply 118, a processor 120, an impedance sensor 124 "
+        "and a display interface 126. The impedance sensor 124 measures the coils 116.\n\n"
+        "The sheet 130 comprises an adhesive substrate 102 surrounded by a first conductive "
+        "substrate 124 and a second conductive substrate 126. The conductive substrate 124 "
+        "and the conductive substrate 126 heat the adhesive substrate 102.\n")
+    registry = numerals.build_registry(parse.description_paragraphs(document.paragraphs))
+    found = {row["numeral"]: row for row in numerals.collisions(registry)}
+    assert "124" in found
+
+    readings = found["124"]["readings"]
+    assert len(readings) == 2
+    names = {reading["name"].lower() for reading in readings}
+    assert any("impedance sensor" in name for name in names)
+    assert any("conductive substrate" in name for name in names)
+
+    # The load-bearing part: each quotation must contain the name it is offered as evidence for.
+    for reading in readings:
+        head = reading["name"].split()[-1].lower()
+        assert head in reading["quote"].lower(), (
+            f"the quote for {reading['name']!r} does not contain it: {reading['quote']!r}")
+        assert reading["paragraph_id"]
+        assert reading["uses"] >= 1
