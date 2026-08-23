@@ -30,12 +30,17 @@ ELEMENT_TOPK = int(os.environ.get("AGENT_ELEMENT_TOPK", "200"))
 
 
 def _default_search_workers():
-    """Two-way overlap by default; AGENT_SEARCH_WORKERS=1 is an instant serial rollback."""
+    """How many independent ANN passes run at once. AGENT_SEARCH_WORKERS=1 is the serial rollback.
+
+    The old cap of 2 was sized for "two simultaneous UI searches on an 8-core database". The
+    durable lanes changed that arithmetic: one worker per lane runs one search at a time, so the
+    bound is the database's I/O overlap, and the passes are I/O-bound waits on an index bigger
+    than RAM , the same shape that made three embedding shards 3.0x one stream on this DB."""
     try:
-        requested = int(os.environ.get("AGENT_SEARCH_WORKERS", "2"))
+        requested = int(os.environ.get("AGENT_SEARCH_WORKERS", "4"))
     except (TypeError, ValueError):
-        requested = 2
-    return 1 if requested <= 1 else 2
+        requested = 4
+    return max(1, min(requested, 8))
 
 
 class CoverageLedger:
@@ -135,6 +140,12 @@ class AgentConfig:
     # Bounded independent ANN passes; two UI jobs => at most four. Environment override permits
     # an operational serial fallback without reverting or changing ranking behavior.
     search_workers: int = field(default_factory=_default_search_workers)
+    #  The cross-encoder head is the last ~60 s of a run. The find phase does not buy it; the
+    #  ledger and grid phases do, and reorder the head their own way afterwards anyway.
+    final_rerank: bool = True
+    #  Find mode: fewer, narrower passes. Measured 2026-08-23: at 6-way concurrency each pass is
+    #  27-74 s because the database is I/O-saturated, so the pass count is the wall clock.
+    find_mode: bool = False
     #  The uploaded patent's own claims, when the search started from a document. Each independent
     #  claim becomes its own query vector in the query set (query_set.build): a claim is the right
     #  query for a claim-level match even though, measured, it is a poor query on its own.
@@ -298,6 +309,31 @@ class CoverageAgent:
         #  reference from dense rank #528 to #35, with nothing else changed.
         rank_text = query_set.retrieval_text(query_text) or query_text
         self._rank_text = rank_text
+        #  THE FIRST SEED PASS DOES NOT NEED THE DECOMPOSITION, so the two run together: the seed
+        #  searches the whole-invention text while the LLM splits it into elements. On the
+        #  measured find run the decomposition was ~40 s spent in front of a search that never
+        #  reads the elements. Fetch-only here; the ledger does not exist yet, so the result is
+        #  applied after it does.
+        _split_seed = self._search_config == "claim_agentic"
+        _seed_pool = _seed_future = None
+        _fork = getattr(getattr(self, "r", None), "fork", None)
+        if callable(_fork) and int(cfg.search_workers) > 1:
+            def _seed_fetch():
+                worker = _fork()
+                t0 = time.monotonic()
+                try:
+                    kw = {"cfg": ["claim_dense"]} if _split_seed else {}
+                    return (self._fetch_search(rank_text, subject, m, retriever=worker,
+                                               element=None, wide=True, **kw),
+                            round(time.monotonic() - t0, 1))
+                finally:
+                    close = getattr(worker, "close", None)
+                    if callable(close):
+                        close()
+
+            _seed_pool = ThreadPoolExecutor(max_workers=1,
+                                            thread_name_prefix="patent-agent-seed")
+            _seed_future = _seed_pool.submit(_seed_fetch)
         elements = self.decompose(rank_text, subject)
         ledger = CoverageLedger(elements)
         ledger.languages.add("en")
@@ -325,6 +361,8 @@ class CoverageAgent:
                 "search_seconds": round(time.monotonic() - started, 1),
                 "families": len(ledger.families_seen),
             }
+            print(f"[agent] pass {search_done}/{search_max} {detail['search_seconds']}s "
+                  f"serial fam={detail['families']}", flush=True)
             if progress_round is not None:
                 detail["round"] = progress_round
             emit(progress_stage, detail)
@@ -377,6 +415,9 @@ class CoverageAgent:
                     result = self._apply_search(
                         fetched, ledger, is_seed=bool(spec.get("is_seed")))
                     search_done += 1
+                    print(f"[agent] pass {search_done}/{search_max} {seconds}s "
+                          f"batched({workers}w) wide={bool(spec.get('wide'))} "
+                          f"fam={len(ledger.families_seen)}", flush=True)
                     detail = {
                         "search_done": search_done,
                         "search_max": search_max,
@@ -394,7 +435,21 @@ class CoverageAgent:
         # a production 25M-chunk query measured 331.8 s.  Claim-dense already yields the useful
         # semantic head, so stream it first and continue the precise lexical/CPC/citation channels
         # as the next counted pass.  The all-text path keeps its established single-pass ranking.
-        if split_claim_seed:
+        if _seed_future is not None:
+            fetched, _seed_seconds = _seed_future.result()
+            _seed_pool.shutdown(wait=False)
+            self._apply_search(fetched, ledger, is_seed=True)
+            search_done += 1
+            emit("search_progress", {"search_done": search_done, "search_max": search_max,
+                                     "search_seconds": _seed_seconds,
+                                     "families": len(ledger.families_seen)})
+            emit("partial", {"report": self.report(
+                query_text, subject, m, ledger, rounds=0, rerank=False)})
+            if split_claim_seed:
+                searched("search_progress", rank_text, subject, m, ledger, element=None,
+                         is_seed=True, wide=True,
+                         cfg=["dense", "brief_dense", "claim_bm25", "cpc", "citation", "qbe"])
+        elif split_claim_seed:
             searched("search_progress", rank_text, subject, m, ledger,
                      element=None, is_seed=True, cfg=["claim_dense"], wide=True)
             emit("partial", {"report": self.report(
@@ -420,16 +475,24 @@ class CoverageAgent:
             specs = []
         extra = [s for s in query_set.seed_specs(specs)
                  if s.kind != "brief" and s.text.strip() != rank_text.strip()]
+        if cfg.find_mode:
+            #  Five whole-invention queries carry the seed bucket for a find; the full set , and
+            #  the wide scan profile , belong to the phases that read what they retrieve.
+            extra = extra[:5]
         if extra:
             emit("query_set", {"n": len(extra),
                                "queries": [s.as_dict() for s in extra]})
             ledger.query_set = [s.as_dict() for s in extra]
+            _find_cfg = ["dense", "claim_dense"] if cfg.find_mode else None
             searched_batch("seed_progress", [
-                {"query": s.text, "is_seed": True, "wide": True} for s in extra
+                dict({"query": s.text, "is_seed": True, "wide": not cfg.find_mode},
+                     **({"cfg": _find_cfg} if _find_cfg else {})) for s in extra
             ])
         # attribute seed hits to elements too (cap the per-element seed searches for runtime)
+        _find_cfg = ["dense", "claim_dense"] if cfg.find_mode else None
         searched_batch("seed_progress", [
-            {"query": el, "element": el} for el in elements[:8]
+            dict({"query": el, "element": el},
+                 **({"cfg": _find_cfg} if _find_cfg else {})) for el in elements[:6 if cfg.find_mode else 8]
         ])
         ledger.note_round(len(ledger.families_seen))
         emit("seeded", {"families": len(ledger.families_seen)})
@@ -482,7 +545,7 @@ class CoverageAgent:
                                      "families": len(ledger.families_seen)})
 
         return self.report(query_text, subject, m, ledger, rounds=rnd,
-                           on_progress=_rerank_progress)
+                           rerank=cfg.final_rerank, on_progress=_rerank_progress)
 
     # ---- report --------------------------------------------------------------------------
     def _final_rank(self, query_text, ledger, top=None, rerank=True, on_progress=None,

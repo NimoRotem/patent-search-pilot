@@ -1221,6 +1221,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                                     #  both re-added by the phases that render their output.
                                     max_rounds=(0 if depth == "quick" else profile.rounds),
                                     final_rerank=(depth != "quick"),
+                                    find_mode=(depth == "quick"),
                                     elements_per_round=3, ground=True,
                                     search_config=("claim_agentic" if search_focus == "claims"
                                                    else "agentic"),
@@ -1263,6 +1264,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             # Log the wall-clock windows so the parallelism is verifiable in the service log.
             t0 = min((v["start"] for v in timing.values()), default=time.time())
             for nm, v in sorted(timing.items(), key=lambda kv: kv[1]["start"]):
+                print(f"[gen {slug}] fanout done at {time.time()-t0:.1f}s", flush=True)
                 print(f"[fanout {slug}] {nm}: {v['start']-t0:6.2f}s .. {v.get('end', v['start'])-t0:6.2f}s "
                       f"({v.get('end', v['start'])-v['start']:.2f}s)", flush=True)
 

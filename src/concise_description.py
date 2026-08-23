@@ -751,27 +751,26 @@ def build(deep, pubs, subject, start_at=1, do_phrase=True, on_progress=None,
 
     A `pub` prefixed `OA:` is a file-wrapper document, not a publication: it is built from the
     prosecution record on `report` and never looked up in the corpus.
+
+    THE DOCUMENTS ARE INDEPENDENT , one enrichment fetch and one model call each , and they
+    used to build one after another, which priced a ten-document package at the sum of its
+    parts. They build concurrently now; numbering still follows the caller's order, because the
+    document number is assigned from the input position, never from completion order.
     """
     claims = deep.get("claims") or []
     refs = {r.get("pub"): r for r in (deep.get("references") or [])}
     oas = {c["pub"]: c for c in office_action_candidates(report)}
-    docs = []
-    for i, pub in enumerate(pubs):
-        if on_progress:
-            #  Named, not just counted: "Reading US-11413727-B2" tells the user which document is
-            #  costing the wait, which matters when one reference is slow to enrich.
-            on_progress(i, "Reading %s (%d of %d)" % (pub, i + 1, len(pubs)))
+
+    def one(i, pub):
         if str(pub).startswith(OA_PREFIX):
             cand = oas.get(pub)
-            if cand:
-                docs.append(office_action_doc(cand, subject, n=start_at + i))
-            continue
+            return office_action_doc(cand, subject, n=start_at + i) if cand else None
         ref = refs.get(pub)
         if not ref:
-            continue
+            return None
         rows = rows_for_reference(ref, claims)
         if not rows:
-            continue
+            return None
         b = biblio(pub)
         b["issue_date_pretty"] = _pretty_date(b["publication_date"])
         b["priority_date_pretty"] = _pretty_date(b["priority_date"])
@@ -779,8 +778,8 @@ def build(deep, pubs, subject, start_at=1, do_phrase=True, on_progress=None,
             "n": start_at + i,
             "pub": pub,
             #  Carried for the family collapse: two members of one DOCDB family are one
-            #  disclosure, and a submission that cites both spends two document slots to say one
-            #  thing.
+            #  disclosure, and a submission that cites both spends two document slots to say
+            #  one thing.
             "family_id": ref.get("family"),
             "biblio": b,
             "subject": subject,
@@ -793,5 +792,32 @@ def build(deep, pubs, subject, start_at=1, do_phrase=True, on_progress=None,
             t = (b.get("title") or "").strip()
             doc["summary"] = ("This document discloses %s%s." % (t[0].lower(), t[1:]) if t
                               else "This document is cited for the disclosure set out below.")
-        docs.append(doc)
-    return docs
+        return doc
+
+    try:
+        workers = int(os.environ.get("CONCISE_BUILD_WORKERS", "4"))
+    except (TypeError, ValueError):
+        workers = 4
+    workers = max(1, min(workers, 8, len(pubs) or 1))
+    results = [None] * len(pubs)
+    if workers == 1:
+        for i, pub in enumerate(pubs):
+            if on_progress:
+                on_progress(i, "Reading %s (%d of %d)" % (pub, i + 1, len(pubs)))
+            results[i] = one(i, pub)
+    else:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        finished = 0
+        with ThreadPoolExecutor(max_workers=workers,
+                                thread_name_prefix="concise-build") as ex:
+            futures = {ex.submit(one, i, pub): i for i, pub in enumerate(pubs)}
+            for future in as_completed(futures):
+                i = futures[future]
+                results[i] = future.result()
+                finished += 1
+                if on_progress:
+                    #  Named, not just counted: which document is costing the wait matters when
+                    #  one reference is slow to enrich.
+                    on_progress(finished,
+                                "Read %s (%d of %d)" % (pubs[i], finished, len(pubs)))
+    return [d for d in results if d]

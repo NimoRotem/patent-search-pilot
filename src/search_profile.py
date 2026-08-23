@@ -151,16 +151,30 @@ _CONCEPT = Profile(
 #  ---- CLAIM ATTACK ---------------------------------------------------------------------------
 #  Unchanged. Every constant stays exactly where the measurements in deep_rank.py left it; the
 #  empty budget is the point, not an omission.
+#  Re-budgeted 2026-08-23 against the owner's targets: find <= 2 min, ledger + grid <= 10
+#  more, the 1.290 package <= 5 more. The reading is 97% of the bill, so the read set is what
+#  shrinks: 45-60 references instead of 150-240. The claim rescue moves OUT of this phase (it
+#  measured 495-4,217 s on every claims run); DEEP_RANK_RESCUE_CLAIMS=1 pins it back on for an
+#  A/B, and every other knob stays operator-pinnable through its DEEP_RANK_* variable.
 _CLAIMS = Profile(
     kind=CLAIMS,
-    label="Full claim attack",
-    summary=("Splits every claim into its separate requirements and searches each one, reads the "
-             "strongest references in full against all of them, and rescues any requirement "
-             "nothing answered."),
+    label="Claim ledger + prior-art grid",
+    summary=("Splits every claim into its separate requirements, verifies the retrieved "
+             "passages against each one, reads the strongest references in full, and builds "
+             "the ledger and the claim-by-prior-art grid."),
     unit="claim limitation",
-    eta_low=50 * 60, eta_high=2 * 60 * 60,
-    rounds=2,
-    budget={},
+    eta_low=6 * 60, eta_high=10 * 60,
+    rounds=1,
+    budget={
+        "PRESCREEN_ENRICH_TOP": 60,
+        "CHART_TOP": 45,
+        "CHART_TOP_MAX": 60,
+        "ENRICH_TOP": 60,
+        "ALWAYS_CHART_RETRIEVAL_HEAD": 24,
+        "BLIND_RESCUE_MAX": 12,
+        "CONCEPT_PASS_TOP": 60,
+        "RESCUE_CLAIMS": 0,
+    },
 )
 
 PROFILES = {CONCEPT: _CONCEPT, CLAIMS: _CLAIMS}
@@ -194,15 +208,17 @@ def lane_for(depth: str) -> str:
 
 
 def budget_for(profile, depth="deep") -> dict:
-    """The knob overrides this run gets, or {} when the split is off or the depth already skips
-    the stages being cut.
+    """The knob overrides this run gets, or {} when the split is off.
 
-    QUICK IS LEFT ALONE. The quick tier already reads nothing in full, fetches no paid text and
-    runs one round; narrowing its screen on top of that would change a tier whose recall was
-    measured at its current width, for no saving that anybody waits on.
+    FIND BUYS RETRIEVAL AND RANKING ONLY. The per-requirement sweep the tail runs is the ledger
+    phase's product, and -1 is the explicit "off" the stage checks for. Everything else about
+    quick stays untouched, for the measured reason: narrowing its screen would change a tier
+    whose recall was measured at its current width, for no saving anybody waits on.
     """
-    if not ENABLED or depth == "quick":
+    if not ENABLED:
         return {}
+    if depth == "quick":
+        return {"BATCH_TAIL_MAX": -1, "SCREEN_TOP": 600}
     budget = dict(getattr(profile, "budget", {}) or {})
     if depth == "ledger":
         budget.update(LEDGER_BUDGET)
@@ -218,8 +234,8 @@ def describe(profile, depth="deep") -> dict:
         d["summary"] = ("Searches the corpus and ranks what it finds, with the passages that "
                         "matched each requirement. Nothing is read in full and nothing is called "
                         "a disclosure yet.")
-        d["eta_low"], d["eta_high"] = 3 * 60, 12 * 60
-        d["eta_text"] = "about 3-12 minutes"
+        d["eta_low"], d["eta_high"] = 60, 2 * 60
+        d["eta_text"] = "about 2 minutes"
     elif depth == "ledger":
         d["label"] = "Claim ledger"
         d["summary"] = ("Verifies the retrieved passages against every requirement and builds "
