@@ -2854,6 +2854,19 @@ def _record_anchor_coordinate_history(coordinate_history: dict, anchors) -> None
             del history[:-MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS]
 
 
+def _record_rejected_anchor_coordinates(coordinate_history: dict, anchors, numerals) -> None:
+    """Count each new rejected proposal, including one snapped onto the prior coordinate."""
+    positions = _anchor_positions(anchors)
+    for raw_numeral in numerals or ():
+        numeral = _clean_numeral(raw_numeral)
+        point = positions.get(numeral)
+        if not numeral or point is None:
+            continue
+        history = coordinate_history.setdefault(numeral, [])
+        history.append(point)
+        del history[:-MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS]
+
+
 def _stalled_marked_anchor_numerals(coordinate_history: dict, pending) -> list[str]:
     """Find endpoints whose repeated rejected positions remain in one small region."""
     stalled = []
@@ -3025,6 +3038,7 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
         if not changed:
             return False
         anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, repaired)
+        _record_rejected_anchor_coordinates(coordinate_history, anchors, incorrect)
         _record_anchor_coordinate_history(coordinate_history, anchors)
         _prune_marked_coordinate_certificates(marked_certificates, anchors)
         _marked_progress_put(
@@ -3191,6 +3205,8 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
                 coordinate_history=coordinate_history)
             break
         anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
+        _record_rejected_anchor_coordinates(
+            coordinate_history, anchors, repair_audit.get("incorrect") or [])
         _record_anchor_coordinate_history(coordinate_history, anchors)
         _prune_marked_coordinate_certificates(marked_certificates, anchors)
         _marked_progress_put(
