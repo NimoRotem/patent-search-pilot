@@ -690,6 +690,26 @@ def test_pixel_grounding_keeps_enclosed_bodies_and_intentional_empty_spaces():
     assert [(item["x"], item["y"]) for item in anchors] == [(500, 400), (500, 780)]
 
 
+@pytest.mark.parametrize("part", ["second side", "bearing face"])
+def test_pixel_grounding_keeps_a_planar_surface_endpoint_inside_its_region(part):
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((100, 100, 900, 900), outline="black", width=8)
+    draw.rectangle((200, 200, 800, 800), outline="black", width=8)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+    original = [{
+        "numeral": "16", "x": 150, "y": 150, "visible": True,
+        "evidence": "the white planar band between the two outlines",
+    }]
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), [f"16 = {part}"], original)
+
+    assert audit["ok"] is True and audit["adjusted"] == []
+    assert (anchors[0]["x"], anchors[0]["y"]) == (150, 150)
+
+
 def test_closed_region_audit_enforces_an_explicit_exact_shape_count():
     image = Image.new("RGB", (1000, 1000), "white")
     draw = ImageDraw.Draw(image)
