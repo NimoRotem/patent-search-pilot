@@ -70,7 +70,7 @@ MARKED_ANCHOR_THINKING_BUDGET = 2048
 SEMANTIC_REVIEW_COUNT = 2
 LEADER_REVIEW_COUNT = 2
 MARKED_ANCHOR_REVIEW_COUNT = 3
-MARKED_ANCHOR_CORRECTION_GAIN = 0.5
+MARKED_ANCHOR_CORRECTION_GAIN = 1.0
 MIN_OCR_CONFIDENCE = float(os.environ.get("PATENT_FIGURE_OCR_CONFIDENCE", "0.85"))
 
 
@@ -2330,7 +2330,7 @@ def _repair_leader_anchors(raw_png: bytes, anchors, audit: dict, *, scale: float
 
 
 def _repair_marked_anchors(raw_png: bytes, anchors, audit: dict) -> tuple[list, bool]:
-    """Take a damped step toward a reviewer's global full-sheet correction."""
+    """Apply the reviewer's grid-grounded global full-sheet correction."""
     repaired = [dict(item) for item in anchors or ()]
     records = {_clean_numeral(item.get("numeral")): item
                for item in (audit or {}).get("labels") or [] if isinstance(item, dict)}

@@ -374,7 +374,7 @@ def test_marked_anchor_consensus_uses_the_median_majority_correction():
     assert audit["labels"][0]["suggested_y"] == 490
 
 
-def test_marked_anchor_repair_takes_a_damped_step_toward_the_full_sheet_suggestion():
+def test_marked_anchor_repair_uses_the_grid_grounded_full_sheet_suggestion():
     raw = blank_png(1000, 1000)
     anchors = [{"numeral": "26", "x": 100, "y": 200, "visible": True,
                 "evidence": "bearing face"}]
@@ -390,8 +390,8 @@ def test_marked_anchor_repair_takes_a_damped_step_toward_the_full_sheet_suggesti
     repaired, changed = draft_figures._repair_marked_anchors(raw, anchors, audit)
 
     assert changed is True
-    assert repaired[0]["x"] == 500
-    assert repaired[0]["y"] == 500
+    assert repaired[0]["x"] == 900
+    assert repaired[0]["y"] == 800
 
 
 def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypatch):
@@ -421,7 +421,7 @@ def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypat
 
     def inspect_marked(_png, **kwargs):
         marked_calls.append([dict(item) for item in kwargs["anchors"]])
-        if len(marked_calls) < 6:
+        if len(marked_calls) < 2:
             return {
                 "ok": False, "inspected": True,
                 "errors": ["The center is below the bearing-face boundary."],
@@ -448,8 +448,8 @@ def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypat
         semantic={"anchors": initial, "pixel_anchor_audit": dict(accepted_pixel)})
 
     assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
-    assert len(marked_calls) == 6 and len(leader_calls) == 6
-    assert anchors[0]["x"] > 525
+    assert len(marked_calls) == 2 and len(leader_calls) == 2
+    assert anchors[0]["x"] == 550
     assert leaders["marked_anchor_audit"]["ok"] is True
 
 
