@@ -1212,8 +1212,10 @@ WHAT TO CHECK, in this order of importance:
    knowledge is not source support. Nor are plausibility, a renderer's need for concrete geometry,
    or the usefulness of a detail. Report every untraced item as critical even when it is optional,
    conventional, or included only in a dependent claim. Do not limit this audit to what seems like
-   the core invention. Prior-art characterisations trace to prior_art/ under step 4 instead; do not
-   require the inventor's disclosure to describe the prior art.
+   the core invention. A corrective instruction that names a candidate detail only to reject,
+   remove, narrow, or question it is not affirmative inventor disclosure of that detail. Prior-art
+   characterisations trace to prior_art/ under step 4 instead; do not require the inventor's
+   disclosure to describe the prior art.
 
 2. FIGURES, NUMERALS AND DESCRIPTIONS AGREE.
    Every reference numeral labels one part and only that part, everywhere it appears. The part a
