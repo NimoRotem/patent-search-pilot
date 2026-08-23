@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block body %}
+
+<div class="card">
+  <h2>Compile the figures of a patent</h2>
+  <p class="hint">Give it a patent as a PDF or as a link, and it builds the figures from the
+  description: the components, their reference numerals and the relationships the text actually
+  states. It never traces the drawings that were filed. Those are shown beside the generated
+  ones so you can compare.</p>
+
+  <form id="start" enctype="multipart/form-data" style="margin-top:18px">
+    <div class="row">
+      <div>
+        <label for="url">Patent link or publication number</label>
+        <input type="text" id="url" name="url" autocomplete="off"
+               placeholder="https://patents.google.com/patent/US11338449B2/en   or   US-11338449-B2">
+      </div>
+    </div>
+    <p class="hint">Google Patents and Espacenet links are recognised, as is a bare publication
+    number. The link itself is never fetched: only the publication number is read out of it.</p>
+
+    <div class="row" style="margin-top:14px">
+      <div>
+        <label for="file">…or a file</label>
+        <input type="file" id="file" name="file" accept=".pdf,.docx,.txt,.md">
+        <p class="hint">PDF, .docx, .txt or .md, up to 40 MB. A scanned PDF with no text layer
+        cannot be used: the compiler builds from words, not pixels.</p>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:14px">
+      <div>
+        <label for="jurisdiction">Drawing rules</label>
+        <select id="jurisdiction" name="jurisdiction">
+          <option value="uspto_utility">USPTO utility (37 CFR 1.84)</option>
+          <option value="generic" selected>Generic</option>
+          <option value="pct">PCT (Rule 11)</option>
+          <option value="epo">EPO (Rule 46 EPC)</option>
+        </select>
+      </div>
+      <div>
+        <label for="verification_level">Verification</label>
+        <select id="verification_level" name="verification_level">
+          <option value="standard" selected>Standard, one independent reader</option>
+          <option value="strict">Strict, two independent readers on every figure</option>
+          <option value="off">Off, deterministic checks only</option>
+        </select>
+      </div>
+      <div>
+        <label for="max_figures">Figures at most</label>
+        <select id="max_figures" name="max_figures">
+          <option>6</option><option selected>12</option><option>20</option><option>40</option>
+        </select>
+      </div>
+    </div>
+
+    <p style="margin-top:18px"><button type="submit" id="go">Compile figures</button></p>
+    <p class="hint" id="err" style="color:var(--bad);display:none"></p>
+  </form>
+
+  <div id="progress" style="display:none;margin-top:18px">
+    <div class="bar"><i id="pbar" style="width:2%"></i></div>
+    <p class="hint" id="pmsg">Reading the patent…</p>
+  </div>
+</div>
+
+{% if jobs %}
+<div class="card">
+  <h2>Your recent compilations</h2>
+  <table>
+    <tr><th>Patent</th><th>When</th><th>Figures</th><th>Result</th><th></th></tr>
+    {% for job in jobs %}
+    <tr>
+      <td>{{ job.title or job.source or job.job_id[:8] }}
+        {% if job.publication_number %}<span class="muted">{{ job.publication_number }}</span>{% endif %}</td>
+      <td class="muted">{{ (job.created_at or '')[:16].replace('T',' ') }}</td>
+      <td>{% if job.figures is defined %}{{ job.validated or 0 }} of {{ job.figures }} validated
+          {% else %}<span class="muted">—</span>{% endif %}</td>
+      <td>
+        {% set s = job.status or 'QUEUED' %}
+        <span class="badge {{ 'ok' if s == 'VALIDATED' else ('warn' if s == 'PARTIAL' else 'bad' if s == 'BLOCKED' else 'plain') }}">
+          {{ s|pretty_status }}</span>
+      </td>
+      <td><a href="{{ url_for('results', job_id=job.job_id) }}">Open</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>What it will and will not do</h2>
+  <div class="grid2">
+    <div>
+      <h3>It will</h3>
+      <ul class="plain">
+        <li>Read the description, the brief description of the drawings and the claims, and
+            build a reference-numeral registry from them.</li>
+        <li>Recreate exactly the figure set the patent describes, with its numbering.</li>
+        <li>Draw block diagrams, data-flow and logical figures, flowcharts of disclosed methods,
+            and conservative mechanical schematics.</li>
+        <li>Render every line, numeral, arrow and leader programmatically, then check the
+            finished sheet against the patent and have it read back by a model that has not
+            seen the specification.</li>
+        <li>Block a figure, and say why, when the draft is contradictory or underspecified.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>It will not</h3>
+      <ul class="plain">
+        <li>Ask an image model to draw anything. No numeral on any sheet came from a
+            generative model.</li>
+        <li>Trace, copy or read geometry from the drawings that were filed.</li>
+        <li>Invent a reference numeral. A part the description leaves unnumbered comes back as
+            <em>needs text update</em>, naming the part.</li>
+        <li>Guess what a component looks like from its name. Where the text discloses no shape,
+            the drawing is an honest rectangle.</li>
+        <li>Draw two embodiments as though they held at once.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block script %}
+<script>
+const form = document.getElementById('start');
+const go = document.getElementById('go');
+const err = document.getElementById('err');
+const progress = document.getElementById('progress');
+const pbar = document.getElementById('pbar');
+const pmsg = document.getElementById('pmsg');
+
+form.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  err.style.display = 'none';
+  go.disabled = true;
+  progress.style.display = 'block';
+  const body = new FormData(form);
+  let started;
+  try {
+    const response = await fetch('/v1/jobs', {method: 'POST', body});
+    started = await response.json();
+    if (!response.ok) throw new Error(started.error || 'could not start');
+  } catch (problem) {
+    err.textContent = problem.message;
+    err.style.display = 'block';
+    go.disabled = false;
+    progress.style.display = 'none';
+    return;
+  }
+  poll(started.job_id, started.url);
+});
+
+async function poll(jobId, target) {
+  try {
+    const response = await fetch('/v1/jobs/' + jobId);
+    const state = await response.json();
+    pbar.style.width = Math.max(2, state.pct || 2) + '%';
+    pmsg.textContent = state.message || state.stage || '';
+    if (state.state === 'done') { window.location = target; return; }
+    if (state.state === 'error') {
+      err.textContent = state.message || 'the compilation failed';
+      err.style.display = 'block';
+      go.disabled = false;
+      progress.style.display = 'none';
+      return;
+    }
+  } catch (problem) { /* a dropped poll is not a failed job; try again */ }
+  setTimeout(() => poll(jobId, target), 2000);
+}
+</script>
+{% endblock %}

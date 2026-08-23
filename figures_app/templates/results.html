@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}{{ document.title if document else 'Compiled figures' }}{% endblock %}
+
+{% macro status_badge(value) -%}
+  <span class="badge {{ 'ok' if value == 'VALIDATED' else ('warn' if value in ('PARTIAL','NEEDS_TEXT_UPDATE') else 'bad') }}">{{ value|pretty_status }}</span>
+{%- endmacro %}
+
+{% macro check(value) -%}
+  {% if value == 'PASS' %}<span style="color:var(--ok)">✓</span>
+  {% elif value == 'FAIL' %}<span style="color:var(--bad)">✗</span>
+  {% else %}<span class="muted">not run</span>{% endif %}
+{%- endmacro %}
+
+{% block body %}
+
+<div class="card">
+  <div style="display:flex;gap:14px;align-items:baseline;flex-wrap:wrap">
+    <h2 style="margin:0">{{ document.title if document and document.title else state.source }}</h2>
+    {% if document and document.publication_number %}
+      <span class="muted mono">{{ document.publication_number }}</span>{% endif %}
+    <span class="spacer" style="flex:1"></span>
+    {{ status_badge(report.overall_status if report else (state.status or 'BLOCKED')) }}
+  </div>
+
+  {% if report %}
+  <p class="hint" style="margin-top:10px">
+    {{ report.figures|length }} figure{{ '' if report.figures|length == 1 else 's' }} compiled,
+    {{ report.figures|selectattr('status','equalto','VALIDATED')|list|length }} validated.
+    Drawing rules: <span class="mono">{{ manifest.provenance.validation_profile }}</span>.
+    Renderer <span class="mono">{{ manifest.provenance.renderer_version }}</span>,
+    validators <span class="mono">{{ manifest.provenance.validation_version }}</span>.
+  </p>
+  <p style="margin-top:12px">
+    <a href="{{ url_for('job_download', job_id=job_id) }}"><button class="ghost">Download everything (ZIP)</button></a>
+    <a href="{{ url_for('job_validation', job_id=job_id) }}"><button class="ghost">Validation report</button></a>
+    <a href="{{ url_for('job_graph', job_id=job_id) }}"><button class="ghost">Semantic model</button></a>
+  </p>
+  {% else %}
+  <p class="hint">{{ state.message or 'This compilation produced no report.' }}</p>
+  {% endif %}
+
+  {% if document and (document.google_patents or document.espacenet) %}
+  <p class="muted" style="margin-top:8px">Source:
+    {% if document.google_patents %}<a href="{{ document.google_patents }}" rel="noreferrer noopener" target="_blank">Google Patents</a>{% endif %}
+    {% if document.espacenet %} · <a href="{{ document.espacenet }}" rel="noreferrer noopener" target="_blank">Espacenet</a>{% endif %}
+  </p>
+  {% endif %}
+</div>
+
+{% if notes %}
+<div class="card">
+  <h2>What the compiler did with this document</h2>
+  <ul class="plain">{% for note in notes %}<li>{{ note }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+{% if graph and graph.conflicts %}
+<div class="card">
+  <h2>Conflicts in the draft</h2>
+  <p class="hint">These are defects in the document, not in the drawings. They are reported and
+  never repaired: silently picking one reading would change what the patent discloses.</p>
+  {% for conflict in graph.conflicts %}
+    <div class="issue {{ 'warn' if conflict.severity == 'warning' else '' }}">
+      <span class="rid">{{ conflict.type }}</span>{{ conflict.message }}
+      {% if conflict.evidence %}
+        <div class="muted" style="margin-top:5px">
+          {% for item in conflict.evidence[:2] %}
+            <div><span class="mono">{{ item.paragraph_id }}</span> — “{{ item.quote[:180] }}”</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% for figure in (report.figures if report else []) %}
+{% set entry = (index | selectattr('figure_id','equalto',figure.figure_id) | list | first) or {} %}
+<div class="card">
+  <div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap">
+    <h2 style="margin:0">FIG. {{ figure.figure_number }}</h2>
+    <span class="muted">{{ figure.figure_type|pretty_status }}</span>
+    <span style="flex:1"></span>
+    {{ status_badge(figure.status) }}
+  </div>
+  {% if figure.title %}<p class="hint" style="margin-top:6px">{{ figure.title }}</p>{% endif %}
+
+  <div class="grid2" style="margin-top:14px">
+    <div class="sheet">
+      <div class="cap"><strong>Compiled</strong>
+        <span class="spacer" style="flex:1"></span>
+        {% if figure.svg_path %}<a href="{{ url_for('artifact', job_id=job_id, kind='figures', name=figure.svg_path) }}">SVG</a>{% endif %}
+        {% if figure.pdf_path %} · <a href="{{ url_for('artifact', job_id=job_id, kind='figures', name=figure.pdf_path) }}">PDF</a>{% endif %}
+        {% if figure.png_path %} · <a href="{{ url_for('artifact', job_id=job_id, kind='figures', name=figure.png_path) }}">PNG</a>{% endif %}
+      </div>
+      {% if figure.svg_path %}
+        <object type="image/svg+xml" data="{{ url_for('artifact', job_id=job_id, kind='figures', name=figure.svg_path) }}" style="width:100%;height:520px"></object>
+      {% else %}
+        <div class="empty">No sheet was produced for this figure.</div>
+      {% endif %}
+    </div>
+
+    <div class="sheet">
+      <div class="cap"><strong>As filed</strong>
+        <span class="muted">the applicant's own drawing, for comparison only</span>
+      </div>
+      {% set sheets = figure.original_matches or [] %}
+      {% if sheets %}
+        {% for sheet_index in sheets[:2] %}
+          {% set sheet = document.original_figures[sheet_index] %}
+          {% if sheet.filename %}
+            <img src="{{ url_for('artifact', job_id=job_id, kind='originals', name=sheet.filename) }}" alt="Filed drawing sheet {{ sheet_index + 1 }}">
+          {% elif sheet.url %}
+            <img src="{{ sheet.url }}" alt="Filed drawing sheet {{ sheet_index + 1 }}" referrerpolicy="no-referrer">
+          {% endif %}
+          <div class="cap"><span class="muted">
+            sheet {{ sheet_index + 1 }}{% if sheet.figure_labels %}, captioned {{ sheet.figure_labels|join(', ') }}{% endif %}
+            {% if sheet.label_source != 'vision' %} — paired by position, the caption could not be read{% endif %}
+          </span></div>
+        {% endfor %}
+      {% else %}
+        <div class="empty">No filed sheet could be paired with this figure.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <h3>Checks</h3>
+  <table>
+    <tr><th>Source grounding</th><th>References</th><th>Semantics</th><th>Geometry</th><th>Independent reading</th></tr>
+    <tr>
+      <td>{{ check(figure.checks.source_grounding) }}</td>
+      <td>{{ check(figure.checks.references) }}</td>
+      <td>{{ check(figure.checks.semantics) }}</td>
+      <td>{{ check(figure.checks.geometry) }}</td>
+      <td>{{ check(figure.checks.vision) }}</td>
+    </tr>
+  </table>
+
+  {% if figure.reason %}
+    <div class="issue" style="margin-top:12px"><strong>Blocked.</strong> {{ figure.reason }}</div>
+  {% endif %}
+
+  {% set blockers = figure.issues | selectattr('severity','equalto','blocking') | list %}
+  {% set cautions = figure.issues | selectattr('severity','equalto','warning') | list %}
+  {% if blockers %}
+    <h3>What is wrong</h3>
+    {% for issue in blockers %}
+      <div class="issue"><span class="rid">{{ issue.rule_id }}</span>{{ issue.message }}</div>
+    {% endfor %}
+  {% endif %}
+  {% if cautions %}
+    <details style="margin-top:8px"><summary>{{ cautions|length }} thing{{ '' if cautions|length == 1 else 's' }} worth a look</summary>
+      {% for issue in cautions %}
+        <div class="issue warn"><span class="rid">{{ issue.rule_id }}</span>{{ issue.message }}</div>
+      {% endfor %}
+    </details>
+  {% endif %}
+
+  {% if figure.corrections_applied %}
+    <details style="margin-top:8px"><summary>{{ figure.correction_attempts }} correction pass{{ '' if figure.correction_attempts == 1 else 'es' }}</summary>
+      <ul class="plain">{% for item in figure.corrections_applied %}<li>{{ item }}</li>{% endfor %}</ul>
+    </details>
+  {% endif %}
+
+  {% if entry.notes %}
+    <details style="margin-top:8px"><summary>How this figure's content was chosen</summary>
+      <ul class="plain">{% for note in entry.notes %}<li>{{ note }}</li>{% endfor %}</ul>
+    </details>
+  {% endif %}
+
+  {% if figure.source_evidence %}
+    <p class="muted" style="margin-top:10px">Built from
+      {% for pid in figure.source_evidence[:10] %}<span class="mono">{{ pid }}</span>{{ ", " if not loop.last }}{% endfor %}
+      of the description.</p>
+  {% endif %}
+</div>
+{% endfor %}
+
+{% if document and document.original_figures %}
+<div class="card">
+  <h2>Every sheet the applicant filed</h2>
+  <p class="hint">Shown for comparison. None of this was read into the semantic model, and no
+  part of any generated figure was traced from it.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:12px">
+    {% for sheet in document.original_figures %}
+      <div class="sheet">
+        {% if sheet.filename %}
+          <img src="{{ url_for('artifact', job_id=job_id, kind='originals', name=sheet.filename) }}" alt="Sheet {{ loop.index }}">
+        {% elif sheet.url %}
+          <img src="{{ sheet.url }}" alt="Sheet {{ loop.index }}" referrerpolicy="no-referrer">
+        {% else %}
+          <div class="empty">sheet {{ loop.index }} unavailable</div>
+        {% endif %}
+        <div class="cap"><span class="muted">sheet {{ loop.index }}{% if sheet.figure_labels %} — {{ sheet.figure_labels|join(', ') }}{% endif %}</span></div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if graph %}
+<div class="card">
+  <h2>Reference registry</h2>
+  <p class="hint">Read from the description before any model was involved. Nothing on any sheet
+  carries a numeral that is not in this table.</p>
+  <table>
+    <tr><th>Numeral</th><th>Name</th><th>Also called</th><th>Mentions</th></tr>
+    {% for entity in graph.entities %}
+    <tr>
+      <td class="mono">{{ entity.reference_numeral }}</td>
+      <td>{{ entity.canonical_name }}</td>
+      <td class="muted">{{ entity.aliases[:3]|join(', ') }}</td>
+      <td class="muted">{{ entity.attributes.mention_count }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  {% if graph.discarded %}
+  <details style="margin-top:14px">
+    <summary>{{ graph.discarded|length }} proposed relationship{{ '' if graph.discarded|length == 1 else 's' }} discarded for want of support</summary>
+    <ul class="plain">
+      {% for row in graph.discarded[:40] %}<li>{{ row.reason }}</li>{% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
