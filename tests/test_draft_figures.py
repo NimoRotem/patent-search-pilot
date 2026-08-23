@@ -991,6 +991,23 @@ def test_deterministic_leader_endpoint_has_a_vision_visible_dot():
     assert output.getpixel((target_x, target_y + 6))[0] < 32
 
 
+def test_terminal_dot_has_a_white_halo_when_it_lands_on_black_geometry():
+    image = Image.new("RGB", (640, 420), "white")
+    ImageDraw.Draw(image).line((0, 210, 639, 210), fill="black", width=18)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+    anchors = [{"numeral": "10", "x": 500, "y": 500, "visible": True}]
+    layout = draft_figures._annotation_layout(raw.getvalue(), anchors, 1.0)
+
+    output = Image.open(io.BytesIO(
+        draft_figures.annotate_png(raw.getvalue(), "FIG. 1", anchors)))
+    target_x = layout["source_x"] + round(500 * layout["source"].width / 1000)
+    target_y = layout["source_y"] + round(500 * layout["source"].height / 1000)
+
+    assert output.getpixel((target_x, target_y))[0] < 32
+    assert output.getpixel((target_x, target_y + 8))[0] > 240
+
+
 def test_center_endpoints_route_opposite_a_right_endpoint_on_the_same_row():
     anchors = [
         {"numeral": "16", "x": 500, "y": 900, "visible": True},
