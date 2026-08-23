@@ -36,6 +36,16 @@ def accepted_marked_anchor_audit(**values):
     }
 
 
+def accepted_cross_provider_audit(**values):
+    return {
+        "ok": True, "inspected": True,
+        "model_name": draft_figures.cross_provider_model(),
+        "prompt_version": draft_figures.CROSS_PROVIDER_PROMPT_VERSION,
+        "review_count": 1,
+        **values,
+    }
+
+
 def accepted_semantic_audit(**values):
     marked_values = ({"specification_hash": values["specification_hash"]}
                      if values.get("specification_hash") else {})
@@ -483,6 +493,124 @@ def test_compose_rejects_a_tight_cluster_of_six_uncertified_coordinates(monkeypa
     assert labels["ok"] is True and leaders["ok"] is False and pixel["ok"] is True
     assert "regenerate" in leaders["marked_anchor_audit"]["errors"][0].lower()
     assert (final_anchors[0]["x"], final_anchors[0]["y"]) == (400, 565)
+
+
+def test_cross_provider_veto_rejects_unanimous_same_provider_certificate(monkeypatch):
+    raw = blank_png(1000, 1000)
+    anchors = [{"numeral": "10", "x": 400, "y": 565, "visible": True,
+                "evidence": "upper-block top face"}]
+    accepted_pixel = {
+        "ok": True, "inspected": True, "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [], "allowed_spaces": [], "ungrounded": [],
+    }
+    monkeypatch.setattr(draft_figures, "_marked_progress_get", lambda *a, **k: {
+        "anchors": anchors,
+        "certificates": {"10": {
+            "x": 400, "y": 565, "attempt": 1,
+            "label": {
+                "numeral": "10", "correct": True,
+                "evidence": "three same-provider reviewers approved this coordinate",
+                "correct_votes": 3, "incorrect_votes": 0,
+            },
+        }},
+        "attempts": 1, "coordinate_history": {"10": [(400, 565)]},
+    })
+    monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
+    monkeypatch.setattr(
+        draft_figures, "_ground_anchors_to_pixels",
+        lambda _png, _numerals, values: ([dict(item) for item in values],
+                                         dict(accepted_pixel)))
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
+        "other_text": [], "confidence": 0.99,
+    })
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [], "missing": [],
+        "labels": [{"numeral": "10", "correct": True, "evidence": "route is clear"}],
+    })
+    monkeypatch.setattr(
+        draft_figures, "inspect_marked_anchors",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("the stored same-provider certificate must be reused")))
+    monkeypatch.setattr(draft_figures, "inspect_cross_provider_endpoints", lambda *a, **k: {
+        "ok": False, "inspected": True, "incorrect": ["10"],
+        "missing": [], "unexpected": [], "duplicates": [],
+        "errors": ["Numeral 10 is on the front face, not the required top face."],
+        "labels": [{
+            "numeral": "10", "correct": False,
+            "evidence": "the terminal dot is below the top-face boundary",
+        }],
+        "model_name": "claude-opus-5",
+        "prompt_version": draft_figures.CROSS_PROVIDER_PROMPT_VERSION,
+        "review_count": 1,
+    })
+
+    _png, labels, leaders, final_anchors, pixel = draft_figures._compose_checked_sheet(
+        raw, label="FIG. 1", caption="10 identified on the upper-block top face.",
+        numerals=["10 = vibration device"],
+        semantic={"anchors": anchors, "pixel_anchor_audit": dict(accepted_pixel)})
+
+    marked = leaders["marked_anchor_audit"]
+    assert labels["ok"] is True and leaders["ok"] is False and pixel["ok"] is True
+    assert marked["cross_provider_audit"]["ok"] is False
+    assert marked["incorrect"] == ["10"]
+    assert "cross-provider" in marked["errors"][0].lower()
+    assert (final_anchors[0]["x"], final_anchors[0]["y"]) == (400, 565)
+
+
+def test_cross_provider_endpoint_review_uses_anthropic_pixels_and_normalizes_its_veto(
+        monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_MODEL", "claude-opus-5")
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: None)
+    saved = []
+    monkeypatch.setattr(
+        draft_figures, "_analysis_cache_put",
+        lambda *args, **kwargs: saved.append((args, kwargs)))
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **_kwargs: None)
+    monkeypatch.setattr(draft_figures.llm, "_record_usage", lambda *_args: None)
+    calls = []
+
+    def anthropic(payload, *, api_key):
+        calls.append((payload, api_key))
+        return {
+            "usage": {"input_tokens": 120, "output_tokens": 40},
+            "content": [{"type": "text", "text": """
+                ```json
+                {"matches_spec": false, "summary": "wrong face", "errors": [],
+                 "labels": [{"numeral": "10", "correct": false,
+                              "evidence": "dot is in the front polygon"}]}
+                ```
+            """}],
+        }
+
+    monkeypatch.setattr(draft_figures, "_anthropic_endpoint_message", anthropic)
+
+    audit = draft_figures.inspect_cross_provider_endpoints(
+        blank_png(), label="FIG. 1",
+        caption="The device 10 is identified on its top face.",
+        numerals=["10 = device"])
+
+    assert audit["ok"] is False and audit["inspected"] is True
+    assert audit["incorrect"] == ["10"] and audit["review_count"] == 1
+    assert audit["model_name"] == "claude-opus-5"
+    assert len(calls) == 1 and calls[0][1] == "test-anthropic-key"
+    assert calls[0][0]["thinking"] == {"type": "disabled"}
+    assert calls[0][0]["messages"][0]["content"][0]["type"] == "image"
+    assert saved and saved[0][1]["provider"] == "anthropic"
+
+
+def test_required_cross_provider_review_fails_closed_without_a_credential(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_REQUIRED", "1")
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: None)
+
+    audit = draft_figures.inspect_cross_provider_endpoints(
+        blank_png(), label="FIG. 1", caption="device", numerals=["10 = device"])
+
+    assert audit["ok"] is False and audit["inspected"] is False
+    assert audit["missing"] == ["10"]
+    assert "not configured" in audit["errors"][0].lower()
 
 
 def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypatch):
@@ -974,6 +1102,18 @@ def test_current_marked_audit_accepts_a_fully_certified_v9_review():
     assert draft_figures.current_marked_anchor_audit({
         **audit, "prompt_version": "figure-anchor-v8-old",
     }) is False
+
+
+def test_required_cross_provider_gate_invalidates_older_marked_audits(monkeypatch):
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_REQUIRED", "1")
+    audit = accepted_marked_anchor_audit(specification_hash="a" * 64)
+
+    assert draft_figures.current_marked_anchor_audit(
+        audit, specification_hash="a" * 64) is False
+    audit["cross_provider_audit"] = accepted_cross_provider_audit(
+        specification_hash="a" * 64)
+    assert draft_figures.current_marked_anchor_audit(
+        audit, specification_hash="a" * 64) is True
 
 
 def test_pixel_grounding_snaps_an_exterior_object_anchor_to_visible_ink():
