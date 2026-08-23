@@ -186,8 +186,9 @@ def write_figures(workspace: Path, figures: Sequence[Mapping[str, Any]]) -> None
         if existing.is_file() or existing.is_symlink():
             existing.unlink()
     for index, figure in enumerate(figures, 1):
-        label = _clean(figure.get("label") or f"FIG. {index}", 60)
-        slug = re.sub(r"[^A-Za-z0-9]+", "-", label).strip("-").upper() or f"FIG-{index}"
+        label = _clean(figure.get("label") or f"FIG. {index}", 240)
+        slug = (re.sub(r"[^A-Za-z0-9]+", "-", label[:60]).strip("-").upper() or
+                f"FIG-{index}")
         body = [f"# {label}", "", _clean(figure.get("caption"), 4000)]
         numerals = figure.get("numerals") or []
         if numerals:
