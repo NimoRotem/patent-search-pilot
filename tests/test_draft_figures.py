@@ -113,6 +113,48 @@ def test_image_generation_uses_its_dedicated_location_client(monkeypatch):
     assert calls and calls[0]["model"] == draft_figures.image_model()
 
 
+def test_marked_review_uses_the_raw_sheet_as_its_coordinate_frame(monkeypatch):
+    raw = blank_png()
+    calls = []
+
+    class Response:
+        usage_metadata = None
+        parsed = {
+            "matches_spec": True, "summary": "endpoint is correct", "errors": [],
+            "labels": [{
+                "numeral": "10", "correct": True, "repairable": True,
+                "evidence": "the center is inside the body",
+                "suggested_x": 500, "suggested_y": 500,
+            }],
+        }
+
+    class Models:
+        def generate_content(self, **values):
+            calls.append(values)
+            return Response()
+
+    class Client:
+        models = Models()
+
+    monkeypatch.setattr(draft_figures.llm, "_client", lambda: Client())
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *args: None)
+    monkeypatch.setattr(draft_figures, "_analysis_cache_put", lambda *args, **kwargs: None)
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **kwargs: None)
+
+    audit = draft_figures.inspect_marked_anchors(
+        raw, label="FIG. 1", caption="The body 10 is rectangular.",
+        numerals=["10 = body"],
+        anchors=[{"numeral": "10", "x": 500, "y": 500, "visible": True}])
+
+    assert audit["ok"] is True and len(calls) == 3
+    for call in calls:
+        images = [item for item in call["contents"]
+                  if getattr(item, "inline_data", None)]
+        assert len(images) == 2
+        assert bytes(images[0].inline_data.data) == raw
+        assert "first supplied image" in call["contents"][-1].lower()
+
+
 def test_verbose_visual_evidence_does_not_abort_an_otherwise_valid_review():
     evidence = "visually verified endpoint " * 60
     semantic = draft_figures._SemanticInspection.model_validate({
