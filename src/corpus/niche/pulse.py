@@ -74,12 +74,17 @@ NICHE_SQL = {
 
 #  The acquisition pool lives in the active corpus database, and this reads it with the same
 #  read-only DSN every other niche process uses. Never write here.
+#  `state`, and `at`: sql/014's own column names. Guessing them once produced a page that said
+#  the acquisition pool was doing nothing while two VMs fetched 3,100 documents an hour.
 POOL_SQL = """
-    SELECT status, count(*) AS n FROM fulltext_fetch_task GROUP BY status
+    SELECT state AS status, count(*) AS n FROM fulltext_fetch_task GROUP BY state
 """
+#  `at`, not `attempted_at`: sql/014 names it `at` and there is an index on it. Getting this
+#  wrong once already produced a page that said the acquisition pool was doing nothing while two
+#  VMs were fetching 3,100 documents an hour.
 POOL_RATE_SQL = """
     SELECT count(*) AS n FROM fulltext_fetch_event
-     WHERE attempted_at > now() - interval '5 minutes' AND outcome = 'hit'
+     WHERE at > now() - interval '5 minutes' AND outcome = 'hit'
 """
 
 
