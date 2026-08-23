@@ -49,9 +49,10 @@ SEMANTIC_COMPATIBLE_PROMPT_VERSIONS = frozenset((
 LEADER_PROMPT_VERSION = (
     "figure-leader-v7-high-accuracy-routing-only-independent-consensus")
 MARKED_ANCHOR_PROMPT_VERSION = (
-    "figure-anchor-v12-gridded-sheet-correction-coordinate-certificate-majority")
+    "figure-anchor-v13-gridded-sheet-current-coordinate-certificate-majority")
 MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
     MARKED_ANCHOR_PROMPT_VERSION,
+    "figure-anchor-v12-gridded-sheet-correction-coordinate-certificate-majority",
     "figure-anchor-v11-raw-sheet-correction-coordinate-certificate-majority",
     "figure-anchor-v10-full-sheet-correction-coordinate-certificate-majority",
     "figure-anchor-v9-local-part-coordinate-certificate-majority-with-correction",
@@ -1862,6 +1863,12 @@ def _coordinate_grid_overlay(png: bytes) -> bytes:
     return out.getvalue()
 
 
+def _marked_anchor_heading(item, parts) -> str:
+    numeral = _clean_numeral(item.get("numeral"))
+    part = str(parts.get(numeral) or "component")[:24]
+    return f"{numeral}: {part} | CURRENT ({int(item.get('x') or 0)}, {int(item.get('y') or 0)})"
+
+
 def _marked_anchor_montage(png: bytes, anchors, numerals) -> bytes:
     """Pair full-sheet context with a marked crop for every exact endpoint review."""
     from PIL import Image, ImageDraw
@@ -1880,14 +1887,14 @@ def _marked_anchor_montage(png: bytes, anchors, numerals) -> bytes:
         "RGB", (columns * panel_width + (columns + 1) * gutter,
                 rows * panel_height + (rows + 1) * gutter), "white")
     draw = ImageDraw.Draw(montage)
-    font = _font(22)
+    font = _font(20)
     radius = max(80, round(min(source.width, source.height) * 0.24))
     for index, item in enumerate(entries):
         column, row = index % columns, index // columns
         panel_x = gutter + column * (panel_width + gutter)
         panel_y = gutter + row * (panel_height + gutter)
         numeral = _clean_numeral(item.get("numeral"))
-        heading = f"{numeral}: {parts.get(numeral, 'component')}"[:48]
+        heading = _marked_anchor_heading(item, parts)
         draw.text((panel_x + 12, panel_y + 6), heading, fill="black", font=font)
         guide_font = _font(14)
         draw.text((panel_x + 16, panel_y + 43), "FULL SHEET CONTEXT",
@@ -1975,7 +1982,10 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
         "so global identity, nesting, and relative location are visible. The right image is an "
         "enlarged crop for exact pixel inspection. Both red rings mark the same proposed leader "
         "endpoint, and the right crop keeps that unchanged pixel at its exact center. Its header "
-        "names one reference numeral and part. The rings, red ticks, panel borders, and headers are audit "
+        "names one reference numeral and part and gives CURRENT (x, y), the exact normalized "
+        "position of that ring center on the first image. Use that printed coordinate to "
+        "reconcile the crop center with the grid before judging or suggesting a replacement. "
+        "The rings, red ticks, panel borders, and headers are audit "
         "overlays and are not filing artwork. For every expected numeral, decide whether that "
         "exact center lands on the named geometry at the location required by the specification. "
         "Each part's target field is authoritative for the endpoint location. Follow that local "

@@ -642,6 +642,13 @@ def test_leader_repair_never_moves_an_endpoint_with_a_coordinate_certificate():
     assert (repaired[1]["x"], repaired[1]["y"]) != (800, 800)
 
 
+def test_marked_anchor_heading_states_the_exact_full_sheet_coordinate():
+    heading = draft_figures._marked_anchor_heading(
+        {"numeral": "26", "x": 501, "y": 502}, {"26": "bearing face"})
+
+    assert heading == "26: bearing face | CURRENT (501, 502)"
+
+
 def test_marked_anchor_montage_preserves_the_endpoint_pixel_inside_a_red_ring():
     image = Image.new("RGB", (400, 400), "white")
     ImageDraw.Draw(image).point((200, 200), fill="black")
@@ -1477,6 +1484,15 @@ def test_leader_repair_cannot_move_a_grounded_endpoint_back_into_blank_paper(mon
                             "suggested_x": suggested_x, "suggested_y": suggested_y}]}
 
     monkeypatch.setattr(draft_figures, "inspect_leaders", inspect)
+    monkeypatch.setattr(draft_figures, "inspect_marked_anchors", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [], "missing": [],
+        "review_count": 3, "labels": [{
+            "numeral": "10", "correct": True, "repairable": True,
+            "evidence": "the endpoint remains on the grounded body",
+            "suggested_x": 500, "suggested_y": 400,
+            "correct_votes": 3, "incorrect_votes": 0,
+        }],
+    })
     _png, _labels, leaders, anchors, pixel = draft_figures._compose_checked_sheet(
         raw, label="FIG. 1", caption="body", numerals=["10 = body"],
         semantic={"anchors": initial, "pixel_anchor_audit": accepted_semantic_audit()[
