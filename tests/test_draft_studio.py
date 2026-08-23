@@ -2549,6 +2549,77 @@ def test_a_failed_or_superseded_turn_restores_the_published_drawing_set(monkeypa
     assert runner.restored == [31]
 
 
+def test_terminal_filing_gate_failure_continues_from_saved_candidate_without_user_input():
+    import draft_studio_service as service
+
+    repository = Mock()
+    repository.fail_turn.return_value = {
+        "id": 31,
+        "project_id": 7,
+        "requested_by_user_id": 91,
+        "project_revision": 4,
+        "idempotency_key": None,
+        "status": "failed",
+    }
+    repository.enqueue_turn_safely.return_value = {"id": 32, "status": "queued"}
+    runner = Mock(repository=repository)
+    claimed = {
+        "id": 31,
+        "project_id": 7,
+        "requested_by_user_id": 91,
+        "project_revision": 4,
+        "idempotency_key": None,
+        "lease_token": "lease",
+    }
+
+    result = service._fail(
+        runner, claimed,
+        "The automatic filing gate could not clear: FIG. 2 endpoint inspection failed",
+        retryable=True)
+
+    assert result["status"] == "failed"
+    queued = repository.enqueue_turn_safely.call_args
+    assert queued.args == (7, 91)
+    assert queued.kwargs["kind"] == "qa_fix"
+    assert queued.kwargs["project_revision"] == 4
+    assert queued.kwargs["idempotency_key"] == "auto-filing-repair-31-1"
+    assert "not new invention disclosure" in queued.kwargs["user_message"]
+    message = repository.add_message.call_args.args[2]
+    assert "No action is required" in message
+    assert "Try again" not in message
+
+
+def test_automatic_filing_repair_chain_stops_at_its_durable_safety_limit():
+    import draft_studio_service as service
+
+    repository = Mock()
+    repository.fail_turn.return_value = {
+        "id": 35,
+        "project_id": 7,
+        "requested_by_user_id": 91,
+        "project_revision": 4,
+        "idempotency_key": "auto-filing-repair-31-3",
+        "status": "failed",
+    }
+    runner = Mock(repository=repository)
+    claimed = {
+        "id": 35,
+        "project_id": 7,
+        "requested_by_user_id": 91,
+        "project_revision": 4,
+        "idempotency_key": "auto-filing-repair-31-3",
+        "lease_token": "lease",
+    }
+
+    service._fail(
+        runner, claimed,
+        "The automatic filing gate could not clear: source fidelity review failed",
+        retryable=True)
+
+    repository.enqueue_turn_safely.assert_not_called()
+    assert "safety limit" in repository.add_message.call_args.args[2]
+
+
 def test_a_publication_number_in_prose_is_not_three_reference_numerals():
     """Measured live: the turn that finally cited a reference properly FAILED the numeral check,
     because "US 9,108,319 B2" beside its token read as numerals 9, 108 and 319."""
