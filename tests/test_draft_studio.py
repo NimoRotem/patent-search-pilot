@@ -1321,6 +1321,8 @@ def test_the_independent_reviewer_checks_source_fidelity_before_internal_consist
     assert "DISCLOSURE FIDELITY" in system
     assert "input/disclosure.md" in system
     assert "generated drawing artifact" in normalized
+    assert "every independent and dependent claim limitation" in normalized
+    assert "Common engineering knowledge is not source support" in normalized
     assert "disclosure_fidelity" in json.dumps(draft_qa.REVIEW_SCHEMA)
 
 
