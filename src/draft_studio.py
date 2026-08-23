@@ -244,6 +244,12 @@ Keep each figure brief at or below 2800 characters. Include only disclosure-grou
 relationships needed to identify the listed parts. Never invent arbitrary exact counts,
 proportions, relative heights, corner shapes, line counts, or placement constraints merely to
 control the renderer. If a visual constraint is not in the disclosure or specification, omit it.
+Numeral endpoint instructions identify the part, not an aesthetic coordinate. Prefer a broad
+interior target such as well inside the part or its hatching. Do not require a midpoint, quarter,
+exact depth, or toward-an-end placement unless that location is disclosure-grounded or necessary
+to distinguish the intended part from another visible part. Name repeated shapes by a stable
+position such as outermost, middle, innermost, left, or right instead of an ordinal whose direction
+could be read more than one way.
 Figure files are Markdown specifications only. Never create SVG, PNG, or other image files. The
 image pipeline generates unlabeled geometry, then adds the listed numerals, FIG. label, callouts,
 and leader lines deterministically. Describe the required geometry and relationships, and list
@@ -329,6 +335,11 @@ when necessary, and synchronize the drawing descriptions.
 
 If a figure brief is over-specified, shorten it by removing invented rendering constraints while
 preserving the authoritative text, numeral table, disclosed geometry, and required relationships.
+For an endpoint finding, choose a broad interior target on the intended part whenever possible.
+Remove exact midpoint, depth, quarter, or toward-an-end modifiers that are not disclosure-grounded
+or necessary to distinguish the intended part. Replace ordinal geometry references with explicit
+outermost, middle, innermost, left, or right terms whenever the order could be read in more than
+one direction.
 
 Leave no note, placeholder, question, or instruction for a person. Return the structured answer
 with `action` set to "revised" and `questions` as an empty array."""
