@@ -662,6 +662,20 @@ def test_figures_round_trip(tmp_path):
     assert not (figures / "rendered-stale.png").exists()
 
 
+def test_long_figure_labels_round_trip_without_mid_word_truncation(tmp_path):
+    label = (
+        "FIG. 2 - Side elevation in vertical section showing the chamber and both "
+        "air paths"
+    )
+    draft_workspace.write_figures(tmp_path, [{
+        "label": label,
+        "caption": "A complete drawing brief.",
+        "numerals": ["10 body"],
+    }])
+
+    assert draft_workspace.read_figures(tmp_path)[0]["label"] == label
+
+
 def test_an_existing_draft_is_split_on_its_headings():
     document = ("Vacuum Lifting Tool\n\nBACKGROUND OF THE INVENTION\n\nLifters are known.\n\n"
                 "SUMMARY OF THE INVENTION\n\nA better lifter.\n\n"
