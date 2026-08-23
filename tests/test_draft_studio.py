@@ -223,6 +223,49 @@ def test_a_self_contradictory_endpoint_target_is_refused_before_drawing():
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
 
+@pytest.mark.parametrize("target", [
+    "Identified at the centre of its flat front face.",
+    "Identified at mid-height on its right side face.",
+    "Identified in the lower-left quarter of the surface.",
+    "Identified at the topmost point of the ring.",
+    "Identified on the upright line near the left end.",
+    "Identified halfway along the boundary toward its right end.",
+    "Identified on the second rectangle.",
+])
+def test_an_arbitrary_exact_numeral_target_is_refused_before_drawing(target):
+    figures = [{
+        **FIGURES[0],
+        "caption": "The pump 20 is a visible rectangular body. " + target,
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "arbitrary exact endpoint" in check["items"][0].lower()
+    with pytest.raises(
+            draft_studio.FilingPreflightError,
+            match="Drawing briefs are concise and renderable"):
+        draft_studio.validate_snapshot(
+            {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
+
+
+@pytest.mark.parametrize("target", [
+    "Identified well inside its flat front face.",
+    "Identified at any point along the boundary line.",
+    "Identified within the outermost rectangle.",
+    "Identified anywhere within the middle band.",
+])
+def test_a_broad_stable_numeral_target_remains_renderable(target):
+    figures = [{
+        **FIGURES[0],
+        "caption": "The pump 20 is a visible rectangular body. " + target,
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "pass"
+
+
 def test_an_explicit_figure_numeral_declaration_must_match_the_sheet_list():
     figures = [
         {
