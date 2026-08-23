@@ -1438,6 +1438,46 @@ def test_valid_candidate_is_checkpointed_before_the_long_drawing_gate(monkeypatc
         "complete candidate"
 
 
+def test_transient_drawing_capacity_retries_saved_candidate_without_agent_repair(
+        monkeypatch, tmp_path):
+    repository = Mock()
+    agent = Mock()
+    agent.DRAFT_MODEL = "draft-model"
+    agent.DRAFT_TIMEOUT = 60
+    agent.new_session_id.return_value = "new-session"
+    agent.run.return_value = draft_agent.AgentRun(
+        ok=True, session_id="draft-session", model="draft-model",
+        cost_usd=0.5, duration_ms=1000,
+        result={"action": "revised", "summary": "complete candidate",
+                "reasoning": [], "changes": [], "questions": [],
+                "prior_art_strategy": "", "answer": ""})
+    workspace = Mock()
+    workspace.snapshot.return_value = {
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, qa=draft_qa, workspace=workspace)
+    monkeypatch.setattr(runner, "prepare", lambda _turn: {
+        "workspace": tmp_path,
+        "project": {"user_id": 91, "agent_session_id": "", "latest_version_no": 0,
+                    "disclosure_text": "disclosure"},
+        "references": [{"publication_number": ALLOWED[0]}], "documents": [],
+        "seeded": False, "had_version": False, "resuming_candidate": False,
+        "previous_sections": {},
+    })
+    monkeypatch.setattr(
+        runner, "_ensure_figures",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            draft_figures.FigureTransientError("429 RESOURCE_EXHAUSTED")))
+
+    with pytest.raises(draft_figures.FigureTransientError, match="RESOURCE_EXHAUSTED"):
+        runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
+                    "turn_no": 1, "kind": "initial", "attempts": 1})
+
+    assert agent.run.call_count == 1
+    checkpoint = repository.save_retry_candidate.call_args.kwargs
+    assert checkpoint["report"]["_gate_resume"]["session_id"] == "draft-session"
+
+
 def test_restart_resumes_a_checkpointed_candidate_without_rerunning_the_agent(
         monkeypatch, tmp_path):
     monkeypatch.setattr(draft_figures, "discard_project_figure_checkpoint",

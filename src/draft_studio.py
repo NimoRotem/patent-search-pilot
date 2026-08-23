@@ -1672,6 +1672,8 @@ class TurnRunner:
                 except drafting.DraftingConflict:
                     raise
                 except Exception as exc:                         # a failed gate becomes repair input
+                    if getattr(exc, "retry_without_repair", False):
+                        raise
                     traceback.print_exc()
                     check = {"name": "Automatic filing candidate checks",
                              "status": "fail", "severity": "error",
