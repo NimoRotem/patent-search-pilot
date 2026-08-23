@@ -181,6 +181,18 @@ def for_input(claims=None, kind=None) -> Profile:
     return PROFILES.get(kind or kind_for(claims), _CONCEPT)
 
 
+#  PHASE 2. The ledger pass verifies the RETRIEVED PASSAGES for every requirement, and reads
+#  no document in full: that is phase 3's spend. Against the quick tier it widens only the two
+#  knobs that decide how much evidence the sweep may gather, because the measured complaint about
+#  quick is not that it reads too little text, it is that it asks about too few references.
+LEDGER_BUDGET = {"BATCH_PER_LIM": 12, "BATCH_TAIL_MAX": 300}
+
+
+def lane_for(depth: str) -> str:
+    """Which durable lane a depth runs on. Only `quick` and `deep` have workers."""
+    return "deep" if str(depth) == "deep" else "quick"
+
+
 def budget_for(profile, depth="deep") -> dict:
     """The knob overrides this run gets, or {} when the split is off or the depth already skips
     the stages being cut.
@@ -191,7 +203,10 @@ def budget_for(profile, depth="deep") -> dict:
     """
     if not ENABLED or depth == "quick":
         return {}
-    return dict(getattr(profile, "budget", {}) or {})
+    budget = dict(getattr(profile, "budget", {}) or {})
+    if depth == "ledger":
+        budget.update(LEDGER_BUDGET)
+    return budget
 
 
 def describe(profile, depth="deep") -> dict:
@@ -199,11 +214,18 @@ def describe(profile, depth="deep") -> dict:
     tier and must not promise the reading it does not do."""
     d = profile.to_dict()
     if depth == "quick":
-        d["label"] = "Fast scan"
-        d["summary"] = ("Screens the local corpus against the invention and ranks what it finds. "
-                        "Nothing is read in full — escalate for that.")
+        d["label"] = "Find"
+        d["summary"] = ("Searches the corpus and ranks what it finds, with the passages that "
+                        "matched each requirement. Nothing is read in full and nothing is called "
+                        "a disclosure yet.")
         d["eta_low"], d["eta_high"] = 3 * 60, 12 * 60
         d["eta_text"] = "about 3-12 minutes"
+    elif depth == "ledger":
+        d["label"] = "Claim ledger"
+        d["summary"] = ("Verifies the retrieved passages against every requirement and builds "
+                        "the ledger. Still reads no document in full.")
+        d["eta_low"], d["eta_high"] = 5 * 60, 20 * 60
+        d["eta_text"] = "about 5-20 minutes"
     d["depth"] = depth
     return d
 

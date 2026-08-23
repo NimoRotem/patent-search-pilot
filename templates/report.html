@@ -37,23 +37,48 @@
       corpus, screening, and a per-limitation batch pass. The full attack (hundreds of documents
       read in full, refuted, uncovered claims rescued) is a different spend class, so it is a
       deliberate second click rather than the default. Same inputs, depth=deep, new report. #}
-  <div class="refining" id="escalateBanner" style="align-items:center">
-    <div style="min-width:0;flex:1">
-      <b>Quick search.</b>
-      <div class="rf-msg">One fast pass over the indexed corpus: retrieval, screening and a
-        per-requirement evidence sweep. The full claim-by-claim attack reads hundreds of
-        documents in full, challenges every cell and hunts art for uncovered claims — it runs
-        30–90 minutes and can email you when done.</div>
+  <div class="phasebar" id="escalateBanner">
+    <div class="phasenow">
+      <span class="pill pilllive">{{ 'Phase 1 · find' if v.depth == 'quick' else 'Phase 2 · claim ledger' }}</span>
+      <div class="rf-msg">{% if v.depth == 'quick' %}These are the references the search found,
+        with the passage that matched each requirement. They are candidate evidence: nothing here
+        has been verified as a disclosure yet, and no document has been read in full.
+        {% else %}Every requirement has been put to the retrieved passages and the ledger below is
+        the result. No document has been read in full yet.{% endif %}</div>
     </div>
-    <form method="post" action="{{ request.script_root }}/run" style="margin:0">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="mode" value="{{ v.escalate.mode }}">
-      <input type="hidden" name="search_focus" value="{{ v.escalate.search_focus or 'all_text' }}">
-      <input type="hidden" name="doc_token" value="{{ v.escalate.doc_token or '' }}">
-      <input type="hidden" name="query" value="{{ v.escalate.query }}">
-      <input type="hidden" name="depth" value="deep">
-      <button class="btn sm" type="submit">Run the full claim-by-claim attack</button>
-    </form>
+    <div class="phasebuys">
+      {% if 'ledger' in (v.escalate.next_phases or []) %}
+      <form method="post" action="{{ request.script_root }}/run" class="phasebuy">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="mode" value="{{ v.escalate.mode }}">
+        <input type="hidden" name="search_focus" value="{{ v.escalate.search_focus or 'all_text' }}">
+        <input type="hidden" name="doc_token" value="{{ v.escalate.doc_token or '' }}">
+        <input type="hidden" name="query" value="{{ v.escalate.query }}">
+        <input type="hidden" name="depth" value="ledger">
+        <button class="btn sm" type="submit">Build the claim ledger</button>
+        <span class="phasenote">Verifies the retrieved passages for every requirement. About 5 to
+          20 minutes.</span>
+      </form>
+      {% endif %}
+      <form method="post" action="{{ request.script_root }}/run" class="phasebuy">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="mode" value="{{ v.escalate.mode }}">
+        <input type="hidden" name="search_focus" value="{{ v.escalate.search_focus or 'all_text' }}">
+        <input type="hidden" name="doc_token" value="{{ v.escalate.doc_token or '' }}">
+        <input type="hidden" name="query" value="{{ v.escalate.query }}">
+        <input type="hidden" name="depth" value="deep">
+        <button class="btn sm{% if v.depth != 'quick' %} primary{% endif %}" type="submit">Build
+          the claim &times; prior-art grid</button>
+        <span class="phasenote">Reads the strongest references in full, challenges every cell and
+          hunts art for uncovered claims. Runs 30 to 90 minutes and can email you when it is
+          done.</span>
+      </form>
+      <div class="phasebuy">
+        <button class="btn sm ghost" type="button" disabled>Prepare third-party preissuance</button>
+        <span class="phasenote">Available once the grid exists: the papers are built from verified
+          cells, so there is nothing to file before phase 3 has run.</span>
+      </div>
+    </div>
   </div>
   {% endif %}
 

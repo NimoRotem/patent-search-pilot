@@ -638,6 +638,8 @@ _ENV_KNOB = {
     "BLIND_RESCUE": "DEEP_RANK_BLIND_RESCUE",
     "BLIND_RESCUE_MAX": "DEEP_RANK_BLIND_RESCUE_MAX",
     "CONCEPT_PASS_TOP": "DEEP_RANK_CONCEPT_PASS_TOP",
+    "BATCH_PER_LIM": "DEEP_RANK_BATCH_PER_LIM",
+    "BATCH_TAIL_MAX": "DEEP_RANK_BATCH_TAIL_MAX",
 }
 
 
@@ -656,7 +658,10 @@ def _budget(overrides):
             "ENRICH_TOP": ENRICH_TOP, "PRESCREEN_ENRICH_TOP": PRESCREEN_ENRICH_TOP,
             "ALWAYS_CHART_RETRIEVAL_HEAD": ALWAYS_CHART_RETRIEVAL_HEAD,
             "BLIND_RESCUE": BLIND_RESCUE, "BLIND_RESCUE_MAX": BLIND_RESCUE_MAX,
-            "CONCEPT_PASS_TOP": CONCEPT_PASS_TOP}
+            "CONCEPT_PASS_TOP": CONCEPT_PASS_TOP,
+            #  Zero here means "this depth did not set it": the caller falls back to the
+            #  quick or deep constant, so a budget that omits the tail changes nothing.
+            "BATCH_PER_LIM": 0, "BATCH_TAIL_MAX": 0}
     applied = set()
     for k, v in (overrides or {}).items():
         if k not in base or v is None:
@@ -1177,7 +1182,9 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
     the full budget, which is what a document with claims always gets.
     """
     started = time.time()
-    quick = depth == "quick"
+    #  PHASE 1 and PHASE 2 both read nothing in full. They differ in how wide the evidence
+    #  sweep is, which arrives as a budget knob rather than as a second branch through the stage.
+    quick = depth in ("quick", "ledger")
     B = _budget(budget)
     #  WHAT THIS STAGE COSTS, measured rather than reconstructed afterwards. See llm.process_usage:
     #  the report's existing `llm_usage` is scoped to the agent and misses essentially all of it.
@@ -1515,9 +1522,11 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
             tail_pubs, tail_fams = [], set()
             for p in claim_reach.quota(
                     reach_map,
-                    per_claim=(BATCH_PER_LIM_QUICK if quick else BATCH_PER_LIM),
+                    per_claim=(B["BATCH_PER_LIM"]
+                               or (BATCH_PER_LIM_QUICK if quick else BATCH_PER_LIM)),
                     exclude=seen,
-                    cap=(BATCH_TAIL_MAX_QUICK if quick else BATCH_TAIL_MAX)):
+                    cap=(B["BATCH_TAIL_MAX"]
+                         or (BATCH_TAIL_MAX_QUICK if quick else BATCH_TAIL_MAX))):
                 row = by_pub_row.get(p) or {}
                 if not row.get("has_text"):
                     continue
