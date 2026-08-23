@@ -5403,7 +5403,7 @@ def _structured_drafting_notes(values) -> str:
     return "\n".join(parts)
 
 
-@app.route("/drafts")
+@app.route("/drafts", strict_slashes=False)
 def drafts_list():
     try:
         user, principal = _draft_identity()
