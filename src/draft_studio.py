@@ -666,9 +666,10 @@ def validate_snapshot(snapshot: Mapping[str, Any],
         details = []
         for item in failures[:8]:
             evidence = list(item.get("items") or [])
+            evidence_text = " | ".join(str(value)[:180] for value in evidence[:6])
             details.append(
                 f"{item.get('name') or 'Unnamed check'}: " +
-                str(evidence[0] if evidence else item.get("detail") or "failed")[:300])
+                (evidence_text or str(item.get("detail") or "failed")[:300]))
         category = ("figures_and_numerals"
                     if all(str(item.get("name") or "") in _FIGURE_PLAN_CHECKS
                            for item in failures)
