@@ -64,7 +64,7 @@ MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
 ))
 MARKED_PROGRESS_VERSION = "marked-progress-v1-final-coordinate-certificates"
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
-PIXEL_ANCHOR_VERSION = "pixel-anchor-v1-exterior-connectivity"
+PIXEL_ANCHOR_VERSION = "pixel-anchor-v2-sheet-boundary-clearance"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 4
@@ -313,6 +313,7 @@ _NEGATED_TARGET_RE = re.compile(
     re.IGNORECASE)
 _MAX_ANCHOR_SNAP = 220
 _MIN_BROAD_INTERIOR_CLEARANCE = 24
+_MIN_ANCHOR_SHEET_MARGIN = 30
 
 _SCHEMA = (
     """CREATE TABLE IF NOT EXISTS app_draft_figures (
@@ -1313,6 +1314,14 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                     "numeral": numeral, "part": part,
                     "reason": "the drawing contains no visible geometry",
                 })
+        boundary_distance = min(x, y, 1000 - x, 1000 - y)
+        if boundary_distance < _MIN_ANCHOR_SHEET_MARGIN:
+            ungrounded.append({
+                "numeral": numeral, "part": part,
+                "reason": (
+                    f"endpoint is only {boundary_distance} units from the sheet boundary; "
+                    "move the depicted target farther inside the drawing area"),
+            })
         coordinate = (int(item.get("x") or 0), int(item.get("y") or 0))
         prior = occupied.get(coordinate)
         if prior and prior != numeral:
@@ -1326,6 +1335,7 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         "ok": not ungrounded,
         "inspected": True,
         "version": PIXEL_ANCHOR_VERSION,
+        "minimum_sheet_margin": _MIN_ANCHOR_SHEET_MARGIN,
         "adjusted": adjusted,
         "allowed_spaces": allowed_spaces,
         "ungrounded": ungrounded,
