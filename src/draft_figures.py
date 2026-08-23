@@ -2117,6 +2117,18 @@ def inspect_cross_provider_endpoints(png: bytes, *, label: str, caption: str,
     key = _analysis_cache_key(
         "cross-provider-endpoints", png, specification, model,
         CROSS_PROVIDER_PROMPT_VERSION)
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    required = cross_provider_required()
+    if not api_key and not required:
+        return {
+            "ok": True, "inspected": False, "skipped": True,
+            "summary": "Optional cross-provider endpoint review was skipped.",
+            "expected": expected, "observed": [], "missing": [],
+            "unexpected": [], "duplicates": [], "incorrect": [], "labels": [],
+            "errors": [], "model_name": model,
+            "prompt_version": CROSS_PROVIDER_PROMPT_VERSION,
+            "review_count": 0, "specification_hash": spec_hash,
+        }
     cached = _analysis_cache_get(key)
     if (isinstance(cached, dict) and cached.get("inspected") and
             cached.get("model_name") == model and
@@ -2129,18 +2141,14 @@ def inspect_cross_provider_endpoints(png: bytes, *, label: str, caption: str,
             latency_ms=0, cache_hit=True, success=bool(cached.get("ok")))
         return cached
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
-        required = cross_provider_required()
         return {
-            "ok": not required, "inspected": False, "skipped": not required,
-            "summary": ("Cross-provider endpoint review is not configured."
-                        if required else "Optional cross-provider endpoint review was skipped."),
+            "ok": False, "inspected": False, "skipped": False,
+            "summary": "Cross-provider endpoint review is not configured.",
             "expected": expected, "observed": [],
-            "missing": expected if required else [], "unexpected": [], "duplicates": [],
+            "missing": expected, "unexpected": [], "duplicates": [],
             "incorrect": [], "labels": [],
-            "errors": (["Required cross-provider endpoint review is not configured."]
-                       if required else []),
+            "errors": ["Required cross-provider endpoint review is not configured."],
             "model_name": model, "prompt_version": CROSS_PROVIDER_PROMPT_VERSION,
             "review_count": 0, "specification_hash": spec_hash,
         }
