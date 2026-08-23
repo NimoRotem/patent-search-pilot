@@ -472,6 +472,95 @@ def test_compose_accumulates_consensus_for_unchanged_endpoint_coordinates(monkey
     assert leaders["marked_anchor_audit"]["certified_across_attempts"] is True
 
 
+def test_compose_resumes_repaired_coordinates_after_a_process_restart(monkeypatch):
+    raw = blank_png(1000, 1000)
+    initial = [{"numeral": "26", "x": 500, "y": 500,
+                "visible": True, "evidence": "bearing face"}]
+    accepted_pixel = {
+        "ok": True, "inspected": True,
+        "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [], "allowed_spaces": [], "ungrounded": [],
+    }
+    monkeypatch.setattr(
+        draft_figures, "_ground_anchors_to_pixels",
+        lambda _png, _numerals, anchors: ([dict(item) for item in anchors],
+                                           dict(accepted_pixel)))
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["26"], "figure_label": "FIG. 2",
+        "other_text": [], "confidence": 0.99})
+
+    progress = {}
+
+    def load_progress(*_args, **_kwargs):
+        return dict(progress) if progress else None
+
+    def save_progress(*_args, **values):
+        progress.update({
+            "anchors": [dict(item) for item in values["anchors"]],
+            "certificates": dict(values["certificates"]),
+            "attempts": values["attempts"],
+        })
+
+    monkeypatch.setattr(draft_figures, "_marked_progress_get", load_progress, raising=False)
+    monkeypatch.setattr(draft_figures, "_marked_progress_put", save_progress, raising=False)
+    leader_calls = []
+    interrupt = [True]
+
+    def inspect_leaders(*_args, **_kwargs):
+        leader_calls.append(True)
+        if interrupt[0] and len(leader_calls) == 2:
+            raise KeyboardInterrupt()
+        return {
+            "ok": True, "inspected": True, "errors": [], "incorrect": [],
+            "labels": [{"numeral": "26", "correct": True,
+                        "evidence": "leader reaches the marked point"}],
+        }
+
+    monkeypatch.setattr(draft_figures, "inspect_leaders", inspect_leaders)
+    marked_calls = []
+
+    def inspect_marked(_png, **kwargs):
+        marked_calls.append([dict(item) for item in kwargs["anchors"]])
+        if len(marked_calls) == 1:
+            return {
+                "ok": False, "inspected": True, "errors": ["move right"],
+                "incorrect": ["26"], "missing": [], "labels": [{
+                    "numeral": "26", "correct": False, "repairable": True,
+                    "evidence": "the bearing face is right of center",
+                    "suggested_x": 600, "suggested_y": 500,
+                    "correct_votes": 1, "incorrect_votes": 2,
+                }],
+            }
+        return {
+            "ok": True, "inspected": True, "errors": [], "incorrect": [],
+            "missing": [], "labels": [{
+                "numeral": "26", "correct": True, "repairable": True,
+                "evidence": "the center is on the bearing face",
+                "suggested_x": 500, "suggested_y": 500,
+                "correct_votes": 3, "incorrect_votes": 0,
+            }],
+        }
+
+    monkeypatch.setattr(draft_figures, "inspect_marked_anchors", inspect_marked)
+
+    with pytest.raises(KeyboardInterrupt):
+        draft_figures._compose_checked_sheet(
+            raw, label="FIG. 2", caption="bearing face", numerals=["26 = bearing face"],
+            semantic={"anchors": initial, "pixel_anchor_audit": dict(accepted_pixel)})
+
+    assert progress["attempts"] == 1
+    assert progress["anchors"][0]["x"] > 500
+
+    interrupt[0] = False
+    _png, labels, leaders, anchors, pixel = draft_figures._compose_checked_sheet(
+        raw, label="FIG. 2", caption="bearing face", numerals=["26 = bearing face"],
+        semantic={"anchors": initial, "pixel_anchor_audit": dict(accepted_pixel)})
+
+    assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
+    assert anchors[0]["x"] == progress["anchors"][0]["x"]
+    assert leaders["marked_anchor_audit"]["inspection_rounds"] == 2
+
+
 def test_marked_anchor_montage_preserves_the_endpoint_pixel_inside_a_red_ring():
     image = Image.new("RGB", (400, 400), "white")
     ImageDraw.Draw(image).point((200, 200), fill="black")
