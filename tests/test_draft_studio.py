@@ -1435,7 +1435,7 @@ def test_restart_resumes_a_checkpointed_candidate_without_rerunning_the_agent(
         "duration_ms": 1, "model_name": "review"})
 
     runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
-                "turn_no": 1, "kind": "initial", "attempts": 2})
+                "turn_no": 1, "kind": "initial", "attempts": 1})
 
     agent.run.assert_not_called()
     assert repository.save_version.call_count == 1
