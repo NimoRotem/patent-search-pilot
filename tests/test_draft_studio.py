@@ -645,6 +645,9 @@ def test_open_drafting_notes_are_a_filing_blocker():
 @pytest.mark.parametrize("placeholder", [
     "[TODO: add dimensions]", "TBD", "TO BE PROVIDED", "<INSERT MATERIAL>",
     "{{applicant_name}}", "_______", "Part names are for the draftsperson only.",
+    "[VERIFY: confirm the material]", "Confirm with the inventor before filing.",
+    "The applicant should provide the missing dimension.",
+    "Manually add the connector label.", "Human intervention is required.",
 ])
 def test_every_placeholder_form_is_a_filing_blocker(placeholder):
     broken = dict(GOOD)
