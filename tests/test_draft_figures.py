@@ -113,7 +113,7 @@ def test_image_generation_uses_its_dedicated_location_client(monkeypatch):
     assert calls and calls[0]["model"] == draft_figures.image_model()
 
 
-def test_marked_review_uses_the_raw_sheet_as_its_coordinate_frame(monkeypatch):
+def test_marked_review_uses_a_full_sheet_coordinate_grid_as_its_correction_frame(monkeypatch):
     raw = blank_png()
     calls = []
 
@@ -147,12 +147,25 @@ def test_marked_review_uses_the_raw_sheet_as_its_coordinate_frame(monkeypatch):
         anchors=[{"numeral": "10", "x": 500, "y": 500, "visible": True}])
 
     assert audit["ok"] is True and len(calls) == 3
+    coordinate_sheet = draft_figures._coordinate_grid_overlay(raw)
     for call in calls:
         images = [item for item in call["contents"]
                   if getattr(item, "inline_data", None)]
         assert len(images) == 2
-        assert bytes(images[0].inline_data.data) == raw
-        assert "first supplied image" in call["contents"][-1].lower()
+        assert bytes(images[0].inline_data.data) == coordinate_sheet
+        assert bytes(images[0].inline_data.data) != raw
+        assert "coordinate grid" in call["contents"][-1].lower()
+
+
+def test_coordinate_grid_preserves_raw_dimensions_and_marks_normalized_axes():
+    raw = blank_png(1000, 800)
+
+    sheet = Image.open(io.BytesIO(
+        draft_figures._coordinate_grid_overlay(raw))).convert("RGB")
+
+    assert sheet.size == (1000, 800)
+    assert sheet.getpixel((500, 400)) != (255, 255, 255)
+    assert sheet.getpixel((900, 400)) != (255, 255, 255)
 
 
 def test_verbose_visual_evidence_does_not_abort_an_otherwise_valid_review():
@@ -823,6 +836,96 @@ def test_closed_region_audit_recognizes_contains_count_and_nothing_else():
     )
 
     assert draft_figures._expected_closed_region_count(specification) == 4
+
+
+def test_deterministic_nested_plan_has_exactly_three_rectangles_and_one_circle():
+    specification = (
+        "The whole sheet contains four outlines and nothing else. From the outside inward, "
+        "draw three nested rectangles and one circle at the centre. Each outline is drawn "
+        "once as one closed line."
+    )
+
+    png = draft_figures._deterministic_nested_plan_png(specification)
+
+    assert png is not None
+    audit = draft_figures.closed_region_audit(png, specification)
+    assert audit["ok"] is True and audit["observed"] == 4
+    assert draft_figures._deterministic_nested_plan_png(
+        "A perspective view of a rectangular housing and a circular port.") is None
+
+
+def test_render_uses_deterministic_nested_plan_after_generated_counts_fail(monkeypatch):
+    bad = blank_png(1000, 800)
+    specification = (
+        "The whole sheet contains four outlines and nothing else. From the outside inward, "
+        "draw three nested rectangles and one circle at the centre. Each outline is drawn "
+        "once as one closed line."
+    )
+    monkeypatch.setattr(draft_figures, "MAX_SEMANTIC_ATTEMPTS", 1)
+    monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: bad)
+    monkeypatch.setattr(draft_figures, "_discard_cached_generation", lambda *a, **k: None)
+
+    def inspect(png, **_kwargs):
+        if png == bad:
+            return {"ok": False, "missing": [], "errors": ["wrong outline count"]}
+        return {
+            "ok": True,
+            "anchors": [
+                {"numeral": "16", "x": 500, "y": 850, "visible": True,
+                 "evidence": "outer margin"},
+                {"numeral": "24", "x": 800, "y": 500, "visible": True,
+                 "evidence": "inner band"},
+                {"numeral": "30", "x": 500, "y": 500, "visible": True,
+                 "evidence": "circle center"},
+            ],
+        }
+
+    monkeypatch.setattr(draft_figures, "inspect_semantics", inspect)
+    accepted_pixel = {
+        "ok": True, "inspected": True, "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [], "allowed_spaces": [], "ungrounded": [],
+    }
+    monkeypatch.setattr(
+        draft_figures, "_apply_pixel_grounding",
+        lambda _png, _numerals, semantic: {
+            **semantic, "pixel_anchor_audit": dict(accepted_pixel),
+        })
+    accepted_labels = {
+        "ok": True, "detected": ["16", "24", "30"],
+        "expected": ["16", "24", "30"], "correct_figure_label": True,
+        "other_text": [], "confidence": 0.99,
+    }
+    accepted_leaders = {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [],
+        "marked_anchor_audit": accepted_marked_anchor_audit(),
+    }
+    monkeypatch.setattr(
+        draft_figures, "_compose_checked_sheet",
+        lambda png, **kwargs: (
+            png, dict(accepted_labels), dict(accepted_leaders),
+            list(kwargs["semantic"]["anchors"]), dict(accepted_pixel)))
+    monkeypatch.setattr(draft_figures, "create_figure", lambda *a, **k: {"id": 44})
+    saved = []
+
+    def save(_figure_id, **kwargs):
+        saved.append(kwargs)
+        return {
+            "version_no": 1, "audit": kwargs["ocr_audit"],
+            "semantic_audit": kwargs["semantic_audit"],
+            "leader_audit": kwargs["leader_audit"],
+            "detected_numerals": ["16", "24", "30"],
+        }
+
+    monkeypatch.setattr(draft_figures, "_audited_version", save)
+
+    result = draft_figures.render_figure(
+        7, 91, label="FIG. 3", caption=specification,
+        numerals=["16 = second side", "24 = perimeter member", "30 = extraction opening"])
+
+    assert result["semantic_audit"]["ok"] is True
+    assert saved[0]["source_kind"] == "deterministic"
+    assert draft_figures.closed_region_audit(
+        saved[0]["base_png"], specification)["observed"] == 4
 
 
 def test_closed_region_audit_is_not_required_without_an_exact_closed_shape_clause():
