@@ -167,8 +167,12 @@ _CLAIMS = Profile(
     rounds=1,
     budget={
         "PRESCREEN_ENRICH_TOP": 60,
-        "CHART_TOP": 45,
-        "CHART_TOP_MAX": 60,
+        #  45 was measured too narrow: the recall gate read 0/10 attorney references on the page
+        #  against 2/10 at baseline, with two gold references screened 86 and 88 and cut. The
+        #  reading costs ~1.5 s/reference at 24 workers, so width is cheap; the wall clock comes
+        #  out of the element passes instead.
+        "CHART_TOP": 120,
+        "CHART_TOP_MAX": 140,
         "ENRICH_TOP": 60,
         "ALWAYS_CHART_RETRIEVAL_HEAD": 24,
         "BLIND_RESCUE_MAX": 12,

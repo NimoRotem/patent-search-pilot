@@ -146,6 +146,11 @@ class AgentConfig:
     #  Find mode: fewer, narrower passes. Measured 2026-08-23: at 6-way concurrency each pass is
     #  27-74 s because the database is I/O-saturated, so the pass count is the wall clock.
     find_mode: bool = False
+    #  Element passes probe dense + claim_dense at every depth: a full nine-channel element pass
+    #  is 30-65 s under load against 3-15 s trimmed, and the element passes exist for per-element
+    #  ATTRIBUTION, which the dense channels carry. Seed, query-set and round passes keep every
+    #  channel. False restores the historical shape for an A/B.
+    trim_element_channels: bool = True
     #  The uploaded patent's own claims, when the search started from a document. Each independent
     #  claim becomes its own query vector in the query set (query_set.build): a claim is the right
     #  query for a claim-level match even though, measured, it is a poor query on its own.
@@ -489,7 +494,8 @@ class CoverageAgent:
                      **({"cfg": _find_cfg} if _find_cfg else {})) for s in extra
             ])
         # attribute seed hits to elements too (cap the per-element seed searches for runtime)
-        _find_cfg = ["dense", "claim_dense"] if cfg.find_mode else None
+        _find_cfg = (["dense", "claim_dense"]
+                     if (cfg.find_mode or cfg.trim_element_channels) else None)
         searched_batch("seed_progress", [
             dict({"query": el, "element": el},
                  **({"cfg": _find_cfg} if _find_cfg else {})) for el in elements[:6 if cfg.find_mode else 8]
