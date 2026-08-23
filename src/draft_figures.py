@@ -1420,7 +1420,7 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
     draw = ImageDraw.Draw(image)
     for box in ((140, 90, 1260, 810), (300, 210, 1100, 690), (460, 330, 940, 570)):
         draw.rectangle(box, outline="black", width=4)
-    draw.ellipse((600, 350, 800, 550), outline="black", width=4)
+    draw.ellipse((620, 370, 780, 530), outline="black", width=4)
     out = io.BytesIO()
     image.save(out, format="PNG", compress_level=9)
     return out.getvalue()
