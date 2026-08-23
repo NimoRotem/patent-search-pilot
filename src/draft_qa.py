@@ -97,6 +97,12 @@ _CONTRADICTORY_ENDPOINT_TARGET_RE = re.compile(
     r"[^.\n]{0,120}\b(?:above|below|outside)\s+"
     r"(?:that|the\s+same)\s+(?P=surface)\b",
     re.IGNORECASE)
+_DISCONNECTED_ENDPOINT_TARGET_RE = re.compile(
+    r"\bidentified\b[^.\n]{0,160}\b(?:open|empty|clear)\s+"
+    r"(?:white\s+)?(?:paper|space|area|region)\b[^.\n]{0,120}"
+    r"\b(?:above|below|outside|beside|next\s+to|adjacent\s+to)\b[^.\n]{0,100}"
+    r"\b(?:line|edge|boundary|face|surface|body|part|member)\b",
+    re.IGNORECASE)
 _ARBITRARY_EXACT_ENDPOINT_TARGET_RE = re.compile(
     r"\bidentified\b(?=[^.\n]{0,260}\b(?:"
     r"cent(?:er|re)|midpoint|mid-point|mid[- ]?(?:height|width|depth)|halfway|quarter|"
@@ -560,6 +566,10 @@ def _figure_checks(sections: Mapping[str, str],
             brief_issues.append(
                 f"{label}: contradictory endpoint target places a point on a surface and "
                 "also above, below, or outside that same surface")
+        if _DISCONNECTED_ENDPOINT_TARGET_RE.search(caption):
+            brief_issues.append(
+                f"{label}: disconnected endpoint target places a numeral in empty paper "
+                "beside the named part; identify the part itself or its full boundary")
         for exact_target in _ARBITRARY_EXACT_ENDPOINT_TARGET_RE.finditer(caption):
             brief_issues.append(
                 f"{label}: arbitrary exact endpoint target {exact_target.group(0)[:180]!r}; "

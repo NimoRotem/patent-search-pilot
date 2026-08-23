@@ -250,6 +250,26 @@ def test_a_self_contradictory_endpoint_target_is_refused_before_drawing():
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
 
+def test_an_endpoint_deliberately_disconnected_from_its_named_part_is_refused():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "The first side 14 is the straight upper edge line of the slab. Identified in the "
+            "open white paper directly above that upper edge line, touching no line."
+        ),
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "disconnected endpoint" in check["items"][0].lower()
+    with pytest.raises(
+            draft_studio.FilingPreflightError,
+            match="Drawing briefs are concise and renderable"):
+        draft_studio.validate_snapshot(
+            {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
+
+
 @pytest.mark.parametrize("target", [
     "Identified at the centre of its flat front face.",
     "Identified at mid-height on its right side face.",
