@@ -559,6 +559,10 @@ def test_compose_resumes_repaired_coordinates_after_a_process_restart(monkeypatc
     assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
     assert anchors[0]["x"] == progress["anchors"][0]["x"]
     assert leaders["marked_anchor_audit"]["inspection_rounds"] == 2
+    assert draft_figures.current_marked_anchor_audit(
+        leaders["marked_anchor_audit"],
+        specification_hash=draft_figures.specification_hash(
+            "FIG. 2", "bearing face", ["26 = bearing face"]))
 
 
 def test_marked_anchor_montage_preserves_the_endpoint_pixel_inside_a_red_ring():

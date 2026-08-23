@@ -2265,6 +2265,8 @@ def _certified_marked_anchor_audit(audit: dict, certificates: dict, anchors, num
         "errors": [], "expected": expected, "observed": expected,
         "missing": [], "unexpected": [], "duplicates": [], "incorrect": [],
         "labels": labels, "review_count": MARKED_ANCHOR_REVIEW_COUNT,
+        "model_name": vision_model(),
+        "prompt_version": MARKED_ANCHOR_PROMPT_VERSION,
         "inspection_rounds": int(attempts),
         "certified_across_attempts": int(attempts) > 1,
         "coordinate_certificates": coordinate_certificates,
