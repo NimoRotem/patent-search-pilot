@@ -123,6 +123,42 @@ def test_image_generation_uses_its_dedicated_location_client(monkeypatch):
     assert calls and calls[0]["model"] == draft_figures.image_model()
 
 
+def test_image_generation_waits_through_transient_capacity_exhaustion(monkeypatch):
+    png = blank_png()
+    calls = []
+    sleeps = []
+
+    class InlineData:
+        data = png
+
+    class Part:
+        inline_data = InlineData()
+
+    class Content:
+        parts = [Part()]
+
+    class Candidate:
+        content = Content()
+
+    class Response:
+        usage_metadata = None
+        candidates = [Candidate()]
+
+    def generate(*_args, **_kwargs):
+        calls.append(len(calls) + 1)
+        if len(calls) < 5:
+            raise RuntimeError("429 RESOURCE_EXHAUSTED: shared image capacity is busy")
+        return Response()
+
+    monkeypatch.setattr(draft_figures, "_model_call", generate)
+    monkeypatch.setattr(draft_figures.time, "sleep", sleeps.append)
+    monkeypatch.setattr(draft_figures.random, "uniform", lambda *_args: 0)
+
+    assert draft_figures.generate_png("draw exact geometry") == png
+    assert calls == [1, 2, 3, 4, 5]
+    assert sleeps == [2, 4, 8, 16]
+
+
 def test_marked_review_uses_a_full_sheet_coordinate_grid_as_its_correction_frame(monkeypatch):
     raw = blank_png()
     calls = []
@@ -1353,6 +1389,24 @@ def test_pixel_grounding_snaps_a_face_endpoint_when_evidence_requires_a_contact_
     assert 495 <= anchors[0]["y"] <= 505
 
 
+def test_pixel_grounding_does_not_treat_an_excluded_ring_as_the_target():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((100, 100, 900, 900), outline="black", width=8)
+    draw.ellipse((420, 420, 580, 580), outline="black", width=8)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["10 = vibration device"], [{
+            "numeral": "10", "x": 500, "y": 700, "visible": True,
+            "evidence": "inside the plain base face, not on the ring or its outline",
+        }])
+
+    assert audit["ok"] is True and audit["adjusted"] == []
+    assert (anchors[0]["x"], anchors[0]["y"]) == (500, 700)
+
+
 def test_closed_region_audit_enforces_an_explicit_exact_shape_count():
     image = Image.new("RGB", (1000, 1000), "white")
     draw = ImageDraw.Draw(image)
@@ -1688,6 +1742,26 @@ def test_terminal_dot_does_not_erase_an_explicit_boundary_target(evidence):
 
     assert output.getpixel((target_x, target_y))[0] < 32
     assert output.getpixel((target_x + 9, target_y))[0] < 32
+
+
+def test_terminal_dot_keeps_a_halo_when_line_geometry_is_only_an_exclusion():
+    image = Image.new("RGB", (640, 420), "white")
+    ImageDraw.Draw(image).line((0, 210, 639, 210), fill="black", width=18)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+    anchors = [{
+        "numeral": "10", "x": 500, "y": 500, "visible": True,
+        "evidence": "inside the base face, not on the ring or its outline",
+    }]
+    layout = draft_figures._annotation_layout(raw.getvalue(), anchors, 1.0)
+
+    output = Image.open(io.BytesIO(
+        draft_figures.annotate_png(raw.getvalue(), "FIG. 1", anchors)))
+    target_x = layout["source_x"] + round(500 * layout["source"].width / 1000)
+    target_y = layout["source_y"] + round(500 * layout["source"].height / 1000)
+
+    assert output.getpixel((target_x, target_y))[0] < 32
+    assert output.getpixel((target_x + 9, target_y))[0] > 240
 
 
 def test_center_endpoints_route_opposite_a_right_endpoint_on_the_same_row():
@@ -2355,6 +2429,22 @@ def test_ensure_project_figures_collects_every_failed_sheet_before_repair(monkey
     assert attempted == ["FIG. 1", "FIG. 2"]
     assert out["ok"] is False and out["generated"] == 1
     assert out["errors"] == ["FIG. 1: wrong motor axis"]
+
+
+def test_ensure_project_figures_defers_transient_capacity_errors(monkeypatch):
+    monkeypatch.setattr(draft_figures, "listing", lambda *a: [])
+    monkeypatch.setattr(
+        draft_figures, "render_figure",
+        lambda *a, **k: (_ for _ in ()).throw(
+            draft_figures.FigureTransientError("429 RESOURCE_EXHAUSTED")))
+
+    with pytest.raises(draft_figures.FigureTransientError, match="RESOURCE_EXHAUSTED"):
+        draft_figures.ensure_project_figures(
+            7, 91, sections={}, disclosure="body",
+            numeral_table=[{"numeral": "10", "part": "body"}],
+            figure_specs=[{
+                "label": "FIG. 1", "caption": "side view", "numerals": ["10"],
+            }])
 
 
 def test_changed_figure_spec_is_reinspected_even_when_its_numerals_are_unchanged(monkeypatch):

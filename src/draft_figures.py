@@ -295,6 +295,9 @@ _EXPLICIT_LINE_TARGET_RE = re.compile(
     r"\b(?:boundary|edge|line)\s+(?:forming|defining)\b|"
     r"\b(?:cable|cord|handle|loop|path|pulling element|ring|cross ?bar|outline|curve|"
     r"stroke)\b)", re.IGNORECASE)
+_NEGATED_TARGET_RE = re.compile(
+    r"\b(?:not|never|excluding|excluded|exclude|clear\s+of|away\s+from|rather\s+than)\b",
+    re.IGNORECASE)
 _MAX_ANCHOR_SNAP = 220
 
 _SCHEMA = (
@@ -514,6 +517,20 @@ def specification_hash(label, caption, numerals) -> str:
         json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
 
+def _has_explicit_line_target(evidence: object) -> bool:
+    """Match a positive line target without turning an excluded neighbor into the target."""
+    text = str(evidence or "")
+    for match in _EXPLICIT_LINE_TARGET_RE.finditer(text):
+        prefix = text[:match.start()]
+        boundaries = [prefix.rfind(mark) for mark in (".", ";", "|", ",")]
+        contrast = [item.end() for item in re.finditer(r"\bbut\b", prefix, re.IGNORECASE)]
+        scope_start = max(boundaries + contrast, default=-1)
+        if _NEGATED_TARGET_RE.search(prefix[scope_start + 1:]):
+            continue
+        return True
+    return False
+
+
 def figures_from_draft(sections):
     """The draft's own figure list -> ``[{label, caption}]``.
 
@@ -684,6 +701,33 @@ class FigureError(RuntimeError):
     pass
 
 
+class FigureTransientError(FigureError):
+    """A provider outage that should resume the saved candidate, not rewrite its content."""
+
+    retry_without_repair = True
+
+
+def _image_capacity_exhausted(error: Exception) -> bool:
+    """Recognize Vertex capacity responses without depending on one SDK exception class."""
+    values = [
+        getattr(error, "code", None),
+        getattr(error, "status_code", None),
+        getattr(error, "status", None),
+        type(error).__name__,
+        str(error),
+    ]
+    for value in values[:3]:
+        if callable(value):
+            try:
+                value = value()
+            except Exception:
+                continue
+        if str(value or "").strip() == "429":
+            return True
+    detail = " ".join(str(value or "") for value in values[3:]).upper()
+    return "RESOURCE_EXHAUSTED" in detail or bool(re.search(r"\b429\b", detail))
+
+
 def _model_call(prompt, previous_png=None):
     """One transport attempt. Logical refusals are handled after transport succeeds."""
     try:
@@ -714,21 +758,29 @@ def generate_png(prompt, previous_png=None):
     """
     started = time.time()
     last_error = None
-    for attempt in range(3):
+    resp = None
+    capacity_exhausted = False
+    for attempt in range(6):
         try:
             resp = _model_call(prompt, previous_png)
             break
-        except Exception as exc:                         # transport only, maximum three attempts
+        except Exception as exc:                         # transport only, bounded retries
             last_error = exc
-            if attempt < 2:
-                time.sleep((0.35 * (2 ** attempt)) + random.uniform(0, 0.2))
-    else:
+            capacity_exhausted = _image_capacity_exhausted(exc)
+            attempt_limit = 6 if capacity_exhausted else 3
+            if attempt + 1 >= attempt_limit:
+                break
+            delay = (min(30, 2 * (2 ** attempt)) if capacity_exhausted
+                     else 0.35 * (2 ** attempt))
+            time.sleep(delay + random.uniform(0, 0.2))
+    if resp is None:
         print(json.dumps({"event": "draft_figure_llm", "provider": "vertex",
                           "model": image_model(), "prompt_version": FIGURE_PROMPT_VERSION,
                           "latency_ms": int((time.time() - started) * 1000),
                           "cache_hit": False, "success": False}), flush=True)
-        raise FigureError(f"the image model could not draw this figure: {str(last_error)[:200]}") \
-            from last_error
+        error_class = FigureTransientError if capacity_exhausted else FigureError
+        raise error_class(
+            f"the image model could not draw this figure: {str(last_error)[:200]}") from last_error
     um = getattr(resp, "usage_metadata", None)
     llm._record_usage(getattr(um, "prompt_token_count", 0) if um else 0,
                       getattr(um, "candidates_token_count", 0) if um else 0)
@@ -1159,7 +1211,7 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         is_empty_space = bool(_EMPTY_ANCHOR_PART_RE.search(part))
         evidence = str(item.get("evidence") or "")
         requires_ink = bool(
-            _LINE_ANCHOR_PART_RE.search(part) or _EXPLICIT_LINE_TARGET_RE.search(evidence)
+            _LINE_ANCHOR_PART_RE.search(part) or _has_explicit_line_target(evidence)
         ) and not is_empty_space
         if is_exterior and is_empty_space:
             allowed_spaces.append({"numeral": numeral, "part": part, "x": x, "y": y})
@@ -2611,8 +2663,7 @@ def annotate_png(png: bytes, label: str, anchors, *, scale: float = 1.0) -> byte
             text_x = 28 if side_name == "left" else canvas.width - 28 - width
             text_y = y - font_size // 2
             line_x = text_x + width + 8 if side_name == "left" else text_x - 8
-            preserve_target = bool(_EXPLICIT_LINE_TARGET_RE.search(
-                str(item.get("evidence") or "")))
+            preserve_target = _has_explicit_line_target(item.get("evidence"))
             routes.append((
                 line_x, y, target_x, target_y, text_x, text_y, numeral, preserve_target))
     halo_radius = dot_radius + 4
@@ -3778,6 +3829,8 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
                 figure_id=(current or {}).get("id"),
                 sort_order=index,
                 instruction="Automatically reconcile this sheet with the current filing text.")
+        except FigureTransientError:
+            raise
         except FigureError as exc:
             error = f"{canonical_figure_label(label)}: {str(exc)[:1400]}"
             errors.append(error)
