@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import parse, pilot
+from . import fulltext, parse, pilot
 from .schemas import OriginalFigure, Section, SourceDocument, sha256_text
 
 MAX_UPLOAD_BYTES = 40 * 1024 * 1024
@@ -255,26 +255,20 @@ def _text_from_pdf(pub: str, record: dict, notes: list[str],
 
 
 def _text_from_ladder(pub: str, record: dict, notes: list[str]) -> str:
-    """The search app's full-text ladder: docstore, PQAI, EPO OPS, Google direct, then paid.
+    """The compiler's OWN source ladder, which tests each answer before accepting it.
 
-    This is what makes a scanned publication usable. The text is composed back into headed
-    sections rather than handed over raw, because the parser finds the description and the brief
-    description of the drawings by their headings, and a source that returns three fields has
-    thrown those headings away.
+    Not the search app's: that one is built for bulk retrieval, where a partial document is a
+    slightly weaker query, and its first free rung truncates. Here a description that stops
+    before the detailed description carries no reference numerals and no figure can be built
+    from it at all. See pfc/fulltext.py for the order and the test.
     """
-    fetched = pilot.fetch_fulltext(pub)
-    description = str(fetched.get("description") or "").strip()
-    claims = str(fetched.get("claims") or "").strip()
-    if not description and not claims:
+    fetched = fulltext.fetch(pub, notes)
+    if not fetched.ok:
         return ""
-    source = str(fetched.get("source") or "a full-text source")
-    notes.append(
-        f"the facsimile carries no text, so the document was read from {source}: "
-        f"{len(description):,} characters of description, {len(claims):,} of claims")
     return _compose_sections(
-        title=str(fetched.get("title") or record.get("title") or ""),
-        abstract=str(fetched.get("abstract") or record.get("abstract") or ""),
-        description=description, claims=claims)
+        title=fetched.title or str(record.get("title") or ""),
+        abstract=fetched.abstract or str(record.get("abstract") or ""),
+        description=fetched.description, claims=fetched.claims)
 
 
 # A source that returns {description, claims} has dropped the document's own headings. The

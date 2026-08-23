@@ -97,6 +97,89 @@ def display_record(pub: str) -> dict[str, Any]:
         return {}
 
 
+def corpus_record(pub: str) -> dict[str, Any]:
+    """The pre-built patent corpus, if it holds this publication."""
+    try:
+        return dict(module("mongo_corpus").get_detail(pub) or {})
+    except Exception:
+        return {}
+
+
+def docstore_record(pub: str) -> dict[str, Any]:
+    """The shared full-text docstore, under either spelling of the publication number.
+
+    The store is keyed by the canonical compact form, and callers hold the hyphenated one, so
+    asking with the wrong spelling reports an empty cache that is not empty.
+    """
+    import asyncio
+
+    try:
+        docstore = module("sources").docstore
+    except Exception:
+        return {}
+    for key in dict.fromkeys([pub, pub.replace("-", "")]):
+        try:
+            record = asyncio.run(docstore.get(key)) or {}
+        except Exception:
+            continue
+        if record.get("description") or record.get("claims"):
+            return dict(record)
+    return {}
+
+
+class SourceUnavailable(RuntimeError):
+    """A source could not be ASKED. Distinct from a source that was asked and had nothing.
+
+    Collapsing the two is how `sources.registry` being a function rather than a module — an
+    AttributeError, a plain wiring mistake — was reported for an hour as "our Google Patents
+    reader does not hold this publication". A source that cannot be reached has to say so.
+    """
+
+
+def adapter_details(pub: str, adapter_name: str, timeout: float = 90.0) -> dict[str, Any]:
+    """Ask ONE source adapter for one document.
+
+    The compiler drives its own ladder rather than the search app's, so it addresses the
+    adapters individually. Every one of them exposes ``details(publication, client)``.
+
+    Returns the record, or ``{}`` when the source genuinely has nothing. Raises
+    :class:`SourceUnavailable` when it could not be asked at all, so the caller can tell a
+    missing document from a broken pipe.
+    """
+    import asyncio
+
+    try:
+        # `sources.registry` is a FUNCTION returning {name: adapter}, not a module.
+        adapters = module("sources").registry()
+    except Exception as exc:
+        raise SourceUnavailable(f"the source registry could not be built: {exc}") from exc
+    adapter = adapters.get(adapter_name)
+    if adapter is None:
+        raise SourceUnavailable(f"there is no source called {adapter_name!r}")
+    if not hasattr(adapter, "details"):
+        raise SourceUnavailable(f"{adapter_name} cannot fetch a single document")
+    try:
+        if not adapter.enabled():
+            raise SourceUnavailable(f"{adapter_name} is not configured on this host")
+    except SourceUnavailable:
+        raise
+    except Exception as exc:
+        raise SourceUnavailable(f"{adapter_name} could not report whether it is usable: "
+                                f"{exc}") from exc
+
+    async def run() -> dict[str, Any]:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            return dict(await adapter.details(pub, client) or {})
+
+    try:
+        return asyncio.run(run())
+    except Exception as exc:
+        raise SourceUnavailable(f"{adapter_name} failed: {type(exc).__name__}: "
+                                f"{str(exc)[:120]}") from exc
+
+
 def fetch_fulltext(pub: str, timeout: float = 120.0) -> dict[str, Any]:
     """The search app's full-text acquisition ladder, for one publication.
 

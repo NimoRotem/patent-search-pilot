@@ -129,18 +129,27 @@ def discover_figures(document: SourceDocument) -> list[FigurePlanItem]:
                        r"\b(?:shows?|illustrat|depict|is\s+a|are\s+|présente|zeigt)", p.text, re.I)]
     found: dict[str, FigurePlanItem] = {}
     for paragraph in sources:
-        for sentence in _SENTENCE.split(paragraph.text):
-            match = _FIG_REF.search(sentence)
-            if not match:
-                continue
+        # Every figure reference in the paragraph, with its caption running to the NEXT one.
+        #
+        # Splitting into sentences first and taking one figure from each looks equivalent and is
+        # not: a source that has stripped the punctuation gives "...of the presently disclosed
+        # subject matter FIG. 2 shows a bottom perspective view...", which is one sentence
+        # containing nine figures. Measured on US-2024/0246200-A1, where it found FIG. 1 and
+        # missed the other eight.
+        text = paragraph.text
+        matches = list(_FIG_REF.finditer(text))
+        for index, match in enumerate(matches):
             numbers = expand_figure_reference(match.group("body"))
             if not numbers:
                 continue
-            caption = sentence[match.end():].strip(" -–—:;,.").strip()
+            stop = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            caption = text[match.end():stop].strip(" -–—:;,.").strip()
             if not caption:
-                caption = sentence.strip()
+                # A bare mention with nothing after it: fall back to the sentence around it, so
+                # a cross-reference still carries something a reader can check.
+                caption = next((s for s in _SENTENCE.split(text)
+                                if match.group(0) in s), text).strip()
             figure_type, view_type = _classify(caption)
-            start = max(0, match.start())
             for number in numbers[:MAX_FIGURES]:
                 key = number.upper()
                 if key in found:
@@ -149,9 +158,9 @@ def discover_figures(document: SourceDocument) -> list[FigurePlanItem]:
                     figure_number=key, description=caption[:400], explicit=True,
                     figure_type=figure_type, view_type=view_type,
                     evidence=[Evidence(section_id=paragraph.section_id,
-                                       paragraph_id=paragraph.id, quote_start=start,
-                                       quote_end=min(len(paragraph.text), start + len(sentence)),
-                                       quote=sentence.strip()[:400])])
+                                       paragraph_id=paragraph.id,
+                                       quote_start=match.start(), quote_end=stop,
+                                       quote=text[match.start():stop].strip()[:400])])
     return [found[key] for key in sorted(found, key=lambda k: sort_key(k))]
 
 

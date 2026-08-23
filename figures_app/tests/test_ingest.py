@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from pfc import ingest, parse
+from pfc import fulltext, ingest, parse
 
 DESCRIPTION = (
     "Description\n"
@@ -38,13 +38,19 @@ def stub(monkeypatch):
     monkeypatch.setattr(ingest.pilot, "pdf_dir", lambda: None)
     monkeypatch.setattr(ingest.pilot, "figure_dir", lambda pub: None)
 
-    def fetch_fulltext(pub, timeout=120.0):
-        calls.append(pub)
+    # The compiler's own ladder: our stores first, then our reader, then the paid channel.
+    monkeypatch.setattr(fulltext.pilot, "corpus_record", lambda pub: {})
+    monkeypatch.setattr(fulltext.pilot, "docstore_record", lambda pub: {})
+
+    def adapter_details(pub, adapter_name, timeout=90.0):
+        calls.append(adapter_name)
+        if adapter_name != "gpatents_direct":
+            return {}
         return {"title": "Induction-assisted gluing system and method",
                 "abstract": "A system for adhering objects.",
-                "description": DESCRIPTION, "claims": CLAIMS, "source": "gpatents_direct"}
+                "description": DESCRIPTION, "claims": CLAIMS}
 
-    monkeypatch.setattr(ingest.pilot, "fetch_fulltext", fetch_fulltext)
+    monkeypatch.setattr(fulltext.pilot, "adapter_details", adapter_details)
     return calls
 
 
@@ -55,8 +61,8 @@ def test_a_scanned_publication_is_read_from_the_full_text_ladder(stub):
     sections = {section.id for section in document.sections}
     assert "detailed_description" in sections
     assert "brief_drawings" in sections
-    assert stub == ["US-20240324075-A1"]
-    assert any("gpatents_direct" in note for note in document.notes)
+    assert stub[0] == "gpatents_direct", "our own reader is asked before any paid channel"
+    assert any("Google Patents reader" in note for note in document.notes)
 
 
 def test_the_numerals_survive_the_round_trip(stub):
@@ -79,7 +85,8 @@ def test_the_figure_the_patent_describes_is_found(stub):
 
 
 def test_the_record_is_used_only_when_the_ladder_is_empty(stub, monkeypatch):
-    monkeypatch.setattr(ingest.pilot, "fetch_fulltext", lambda pub, timeout=120.0: {})
+    monkeypatch.setattr(fulltext.pilot, "adapter_details",
+                        lambda pub, adapter_name, timeout=90.0: {})
     monkeypatch.setattr(ingest.pilot, "display_record", lambda pub: {
         "title": "Induction-assisted gluing system and method",
         "abstract": "A system for adhering objects with an induction-assisted adhesive.",
@@ -90,7 +97,8 @@ def test_the_record_is_used_only_when_the_ladder_is_empty(stub, monkeypatch):
 
 
 def test_a_publication_no_source_holds_says_so_plainly(stub, monkeypatch):
-    monkeypatch.setattr(ingest.pilot, "fetch_fulltext", lambda pub, timeout=120.0: {})
+    monkeypatch.setattr(fulltext.pilot, "adapter_details",
+                        lambda pub, adapter_name, timeout=90.0: {})
     monkeypatch.setattr(ingest.pilot, "display_record", lambda pub: {
         "title": "A patent", "abstract": "", "description": None, "claims": [], "images": []})
     with pytest.raises(ingest.IngestError) as raised:
@@ -129,3 +137,96 @@ def test_a_source_that_drops_its_headings_is_still_readable():
     sections, _paragraphs = parse.parse_sections(text)
     ids = {section.id for section in sections}
     assert {"abstract", "brief_drawings", "detailed_description", "claims"} <= ids
+
+
+# ---------------------------------------------------------------------------
+# The usability gate. Forty thousand characters of background reads as a healthy
+# document to any size check and cannot label a single figure.
+# ---------------------------------------------------------------------------
+TRUNCATED = (
+    "TECHNOLOGICAL FIELD\n"
+    "The present disclosure relates to grippers for gripping object surfaces.\n"
+    "BACKGROUND\n"
+    + ("The following are examples of publications relevant to the background of the "
+       "presently disclosed subject matter, none of which describes the present invention "
+       "or any part of it in any way whatsoever at all. ") * 40)
+
+COMPLETE = (
+    "TECHNOLOGICAL FIELD\nThe disclosure relates to vacuum grippers.\n"
+    "BACKGROUND\nPrior devices are known.\n"
+    "DETAILED DESCRIPTION\n"
+    "The vacuum gripper 100 comprises a body 110 carrying a suction cup 120. The suction cup "
+    "120 seals against a surface. A vacuum pump 130 is mounted on the body 110 and is fluidly "
+    "connected to the suction cup 120. A pressure sensor 140 measures the pressure in the "
+    "suction cup 120 and reports it to a controller 150.\n")
+
+
+def test_a_truncated_description_is_refused_however_long_it_is():
+    ok, found, why = fulltext.usability(TRUNCATED)
+    assert not ok
+    assert found == 0
+    assert "truncated" in why or "numeral" in why
+
+
+def test_a_complete_description_is_accepted():
+    ok, found, _why = fulltext.usability(COMPLETE)
+    assert ok
+    assert found >= 5
+
+
+def test_the_ladder_walks_past_a_source_that_returns_a_truncated_document(monkeypatch):
+    """The reported failure on US-2024/0246200-A1: the first free rung returned 40,000
+    characters of background with no numerals and the compiler accepted it."""
+    asked: list[str] = []
+    monkeypatch.setattr(fulltext.pilot, "corpus_record", lambda pub: {})
+    monkeypatch.setattr(fulltext.pilot, "docstore_record",
+                        lambda pub: {"description": TRUNCATED, "claims": "1. A gripper."})
+
+    def adapter_details(pub, adapter_name, timeout=90.0):
+        asked.append(adapter_name)
+        if adapter_name == "gpatents_direct":
+            return {"title": "Vacuum Gripper", "description": COMPLETE, "claims": "1. A."}
+        return {}
+
+    monkeypatch.setattr(fulltext.pilot, "adapter_details", adapter_details)
+    notes: list[str] = []
+    got = fulltext.fetch("US-20240246200-A1", notes)
+    assert got.ok
+    assert got.source == "our Google Patents reader"
+    assert "100" in got.description
+    assert "gpatents_direct" in asked
+    # and it says out loud why the cached answer was passed over
+    assert any("truncated" in note for note in notes), notes
+
+
+def test_pqai_is_never_asked():
+    """Free, fast, and it truncates. That is a fine trade for a search and not for this."""
+    names = [name for name, _call in fulltext._rungs()]
+    assert not any("pqai" in name.lower() for name in names)
+    assert "pqai" in fulltext.EXCLUDED
+
+
+def test_our_own_stores_are_asked_before_anything_that_costs(monkeypatch):
+    asked: list[str] = []
+    monkeypatch.setattr(fulltext.pilot, "corpus_record",
+                        lambda pub: {"description": COMPLETE, "claims": "1. A."})
+    monkeypatch.setattr(fulltext.pilot, "docstore_record", lambda pub: {})
+    monkeypatch.setattr(fulltext.pilot, "adapter_details",
+                        lambda pub, adapter_name, timeout=90.0: asked.append(adapter_name) or {})
+    got = fulltext.fetch("US-1-A1", [])
+    assert got.source == "our own corpus"
+    assert asked == [], "nothing external should be asked once our own corpus answered"
+
+
+def test_the_fullest_incomplete_answer_is_kept_when_every_source_falls_short(monkeypatch):
+    """Better to compile what can be compiled and say it is incomplete than to refuse."""
+    monkeypatch.setattr(fulltext.pilot, "corpus_record", lambda pub: {})
+    monkeypatch.setattr(fulltext.pilot, "docstore_record",
+                        lambda pub: {"description": TRUNCATED, "claims": "1. A gripper."})
+    monkeypatch.setattr(fulltext.pilot, "adapter_details",
+                        lambda pub, adapter_name, timeout=90.0: {})
+    notes: list[str] = []
+    got = fulltext.fetch("US-1-A1", notes)
+    assert got.ok
+    assert got.source.endswith("(incomplete)")
+    assert any("not enough to label a figure" in note for note in notes)

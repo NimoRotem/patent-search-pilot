@@ -226,3 +226,39 @@ def test_8_a_numeral_means_the_same_thing_on_every_sheet(profile):
         for label in bundle.scene.labels:
             meaning.setdefault(label.reference_numeral, label.entity_id)
             assert meaning[label.reference_numeral] == label.entity_id
+
+
+# --- Test 7c: a figure list with no sentence punctuation -----------------------
+UNPUNCTUATED = """A VACUUM GRIPPER
+
+BRIEF DESCRIPTION OF THE DRAWINGS
+In order to better understand the subject matter disclosed herein, embodiments will now be
+described with reference to the accompanying schematic drawings, in which: FIG. 1 shows a
+bottom perspective view of a vacuum gripper according to one example of the presently
+disclosed subject matter FIG. 2 shows a bottom perspective view of a vacuum gripper according
+to a second example FIG. 3 shows a cross-section of the gripper FIG. 4 is a block diagram of
+the control arrangement
+
+DETAILED DESCRIPTION
+The vacuum gripper 100 comprises a body 110 and a suction cup 120.
+"""
+
+
+def test_7c_every_figure_in_an_unpunctuated_list_is_found():
+    """Some sources strip the punctuation, leaving nine figures in one 'sentence'.
+
+    Measured on US-2024/0246200-A1: taking one figure per sentence found FIG. 1 and missed the
+    other eight.
+    """
+    document = make_document(UNPUNCTUATED)
+    figures = planning.discover_figures(document)
+    assert [item.figure_number for item in figures] == ["1", "2", "3", "4"]
+
+    by_number = {item.figure_number: item for item in figures}
+    # Each caption stops at the next figure rather than swallowing the rest of the list.
+    assert "second example" in by_number["2"].description
+    assert "FIG. 3" not in by_number["2"].description
+    # And each is classified from its OWN caption, not from the first one's.
+    assert by_number["3"].figure_type == "cross_section_schematic"
+    assert by_number["4"].figure_type == "block_diagram"
+    assert by_number["1"].figure_type == "mechanical_schematic"
