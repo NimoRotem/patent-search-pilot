@@ -1570,6 +1570,7 @@ def test_retry_preparation_uses_the_durable_checked_candidate_instead_of_publish
                      "figures": FIGURES},
         "qa_report": candidate_report,
     }
+    repository.latest_retry_candidate.return_value = None
     workspace = Mock()
     workspace.build.return_value = tmp_path
     runner = draft_studio.TurnRunner(repository, Mock(), workspace=workspace)
@@ -1579,7 +1580,7 @@ def test_retry_preparation_uses_the_durable_checked_candidate_instead_of_publish
         "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES,
     })
 
-    context = runner.prepare({"id": 33, "project_id": 7, "attempts": 2,
+    context = runner.prepare({"id": 33, "project_id": 7, "attempts": 1,
                               "user_message": "Finish automatically."})
 
     values = workspace.build.call_args.kwargs
