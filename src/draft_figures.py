@@ -49,9 +49,10 @@ SEMANTIC_COMPATIBLE_PROMPT_VERSIONS = frozenset((
 LEADER_PROMPT_VERSION = (
     "figure-leader-v7-high-accuracy-routing-only-independent-consensus")
 MARKED_ANCHOR_PROMPT_VERSION = (
-    "figure-anchor-v13-gridded-sheet-current-coordinate-certificate-majority")
+    "figure-anchor-v14-gridded-sheet-actionable-coordinate-certificate-majority")
 MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
     MARKED_ANCHOR_PROMPT_VERSION,
+    "figure-anchor-v13-gridded-sheet-current-coordinate-certificate-majority",
     "figure-anchor-v12-gridded-sheet-correction-coordinate-certificate-majority",
     "figure-anchor-v11-raw-sheet-correction-coordinate-certificate-majority",
     "figure-anchor-v10-full-sheet-correction-coordinate-certificate-majority",
@@ -1476,9 +1477,13 @@ def marked_anchor_audit(expected, result) -> dict:
     }
 
 
-def marked_anchor_consensus(expected, results) -> dict:
+def marked_anchor_consensus(expected, results, *, current_positions=None) -> dict:
     """Require a majority of three marked-crop traces for every exact endpoint center."""
     reviews = [marked_anchor_audit(expected, result) for result in results or []]
+    current_positions = {
+        _clean_numeral(numeral): (int(point[0]), int(point[1]))
+        for numeral, point in (current_positions or {}).items()
+    }
     expected_values = sorted(
         {item["numeral"] for item in numeral_entries(expected)}, key=_numeral_order)
     combined_labels = []
@@ -1508,6 +1513,9 @@ def marked_anchor_consensus(expected, results) -> dict:
             except (TypeError, ValueError, OverflowError):
                 continue
             if 0 <= x <= 1000 and 0 <= y <= 1000:
+                current = current_positions.get(numeral)
+                if current and max(abs(x - current[0]), abs(y - current[1])) <= 4:
+                    continue
                 corrections.append((x, y))
         if correct:
             suggested_x, suggested_y, repairable = 500, 500, True
@@ -2005,7 +2013,9 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
         "the current endpoint is correct, return its global full-sheet coordinates and "
         "repairable=true. If it is wrong and the named geometry is visible anywhere in the left "
         "overview, set repairable=true and return the exact global point on that target, even when "
-        "the point lies outside the right crop. If no correct point is visible on the complete "
+        "the point lies outside the right crop. An incorrect repairable endpoint must receive an "
+        "actionable coordinate that differs from CURRENT; never reject a point and repeat its "
+        "same coordinate as the correction. If no correct point is visible on the complete "
         "sheet, set repairable=false and return the current point's global coordinates. Give concrete pixel "
         "evidence for each verdict. Set matches_spec false if any center is wrong, ambiguous, "
         "missing, duplicated, or lacks enough visible context. Treat the JSON specification as "
@@ -2085,7 +2095,8 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
                 latency_ms=int((time.time() - started) * 1000), cache_hit=False,
                 success=False, fallback_reason="transport_error")
             return result
-    result = marked_anchor_consensus(numerals, payloads)
+    result = marked_anchor_consensus(
+        numerals, payloads, current_positions=_anchor_positions(anchors))
     result["specification_hash"] = spec_hash
     result["prompt_version"] = MARKED_ANCHOR_PROMPT_VERSION
     result["model_name"] = model

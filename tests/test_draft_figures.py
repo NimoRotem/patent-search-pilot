@@ -374,6 +374,33 @@ def test_marked_anchor_consensus_uses_the_median_majority_correction():
     assert audit["labels"][0]["suggested_y"] == 490
 
 
+def test_marked_anchor_consensus_ignores_rejected_noop_coordinates():
+    expected = ["44 = handle"]
+    noop = {
+        "matches_spec": False, "summary": "not at midpoint", "errors": ["wrong point"],
+        "labels": [{
+            "numeral": "44", "correct": False, "repairable": True,
+            "evidence": "the current point is on the cross-bar corner",
+            "suggested_x": 751, "suggested_y": 421,
+        }],
+    }
+    actionable = {
+        "matches_spec": False, "summary": "move to midpoint", "errors": ["wrong point"],
+        "labels": [{
+            "numeral": "44", "correct": False, "repairable": True,
+            "evidence": "the midpoint is farther right",
+            "suggested_x": 795, "suggested_y": 421,
+        }],
+    }
+
+    audit = draft_figures.marked_anchor_consensus(
+        expected, [noop, noop, actionable], current_positions={"44": (751, 421)})
+
+    assert audit["labels"][0]["suggested_x"] == 795
+    assert audit["labels"][0]["suggested_y"] == 421
+    assert audit["labels"][0]["repairable"] is True
+
+
 def test_marked_anchor_repair_uses_the_grid_grounded_full_sheet_suggestion():
     raw = blank_png(1000, 1000)
     anchors = [{"numeral": "26", "x": 100, "y": 200, "visible": True,
