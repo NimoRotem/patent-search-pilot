@@ -21,7 +21,7 @@
     <p class="hint"><strong>Reference-guided</strong> looks up the patents the examiner cited
     against this one, shows their drawings to an image model as an example of the idiom, and asks
     for <em>this</em> patent's arrangement in that style. The artwork is generated; the reference
-    numerals are not — they are placed by the same code that places them on a schematic, and a
+    numerals are not: they are placed by the same code that places them on a schematic, and a
     sheet the model writes any text on is thrown away and redrawn. It needs a publication number,
     and any figure it cannot draw or ground falls back to the schematic.</p>
 
@@ -88,7 +88,7 @@
         {% if job.publication_number %}<span class="muted">{{ job.publication_number }}</span>{% endif %}</td>
       <td class="muted">{{ (job.created_at or '')[:16].replace('T',' ') }}</td>
       <td>{% if job.figures is defined %}{{ job.validated or 0 }} of {{ job.figures }} validated
-          {% else %}<span class="muted">—</span>{% endif %}</td>
+          {% else %}<span class="muted">not set</span>{% endif %}</td>
       <td>
         {% set s = job.status or 'QUEUED' %}
         <span class="badge {{ 'ok' if s == 'VALIDATED' else ('warn' if s == 'PARTIAL' else 'bad' if s == 'BLOCKED' else 'plain') }}">

@@ -300,3 +300,87 @@ def test_numerals_located_at_one_place_are_reported_not_rejected(figure):
     assert any("same place" in note for note in notes)
     numerals = [graph.entity(eid).reference_numeral for eid in ids]
     assert all(numeral in notes[-1] for numeral in numerals)
+
+
+def test_the_patents_own_drawings_are_never_a_reference_for_itself():
+    """Its own family carries its own sheets under other numbers.
+
+    A continuation and the granted version of the same application appear in a record's
+    citations and similar documents like any other art, and their drawings are this patent's
+    drawings. Copying those is the one thing this mode was told not to do.
+    """
+    from pfc.neighbours import _ranked_candidates, _family_of
+
+    record = {
+        "pub": "US-2024/0246200-A1",
+        "application_number": "18/158,123",
+        "family": [{"pub": "US11338449B2"}, "WO-2023/012345-A1"],
+        "citations": [
+            {"pub": "US20240246200A1", "origin": "examiner", "title": "itself, differently spelt"},
+            {"pub": "US-11338449-B2", "origin": "examiner", "title": "its own grant"},
+            {"pub": "US3240525A", "origin": "examiner", "title": "genuine art"},
+        ],
+        "similar": [{"pub": "WO2023012345A1", "title": "its own PCT"},
+                    {"pub": "US4852926A", "title": "more genuine art"}],
+    }
+    family = _family_of(record) | {"US20240246200A1"}
+    kept = [pub for pub, _title, _why in _ranked_candidates(record, exclude=family)]
+    assert kept == ["US3240525A", "US4852926A"], kept
+
+
+def test_a_lookup_that_failed_is_not_reported_as_a_patent_with_no_citations(monkeypatch):
+    """The one that cost a whole job.
+
+    ``display_record`` swallowed an exception and returned ``{}``, which was written down as
+    "this publication's record carries no citations or similar documents" for a record holding
+    forty-three of them. Every figure then fell back to a schematic and the note gave a human no
+    way to tell that from a patent that genuinely stands alone.
+    """
+    from pfc import neighbours, pilot
+
+    def always_fails(pub):
+        raise RuntimeError("connection reset by peer")
+
+    monkeypatch.setattr(pilot, "module",
+                        lambda name: type("M", (), {"enrich_for_display":
+                                                    staticmethod(always_fails)})())
+    found = neighbours.find("US-20240246200-A1")
+
+    assert not found.neighbours
+    joined = " ".join(found.notes)
+    assert "could not be looked up" in joined
+    assert "connection reset by peer" in joined
+    assert "carries no citations" not in joined, "a failure is not a fact about the patent"
+
+
+def test_a_record_that_is_genuinely_empty_still_says_so(monkeypatch):
+    """The other half: asked, and it holds nothing. That one IS a fact about the patent."""
+    from pfc import neighbours, pilot
+
+    monkeypatch.setattr(pilot, "module",
+                        lambda name: type("M", (), {"enrich_for_display": staticmethod(
+                            lambda pub: {"pub": pub, "citations": [], "similar": []})})())
+    found = neighbours.find("US-20240246200-A1")
+    assert "carries no citations or similar documents" in " ".join(found.notes)
+
+
+def test_the_record_is_asked_more_than_once_before_its_absence_is_believed(monkeypatch):
+    """A transient failure costs a retry, not the whole drawing style."""
+    from pfc import neighbours, pilot
+
+    calls = []
+
+    def flaky(pub):
+        calls.append(pub)
+        if len(calls) < 2:
+            raise RuntimeError("temporarily unavailable")
+        return {"pub": pub, "citations": [{"pub": "US3240525A", "origin": "examiner"}],
+                "similar": []}
+
+    monkeypatch.setattr(pilot, "module",
+                        lambda name: type("M", (), {"enrich_for_display": staticmethod(flaky)})())
+    monkeypatch.setattr(neighbours, "_sheets_for", lambda pub, limit=4: [])
+    found = neighbours.find("US-20240246200-A1")
+
+    assert len(calls) == 2, "it gave up on the first failure"
+    assert "carries no citations" not in " ".join(found.notes)

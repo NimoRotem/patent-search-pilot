@@ -9,6 +9,12 @@ that took a 64-page US grant from twelve shredded claims to twenty whole ones.
 Everything is imported lazily and every entry point degrades to an empty result, so the pure
 stages of this package (parsing, graph building, layout, rendering, validation) can be unit
 tested on a machine that has none of the search app's dependencies installed.
+
+Degrading quietly is right for a stage that has another way to get what it needs and wrong for
+one that is about to tell a human what it found. Every lookup here therefore takes ``strict``:
+pass it when the answer is going into a note, and the difference between "asked, holds nothing"
+and "could not be asked" arrives as :class:`SourceUnavailable` instead of as an empty dict that
+reads like a fact.
 """
 from __future__ import annotations
 
@@ -89,23 +95,38 @@ def figures_from_pdf(path: str) -> list[bytes]:
         return []
 
 
-def display_record(pub: str) -> dict[str, Any]:
-    """The cached publication record: title, abstract, claims, description, figures, links."""
+def display_record(pub: str, *, strict: bool = False) -> dict[str, Any]:
+    """The cached publication record: title, abstract, claims, description, figures, links.
+
+    ``strict`` separates "asked, and it holds nothing" from "could not be asked". A caller that
+    reports what it found to a human wants the second raised: this call returning ``{}`` once
+    for a record that holds 43 citations is what told a whole reference-guided job that the
+    publication had no neighbouring art, and it drew four schematics instead without anyone
+    being able to see why. See :class:`SourceUnavailable`.
+    """
     try:
         return module("enrich_display").enrich_for_display(pub) or {}
-    except Exception:
+    except Exception as exc:
+        if strict:
+            raise SourceUnavailable(
+                f"the publication record could not be read: {type(exc).__name__}: "
+                f"{str(exc)[:200]}") from exc
         return {}
 
 
-def corpus_record(pub: str) -> dict[str, Any]:
+def corpus_record(pub: str, *, strict: bool = False) -> dict[str, Any]:
     """The pre-built patent corpus, if it holds this publication."""
     try:
         return dict(module("mongo_corpus").get_detail(pub) or {})
-    except Exception:
+    except Exception as exc:
+        if strict:
+            raise SourceUnavailable(
+                f"our own corpus could not be read: {type(exc).__name__}: "
+                f"{str(exc)[:200]}") from exc
         return {}
 
 
-def docstore_record(pub: str) -> dict[str, Any]:
+def docstore_record(pub: str, *, strict: bool = False) -> dict[str, Any]:
     """The shared full-text docstore, under either spelling of the publication number.
 
     The store is keyed by the canonical compact form, and callers hold the hyphenated one, so
@@ -115,15 +136,25 @@ def docstore_record(pub: str) -> dict[str, Any]:
 
     try:
         docstore = module("sources").docstore
-    except Exception:
+    except Exception as exc:
+        if strict:
+            raise SourceUnavailable(
+                f"the docstore could not be opened: {type(exc).__name__}: "
+                f"{str(exc)[:200]}") from exc
         return {}
+    failure: Optional[Exception] = None
     for key in dict.fromkeys([pub, pub.replace("-", "")]):
         try:
             record = asyncio.run(docstore.get(key)) or {}
-        except Exception:
+        except Exception as exc:
+            failure = exc
             continue
         if record.get("description") or record.get("claims"):
             return dict(record)
+    if failure is not None and strict:
+        raise SourceUnavailable(
+            f"the docstore could not be read: {type(failure).__name__}: "
+            f"{str(failure)[:200]}") from failure
     return {}
 
 

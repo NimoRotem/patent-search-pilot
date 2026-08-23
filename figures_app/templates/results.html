@@ -73,7 +73,7 @@
             <td class="muted">{{ reading.uses }}</td>
             <td class="muted">
               {% if reading.quote %}<span class="mono">{{ reading.paragraph_id }}</span>
-                — “…{{ reading.quote[:170] }}…”
+                “…{{ reading.quote[:170] }}…”
               {% else %}<em>no quotation found</em>{% endif %}
             </td>
           </tr>
@@ -82,7 +82,7 @@
       {% elif conflict.evidence %}
         <div class="muted" style="margin-top:5px">
           {% for item in conflict.evidence[:2] %}
-            <div><span class="mono">{{ item.paragraph_id }}</span> — “{{ item.quote[:180] }}”</div>
+            <div><span class="mono">{{ item.paragraph_id }}</span>: “{{ item.quote[:180] }}”</div>
           {% endfor %}
         </div>
       {% endif %}
@@ -132,7 +132,7 @@
           {% endif %}
           <div class="cap"><span class="muted">
             sheet {{ sheet_index + 1 }}{% if sheet.figure_labels %}, captioned {{ sheet.figure_labels|join(', ') }}{% endif %}
-            {% if sheet.label_source != 'vision' %} — paired by position, the caption could not be read{% endif %}
+            {% if sheet.label_source != 'vision' %}, paired by position, the caption could not be read{% endif %}
           </span></div>
         {% endfor %}
       {% else %}
@@ -214,7 +214,7 @@
         {% else %}
           <div class="empty">sheet {{ loop.index }} unavailable</div>
         {% endif %}
-        <div class="cap"><span class="muted">sheet {{ loop.index }}{% if sheet.figure_labels %} — {{ sheet.figure_labels|join(', ') }}{% endif %}</span></div>
+        <div class="cap"><span class="muted">sheet {{ loop.index }}{% if sheet.figure_labels %}: {{ sheet.figure_labels|join(', ') }}{% endif %}</span></div>
       </div>
     {% endfor %}
   </div>
