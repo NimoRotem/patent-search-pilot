@@ -2617,7 +2617,6 @@ def api_design_view(design_number, order):
     return Response(blob, mimetype="image/jpeg",
                     headers={"Cache-Control": "public, max-age=86400"})
 
-
 @app.route("/api/search/<slug>/stats")
 def api_search_stats(slug):
     """What this search was and what it cost. Read on EXPAND, never for a whole list.

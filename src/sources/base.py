@@ -78,6 +78,12 @@ class Budget:
 class Adapter:
     name: str = "base"
 
+    #: is this source part of the fan-out a PATENT REPORT runs? Almost every source is.
+    #: EUIPO is not: registered designs answer a different question and are served from
+    #: their own page, so a status table that said "searched" for it would be claiming a
+    #: report consulted the EU design register when it did not.
+    in_report_fanout: bool = True
+
     #: does this adapter have what it needs (key/reachability) to run?
     def enabled(self) -> bool:
         return True

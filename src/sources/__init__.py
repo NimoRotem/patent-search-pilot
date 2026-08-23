@@ -305,6 +305,7 @@ def health() -> dict:
             row = {"name": a.name,
                    "enabled": bool(a.enabled()),
                    "search_available": bool(a.search_available()),
+                   "in_report_fanout": bool(getattr(a, "in_report_fanout", True)),
                    "note": a.search_note(),
                    "reason": a.disabled_reason() if not a.enabled() else ""}
         except Exception as exc:  # a health probe must never take health() down
