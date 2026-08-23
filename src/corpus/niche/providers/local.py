@@ -16,6 +16,7 @@ from ..domains import all_cpc_prefixes, all_ipc_prefixes, in_niche, priority_for
 from ..identifiers import normalize_publication_number, source_publication_variants
 from ..manifest import PublicationRecord, merge_publications
 from ..models import Completeness, FetchRequest, ProviderResult
+from ..parse import item_text
 from .base import BaseProvider
 
 _MIN_CLAIMS_CHARS = max(1, int(os.environ.get("NICHE_MIN_CLAIMS_CHARS", "200")))
@@ -148,8 +149,13 @@ class LocalCorpusProvider(BaseProvider):
                 "docstore_source": docstore_meta.get("source") or "",
             },
         }
-        claim_chars = sum(len(str(value.get("text") or "")) for value in claims)
-        description_chars = sum(len(str(value.get("text") or "")) for value in paragraphs)
+        #  `claims` is a list of ROWS when the corpus has structured claims and a list of STRINGS
+        #  when it only has the compressed claims text, which is the case for exactly the
+        #  publications this provider exists to rescue. Measuring the text is not the place to
+        #  discover that: `value.get` on a string failed 19,403 publications before this line
+        #  stopped assuming a shape.
+        claim_chars = sum(len(item_text(value)) for value in claims)
+        description_chars = sum(len(item_text(value)) for value in paragraphs)
         completeness = Completeness(
             has_title=bool(canonical["title"]),
             has_abstract=bool(canonical["abstract"]),

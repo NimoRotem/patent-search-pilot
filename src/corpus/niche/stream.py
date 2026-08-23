@@ -493,14 +493,35 @@ def _media_type(uri: str) -> str:
     return "application/octet-stream"
 
 
-def decode_source_bytes(content: bytes, uri: str, source_generation: str) -> bytes:
+def is_content_addressed(uri: str) -> bool:
+    """Whether the object at this URI can never legitimately change.
+
+    `raw/{publication}/{provider}/{sha256}.{ext}.gz` is written write-once under a key that
+    contains its own digest, so a hash mismatch there means corruption and must fail.
+    `parsed/{publication}/{provider}.json` is a MUTABLE key by design: a later, better fetch from
+    the same provider overwrites it. A parse job enqueued against the older content then carries a
+    hash that can never match again, which is why 4,775 publications were failing permanently on a
+    handoff that was working exactly as intended."""
+    return "/raw/" in str(uri).split("?", 1)[0]
+
+
+def source_hash_state(content: bytes, source_generation: str) -> tuple[bool, str, str]:
+    """(checked, expected, actual) for a sha256 handoff. `checked` is False when none was given."""
+    generation = str(source_generation or "")
+    if not generation.startswith("sha256:"):
+        return False, "", ""
+    expected = generation.split(":", 1)[1].lower()
+    return bool(expected), expected, hashlib.sha256(bytes(content)).hexdigest()
+
+
+def decode_source_bytes(
+    content: bytes, uri: str, source_generation: str, *, strict: bool | None = None
+) -> bytes:
     """Verify a content-addressed handoff before decoding its storage wrapper."""
     stored = bytes(content)
-    generation = str(source_generation or "")
-    if generation.startswith("sha256:"):
-        expected = generation.split(":", 1)[1].lower()
-        actual = hashlib.sha256(stored).hexdigest()
-        if not expected or actual != expected:
+    checked, expected, actual = source_hash_state(stored, source_generation)
+    if checked and actual != expected:
+        if is_content_addressed(uri) if strict is None else strict:
             raise RuntimeError("GCS source content hash mismatch")
     if str(uri).split("?", 1)[0].lower().endswith(".gz"):
         try:
@@ -554,6 +575,14 @@ class StreamingParseWorker:
                 content = blob.download_as_bytes(if_generation_match=int(generation))
                 return decode_source_bytes(content, job.source_uri, job.source_generation)
         content = blob.download_as_bytes()
+        checked, expected, actual = source_hash_state(content, job.source_generation)
+        if checked and actual != expected and not is_content_addressed(job.source_uri):
+            #  The object was rewritten by a later fetch. Read what is there now, and say so:
+            #  a silent acceptance would leave no trace that the bytes are not the ones the job
+            #  was created for.
+            self.logger({"publication": job.publication_id, "provider": "gcs",
+                         "result": "source_generation_drift", "uri": job.source_uri,
+                         "expected_sha256": expected[:12], "actual_sha256": actual[:12]})
         return decode_source_bytes(content, job.source_uri, job.source_generation)
 
     def _record(self, publication: str, parsed: dict):
