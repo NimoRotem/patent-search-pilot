@@ -254,8 +254,8 @@ _EMPTY_ANCHOR_PART_RE = re.compile(
     r"\b(?:aperture|cavity|chamber|channel|clearance|gap|opening|passage|plenum|port|slot|"
     r"space|void)\b", re.IGNORECASE)
 _LINE_ANCHOR_PART_RE = re.compile(
-    r"\b(?:attachment formation|bearing face|boundary|cable|cord|edge|electrical supply|"
-    r"first side|handle|line|loop|path|pulling element|ring|second side)\b", re.IGNORECASE)
+    r"\b(?:boundary|cable|cord|edge|electrical supply|handle|line|loop|path|"
+    r"pulling element|ring)\b", re.IGNORECASE)
 _MAX_ANCHOR_SNAP = 220
 
 _SCHEMA = (
