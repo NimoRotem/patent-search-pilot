@@ -379,6 +379,7 @@ _FIGURE_PLAN_CHECKS = frozenset({
     "Every specification numeral appears in a drawing",
     "Application includes a drawing plan",
     "Drawing briefs are concise and renderable",
+    "Figure brief numeral declarations match sheet lists",
     "Figure-sheet numbering is unique and contiguous",
     "Every figure used is described",
     "Every drawing sheet is described",

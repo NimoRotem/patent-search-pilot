@@ -319,24 +319,24 @@ def test_marked_anchor_consensus_uses_the_median_majority_correction():
     assert audit["labels"][0]["suggested_y"] == 490
 
 
-def test_marked_anchor_repair_maps_a_crop_suggestion_back_to_the_source():
+def test_marked_anchor_repair_takes_a_damped_step_toward_the_full_sheet_suggestion():
     raw = blank_png(1000, 1000)
-    anchors = [{"numeral": "26", "x": 500, "y": 500, "visible": True,
+    anchors = [{"numeral": "26", "x": 100, "y": 200, "visible": True,
                 "evidence": "bearing face"}]
     audit = {
         "incorrect": ["26"],
         "labels": [{
             "numeral": "26", "correct": False, "repairable": True,
-            "evidence": "the bearing face is to the right of the marked center",
-            "suggested_x": 750, "suggested_y": 500,
+            "evidence": "the bearing face is far to the lower right",
+            "suggested_x": 900, "suggested_y": 800,
         }],
     }
 
     repaired, changed = draft_figures._repair_marked_anchors(raw, anchors, audit)
 
     assert changed is True
-    assert 615 <= repaired[0]["x"] <= 625
-    assert repaired[0]["y"] == 500
+    assert repaired[0]["x"] == 300
+    assert repaired[0]["y"] == 350
 
 
 def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypatch):
@@ -394,7 +394,7 @@ def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypat
 
     assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
     assert len(marked_calls) == 6 and len(leader_calls) == 6
-    assert anchors[0]["x"] > 560
+    assert anchors[0]["x"] > 525
     assert leaders["marked_anchor_audit"]["ok"] is True
 
 
@@ -450,7 +450,7 @@ def test_compose_accumulates_consensus_for_unchanged_endpoint_coordinates(monkey
                 }] if first_round else []) + [{
                     "numeral": "12", "correct": not first_round, "repairable": True,
                     "evidence": "three reviewers inspected endpoint 12",
-                    "suggested_x": 550 if first_round else 500, "suggested_y": 500,
+                    "suggested_x": 650 if first_round else 500, "suggested_y": 500,
                     "correct_votes": 1 if first_round else 3,
                     "incorrect_votes": 2 if first_round else 0,
                 }],
@@ -565,6 +565,28 @@ def test_compose_resumes_repaired_coordinates_after_a_process_restart(monkeypatc
             "FIG. 2", "bearing face", ["26 = bearing face"]))
 
 
+def test_leader_repair_never_moves_an_endpoint_with_a_coordinate_certificate():
+    raw = blank_png(1000, 1000)
+    anchors = [
+        {"numeral": "10", "x": 200, "y": 200, "visible": True},
+        {"numeral": "12", "x": 800, "y": 800, "visible": True},
+    ]
+    audit = {
+        "incorrect": ["10", "12"],
+        "labels": [
+            {"numeral": "10", "suggested_x": 500, "suggested_y": 500},
+            {"numeral": "12", "suggested_x": 500, "suggested_y": 500},
+        ],
+    }
+
+    repaired, changed = draft_figures._repair_leader_anchors(
+        raw, anchors, audit, scale=1.0, protected={"10"})
+
+    assert changed is True
+    assert (repaired[0]["x"], repaired[0]["y"]) == (200, 200)
+    assert (repaired[1]["x"], repaired[1]["y"]) != (800, 800)
+
+
 def test_marked_anchor_montage_preserves_the_endpoint_pixel_inside_a_red_ring():
     image = Image.new("RGB", (400, 400), "white")
     ImageDraw.Draw(image).point((200, 200), fill="black")
@@ -630,7 +652,7 @@ def test_compose_continues_an_eight_round_checkpoint_after_context_upgrade(monke
     assert leaders["marked_anchor_audit"]["inspection_rounds"] == 9
 
 
-def test_only_the_current_two_trace_semantic_review_is_accepted():
+def test_only_compatible_two_trace_semantic_reviews_are_accepted():
     current = {
         "ok": True, "inspected": True,
         "model_name": draft_figures.vision_model(),
@@ -647,12 +669,31 @@ def test_only_the_current_two_trace_semantic_review_is_accepted():
         "marked_anchor_audit": accepted_marked_anchor_audit(),
     }
     assert draft_figures.current_semantic_audit(current) is True
+    assert draft_figures.current_semantic_audit({
+        **current,
+        "prompt_version": (
+            "figure-semantic-v12-high-accuracy-geometry-only-consensus-"
+            "pixel-grounded-marked-topology"
+        ),
+    }) is True
     assert draft_figures.current_semantic_audit({**current, "review_count": 1}) is False
     assert draft_figures.current_semantic_audit({**current, "prompt_version": "old"}) is False
     assert draft_figures.current_semantic_audit({**current, "pixel_anchor_audit": {}}) is False
     assert draft_figures.current_semantic_audit({**current, "topology_audit": {}}) is False
     assert draft_figures.current_semantic_audit({**current, "marked_anchor_audit": {}}) is False
     assert draft_figures.current_semantic_audit({"ok": True}) is False
+
+
+def test_current_marked_audit_accepts_a_fully_certified_v9_review():
+    audit = accepted_marked_anchor_audit(
+        prompt_version=(
+            "figure-anchor-v9-local-part-coordinate-certificate-majority-with-correction"
+        ))
+
+    assert draft_figures.current_marked_anchor_audit(audit) is True
+    assert draft_figures.current_marked_anchor_audit({
+        **audit, "prompt_version": "figure-anchor-v8-old",
+    }) is False
 
 
 def test_pixel_grounding_snaps_an_exterior_object_anchor_to_visible_ink():
@@ -939,6 +980,33 @@ def test_geometry_spec_strips_arbitrary_annotation_point_placement():
     assert "breaks through that edge" in cleaned
     assert "identified at" not in cleaned and "identified by a point" not in cleaned
     assert specification["caption"] == cleaned
+    assert specification["endpoint_targets"] == [
+        {
+            "numeral": "16",
+            "part": "second side",
+            "definition": "The second side 16 is the straight lower edge of the slab.",
+            "target": (
+                "The second side 16 is identified at one point on that lower edge, at the exact "
+                "horizontal center of the sheet."
+            ),
+        },
+        {
+            "numeral": "30",
+            "part": "extraction opening",
+            "definition": (
+                "The extraction opening 30 breaks through that edge at the horizontal center."
+            ),
+            "target": "On the visible extraction opening geometry.",
+        },
+        {
+            "numeral": "36",
+            "part": "covering element",
+            "definition": "covering element",
+            "target": (
+                "The covering element 36 is identified by a point inside its right-hand quarter."
+            ),
+        },
+    ]
 
 
 def test_long_geometry_prompt_keeps_components_change_request_and_no_text_rule():
