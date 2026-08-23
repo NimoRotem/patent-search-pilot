@@ -319,24 +319,24 @@ def test_marked_anchor_consensus_uses_the_median_majority_correction():
     assert audit["labels"][0]["suggested_y"] == 490
 
 
-def test_marked_anchor_repair_takes_a_damped_step_toward_the_crop_suggestion():
+def test_marked_anchor_repair_takes_a_damped_step_toward_the_full_sheet_suggestion():
     raw = blank_png(1000, 1000)
-    anchors = [{"numeral": "26", "x": 500, "y": 500, "visible": True,
+    anchors = [{"numeral": "26", "x": 100, "y": 200, "visible": True,
                 "evidence": "bearing face"}]
     audit = {
         "incorrect": ["26"],
         "labels": [{
             "numeral": "26", "correct": False, "repairable": True,
-            "evidence": "the bearing face is to the right of the marked center",
-            "suggested_x": 750, "suggested_y": 500,
+            "evidence": "the bearing face is far to the lower right",
+            "suggested_x": 900, "suggested_y": 800,
         }],
     }
 
     repaired, changed = draft_figures._repair_marked_anchors(raw, anchors, audit)
 
     assert changed is True
-    assert 528 <= repaired[0]["x"] <= 532
-    assert repaired[0]["y"] == 500
+    assert repaired[0]["x"] == 300
+    assert repaired[0]["y"] == 350
 
 
 def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypatch):
@@ -450,7 +450,7 @@ def test_compose_accumulates_consensus_for_unchanged_endpoint_coordinates(monkey
                 }] if first_round else []) + [{
                     "numeral": "12", "correct": not first_round, "repairable": True,
                     "evidence": "three reviewers inspected endpoint 12",
-                    "suggested_x": 550 if first_round else 500, "suggested_y": 500,
+                    "suggested_x": 650 if first_round else 500, "suggested_y": 500,
                     "correct_votes": 1 if first_round else 3,
                     "incorrect_votes": 2 if first_round else 0,
                 }],
@@ -682,6 +682,18 @@ def test_only_compatible_two_trace_semantic_reviews_are_accepted():
     assert draft_figures.current_semantic_audit({**current, "topology_audit": {}}) is False
     assert draft_figures.current_semantic_audit({**current, "marked_anchor_audit": {}}) is False
     assert draft_figures.current_semantic_audit({"ok": True}) is False
+
+
+def test_current_marked_audit_accepts_a_fully_certified_v9_review():
+    audit = accepted_marked_anchor_audit(
+        prompt_version=(
+            "figure-anchor-v9-local-part-coordinate-certificate-majority-with-correction"
+        ))
+
+    assert draft_figures.current_marked_anchor_audit(audit) is True
+    assert draft_figures.current_marked_anchor_audit({
+        **audit, "prompt_version": "figure-anchor-v8-old",
+    }) is False
 
 
 def test_pixel_grounding_snaps_an_exterior_object_anchor_to_visible_ink():
