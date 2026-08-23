@@ -5746,6 +5746,7 @@ def concise_descriptions(slug):
         return render_template("concise.html", slug=slug, cands=cands,
                                docs=_concise_built(slug), subject=subject, error=None,
                                blocked=j.get("blocked") or [],
+                               building=(j.get("state") == "running"),
                                verdict=j.get("verdict") or "")
 
     pubs = [p.strip() for p in request.form.getlist("pubs") if p.strip()]
@@ -5806,9 +5807,7 @@ def concise_descriptions(slug):
 
     if (_concise_job(slug) or {}).get("state") == "running":
         #  A second click must not start a second build over the same output directory.
-        return render_template("concise.html", slug=slug, cands=cands,
-                               docs=_concise_built(slug), subject=subject, error=None,
-                               blocked=[], family_notes=[], building=True)
+        return redirect(url_for("concise_descriptions", slug=slug))
 
     with _CONCISE_JOBS_LOCK:
         #  total counts one step per document for the build, one for the compliance pass, and one
@@ -5850,7 +5849,8 @@ def concise_descriptions(slug):
                         traceback.print_exc()
             for k, d in enumerate(docs, 1):
                 _concise_set(slug, done=len(pubs) + k,
-                             msg="Writing document %d of %d: %s" % (k, len(docs), d["pub"]))
+                             msg="Rendering PDF and DOCX, document %d of %d: %s"
+                                 % (k, len(docs), d["pub"]))
                 for fmt, fn in (("pdf", concise_render.to_pdf), ("docx", concise_render.to_docx)):
                     try:
                         (out / concise_render.filename(d, fmt)).write_bytes(fn(d))
@@ -5888,9 +5888,10 @@ def concise_descriptions(slug):
                          error="Could not build the documents: %s" % str(exc)[:200])
 
     threading.Thread(target=_work, name="concise-build", daemon=True).start()
-    return render_template("concise.html", slug=slug, cands=cands, docs=_concise_built(slug),
-                           subject=subject, error=None, blocked=[], family_notes=[],
-                           building=True)
+    #  Post/Redirect/Get: rendering the result of the POST directly meant a browser refresh
+    #  re-submitted the form, and a re-submit AFTER completion silently started a whole new
+    #  build over the same directory. The GET shows the running build's progress.
+    return redirect(url_for("concise_descriptions", slug=slug))
 
 
 def _concise_doc_paths(slug, n):

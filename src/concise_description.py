@@ -806,18 +806,32 @@ def build(deep, pubs, subject, start_at=1, do_phrase=True, on_progress=None,
                 on_progress(i, "Reading %s (%d of %d)" % (pub, i + 1, len(pubs)))
             results[i] = one(i, pub)
     else:
+        import threading
         from concurrent.futures import ThreadPoolExecutor, as_completed
         finished = 0
+        lock = threading.Lock()
+        if on_progress:
+            #  Say something the moment the pool starts: reporting only completions left the bar
+            #  on "Starting" until the first document landed, up to a minute of apparent hang.
+            on_progress(0, "Reading %d references, up to %d at a time" % (len(pubs), workers))
+
+        def tracked(i, pub):
+            if on_progress:
+                with lock:
+                    on_progress(finished, "Reading %s" % pub)
+            return one(i, pub)
+
         with ThreadPoolExecutor(max_workers=workers,
                                 thread_name_prefix="concise-build") as ex:
-            futures = {ex.submit(one, i, pub): i for i, pub in enumerate(pubs)}
+            futures = {ex.submit(tracked, i, pub): i for i, pub in enumerate(pubs)}
             for future in as_completed(futures):
                 i = futures[future]
                 results[i] = future.result()
-                finished += 1
-                if on_progress:
-                    #  Named, not just counted: which document is costing the wait matters when
-                    #  one reference is slow to enrich.
-                    on_progress(finished,
-                                "Read %s (%d of %d)" % (pubs[i], finished, len(pubs)))
+                with lock:
+                    finished += 1
+                    if on_progress:
+                        #  Named, not just counted: which document is costing the wait matters
+                        #  when one reference is slow to enrich.
+                        on_progress(finished,
+                                    "Read %s (%d of %d)" % (pubs[i], finished, len(pubs)))
     return [d for d in results if d]
