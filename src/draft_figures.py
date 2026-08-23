@@ -49,9 +49,10 @@ SEMANTIC_COMPATIBLE_PROMPT_VERSIONS = frozenset((
 LEADER_PROMPT_VERSION = (
     "figure-leader-v7-high-accuracy-routing-only-independent-consensus")
 MARKED_ANCHOR_PROMPT_VERSION = (
-    "figure-anchor-v10-full-sheet-correction-coordinate-certificate-majority")
+    "figure-anchor-v11-raw-sheet-correction-coordinate-certificate-majority")
 MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
     MARKED_ANCHOR_PROMPT_VERSION,
+    "figure-anchor-v10-full-sheet-correction-coordinate-certificate-majority",
     "figure-anchor-v9-local-part-coordinate-certificate-majority-with-correction",
 ))
 MARKED_PROGRESS_VERSION = "marked-progress-v1-final-coordinate-certificates"
@@ -1845,8 +1846,10 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
                 latency_ms=0, cache_hit=True, success=True)
             return cached
     base_instruction = (
-        "Inspect this endpoint-audit montage for a utility-patent drawing. Each panel is an "
-        "endpoint pair from the same unlabeled geometry. The left image shows the complete sheet "
+        "Inspect two supplied images for a utility-patent drawing. The first supplied image is "
+        "the complete raw sheet without audit overlays and is the sole coordinate frame for every "
+        "suggested point. The second supplied image is an endpoint-audit montage. Each montage "
+        "panel is an endpoint pair from that same unlabeled geometry. Its left image shows the complete sheet "
         "so global identity, nesting, and relative location are visible. The right image is an "
         "enlarged crop for exact pixel inspection. Both red rings mark the same proposed leader "
         "endpoint, and the right crop keeps that unchanged pixel at its exact center. Its header "
@@ -1862,9 +1865,10 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
         "inside or on the specifically requested body or surface. Reject a center on neighboring "
         "hatching, an adjacent layer, the wrong edge, an unrelated crossing, or blank exterior "
         "paper. Return exactly one labels record for every expected numeral. suggested_x and "
-        "suggested_y are always global full-sheet coordinates normalized from 0 through 1000, "
-        "with 0,0 at the complete sheet's upper-left and 1000,1000 at its lower-right. They are "
-        "never coordinates within the right-hand crop. Use the left full-sheet overview to locate "
+        "suggested_y are always coordinates on the first supplied raw sheet, normalized from 0 "
+        "through 1000, with 0,0 at that raw sheet's upper-left and 1000,1000 at its lower-right. "
+        "They are never coordinates within the second image, a montage panel, or the right-hand "
+        "crop. Use the first raw sheet and the left full-sheet overview to locate "
         "a correction target, while using the right crop to judge the exact current endpoint. If "
         "the current endpoint is correct, return its global full-sheet coordinates and "
         "repairable=true. If it is wrong and the named geometry is visible anywhere in the left "
@@ -1895,7 +1899,11 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
             try:
                 response = llm._client().models.generate_content(
                     model=model,
-                    contents=[Part.from_bytes(data=montage, mime_type="image/png"), instruction],
+                    contents=[
+                        Part.from_bytes(data=png, mime_type="image/png"),
+                        Part.from_bytes(data=montage, mime_type="image/png"),
+                        instruction,
+                    ],
                     config=GenerateContentConfig(
                         response_mime_type="application/json",
                         response_json_schema=MARKED_ANCHOR_RESPONSE_SCHEMA,
