@@ -1751,7 +1751,10 @@ def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
     """Give endpoint reviewers each local part definition and its explicit target."""
     entries = numeral_entries(numerals)
     raw = str(caption or "")
-    blocks = re.split(r"(?m)^\s*[-*]\s+", raw)
+    # Geometry briefs are sometimes normalized to one line before this final review.  Treat an
+    # inline Markdown bullet as a real part boundary so a target that merely mentions another
+    # part cannot be inherited by that later part.
+    blocks = re.split(r"(?<!\S)[-*]\s+", raw)
 
     def clean(value: str) -> str:
         value = re.sub(r"^\s*[-*#]+\s*", "", re.sub(r"\s+", " ", value)).strip()
