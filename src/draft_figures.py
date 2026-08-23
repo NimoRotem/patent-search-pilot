@@ -63,7 +63,7 @@ OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v1-exterior-connectivity"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
-MAX_LEADER_REPAIR_ATTEMPTS = 3
+MAX_LEADER_REPAIR_ATTEMPTS = 4
 MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS = 12
 MAX_OCR_CLEAN_RETRIES = 2
 LEADER_THINKING_BUDGET = 2048
@@ -2498,13 +2498,18 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
         if completed_marked_attempts < MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS
         else (completed_marked_attempts,))
     for marked_attempt in marked_attempts:
+        layout_scales = (1.0, 1.35, 1.8, 2.2)
+        leader_scale_index = 0
         for _leader_attempt in range(MAX_LEADER_REPAIR_ATTEMPTS):
             labels = {}
-            for used_scale in (1.0, 1.35, 1.8, 2.2):
+            used_scale_index = leader_scale_index
+            for candidate_index in range(leader_scale_index, len(layout_scales)):
+                used_scale = layout_scales[candidate_index]
                 png = annotate_png(raw_png, label, anchors, scale=used_scale)
                 label_inspection = inspect_labels(png, label)
                 labels = ocr_audit(numerals, label_inspection, label)
                 if labels.get("ok"):
+                    used_scale_index = candidate_index
                     break
             if not labels.get("ok"):
                 break
@@ -2516,7 +2521,11 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
                 raw_png, anchors, leaders, scale=used_scale,
                 protected=marked_certificates)
             if not changed:
+                if used_scale_index + 1 < len(layout_scales):
+                    leader_scale_index = used_scale_index + 1
+                    continue
                 break
+            leader_scale_index = 0
             anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
             _prune_marked_coordinate_certificates(marked_certificates, anchors)
             _marked_progress_put(
