@@ -35,6 +35,9 @@ _CONTAINMENT = "containment"
 
 MAX_ORDER_SWEEPS = 8
 MAX_CAPTION_LINES = 3
+# How far the finished assembly may be scaled to fit the sheet.
+MIN_SCALE = 0.25
+MAX_SCALE = 2.2
 
 
 class _Node:
@@ -322,19 +325,29 @@ def layout_graph(spec: FigureSpec, graph: PatentGraph, profile: DrawingProfile,
     reserve = profile.reference_height * 4
     usable_w = max(1.0, area.width - 2 * reserve)
     usable_h = max(1.0, area.height - 2 * reserve - profile.caption_height * 3)
-    factor = min(1.0, usable_w / max(1.0, bounds.width), usable_h / max(1.0, bounds.height))
-    if factor < 1.0:
+    # Fit the assembly to the sheet in BOTH directions. Only ever shrinking left a four-box
+    # figure sitting in the middle third of a letter page surrounded by white, which is not
+    # what a patent drawing looks like and makes a 3.6 mm numeral look like a misprint. The
+    # upper bound stops three boxes being blown up into wall art.
+    factor = min(usable_w / max(1.0, bounds.width), usable_h / max(1.0, bounds.height))
+    factor = max(MIN_SCALE, min(MAX_SCALE, factor))
+    if abs(factor - 1.0) > 0.01:
         _scale(everything, factor, (bounds.x, bounds.y))
         bounds = union(node.box for node in everything) or bounds
     _translate(everything,
                area.x + reserve + (usable_w - bounds.width) / 2 - bounds.x,
                area.y + reserve + (usable_h - bounds.height) / 2 - bounds.y)
 
+    # The caption carries the entity's FULL name, not the lines the sizing pass wrapped it
+    # into. Those lines were computed against the box BEFORE the assembly was scaled to the
+    # sheet, so a name elided there ("first platform" -> "first...") could never be recovered
+    # by the renderer however much room it later had. Sizing wraps; the renderer decides what
+    # is actually printed.
     layout_nodes = [
         LayoutNode(
             entity_id=node.entity.id,
             reference_numeral=node.entity.reference_numeral,
-            caption=" ".join(node.lines) if node.lines else "",
+            caption=(node.entity.canonical_name if (node.lines or captions) else ""),
             shape=_shape_for(node.entity, bool(node.children)),  # type: ignore[arg-type]
             box=node.box, depth=_depth(node), is_container=bool(node.children),
             role=roles.get(node.entity.id, "primary"))  # type: ignore[arg-type]

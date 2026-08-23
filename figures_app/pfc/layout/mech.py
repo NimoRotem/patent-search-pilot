@@ -38,6 +38,10 @@ _SHAPE_BY_CLASS = {
 
 _ARRANGEMENT = {"above": (0, -1), "below": (0, 1)}
 
+# How far the finished assembly may be scaled to fit the sheet.
+MIN_SCALE = 0.25
+MAX_SCALE = 2.2
+
 
 def _primitive(entity: Entity, is_container: bool) -> tuple[str, float]:
     if is_container:
@@ -161,8 +165,11 @@ def layout_mechanical(spec: FigureSpec, graph: PatentGraph, profile: DrawingProf
     reserve = profile.reference_height * 4.5
     usable_w = max(1.0, area.width - 2 * reserve)
     usable_h = max(1.0, area.height - 2 * reserve - profile.caption_height * 3)
-    factor = min(1.0, usable_w / max(1.0, bounds.width), usable_h / max(1.0, bounds.height))
-    if factor < 1.0:
+    # Scaled to the sheet in both directions, for the same reason as the diagram layout: a
+    # drawing that uses a third of the page reads as a mistake.
+    factor = min(usable_w / max(1.0, bounds.width), usable_h / max(1.0, bounds.height))
+    factor = max(MIN_SCALE, min(MAX_SCALE, factor))
+    if abs(factor - 1.0) > 0.01:
         for part in everything:
             part.box = Box(
                 x=bounds.x + (part.box.x - bounds.x) * factor,

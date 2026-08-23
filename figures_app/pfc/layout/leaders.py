@@ -51,20 +51,34 @@ def _anchor(node: LayoutNode, toward: tuple[float, float]) -> tuple[float, float
     return boundary_point(node.box, toward)
 
 
-def _routes(label_point: tuple[float, float], target: tuple[float, float]
+def _leader_origin(profile: DrawingProfile, numeral: str, label_point: tuple[float, float],
+                   target: tuple[float, float]) -> tuple[float, float]:
+    """Where the leader leaves the numeral: the side of the text facing the object.
+
+    Starting it at the text's anchor point puts the line through the digits whenever the numeral
+    sits to the left of what it names, which is half the labels on a sheet. It leaves from the
+    edge of the text, slightly above the baseline, the way a draughtsman draws it.
+    """
+    width = profile.text_width(numeral)
+    lift = profile.reference_height * 0.3
+    if target[0] >= label_point[0]:
+        return (label_point[0] + width + profile.min_label_gap * 0.5, label_point[1] - lift)
+    return (label_point[0] - profile.min_label_gap * 0.5, label_point[1] - lift)
+
+
+def _routes(origin: tuple[float, float], target: tuple[float, float]
             ) -> list[list[Point]]:
-    """Straight, one-bend and two-bend candidates between a label and its anchor."""
-    straight = [Point(x=label_point[0], y=label_point[1]), Point(x=target[0], y=target[1])]
-    mid_x = (label_point[0] + target[0]) / 2
-    mid_y = (label_point[1] + target[1]) / 2
-    one_bend_h = [Point(x=label_point[0], y=label_point[1]),
-                  Point(x=target[0], y=label_point[1]),
+    """Straight, one-bend and two-bend candidates between a numeral and its anchor."""
+    straight = [Point(x=origin[0], y=origin[1]), Point(x=target[0], y=target[1])]
+    mid_x = (origin[0] + target[0]) / 2
+    one_bend_h = [Point(x=origin[0], y=origin[1]),
+                  Point(x=target[0], y=origin[1]),
                   Point(x=target[0], y=target[1])]
-    one_bend_v = [Point(x=label_point[0], y=label_point[1]),
-                  Point(x=label_point[0], y=target[1]),
+    one_bend_v = [Point(x=origin[0], y=origin[1]),
+                  Point(x=origin[0], y=target[1]),
                   Point(x=target[0], y=target[1])]
-    two_bend = [Point(x=label_point[0], y=label_point[1]),
-                Point(x=mid_x, y=label_point[1]),
+    two_bend = [Point(x=origin[0], y=origin[1]),
+                Point(x=mid_x, y=origin[1]),
                 Point(x=mid_x, y=target[1]),
                 Point(x=target[0], y=target[1])]
     return [straight, one_bend_h, one_bend_v, two_bend]
@@ -171,10 +185,14 @@ def place_labels(scene: LayoutScene, profile: DrawingProfile, *, seed: int = 0) 
                 span = max(node.box.width, node.box.height) / 2 + profile.reference_height * reach
                 label_point = (node.box.cx + dx / norm * span,
                                node.box.cy + dy / norm * span)
+                if dx < 0:
+                    # A numeral to the LEFT of its object is anchored so its text ENDS at the
+                    # offset. Anchoring it at the start ran the digits into the outline.
+                    label_point = (label_point[0] - profile.text_width(numeral),
+                                   label_point[1])
                 target = _anchor(node, label_point)
-                # Stand the leader off the outline slightly so it reads as touching the object
-                # rather than starting inside it.
-                for route in _routes(label_point, target):
+                origin = _leader_origin(profile, numeral, label_point, target)
+                for route in _routes(origin, target):
                     cost = _cost(profile, node, label_point, route, target, scene.nodes,
                                  scene.edges, placed, area, numeral)
                     if best is None or cost < best[0]:
@@ -220,8 +238,12 @@ def relocate(scene: LayoutScene, profile: DrawingProfile, numerals: Iterable[str
                 norm = math.hypot(dx, dy) or 1.0
                 span = max(node.box.width, node.box.height) / 2 + profile.reference_height * reach
                 label_point = (node.box.cx + dx / norm * span, node.box.cy + dy / norm * span)
+                if dx < 0:
+                    label_point = (label_point[0] - profile.text_width(label.reference_numeral),
+                                   label_point[1])
                 target = _anchor(node, label_point)
-                for route in _routes(label_point, target):
+                origin = _leader_origin(profile, label.reference_numeral, label_point, target)
+                for route in _routes(origin, target):
                     cost = _cost(profile, node, label_point, route, target, scene.nodes,
                                  scene.edges, keep, area, label.reference_numeral)
                     if best is None or cost < best[0]:
