@@ -463,3 +463,58 @@ def test_a_part_with_nothing_settled_gets_no_invented_element(figure):
 
     prompt = generate.build_prompt(spec, graph, reference_count=3)
     assert "drawn as a simple" not in prompt
+
+
+def test_two_parts_at_one_place_do_not_block_each_others_leaders(figure, profile, neighbourhood,
+                                                                 monkeypatch):
+    """GEO009 is unsatisfiable between parts the reader gave one box.
+
+    On US-2024/0246200-A1 numerals 141, 144 and 147 came back on identical boxes, because in a
+    perspective view the reader could not tell a rib from a bracing structure. Each leader then
+    landed inside the others and three correction passes changed nothing.
+    """
+    graph, plan, spec = figure
+    area = Box(x=254.0, y=254.0, width=1400.0, height=1000.0)
+    located = _located(spec, area)
+    shared = Box(x=area.x + 300, y=area.y + 250, width=750, height=280)
+    twins = [entity.entity_id for entity in spec.entities[:3]]
+    for entity_id in twins:
+        located.boxes[entity_id] = shared.model_copy()
+
+    _patch(monkeypatch, located)
+    drawn = referencemode.draw_figure(spec, graph, profile, neighbourhood, object())
+    bundle = FigureBundle(spec=spec, scene=drawn.scene, svg=drawn.svg, artwork=drawn.artwork)
+    context = ValidationContext(graph=graph, profile=profile, plan=plan, figure=bundle)
+    offenders = [i for i in blocking(validate_figure(context))
+                 if i.rule_id == "GEO009" and i.entity_id in twins]
+    assert not offenders, "no placement satisfies this, so blocking on it never terminates"
+
+
+def test_a_leader_landing_on_a_genuinely_different_part_still_blocks(figure, profile,
+                                                                    neighbourhood, monkeypatch):
+    """The carve-out is for boxes at one place, not for a leader that wandered.
+
+    The two boxes here OVERLAP, the way a pump behind a housing wall overlaps it in a perspective
+    view, without being the same place. Widen the carve-out to cover mere overlap and every
+    reference-guided sheet loses GEO009 entirely.
+    """
+    graph, plan, spec = figure
+    area = Box(x=254.0, y=254.0, width=1400.0, height=1000.0)
+    located = _located(spec, area)
+    owner, other = spec.entities[0].entity_id, spec.entities[1].entity_id
+    # Overlapping by roughly two fifths of their union: substantial, and nowhere near identical.
+    located.boxes[owner] = Box(x=area.x + 60, y=area.y + 60, width=400, height=320)
+    located.boxes[other] = Box(x=area.x + 150, y=area.y + 140, width=400, height=320)
+
+    _patch(monkeypatch, located)
+    drawn = referencemode.draw_figure(spec, graph, profile, neighbourhood, object())
+    label = next(item for item in drawn.scene.labels if item.entity_id == owner)
+    victim = next(node for node in drawn.scene.nodes if node.entity_id == other)
+    label.leader_points[-1].x = victim.box.cx        # point it straight at the other part
+    label.leader_points[-1].y = victim.box.cy
+
+    bundle = FigureBundle(spec=spec, scene=drawn.scene, svg=drawn.svg, artwork=drawn.artwork)
+    context = ValidationContext(graph=graph, profile=profile, plan=plan, figure=bundle)
+    offenders = [i for i in blocking(validate_figure(context))
+                 if i.rule_id == "GEO009" and i.entity_id == owner]
+    assert offenders, "a leader ending on another part is exactly what GEO009 is for"

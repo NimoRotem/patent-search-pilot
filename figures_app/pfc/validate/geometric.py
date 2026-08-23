@@ -144,6 +144,17 @@ class LeaderTarget(ValidationRule):
         return issues
 
 
+def _same_place(first, second, tolerance: float = 0.9) -> bool:
+    """Do two boxes occupy so nearly the same area that no leader could tell them apart?"""
+    overlap_w = min(first.right, second.right) - max(first.x, second.x)
+    overlap_h = min(first.bottom, second.bottom) - max(first.y, second.y)
+    if overlap_w <= 0 or overlap_h <= 0:
+        return False
+    intersection = overlap_w * overlap_h
+    union = (first.width * first.height + second.width * second.height) - intersection
+    return union > 0 and intersection / union >= tolerance
+
+
 class AmbiguousLeader(ValidationRule):
     """GEO009 — a leader must not be readable as pointing at a neighbouring object."""
 
@@ -170,6 +181,14 @@ class AmbiguousLeader(ValidationRule):
             end = (label.leader_points[-1].x, label.leader_points[-1].y)
             for node in figure.scene.nodes:
                 if node.entity_id == label.entity_id or node.is_container:
+                    continue
+                if _same_place(owner.box, node.box):
+                    # Two parts at one place. No leader can point at one and not the other, so
+                    # rerouting cannot satisfy this rule and three correction passes proved it:
+                    # on US-2024/0246200-A1 numerals 141, 144 and 147 came back on identical
+                    # boxes because the reader could not tell those parts apart in a perspective
+                    # view. That is reported where it belongs, against the drawing rather than
+                    # against the leader; see imagegrounding.concerns.
                     continue
                 box = node.box.inflated(clearance)
                 if box.x <= end[0] <= box.right and box.y <= end[1] <= box.bottom:
