@@ -5680,6 +5680,59 @@ def _pretty_app_no(raw):
     return "%s/%s,%s" % (digits[:2], digits[2:5], digits[5:])
 
 
+@app.route("/api/passage")
+def api_passage():
+    """The passage behind a grid cell, in its original language and in English.
+
+    The read-time guard drops a non-English quote from the grid because an English report cannot
+    render what its reader cannot verify. The passage itself sits in the corpus and the cell
+    records exactly where; this returns it with a disk-cached machine translation, fetched only
+    when somebody opens that cell. The translation is labelled and never enters the verbatim bar.
+    """
+    if auth.auth_enabled(app) and not (auth.current_user() or auth.is_loopback()):
+        return jsonify({"found": False, "error": "sign in to fetch translations"}), 403
+    pub = (request.args.get("pub") or "").strip()
+    loc = (request.args.get("loc") or "").strip().lower()
+    if not pub or not loc:
+        return jsonify({"found": False}), 400
+    text = ""
+    with db.cursor() as cur:
+        cur.execute("SELECT id, abstract FROM publications WHERE publication_number=%s LIMIT 1",
+                    (pub,))
+        row = cur.fetchone()
+        if row:
+            m = re.search(r"claim\s+(\d+)", loc)
+            if m:
+                cur.execute("SELECT text FROM claims WHERE publication_id=%s AND claim_no=%s "
+                            "LIMIT 1", (row["id"], int(m.group(1))))
+                r2 = cur.fetchone()
+                text = (r2["text"] if r2 else "") or ""
+            elif "abstract" in loc:
+                text = row["abstract"] or ""
+            else:
+                m = re.search(r"paragraph\s+p?0*(\d+)", loc)
+                if m:
+                    want = m.group(1)
+                    cur.execute("SELECT para_no, text FROM paragraphs WHERE publication_id=%s "
+                                "ORDER BY id LIMIT 400", (row["id"],))
+                    for r2 in cur.fetchall():
+                        pn = re.sub(r"^p", "", str(r2["para_no"] or "").lower()).lstrip("0") or "0"
+                        if pn == want.lstrip("0"):
+                            text = r2["text"] or ""
+                            break
+    if not text:
+        return jsonify({"found": False})
+    import translate as translate_mod
+    out = translate_mod.translate(text[:4000])
+    return jsonify({
+        "found": True,
+        "original": text[:4000],
+        "lang": out.get("lang") or "",
+        "translated": bool(out.get("translated")),
+        "translation": (out.get("text") or "") if out.get("translated") else "",
+    })
+
+
 @app.route("/api/build-settings")
 def api_build_settings():
     """What a rebuild will use, and what it could use instead.

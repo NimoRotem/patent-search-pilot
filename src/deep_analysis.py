@@ -419,6 +419,9 @@ def _row(item, raw, ref, shown, kind):
         #  Grounded, located — and unreadable on an English report. Keep the finding on the
         #  weaker bar; the note says where the teaching sits, the quote is not rendered.
         return {**base, "verdict": "partial", "bar": "teaches",
+                #  The original the reader grounded, kept for the popup's translation flow: the
+                #  corpus row can lag what enrichment put in front of the reader.
+                "quote_src": quote[:600],
                 "note": (f"(non-English passage at {loc['label']}) " + note)[:400],
                 "location": loc["label"], "coord": loc["coord"],
                 "passage_kind": loc["kind"], "confidence": min(conf, 0.6),

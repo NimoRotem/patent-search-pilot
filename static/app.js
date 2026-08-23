@@ -1168,6 +1168,37 @@ function showQuote(btn){
   setText('qpopNote', (d.note || '') + (d.second === 'true'
     ? (d.note ? ' ' : '') + 'Found on the second, concept-led reading of this reference.' : ''));
   setText('qpopLoc', [d.pub, d.loc].filter(Boolean).join(' · '));
+  /* A cell whose passage the corpus holds in another language: fetch it with its machine
+     translation the moment somebody actually looks, never at page build (a report carries
+     hundreds of these). The translation is labelled; it never impersonates a verbatim quote. */
+  if (!d.quote && /non-English passage/.test(d.note || '') && d.pub && d.loc){
+    const q = document.getElementById('qpopQuote'), noteEl = document.getElementById('qpopNote');
+    if (q){
+      q.textContent = 'Fetching the passage and its machine translation…';
+      fetch(B + '/api/passage?pub=' + encodeURIComponent(d.pub) +
+            '&loc=' + encodeURIComponent(d.loc), {credentials: 'same-origin'})
+        .then(function (r) { return r.json(); })
+        .then(function (p) {
+          if (!p.found){
+            q.textContent = 'No quotable passage was recorded for this cell.';
+            return;
+          }
+          if (p.translation){
+            q.textContent = '\u201c' + p.translation + '\u201d';
+            if (noteEl){
+              const orig = p.original.length > 700 ? p.original.slice(0, 700) + '\u2026' : p.original;
+              noteEl.textContent = 'Machine translation' + (p.lang ? ' from ' + p.lang : '') +
+                ', not a verbatim quotation. ' + (d.note || '') + ' Original: ' + orig;
+            }
+          } else {
+            q.textContent = '\u201c' + p.original + '\u201d';
+          }
+        })
+        .catch(function () {
+          q.textContent = 'No quotable passage was recorded for this cell.';
+        });
+    }
+  }
   const ref = document.getElementById('qpopRef');
   if (ref){ ref.textContent = 'Go to ' + (d.pub || 'reference'); ref.dataset.pub = d.pub || ''; }
   pop.hidden = false;
