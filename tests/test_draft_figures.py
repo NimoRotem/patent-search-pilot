@@ -472,6 +472,99 @@ def test_compose_accumulates_consensus_for_unchanged_endpoint_coordinates(monkey
     assert leaders["marked_anchor_audit"]["certified_across_attempts"] is True
 
 
+def test_compose_resumes_repaired_coordinates_after_a_process_restart(monkeypatch):
+    raw = blank_png(1000, 1000)
+    initial = [{"numeral": "26", "x": 500, "y": 500,
+                "visible": True, "evidence": "bearing face"}]
+    accepted_pixel = {
+        "ok": True, "inspected": True,
+        "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [], "allowed_spaces": [], "ungrounded": [],
+    }
+    monkeypatch.setattr(
+        draft_figures, "_ground_anchors_to_pixels",
+        lambda _png, _numerals, anchors: ([dict(item) for item in anchors],
+                                           dict(accepted_pixel)))
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["26"], "figure_label": "FIG. 2",
+        "other_text": [], "confidence": 0.99})
+
+    progress = {}
+
+    def load_progress(*_args, **_kwargs):
+        return dict(progress) if progress else None
+
+    def save_progress(*_args, **values):
+        progress.update({
+            "anchors": [dict(item) for item in values["anchors"]],
+            "certificates": dict(values["certificates"]),
+            "attempts": values["attempts"],
+        })
+
+    monkeypatch.setattr(draft_figures, "_marked_progress_get", load_progress, raising=False)
+    monkeypatch.setattr(draft_figures, "_marked_progress_put", save_progress, raising=False)
+    leader_calls = []
+    interrupt = [True]
+
+    def inspect_leaders(*_args, **_kwargs):
+        leader_calls.append(True)
+        if interrupt[0] and len(leader_calls) == 2:
+            raise KeyboardInterrupt()
+        return {
+            "ok": True, "inspected": True, "errors": [], "incorrect": [],
+            "labels": [{"numeral": "26", "correct": True,
+                        "evidence": "leader reaches the marked point"}],
+        }
+
+    monkeypatch.setattr(draft_figures, "inspect_leaders", inspect_leaders)
+    marked_calls = []
+
+    def inspect_marked(_png, **kwargs):
+        marked_calls.append([dict(item) for item in kwargs["anchors"]])
+        if len(marked_calls) == 1:
+            return {
+                "ok": False, "inspected": True, "errors": ["move right"],
+                "incorrect": ["26"], "missing": [], "labels": [{
+                    "numeral": "26", "correct": False, "repairable": True,
+                    "evidence": "the bearing face is right of center",
+                    "suggested_x": 600, "suggested_y": 500,
+                    "correct_votes": 1, "incorrect_votes": 2,
+                }],
+            }
+        return {
+            "ok": True, "inspected": True, "errors": [], "incorrect": [],
+            "missing": [], "labels": [{
+                "numeral": "26", "correct": True, "repairable": True,
+                "evidence": "the center is on the bearing face",
+                "suggested_x": 500, "suggested_y": 500,
+                "correct_votes": 3, "incorrect_votes": 0,
+            }],
+        }
+
+    monkeypatch.setattr(draft_figures, "inspect_marked_anchors", inspect_marked)
+
+    with pytest.raises(KeyboardInterrupt):
+        draft_figures._compose_checked_sheet(
+            raw, label="FIG. 2", caption="bearing face", numerals=["26 = bearing face"],
+            semantic={"anchors": initial, "pixel_anchor_audit": dict(accepted_pixel)})
+
+    assert progress["attempts"] == 1
+    assert progress["anchors"][0]["x"] > 500
+
+    interrupt[0] = False
+    _png, labels, leaders, anchors, pixel = draft_figures._compose_checked_sheet(
+        raw, label="FIG. 2", caption="bearing face", numerals=["26 = bearing face"],
+        semantic={"anchors": initial, "pixel_anchor_audit": dict(accepted_pixel)})
+
+    assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
+    assert anchors[0]["x"] == progress["anchors"][0]["x"]
+    assert leaders["marked_anchor_audit"]["inspection_rounds"] == 2
+    assert draft_figures.current_marked_anchor_audit(
+        leaders["marked_anchor_audit"],
+        specification_hash=draft_figures.specification_hash(
+            "FIG. 2", "bearing face", ["26 = bearing face"]))
+
+
 def test_marked_anchor_montage_preserves_the_endpoint_pixel_inside_a_red_ring():
     image = Image.new("RGB", (400, 400), "white")
     ImageDraw.Draw(image).point((200, 200), fill="black")
@@ -482,10 +575,59 @@ def test_marked_anchor_montage_preserves_the_endpoint_pixel_inside_a_red_ring():
         raw.getvalue(), [{"numeral": "26", "x": 501, "y": 501, "visible": True}],
         ["26 = bearing face"]))).convert("RGB")
 
-    center_x = 16 + (420 - 360) // 2 + 360 // 2
-    center_y = 16 + 58 + 360 // 2
+    assert montage.width >= 600
+    center_x = 16 + 16 + 240 + 16 + 320 // 2
+    center_y = 16 + 72 + 320 // 2
     assert all(channel < 80 for channel in montage.getpixel((center_x, center_y)))
-    assert montage.getpixel((center_x + 19, center_y))[0] > 180
+    assert montage.getpixel((center_x + 17, center_y))[0] > 180
+
+
+def test_compose_continues_an_eight_round_checkpoint_after_context_upgrade(monkeypatch):
+    raw = blank_png(1000, 1000)
+    anchors = [{"numeral": "22", "x": 300, "y": 300,
+                "visible": True, "evidence": "chamber"}]
+    accepted_pixel = {
+        "ok": True, "inspected": True,
+        "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [], "allowed_spaces": [], "ungrounded": [],
+    }
+    monkeypatch.setattr(draft_figures, "_marked_progress_get", lambda *a, **k: {
+        "anchors": anchors, "certificates": {}, "attempts": 8,
+    })
+    monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
+    monkeypatch.setattr(
+        draft_figures, "_ground_anchors_to_pixels",
+        lambda _png, _numerals, values: ([dict(item) for item in values],
+                                         dict(accepted_pixel)))
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["22"], "figure_label": "FIG. 3",
+        "other_text": [], "confidence": 0.99})
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [],
+        "labels": [{"numeral": "22", "correct": True, "evidence": "leader reaches dot"}],
+    })
+    marked_calls = []
+
+    def inspect_marked(*_args, **_kwargs):
+        marked_calls.append(True)
+        return {
+            "ok": True, "inspected": True, "errors": [], "incorrect": [],
+            "missing": [], "labels": [{
+                "numeral": "22", "correct": True, "repairable": True,
+                "evidence": "the full-sheet overview identifies the chamber",
+                "suggested_x": 500, "suggested_y": 500,
+                "correct_votes": 3, "incorrect_votes": 0,
+            }],
+        }
+
+    monkeypatch.setattr(draft_figures, "inspect_marked_anchors", inspect_marked)
+    _png, _labels, leaders, _anchors, _pixel = draft_figures._compose_checked_sheet(
+        raw, label="FIG. 3", caption="chamber", numerals=["22 = chamber"],
+        semantic={"anchors": anchors, "pixel_anchor_audit": dict(accepted_pixel)})
+
+    assert marked_calls == [True]
+    assert leaders["ok"] is True
+    assert leaders["marked_anchor_audit"]["inspection_rounds"] == 9
 
 
 def test_only_the_current_two_trace_semantic_review_is_accepted():
@@ -546,6 +688,26 @@ def test_pixel_grounding_keeps_enclosed_bodies_and_intentional_empty_spaces():
 
     assert audit["ok"] is True and audit["adjusted"] == []
     assert [(item["x"], item["y"]) for item in anchors] == [(500, 400), (500, 780)]
+
+
+@pytest.mark.parametrize("part", ["second side", "bearing face"])
+def test_pixel_grounding_keeps_a_planar_surface_endpoint_inside_its_region(part):
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((100, 100, 900, 900), outline="black", width=8)
+    draw.rectangle((200, 200, 800, 800), outline="black", width=8)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+    original = [{
+        "numeral": "16", "x": 150, "y": 150, "visible": True,
+        "evidence": "the white planar band between the two outlines",
+    }]
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), [f"16 = {part}"], original)
+
+    assert audit["ok"] is True and audit["adjusted"] == []
+    assert (anchors[0]["x"], anchors[0]["y"]) == (150, 150)
 
 
 def test_closed_region_audit_enforces_an_explicit_exact_shape_count():

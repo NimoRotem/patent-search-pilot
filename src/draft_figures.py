@@ -46,12 +46,13 @@ LEADER_PROMPT_VERSION = (
     "figure-leader-v7-high-accuracy-routing-only-independent-consensus")
 MARKED_ANCHOR_PROMPT_VERSION = (
     "figure-anchor-v9-local-part-coordinate-certificate-majority-with-correction")
+MARKED_PROGRESS_VERSION = "marked-progress-v1-final-coordinate-certificates"
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v1-exterior-connectivity"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 3
-MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS = 8
+MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS = 12
 MAX_OCR_CLEAN_RETRIES = 2
 LEADER_THINKING_BUDGET = 2048
 SEMANTIC_THINKING_BUDGET = 2048
@@ -253,8 +254,8 @@ _EMPTY_ANCHOR_PART_RE = re.compile(
     r"\b(?:aperture|cavity|chamber|channel|clearance|gap|opening|passage|plenum|port|slot|"
     r"space|void)\b", re.IGNORECASE)
 _LINE_ANCHOR_PART_RE = re.compile(
-    r"\b(?:attachment formation|bearing face|boundary|cable|cord|edge|electrical supply|"
-    r"first side|handle|line|loop|path|pulling element|ring|second side)\b", re.IGNORECASE)
+    r"\b(?:boundary|cable|cord|edge|electrical supply|handle|line|loop|path|"
+    r"pulling element|ring)\b", re.IGNORECASE)
 _MAX_ANCHOR_SNAP = 220
 
 _SCHEMA = (
@@ -824,6 +825,98 @@ def _analysis_cache_put(key: str, *, stage: str, provider: str, model: str,
                 (key, stage, provider, model, prompt_version, json.dumps(result)))
     except Exception:
         pass
+
+
+def _marked_progress_key(raw_png: bytes, *, label: str, caption: str, numerals) -> str:
+    return _analysis_cache_key(
+        "marked-progress", raw_png, specification_hash(label, caption, numerals),
+        "deterministic-compositor", MARKED_PROGRESS_VERSION)
+
+
+def _marked_progress_get(raw_png: bytes, *, label: str, caption: str,
+                         numerals) -> dict | None:
+    """Load only structurally valid endpoint progress for this exact image and specification."""
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return None
+    value = _analysis_cache_get(_marked_progress_key(
+        raw_png, label=label, caption=caption, numerals=numerals))
+    if not value or value.get("version") != MARKED_PROGRESS_VERSION:
+        return None
+    expected = {entry["numeral"] for entry in numeral_entries(numerals)}
+    anchors = []
+    seen = set()
+    for source in value.get("anchors") or ():
+        if not isinstance(source, dict):
+            return None
+        numeral = _clean_numeral(source.get("numeral"))
+        if not numeral or numeral not in expected or numeral in seen:
+            return None
+        try:
+            x, y = int(source.get("x")), int(source.get("y"))
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if not (0 <= x <= 1000 and 0 <= y <= 1000):
+            return None
+        anchors.append({
+            "numeral": numeral, "x": x, "y": y,
+            "visible": source.get("visible") is True,
+            "evidence": str(source.get("evidence") or "")[:2000],
+        })
+        seen.add(numeral)
+    if seen != expected:
+        return None
+    try:
+        attempts = int(value.get("attempts") or 0)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not (0 <= attempts <= MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS):
+        return None
+    certificates = {}
+    for raw_numeral, source in (value.get("certificates") or {}).items():
+        if not isinstance(source, dict):
+            continue
+        numeral = _clean_numeral(raw_numeral)
+        if numeral not in expected or not isinstance(source.get("label"), dict):
+            continue
+        try:
+            x, y = int(source.get("x")), int(source.get("y"))
+            attempt = int(source.get("attempt"))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if not (0 <= x <= 1000 and 0 <= y <= 1000 and 1 <= attempt <= attempts):
+            continue
+        label_record = dict(source["label"])
+        if not label_record.get("correct") or not str(label_record.get("evidence") or "").strip():
+            continue
+        certificates[numeral] = {
+            "x": x, "y": y, "attempt": attempt, "label": label_record,
+        }
+    return {"anchors": anchors, "certificates": certificates, "attempts": attempts}
+
+
+def _marked_progress_put(raw_png: bytes, *, label: str, caption: str, numerals,
+                         anchors, certificates: dict, attempts: int) -> None:
+    """Durably replace partial endpoint progress after each completed correction round."""
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return
+    result = {
+        "version": MARKED_PROGRESS_VERSION,
+        "specification_hash": specification_hash(label, caption, numerals),
+        "anchors": [dict(item) for item in anchors or ()],
+        "certificates": {str(key): dict(value)
+                         for key, value in (certificates or {}).items()},
+        "attempts": int(attempts),
+    }
+    ensure_schema()
+    key = _marked_progress_key(raw_png, label=label, caption=caption, numerals=numerals)
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO app_draft_figure_analysis_cache "
+            "(cache_key,stage,provider,model_name,prompt_version,result) "
+            "VALUES (%s,%s,%s,%s,%s,%s::jsonb) "
+            "ON CONFLICT (cache_key) DO UPDATE SET result=EXCLUDED.result, created_at=now()",
+            (key, "marked_progress", "internal", "deterministic-compositor",
+             MARKED_PROGRESS_VERSION, json.dumps(result)))
 
 
 def _audit_log(*, request_id: str, provider: str, model: str, stage: str,
@@ -1635,7 +1728,7 @@ def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict
 
 
 def _marked_anchor_montage(png: bytes, anchors, numerals) -> bytes:
-    """Build contextual crops whose red rings expose each exact endpoint to vision review."""
+    """Pair full-sheet context with a marked crop for every exact endpoint review."""
     from PIL import Image, ImageDraw
 
     source = Image.open(io.BytesIO(png)).convert("RGB")
@@ -1643,7 +1736,8 @@ def _marked_anchor_montage(png: bytes, anchors, numerals) -> bytes:
     entries = [dict(item) for item in anchors or ()
                if item.get("visible") and _clean_numeral(item.get("numeral")) in parts]
     entries.sort(key=lambda item: _numeral_order(_clean_numeral(item.get("numeral"))))
-    panel_width, crop_size, header, gutter = 420, 360, 58, 16
+    overview_size, crop_size, header, gutter = 240, 320, 72, 16
+    panel_width = 16 + overview_size + 16 + crop_size + 16
     panel_height = header + crop_size + 16
     columns = 2 if len(entries) > 1 else 1
     rows = max(1, (len(entries) + columns - 1) // columns)
@@ -1659,9 +1753,32 @@ def _marked_anchor_montage(png: bytes, anchors, numerals) -> bytes:
         panel_y = gutter + row * (panel_height + gutter)
         numeral = _clean_numeral(item.get("numeral"))
         heading = f"{numeral}: {parts.get(numeral, 'component')}"[:48]
-        draw.text((panel_x + 12, panel_y + 12), heading, fill="black", font=font)
+        draw.text((panel_x + 12, panel_y + 6), heading, fill="black", font=font)
+        guide_font = _font(14)
+        draw.text((panel_x + 16, panel_y + 43), "FULL SHEET CONTEXT",
+                  fill="black", font=guide_font)
+        crop_x = panel_x + 16 + overview_size + 16
+        draw.text((crop_x, panel_y + 43), "EXACT ENDPOINT CROP",
+                  fill="black", font=guide_font)
         center_x = round(int(item.get("x") or 0) * max(1, source.width - 1) / 1000)
         center_y = round(int(item.get("y") or 0) * max(1, source.height - 1) / 1000)
+        overview = source.copy()
+        overview.thumbnail((overview_size, overview_size), Image.Resampling.LANCZOS)
+        overview_x = panel_x + 16 + (overview_size - overview.width) // 2
+        overview_y = panel_y + header + (crop_size - overview.height) // 2
+        montage.paste(overview, (overview_x, overview_y))
+        overview_marker_x = overview_x + round(
+            center_x * max(1, overview.width - 1) / max(1, source.width - 1))
+        overview_marker_y = overview_y + round(
+            center_y * max(1, overview.height - 1) / max(1, source.height - 1))
+        red = (220, 0, 0)
+        overview_radius = 9
+        draw.ellipse((overview_marker_x - overview_radius, overview_marker_y - overview_radius,
+                      overview_marker_x + overview_radius, overview_marker_y + overview_radius),
+                     outline=red, width=3)
+        draw.rectangle((panel_x + 16, panel_y + header,
+                        panel_x + 16 + overview_size, panel_y + header + crop_size),
+                       outline=(150, 150, 150), width=2)
         left, top = center_x - radius, center_y - radius
         right, bottom = center_x + radius, center_y + radius
         crop = Image.new("RGB", (radius * 2, radius * 2), "white")
@@ -1671,12 +1788,10 @@ def _marked_anchor_montage(png: bytes, anchors, numerals) -> bytes:
             fragment = source.crop(source_box)
             crop.paste(fragment, (source_box[0] - left, source_box[1] - top))
         crop = crop.resize((crop_size, crop_size), Image.Resampling.LANCZOS)
-        crop_x = panel_x + (panel_width - crop_size) // 2
         crop_y = panel_y + header
         montage.paste(crop, (crop_x, crop_y))
         marker_x, marker_y = crop_x + crop_size // 2, crop_y + crop_size // 2
-        marker_radius = 19
-        red = (220, 0, 0)
+        marker_radius = 17
         draw.ellipse((marker_x - marker_radius, marker_y - marker_radius,
                       marker_x + marker_radius, marker_y + marker_radius),
                      outline=red, width=5)
@@ -1716,9 +1831,11 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
             return cached
     base_instruction = (
         "Inspect this endpoint-audit montage for a utility-patent drawing. Each panel is an "
-        "enlarged contextual crop from the same unlabeled geometry. Its header names one "
-        "reference numeral and part. The exact proposed leader endpoint is the unchanged pixel "
-        "at the center of the red ring. The ring, red ticks, panel borders, and headers are audit "
+        "endpoint pair from the same unlabeled geometry. The left image shows the complete sheet "
+        "so global identity, nesting, and relative location are visible. The right image is an "
+        "enlarged crop for exact pixel inspection. Both red rings mark the same proposed leader "
+        "endpoint, and the right crop keeps that unchanged pixel at its exact center. Its header "
+        "names one reference numeral and part. The rings, red ticks, panel borders, and headers are audit "
         "overlays and are not filing artwork. For every expected numeral, decide whether that "
         "exact center lands on the named geometry at the location required by the specification. "
         "Each part's target field is authoritative for the endpoint location. Follow that local "
@@ -1730,7 +1847,7 @@ def inspect_marked_anchors(png: bytes, *, label: str, caption: str, numerals, an
         "inside or on the specifically requested body or surface. Reject a center on neighboring "
         "hatching, an adjacent layer, the wrong edge, an unrelated crossing, or blank exterior "
         "paper. Return exactly one labels record for every expected numeral. Coordinates in each "
-        "labels record are local to that numeral's square crop, normalized from 0 through 1000, "
+        "labels record are local to that numeral's right-hand square crop, normalized from 0 through 1000, "
         "with 0,0 at its upper-left and 1000,1000 at its lower-right. The marked center is always "
         "500,500. If the center is correct, return suggested_x=500, suggested_y=500 and "
         "repairable=true. If it is wrong and the named geometry is visible in that crop, set "
@@ -2172,6 +2289,8 @@ def _certified_marked_anchor_audit(audit: dict, certificates: dict, anchors, num
         "errors": [], "expected": expected, "observed": expected,
         "missing": [], "unexpected": [], "duplicates": [], "incorrect": [],
         "labels": labels, "review_count": MARKED_ANCHOR_REVIEW_COUNT,
+        "model_name": vision_model(),
+        "prompt_version": MARKED_ANCHOR_PROMPT_VERSION,
         "inspection_rounds": int(attempts),
         "certified_across_attempts": int(attempts) > 1,
         "coordinate_certificates": coordinate_certificates,
@@ -2188,7 +2307,25 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
     used_scale = 1.0
     marked = {}
     marked_certificates = {}
-    for marked_attempt in range(MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS):
+    completed_marked_attempts = 0
+    progress = _marked_progress_get(
+        raw_png, label=label, caption=caption, numerals=numerals)
+    if progress:
+        anchors = [dict(item) for item in progress["anchors"]]
+        marked_certificates = {
+            str(key): dict(value) for key, value in progress["certificates"].items()}
+        completed_marked_attempts = int(progress["attempts"])
+        anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
+        _prune_marked_coordinate_certificates(marked_certificates, anchors)
+        _marked_progress_put(
+            raw_png, label=label, caption=caption, numerals=numerals,
+            anchors=anchors, certificates=marked_certificates,
+            attempts=completed_marked_attempts)
+    marked_attempts = (
+        range(completed_marked_attempts, MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS)
+        if completed_marked_attempts < MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS
+        else (completed_marked_attempts,))
+    for marked_attempt in marked_attempts:
         for _leader_attempt in range(MAX_LEADER_REPAIR_ATTEMPTS):
             labels = {}
             for used_scale in (1.0, 1.35, 1.8, 2.2):
@@ -2208,6 +2345,11 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             if not changed:
                 break
             anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
+            _prune_marked_coordinate_certificates(marked_certificates, anchors)
+            _marked_progress_put(
+                raw_png, label=label, caption=caption, numerals=numerals,
+                anchors=anchors, certificates=marked_certificates,
+                attempts=marked_attempt)
             if not pixel_audit.get("ok"):
                 leaders = dict(leaders)
                 leaders["ok"] = False
@@ -2220,6 +2362,27 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
         if not (labels.get("ok") and leaders.get("ok") and pixel_audit.get("ok")):
             break
         _prune_marked_coordinate_certificates(marked_certificates, anchors)
+        certified = _certified_marked_anchor_audit(
+            {}, marked_certificates, anchors, numerals, attempts=marked_attempt)
+        if certified is not None:
+            certified["specification_hash"] = specification_hash(label, caption, numerals)
+            marked = certified
+            break
+        if marked_attempt >= MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS:
+            pending = sorted(
+                {entry["numeral"] for entry in numeral_entries(numerals)} -
+                set(marked_certificates), key=_numeral_order)
+            marked = {
+                "ok": False, "inspected": True,
+                "summary": "The durable endpoint correction limit was exhausted.",
+                "errors": ["endpoint correction limit exhausted"],
+                "incorrect": pending, "missing": [], "unexpected": [],
+                "duplicates": [], "labels": [],
+                "review_count": MARKED_ANCHOR_REVIEW_COUNT,
+                "inspection_rounds": completed_marked_attempts,
+                "prompt_version": MARKED_ANCHOR_PROMPT_VERSION,
+            }
+            break
         pending_numerals = [
             f"{entry['numeral']} = {entry['part']}" if entry["part"] else entry["numeral"]
             for entry in numeral_entries(numerals)
@@ -2233,8 +2396,16 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
         if certified is not None:
             certified["specification_hash"] = specification_hash(label, caption, numerals)
             marked = certified
+            _marked_progress_put(
+                raw_png, label=label, caption=caption, numerals=numerals,
+                anchors=anchors, certificates=marked_certificates,
+                attempts=marked_attempt + 1)
             break
         if marked_attempt + 1 >= MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS:
+            _marked_progress_put(
+                raw_png, label=label, caption=caption, numerals=numerals,
+                anchors=anchors, certificates=marked_certificates,
+                attempts=marked_attempt + 1)
             break
         repair_audit = dict(marked)
         repair_audit["incorrect"] = [
@@ -2242,8 +2413,17 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             if _clean_numeral(numeral) not in marked_certificates]
         anchors, changed = _repair_marked_anchors(raw_png, anchors, repair_audit)
         if not changed:
+            _marked_progress_put(
+                raw_png, label=label, caption=caption, numerals=numerals,
+                anchors=anchors, certificates=marked_certificates,
+                attempts=marked_attempt + 1)
             break
         anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
+        _prune_marked_coordinate_certificates(marked_certificates, anchors)
+        _marked_progress_put(
+            raw_png, label=label, caption=caption, numerals=numerals,
+            anchors=anchors, certificates=marked_certificates,
+            attempts=marked_attempt + 1)
         if not pixel_audit.get("ok"):
             leaders = dict(leaders)
             leaders["ok"] = False
