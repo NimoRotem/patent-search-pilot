@@ -805,9 +805,9 @@ def recover_interrupted_turns() -> int:
 
     A turn's completion is recorded by the process that ran it.  A deploy or an OOM halfway
     through leaves the row saying `running` with a lease nobody holds; without this the project
-    says "drafting…" for ever and the user waits for a process that no longer exists.  The lease
-    is simply expired here so the ordinary claim path picks it up on the next poll - which also
-    means a turn that has already exhausted its attempts fails honestly instead of looping.
+    says "drafting…" for ever and the user waits for a process that no longer exists. The lease
+    is expired here so the ordinary claim path picks it up on the next poll. The interrupted
+    attempt is also returned to the budget because a deployment is not a drafting failure.
 
     A turn whose claiming PROCESS IS STILL ALIVE is left alone.  Expiring its lease would let a
     second worker claim a turn that is genuinely still running, and the cost of that is not a
@@ -825,6 +825,7 @@ def recover_interrupted_turns() -> int:
             if stale:
                 cur.execute(
                     "UPDATE app_draft_turns SET lease_expires_at=now()-interval '1 second',"
+                    "attempts=greatest(0,attempts-1),"
                     "stage='resuming after a restart',updated_at=now() WHERE id = ANY(%s)",
                     (stale,))
                 released = len(stale)
