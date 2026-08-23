@@ -295,6 +295,14 @@ _EXPLICIT_LINE_TARGET_RE = re.compile(
     r"\b(?:boundary|edge|line)\s+(?:forming|defining)\b|"
     r"\b(?:cable|cord|handle|loop|path|pulling element|ring|cross ?bar|outline|curve|"
     r"stroke)\b)", re.IGNORECASE)
+_HORIZONTAL_LINE_TARGET_RE = re.compile(
+    r"\b(?:top|bottom|upper|lower)\s+(?:horizontal\s+)?(?:edge|line|boundary)\b|"
+    r"\bhorizontal\s+(?:edge|line|boundary)\b",
+    re.IGNORECASE)
+_VERTICAL_LINE_TARGET_RE = re.compile(
+    r"\b(?:left|right)\s+(?:vertical\s+)?(?:edge|line|boundary)\b|"
+    r"\bvertical\s+(?:edge|line|boundary)\b",
+    re.IGNORECASE)
 _NEGATED_TARGET_RE = re.compile(
     r"\b(?:not|never|excluding|excluded|exclude|clear\s+of|away\s+from|rather\s+than)\b",
     re.IGNORECASE)
@@ -1192,6 +1200,44 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
     else:
         ink_norm_x = ink_norm_y = np.asarray([], dtype=float)
 
+    axis_run_cache = {}
+
+    def axis_runs(axis: str):
+        cached = axis_run_cache.get(axis)
+        if cached is not None:
+            return cached
+        runs = np.zeros((height, width), dtype=np.int32)
+        major_size = height if axis == "horizontal" else width
+        for major in range(major_size):
+            values = np.flatnonzero(ink[major, :] if axis == "horizontal" else ink[:, major])
+            if not len(values):
+                continue
+            split_at = np.flatnonzero(np.diff(values) > 1) + 1
+            for segment in np.split(values, split_at):
+                length = int(len(segment))
+                if axis == "horizontal":
+                    runs[major, segment] = length
+                else:
+                    runs[segment, major] = length
+        axis_run_cache[axis] = runs
+        return runs
+
+    def nearest_ink_index(distance_sq, evidence: str) -> int:
+        nearest = int(np.argmin(distance_sq))
+        axis = ("horizontal" if _HORIZONTAL_LINE_TARGET_RE.search(evidence) else
+                "vertical" if _VERTICAL_LINE_TARGET_RE.search(evidence) else "")
+        if not axis:
+            return nearest
+        nearby = np.flatnonzero(distance_sq <= float(max_snap) ** 2)
+        if not len(nearby):
+            return nearest
+        run_values = axis_runs(axis)[ink_y[nearby], ink_x[nearby]]
+        longest = int(run_values.max()) if len(run_values) else 0
+        if longest < 12:
+            return nearest
+        strong = nearby[run_values >= max(12, round(longest * 0.5))]
+        return int(strong[np.argmin(distance_sq[strong])]) if len(strong) else nearest
+
     adjusted, allowed_spaces, ungrounded = [], [], []
     occupied: dict[tuple[int, int], str] = {}
     for item in repaired:
@@ -1218,7 +1264,7 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         elif is_exterior or requires_ink:
             if len(ink_x):
                 distance_sq = ((ink_norm_x - x) ** 2) + ((ink_norm_y - y) ** 2)
-                nearest = int(np.argmin(distance_sq))
+                nearest = nearest_ink_index(distance_sq, evidence)
                 distance = sqrt(float(distance_sq[nearest]))
                 if distance <= max_snap:
                     new_x = round(float(ink_norm_x[nearest]))

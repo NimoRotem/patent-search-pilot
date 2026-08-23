@@ -1389,6 +1389,44 @@ def test_pixel_grounding_snaps_a_face_endpoint_when_evidence_requires_a_contact_
     assert 495 <= anchors[0]["y"] <= 505
 
 
+def test_pixel_grounding_prefers_a_long_boundary_over_nearby_hatching():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.line((100, 500, 900, 500), fill="black", width=6)
+    draw.line((280, 450, 320, 450), fill="black", width=4)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["16 = second side"], [{
+            "numeral": "16", "x": 300, "y": 450, "visible": True,
+            "evidence": "the lower horizontal edge line of the slab",
+        }])
+
+    assert audit["ok"] is True
+    assert audit["adjusted"][0]["numeral"] == "16"
+    assert 495 <= anchors[0]["y"] <= 505
+
+
+def test_pixel_grounding_prefers_a_long_vertical_boundary_over_nearby_hatching():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.line((500, 100, 500, 900), fill="black", width=6)
+    draw.line((450, 280, 450, 320), fill="black", width=4)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["18 = housing"], [{
+            "numeral": "18", "x": 450, "y": 300, "visible": True,
+            "evidence": "the right vertical boundary line of the housing",
+        }])
+
+    assert audit["ok"] is True
+    assert audit["adjusted"][0]["numeral"] == "18"
+    assert 495 <= anchors[0]["x"] <= 505
+
+
 def test_pixel_grounding_does_not_treat_an_excluded_ring_as_the_target():
     image = Image.new("RGB", (1000, 1000), "white")
     draw = ImageDraw.Draw(image)
