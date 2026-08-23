@@ -1351,6 +1351,97 @@ def test_default_finalization_budget_allows_drawing_and_text_repair_rounds():
     assert draft_studio.MAX_FINALIZATION_ROUNDS == 6
 
 
+def test_valid_candidate_is_checkpointed_before_the_long_drawing_gate(monkeypatch, tmp_path):
+    repository = Mock()
+    agent = Mock()
+    agent.DRAFT_MODEL = "draft-model"
+    agent.DRAFT_TIMEOUT = 60
+    agent.new_session_id.return_value = "new-session"
+    agent.run.return_value = draft_agent.AgentRun(
+        ok=True, session_id="draft-session", model="draft-model",
+        cost_usd=0.5, duration_ms=1000,
+        result={"action": "revised", "summary": "complete candidate",
+                "reasoning": [], "changes": [], "questions": [],
+                "prior_art_strategy": "", "answer": ""})
+    workspace = Mock()
+    workspace.snapshot.return_value = {
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, qa=draft_qa, workspace=workspace)
+    monkeypatch.setattr(runner, "prepare", lambda _turn: {
+        "workspace": tmp_path,
+        "project": {"user_id": 91, "agent_session_id": "", "latest_version_no": 0,
+                    "disclosure_text": "disclosure"},
+        "references": [{"publication_number": ALLOWED[0]}], "documents": [],
+        "seeded": False, "had_version": False, "resuming_candidate": False,
+        "previous_sections": {},
+    })
+    monkeypatch.setattr(
+        runner, "_ensure_figures",
+        lambda **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt()))
+
+    with pytest.raises(KeyboardInterrupt):
+        runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
+                    "turn_no": 1, "kind": "initial", "attempts": 1})
+
+    checkpoint = repository.save_retry_candidate.call_args.kwargs
+    assert checkpoint["snapshot"]["sections"] == GOOD
+    assert checkpoint["report"]["_gate_resume"]["session_id"] == "draft-session"
+    assert checkpoint["report"]["_gate_resume"]["result"]["summary"] == \
+        "complete candidate"
+
+
+def test_restart_resumes_a_checkpointed_candidate_without_rerunning_the_agent(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_figures, "discard_project_figure_checkpoint",
+                        lambda _turn_id: False)
+    repository = Mock()
+    repository.save_version.return_value = {"version_no": 2}
+    repository.save_qa.return_value = {
+        "id": 5, "verdict": "pass", "checks": [], "findings": [], "counts": {}}
+    repository.complete_turn.return_value = {"status": "complete"}
+    agent = Mock()
+    agent.DRAFT_MODEL = "draft-model"
+    agent.DRAFT_TIMEOUT = 60
+    agent.strings.side_effect = lambda value, **_kwargs: list(value or [])
+    workspace = Mock()
+    workspace.snapshot.return_value = {
+        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, qa=draft_qa, workspace=workspace)
+    gate_resume = {
+        "session_id": "draft-session", "model": "draft-model", "cost_usd": 0.5,
+        "duration_ms": 1000, "num_turns": 1, "steps": [],
+        "result": {"action": "revised", "summary": "complete candidate",
+                   "reasoning": [], "changes": [], "questions": [],
+                   "prior_art_strategy": "", "answer": ""},
+    }
+    monkeypatch.setattr(runner, "prepare", lambda _turn: {
+        "workspace": tmp_path,
+        "project": {"user_id": 91, "agent_session_id": "draft-session",
+                    "latest_version_no": 1, "disclosure_text": "disclosure"},
+        "references": [{"publication_number": ALLOWED[0]}], "documents": [],
+        "seeded": False, "had_version": True, "resuming_candidate": True,
+        "resuming_candidate_turn_id": 3,
+        "prepared_snapshot": {"sections": GOOD, "numerals": NUMERALS,
+                              "figures": FIGURES},
+        "prepared_qa": {"_gate_resume": gate_resume},
+        "previous_sections": {},
+    })
+    monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {"ok": True})
+    monkeypatch.setattr(runner, "evaluate", lambda *args, **kwargs: {
+        "status": "complete", "verdict": "pass", "summary": "ready",
+        "checks": [], "findings": [], "counts": {}, "cost_usd": 0,
+        "duration_ms": 1, "model_name": "review"})
+
+    runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
+                "turn_no": 1, "kind": "initial", "attempts": 2})
+
+    agent.run.assert_not_called()
+    assert repository.save_version.call_count == 1
+    assert repository.complete_turn.call_args.kwargs["session_id"] == "draft-session"
+
+
 def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, tmp_path):
     class Repository:
         def __init__(self):
@@ -1456,7 +1547,9 @@ def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, t
     assert workspace.review_reports[0]["checks"][0]["items"] == [
         "FIG. 2: wrong fastener axis", "FIG. 7: missing process arrow"]
     assert repository.retry_candidates[0][0]["sections"] == GOOD
-    assert repository.retry_candidates[0][1]["verdict"] == "fail"
+    assert "_gate_resume" in repository.retry_candidates[0][1]
+    assert any(report["verdict"] == "fail" for _snapshot, report
+               in repository.retry_candidates)
     assert out["version"]["version_no"] == 1
 
 
@@ -2126,6 +2219,31 @@ def test_recovery_leaves_a_turn_whose_worker_is_still_alive():
     assert service._worker_is_alive("draft-turn-999999-1") is False
     assert service._worker_is_alive("") is False
     assert service._worker_is_alive(None) is False
+
+
+def test_restart_recovery_does_not_spend_a_drafting_attempt(monkeypatch):
+    import db
+    import draft_studio_service as service
+
+    queries = []
+
+    class Cursor:
+        def execute(self, query, params=()):
+            queries.append((query, params))
+
+        def fetchall(self):
+            return [{"id": 33, "claimed_by": "draft-turn-999999-1"}]
+
+    @contextmanager
+    def cursor_factory(**_kwargs):
+        yield Cursor()
+
+    monkeypatch.setattr(db, "cursor", cursor_factory)
+
+    assert service.recover_interrupted_turns() == 1
+    update = next(query for query, _params in queries
+                  if "stage='resuming after a restart'" in query)
+    assert "attempts=greatest(0,attempts-1)" in update
 
 
 @pytest.mark.parametrize("failure", [

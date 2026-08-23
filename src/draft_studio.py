@@ -51,6 +51,7 @@ MAX_TURNS_LISTED = 200
 LEASE_SECONDS = 2400                           # a full drafting turn plus its review
 MAX_FINALIZATION_ROUNDS = max(
     2, min(int(os.environ.get("DRAFT_FINALIZATION_ROUNDS", "6")), 6))
+_GATE_RESUME_KEY = "_gate_resume"
 _SCHEMA_LOCK = threading.Lock()
 _SCHEMA_READY = False
 _MIGRATION = Path(__file__).resolve().parents[1] / "sql" / "006_draft_agent.sql"
@@ -85,6 +86,58 @@ def human_text(value: Any) -> Any:
     if isinstance(value, tuple):
         return tuple(human_text(item) for item in value)
     return value
+
+
+def _gate_resume_report(runs: Sequence[draft_agent.AgentRun],
+                        result: Mapping[str, Any]) -> dict[str, Any]:
+    """Persist enough agent state to resume deterministic gates after a process restart."""
+    final = runs[-1]
+    steps = [dict(step) for run in runs for step in run.steps if isinstance(step, Mapping)]
+    return {
+        "status": "running",
+        "verdict": "pending",
+        "summary": "The filing candidate is complete. Automatic drawing and review checks "
+                   "are continuing.",
+        "checks": [],
+        "findings": [],
+        "counts": {},
+        _GATE_RESUME_KEY: human_text({
+            "session_id": final.session_id,
+            "model": final.model,
+            "cost_usd": sum(run.cost_usd for run in runs),
+            "duration_ms": sum(run.duration_ms for run in runs),
+            "num_turns": sum(run.num_turns for run in runs),
+            "steps": steps[-80:],
+            "result": dict(result),
+        }),
+    }
+
+
+def _gate_resume_run(context: Mapping[str, Any], turn: Mapping[str, Any]
+                     ) -> draft_agent.AgentRun | None:
+    """Restore an agent result only for the same interrupted leased turn."""
+    if (int(turn.get("attempts") or 0) <= 1 or
+            int(context.get("resuming_candidate_turn_id") or 0) != int(turn["id"])):
+        return None
+    prepared = context.get("prepared_qa")
+    marker = prepared.get(_GATE_RESUME_KEY) if isinstance(prepared, Mapping) else None
+    if not isinstance(marker, Mapping) or not isinstance(marker.get("result"), Mapping):
+        return None
+    session_id = str(marker.get("session_id") or "")
+    if not session_id:
+        return None
+    steps = [dict(step) for step in (marker.get("steps") or [])
+             if isinstance(step, Mapping)]
+    return draft_agent.AgentRun(
+        ok=True,
+        result=human_text(dict(marker["result"])),
+        session_id=session_id,
+        model=str(marker.get("model") or ""),
+        cost_usd=float(marker.get("cost_usd") or 0),
+        duration_ms=int(marker.get("duration_ms") or 0),
+        num_turns=int(marker.get("num_turns") or 0),
+        steps=human_text(steps),
+    )
 
 
 # =============================================================================================
@@ -647,6 +700,7 @@ def candidate_preflight_report(report: Mapping[str, Any] | None,
                                error: Exception) -> dict[str, Any]:
     """Add the current gate failure to an older candidate's repair instructions."""
     out = human_text(dict(report or {}))
+    out.pop(_GATE_RESUME_KEY, None)
     name = "Saved candidate passes the current filing preflight"
     superseded = {name, "Drafting run completed"}
     checks = [dict(item) for item in (out.get("checks") or [])
@@ -1344,6 +1398,9 @@ class TurnRunner:
         return {"workspace": workspace, "project": project, "references": loaded["references"],
                 "documents": documents, "seeded": seeded, "had_version": loaded["sections"] is not None,
                 "resuming_candidate": retry_snapshot is not None,
+                "resuming_candidate_turn_id": (int(candidate.get("turn_id") or turn["id"])
+                                                 if retry_snapshot is not None and candidate
+                                                 else None),
                 "prepared_snapshot": {"sections": sections or {}, "numerals": numerals,
                                       "figures": figures},
                 "prepared_qa": latest_qa or {},
@@ -1446,15 +1503,20 @@ class TurnRunner:
         #  that answered a question without producing a version would make the next turn pass an
         #  existing id as if it were new. Continue the thread whenever there is one.
         prior_session = str(project.get("agent_session_id") or "")
-        try:
-            run = self._run_agent(
-                turn_id=turn_id, lease=lease, workspace=workspace, prompt=prompt,
-                session_id=prior_session or self.agent.new_session_id(), resume=bool(prior_session),
-                transcript=transcript, stage="drafting")
-        except StudioError as exc:
-            self._checkpoint_interrupted_agent(
-                turn_id=turn_id, lease=lease, workspace=workspace, allowed=allowed, error=exc)
-            raise
+        run = _gate_resume_run(context, turn)
+        if run is None:
+            try:
+                run = self._run_agent(
+                    turn_id=turn_id, lease=lease, workspace=workspace, prompt=prompt,
+                    session_id=prior_session or self.agent.new_session_id(),
+                    resume=bool(prior_session), transcript=transcript, stage="drafting")
+            except StudioError as exc:
+                self._checkpoint_interrupted_agent(
+                    turn_id=turn_id, lease=lease, workspace=workspace, allowed=allowed, error=exc)
+                raise
+        else:
+            self.repository.heartbeat(
+                turn_id, lease, stage="resuming automatic filing checks")
         runs = [run]
         result = human_text(dict(run.result))
         action = str(result.get("action") or "revised")
@@ -1547,6 +1609,9 @@ class TurnRunner:
                         snapshot = repair_snapshot
                     snapshot = validate_snapshot(raw_snapshot, allowed)
                     sections = snapshot["sections"]
+                    self.repository.save_retry_candidate(
+                        turn_id, lease, snapshot=snapshot,
+                        report=_gate_resume_report(runs, result))
                     self.repository.heartbeat(turn_id, lease, stage="drawing and inspecting figures")
                     generated = self._ensure_figures(
                         turn_id=turn_id, lease=lease, project_id=project_id,
