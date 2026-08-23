@@ -283,6 +283,17 @@ def _worker():
     return w
 
 
+def test_search_workers_cannot_claim_drafting_turns():
+    """Importing webapp for a search must never start its in-process drafting poller."""
+    with open(os.path.join(ROOT, "src", "runner", "worker.py"), encoding="utf-8") as source:
+        worker = source.read()
+    with open(os.path.join(ROOT, "patent-search-worker.conf"), encoding="utf-8") as source:
+        config = source.read()
+
+    assert 'os.environ.setdefault("DRAFT_TURN_WORKER", "0")' in worker
+    assert config.count('DRAFT_TURN_WORKER="0"') == 2
+
+
 def test_the_worker_refuses_to_start_without_an_explicit_flag(monkeypatch):
     """Execution is opt-in. A worker that runs because somebody typed the module name is a worker
     that spends money nobody asked it to."""
