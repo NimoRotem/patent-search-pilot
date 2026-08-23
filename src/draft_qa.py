@@ -86,6 +86,11 @@ _DRAFT_PLACEHOLDER_RE = re.compile(
     r")", re.IGNORECASE)
 MAX_NUMERALS_PER_SHEET = 8
 MAX_FIGURE_BRIEF_CHARS = 2800
+_CONTRADICTORY_ENDPOINT_TARGET_RE = re.compile(
+    r"\bon\b[^.\n]{0,180}\b(?P<surface>face|surface|edge|boundary)\b"
+    r"[^.\n]{0,120}\b(?:above|below|outside)\s+"
+    r"(?:that|the\s+same)\s+(?P=surface)\b",
+    re.IGNORECASE)
 #  The phrase is captured in a LOOKAHEAD so the scan consumes only the article.  Consuming the
 #  noun phrase as well was a real defect: in "a tool comprising a body, a pump", the first match
 #  swallowed "tool comprising a body", so "a body" was never seen as an introduction and every
@@ -510,19 +515,24 @@ def _figure_checks(sections: Mapping[str, str],
             "A complete utility application must include at least one text-grounded figure brief "
             "that the drawing pipeline can render and inspect.", severity="error"))
 
-    overlong = []
+    brief_issues = []
     for index, figure in enumerate(figures, 1):
         caption = str(figure.get("caption") or "")
+        label = str(figure.get("label") or f"FIG. {index}")
         if len(caption) > MAX_FIGURE_BRIEF_CHARS:
-            label = str(figure.get("label") or f"FIG. {index}")
-            overlong.append(
+            brief_issues.append(
                 f"{label}: {len(caption)} characters (maximum {MAX_FIGURE_BRIEF_CHARS})")
-    if overlong:
+        if _CONTRADICTORY_ENDPOINT_TARGET_RE.search(caption):
+            brief_issues.append(
+                f"{label}: contradictory endpoint target places a point on a surface and "
+                "also above, below, or outside that same surface")
+    if brief_issues:
         out.append(_check(
             "Drawing briefs are concise and renderable", "fail",
-            "An over-specified drawing brief makes the image generator invent or miss visual "
-            "constraints. Keep only disclosure-grounded geometry, relationships, and numeral "
-            "anchors needed to identify the listed parts.", severity="error", items=overlong))
+            "An over-specified or self-contradictory drawing brief makes the image generator "
+            "invent or miss visual constraints. Keep only consistent, disclosure-grounded "
+            "geometry, relationships, and numeral anchors needed to identify the listed parts.",
+            severity="error", items=brief_issues))
     else:
         out.append(_check(
             "Drawing briefs are concise and renderable", "pass",

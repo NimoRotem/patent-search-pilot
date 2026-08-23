@@ -202,6 +202,27 @@ def test_an_overlong_drawing_brief_is_refused_before_image_generation():
     assert caught.value.category == "figures_and_numerals"
 
 
+def test_a_self_contradictory_endpoint_target_is_refused_before_drawing():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "The pump is a rectangular upper block. The air-extraction mechanism 20 is "
+            "identified on its flat right-hand face at mid-height, below that face."
+        ),
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "FIG. 1" in check["items"][0]
+    assert "contradictory" in check["items"][0].lower()
+    with pytest.raises(
+            draft_studio.FilingPreflightError,
+            match="Drawing briefs are concise and renderable"):
+        draft_studio.validate_snapshot(
+            {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
+
+
 def test_an_explicit_figure_numeral_declaration_must_match_the_sheet_list():
     figures = [
         {
