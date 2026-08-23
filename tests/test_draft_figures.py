@@ -816,6 +816,15 @@ def test_closed_region_audit_enforces_an_explicit_exact_shape_count():
     assert "exactly 4" in rejected["errors"][0]
 
 
+def test_closed_region_audit_recognizes_contains_count_and_nothing_else():
+    specification = (
+        "The whole sheet contains four outlines and nothing else. "
+        "Each outline is drawn once as one closed line."
+    )
+
+    assert draft_figures._expected_closed_region_count(specification) == 4
+
+
 def test_closed_region_audit_is_not_required_without_an_exact_closed_shape_clause():
     audit = draft_figures.closed_region_audit(blank_png(), "A perspective view of a housing.")
     assert audit["ok"] is True and audit["required"] is False

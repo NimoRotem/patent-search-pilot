@@ -1163,13 +1163,22 @@ def _apply_pixel_grounding(png: bytes, numerals, semantic: dict) -> dict:
 def _expected_closed_region_count(caption: str) -> int | None:
     """Read an explicit exact count only when the brief says the shapes are closed."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    number = r"(\d{1,2}|" + "|".join(_SMALL_NUMBERS[1:]) + r")"
     match = re.search(
-        r"\bexactly\s+(\d{1,2}|" + "|".join(_SMALL_NUMBERS[1:]) +
-        r")\s+(?:separate\s+)?(?:closed\s+)?"
+        r"\bexactly\s+" + number +
+        r"\s+(?:separate\s+)?(?:closed\s+)?"
         r"(shapes?|outlines?|curves?|loops?)\b", text)
+    if not match:
+        match = re.search(
+            r"\bcontains?\s+" + number +
+            r"\s+(?:separate\s+)?(?:closed\s+)?"
+            r"(shapes?|outlines?|curves?|loops?)\s+and\s+nothing\s+else\b", text)
     closed_shapes = re.search(
         r"\b(?:single\s+|continuous\s+|separate\s+)?closed\s+"
         r"(?:shapes?|outlines?|curves?|loops?)\b", text)
+    closed_shapes = closed_shapes or re.search(
+        r"\beach(?:\s+(?:shape|outline|curve|loop))?\s+is\s+drawn\b[^.]{0,80}"
+        r"\bclosed\s+(?:line|curve)\b", text)
     if not match or not closed_shapes:
         return None
     count_text = match.group(1)
