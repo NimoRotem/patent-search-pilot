@@ -1331,7 +1331,11 @@ def test_pixel_grounding_keeps_a_planar_surface_endpoint_inside_its_region(part)
     assert (anchors[0]["x"], anchors[0]["y"]) == (150, 150)
 
 
-def test_pixel_grounding_snaps_a_face_endpoint_when_evidence_requires_a_contact_line():
+@pytest.mark.parametrize("evidence", [
+    "a point on the contact line where the leg meets the base",
+    "the top horizontal line of the uppermost hatched layer",
+])
+def test_pixel_grounding_snaps_a_face_endpoint_when_evidence_requires_a_contact_line(evidence):
     image = Image.new("RGB", (1000, 1000), "white")
     draw = ImageDraw.Draw(image)
     draw.rectangle((100, 100, 900, 900), outline="black", width=8)
@@ -1342,7 +1346,7 @@ def test_pixel_grounding_snaps_a_face_endpoint_when_evidence_requires_a_contact_
     anchors, audit = draft_figures._ground_anchors_to_pixels(
         raw.getvalue(), ["26 = bearing face"], [{
             "numeral": "26", "x": 300, "y": 540, "visible": True,
-            "evidence": "a point on the contact line where the leg meets the base",
+            "evidence": evidence,
         }])
 
     assert audit["ok"] is True and audit["adjusted"][0]["numeral"] == "26"
@@ -1662,14 +1666,18 @@ def test_terminal_dot_has_a_white_halo_when_it_lands_on_black_geometry():
     assert output.getpixel((target_x, target_y + 8))[0] > 240
 
 
-def test_terminal_dot_does_not_erase_an_explicit_boundary_target():
+@pytest.mark.parametrize("evidence", [
+    "a point on the contact line where the leg meets the base",
+    "the top horizontal line of the uppermost hatched layer",
+])
+def test_terminal_dot_does_not_erase_an_explicit_boundary_target(evidence):
     image = Image.new("RGB", (640, 420), "white")
     ImageDraw.Draw(image).line((0, 210, 639, 210), fill="black", width=6)
     raw = io.BytesIO()
     image.save(raw, format="PNG")
     anchors = [{
         "numeral": "26", "x": 500, "y": 500, "visible": True,
-        "evidence": "a point on the contact line where the leg meets the base",
+        "evidence": evidence,
     }]
     layout = draft_figures._annotation_layout(raw.getvalue(), anchors, 1.0)
 
