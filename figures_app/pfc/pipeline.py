@@ -18,6 +18,7 @@ import json
 import shutil
 import traceback
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -57,6 +58,11 @@ STAGES = (
 _STAGE_PCT = {key: int(5 + 92 * index / max(1, len(STAGES) - 1))
               for index, (key, _) in enumerate(STAGES)}
 _STAGE_LABEL = dict(STAGES)
+
+# Figures compiled at once. Each holds one rendered sheet and makes at most a few model
+# calls, so the bound is about being a good neighbour on a host that also serves the
+# prior-art search, not about memory.
+FIGURE_WORKERS = 4
 
 Progress = Optional[Callable[[str, str, int], None]]
 
@@ -209,81 +215,50 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
     total_sheets = max(1, len(specs))
 
     # -- LAYOUT / RENDER / VALIDATE / VISION / CORRECT ----------------------
+    # Figures are independent once the graph exists: each one has its own specification, its own
+    # sheet and its own verification. Compiling them one at a time made a five-figure patent wait
+    # out five sequential readings by a thinking vision model, which is most of the wall clock
+    # for none of the work. Order is restored afterwards, so the sheet numbering and the report
+    # are identical whichever finishes first.
     stage("LAYOUT")
-    for sheet_number, (figure_id, spec) in enumerate(sorted(
-            specs.items(), key=lambda item: sort_key(item[1].figure_number)), 1):
+    ordered = sorted(specs.items(), key=lambda item: sort_key(item[1].figure_number))
+    done = [0]
+
+    def compile_one(numbered) -> Optional[FigureBundle]:
+        sheet_number, (figure_id, spec) = numbered
         record = next(row for row in results if row.figure_id == figure_id)
         try:
-            scene = build_scene(spec, graph, profile, sheet_number=sheet_number,
-                                sheet_total=total_sheets)
+            bundle = _compile_figure(spec, graph, profile, figure_plan, config, record,
+                                     verifier, call_log, paths,
+                                     sheet_number=sheet_number, sheet_total=total_sheets)
         except UnsupportedFigure as exc:
             record.status = "BLOCKED"
             record.reason = str(exc)
-            continue
+            return None
         except Exception:
             traceback.print_exc()
             record.status = "BLOCKED"
-            record.reason = "this figure could not be laid out"
-            continue
+            record.reason = "this figure could not be compiled"
+            return None
+        finally:
+            done[0] += 1
+            if progress:
+                share = done[0] / max(1, len(ordered))
+                stage_key = "VISION_VALIDATE" if verifier is not None \
+                    else "DETERMINISTIC_VALIDATE"
+                try:
+                    progress(stage_key,
+                             f"Checking figure {done[0]} of {len(ordered)}",
+                             int(_STAGE_PCT["RENDER"] +
+                                 (_STAGE_PCT["FINAL_VALIDATE"] - _STAGE_PCT["RENDER"]) * share))
+                except Exception:
+                    pass
+        return bundle
 
-        stage("RENDER")
-        svg = render_svg(scene, profile)
-        record.status = "RENDERED"
-        bundle = FigureBundle(spec=spec, scene=scene, svg=svg)
-
-        stage("DETERMINISTIC_VALIDATE")
-        context = ValidationContext(graph=graph, profile=profile, plan=figure_plan,
-                                    figure=bundle, config=config.model_dump())
-        issues = validate_figure(context)
-
-        stage("CORRECT")
-        attempt = 0
-        while blocking(issues) and attempt < correction.MAX_ATTEMPTS:
-            outcome = correction.correct(spec, graph, bundle.scene, profile, issues, attempt)
-            attempt += 1
-            if not outcome.changed:
-                break
-            bundle.scene = outcome.scene
-            bundle.svg = render_svg(bundle.scene, profile)
-            record.corrections_applied.extend(outcome.applied)
-            context.figure = bundle
-            issues = validate_figure(context)
-        record.correction_attempts = attempt
-
-        stage("VISION_VALIDATE")
-        observed = None
-        vision_issues = []
-        if verifier is not None and not blocking(issues):
-            observed, vision_issues = _verify(bundle, profile, verifier, call_log,
-                                              config, paths, record)
-            issues = issues + vision_issues
-            attempt_v = 0
-            while blocking(vision_issues) and attempt_v < correction.MAX_ATTEMPTS - attempt:
-                outcome = correction.correct(spec, graph, bundle.scene, profile,
-                                             vision_issues, attempt + attempt_v)
-                attempt_v += 1
-                if not outcome.changed:
-                    break
-                bundle.scene = outcome.scene
-                bundle.svg = render_svg(bundle.scene, profile)
-                record.corrections_applied.extend(outcome.applied)
-                context.figure = bundle
-                issues = validate_figure(context)
-                if blocking(issues):
-                    break
-                observed, vision_issues = _verify(bundle, profile, verifier, call_log,
-                                                  config, paths, record)
-                issues = issues + vision_issues
-            record.correction_attempts = attempt + attempt_v
-
-        record.issues = issues
-        record.checks = _checks(issues, verified=verifier is not None and observed is not None)
-        record.status = _status(issues, record)
-        if record.status == "BLOCKED":
-            record.reason = correction.summarise(issues)
-        bundles.append(bundle)
-        _write_json(paths.debug / f"{_stem(spec.figure_number)}_scene.json",
-                    bundle.scene.model_dump())
+    if ordered:
+        with ThreadPoolExecutor(max_workers=min(FIGURE_WORKERS, len(ordered))) as pool:
+            bundles = [bundle for bundle in pool.map(compile_one, enumerate(ordered, 1))
+                       if bundle is not None]
 
     # -- FINAL / EXPORT -----------------------------------------------------
     stage("FINAL_VALIDATE")
@@ -367,13 +342,92 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
                       manifest=manifest, notes=notes, usage=call_log.totals)
 
 
+def _compile_figure(spec, graph, profile, figure_plan, config: JobConfig,
+                    record: FigureResult, verifier, call_log, paths: JobPaths, *,
+                    sheet_number: int, sheet_total: int) -> FigureBundle:
+    """One figure, from its specification to a checked sheet.
+
+    Everything after the graph happens here, so the whole of a figure's fate — laid out,
+    rendered, measured, repaired, read back, measured again — is one function that can be run
+    for one figure without reference to any other.
+    """
+    scene = build_scene(spec, graph, profile, sheet_number=sheet_number,
+                        sheet_total=sheet_total)
+    bundle = FigureBundle(spec=spec, scene=scene, svg=render_svg(scene, profile))
+    record.status = "RENDERED"
+
+    context = ValidationContext(graph=graph, profile=profile, plan=figure_plan,
+                                figure=bundle, config=config.model_dump())
+    issues = validate_figure(context)
+
+    attempt = 0
+    while blocking(issues) and attempt < correction.MAX_ATTEMPTS:
+        outcome = correction.correct(spec, graph, bundle.scene, profile, issues, attempt)
+        attempt += 1
+        if not outcome.changed:
+            break
+        bundle.scene = outcome.scene
+        bundle.svg = render_svg(bundle.scene, profile)
+        record.corrections_applied.extend(outcome.applied)
+        context.figure = bundle
+        issues = validate_figure(context)
+
+    observed = None
+    if verifier is not None and not blocking(issues):
+        observed, vision_issues = _verify(bundle, profile, verifier, call_log, config,
+                                          paths, record)
+        issues = issues + vision_issues
+        extra = 0
+        while blocking(vision_issues) and attempt + extra < correction.MAX_ATTEMPTS:
+            outcome = correction.correct(spec, graph, bundle.scene, profile, vision_issues,
+                                         attempt + extra)
+            extra += 1
+            if not outcome.changed:
+                break
+            bundle.scene = outcome.scene
+            bundle.svg = render_svg(bundle.scene, profile)
+            record.corrections_applied.extend(outcome.applied)
+            context.figure = bundle
+            issues = validate_figure(context)
+            if blocking(issues):
+                break
+            observed, vision_issues = _verify(bundle, profile, verifier, call_log, config,
+                                              paths, record)
+            issues = issues + vision_issues
+        attempt += extra
+
+    record.correction_attempts = attempt
+    record.issues = issues
+    record.checks = _checks(issues, verified=observed is not None)
+    record.status = _status(issues)
+    if record.status == "BLOCKED":
+        record.reason = correction.summarise(issues)
+    _write_json(paths.debug / f"{_stem(spec.figure_number)}_scene.json",
+                bundle.scene.model_dump())
+    return bundle
+
+
 def _stem(figure_number: str) -> str:
     return "fig_" + "".join(ch for ch in str(figure_number).lower() if ch.isalnum())
 
 
 def _verify(bundle: FigureBundle, profile, verifier, call_log, config: JobConfig,
             paths: JobPaths, record: FigureResult):
-    """Rasterise, have it read back, compare. Returns the observation and the issues."""
+    """Rasterise, have it read back, compare. Never raises.
+
+    A verifier that cannot answer must leave the figure exactly as the deterministic checks left
+    it, and the report then says the independent reading was not run. An exception here failing
+    the whole job would make the compiler less useful than one that had no verifier at all.
+    """
+    try:
+        return _verify_inner(bundle, profile, verifier, call_log, config, paths, record)
+    except Exception:
+        traceback.print_exc()
+        return None, []
+
+
+def _verify_inner(bundle: FigureBundle, profile, verifier, call_log, config: JobConfig,
+                  paths: JobPaths, record: FigureResult):
     from .providers import second_verifier
 
     try:
@@ -436,7 +490,7 @@ def _checks(issues, *, verified: bool) -> FigureChecks:
         vision=(verdict("vision") if verified else "SKIPPED"))
 
 
-def _status(issues, record: FigureResult) -> str:
+def _status(issues) -> str:
     hard = blocking(issues)
     if not hard:
         return "VALIDATED"

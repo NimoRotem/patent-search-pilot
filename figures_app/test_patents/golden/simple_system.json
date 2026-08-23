@@ -1,0 +1,19 @@
+{
+  "id": "simple_system",
+  "family": "software",
+  "note": "The specification's Test 1. Two components, one directed relationship, one boundary.",
+  "text": "AN EXAMPLE COMPUTING SYSTEM\n\nBRIEF DESCRIPTION OF THE DRAWINGS\nFIG. 1 illustrates a block diagram of the system 100.\n\nDETAILED DESCRIPTION\nThe system 100 includes a sensor 120 and a controller 130. The sensor 120 communicates measurement data to the controller 130.\n\nAs shown in FIG. 1, the system 100 contains the sensor 120 and the controller 130.\n\nCLAIMS\n1. A system comprising a sensor and a controller.\n",
+  "expected": {
+    "reference_registry": {"100": "system", "120": "sensor", "130": "controller"},
+    "figures": [{"figure_number": "1", "figure_type": "block_diagram",
+                 "required_numerals": ["100", "120", "130"],
+                 "prohibited_numerals": []}],
+    "relations": [
+      {"subject": "120", "predicate": "communicates_with", "object": "130",
+       "directed": false, "optional": true},
+      {"subject": "100", "predicate": "contains", "object": "120", "directed": false,
+       "optional": true}
+    ],
+    "must_not_contain": ["battery", "power supply", "network"]
+  }
+}

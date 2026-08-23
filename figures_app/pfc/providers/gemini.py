@@ -15,11 +15,13 @@ from __future__ import annotations
 import json
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, TypeVar
 
 from pydantic import BaseModel
 
-from .base import CallLog, ModelUnavailable, input_hash, with_retries
+from .base import (CallLog, ModelUnavailable, StructuredOutputError, input_hash,
+                   with_retries)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -31,6 +33,32 @@ DEFAULT_VERIFIER_B_MODEL = os.environ.get("PFC_VERIFIER_B_MODEL", "gemini-2.5-fl
 
 _local = threading.local()
 
+# Models that refuse ``thinking_budget=0``. Vertex answers that with a 400, and which models
+# are in the set changes with each release, so it is learned at runtime rather than hard-coded:
+# the first rejection records the model and every later call for it simply lets it think. That
+# is also the behaviour you want from a verifier — a careful reading of a drawing is worth more
+# than a fast one — so nothing is lost by giving in.
+_MUST_THINK: set[str] = set()
+_MUST_THINK_LOCK = threading.Lock()
+
+
+def _thinking(model: str):
+    from google.genai.types import ThinkingConfig
+
+    with _MUST_THINK_LOCK:
+        if model in _MUST_THINK:
+            return None
+    return ThinkingConfig(thinking_budget=0)
+
+
+def _note_thinking_rejected(model: str, error: Exception) -> bool:
+    """Record a model that requires thinking. Returns True when that was the failure."""
+    if "thinking_budget" not in str(error):
+        return False
+    with _MUST_THINK_LOCK:
+        _MUST_THINK.add(model)
+    return True
+
 
 def _client():
     if not hasattr(_local, "client"):
@@ -41,6 +69,21 @@ def _client():
         _local.client = genai.Client(vertexai=True, project=DEFAULT_PROJECT,
                                      location=DEFAULT_LOCATION)
     return _local.client
+
+
+def _check_complete(response) -> None:
+    """Raise when the reply was cut off rather than finished.
+
+    A truncated JSON object fails to parse, and the generic "return valid JSON" retry then asks
+    for the same too-long answer again and fails the same way. Saying what actually happened
+    lets the retry return a shorter list, which is a request a model can satisfy.
+    """
+    candidates = getattr(response, "candidates", None) or []
+    reason = str(getattr(candidates[0], "finish_reason", "") if candidates else "")
+    if "MAX_TOKENS" in reason.upper():
+        raise StructuredOutputError(
+            "the reply was cut off at the output limit, so its JSON is incomplete. Return "
+            "fewer items, keeping the best-supported ones")
 
 
 def _usage(response) -> dict[str, int]:
@@ -90,11 +133,16 @@ class GeminiTextReasoner:
             config = GenerateContentConfig(
                 system_instruction=system, temperature=self.temperature,
                 max_output_tokens=max_tokens, response_mime_type="application/json",
-                thinking_config=ThinkingConfig(thinking_budget=0))
+                thinking_config=_thinking(self.model))
             if response_schema is not None:
                 config.response_schema = response_schema
-            response = _client().models.generate_content(
-                model=self.model, contents=prompt, config=config)
+            try:
+                response = _client().models.generate_content(
+                    model=self.model, contents=prompt, config=config)
+            except Exception as exc:
+                _note_thinking_rejected(self.model, exc)
+                raise
+            _check_complete(response)
             return (response.text or ""), _usage(response)
 
         return with_retries(call, schema, task=task, provider=self.name, model=self.model,
@@ -121,13 +169,18 @@ class GeminiVisionVerifier:
             config = GenerateContentConfig(
                 system_instruction=system, temperature=0.0, max_output_tokens=max_tokens,
                 response_mime_type="application/json",
-                thinking_config=ThinkingConfig(thinking_budget=0))
+                thinking_config=_thinking(self.model))
             if response_schema is not None:
                 config.response_schema = response_schema
-            response = _client().models.generate_content(
-                model=self.model,
-                contents=[Part.from_bytes(data=image_png, mime_type="image/png"), text],
-                config=config)
+            try:
+                response = _client().models.generate_content(
+                    model=self.model,
+                    contents=[Part.from_bytes(data=image_png, mime_type="image/png"), text],
+                    config=config)
+            except Exception as exc:
+                _note_thinking_rejected(self.model, exc)
+                raise
+            _check_complete(response)
             return (response.text or ""), _usage(response)
 
         return with_retries(call, schema, task="vision_verify", provider=self.name,
@@ -135,21 +188,29 @@ class GeminiVisionVerifier:
                             input_key=key)
 
 
-def read_figure_labels(images: list[bytes], model: str = DEFAULT_VISION_MODEL) -> list[list[str]]:
+CAPTION_MODEL = os.environ.get("PFC_CAPTION_MODEL", DEFAULT_TEXT_MODEL)
+CAPTION_WORKERS = 6
+
+
+def read_figure_labels(images: list[bytes],
+                       model: str = CAPTION_MODEL) -> list[list[str]]:
     """Read the ``FIG. n`` captions printed on the ORIGINAL patent sheets.
 
     This is the one place a model looks at the applicant's own drawings, and it does one thing:
     read the caption that is printed on the sheet, so a generated FIG. 3 can be shown beside the
     filed FIG. 3 rather than beside whichever sheet happens to be third in the file. Nothing
     read here reaches the semantic graph or any generated figure.
-    """
-    from google.genai.types import GenerateContentConfig, Part, ThinkingConfig
 
-    out: list[list[str]] = []
-    for blob in images:
+    Two decisions worth stating. It runs on the cheap fast model, not the verifier's, because
+    transcribing four printed characters is not the task the careful reader is for. And the
+    sheets are read concurrently: a patent with sixteen drawing sheets, read one at a time by a
+    thinking model, added ten minutes to a job whose real work took two.
+    """
+    from google.genai.types import GenerateContentConfig, Part
+
+    def read(blob: bytes) -> list[str]:
         if not blob:
-            out.append([])
-            continue
+            return []
         try:
             response = _client().models.generate_content(
                 model=model,
@@ -161,10 +222,13 @@ def read_figure_labels(images: list[bytes], model: str = DEFAULT_VISION_MODEL) -
                 config=GenerateContentConfig(
                     temperature=0.0, max_output_tokens=400,
                     response_mime_type="application/json",
-                    thinking_config=ThinkingConfig(thinking_budget=0)))
+                    thinking_config=_thinking(model)))
             payload = json.loads(response.text or "{}")
-            labels = [str(x)[:16] for x in (payload.get("labels") or [])][:12]
+            return [str(x)[:16] for x in (payload.get("labels") or [])][:12]
         except Exception:
-            labels = []
-        out.append(labels)
-    return out
+            return []
+
+    if not images:
+        return []
+    with ThreadPoolExecutor(max_workers=min(CAPTION_WORKERS, len(images))) as pool:
+        return list(pool.map(read, images))

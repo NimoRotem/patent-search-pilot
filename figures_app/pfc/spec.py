@@ -420,7 +420,7 @@ def _method_material(document: SourceDocument, item: FigurePlanItem) -> str:
     for paragraph in document.paragraphs:
         if paragraph.section_id != "detailed_description":
             continue
-        if re.search(rf"\bFIGS?\.?\s*{re.escape(label)}\b", paragraph.text, re.I):
+        if re.search(rf"\bFIGS?\s*\.?\s*{re.escape(label)}\b", paragraph.text, re.I):
             body.append(paragraph)
     if not body:
         body = [p for p in document.paragraphs if p.section_id == "detailed_description"

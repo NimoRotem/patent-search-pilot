@@ -173,7 +173,9 @@ def with_retries(call, schema: type[T], *, task: str, provider: str, model: str,
             continue
         except StructuredOutputError as exc:
             last_error = str(exc)[:800]
-            feedback = ("Your previous reply was not a single JSON object. Return one JSON "
+            # The message matters here: "you ran out of room" and "you returned prose" need
+            # different corrections, and a generic scolding gets the same failure again.
+            feedback = (f"Your previous reply could not be used: {last_error}. Return one JSON "
                         "object and nothing else.")
             continue
         except Exception as exc:  # transport, quota, timeout

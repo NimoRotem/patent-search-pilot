@@ -38,8 +38,39 @@ MAX_CONCURRENT = int(os.environ.get("PFC_MAX_CONCURRENT", "2"))
 RETENTION_DAYS = float(os.environ.get("PFC_RETENTION_DAYS", "30"))
 MAX_UPLOAD_BYTES = 40 * 1024 * 1024
 
+class PrefixMiddleware:
+    """Serve correctly from behind ``location ^~ /figures/``.
+
+    nginx strips the prefix before proxying and passes it in ``X-Forwarded-Prefix``. Without
+    this the app is reachable but every link it generates points at the root, so the results
+    page loads and none of its artifacts do. Setting ``SCRIPT_NAME`` is what makes ``url_for``
+    produce ``/figures/...``.
+
+    Only a prefix matching the expected shape is honoured, so a forged header cannot make the
+    app emit links to somewhere else.
+    """
+
+    _SAFE = re.compile(r"^/[A-Za-z0-9_-]{1,40}$")
+
+    def __init__(self, application):
+        self.application = application
+
+    def __call__(self, environ, start_response):
+        prefix = (environ.get("HTTP_X_FORWARDED_PREFIX") or "").rstrip("/")
+        if prefix and self._SAFE.match(prefix):
+            environ["SCRIPT_NAME"] = prefix
+            path = environ.get("PATH_INFO", "")
+            if path.startswith(prefix):
+                environ["PATH_INFO"] = path[len(prefix):] or "/"
+        forwarded_proto = environ.get("HTTP_X_FORWARDED_PROTO")
+        if forwarded_proto in {"http", "https"}:
+            environ["wsgi.url_scheme"] = forwarded_proto
+        return self.application(environ, start_response)
+
+
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES + 1024 * 1024
+app.wsgi_app = PrefixMiddleware(app.wsgi_app)
 authgate.install(app)
 
 _slots = threading.BoundedSemaphore(MAX_CONCURRENT)

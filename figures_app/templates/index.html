@@ -125,6 +125,11 @@
 
 {% block script %}
 <script>
+// Built with url_for so the app works both at the root and behind /figures. A hard-coded
+// "/v1/jobs" would post to the wrong place the moment nginx puts it under a prefix.
+const CREATE_URL = {{ url_for('create_job')|tojson }};
+const STATUS_URL = {{ url_for('job_status', job_id='JOB')|tojson }};
+
 const form = document.getElementById('start');
 const go = document.getElementById('go');
 const err = document.getElementById('err');
@@ -140,7 +145,7 @@ form.addEventListener('submit', async (event) => {
   const body = new FormData(form);
   let started;
   try {
-    const response = await fetch('/v1/jobs', {method: 'POST', body});
+    const response = await fetch(CREATE_URL, {method: 'POST', body});
     started = await response.json();
     if (!response.ok) throw new Error(started.error || 'could not start');
   } catch (problem) {
@@ -155,7 +160,7 @@ form.addEventListener('submit', async (event) => {
 
 async function poll(jobId, target) {
   try {
-    const response = await fetch('/v1/jobs/' + jobId);
+    const response = await fetch(STATUS_URL.replace('JOB', jobId));
     const state = await response.json();
     pbar.style.width = Math.max(2, state.pct || 2) + '%';
     pmsg.textContent = state.message || state.stage || '';

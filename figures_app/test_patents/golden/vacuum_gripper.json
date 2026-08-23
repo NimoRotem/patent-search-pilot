@@ -1,0 +1,26 @@
+{
+  "id": "vacuum_gripper",
+  "family": "mechanical",
+  "note": "A physical arrangement with disclosed containment, a disclosed shape, and a method figure.",
+  "text": "A HANDHELD VACUUM LIFTING DEVICE\n\nBRIEF DESCRIPTION OF THE DRAWINGS\nFIG. 1 is a perspective view of the housing 110 and the suction pad 120.\nFIG. 2 is a schematic block diagram of the control arrangement.\nFIG. 3 is a flowchart of a method of lifting a workpiece.\n\nDETAILED DESCRIPTION\nThe device includes a housing 110, a suction pad 120, a vacuum pump 130, a pressure sensor 140 and a controller 150. The housing 110 is rectangular.\n\nAs shown in FIG. 1, the suction pad 120 is attached to the housing 110 and seals against a workpiece. The suction pad 120 is circular.\n\nThe vacuum pump 130 is positioned within the housing 110 and is fluidly connected to the suction pad 120. The pressure sensor 140 is positioned within the housing 110 and detects the pressure in the suction pad 120.\n\nAs shown in FIG. 2, the pressure sensor 140 transmits a pressure signal to the controller 150. The controller 150 controls the vacuum pump 130.\n\nReferring to FIG. 3, the method includes placing the suction pad 200 against the workpiece, evacuating the suction pad 202, measuring the pressure 204, and lifting the workpiece 206.\n\nCLAIMS\n1. A lifting device comprising a housing, a suction pad attached to the housing, a vacuum pump fluidly connected to the suction pad, a pressure sensor, and a controller.\n",
+  "expected": {
+    "reference_registry": {"110": "housing", "120": "suction pad", "130": "vacuum pump",
+                           "140": "pressure sensor", "150": "controller"},
+    "figures": [
+      {"figure_number": "1", "figure_type": "mechanical_schematic",
+       "required_numerals": ["110", "120"], "prohibited_numerals": []},
+      {"figure_number": "2", "figure_type": "block_diagram",
+       "required_numerals": ["140", "150"], "prohibited_numerals": []},
+      {"figure_number": "3", "figure_type": "flowchart",
+       "required_numerals": [], "prohibited_numerals": []}
+    ],
+    "relations": [
+      {"subject": "120", "predicate": "attached_to", "object": "110", "directed": false},
+      {"subject": "130", "predicate": "inside", "object": "110", "directed": false},
+      {"subject": "140", "predicate": "transmits_to", "object": "150", "directed": true},
+      {"subject": "150", "predicate": "controls", "object": "130", "directed": true}
+    ],
+    "shapes": {"110": "rectangular", "120": "circular"},
+    "must_not_contain": ["battery", "motor", "handle", "trigger"]
+  }
+}

@@ -20,7 +20,10 @@ page:
     bottom: 10.0
 
 typography:
-  allowed_fonts: ["Helvetica", "Arial", "DejaVu Sans"]
+  # Liberation Sans is metric-compatible with Helvetica and Arial and is what
+  # fontconfig resolves both to on the deployment host, so the sheet is drawn in the
+  # face the profile names rather than in whatever the renderer fell back to.
+  allowed_fonts: ["Helvetica", "Arial", "Liberation Sans", "DejaVu Sans"]
   font_family: "Helvetica, Arial, sans-serif"
   min_reference_height_mm: 3.2
   reference_height_mm: 3.6

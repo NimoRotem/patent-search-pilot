@@ -51,7 +51,7 @@ def observe(image_png: bytes, spec: FigureSpec, verifier: VisionVerifier,
     try:
         return verifier.inspect(
             image_png, prompts.load("visual_verify_v1"), instruction, ObservedFigure,
-            prompt_version=prompts.version("visual_verify_v1"), max_tokens=4000)
+            prompt_version=prompts.version("visual_verify_v1"), max_tokens=12000)
     except StructuredOutputError:
         return None
 

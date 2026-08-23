@@ -20,6 +20,7 @@ explained rather than merely observed.
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Iterable, Optional
 
 from pydantic import BaseModel, Field
@@ -35,6 +36,9 @@ from .schemas import (Conflict, Entity, EntityType, Evidence, Paragraph, PatentG
 # 200,000-character grant costs a bounded, predictable number of calls.
 WINDOW_CHARS = 12_000
 MAX_WINDOWS = 24
+# Concurrent extraction windows. Bounded because this host also serves the prior-art search,
+# and because Vertex throttles a burst harder than it throttles a stream.
+EXTRACT_WORKERS = 6
 MIN_QUOTE_CHARS = 12
 
 _PREDICATES = set(Predicate.__args__)  # type: ignore[attr-defined]
@@ -222,20 +226,34 @@ def extract_graph(document: SourceDocument, registry: dict[str, RegistryEntry],
     shape_claims: list[_ShapeReply] = []
     type_claims: list[_TypeReply] = []
 
-    for window in _windows(paragraphs):
+    def read(window: list[Paragraph]) -> Optional[tuple[_GraphReply, set[str]]]:
         block = _registry_block(entities, window)
         if not block:
-            continue
+            return None
         body = "\n\n".join(f"[{p.id}] {p.text}" for p in window)
         context = (f"REFERENCE REGISTRY (entity_id, numeral, name)\n{block}\n\n"
                    f"PARAGRAPHS\n{body}")
         try:
             reply = reasoner.generate_structured(
                 task="patent_graph", schema=_GraphReply, system=system, context=context,
-                prompt_version=prompt_version, max_tokens=8000)
+                prompt_version=prompt_version, max_tokens=16000)
         except StructuredOutputError:
+            return None
+        return reply, {p.id for p in window}
+
+    # The windows are independent by construction: each one is shown only its own paragraphs and
+    # may only cite them. Reading a 64-page grant one window at a time measured at twenty
+    # seconds a window, which is ten minutes of a user watching a progress bar for work that has
+    # no ordering constraint at all. The results are collected in window order regardless, so the
+    # graph is the same whichever finishes first.
+    windows = _windows(paragraphs)
+    with ThreadPoolExecutor(max_workers=min(EXTRACT_WORKERS, max(1, len(windows)))) as pool:
+        replies = list(pool.map(read, windows))
+
+    for outcome in replies:
+        if outcome is None:
             continue
-        window_ids = {p.id for p in window}
+        reply, window_ids = outcome
         for relation in reply.relations:
             paragraph = paragraph_index.get(relation.paragraph_id)
             if paragraph is None or paragraph.id not in window_ids:

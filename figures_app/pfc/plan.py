@@ -24,10 +24,18 @@ from .schemas import (Evidence, FigurePlan, FigurePlanItem, FigureType, Paragrap
                       SourceDocument, ViewType)
 
 # "FIG. 1", "FIGS. 1A-1E", "FIGURES 3 and 4", "Fig 2b".
-_FIG_TOKEN = re.compile(r"\bFIGS?\.?|\bFIGURES?\b", re.I)
+#
+# The whitespace before the full stop is not cosmetic. A USPTO text layer reads "FIGS . 1A - 11",
+# spacing the printed page does not have, and a pattern that requires "FIGS." to be contiguous
+# finds no figures at all in a real granted patent. Measured on US-11338449-B2: every one of its
+# figures was invisible until this allowed the space.
+_FIG_TOKEN = re.compile(r"\bFIGS?\s*\.?|\bFIGURES?\b", re.I)
+# The letter suffix must touch its digits. Allowing a space there looks harmless and is not:
+# "FIG. 1 illustrates" then reads as figure "1 i", and "FIGURES 3 and 4" loses figure 4 to the
+# "a" of "and". A drafter writes "1A", never "1 A".
 _FIG_REF = re.compile(
-    r"\bFIG(?:URE)?S?\.?\s*(?P<body>\d{1,3}[A-Za-z]?(?:\s*(?:[-–—]|to|through|and|,|&)\s*"
-    r"\d{0,3}[A-Za-z]?)*)", re.I)
+    r"\bFIG(?:URE)?S?\s*\.?\s*(?P<body>\d{1,3}[A-Za-z]?(?:\s*(?:[-–—]|to|through|and|,|&)"
+    r"\s*\d{1,3}[A-Za-z]?)*)", re.I)
 _ONE_FIG = re.compile(r"(\d{1,3})([A-Za-z]?)")
 _SENTENCE = re.compile(r"(?<=[.;])\s+(?=[A-Z(\[])")
 
@@ -200,7 +208,7 @@ def classify_with_model(items: list[FigurePlanItem], reasoner: Optional[TextReas
         reply = reasoner.generate_structured(
             task="figure_plan", schema=_PlanReply, system=prompts.load("figure_plan_v1"),
             context=f"The patent describes these figures.\n\n{captions}",
-            prompt_version=prompts.version("figure_plan_v1"), max_tokens=3000)
+            prompt_version=prompts.version("figure_plan_v1"), max_tokens=8000)
     except StructuredOutputError:
         plan.notes.append("figure classification fell back to the caption rules")
         return
