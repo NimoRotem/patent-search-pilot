@@ -1216,7 +1216,12 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                     #  phrases have no ledger asking, and the round was measured at half the local
                     #  channel's 958 s. Quick is one round whatever the kind.
                     cfg=AgentConfig(mode=mode,
-                                    max_rounds=(1 if depth == "quick" else profile.rounds),
+                                    #  Quick is the FIND phase: seed + query set + element
+                                    #  passes, no agentic round and no cross-encoder head ,
+                                    #  both re-added by the phases that render their output.
+                                    max_rounds=(0 if depth == "quick" else profile.rounds),
+                                    final_rerank=(depth != "quick"),
+                                    find_mode=(depth == "quick"),
                                     elements_per_round=3, ground=True,
                                     search_config=("claim_agentic" if search_focus == "claims"
                                                    else "agentic"),
@@ -1259,6 +1264,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             # Log the wall-clock windows so the parallelism is verifiable in the service log.
             t0 = min((v["start"] for v in timing.values()), default=time.time())
             for nm, v in sorted(timing.items(), key=lambda kv: kv[1]["start"]):
+                print(f"[gen {slug}] fanout done at {time.time()-t0:.1f}s", flush=True)
                 print(f"[fanout {slug}] {nm}: {v['start']-t0:6.2f}s .. {v.get('end', v['start'])-t0:6.2f}s "
                       f"({v.get('end', v['start'])-v['start']:.2f}s)", flush=True)
 
@@ -2529,16 +2535,17 @@ def corpus_page():
 
 @app.route("/factory")
 def factory_page():
-    """The corpus factory while it is running.
+    """The corpus factory, now a section of /corpus.
 
-    The numbers come from a snapshot the factory publishes to object storage once a minute, not
-    from a database this process can reach: the search tier has no route to the staging database
-    and should not have one. Staleness is computed from the snapshot's own timestamp, so a dead
-    publisher reads as stale instead of as zero.
+    It was its own page, and that was the defect: /factory reported 1.77M publications while
+    /corpus reported 4.98M, with nothing on either page saying they were different databases at
+    different stages. Both numbers were right and the pair of them read as a contradiction. They
+    are one page now, with the distinction stated where the second set of numbers appears.
+
+    The URL is kept and redirected rather than deleted, because it is in the nav history of
+    anyone who was watching a build.
     """
-    if not auth.auth_enabled(app) or auth.current_user() or auth.is_loopback():
-        return render_template("factory.html", title="Factory")
-    return redirect(url_for("auth.login", next=request.script_root + "/factory"))
+    return redirect(request.script_root + "/corpus#factory")
 
 
 @app.route("/api/factory/pulse")
@@ -2616,6 +2623,25 @@ def api_designs():
         traceback.print_exc()
         return jsonify({"designs": [], "error": f"{type(exc).__name__}: {exc}"}), 502
     return jsonify(res)
+
+
+@app.route("/api/designs/<design_number>")
+def api_design_details(design_number):
+    """One registered design by number, so Lookup can resolve an RCD the way it resolves a
+    publication number. A design number is not a publication number and the register apps do
+    not answer for it, so a reader pasting `005632742-0001` into Lookup got nothing back."""
+    if auth.auth_enabled(app) and not (auth.current_user() or auth.is_loopback()):
+        abort(401)
+    from sources import euipo as _euipo
+    num = _design_number_or_404(design_number)
+    try:
+        d = _euipo.design_details(num)
+    except Exception as exc:                                              # noqa: BLE001
+        traceback.print_exc()
+        return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 502
+    if not d:
+        return jsonify({"error": "EUIPO is not configured on this instance"}), 503
+    return jsonify(d)
 
 
 @app.route("/api/designs/<design_number>/view/<int:order>")
@@ -5697,6 +5723,15 @@ def concise_descriptions(slug):
                                verdict=j.get("verdict") or "")
 
     pubs = [p.strip() for p in request.form.getlist("pubs") if p.strip()]
+    if not pubs and request.form.get("auto"):
+        #  ONE CLICK, THE PACKAGE COUNSEL ASKED FOR: the top documents by what the ledger says
+        #  they kill , office actions first, one per family, covering as many claims as the
+        #  evidence supports. The picker's order IS the selection logic, fixed 2026-08-20.
+        try:
+            top = max(1, min(int(request.form.get("auto")), 20))
+        except (TypeError, ValueError):
+            top = 10
+        pubs = [c["pub"] for c in cands[:top]]
     if not pubs:
         return render_template("concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
                                error="Select at least one document."), 400

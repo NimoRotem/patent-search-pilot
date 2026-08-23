@@ -8,6 +8,17 @@
   still be filed, but the practitioner should know that before it goes in the envelope.
 #}
 <h1 style="margin-bottom:.2em">Concise descriptions of relevance</h1>
+{% if cands and not building|default(false) %}
+<form method="post" action="{{ url_for('concise_descriptions', slug=slug) }}"
+      style="margin:10px 0 14px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="auto" value="10">
+  <button class="btn primary" type="submit">Build the top-10 package</button>
+  <span class="small muted">The ten strongest documents by what the ledger says they kill,
+    office actions first, one per family, covering as many claims as the evidence supports.
+    About 5 minutes.</span>
+</form>
+{% endif %}
 <p class="small muted" style="margin-top:0">
   Third-party preissuance submission under 37 CFR § 1.290 — one document per reference, built from
   this search's per-claim evidence. <a href="{{ url_for('report', slug=slug) }}">back to the report</a>
