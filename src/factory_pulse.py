@@ -154,6 +154,9 @@ def view(uri: str = "", *, force: bool = False) -> dict:
         "trend_per_minute": {**trends, "embedded": embedded_rate},
         "embedding_eta_hours": round(remaining_minutes / 60.0, 1)
         if remaining_minutes else None,
+        #  A pool read that failed is NOT a pool that did nothing. The page shows the error and
+        #  renders the counts as unknown, because a zero here reads as "acquisition has stopped".
+        "pool_error": current.get("pool_error") or "",
         "queues": {
             "parse": parse,
             "parse_stuck": int(current.get("parse_stuck") or 0),
