@@ -375,3 +375,33 @@ def test_the_table_is_capped_so_somebody_reads_to_the_bottom():
     out = S.passed_over(cands, budget_items=10)
     assert len(out) == S.PASSED_OVER_MAX
     assert len({p["pub"] for p in out}) == len(out), "a document was listed twice"
+
+
+# ------------------------------------------- 8. a document the examiner already has
+
+def test_a_document_already_of_record_is_not_pre_selected(monkeypatch):
+    """1.290(f) charges per ten items, so a slot is bought. Spending one on a document the
+    examiner already has buys nothing. Counsel, 2026-08-24, on US 2021/0031317 A1: "already of
+    record from Schmalz's own IDS, so there is nothing to gain there either."
+    """
+    _patch_db(monkeypatch, {"US-1-A1": _row("US-1-A1"), "US-2-A1": _row("US-2-A1"),
+                            "US-3-A1": _row("US-3-A1")})
+    out = S.classify_candidates([{"pub": "US-1-A1", "office": "considered"},
+                                 {"pub": "US-2-A1", "office": "applied"},
+                                 {"pub": "US-3-A1", "office": ""}], "2024-09-09")
+    assert [c["of_record"] for c in out] == [True, True, False]
+    assert [c["default_include"] for c in out] == [False, False, True]
+    #  It is still prior art and still choosable: a concise description states a relevance an IDS
+    #  listing never does, and that is a judgement, not a rule.
+    assert all(c["basis"] == S.PUBLIC for c in out)
+
+
+def test_the_reason_says_which_kind_of_of_record_it_is():
+    applied = S._why_not({"of_record": True, "office": "applied", "readable": True}, 10)
+    ids = S._why_not({"of_record": True, "office": "considered", "readable": True}, 10)
+    assert "applied it against this family" in applied
+    assert "of record on an IDS" in ids
+    #  and it outranks every other reason, because it is the one that makes the slot worthless
+    both = S._why_not({"of_record": True, "office": "applied", "readable": False,
+                       "basis": S.NOT_ART}, 10)
+    assert "already has it" in both

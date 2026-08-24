@@ -222,6 +222,11 @@ def passed_over(cands, budget_items):
 
 def _why_not(c, budget_items):
     """One line: why this document is not in the selection. Ordered by which reason governs."""
+    if c.get("of_record"):
+        return ("the Office already has it: %s. A slot on this submission is a slot paid for, and "
+                "this document is already in front of the examiner"
+                % ("the examiner applied it against this family"
+                   if c.get("office") == "applied" else "it is of record on an IDS"))
     if not c.get("readable", True):
         return ("its full text was never read, so everything charted for it rests on an abstract")
     if c.get("basis") == NOT_ART:
@@ -543,8 +548,16 @@ def classify_candidates(cands, subject_efd, subject_owners=()):
         #  charted against "pole shoes guide a magnetic field portion". It scores HIGH, not low,
         #  because a short text gets mapped generously and every cell verifies against the abstract
         #  it came from. Still listed, still choosable, never chosen for you.
+        #  ALREADY OF RECORD IS NOT SOMETHING TO FILE. A document the examiner applied, or that
+        #  the applicant put on an IDS and the examiner initialled, is already in front of them.
+        #  1.290(f) charges per ten items, so a slot spent on one is a slot bought and wasted.
+        #  Counsel, 2026-08-24, on US 2021/0031317 A1: "already of record from Schmalz's own IDS,
+        #  so there is nothing to gain there either." Ranked highly all the same, because being
+        #  good enough for an examiner to apply is real evidence of quality, and left unticked
+        #  because a reason to file it anyway is a judgement somebody has to make.
+        c["of_record"] = str(c.get("office") or "") in ("applied", "considered")
         c["default_include"] = (c["basis"] in (PUBLIC, SECRET) and not c["co_owned"]
-                                and c.get("readable", True))
+                                and c.get("readable", True) and not c["of_record"])
         #  KEPT OUT HERE IS NOT WORTHLESS. A later-published application the United States cannot
         #  reach, or one 102(b)(2)(C) removes because it is the applicant's own, is frequently the
         #  best document there is at another office. Filtering it silently loses that.
