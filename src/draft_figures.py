@@ -66,7 +66,7 @@ MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
 ))
 MARKED_PROGRESS_VERSION = "marked-progress-v3-numbered-sheet-layout"
 OCR_PROMPT_VERSION = "google-vision-document-text-v2-sheet-number"
-PIXEL_ANCHOR_VERSION = "pixel-anchor-v6-reviewed-surface-clearance-repair"
+PIXEL_ANCHOR_VERSION = "pixel-anchor-v8-reviewed-surface-neighborhood-repair"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 4
@@ -1405,20 +1405,22 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                     ),
                 )
             component = int(white_component_labels[pixel_y, pixel_x])
-            if component <= 0:
-                if not allow_nearby_component:
-                    return None
+            if allow_nearby_component:
                 component_mask = ~ink
-                repair_snap = min(max_snap, 100)
+                repair_snap = min(max_snap, 120)
                 same_component = False
             else:
+                if component <= 0:
+                    return None
                 component_mask = white_component_labels == component
                 repair_snap = max_snap
                 same_component = True
             maximum = float(white_clearance[component_mask].max(initial=0.0))
             if maximum < _MIN_BROAD_INTERIOR_CLEARANCE:
                 return None
-            desired = min(float(_MIN_BROAD_INTERIOR_CLEARANCE * 2), maximum)
+            desired = min(float(
+                _MIN_BROAD_INTERIOR_CLEARANCE *
+                (1.5 if allow_nearby_component else 2)), maximum)
             safe_y, safe_x = np.nonzero(
                 component_mask & (white_clearance >= desired - 1e-6))
             if not len(safe_x):
@@ -1442,15 +1444,15 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         # then inspect nearby pixels in increasing distance order. Limiting the ink set to the
         # reachable neighborhood keeps the vectorized fallback bounded.
         component_image = binary.copy()
-        if component_image.getpixel((pixel_x, pixel_y)) == 255:
+        if allow_nearby_component:
+            component_mask = ~ink
+            repair_snap = min(max_snap, 120)
+            same_component = False
+        elif component_image.getpixel((pixel_x, pixel_y)) == 255:
             ImageDraw.floodfill(component_image, (pixel_x, pixel_y), 128, thresh=0)
             component_mask = np.asarray(component_image) == 128
             repair_snap = max_snap
             same_component = True
-        elif allow_nearby_component:
-            component_mask = ~ink
-            repair_snap = min(max_snap, 100)
-            same_component = False
         else:
             return None
         candidate_y, candidate_x = np.nonzero(component_mask)
