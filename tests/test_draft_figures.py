@@ -959,6 +959,30 @@ def test_cross_provider_geometry_audit_rejects_an_unrequested_power_cable():
     assert "power cable" in " ".join(audit["unexpected"]).lower()
 
 
+def test_cross_provider_geometry_audit_rejects_two_strokes_for_single_curve():
+    audit = draft_figures.cross_provider_geometry_audit(["46 = pulling element"], {
+        "matches_spec": True,
+        "summary": "The pulling element is present.",
+        "errors": [],
+        "missing_geometry": [],
+        "unexpected_geometry": [],
+        "parts": [{
+            "numeral": "46", "visible": True,
+            "evidence": "A flexible path extends left from the machine.",
+        }],
+        "visible_elements": [{
+            "description": "Single slack flexible line",
+            "required": True,
+            "matched_requirement": (
+                "Flexible pulling element 46: a single unbroken curved path of even thickness"),
+            "evidence": "Two closely spaced parallel curves form a double-line path.",
+        }],
+    })
+
+    assert audit["ok"] is False
+    assert "multiple strokes" in " ".join(audit["unexpected"]).lower()
+
+
 def test_cross_provider_geometry_review_uses_anthropic_pixels_and_caches_clean_result(
         monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
@@ -1863,6 +1887,24 @@ def test_pixel_grounding_keeps_an_open_perspective_surface_off_a_crossing_cable(
     assert 100 < anchors[0]["x"] < 900
     assert 500 < anchors[0]["y"] < 900
     assert abs(anchors[0]["y"] - (780 - (anchors[0]["x"] - 100) * 130 / 600)) >= 20
+
+
+def test_pixel_grounding_does_not_leave_a_bounded_surface_for_more_clearance():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((400, 480, 650, 510), outline="black", width=6)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["24 = perimeter member"], [{
+            "numeral": "24", "x": 525, "y": 495, "visible": True,
+            "evidence": "the front-facing surface of the narrow perimeter band",
+        }], preserve_reviewed_line_target=True)
+
+    assert audit["ok"] is False
+    assert audit["ungrounded"][0]["numeral"] == "24"
+    assert (anchors[0]["x"], anchors[0]["y"]) == (525, 495)
 
 
 def test_pixel_grounding_moves_a_boundary_near_anchor_deeper_into_the_same_wide_region():
