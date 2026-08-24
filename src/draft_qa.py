@@ -1351,7 +1351,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v2-schematic-conventions"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v3-brief-only-schematic-conventions"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1380,8 +1380,12 @@ placement as a depiction convention rather than an invention assertion only when
 it "shown schematically", the claims and description remain shape-neutral, and the choice adds no
 technical function or relationship. Still report exact proportions, counts, materials,
 connections, topology, contact, flow paths, or relative locations that convey technical substance.
-Never recommend adding a speculative shape or optional embodiment to the application text merely
-to justify a renderer's generic visual choice.
+The chosen convention must stay confined to the figure brief. If the application text or Brief
+Description says that an unsupported outline is shown "by way of example", that a member may have
+"any closed outline", or otherwise adds or broadens an embodiment merely to justify a renderer's
+choice, report it as unsupported even if the resulting claim language is shape-neutral. Remove the
+application statement; never recommend adding a speculative shape or optional embodiment to the
+application text merely to justify a renderer's generic visual choice.
 
 Build a complete source ledger before returning. Trace every limitation in every claim, every
 numbered part, and every specific structure, relationship, result, material, shape, position,
