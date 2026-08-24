@@ -271,6 +271,30 @@ def test_a_drawn_tile_cannot_coexist_with_a_no_other_panel_constraint():
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
 
+def test_blanket_shape_background_and_stroke_controls_are_refused_before_drawing():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "No circle, ring, disc, hole or ellipse appears anywhere on the sheet. "
+            "A plain tile has no joint line and no other tile is shown. "
+            "The cord is a strip bounded by two long lines."
+        ),
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    issues = " ".join(check["items"]).lower()
+    assert "blanket shape exclusion" in issues
+    assert "background exclusion" in issues
+    assert "exact stroke count" in issues
+    with pytest.raises(
+            draft_studio.FilingPreflightError,
+            match="Drawing briefs are concise and renderable"):
+        draft_studio.validate_snapshot(
+            {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
+
+
 def test_an_endpoint_deliberately_disconnected_from_its_named_part_is_refused():
     figures = [{
         **FIGURES[0],
