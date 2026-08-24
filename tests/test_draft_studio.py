@@ -1452,6 +1452,9 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     for phrase in ("prior_art/INDEX.md", "[REF:KEY]", "numerals.md",
                    "never state or imply", "Never invent", "Not applicable"):
         assert phrase in system, f"the drafting prompt no longer says: {phrase}"
+    normalized = " ".join(system.split())
+    assert "Operational requests to resume, preserve, repair, inspect, or audit" in normalized
+    assert "do not disclose or affirm its technical content" in normalized
     assert "[DRAFTING NOTE" not in system
     assert "Return `questions` as an empty array" in system
     assert "No placeholder" in system
