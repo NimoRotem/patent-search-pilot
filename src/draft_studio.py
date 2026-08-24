@@ -292,6 +292,9 @@ Never write generic negative bans on linework such as no rim, ledge, chamfer, pa
 doubled line, second boundary, or internal stroke. State each required body and relationship
 positively. Necessary outer edges of separate solids remain permitted where the solids meet or
 overlap in a perspective or sectional view.
+Do not prescribe every outline as one line or require a shared face edge to be drawn once. Those
+are generic renderer controls, not invention geometry. Describe the solids, contacts, openings,
+and occlusions that must be visible.
 Numeral endpoint instructions identify the part, not an aesthetic coordinate. Prefer a broad
 interior target such as well inside the part or its hatching. Do not require a midpoint, quarter,
 exact depth, or toward-an-end placement unless that location is disclosure-grounded or necessary
@@ -386,6 +389,8 @@ preserving the authoritative text, numeral table, disclosed geometry, and requir
 Replace generic negative linework controls with positive descriptions of the required bodies,
 edges, contacts, openings, and paths. Do not ban second boundaries, parallel lines, inner lines,
 rims, ledges, or chamfers merely to suppress a prior rendering artifact.
+Remove generic face-linework controls such as prescribing one stroke for every outline or a
+shared edge drawn once. Keep only the positive physical geometry and relationship.
 For an endpoint finding, choose a broad interior target on the intended part whenever possible.
 Remove exact midpoint, depth, quarter, or toward-an-end modifiers that are not disclosure-grounded
 or necessary to distinguish the intended part. Replace ordinal geometry references with explicit
