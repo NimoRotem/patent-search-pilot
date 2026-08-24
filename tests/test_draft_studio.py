@@ -845,7 +845,12 @@ def test_government_support_has_a_standalone_workspace_file_in_filing_order(tmp_
 
     keys = [key for key, _name, _heading in draft_workspace.SECTION_FILES]
     assert keys.index("cross_reference") < keys.index("government_support") < keys.index("field")
-    path = tmp_path / "draft" / "10-government-support.md"
+    assert [name for _key, name, _heading in draft_workspace.SECTION_FILES] == [
+        "01-title.md", "02-cross-reference.md", "03-government-support.md", "04-field.md",
+        "05-background.md", "06-summary.md", "07-drawings.md",
+        "08-detailed-description.md", "09-claims.md", "10-abstract.md",
+    ]
+    path = tmp_path / "draft" / "03-government-support.md"
     assert path.read_text(encoding="utf-8") == "Not applicable.\n"
 
     path.write_text(
@@ -861,11 +866,49 @@ def test_government_support_has_a_standalone_workspace_file_in_filing_order(tmp_
     assert draft_workspace.read_sections(tmp_path)["government_support"] == "Not applicable."
 
 
+def test_legacy_workspace_section_files_are_migrated_without_mixing_bodies(tmp_path):
+    draft = tmp_path / "draft"
+    draft.mkdir()
+    legacy = {
+        "01-title.md": "Legacy title",
+        "02-cross-reference.md": "Legacy cross reference",
+        "03-field.md": "Legacy field",
+        "04-background.md": "Legacy background",
+        "05-summary.md": "Legacy summary",
+        "06-drawings.md": "Legacy drawings",
+        "07-detailed-description.md": "Legacy detail",
+        "08-claims.md": "Legacy claims",
+        "09-abstract.md": "Legacy abstract",
+        "10-government-support.md": "Legacy government support",
+    }
+    for name, body in legacy.items():
+        (draft / name).write_text(body + "\n", encoding="utf-8")
+
+    sections = draft_workspace.read_sections(tmp_path)
+
+    assert sections == {
+        "title": "Legacy title",
+        "cross_reference": "Legacy cross reference",
+        "government_support": "Legacy government support",
+        "field": "Legacy field",
+        "background": "Legacy background",
+        "summary": "Legacy summary",
+        "drawing_descriptions": "Legacy drawings",
+        "detailed_description": "Legacy detail",
+        "claims": "Legacy claims",
+        "abstract": "Legacy abstract",
+    }
+    assert (draft / "03-government-support.md").read_text(encoding="utf-8") == \
+        "Legacy government support\n"
+    assert (draft / "10-abstract.md").read_text(encoding="utf-8") == "Legacy abstract\n"
+    assert not (draft / "03-field.md").exists()
+    assert not (draft / "10-government-support.md").exists()
+
 def test_a_heading_the_agent_added_back_is_dropped_but_real_headings_survive(tmp_path):
     draft_workspace.write_sections(tmp_path, GOOD)
-    path = tmp_path / "draft" / "04-background.md"
+    path = tmp_path / "draft" / "05-background.md"
     path.write_text("## Background\n\nHandheld vacuum lifters are known.\n", encoding="utf-8")
-    detail = tmp_path / "draft" / "07-detailed-description.md"
+    detail = tmp_path / "draft" / "08-detailed-description.md"
     detail.write_text("## The pump\n\nThe pump 14 draws air.\n", encoding="utf-8")
     out = draft_workspace.read_sections(tmp_path)
     assert out["background"] == "Handheld vacuum lifters are known."
@@ -1388,7 +1431,7 @@ def test_legacy_candidate_missing_government_support_is_preserved_for_automatic_
 
 
 def test_source_reviewer_reads_the_standalone_government_support_file():
-    assert "draft/10-government-support.md" in draft_qa.SOURCE_REVIEW_PROMPT
+    assert "draft/03-government-support.md" in draft_qa.SOURCE_REVIEW_PROMPT
 
 
 def test_drafting_agent_has_a_filing_clean_default_for_no_government_support():
@@ -1534,10 +1577,10 @@ def test_tool_calls_are_summarised_to_workspace_relative_paths():
         "type": "assistant",
         "message": {"content": [
             {"type": "tool_use", "name": "Edit",
-             "input": {"file_path": "/srv/patent-drafts/p7/draft/08-claims.md"}},
+             "input": {"file_path": "/srv/patent-drafts/p7/draft/09-claims.md"}},
             {"type": "text", "text": "narrowed claim 1"},
             {"type": "tool_use", "name": "StructuredOutput", "input": {"summary": "x"}}]}}, steps)
-    assert steps[0] == {"kind": "tool", "tool": "Edit", "detail": "draft/08-claims.md"}
+    assert steps[0] == {"kind": "tool", "tool": "Edit", "detail": "draft/09-claims.md"}
     assert steps[1]["kind"] == "say"
     assert len(steps) == 2, "the structured answer is the result, not a step"
 

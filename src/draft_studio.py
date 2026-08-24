@@ -305,8 +305,7 @@ FILES
   input/request.md        what the user is asking for THIS turn
   input/materials/        anything else the user uploaded
   prior_art/              the references, with INDEX.md listing the citation keys
-  draft/01-title.md, draft/02-cross-reference.md, draft/10-government-support.md, then
-  draft/03-field.md through draft/09-abstract.md    application body text, no heading lines
+  draft/01-title.md through draft/10-abstract.md    application body text, no heading lines
   draft/numerals.md       the reference-numeral table
   figures/                one file per drawing
   review/previous-qa.md   what the reviewer found last time - fix it

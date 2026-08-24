@@ -1369,7 +1369,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v4-government-support"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v5-workspace-filing-order"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1431,8 +1431,14 @@ Read these files in full:
   input/conversation.md
   draft/01-title.md
   draft/02-cross-reference.md
-  draft/10-government-support.md
-  draft/03-field.md through draft/09-abstract.md
+  draft/03-government-support.md
+  draft/04-field.md
+  draft/05-background.md
+  draft/06-summary.md
+  draft/07-drawings.md
+  draft/08-detailed-description.md
+  draft/09-claims.md
+  draft/10-abstract.md
   draft/numerals.md
   every Markdown brief in figures/
 
