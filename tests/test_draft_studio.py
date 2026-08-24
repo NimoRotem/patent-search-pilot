@@ -1394,6 +1394,40 @@ def test_the_reviewer_never_resumes_the_drafting_session(monkeypatch):
     assert "Bash" in seen["tools"] and "Write" not in seen["tools"]
 
 
+def test_source_preflight_is_independent_read_only_and_ignores_pixels(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(draft_agent, "run", lambda **kwargs: seen.update(kwargs) or
+                        draft_agent.AgentRun(
+                            ok=True, model="review-model",
+                            result={"summary": "clean", "findings": []}))
+
+    outcome = draft_qa.review_sources(Path("/tmp"))
+
+    assert outcome["ok"] is True
+    assert seen["resume"] is False
+    assert seen["tools"] == "Read,Glob,Grep"
+    assert "Ignore rendered image files" in seen["prompt"]
+    assert draft_qa.SOURCE_REVIEW_VERSION in seen["prompt"]
+
+
+def test_source_preflight_fails_closed_on_a_malformed_finding(monkeypatch):
+    monkeypatch.setattr(draft_agent, "run", lambda **_kwargs: draft_agent.AgentRun(
+        ok=True, model="review-model", result={
+            "summary": "A source gap exists.",
+            "findings": [{
+                "severity": "critical", "category": "disclosure_fidelity",
+                "title": "Unsupported duct", "where": "draft/numerals.md",
+                "detail": "The duct is not in the disclosure.", "evidence": "",
+                "fix": "Remove it.",
+            }],
+        }))
+
+    outcome = draft_qa.review_sources(Path("/tmp"))
+
+    assert outcome["ok"] is False
+    assert "malformed finding" in outcome["error"]
+
+
 def test_the_reviewer_is_told_which_checks_already_ran(monkeypatch):
     seen = {}
     monkeypatch.setattr(draft_agent, "run", lambda **k: seen.update(k) or draft_agent.AgentRun(
@@ -1465,6 +1499,67 @@ def test_the_independent_reviewer_checks_source_fidelity_before_internal_consist
     assert "corrective instruction that names a candidate detail only to reject" in normalized
     assert "Prior-art characterisations trace to prior_art/" in normalized
     assert "disclosure_fidelity" in json.dumps(draft_qa.REVIEW_SCHEMA)
+    preflight = " ".join(draft_qa.SOURCE_REVIEW_SYSTEM.split())
+    assert "Build a complete source ledger before returning" in preflight
+    assert "every limitation in every claim" in preflight
+    assert "corrective USER message that names a candidate detail only to reject" in preflight
+    assert "passages under headings labeled USER are the authority" in preflight
+    assert "YOU, REVIEWER, or SYSTEM are context, never inventor support" in preflight
+    assert "Do not inspect or rely on rendered images" in preflight
+
+
+def test_source_fidelity_preflight_blocks_rendering_unsupported_geometry(
+        monkeypatch, tmp_path):
+    qa = Mock()
+    qa.review_sources.return_value = {
+        "ok": True,
+        "summary": "A numbered duct has no inventor source.",
+        "findings": [{
+            "severity": "critical", "category": "disclosure_fidelity",
+            "title": "Unsupported duct", "where": "draft/numerals.md",
+            "detail": "The disclosure never introduces a duct.",
+            "evidence": "32 | duct", "fix": "Remove or generalize it.",
+        }],
+        "cost_usd": 0.1, "duration_ms": 100, "model": "review-model",
+    }
+    runner = draft_studio.TurnRunner(Mock(), Mock(), qa=qa)
+    render = Mock(return_value={"ok": True})
+    monkeypatch.setattr(draft_figures, "ensure_project_figures", render)
+    monkeypatch.setattr(draft_figures, "checkpoint_project_figures", Mock())
+
+    with pytest.raises(draft_studio.SourceFidelityInspectionError) as caught:
+        runner._ensure_figures(
+            turn_id=3, lease="lease", project_id=7, user_id=91,
+            sections=GOOD, numerals=NUMERALS, figures=FIGURES,
+            disclosure="the inventor disclosed a body and pump", workspace=tmp_path)
+
+    render.assert_not_called()
+    assert caught.value.report["findings"][0]["title"] == "Unsupported duct"
+    assert caught.value.report["verdict"] == "fail"
+
+
+def test_clean_source_preflight_is_cached_before_repeated_rendering(monkeypatch, tmp_path):
+    qa = Mock()
+    qa.review_sources.return_value = {
+        "ok": True, "summary": "Every candidate detail has affirmative support.",
+        "findings": [], "cost_usd": 0.1, "duration_ms": 100,
+        "model": "review-model",
+    }
+    runner = draft_studio.TurnRunner(Mock(), Mock(), qa=qa)
+    render = Mock(return_value={"ok": True})
+    monkeypatch.setattr(draft_figures, "ensure_project_figures", render)
+    monkeypatch.setattr(draft_figures, "checkpoint_project_figures", Mock())
+    monkeypatch.setattr(draft_figures, "materialize_review_images", Mock(return_value=[]))
+
+    values = dict(
+        turn_id=3, lease="lease", project_id=7, user_id=91,
+        sections=GOOD, numerals=NUMERALS, figures=FIGURES,
+        disclosure="the inventor disclosed a body and pump", workspace=tmp_path)
+    runner._ensure_figures(**values)
+    runner._ensure_figures(**values)
+
+    qa.review_sources.assert_called_once()
+    assert render.call_count == 2
 
 
 def test_drawing_only_repairs_cannot_mutate_filing_sources_or_figure_membership(tmp_path):
@@ -1953,6 +2048,32 @@ def test_retry_preparation_uses_the_durable_checked_candidate_instead_of_publish
     assert values["sections"] == candidate_sections
     assert values["qa_report"] == candidate_report
     assert context["previous_sections"] == GOOD
+
+
+def test_turn_preparation_keeps_the_complete_bounded_inventor_history(monkeypatch, tmp_path):
+    repository = Mock()
+    repository.documents.return_value = []
+    repository.messages.return_value = [
+        {"id": index, "role": "user", "body": f"inventor amendment {index}"}
+        for index in range(1, 41)
+    ]
+    repository.latest_qa.return_value = None
+    repository.retry_candidate.return_value = None
+    repository.latest_retry_candidate.return_value = None
+    workspace = Mock()
+    workspace.build.return_value = tmp_path
+    runner = draft_studio.TurnRunner(repository, Mock(), workspace=workspace)
+    monkeypatch.setattr(runner, "_load", lambda _project_id: {
+        "project": {"id": 7, "user_id": 91, "input_kind": "description"},
+        "references": [], "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES,
+    })
+
+    runner.prepare({"id": 33, "project_id": 7, "attempts": 1,
+                    "user_message": "Finish automatically."})
+
+    history = workspace.build.call_args.kwargs["conversation"]
+    assert [item["id"] for item in history] == list(range(1, 41))
+    repository.messages.assert_called_once_with(7, limit=400)
 
 
 def test_new_turn_preparation_uses_the_latest_failed_turn_candidate(
