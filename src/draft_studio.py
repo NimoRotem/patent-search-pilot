@@ -274,6 +274,10 @@ proportions, relative heights, corner shapes, line counts, or placement constrai
 control the renderer. If a visual constraint is not in the disclosure or specification, omit it.
 Do not demand open paper between solid bodies merely to create label room. State a
 source-grounded physical spacing or omit it.
+When the source discloses a part but not its appearance, the image still needs a visible outline.
+Use the simplest generic outline and identify it in the figure brief as "shown schematically".
+That outline is a depiction convention only. Never add its chosen shape, proportion, or page
+placement to the patent text or claims, and never imply that the convention is an embodiment.
 Describe a cord, cable, wire, hose, or pulling element as one curved path and target that path.
 Never define it as a white-interior strip or by counting outline strokes.
 Numeral endpoint instructions identify the part, not an aesthetic coordinate. Prefer a broad

@@ -819,6 +819,19 @@ def test_the_numeral_table_round_trips(tmp_path):
     assert draft_workspace.read_numerals(tmp_path) == NUMERALS
 
 
+def test_workspace_draft_files_contain_no_process_scaffolding(tmp_path):
+    draft_workspace.write_sections(tmp_path, GOOD)
+    draft_workspace.write_numerals(tmp_path, NUMERALS)
+
+    text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((tmp_path / "draft").glob("*.md")))
+
+    assert "<!--" not in text
+    assert "checked mechanically" not in text
+    assert "Keep this table" not in text
+
+
 def test_a_valid_numeral_table_may_carry_extra_audit_columns(tmp_path):
     directory = tmp_path / "draft"
     directory.mkdir()
@@ -1473,6 +1486,7 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "Do not list more than eight numerals on one sheet" in system
     assert str(draft_qa.MAX_FIGURE_BRIEF_CHARS) in system
     assert "arbitrary exact counts" in system
+    assert "shown schematically" in normalized
     assert "open paper between solid bodies" in system
     assert "white-interior strip" in system
     assert "Numeral endpoint instructions identify the part" in system
@@ -1523,6 +1537,8 @@ def test_the_independent_reviewer_checks_source_fidelity_before_internal_consist
     assert "numeral or figure counts, labels, and filing gates do not affirm" in preflight
     assert "Prior-art characterizations in the Background do not require inventor support" \
         in preflight
+    assert "simple generic outline" in preflight
+    assert "depiction convention" in preflight
     assert "Do not inspect or rely on rendered images" in preflight
 
 
