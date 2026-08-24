@@ -1237,10 +1237,15 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                 "vertical" if _VERTICAL_LINE_TARGET_RE.search(evidence) else "")
         if not axis:
             return nearest
+        runs = axis_runs(axis)
+        substantial_run = max(
+            12, round((width if axis == "horizontal" else height) * 0.08))
+        if int(runs[ink_y[nearest], ink_x[nearest]]) >= substantial_run:
+            return nearest
         nearby = np.flatnonzero(distance_sq <= float(max_snap) ** 2)
         if not len(nearby):
             return nearest
-        run_values = axis_runs(axis)[ink_y[nearby], ink_x[nearby]]
+        run_values = runs[ink_y[nearby], ink_x[nearby]]
         longest = int(run_values.max()) if len(run_values) else 0
         if longest < 12:
             return nearest
