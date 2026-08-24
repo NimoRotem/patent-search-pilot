@@ -32,6 +32,25 @@
 
 {% if error %}<div class="warn" style="margin:1em 0">{{ error }}</div>{% endif %}
 
+{#  THE DEADLINE, COUNTED TODAY. The audit paper in the packet states the date and refuses to count
+    days, because it is written once and read later and the number goes stale overnight. This line
+    is rendered on the morning somebody reads it, so here the count is right. #}
+{% if window and window.open is not none %}
+<div class="{{ 'warn' if not window.open or (window.days_left is not none and window.days_left <= 14) else 'card' }}"
+     style="margin:1em 0;padding:.7em 1em">
+  {% if window.open %}
+    <b>File before {{ window.deadline }}.</b>
+    {% if window.days_left is not none %}
+      <span class="small">{{ window.days_left }} day{{ '' if window.days_left == 1 else 's' }} from today, {{ today }}.</span>
+    {% endif %}
+  {% else %}
+    <b>The 1.290(b) window closed on {{ window.deadline }}.</b>
+    <span class="small">A submission filed now may not be entered.</span>
+  {% endif %}
+  <p class="small muted" style="margin:.3em 0 0">{{ window.basis }}</p>
+</div>
+{% endif %}
+
 {#  What the compliance pass refused or merged. Shown BEFORE the download list on purpose: a
     document that was dropped is a decision the practitioner has to agree with, and finding out
     afterwards that a reference is missing is worse than being told why. #}

@@ -5691,7 +5691,7 @@ def concise_descriptions(slug):
         #  The build runs in a thread and the page reloads when it finishes, so what the
         #  build DECIDED has to be read back from the job or it is lost at that reload.
         j = _concise_job(slug) or {}
-        return _render_picker(slug=slug,
+        return _render_picker(report=rep_for_pick, slug=slug,
                               cands=_classify(slug, cands, deep),
                               docs=_concise_built(slug), subject=subject, error=None,
                               blocked=j.get("blocked") or [],
@@ -5699,7 +5699,7 @@ def concise_descriptions(slug):
 
     pubs = [p.strip() for p in request.form.getlist("pubs") if p.strip()]
     if not pubs:
-        return _render_picker(slug=slug, cands=_classify(slug, cands, deep),
+        return _render_picker(report=rep_for_pick, slug=slug, cands=_classify(slug, cands, deep),
                               docs=_concise_built(slug), subject=subject,
                               error="Select at least one document."), 400
     #  Only a publication this report actually read can be described: `pubs` is user input that
@@ -5717,9 +5717,11 @@ def concise_descriptions(slug):
     unknown = [p for p in pubs if p not in known]
     pubs = [p for p in pubs if p in known]
     if not pubs:
-        return _render_picker(slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
-                              error=("None of the selected documents carry per-claim evidence "
-                                     "in this report: %s" % ", ".join(unknown[:5]))), 400
+        return _render_picker(
+            report=rep_for_pick, slug=slug, cands=cands, docs=_concise_built(slug),
+            subject=subject,
+            error=("None of the selected documents carry per-claim evidence in this report: %s"
+                   % ", ".join(unknown[:5]))), 400
     #  EVERYTHING THE THREAD NEEDS IS CAPTURED HERE. The worker outlives this request, so it may
     #  not touch `request` at all.
     start_at = int(request.form.get("start_at") or 1)
@@ -5747,14 +5749,14 @@ def concise_descriptions(slug):
                 % (budget_units, "" if budget_units == 1 else "s", allowed, len(pubs),
                    want_units, _sub._money(dollars), filing_identity["entity_size"],
                    len(pubs) - allowed))
-        return _render_picker(slug=slug, cands=_classify(slug, cands, deep),
+        return _render_picker(report=rep_for_pick, slug=slug, cands=_classify(slug, cands, deep),
                               docs=_concise_built(slug), subject=subject, error=over), 400
     chosen_model = (request.form.get("model") or "").strip() or None
     if chosen_model:
         import model_pool
         ok = {m["name"] for m in model_pool.choices() if m["available"]}
         if chosen_model not in ok:
-            return _render_picker(
+            return _render_picker(report=rep_for_pick,
                 slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
                 error=("%s is not a model this host can use right now. Available: %s"
                        % (chosen_model, ", ".join(sorted(ok)) or "none"))), 400
@@ -5768,7 +5770,7 @@ def concise_descriptions(slug):
 
     if (_concise_job(slug) or {}).get("state") == "running":
         #  A second click must not start a second build over the same output directory.
-        return _render_picker(slug=slug, cands=_classify(slug, cands, deep),
+        return _render_picker(report=rep_for_pick, slug=slug, cands=_classify(slug, cands, deep),
                               docs=_concise_built(slug), subject=subject, error=None,
                               blocked=[], family_notes=[], building=True)
 
@@ -5853,7 +5855,7 @@ def concise_descriptions(slug):
                          error="Could not build the documents: %s" % str(exc)[:200])
 
     threading.Thread(target=_work, name="concise-build", daemon=True).start()
-    return _render_picker(slug=slug, cands=_classify(slug, cands, deep),
+    return _render_picker(report=rep_for_pick, slug=slug, cands=_classify(slug, cands, deep),
                           docs=_concise_built(slug), subject=subject, error=None, blocked=[],
                           family_notes=[], building=True)
 
@@ -5919,11 +5921,23 @@ def _filing_identity():
         return {"entity_size": "small", "signature_name": "", "signature_title": ""}
 
 
-def _filing_context():
-    """Everything the picker needs to price and explain a selection."""
+def _filing_context(report=None):
+    """Everything the picker needs to price, explain and time a selection."""
     import submission
     ident = _filing_identity()
+    #  THE COUNTDOWN LIVES HERE, not in the packet. A PDF is written once and read days later, so
+    #  it states the deadline date and nothing else; a page is rendered on the morning somebody
+    #  reads it, so it can count. This is why "18 days" in the packet was a day out.
+    import datetime as _dt
+    win = None
+    if report is not None:
+        try:
+            win = submission.window(*submission.prosecution_dates(report or {}))
+        except Exception:                                                 # noqa: BLE001
+            traceback.print_exc()
     return {"identity": ident,
+            "window": win,
+            "today": _dt.date.today().isoformat(),
             "fee_choices": submission.fee_choices(ident["entity_size"]),
             "items_per_unit": submission.ITEMS_PER_UNIT,
             "secret_help": submission.SECRET_HELP,
@@ -5931,7 +5945,7 @@ def _filing_context():
             "basis_help": submission.BASIS_HELP}
 
 
-def _render_picker(**kw):
+def _render_picker(report=None, **kw):
     """The one way this page is rendered.
 
     Three of the eight render sites are error paths, which is exactly where a forgotten context
@@ -5939,7 +5953,7 @@ def _render_picker(**kw):
     publication branch and nothing but a test noticed. So the context is merged here, once, and
     an explicit argument still wins.
     """
-    ctx = _filing_context()
+    ctx = _filing_context(report)
     ctx.update(kw)
     return render_template("concise.html", **ctx)
 

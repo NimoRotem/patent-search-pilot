@@ -191,6 +191,42 @@ def test_the_picker_opens_on_one_fee_unit_and_pre_picks_what_it_buys(client, rep
     assert "$%s" % S._money(S.fee_amount(1, "small")[1]) in body
 
 
+def test_the_deadline_is_counted_on_the_page_and_only_dated_in_the_paper(client, report,
+                                                                         monkeypatch):
+    """The countdown was a day out because it was printed into a PDF and read the next morning.
+    The paper states the date; the page, rendered when somebody looks at it, does the counting."""
+    import datetime
+
+    import submission
+
+    today = datetime.date.today()
+    pub = today - datetime.timedelta(days=150)          # deadline is publication plus six months
+    monkeypatch.setattr(submission, "prosecution_dates",
+                        lambda rep: (pub.isoformat(), None, None))
+    body = client.get("/report/%s/concise" % report).get_data(as_text=True)
+    win = submission.window(pub.isoformat(), None, None)
+    assert "File before %s" % win["deadline"] in body
+    assert "%d days from today, %s" % (win["days_left"], today.isoformat()) in body
+    #  and the paper it builds refuses to count, so it cannot go stale on the shelf
+    docs = [{"n": 1, "pub": "US-1-A1", "rows": [{"claim_no": "1"}], "compliance": {},
+             "biblio": {"pub": "US-1-A1", "label": "US 1", "kind": "publication", "country": "US",
+                        "inventor": "A", "issue_date_pretty": "February 4, 2021"}}]
+    timing = {f.id: f for f in submission.audit(docs, {"app_no": "19/318,450"}, {}, {}, win)}
+    assert "count from today" in timing["TIMING"].detail
+
+
+def test_a_closed_window_is_said_on_the_page_not_only_in_the_packet(client, report, monkeypatch):
+    import datetime
+
+    import submission
+
+    long_ago = (datetime.date.today() - datetime.timedelta(days=400)).isoformat()
+    monkeypatch.setattr(submission, "prosecution_dates", lambda rep: (long_ago, long_ago, None))
+    body = client.get("/report/%s/concise" % report).get_data(as_text=True)
+    assert "window closed on" in body
+    assert "may not be entered" in body
+
+
 def test_going_over_the_chosen_fee_budget_is_refused_with_the_money_named(client, report):
     """The budget is a ceiling on the server too. A browser that skipped the script, or a hand
     posted form, must not quietly buy a second fee unit on the filer's behalf."""
