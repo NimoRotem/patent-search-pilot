@@ -342,6 +342,32 @@ def test_renderer_only_open_paper_between_solid_bodies_is_refused(caption):
     assert "open-paper spacing" in " ".join(check["items"]).lower()
 
 
+@pytest.mark.parametrize("caption", [
+    "The cord runs away from the body and leaves the sheet at its left edge.",
+    "The column runs from the top edge of the sheet to the lower band.",
+    "The exposed face runs unbroken across the sheet.",
+    "The covering element fills the lower part of the sheet.",
+])
+def test_figure_linework_cannot_be_directed_to_a_physical_sheet_edge(caption):
+    figures = [{**FIGURES[0], "caption": caption}, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "physical sheet edge" in " ".join(check["items"]).lower()
+
+
+def test_a_clear_sheet_margin_instruction_remains_renderable():
+    figures = [{
+        **FIGURES[0],
+        "caption": "The whole of the drawing stands clear of the edges of the sheet.",
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "pass"
+
+
 def test_every_open_paper_spacing_on_one_sheet_is_reported_together():
     figures = [{
         **FIGURES[0],
@@ -1556,6 +1582,7 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "arbitrary exact counts" in system
     assert "shown schematically" in normalized
     assert "open paper between solid bodies" in system
+    assert "keep all line work inside the drawing area" in system
     assert "white-interior strip" in system
     assert "Numeral endpoint instructions identify the part" in system
     assert "broad interior target" in draft_studio.FINALIZE_PROMPT

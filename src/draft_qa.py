@@ -136,6 +136,17 @@ _AMBIGUOUS_MULTI_STROKE_CORD_RE = re.compile(
 _ARBITRARY_OPEN_PAPER_SPACING_RE = re.compile(
     r"\bwith\s+open\s+(?:white\s+)?paper\s+between\b",
     re.IGNORECASE)
+_PHYSICAL_SHEET_EDGE_LINEWORK_RE = re.compile(
+    r"(?:"
+    r"\b(?:leaves?|exits?)\s+(?:the\s+)?sheet\s+at\s+(?:its|the)\s+"
+    r"(?:left|right|top|bottom)(?:-hand)?\s+edge\b"
+    r"|\b(?:runs?|extends?)\s+from\s+(?:the\s+)?"
+    r"(?:top|bottom|left|right)(?:-hand)?\s+edge\s+of\s+(?:the\s+)?sheet\b"
+    r"|\b(?:runs?|extends?|spans?)\b[^.\n]{0,100}\bacross\s+(?:the\s+)?sheet\b"
+    r"|\b(?:fills?|occupies?|covers?)\b[^.\n]{0,80}\b"
+    r"(?:part|portion|width|height|area)\s+of\s+(?:the\s+)?sheet\b"
+    r")",
+    re.IGNORECASE)
 _ARBITRARY_EXACT_ENDPOINT_TARGET_RE = re.compile(
     r"\bidentified\b(?=[^.\n]{0,260}\b(?:"
     r"cent(?:er|re)|midpoint|mid-point|mid[- ]?(?:height|width|depth)|halfway|quarter|"
@@ -638,6 +649,11 @@ def _figure_checks(sections: Mapping[str, str],
                 f"{label}: arbitrary open-paper spacing {match.group(0)[:180]!r}; state a "
                 "disclosure-grounded physical spacing between bodies or omit the whitespace "
                 "instruction")
+        for match in _PHYSICAL_SHEET_EDGE_LINEWORK_RE.finditer(caption):
+            brief_issues.append(
+                f"{label}: line work reaches a physical sheet edge in "
+                f"{match.group(0)[:180]!r}; keep every depicted part inside the drawing area "
+                "so the filing margins remain clear")
         for exact_target in _ARBITRARY_EXACT_ENDPOINT_TARGET_RE.finditer(caption):
             brief_issues.append(
                 f"{label}: arbitrary exact endpoint target {exact_target.group(0)[:180]!r}; "

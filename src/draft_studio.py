@@ -274,6 +274,8 @@ proportions, relative heights, corner shapes, line counts, or placement constrai
 control the renderer. If a visual constraint is not in the disclosure or specification, omit it.
 Do not demand open paper between solid bodies merely to create label room. State a
 source-grounded physical spacing or omit it.
+Always keep all line work inside the drawing area, clear of physical sheet edges and filing
+margins. Describe placement against the drawing area, never against a sheet edge.
 When the source discloses a part but not its appearance, the image still needs a visible outline.
 Use the simplest generic outline and identify it in the figure brief as "shown schematically".
 That outline is a depiction convention only. Never add its chosen shape, proportion, or page
