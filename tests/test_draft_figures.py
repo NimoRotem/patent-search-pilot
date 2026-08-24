@@ -58,6 +58,18 @@ def accepted_cross_provider_audit(**values):
     }
 
 
+def accepted_cross_provider_geometry_audit(**values):
+    return {
+        "ok": True, "inspected": True,
+        "model_name": draft_figures.cross_provider_model(),
+        "prompt_version": draft_figures.CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
+        "review_count": draft_figures.CROSS_PROVIDER_GEOMETRY_REVIEW_COUNT,
+        "missing": [], "unexpected": [], "duplicates": [],
+        "errors": [], "visible_elements": [],
+        **values,
+    }
+
+
 def accepted_semantic_audit(**values):
     marked_values = ({"specification_hash": values["specification_hash"]}
                      if values.get("specification_hash") else {})
@@ -918,6 +930,155 @@ def test_required_cross_provider_review_fails_closed_without_a_credential(monkey
     assert "not configured" in audit["errors"][0].lower()
 
 
+def test_cross_provider_geometry_audit_rejects_an_unrequested_power_cable():
+    audit = draft_figures.cross_provider_geometry_audit(["10 = housing"], {
+        "matches_spec": True,
+        "summary": "The required housing is present.",
+        "errors": [],
+        "missing_geometry": [],
+        "unexpected_geometry": [
+            "A double-line power cable leaves the right side of the housing.",
+        ],
+        "parts": [{
+            "numeral": "10", "visible": True,
+            "evidence": "The rectangular housing is centered in the sheet.",
+        }],
+        "visible_elements": [{
+            "description": "rectangular housing", "required": True,
+            "matched_requirement": "10 = housing",
+            "evidence": "The main closed rectangular body.",
+        }, {
+            "description": "double-line power cable", "required": False,
+            "matched_requirement": "",
+            "evidence": "Two wavy parallel lines leave the right wall.",
+        }],
+    })
+
+    assert audit["ok"] is False and audit["inspected"] is True
+    assert audit["missing"] == [] and audit["unexpected"]
+    assert "power cable" in " ".join(audit["unexpected"]).lower()
+
+
+def test_cross_provider_geometry_review_uses_anthropic_pixels_and_caches_clean_result(
+        monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_MODEL", "claude-opus-5")
+    cache = {}
+    monkeypatch.setattr(
+        draft_figures, "_analysis_cache_get", lambda key: cache.get(key))
+
+    def save(key, **kwargs):
+        cache[key] = dict(kwargs["result"])
+
+    monkeypatch.setattr(draft_figures, "_analysis_cache_put", save)
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **_kwargs: None)
+    monkeypatch.setattr(draft_figures.llm, "_record_usage", lambda *_args: None)
+    calls = []
+
+    def anthropic(payload, *, api_key):
+        calls.append((payload, api_key))
+        return {
+            "usage": {"input_tokens": 90, "output_tokens": 35},
+            "content": [{"type": "text", "text": json.dumps({
+                "matches_spec": True,
+                "summary": "Only the requested housing is visible.",
+                "errors": [], "missing_geometry": [], "unexpected_geometry": [],
+                "parts": [{
+                    "numeral": "10", "visible": True,
+                    "evidence": "One rectangular housing is visible.",
+                }],
+                "visible_elements": [{
+                    "description": "rectangular housing", "required": True,
+                    "matched_requirement": "10 = housing",
+                    "evidence": "One closed rectangular body.",
+                }],
+            })}],
+        }
+
+    monkeypatch.setattr(draft_figures, "_anthropic_endpoint_message", anthropic)
+    png = blank_png()
+    first = draft_figures.inspect_cross_provider_geometry(
+        png, label="FIG. 1", caption="A housing.", numerals=["10 = housing"])
+    second = draft_figures.inspect_cross_provider_geometry(
+        png, label="FIG. 1", caption="A housing.", numerals=["10 = housing"])
+
+    assert first["ok"] is True and second == first and len(calls) == 1
+    assert first["specification_hash"] == draft_figures.specification_hash(
+        "FIG. 1", "A housing.", ["10 = housing"])
+    assert calls[0][1] == "test-anthropic-key"
+    content = calls[0][0]["messages"][0]["content"]
+    assert [item["type"] for item in content] == ["image", "text"]
+    prompt = content[1]["text"].lower()
+    assert "every visible" in prompt and "wire" in prompt and "specification" in prompt
+
+
+def test_required_cross_provider_geometry_review_fails_closed_without_a_credential(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_REQUIRED", "1")
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: None)
+
+    audit = draft_figures.inspect_cross_provider_geometry(
+        blank_png(), label="FIG. 1", caption="housing", numerals=["10 = housing"])
+
+    assert audit["ok"] is False and audit["inspected"] is False
+    assert audit["missing"] == ["10"]
+    assert "not configured" in audit["errors"][0].lower()
+
+
+def test_cross_provider_geometry_veto_is_applied_to_same_provider_consensus(monkeypatch):
+    monkeypatch.setattr(draft_figures, "inspect_cross_provider_geometry", lambda *a, **k: {
+        "ok": False, "inspected": True, "missing": [],
+        "unexpected": ["double-line power cable"],
+        "errors": ["Unexpected geometry: double-line power cable"],
+    })
+    same_provider = {
+        "ok": True, "inspected": True, "errors": [], "unexpected": [],
+        "anchors": [{
+            "numeral": "10", "x": 500, "y": 500, "visible": True,
+            "evidence": "housing",
+        }],
+    }
+
+    audited = draft_figures._apply_cross_provider_geometry_gate(
+        same_provider, blank_png(), label="FIG. 1", caption="housing",
+        numerals=["10 = housing"])
+
+    assert audited["ok"] is False
+    assert audited["anchors"] == same_provider["anchors"]
+    assert audited["cross_provider_geometry_audit"]["unexpected"] == [
+        "double-line power cable"]
+    assert "power cable" in " ".join(audited["errors"]).lower()
+
+
+def test_cached_same_provider_semantics_still_run_cross_provider_geometry_gate(monkeypatch):
+    same_provider = {
+        "ok": True, "inspected": True,
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "errors": [], "unexpected": [],
+        "anchors": [{
+            "numeral": "10", "x": 500, "y": 500, "visible": True,
+            "evidence": "housing",
+        }],
+    }
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: same_provider)
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **_kwargs: None)
+    calls = []
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {
+            "ok": False, "inspected": True, "missing": [],
+            "unexpected": ["unrequested cable"], "errors": [],
+        })
+
+    result = draft_figures.inspect_semantics(
+        blank_png(), label="FIG. 1", caption="housing", numerals=["10 = housing"])
+
+    assert len(calls) == 1 and result["ok"] is False
+    assert "unrequested cable" in " ".join(result["errors"])
+
+
 def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypatch):
     raw = blank_png(1000, 1000)
     initial = [{"numeral": "26", "x": 500, "y": 500,
@@ -1427,7 +1588,7 @@ def test_compose_continues_an_eight_round_checkpoint_after_context_upgrade(monke
     assert leaders["marked_anchor_audit"]["inspection_rounds"] == 9
 
 
-def test_only_compatible_two_trace_semantic_reviews_are_accepted():
+def test_only_compatible_two_trace_semantic_reviews_are_accepted(monkeypatch):
     current = {
         "ok": True, "inspected": True,
         "model_name": draft_figures.vision_model(),
@@ -1464,6 +1625,26 @@ def test_only_compatible_two_trace_semantic_reviews_are_accepted():
     assert draft_figures.current_semantic_audit({**current, "topology_audit": {}}) is False
     assert draft_figures.current_semantic_audit({**current, "marked_anchor_audit": {}}) is False
     assert draft_figures.current_semantic_audit({"ok": True}) is False
+
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_REQUIRED", "1")
+    assert draft_figures.current_semantic_audit(current) is False
+    current["cross_provider_geometry_audit"] = accepted_cross_provider_geometry_audit(
+        specification_hash="a" * 64)
+    current["specification_hash"] = "a" * 64
+    current["marked_anchor_audit"] = accepted_marked_anchor_audit(
+        specification_hash="a" * 64,
+        cross_provider_audit=accepted_cross_provider_audit(
+            specification_hash="a" * 64))
+    assert draft_figures.current_semantic_audit(current) is True
+    assert draft_figures.current_semantic_audit({
+        **current,
+        "cross_provider_geometry_audit": {
+            **current["cross_provider_geometry_audit"], "prompt_version": "old",
+        },
+    }) is False
+    assert draft_figures.current_semantic_audit({
+        **current, "specification_hash": "b" * 64,
+    }) is False
 
 
 def test_marked_progress_ignores_coordinates_saved_under_old_grounding_rules(monkeypatch):
