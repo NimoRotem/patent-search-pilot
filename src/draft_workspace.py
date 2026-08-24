@@ -46,13 +46,27 @@ FALLBACK_ROOT = Path(__file__).resolve().parents[1] / "data" / "draft_workspaces
 SECTION_FILES = (
     ("title", "01-title.md", "Title"),
     ("cross_reference", "02-cross-reference.md", "Cross-Reference to Related Applications"),
-    ("field", "03-field.md", "Field of the Disclosure"),
-    ("background", "04-background.md", "Background"),
-    ("summary", "05-summary.md", "Summary"),
-    ("drawing_descriptions", "06-drawings.md", "Brief Description of the Drawings"),
-    ("detailed_description", "07-detailed-description.md", "Detailed Description"),
-    ("claims", "08-claims.md", "Claims"),
-    ("abstract", "09-abstract.md", "Abstract"),
+    ("government_support", "03-government-support.md",
+     "Statement Regarding Federally Sponsored Research or Development"),
+    ("field", "04-field.md", "Field of the Disclosure"),
+    ("background", "05-background.md", "Background"),
+    ("summary", "06-summary.md", "Summary"),
+    ("drawing_descriptions", "07-drawings.md", "Brief Description of the Drawings"),
+    ("detailed_description", "08-detailed-description.md", "Detailed Description"),
+    ("claims", "09-claims.md", "Claims"),
+    ("abstract", "10-abstract.md", "Abstract"),
+)
+LEGACY_SECTION_FILES = (
+    ("title", "01-title.md"),
+    ("cross_reference", "02-cross-reference.md"),
+    ("field", "03-field.md"),
+    ("background", "04-background.md"),
+    ("summary", "05-summary.md"),
+    ("drawing_descriptions", "06-drawings.md"),
+    ("detailed_description", "07-detailed-description.md"),
+    ("claims", "08-claims.md"),
+    ("abstract", "09-abstract.md"),
+    ("government_support", "10-government-support.md"),
 )
 SECTION_BY_KEY = {key: (name, heading) for key, name, heading in SECTION_FILES}
 NUMERALS_FILE = "numerals.md"
@@ -104,7 +118,38 @@ def write_sections(workspace: Path, sections: Mapping[str, str]) -> None:
     draft.mkdir(parents=True, exist_ok=True)
     for key, name, heading in SECTION_FILES:
         body = _clean(sections.get(key), 400_000)
-        _write(draft / name, f"<!-- {heading} - body text only, no heading line. -->\n\n{body}")
+        _write(draft / name, body)
+    _remove_legacy_section_files(draft)
+
+
+def _remove_legacy_section_files(draft: Path) -> None:
+    current = {name for _key, name, _heading in SECTION_FILES}
+    for _key, name in LEGACY_SECTION_FILES:
+        if name not in current:
+            try:
+                (draft / name).unlink()
+            except FileNotFoundError:
+                pass
+
+
+def _migrate_legacy_section_files(workspace: Path) -> bool:
+    """Shift the former 01-09 plus 10-support layout into true filing order."""
+    draft = Path(workspace) / "draft"
+    if not (draft / "10-government-support.md").exists():
+        return False
+    if (draft / "03-government-support.md").exists():
+        _remove_legacy_section_files(draft)
+        return False
+    bodies: dict[str, str] = {}
+    for key, name in LEGACY_SECTION_FILES:
+        try:
+            bodies[key] = (draft / name).read_text(encoding="utf-8")
+        except OSError:
+            bodies[key] = ""
+    for key, name, _heading in SECTION_FILES:
+        _write(draft / name, bodies.get(key, ""))
+    _remove_legacy_section_files(draft)
+    return True
 
 
 def read_sections(workspace: Path) -> dict[str, str]:
@@ -115,6 +160,7 @@ def read_sections(workspace: Path) -> dict[str, str]:
     A leading heading whose text matches the section's own name is dropped; any other heading is
     left alone, because in the detailed description headings are legitimate structure.
     """
+    _migrate_legacy_section_files(workspace)
     draft = Path(workspace) / "draft"
     out: dict[str, str] = {}
     for key, name, heading in SECTION_FILES:
@@ -131,6 +177,8 @@ def read_sections(workspace: Path) -> dict[str, str]:
             match = _HEADING_RE.match(lines[0])
             if match and _same_heading(match.group(1), heading):
                 lines.pop(0)
+            elif _exact_heading(lines[0], heading):
+                lines.pop(0)
         out[key] = "\n".join(lines).strip()
     return out
 
@@ -139,6 +187,12 @@ def _same_heading(found: str, expected: str) -> bool:
     normal = lambda s: re.sub(r"[^a-z]", "", s.lower())     # noqa: E731 - local, one use
     a, b = normal(found), normal(expected)
     return bool(a) and (a == b or a in b or b in a)
+
+
+def _exact_heading(found: str, expected: str) -> bool:
+    normal = lambda s: re.sub(r"[^a-z]", "", s.lower())     # noqa: E731 - local, one use
+    a, b = normal(found), normal(expected)
+    return bool(a) and a == b
 
 
 # ---------------------------------------------------------------------------------------------
@@ -150,9 +204,6 @@ def write_numerals(workspace: Path, numerals: Sequence[Mapping[str, Any]]) -> No
         for item in numerals if _clean(item.get("numeral"), 8))
     _write(Path(workspace) / "draft" / NUMERALS_FILE,
            "# Reference numerals\n\n"
-           "Every numeral used anywhere in the specification or on a drawing appears here exactly\n"
-           "once, against ONE part name. Keep this table and the text in step: it is checked\n"
-           "mechanically after every iteration.\n\n"
            "| Numeral | Part |\n| --- | --- |\n" + (rows or "| | |"))
 
 
@@ -186,8 +237,9 @@ def write_figures(workspace: Path, figures: Sequence[Mapping[str, Any]]) -> None
         if existing.is_file() or existing.is_symlink():
             existing.unlink()
     for index, figure in enumerate(figures, 1):
-        label = _clean(figure.get("label") or f"FIG. {index}", 60)
-        slug = re.sub(r"[^A-Za-z0-9]+", "-", label).strip("-").upper() or f"FIG-{index}"
+        label = _clean(figure.get("label") or f"FIG. {index}", 240)
+        slug = (re.sub(r"[^A-Za-z0-9]+", "-", label[:60]).strip("-").upper() or
+                f"FIG-{index}")
         body = [f"# {label}", "", _clean(figure.get("caption"), 4000)]
         numerals = figure.get("numerals") or []
         if numerals:
@@ -257,13 +309,15 @@ def build(*, project: Mapping[str, Any], references: Sequence[Mapping[str, Any]]
     _write_review(workspace, qa_report)
     install_tools(workspace, src_dir)
 
+    _migrate_legacy_section_files(workspace)
+
     if sections is not None:
         write_sections(workspace, sections)
     else:
         for _key, name, heading in SECTION_FILES:
             path = workspace / "draft" / name
             if not path.exists():
-                _write(path, f"<!-- {heading} - body text only, no heading line. -->\n")
+                _write(path, "")
     if numerals or not (workspace / "draft" / NUMERALS_FILE).exists():
         write_numerals(workspace, numerals)
     #  Written unconditionally, including empty: the workspace mirrors the stored version, so a
@@ -287,6 +341,17 @@ def _brief(project: Mapping[str, Any]) -> str:
                  "- Prior-art search: none was run. Work with whatever art is in prior_art/, and "
                  "say plainly in your summary that the art you were given may be incomplete.")
     notes = _clean(project.get("inventor_notes"), 40_000)
+    # Projects created by the former intake form can retain instructions that directly conflict
+    # with the filing-clean gate. Preserve every other filing choice while upgrading only those
+    # two known legacy defaults to the current deterministic treatment.
+    notes = notes.replace(
+        "Priority status is not confirmed; leave a drafting note requesting it.",
+        "No domestic or foreign priority claim was supplied. Use 'Not applicable.' in the "
+        "cross-reference section.")
+    notes = notes.replace(
+        "Government support status is not confirmed; leave a drafting note requesting it.",
+        "No government support was supplied. Use 'Not applicable.' in the government support "
+        "section.")
     if notes:
         lines += ["", "## Inventor and filing notes", "", notes]
     return "\n".join(lines)
@@ -526,6 +591,8 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------------------------
 _SEED_HEADINGS = (
     ("cross_reference", r"cross[- ]?reference|related applications?|priority claim"),
+    ("government_support", r"federally sponsored research|government (?:support|rights)|"
+                           r"federal (?:support|funding|award)"),
     ("field", r"technical field|field of (the )?(invention|disclosure)|^field$"),
     ("background", r"background|prior art|description of (the )?related art"),
     ("summary", r"summary|brief summary"),

@@ -61,6 +61,24 @@ class StudioError(drafting.DraftingError):
     pass
 
 
+class SourceFidelityInspectionError(StudioError):
+    """A completed pre-render review that found source or text blockers."""
+
+    def __init__(self, report: Mapping[str, Any]):
+        self.report = human_text(dict(report))
+        findings = self.report.get("findings") or []
+        detail = str(self.report.get("last_error") or self.report.get("summary") or "")
+        if findings:
+            detail = f"{len(findings)} source-fidelity finding(s) must be repaired."
+        super().__init__(detail or "The source-fidelity preflight did not pass.")
+
+
+class SourceReviewUnavailable(StudioError):
+    """The independent reviewer failed, so retry the saved candidate unchanged."""
+
+    retry_without_repair = True
+
+
 class DrawingInspectionError(StudioError):
     def __init__(self, errors: Sequence[str]):
         self.errors = [str(item)[:2000] for item in errors if str(item).strip()]
@@ -175,6 +193,13 @@ or experimental fact. When an optional implementation detail is not supplied, wr
 functional language and disclosed alternatives without choosing a made-up value. Omit an
 unsupported optional limitation from the claims. If no related application or priority claim was
 supplied, write `Not applicable.` in the Cross-Reference section; never delete the section.
+If no government support was supplied, write `Not applicable.` in the government-support section;
+never delete the section. Operational requests to resume, preserve, repair, inspect, or audit an
+existing candidate do not disclose or affirm its technical content. Nor do statements that a
+candidate is source-faithful, its numeral or figure counts, its labels, or the filing gates it
+should pass. A corrective message
+that names a detail only to reject, remove, narrow, question, or audit it is not affirmative source
+support. Require an independent USER passage that affirmatively describes the technical detail.
 
 FILING-CLEAN OUTPUT IS ABSOLUTE
 No placeholder, drafting note, TODO, TBD, blank field, instruction to a draftsperson, question to
@@ -228,6 +253,10 @@ Background, and in the Detailed Description only to incorporate a document by re
 the title, summary, claims or abstract. Never cite a key that is not in the index; never
 characterise a reference beyond what its file actually says. If the file does not support the
 statement you want to make, make a weaker statement or none.
+Every reference listed in prior_art/INDEX.md must be addressed by an accurate citation in the
+Background. If a reference is peripheral, state only the supported teaching that matters and why
+it does not bear on the claimed combination.
+Never omit a listed reference solely because it is less relevant.
 
 REFERENCE NUMERALS
 Keep draft/numerals.md in step with the text at all times: every numeral used anywhere appears
@@ -240,10 +269,31 @@ Use a structural view, system diagram, or process flow as appropriate to the dis
 Normally use two to four figures. Do not list more than eight numerals on one sheet. When more
 structure must be shown, add a focused detail or sectional sheet instead of overcrowding one image,
 then synchronize the Brief Description of the Drawings and Detailed Description.
+When moving a numeral to another or focused sheet, remove every use of that numeral and its
+canonical part name from the old sheet brief. If the old sheet still needs the structure only as
+context, describe it generically as an unnumbered block, slab, housing, line, or other simple
+shape without its canonical part name or numeral; otherwise omit it. Never delete the focused
+sheet merely to fix stale references on the old brief.
 Keep each figure brief at or below 2800 characters. Include only disclosure-grounded geometry and
 relationships needed to identify the listed parts. Never invent arbitrary exact counts,
 proportions, relative heights, corner shapes, line counts, or placement constraints merely to
 control the renderer. If a visual constraint is not in the disclosure or specification, omit it.
+Do not demand open paper between solid bodies merely to create label room. State a
+source-grounded physical spacing or omit it.
+Always keep all line work inside the drawing area, clear of physical sheet edges and filing
+margins. Describe placement against the drawing area, never against a sheet edge.
+When the source discloses a part but not its appearance, the image still needs a visible outline.
+Use the simplest generic outline and identify it in the figure brief as "shown schematically".
+That outline is a depiction convention only. Never add its chosen shape, proportion, or page
+placement to the patent text or claims, and never imply that the convention is an embodiment.
+Describe a cord, cable, wire, hose, or pulling element as one curved path and target that path.
+Never define it as a white-interior strip or by counting outline strokes.
+Numeral endpoint instructions identify the part, not an aesthetic coordinate. Prefer a broad
+interior target such as well inside the part or its hatching. Do not require a midpoint, quarter,
+exact depth, or toward-an-end placement unless that location is disclosure-grounded or necessary
+to distinguish the intended part from another visible part. Name repeated shapes by a stable
+position such as outermost, middle, innermost, left, or right instead of an ordinal whose direction
+could be read more than one way.
 Figure files are Markdown specifications only. Never create SVG, PNG, or other image files. The
 image pipeline generates unlabeled geometry, then adds the listed numerals, FIG. label, callouts,
 and leader lines deterministically. Describe the required geometry and relationships, and list
@@ -259,7 +309,7 @@ FILES
   input/request.md        what the user is asking for THIS turn
   input/materials/        anything else the user uploaded
   prior_art/              the references, with INDEX.md listing the citation keys
-  draft/01-title.md … draft/09-abstract.md    the application, body text only, no heading lines
+  draft/01-title.md through draft/10-abstract.md    application body text, no heading lines
   draft/numerals.md       the reference-numeral table
   figures/                one file per drawing
   review/previous-qa.md   what the reviewer found last time - fix it
@@ -329,6 +379,11 @@ when necessary, and synchronize the drawing descriptions.
 
 If a figure brief is over-specified, shorten it by removing invented rendering constraints while
 preserving the authoritative text, numeral table, disclosed geometry, and required relationships.
+For an endpoint finding, choose a broad interior target on the intended part whenever possible.
+Remove exact midpoint, depth, quarter, or toward-an-end modifiers that are not disclosure-grounded
+or necessary to distinguish the intended part. Replace ordinal geometry references with explicit
+outermost, middle, innermost, left, or right terms whenever the order could be read in more than
+one direction.
 
 Leave no note, placeholder, question, or instruction for a person. Return the structured answer
 with `action` set to "revised" and `questions` as an empty array."""
@@ -655,9 +710,10 @@ def validate_snapshot(snapshot: Mapping[str, Any],
         details = []
         for item in failures[:8]:
             evidence = list(item.get("items") or [])
+            evidence_text = " | ".join(str(value)[:180] for value in evidence[:6])
             details.append(
                 f"{item.get('name') or 'Unnamed check'}: " +
-                str(evidence[0] if evidence else item.get("detail") or "failed")[:300])
+                (evidence_text or str(item.get("detail") or "failed")[:300]))
         category = ("figures_and_numerals"
                     if all(str(item.get("name") or "") in _FIGURE_PLAN_CHECKS
                            for item in failures)
@@ -682,6 +738,9 @@ def candidate_snapshot_for_repair(snapshot: Any) -> dict[str, Any] | None:
     sections = {}
     for key, _name, _heading in draft_workspace.SECTION_FILES:
         value = raw_sections.get(key)
+        if key == "government_support" and (value is None or value == ""):
+            sections[key] = ""
+            continue
         if not isinstance(value, str) or not value.strip():
             return None
         sections[key] = human_text(value.replace("\x00", "").strip())
@@ -851,8 +910,10 @@ class StudioRepository:
     def messages(self, project_id: int, *, limit: int = 400) -> list[dict[str, Any]]:
         self._ready()
         with self._cursor() as cur:
-            cur.execute("SELECT * FROM app_draft_messages WHERE project_id=%s "
-                        "ORDER BY id LIMIT %s", (int(project_id), int(limit)))
+            cur.execute(
+                "SELECT * FROM (SELECT * FROM app_draft_messages WHERE project_id=%s "
+                "ORDER BY id DESC LIMIT %s) recent ORDER BY id",
+                (int(project_id), int(limit)))
             out = []
             for row in cur.fetchall():
                 item = dict(row)
@@ -1314,6 +1375,7 @@ class TurnRunner:
         self.agent = agent
         self.qa = qa
         self.workspace = workspace
+        self._source_review_cache: dict[str, dict[str, Any]] = {}
 
     # -- inputs ---------------------------------------------------------------------------------
     def _load(self, project_id: int) -> dict[str, Any]:
@@ -1341,8 +1403,8 @@ class TurnRunner:
         loaded = self._load(project_id)
         project = loaded["project"]
         documents = self.repository.documents(project_id)
-        history = [m for m in self.repository.messages(project_id, limit=60)
-                   if m["role"] in ("user", "agent")][-24:]
+        history = [m for m in self.repository.messages(project_id, limit=400)
+                   if m["role"] in ("user", "agent")]
         latest_qa = self.repository.latest_qa(project_id)
         sections = loaded["sections"]
         seeded = False
@@ -1432,6 +1494,33 @@ class TurnRunner:
         except Exception:
             return
         detail = str(error)[:1200]
+        prior_report: dict[str, Any] = {}
+        try:
+            candidate = self.repository.retry_candidate(turn_id)
+            stored_report = candidate.get("qa_report") if isinstance(candidate, Mapping) else None
+            if isinstance(stored_report, Mapping) and (
+                    stored_report.get("checks") or stored_report.get("findings")):
+                prior_report = human_text(dict(stored_report))
+        except Exception:
+            pass
+        if prior_report:
+            summary = str(prior_report.get("summary") or "").strip()
+            prior_report["summary"] = (
+                summary + " The automatic repair run stopped after preserving this candidate; "
+                "resume the listed filing-gate repairs."
+            ).strip()
+            prior_report["last_error"] = detail
+            prior_report["interruption"] = {
+                "detail": detail,
+                "action": "Resume the saved candidate and complete the listed repairs.",
+            }
+            self.repository.save_retry_candidate(
+                turn_id, lease, snapshot=snapshot, report=prior_report)
+            try:
+                self.workspace._write_review(workspace, prior_report)
+            except Exception:
+                pass
+            return
         check = {
             "name": "Drafting run completed",
             "status": "fail",
@@ -1464,6 +1553,71 @@ class TurnRunner:
                         figures: Sequence[Mapping[str, Any]], disclosure: str,
                         workspace: Path) -> dict[str, Any]:
         import draft_figures
+
+        self.repository.heartbeat(turn_id, lease, stage="checking source fidelity")
+        conversation_path = workspace / "input" / "conversation.md"
+        conversation = (conversation_path.read_text(encoding="utf-8")
+                        if conversation_path.exists() else "")
+        brief_path = workspace / "input" / "brief.md"
+        brief = (brief_path.read_text(encoding="utf-8")
+                 if brief_path.exists() else "")
+        configured_version = getattr(self.qa, "SOURCE_REVIEW_VERSION", "")
+        source_review_version = (configured_version if isinstance(configured_version, str)
+                                 and configured_version else draft_qa.SOURCE_REVIEW_VERSION)
+        source_material = {
+            "version": source_review_version,
+            "disclosure": disclosure,
+            "conversation": conversation,
+            "brief": brief,
+            "sections": dict(sections),
+            "numerals": [dict(item) for item in numerals],
+            "figures": [dict(item) for item in figures],
+        }
+        source_hash = hashlib.sha256(json.dumps(
+            source_material, ensure_ascii=False, sort_keys=True,
+            separators=(",", ":")).encode("utf-8")).hexdigest()
+        report = self._source_review_cache.get(source_hash)
+        if report is None:
+            transcript = workspace / ".agent" / (
+                f"source-review-{turn_id:04d}-{source_hash[:12]}.jsonl")
+            transcript.parent.mkdir(parents=True, exist_ok=True)
+            outcome = self.qa.review_sources(workspace, transcript=transcript)
+            findings = list(outcome.get("findings") or [])
+            completed = bool(outcome.get("ok"))
+            if not completed:
+                detail = (str(outcome.get("error") or "").strip() or
+                          "The independent source reviewer did not return a valid result.")
+                raise SourceReviewUnavailable(detail)
+            passed = completed and not findings
+            detail = (str(outcome.get("summary") or "").strip() or
+                      ("The independent source-fidelity review completed without findings."
+                       if passed else str(outcome.get("error") or "").strip() or
+                       "The independent source-fidelity review did not pass."))
+            check = {
+                "name": "Source fidelity is clean before rendering",
+                "status": "pass" if passed else "fail",
+                "severity": "info" if passed else "error",
+                "category": "disclosure_fidelity",
+                "detail": detail[:4000],
+                "items": [str(item.get("title") or "Source-fidelity finding")[:600]
+                          for item in findings],
+            }
+            report = human_text({
+                "status": "complete" if completed else "failed",
+                "verdict": "pass" if passed else "fail",
+                "summary": detail[:8000],
+                "checks": [check],
+                "findings": findings,
+                "counts": draft_qa.counts_for([check], findings),
+                "cost_usd": outcome.get("cost_usd") or 0.0,
+                "duration_ms": int(outcome.get("duration_ms") or 0),
+                "model_name": outcome.get("model") or "",
+                "last_error": outcome.get("error") or "",
+            })
+            self._source_review_cache[source_hash] = report
+        if filing_blockers(report):
+            raise SourceFidelityInspectionError(report)
+
         draft_figures.checkpoint_project_figures(turn_id, project_id, user_id)
 
         def check_cancel() -> None:
@@ -1626,6 +1780,8 @@ class TurnRunner:
                         workspace=workspace, allowed=allowed, sections=sections,
                         numerals=snapshot["numerals"], figures=snapshot["figures"],
                         review_index=review_index)
+                except SourceFidelityInspectionError as exc:
+                    report = exc.report
                 except DrawingInspectionError as exc:
                     check = {
                         "name": "Every drawing sheet passes geometry, leader, and OCR inspection",
@@ -1645,6 +1801,8 @@ class TurnRunner:
                 except drafting.DraftingConflict:
                     raise
                 except Exception as exc:                         # a failed gate becomes repair input
+                    if getattr(exc, "retry_without_repair", False):
+                        raise
                     traceback.print_exc()
                     check = {"name": "Automatic filing candidate checks",
                              "status": "fail", "severity": "error",

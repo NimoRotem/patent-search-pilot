@@ -268,6 +268,21 @@ def _relative(path: str) -> str:
     return Path(path).name
 
 
+def _final_error(final: Mapping[str, Any]) -> str:
+    """Keep the CLI's specific failure instead of collapsing it to its generic subtype."""
+    errors = final.get("errors")
+    if isinstance(errors, Sequence) and not isinstance(errors, (str, bytes)):
+        detail = " / ".join(str(item).strip() for item in errors if str(item).strip())
+        if detail:
+            return detail
+    elif str(errors or "").strip():
+        return str(errors).strip()
+    result = final.get("result")
+    if isinstance(result, str) and result.strip():
+        return result.strip()
+    return str(final.get("subtype") or "error")
+
+
 def _run_once(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str, Any],
               session_id: str = "", resume: bool = False, model: str = "",
               tools: str = _DRAFT_TOOLS, timeout: int = DRAFT_TIMEOUT,
@@ -404,7 +419,7 @@ def _run_once(*, workspace: Path, prompt: str, system_prompt: str, schema: Mappi
     payload = final.get("result")
     out.text = payload if isinstance(payload, str) else ""
     if final.get("is_error"):
-        out.error = (out.text or str(final.get("subtype") or "error"))[:2000]
+        out.error = _final_error(final)[:2000]
         return out
     parsed = _parse_result(payload)
     if parsed is None:
@@ -430,6 +445,19 @@ def _rate_limit_error(error: str) -> bool:
         "rate limit" in text or
         "tokens per minute" in text or
         "too many requests" in text)
+
+
+def _transient_provider_error(error: str) -> bool:
+    """Recognize provider failures that are safe to repeat with the same workspace."""
+    text = str(error or "").lower()
+    return bool(
+        _rate_limit_error(text) or
+        re.search(r"(?:^|\D)(?:500|502|503|504|529)(?:\D|$)", text) or
+        any(phrase in text for phrase in (
+            "overloaded", "service unavailable", "temporarily unavailable",
+            "server-side issue", "internal server error", "connection lost",
+            "connection reset", "connection closed", "unexpected eof", "broken pipe",
+            "network error", "no response parts", "image_recitation")))
 
 
 def _wait_for_rate_limit_retry(seconds: int,
@@ -463,11 +491,11 @@ def _merge_attempts(previous: AgentRun, current: AgentRun, message: str) -> Agen
 
 
 def _run_with_rate_limit_retries(common: Mapping[str, Any], *, auth_mode: str) -> AgentRun:
-    """Retry transient per-minute limits without weakening the independent-session boundary."""
+    """Retry transient provider failures without weakening the session boundary."""
     current = _run_once(**common, auth_mode=auth_mode)
     for retry_index in range(RATE_LIMIT_RETRIES):
         cancel = common.get("cancel")
-        if (current.ok or current.cancelled or not _rate_limit_error(current.error) or
+        if (current.ok or current.cancelled or not _transient_provider_error(current.error) or
                 (cancel is not None and cancel.is_set())):
             return current
         delay = RATE_LIMIT_RETRY_SECONDS * (retry_index + 1)
@@ -484,8 +512,8 @@ def _run_with_rate_limit_retries(common: Mapping[str, Any], *, auth_mode: str) -
             auth_mode=auth_mode)
         current = _merge_attempts(
             current, retried,
-            f"The provider rate limit was reached, so the run waited {delay} seconds and "
-            "retried automatically.")
+            f"The provider returned a temporary error or rate limit, so the run waited "
+            f"{delay} seconds and retried automatically.")
     return current
 
 
@@ -523,6 +551,17 @@ def run(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str
             raise AgentUnavailable("No Claude subscription token or API key is configured.")
 
     first = _run_with_rate_limit_retries(common, auth_mode=mode)
+    restarted_fresh = False
+    if (resume and not first.ok and not first.cancelled and
+            _missing_session_error(first.error) and
+            (cancel is None or not cancel.is_set())):
+        fresh = _run_with_rate_limit_retries(
+            {**common, "session_id": new_session_id(), "resume": False}, auth_mode=mode)
+        first = _merge_attempts(
+            first, fresh,
+            "The prior conversation session was unavailable, so the run continued from the "
+            "complete workspace in a fresh session.")
+        restarted_fresh = True
     if (mode != "subscription" or first.ok or first.cancelled or
             not api_key or not _subscription_limit_error(first.error) or
             (cancel is not None and cancel.is_set())):
@@ -530,7 +569,7 @@ def run(*, workspace: Path, prompt: str, system_prompt: str, schema: Mapping[str
 
     _SUBSCRIPTION_UNAVAILABLE = True
     fallback_session = first.session_id or session_id
-    fallback_resume = bool(resume and fallback_session)
+    fallback_resume = bool(resume and not restarted_fresh and fallback_session)
     if not fallback_resume:
         fallback_session = new_session_id()
     fallback = _run_with_rate_limit_retries(

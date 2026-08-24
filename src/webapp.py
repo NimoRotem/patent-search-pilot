@@ -6952,6 +6952,7 @@ def draft_print(project_id):
         if not version_no:
             raise drafting.DraftingNotFound("No draft version is ready to print.")
         version = service.get_version(principal, project_id, version_no)
+        version = {**version, "sections": draft_export.application_sections(version)}
         return render_template("draft_print.html", project=project, version=version,
                                section_order=drafting.SECTION_ORDER,
                                notice=draft_export.WORKING_DRAFT_NOTICE)
@@ -7106,6 +7107,8 @@ def draft_studio_page(project_id):
     try:
         _user, principal = _draft_identity()
         state = _studio().state(principal, project_id)
+    except drafting.DraftingPermissionDenied:
+        return redirect(url_for("auth.login", next=request.path))
     except drafting.DraftingError as exc:
         return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
     #  The page renders itself from exactly the same JSON the poller fetches, so there is one
@@ -7535,12 +7538,15 @@ def _readiness_for(principal, project_id):
 def _filing_figure_images(project):
     """The exact active PNGs that passed both live drawing gates, in filing order."""
     images = []
-    for figure in _figures_for(project):
+    figures = _figures_for(project)
+    for sheet_index, figure in enumerate(figures, 1):
         versions = figure.get("versions") or []
         active = next((row for row in versions
                        if int(row.get("version_no") or 0) ==
                        int(figure.get("active_version") or 0)), None) or {}
-        if not ((active.get("numeral_audit") or {}).get("ok") and
+        if not (draft_figures.current_ocr_audit(
+                    active.get("numeral_audit") or {},
+                    expected_sheet_number=f"{sheet_index}/{len(figures)}") and
                 draft_figures.current_semantic_audit(active.get("semantic_audit") or {}) and
                 draft_figures.current_leader_audit(active.get("leader_audit") or {})):
             raise drafting.DraftingValidationError(

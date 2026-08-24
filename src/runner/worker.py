@@ -65,6 +65,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 #  dispatcher (it would run searches in this process by the old in-thread path), and the guard has
 #  to be armed before any module opens its first connection.
 os.environ.setdefault("PATENTS_NO_STARTUP", "1")
+os.environ.setdefault("DRAFT_TURN_WORKER", "0")
 
 import corpus_guard
 import runctx

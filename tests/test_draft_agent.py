@@ -106,6 +106,75 @@ def test_api_rate_limit_retries_a_fresh_review_in_a_new_session(monkeypatch, tmp
     assert any("rate limit" in step["text"].lower() for step in result.steps)
 
 
+def test_api_overload_retries_a_fresh_review_in_a_new_session(monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "api")
+    monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRIES", 1)
+    monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRY_SECONDS", 65)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
+    monkeypatch.setattr(draft_agent, "new_session_id", lambda: "retry-session")
+    waits = []
+    monkeypatch.setattr(
+        draft_agent, "_wait_for_rate_limit_retry",
+        lambda seconds, cancel=None: waits.append(seconds) or True)
+    calls = []
+
+    def run_once(**values):
+        calls.append(values)
+        if len(calls) == 1:
+            return draft_agent.AgentRun(
+                session_id=values["session_id"], model="opus", duration_ms=25,
+                error="API Error: 529 Overloaded. This is a server-side issue.")
+        return draft_agent.AgentRun(
+            ok=True, session_id=values["session_id"], model="opus",
+            result={"summary": "reviewed"}, duration_ms=75)
+
+    monkeypatch.setattr(draft_agent, "_run_once", run_once)
+
+    result = draft_agent.run(
+        workspace=Path(tmp_path), prompt="review", system_prompt="system", schema={},
+        session_id="review-session", resume=False)
+
+    assert result.ok is True
+    assert waits == [65]
+    assert [(call["resume"], call["session_id"]) for call in calls] == [
+        (False, "review-session"),
+        (False, "retry-session"),
+    ]
+    assert any("provider" in step["text"].lower() for step in result.steps)
+
+
+def test_connection_loss_mid_response_retries_from_the_saved_workspace(monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "api")
+    monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRIES", 1)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
+    monkeypatch.setattr(draft_agent, "new_session_id", lambda: "retry-session")
+    monkeypatch.setattr(
+        draft_agent, "_wait_for_rate_limit_retry", lambda _seconds, cancel=None: True)
+    calls = []
+
+    def run_once(**values):
+        calls.append(values)
+        if len(calls) == 1:
+            return draft_agent.AgentRun(
+                session_id=values["session_id"], model="opus",
+                error="API Error: Connection lost mid-response. The response may be incomplete.")
+        return draft_agent.AgentRun(
+            ok=True, session_id=values["session_id"], model="opus",
+            result={"action": "revised"})
+
+    monkeypatch.setattr(draft_agent, "_run_once", run_once)
+
+    result = draft_agent.run(
+        workspace=Path(tmp_path), prompt="repair", system_prompt="system", schema={},
+        session_id="first-session", resume=False)
+
+    assert result.ok is True
+    assert [(call["resume"], call["session_id"]) for call in calls] == [
+        (False, "first-session"),
+        (False, "retry-session"),
+    ]
+
+
 def test_api_rate_limit_retry_keeps_a_resumed_drafting_session(monkeypatch, tmp_path):
     monkeypatch.setattr(draft_agent, "AUTH_MODE", "api")
     monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRIES", 1)
@@ -135,3 +204,44 @@ def test_api_rate_limit_retry_keeps_a_resumed_drafting_session(monkeypatch, tmp_
         (True, "draft-session"),
         (True, "draft-session"),
     ]
+
+
+def test_resumed_run_restarts_from_workspace_when_conversation_is_missing(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "subscription")
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "subscription-token")
+    monkeypatch.setattr(draft_agent, "new_session_id", lambda: "replacement-session")
+    calls = []
+
+    def run_once(**values):
+        calls.append(values)
+        if len(calls) == 1:
+            return draft_agent.AgentRun(
+                session_id=values["session_id"], model="opus",
+                error="No conversation found with session ID: missing-session",
+                duration_ms=10)
+        return draft_agent.AgentRun(
+            ok=True, session_id=values["session_id"], model="opus",
+            result={"action": "revised"}, duration_ms=30)
+
+    monkeypatch.setattr(draft_agent, "_run_once", run_once)
+
+    result = draft_agent.run(
+        workspace=Path(tmp_path), prompt="repair", system_prompt="system", schema={},
+        session_id="missing-session", resume=True)
+
+    assert result.ok is True
+    assert [(call["resume"], call["session_id"]) for call in calls] == [
+        (True, "missing-session"),
+        (False, "replacement-session"),
+    ]
+    assert result.duration_ms == 40
+    assert any("fresh session" in step["text"].lower() for step in result.steps)
+
+
+def test_structured_cli_error_details_are_not_discarded():
+    assert draft_agent._final_error({
+        "subtype": "error_during_execution",
+        "result": "",
+        "errors": ["No conversation found with session ID: missing-session"],
+    }) == "No conversation found with session ID: missing-session"

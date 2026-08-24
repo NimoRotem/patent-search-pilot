@@ -34,6 +34,7 @@ except ModuleNotFoundError:  # pure prompt/validation tests do not require the P
 SECTION_ORDER = (
     ("title", "Title"),
     ("cross_reference", "Cross-Reference to Related Applications"),
+    ("government_support", "Statement Regarding Federally Sponsored Research or Development"),
     ("field", "Field of the Disclosure"),
     ("background", "Background"),
     ("summary", "Summary"),
@@ -350,7 +351,8 @@ NON-NEGOTIABLE GUARDRAILS:
    claims, inventors, assignees, government support, drawings, or embodiments.
 2. No placeholder, drafting note, TODO, TBD, question, blank field, or instruction to a person may
    appear in the application. If no related application was supplied, write "Not applicable." in
-   the Cross-Reference section. Omit unsupported optional details instead of guessing.
+   the Cross-Reference section. If no government support was supplied, write "Not applicable." in
+   the government-support section. Omit unsupported optional details instead of guessing.
 3. Do not conclude or imply patentability, novelty, non-obviousness, validity, infringement,
    freedom to operate, inventorship, eligibility, or likelihood of grant.
 4. Attribute factual statements about prior art in Background with exactly one or more allowed
@@ -381,6 +383,8 @@ NON-NEGOTIABLE GUARDRAILS:
         "- title: a concise technical title grounded in the disclosure.\n"
         "- cross_reference: disclose only relationships actually supplied; otherwise write "
         "Not applicable.\n"
+        "- government_support: state only supplied federal funding or rights information; "
+        "otherwise write Not applicable.\n"
         "- field: identify the technical field without claiming legal scope.\n"
         "- background: explain the technical setting/problem neutrally and cite supported "
         "selected-reference statements using allowed [REF:...] tokens.\n"
@@ -464,7 +468,7 @@ def render_application_markdown(sections: Mapping[str, str]) -> str:
     blocks = []
     for index, (key, heading) in enumerate(SECTION_ORDER):
         prefix = "#" if index == 0 else "##"
-        content = sections[key]
+        content = str(sections.get(key) or "")
         blocks.append(f"{prefix} {heading}\n\n{content}")
     return "\n\n".join(blocks).strip() + "\n"
 

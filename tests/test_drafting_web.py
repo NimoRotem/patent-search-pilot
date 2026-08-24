@@ -23,6 +23,7 @@ def sections():
     return {
         "title": "Configurable Vacuum Lifting Tool",
         "cross_reference": "Not applicable.",
+        "government_support": "Not applicable.",
         "field": "The disclosure relates to portable vacuum lifting tools.",
         "background": "Accessory readers are described in selected art [REF:US-11223344-B2].",
         "summary": "A handle identifies an attached base plate.",
@@ -160,6 +161,22 @@ def test_draft_library_and_intake_render(draft_client):
     intake = client.get("/drafts/new?search_slug=adhoc-owned")
     assert intake.status_code == 302
     assert intake.headers["Location"].endswith("/drafts/start?search_slug=adhoc-owned")
+
+
+def test_anonymous_studio_redirects_to_login_instead_of_rendering_not_found(
+        draft_client, monkeypatch):
+    client, _service = draft_client
+    # Production nginx reaches Flask over loopback. The broad read-only loopback bypass must not
+    # turn a missing named session into a misleading drafting 403 page.
+    monkeypatch.setattr(auth, "TRUST_LOOPBACK", True)
+    with client.session_transaction() as session:
+        session.clear()
+
+    response = client.get("/drafts/7/studio")
+
+    assert response.status_code == 302
+    assert "/login" in response.headers["Location"]
+    assert "next=/drafts/7/studio" in response.headers["Location"]
 
 
 def test_conversational_intake_carries_search_text_and_prior_art(draft_client):
@@ -435,7 +452,9 @@ def test_draft_markdown_and_docx_exports(draft_client):
     client, _service = draft_client
     markdown = client.get("/drafts/7/download/md?version=1")
     assert markdown.status_code == 200
-    assert b"WORKING DRAFT" not in markdown.data and b"US-11223344-B2" in markdown.data
+    assert b"WORKING DRAFT" not in markdown.data
+    assert b"[REF:" not in markdown.data
+    assert b"U.S. Patent No. 11,223,344" in markdown.data
     word = client.get("/drafts/7/download/docx?version=1")
     assert word.status_code == 200 and len(word.data) > 10_000
     with zipfile.ZipFile(io.BytesIO(word.data)) as archive:
@@ -443,6 +462,10 @@ def test_draft_markdown_and_docx_exports(draft_client):
     assert b"CLAIMS" in document_xml and b"ABSTRACT" in document_xml
     pdf = client.get("/drafts/7/download/pdf?version=1")
     assert pdf.status_code == 200 and pdf.data.startswith(b"%PDF") and len(pdf.data) > 3_000
+    printed = client.get("/drafts/7/print?version=1")
+    assert printed.status_code == 200
+    assert b"[REF:" not in printed.data
+    assert b"U.S. Patent No. 11,223,344" in printed.data
 
 
 def test_legacy_section_edits_and_restore_cannot_publish_unreviewed_versions(draft_client):
