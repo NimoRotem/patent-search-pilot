@@ -294,7 +294,7 @@ def test_marked_review_uses_a_full_sheet_coordinate_grid_as_its_correction_frame
         anchors=[{"numeral": "10", "x": 500, "y": 500, "visible": True}])
 
     assert audit["ok"] is True and len(calls) == 3
-    coordinate_sheet = draft_figures._coordinate_grid_overlay(raw)
+    coordinate_sheet = draft_figures._coordinate_grid_overlay(raw, native_pixels=True)
     for call in calls:
         images = [item for item in call["contents"]
                   if getattr(item, "inline_data", None)]
@@ -632,6 +632,51 @@ def test_marked_anchor_repair_uses_the_grid_grounded_full_sheet_suggestion():
     assert repaired[0]["y"] == 800
 
 
+def test_marked_anchor_repair_converts_native_raw_pixels_to_normalized_geometry():
+    raw = blank_png(1400, 900)
+    anchors = [{"numeral": "18", "x": 500, "y": 500, "visible": True,
+                "evidence": "left housing front face"}]
+    audit = {
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1400,
+        "coordinate_height": 900,
+        "incorrect": ["18"],
+        "labels": [{
+            "numeral": "18", "correct": False, "repairable": True,
+            "evidence": "the center of the housing is at raw pixel 290, 308",
+            "suggested_x": 290, "suggested_y": 308,
+        }],
+    }
+
+    repaired, changed = draft_figures._repair_marked_anchors(raw, anchors, audit)
+
+    assert changed is True
+    assert repaired[0]["x"] == 207
+    assert repaired[0]["y"] == 343
+
+
+def test_marked_anchor_repair_rejects_pixel_metadata_for_a_different_sheet():
+    raw = blank_png(1400, 900)
+    anchors = [{"numeral": "18", "x": 500, "y": 500, "visible": True,
+                "evidence": "left housing front face"}]
+    audit = {
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1000,
+        "coordinate_height": 1000,
+        "incorrect": ["18"],
+        "labels": [{
+            "numeral": "18", "correct": False, "repairable": True,
+            "evidence": "coordinate came from a different sheet",
+            "suggested_x": 290, "suggested_y": 308,
+        }],
+    }
+
+    repaired, changed = draft_figures._repair_marked_anchors(raw, anchors, audit)
+
+    assert changed is False
+    assert repaired == anchors
+
+
 def test_marked_anchor_repair_breaks_a_two_coordinate_cycle():
     raw = blank_png(1000, 1000)
     anchors = [{"numeral": "10", "x": 500, "y": 563, "visible": True,
@@ -862,7 +907,7 @@ def test_cross_provider_veto_coordinates_are_repaired_and_recertified(monkeypatc
     assert marked_audit["cross_provider_audit"]["ok"] is True
 
 
-def test_cross_provider_endpoint_review_uses_anthropic_pixels_and_normalizes_its_veto(
+def test_cross_provider_endpoint_review_uses_native_raw_pixel_coordinates(
         monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
     monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_MODEL", "claude-opus-5")
@@ -892,7 +937,7 @@ def test_cross_provider_endpoint_review_uses_anthropic_pixels_and_normalizes_its
 
     monkeypatch.setattr(draft_figures, "_anthropic_endpoint_message", anthropic)
 
-    raw = blank_png()
+    raw = blank_png(1400, 900)
     audit = draft_figures.inspect_cross_provider_endpoints(
         raw, raw_png=raw,
         anchors=[{"numeral": "10", "x": 400, "y": 565, "visible": True}],
@@ -905,6 +950,9 @@ def test_cross_provider_endpoint_review_uses_anthropic_pixels_and_normalizes_its
     assert audit["labels"][0]["repairable"] is True
     assert audit["labels"][0]["suggested_x"] == 640
     assert audit["labels"][0]["suggested_y"] == 225
+    assert audit["coordinate_space"] == "raw_pixels"
+    assert audit["coordinate_width"] == 1400
+    assert audit["coordinate_height"] == 900
     assert audit["model_name"] == "claude-opus-5"
     assert len(calls) == 1 and calls[0][1] == "test-anthropic-key"
     assert calls[0][0]["thinking"] == {"type": "disabled"}
@@ -913,7 +961,7 @@ def test_cross_provider_endpoint_review_uses_anthropic_pixels_and_normalizes_its
         "image", "image", "image", "text"]
     prompt = calls[0][0]["messages"][0]["content"][3]["text"]
     assert "suggested_x" in prompt and "raw geometry sheet" in prompt
-    assert "CURRENT" in prompt and "0 to 1000" in prompt
+    assert "CURRENT PIXEL" in prompt and "1399,899" in prompt
     assert saved and saved[0][1]["provider"] == "anthropic"
 
 
@@ -1672,11 +1720,12 @@ def test_compose_does_not_let_leader_routing_move_a_geometry_endpoint(monkeypatc
     assert (final_anchors[0]["x"], final_anchors[0]["y"]) == (200, 200)
 
 
-def test_marked_anchor_heading_states_the_exact_full_sheet_coordinate():
+def test_marked_anchor_heading_states_the_exact_full_sheet_pixel_coordinate():
     heading = draft_figures._marked_anchor_heading(
-        {"numeral": "26", "x": 501, "y": 502}, {"26": "bearing face"})
+        {"numeral": "26", "x": 500, "y": 500}, {"26": "bearing face"},
+        source_size=(1400, 900))
 
-    assert heading == "26: bearing face | CURRENT (501, 502)"
+    assert heading == "26: bearing face | CURRENT PIXEL (700, 450)"
 
 
 def test_marked_anchor_montage_preserves_the_endpoint_pixel_inside_a_red_ring():
@@ -1840,13 +1889,13 @@ def test_marked_progress_ignores_current_layout_saved_under_old_pixel_grounding(
     ) is None
 
 
-def test_current_marked_audit_accepts_a_fully_certified_v9_review():
+def test_current_marked_audit_rejects_a_pre_native_pixel_review():
     audit = accepted_marked_anchor_audit(
         prompt_version=(
             "figure-anchor-v9-local-part-coordinate-certificate-majority-with-correction"
         ))
 
-    assert draft_figures.current_marked_anchor_audit(audit) is True
+    assert draft_figures.current_marked_anchor_audit(audit) is False
     assert draft_figures.current_marked_anchor_audit({
         **audit, "prompt_version": "figure-anchor-v8-old",
     }) is False
