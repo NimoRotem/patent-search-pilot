@@ -2331,15 +2331,21 @@ def test_deterministic_grip_scene_draws_two_boundaries_for_a_finite_width_ring()
 
     assert png is not None
     image = Image.open(io.BytesIO(png)).convert("L")
-    for x in (350, 400, 435, 470, 520):
-        ink = [y for y in range(30, 246) if image.getpixel((x, y)) < 32]
+    for x in (400, 435, 470):
+        ink = [y for y in range(30, 241) if image.getpixel((x, y)) < 32]
         runs = []
         for y in ink:
-            if not runs or y > runs[-1][-1] + 1:
+            if not runs or y > runs[-1][-1] + 2:
                 runs.append([y])
             else:
                 runs[-1].append(y)
-        assert len(runs) == 3
+        assert len(runs) == 2
+        assert image.getpixel((x, 275)) < 32
+        assert image.getpixel((x, 300)) < 32
+    for x in (245, 335, 535, 625):
+        assert sum(image.getpixel((x, y)) < 32 for y in range(235, 351)) > 60
+    assert image.getpixel((428, 535)) == 255
+    assert image.getpixel((432, 507)) < 32
 
 
 def test_deterministic_fragmentary_section_preserves_open_clearance_and_four_bodies():
