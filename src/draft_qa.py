@@ -1038,11 +1038,11 @@ def _citation_checks(sections: Mapping[str, str], allowed: Sequence[str],
 
     if not unique:
         out.append(_check(
-            "Prior art is cited", "warn" if allowed_set else "pass",
+            "Prior art is cited", "fail" if allowed_set else "pass",
             "The draft cites no prior art. Where art was supplied, the Background should say what "
             "it teaches and where this invention departs from it."
             if allowed_set else "No prior art was supplied for this draft.",
-            severity="warn" if allowed_set else "advisory"))
+            severity="error" if allowed_set else "advisory"))
         return out
 
     unselected = [c for c in unique if c not in allowed_set]
@@ -1070,11 +1070,10 @@ def _citation_checks(sections: Mapping[str, str], allowed: Sequence[str],
     uncited = sorted(allowed_set - set(unique))
     if uncited:
         out.append(_check(
-            "Supplied art is addressed", "warn",
-            f"{len(uncited)} supplied reference(s) are never cited. That can be correct - not "
-            "every search hit belongs in the Background - but each one is art the examiner may "
-            "raise, so the draft should have a reason for passing over it.",
-            severity="warn", items=uncited))
+            "Supplied art is addressed", "fail",
+            f"{len(uncited)} supplied reference(s) are never cited. Every selected reference must "
+            "be addressed accurately in the Background before drawing generation begins.",
+            severity="error", items=uncited))
 
     bare = []
     for key, _name, heading in draft_workspace.SECTION_FILES:
