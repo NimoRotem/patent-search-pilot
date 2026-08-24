@@ -1989,11 +1989,54 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
     return out.getvalue()
 
 
+def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
+    """Render the exact open-clearance section with only two vertical boundary lines."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    requirements = (
+        re.search(r"\bfour hatched bodies\b[^.]{0,80}\bnothing else\b", text),
+        re.search(r"\bone upright column\b[^.]{0,80}\bthree horizontal bands\b", text),
+        re.search(r"\btwo side lines\b[^.]{0,100}\bonly vertical lines\b", text),
+        re.search(r"\bbetween\b[^.]{0,100}\bbottom of the column\b[^.]{0,100}"
+                  r"\btop line of the uppermost band\b", text),
+        re.search(r"\bopen unhatched (?:space|paper)\b", text),
+        re.search(r"\bbeneath the lowest band\b", text),
+    )
+    if not all(requirements):
+        return None
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1400, 900), "white")
+    hatch_layer = Image.new("RGB", image.size, "white")
+    hatch_draw = ImageDraw.Draw(hatch_layer)
+    for start in range(-900, 1401, 30):
+        hatch_draw.line((start, 900, start + 900, 0), fill="black", width=2)
+    hatch_mask = Image.new("L", image.size, 0)
+    mask_draw = ImageDraw.Draw(hatch_mask)
+    mask_draw.rectangle((254, 0, 496, 316), fill=255)
+    mask_draw.rectangle((0, 414, 1399, 546), fill=255)
+    mask_draw.rectangle((0, 554, 1399, 676), fill=255)
+    mask_draw.rectangle((0, 684, 1399, 796), fill=255)
+    image.paste(hatch_layer, (0, 0), hatch_mask)
+
+    draw = ImageDraw.Draw(image)
+    draw.line((250, 0, 250, 320), fill="black", width=4)
+    draw.line((500, 0, 500, 320), fill="black", width=4)
+    draw.line((250, 320, 500, 320), fill="black", width=4)
+    for y in (410, 550, 680, 800):
+        draw.line((0, y, 1399, y), fill="black", width=4)
+
+    out = io.BytesIO()
+    image.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
+
+
 def _deterministic_geometry_png(caption: str) -> bytes | None:
     """Select an exact renderer only when the brief describes a supported simple geometry."""
     return (_deterministic_nested_plan_png(caption) or
             _deterministic_pulling_scene_png(caption) or
-            _deterministic_grip_scene_png(caption))
+            _deterministic_grip_scene_png(caption) or
+            _deterministic_fragmentary_section_png(caption))
 
 
 def _apply_topology_audit(png: bytes, caption: str, semantic: dict) -> dict:
