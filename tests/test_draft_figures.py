@@ -172,6 +172,82 @@ def test_image_generation_waits_through_transient_capacity_exhaustion(monkeypatc
     assert sleeps == [2, 4, 8, 16]
 
 
+def test_image_generation_retries_a_provider_response_with_no_parts(monkeypatch):
+    png = blank_png()
+    calls = []
+    sleeps = []
+
+    class EmptyContent:
+        parts = None
+
+    class EmptyCandidate:
+        content = EmptyContent()
+        finish_reason = "IMAGE_RECITATION"
+
+    class EmptyResponse:
+        usage_metadata = None
+        candidates = [EmptyCandidate()]
+
+    class InlineData:
+        data = png
+
+    class ImagePart:
+        inline_data = InlineData()
+
+    class ImageContent:
+        parts = [ImagePart()]
+
+    class ImageCandidate:
+        content = ImageContent()
+
+    class ImageResponse:
+        usage_metadata = None
+        candidates = [ImageCandidate()]
+
+    def generate(*_args, **_kwargs):
+        calls.append(len(calls) + 1)
+        return EmptyResponse() if len(calls) == 1 else ImageResponse()
+
+    monkeypatch.setattr(draft_figures, "_model_call", generate)
+    monkeypatch.setattr(draft_figures.time, "sleep", sleeps.append)
+    monkeypatch.setattr(draft_figures.random, "uniform", lambda *_args: 0)
+
+    assert draft_figures.generate_png("draw exact geometry") == png
+    assert calls == [1, 2]
+    assert sleeps == [0.35]
+
+
+def test_image_generation_defers_repeated_provider_responses_with_no_parts(monkeypatch):
+    calls = []
+    sleeps = []
+
+    class Content:
+        parts = None
+
+    class Candidate:
+        content = Content()
+        finish_reason = "IMAGE_RECITATION"
+
+    class Response:
+        usage_metadata = None
+        candidates = [Candidate()]
+
+    def generate(*_args, **_kwargs):
+        calls.append(len(calls) + 1)
+        return Response()
+
+    monkeypatch.setattr(draft_figures, "_model_call", generate)
+    monkeypatch.setattr(draft_figures.time, "sleep", sleeps.append)
+    monkeypatch.setattr(draft_figures.random, "uniform", lambda *_args: 0)
+
+    with pytest.raises(
+            draft_figures.FigureTransientError, match="IMAGE_RECITATION"):
+        draft_figures.generate_png("draw exact geometry")
+
+    assert calls == [1, 2, 3]
+    assert sleeps == [0.35, 0.7]
+
+
 def test_marked_review_uses_a_full_sheet_coordinate_grid_as_its_correction_frame(monkeypatch):
     raw = blank_png()
     calls = []
