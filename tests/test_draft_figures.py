@@ -2794,6 +2794,33 @@ def test_marked_endpoint_spec_splits_inline_bullets_before_matching_targets():
     ]
 
 
+def test_marked_endpoint_spec_uses_each_parts_own_bullet_not_cross_references():
+    caption = (
+        "Perspective view from above onto the covering element 36. The artwork contains only "
+        "the listed reference numerals and leader lines.\n"
+        "- The vibration device 10 is the whole machine. Identified on its outer silhouette, "
+        "clear of the handle 44 and the perimeter member 24.\n"
+        "- The perimeter member 24 is the broad band beneath the machine. Identified deep "
+        "inside the front surface of that band.\n"
+        "- The handle 44 is the closed grip above the machine. Identified on the drawn outline "
+        "of the grip.\n"
+        "- The covering element 36 is the large plain tile. Identified well inside the open "
+        "tile surface to the right of the machine.")
+
+    specification = json.loads(draft_figures._marked_endpoint_specification(
+        "FIG. 1", caption,
+        ["10 = vibration device", "24 = perimeter member", "36 = covering element",
+         "44 = handle"]))
+    parts = {item["numeral"]: item for item in specification["parts"]}
+
+    assert parts["10"]["target"].startswith("Identified on its outer silhouette")
+    assert parts["24"]["target"] == (
+        "Identified deep inside the front surface of that band.")
+    assert parts["36"]["definition"] == "The covering element 36 is the large plain tile."
+    assert parts["36"]["target"].startswith("Identified well inside the open tile surface")
+    assert parts["44"]["target"] == "Identified on the drawn outline of the grip."
+
+
 def test_current_visual_audits_are_bound_to_the_configured_review_model(monkeypatch):
     monkeypatch.setattr(draft_figures, "vision_model", lambda: "gemini-2.5-pro")
     digest = "a" * 64
