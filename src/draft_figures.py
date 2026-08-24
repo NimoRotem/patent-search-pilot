@@ -2718,6 +2718,93 @@ def _annotation_layout(png: bytes, anchors, scale: float) -> dict:
     }
 
 
+def _point_to_segment_distance(point, start, end) -> float:
+    """Return the shortest pixel distance from one endpoint to a leader segment."""
+    from math import hypot
+
+    px, py = point
+    start_x, start_y = start
+    end_x, end_y = end
+    delta_x, delta_y = end_x - start_x, end_y - start_y
+    length_sq = (delta_x * delta_x) + (delta_y * delta_y)
+    if not length_sq:
+        return hypot(px - start_x, py - start_y)
+    position = max(0.0, min(1.0, (
+        ((px - start_x) * delta_x) + ((py - start_y) * delta_y)) / length_sq))
+    nearest = (start_x + (position * delta_x), start_y + (position * delta_y))
+    return hypot(px - nearest[0], py - nearest[1])
+
+
+def _leader_segments_cross(first, second) -> bool:
+    """Detect a visible crossing between two straight leader segments."""
+    def orientation(left, middle, right):
+        value = ((middle[1] - left[1]) * (right[0] - middle[0]) -
+                 (middle[0] - left[0]) * (right[1] - middle[1]))
+        return 0 if value == 0 else (1 if value > 0 else -1)
+
+    first_start, first_end = first
+    second_start, second_end = second
+    return (orientation(first_start, first_end, second_start) !=
+            orientation(first_start, first_end, second_end) and
+            orientation(second_start, second_end, first_start) !=
+            orientation(second_start, second_end, first_end))
+
+
+def _leader_layout_score(routes, clearance: int):
+    """Rank a complete layout by endpoint clearance before compactness."""
+    from math import hypot
+
+    endpoint_conflicts = 0
+    crossings = 0
+    vertical_travel = 0
+    total_length = 0.0
+    segments = []
+    for index, route in enumerate(routes):
+        start = (route["line_x"], route["y"])
+        target = (route["target_x"], route["target_y"])
+        segment = (start, target)
+        segments.append(segment)
+        vertical_travel += abs(route["y"] - route["target_y"])
+        total_length += hypot(target[0] - start[0], target[1] - start[1])
+        for other_index, other in enumerate(routes):
+            if index == other_index:
+                continue
+            other_target = (other["target_x"], other["target_y"])
+            endpoint_conflicts += int(
+                _point_to_segment_distance(other_target, start, target) < clearance)
+    for index, segment in enumerate(segments):
+        for other in segments[index + 1:]:
+            crossings += int(_leader_segments_cross(segment, other))
+    return endpoint_conflicts, crossings, vertical_travel, round(total_length, 3)
+
+
+def _optimize_leader_rows(routes, clearance: int):
+    """Swap label rows until straight leaders avoid endpoints and each other."""
+    optimized = [dict(route) for route in routes]
+    current_score = _leader_layout_score(optimized, clearance)
+    for _attempt in range(max(1, len(optimized) * 2)):
+        best_score = current_score
+        best_pair = None
+        for left in range(len(optimized)):
+            for right in range(left + 1, len(optimized)):
+                if optimized[left]["side"] != optimized[right]["side"]:
+                    continue
+                optimized[left]["y"], optimized[right]["y"] = (
+                    optimized[right]["y"], optimized[left]["y"])
+                score = _leader_layout_score(optimized, clearance)
+                optimized[left]["y"], optimized[right]["y"] = (
+                    optimized[right]["y"], optimized[left]["y"])
+                if score < best_score:
+                    best_score, best_pair = score, (left, right)
+        if best_pair is None:
+            return optimized
+        left, right = best_pair
+        optimized[left]["y"], optimized[right]["y"] = (
+            optimized[right]["y"], optimized[left]["y"])
+        current_score = best_score
+    return optimized
+
+
 def annotate_png(png: bytes, label: str, anchors, *, scale: float = 1.0) -> bytes:
     """Add exact numerals and leaders with Pillow, never with a text-generating model."""
     from PIL import Image, ImageDraw
@@ -2743,24 +2830,30 @@ def annotate_png(png: bytes, label: str, anchors, *, scale: float = 1.0) -> byte
             box = draw.textbbox((0, 0), numeral, font=font)
             width = box[2] - box[0]
             text_x = 28 if side_name == "left" else canvas.width - 28 - width
-            text_y = y - font_size // 2
             line_x = text_x + width + 8 if side_name == "left" else text_x - 8
             preserve_target = _has_explicit_line_target(item.get("evidence"))
-            routes.append((
-                line_x, y, target_x, target_y, text_x, text_y, numeral, preserve_target))
+            routes.append({
+                "line_x": line_x, "y": y, "target_x": target_x, "target_y": target_y,
+                "text_x": text_x, "numeral": numeral, "preserve_target": preserve_target,
+                "side": side_name,
+            })
     halo_radius = dot_radius + 4
-    for (_line_x, _y, target_x, target_y, _text_x, _text_y, _numeral,
-         preserve_target) in routes:
-        if preserve_target:
+    line_width = max(2, font_size // 10)
+    routes = _optimize_leader_rows(routes, halo_radius + line_width)
+    for route in routes:
+        if route["preserve_target"]:
             continue
+        target_x, target_y = route["target_x"], route["target_y"]
         draw.ellipse((target_x - halo_radius, target_y - halo_radius,
                       target_x + halo_radius, target_y + halo_radius), fill="white")
-    for line_x, y, target_x, target_y, text_x, text_y, numeral, _preserve_target in routes:
-        draw.line((line_x, y, target_x, target_y), fill="black",
-                  width=max(2, font_size // 10))
+    for route in routes:
+        line_x, y = route["line_x"], route["y"]
+        target_x, target_y = route["target_x"], route["target_y"]
+        draw.line((line_x, y, target_x, target_y), fill="black", width=line_width)
         draw.ellipse((target_x - dot_radius, target_y - dot_radius,
                       target_x + dot_radius, target_y + dot_radius), fill="black")
-        draw.text((text_x, text_y), numeral, fill="black", font=font)
+        draw.text((route["text_x"], y - font_size // 2), route["numeral"],
+                  fill="black", font=font)
     filing_label = canonical_figure_label(label)
     label_box = draw.textbbox((0, 0), filing_label, font=font)
     label_width = label_box[2] - label_box[0]
