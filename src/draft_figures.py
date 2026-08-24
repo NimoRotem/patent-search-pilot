@@ -1498,13 +1498,19 @@ def _expected_closed_region_count(caption: str) -> int | None:
     number = r"(\d{1,2}|" + "|".join(_SMALL_NUMBERS[1:]) + r")"
     match = re.search(
         r"\bexactly\s+" + number +
-        r"\s+(?:(?:separate|closed|nested|rectangular|circular)\s+)*"
+        r"\s+(?:(?:separate|closed|nested|rectangular|circular|thin|solid|continuous)\s+)*"
         r"(shapes?|outlines?|curves?|loops?|lines?)\b", text)
     if not match:
         match = re.search(
             r"\bcontains?\s+" + number +
             r"\s+(?:separate\s+)?(?:closed\s+)?"
             r"(shapes?|outlines?|curves?|loops?|lines?)\s+and\s+nothing\s+else\b", text)
+    if not match:
+        match = re.search(
+            r"\bdrawn\s+with\s+" + number +
+            r"\s+(?:(?:separate|closed|nested|rectangular|circular|thin|solid|continuous)\s+)*"
+            r"(shapes?|outlines?|curves?|loops?|lines?)\s+and\s+"
+            r"(?:those|these)\s+\1\s+alone\b", text)
     closed_shapes = re.search(
         r"\b(?:single\s+|continuous\s+|separate\s+)?closed\s+"
         r"(?:(?:thin|solid|continuous)\s+)*"
@@ -1627,11 +1633,14 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
         r"\b(two|three)\s+(?:(?:nested\s+)?rectangles?|rectangular(?:\s+outlines?)?)\b",
         text,
     )
+    expected = _expected_closed_region_count(text)
     rectangle_count = {"two": 2, "three": 3}.get(
         count_match.group(1) if count_match else "", 0)
+    if (not rectangle_count and expected == 2 and
+            re.search(r"\bboth\b[^.]{0,60}\brectangular\b", text)):
+        rectangle_count = 2
     has_circle = bool(re.search(
         r"\b(?:one\s+(?:circle|circular)|circle\s+at\s+the\s+cent(?:er|re))\b", text))
-    expected = _expected_closed_region_count(text)
     nested = bool(
         "nested" in text or "outside inward" in text or "outside to inside" in text or
         "one nested inside the other" in text or
