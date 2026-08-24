@@ -2212,6 +2212,60 @@ def test_deterministic_nested_plan_accepts_source_clean_ring_wording():
     assert draft_figures._deterministic_nested_plan_png(specification) is not None
 
 
+def test_deterministic_pulling_scene_accepts_source_clean_single_path_wording():
+    specification = """
+    The covering element 36 is one large plain tile filling the lower part of the drawing
+    area. The machine stands on its right-hand part, leaving a wide open expanse of tile to
+    the left. The machine is a plain slab carrying two closed housings and standing on a band
+    round its underside, the band alone touching the tile. The flexible pulling element 46 is
+    drawn as one curved path, in the manner of a slack cord, of even thickness along its whole
+    length. It begins at the outer silhouette of the machine and runs away to the left across
+    the open expanse of tile, sagging gently, ending well inside the left-hand limit.
+    """
+
+    png = draft_figures._deterministic_pulling_scene_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    image = Image.open(io.BytesIO(png)).convert("L")
+    assert image.size == (1400, 900)
+    # The open left-hand endpoint must not be converted into a closed cable outline.
+    assert min(image.crop((105, 470, 220, 600)).getextrema()) == 0
+    for x in range(425, 651, 25):
+        ink = [y for y in range(400, 591) if image.getpixel((x, y)) < 32]
+        assert ink
+        assert ink[-1] - ink[0] <= 7
+
+
+def test_deterministic_grip_scene_accepts_source_clean_single_outline_wording():
+    specification = """
+    The covering element 36 is one large plain tile filling the lower part of the drawing
+    area. The machine stands on its left-hand part, leaving a wide open expanse of tile to the
+    right. The machine is a plain rectangular slab, the base 12, carrying two closed housings
+    on its top face and a grip above them, and standing on a band round its underside, the band
+    alone touching the tile. The handle 44 is a simple grip carried on the machine above the
+    slab and clear of the housings, drawn as one closed outline enclosing an open area.
+    """
+
+    png = draft_figures._deterministic_grip_scene_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    image = Image.open(io.BytesIO(png)).convert("L")
+    for x in (350, 400, 435, 470, 520):
+        ink = [y for y in range(50, 241) if image.getpixel((x, y)) < 32]
+        runs = []
+        for y in ink:
+            if not runs or y > runs[-1][-1] + 1:
+                runs.append([y])
+            else:
+                runs[-1].append(y)
+        assert len(runs) == 1
+    assert image.getpixel((435, 255)) < 32
+    assert image.getpixel((285, 220)) < 32
+    assert image.getpixel((585, 220)) < 32
+
+
 def test_deterministic_nested_plan_uses_even_width_corridors():
     specification = (
         "The whole sheet contains four outlines and nothing else. From the outside inward, "
