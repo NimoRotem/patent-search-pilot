@@ -61,6 +61,7 @@ from reportlab.platypus import (BaseDocTemplate, Frame, PageTemplate, Paragraph,
                                 TableStyle)
 
 import concise_render
+import search_modes                          # the forum rule: which offices 102(a)(2) reaches
 
 # --------------------------------------------------------------------------------- item typing
 
@@ -318,11 +319,11 @@ def classify_candidates(cands, subject_efd, subject_owners=()):
         with db.cursor() as cur:
             cur.execute(
                 "SELECT p.publication_number, p.publication_date, p.filing_date, "
-                "       p.earliest_priority_date, "
+                "       p.earliest_priority_date, p.country, "
                 "       array_remove(array_agg(pa.raw_name) FILTER "
                 "         (WHERE pa.role='assignee'), NULL) AS owners "
                 "  FROM publications p LEFT JOIN parties pa ON pa.publication_id = p.id "
-                " WHERE p.publication_number = ANY(%s) GROUP BY 1,2,3,4", (pubs,))
+                " WHERE p.publication_number = ANY(%s) GROUP BY 1,2,3,4,5", (pubs,))
             rows = {r["publication_number"]: r for r in cur.fetchall()}
     except Exception:                                                     # noqa: BLE001
         traceback.print_exc()
@@ -330,14 +331,29 @@ def classify_candidates(cands, subject_efd, subject_owners=()):
         r = rows.get(c.get("pub")) or {}
         pub_d, eff = _as_date(r.get("publication_date")), (
             _as_date(r.get("earliest_priority_date")) or _as_date(r.get("filing_date")))
+        country = str(r.get("country") or (c.get("pub") or "")[:2]).upper()
+        c["not_art_why"] = ""
         if not efd or not (pub_d or eff):
             c["basis"] = UNKNOWN
         elif pub_d and pub_d < efd:
             c["basis"] = PUBLIC
         elif eff and eff < efd:
-            c["basis"] = SECRET
+            #  SECRET ART DOES NOT REACH FROM EVERY OFFICE. 102(a)(2) reaches US patents, US
+            #  pre-grant publications and PCT applications designating the US, and nothing else.
+            #  A JP or TW national publication that came out after the filing date is not prior
+            #  art at all here. This used to be found on the compliance pass, one model call per
+            #  document too late; measured on adhoc-efbf2979420b, where two of ten were dropped
+            #  after they had been read.
+            if search_modes.secret_art_reaches(country):
+                c["basis"] = SECRET
+            else:
+                c["basis"] = NOT_ART
+                c["not_art_why"] = search_modes.secret_art_note(country)
         else:
             c["basis"] = NOT_ART
+            c["not_art_why"] = ("It published on %s and was filed on %s, both after the "
+                                "application's effective filing date of %s."
+                                % (pub_d or "an unknown date", eff or "an unknown date", efd))
         owners = [o for o in (r.get("owners") or []) if o]
         shared = sorted({o for o in owners if _norm_owner(o) in mine})
         c["owners"] = owners[:3]
@@ -488,7 +504,9 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False,
                                 % ", ".join(str(x) for x in lack_tr)))
 
     # -- (d)(5) statements ---------------------------------------------------------------------
-    signer = (identity or {}).get("signature_name") or ""
+    #  The same test the renderer applies, so the audit can never call a paper signed that the
+    #  renderer then left blank.
+    signer = signature_name(identity)
     out.append(Finding("STATEMENTS", "1.290(d)(5)", "The two statements by the submitting party",
                        OK if signer else ACTION,
                        "Both are on the document list paper, signed /%s/ under 37 CFR 1.4(d)(2). "
@@ -711,6 +729,20 @@ def _identification(doc):
             ("Publisher and place", b.get("publisher") or "")]
 
 
+def signature_name(identity):
+    """The name that may go between the slashes, or "" if none may.
+
+    The profile refuses a slash on the way in, but a row written before that check exists still
+    holds one, and `/Nimo /Rotem//` on a filed paper is not the signature anybody agreed to. A
+    signature is a legal act, so this refuses rather than repairs: an unsigned paper with a line
+    to sign is a nuisance, a paper signed with the wrong string is a defect nobody would spot.
+    """
+    name = str((identity or {}).get("signature_name") or "").strip()
+    if not name or "/" in name or "\\" in name:
+        return ""
+    return name
+
+
 def signature_block(story, st, identity):
     """The 37 CFR 1.4(d)(2) S-signature, or a line to sign by hand.
 
@@ -719,7 +751,7 @@ def signature_block(story, st, identity):
     paper says so, so nobody can read it as the machine having signed anything.
     """
     ident = identity or {}
-    name = str(ident.get("signature_name") or "").strip()
+    name = signature_name(ident)
     title = str(ident.get("signature_title") or "").strip()
     story.append(Paragraph("SIGNATURE", st["h2"]))
     if name:

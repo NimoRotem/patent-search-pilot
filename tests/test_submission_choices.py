@@ -76,46 +76,67 @@ def _cands(*pubs):
     return [{"pub": p, "title": "t"} for p in pubs]
 
 
+def _row(pub, published, filed, owners=(), country=None):
+    return {"publication_number": pub, "publication_date": published, "filing_date": filed,
+            "earliest_priority_date": filed, "owners": list(owners),
+            "country": country or pub[:2]}
+
+
 def test_a_document_published_before_the_filing_date_is_public_art(monkeypatch):
-    monkeypatch.setattr(S, "_as_date", S._as_date)
-    rows = {"A": {"publication_number": "A", "publication_date": datetime.date(2020, 1, 1),
-                  "filing_date": datetime.date(2019, 1, 1),
-                  "earliest_priority_date": datetime.date(2019, 1, 1), "owners": []}}
-    _patch_db(monkeypatch, rows)
-    out = S.classify_candidates(_cands("A"), "2024-09-09")
+    _patch_db(monkeypatch, {"US-1-A1": _row("US-1-A1", datetime.date(2020, 1, 1),
+                                            datetime.date(2019, 1, 1))})
+    out = S.classify_candidates(_cands("US-1-A1"), "2024-09-09")
     assert out[0]["basis"] == S.PUBLIC and out[0]["default_include"] is True
+    #  Public art is prior art wherever it published, so the office it came from is irrelevant.
+    _patch_db(monkeypatch, {"JP-9-A": _row("JP-9-A", datetime.date(2020, 1, 1),
+                                           datetime.date(2019, 1, 1))})
+    assert S.classify_candidates(_cands("JP-9-A"), "2024-09-09")[0]["basis"] == S.PUBLIC
 
 
-def test_filed_before_but_published_after_is_secret_art(monkeypatch):
-    rows = {"B": {"publication_number": "B", "publication_date": datetime.date(2025, 10, 16),
-                  "filing_date": datetime.date(2025, 6, 26),
-                  "earliest_priority_date": datetime.date(2017, 4, 27), "owners": []}}
-    _patch_db(monkeypatch, rows)
-    out = S.classify_candidates(_cands("B"), "2024-09-09")
+def test_a_us_application_filed_before_and_published_after_is_secret_art(monkeypatch):
+    _patch_db(monkeypatch, {"US-2-A1": _row("US-2-A1", datetime.date(2025, 10, 16),
+                                            datetime.date(2017, 4, 27))})
+    out = S.classify_candidates(_cands("US-2-A1"), "2024-09-09")
     assert out[0]["basis"] == S.SECRET
     #  still offered, because it IS citable; it is flagged, not withheld
     assert out[0]["default_include"] is True
 
 
+@pytest.mark.parametrize("pub", ["JP-2026002795-A", "TW-I912904-B", "CN-1-U", "DE-1-B4"])
+def test_secret_art_from_an_office_102a2_does_not_reach_is_not_prior_art(pub, monkeypatch):
+    """102(a)(2) reaches US patents, US pre-grant publications and PCT applications designating
+    the US, and nothing else. Both of these were dropped on the compliance pass of
+    adhoc-efbf2979420b, after a model call had already been spent reading them."""
+    _patch_db(monkeypatch, {pub: _row(pub, datetime.date(2026, 1, 5),
+                                      datetime.date(2017, 4, 27))})
+    out = S.classify_candidates(_cands(pub), "2024-09-09")
+    assert out[0]["basis"] == S.NOT_ART
+    assert out[0]["default_include"] is False
+    assert "102(a)(2)" in out[0]["not_art_why"], "the row must say why, not just refuse"
+
+
+def test_a_pct_application_is_secret_art_because_it_designates_the_us(monkeypatch):
+    _patch_db(monkeypatch, {"WO-1-A1": _row("WO-1-A1", datetime.date(2026, 1, 5),
+                                            datetime.date(2017, 4, 27))})
+    assert S.classify_candidates(_cands("WO-1-A1"), "2024-09-09")[0]["basis"] == S.SECRET
+
+
 def test_filed_and_published_after_is_not_prior_art(monkeypatch):
-    rows = {"C": {"publication_number": "C", "publication_date": datetime.date(2026, 1, 1),
-                  "filing_date": datetime.date(2025, 1, 1),
-                  "earliest_priority_date": datetime.date(2025, 1, 1), "owners": []}}
-    _patch_db(monkeypatch, rows)
-    out = S.classify_candidates(_cands("C"), "2024-09-09")
+    _patch_db(monkeypatch, {"US-3-A1": _row("US-3-A1", datetime.date(2026, 1, 1),
+                                            datetime.date(2025, 1, 1))})
+    out = S.classify_candidates(_cands("US-3-A1"), "2024-09-09")
     assert out[0]["basis"] == S.NOT_ART
     assert out[0]["default_include"] is False, "listing it invites the examiner to disregard it"
+    assert "effective filing date" in out[0]["not_art_why"]
 
 
 def test_a_shared_owner_is_flagged_and_not_pre_selected(monkeypatch):
     """102(b)(2)(C) removes commonly owned art under 102(a)(2) entirely, so this one has to be a
     deliberate click even though the document is otherwise citable."""
-    rows = {"D": {"publication_number": "D", "publication_date": datetime.date(2025, 10, 16),
-                  "filing_date": datetime.date(2020, 1, 1),
-                  "earliest_priority_date": datetime.date(2020, 1, 1),
-                  "owners": ["Magswitch Automation Company"]}}
-    _patch_db(monkeypatch, rows)
-    out = S.classify_candidates(_cands("D"), "2024-09-09", ["MAGSWITCH AUTOMATION CO LTD"])
+    _patch_db(monkeypatch, {"US-4-A1": _row("US-4-A1", datetime.date(2025, 10, 16),
+                                            datetime.date(2020, 1, 1),
+                                            ["Magswitch Automation Company"])})
+    out = S.classify_candidates(_cands("US-4-A1"), "2024-09-09", ["MAGSWITCH AUTOMATION CO LTD"])
     assert out[0]["co_owned"] is True
     assert out[0]["co_owned_with"] == ["Magswitch Automation Company"]
     assert out[0]["default_include"] is False
@@ -135,7 +156,7 @@ def test_owner_matching_ignores_the_corporate_suffix_the_punctuation_and_the_cas
 
 def test_an_unknown_date_is_not_guessed(monkeypatch):
     _patch_db(monkeypatch, {})
-    out = S.classify_candidates(_cands("E"), "2024-09-09")
+    out = S.classify_candidates(_cands("US-5-A1"), "2024-09-09")
     assert out[0]["basis"] == S.UNKNOWN and out[0]["default_include"] is False
 
 
@@ -219,6 +240,27 @@ def test_the_audit_only_calls_the_statements_met_when_they_are_signed():
     signed = {f.id: f for f in S.audit(docs, subject, {}, {}, win,
                                        identity={"signature_name": "Nimo Rotem"})}
     assert signed["STATEMENTS"].status == S.OK
+
+
+def test_a_stored_name_with_a_slash_is_refused_at_render_time_too():
+    """The profile check cannot reach a row written before it existed, and one of them holds
+    exactly this. A paper signed `/Nimo /Rotem//` is worse than an unsigned one."""
+    assert S.signature_name({"signature_name": "Nimo /Rotem/"}) == ""
+    assert S.signature_name({"signature_name": "Nimo \\Rotem"}) == ""
+    assert S.signature_name({"signature_name": "  Nimo Rotem  "}) == "Nimo Rotem"
+    assert S.signature_name({}) == ""
+
+    docs = [{"n": 1, "pub": "US-1-A1", "rows": [{"claim_no": "1"}], "compliance": {},
+             "biblio": {"pub": "US-1-A1", "label": "US 1", "kind": "publication", "country": "US",
+                        "inventor": "A", "issue_date_pretty": "February 4, 2021"}}]
+    win = S.window("2026-03-12", today=datetime.date(2026, 8, 24))
+    bad = {"signature_name": "Nimo /Rotem/", "signature_title": ""}
+    text = _pdf_text(S.document_list_and_statements(docs, {"app_no": "19/318,450"}, {}, {}, win,
+                                                    identity=bad))
+    assert "NOT SIGNED" in text and "/Nimo /Rotem//" not in text
+    #  and the audit agrees with the paper rather than claiming it is signed
+    f = {x.id: x for x in S.audit(docs, {"app_no": "19/318,450"}, {}, {}, win, identity=bad)}
+    assert f["STATEMENTS"].status == S.ACTION
 
 
 def test_a_signature_name_cannot_smuggle_a_slash(monkeypatch):
