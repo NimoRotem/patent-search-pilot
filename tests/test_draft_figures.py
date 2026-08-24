@@ -1592,6 +1592,33 @@ def test_deterministic_nested_plan_has_exactly_three_rectangles_and_one_circle()
     assert draft_figures._deterministic_nested_plan_png(rewritten) is not None
 
 
+def test_deterministic_nested_plan_uses_even_width_corridors():
+    specification = (
+        "The whole sheet contains four outlines and nothing else. From the outside inward, "
+        "draw three nested rectangles and one circle at the centre. Each outline is drawn "
+        "once as one closed line. The corridors between rectangles have even width."
+    )
+    image = Image.open(io.BytesIO(
+        draft_figures._deterministic_nested_plan_png(specification))).convert("L")
+
+    def centers(values):
+        runs = []
+        for value in values:
+            if not runs or value > runs[-1][-1] + 1:
+                runs.append([value])
+            else:
+                runs[-1].append(value)
+        return [round((run[0] + run[-1]) / 2) for run in runs]
+
+    horizontal = centers(
+        x for x in range(image.width) if image.getpixel((x, image.height // 2)) < 32)
+    vertical = centers(
+        y for y in range(image.height) if image.getpixel((image.width // 2, y)) < 32)
+
+    assert horizontal[1] - horizontal[0] == vertical[1] - vertical[0]
+    assert horizontal[2] - horizontal[1] == vertical[2] - vertical[1]
+
+
 def test_deterministic_nested_plan_scales_the_circle_to_one_third_of_inner_rectangle():
     specification = (
         "The whole sheet contains four outlines and nothing else. From the outside inward, "
