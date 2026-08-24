@@ -1196,7 +1196,8 @@ def semantic_consensus(expected, results) -> dict:
     return consensus
 
 
-def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = _MAX_ANCHOR_SNAP
+def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = _MAX_ANCHOR_SNAP,
+                              preserve_reviewed_line_target: bool = False
                               ) -> tuple[list[dict], dict]:
     """Keep object leaders out of exterior paper even when vision coordinates drift."""
     from math import sqrt
@@ -1256,6 +1257,13 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         if not axis:
             return nearest
         runs = axis_runs(axis)
+        # Three independent marked-coordinate reviews can identify a short face more precisely
+        # than a whole-sheet run-length heuristic. Confirm that their proposed point is on a
+        # visible line, but do not pull it onto a longer neighboring boundary afterward.
+        if (preserve_reviewed_line_target and
+                float(distance_sq[nearest]) <= 12.0 ** 2 and
+                int(runs[ink_y[nearest], ink_x[nearest]]) >= 12):
+            return nearest
         substantial_run = max(
             12, round((width if axis == "horizontal" else height) * 0.08))
         if int(runs[ink_y[nearest], ink_x[nearest]]) >= substantial_run:
@@ -3180,7 +3188,8 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             for key, value in progress.get("coordinate_history", {}).items()
         }
         completed_marked_attempts = int(progress["attempts"])
-        anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
+        anchors, pixel_audit = _ground_anchors_to_pixels(
+            raw_png, numerals, anchors, preserve_reviewed_line_target=True)
         _record_anchor_coordinate_history(coordinate_history, anchors)
         _prune_marked_coordinate_certificates(marked_certificates, anchors)
         _marked_progress_put(
@@ -3200,7 +3209,8 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             raw_png, anchors, audit, coordinate_history=coordinate_history)
         if not changed:
             return False
-        anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, repaired)
+        anchors, pixel_audit = _ground_anchors_to_pixels(
+            raw_png, numerals, repaired, preserve_reviewed_line_target=True)
         _record_rejected_anchor_coordinates(coordinate_history, anchors, incorrect)
         _record_anchor_coordinate_history(coordinate_history, anchors)
         _prune_marked_coordinate_certificates(marked_certificates, anchors)
@@ -3249,7 +3259,10 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
                     continue
                 break
             leader_scale_index = 0
-            anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
+            anchors, pixel_audit = _ground_anchors_to_pixels(
+                raw_png, numerals, anchors,
+                preserve_reviewed_line_target=(
+                    marked_attempt > 0 or completed_marked_attempts > 0))
             _record_anchor_coordinate_history(coordinate_history, anchors)
             _prune_marked_coordinate_certificates(marked_certificates, anchors)
             _marked_progress_put(
@@ -3375,7 +3388,8 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
                 attempts=marked_attempt + 1,
                 coordinate_history=coordinate_history, sheet_number=sheet_number)
             break
-        anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
+        anchors, pixel_audit = _ground_anchors_to_pixels(
+            raw_png, numerals, anchors, preserve_reviewed_line_target=True)
         _record_rejected_anchor_coordinates(
             coordinate_history, anchors, repair_audit.get("incorrect") or [])
         _record_anchor_coordinate_history(coordinate_history, anchors)
