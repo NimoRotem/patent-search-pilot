@@ -150,11 +150,14 @@ def fee_choices(entity_size="small", max_units=5):
     reader adding an eleventh document and silently doubling the bill.
     """
     per = FEE_PER_UNIT.get(str(entity_size or "small"), FEE_PER_UNIT["small"])
-    return [{"units": u, "max_documents": u * ITEMS_PER_UNIT, "dollars": round(u * per, 2),
-             "label": "%d unit%s, up to %d documents, $%s"
-                      % (u, "" if u == 1 else "s", u * ITEMS_PER_UNIT,
-                         ("%.2f" % (u * per)).rstrip("0").rstrip("."))}
-            for u in range(1, int(max_units) + 1)]
+    out = []
+    for u in range(1, int(max_units) + 1):
+        money = _money(u * per)
+        out.append({"units": u, "max_documents": u * ITEMS_PER_UNIT,
+                    "dollars": round(u * per, 2), "dollars_pretty": money,
+                    "label": "%d unit%s, up to %d documents, $%s"
+                             % (u, "" if u == 1 else "s", u * ITEMS_PER_UNIT, money)})
+    return out
 
 
 def exemption_available(n_items):

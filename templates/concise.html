@@ -12,20 +12,24 @@
 <form method="post" action="{{ url_for('concise_descriptions', slug=slug) }}"
       style="margin:10px 0 14px">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <input type="hidden" name="auto" value="10">
-  <button class="btn primary" type="submit">Build the top-10 package</button>
-  <span class="small muted">The ten strongest documents by what the ledger says they kill,
-    office actions first, one per family, covering as many claims as the evidence supports.
-    About 5 minutes.</span>
+  <input type="hidden" name="auto" value="{{ items_per_unit }}">
+  {#  ONE CLICK IS ONE FEE UNIT. Ten documents is not a round number picked for the copy: it is
+      exactly what 37 CFR 1.290(f) buys for one 1.17(o) fee, so the button spends the minimum.
+      Flagged candidates are skipped here as they are in the picker. #}
+  <button class="btn primary" type="submit">Build the top-{{ items_per_unit }} package</button>
+  <span class="small muted">The {{ items_per_unit }} strongest citable documents by what the ledger
+    says they kill, office actions first, one per family, covering as many claims as the evidence
+    supports. One fee unit, ${{ fee_choices[0].dollars_pretty }} at the
+    {{ identity.entity_size }}-entity rate. About 5 minutes.</span>
 </form>
 {% endif %}
 <p class="small muted" style="margin-top:0">
-  Third-party preissuance submission under 37 CFR § 1.290 — one document per reference, built from
+  Third-party preissuance submission under 37 CFR § 1.290: one document per reference, built from
   this search's per-claim evidence. <a href="{{ url_for('report', slug=slug) }}">back to the report</a>
 </p>
 
-{#  BUILD PROGRESS. A build is minutes of work — a model call and an enrichment fetch per
-    document, then the compliance pass, then two renderings each — and it used to run inside the
+{#  BUILD PROGRESS. A build is minutes of work, a model call and an enrichment fetch per
+    document, then the compliance pass, then two renderings each, and it used to run inside the
     POST with nothing on screen, which reads exactly like a click that did not register. The bar is
     driven by real step counts from the server, not a timer. #}
 <div id="cdProg" class="card" style="margin:1em 0;padding:.8em 1em" {% if not building|default(false) %}hidden{% endif %}>
@@ -126,11 +130,11 @@
   </table>
   <p style="margin:.6em 0">
     <a class="btn sm" href="{{ url_for('concise_zip', slug=slug) }}">Download all as .zip</a>
-    <span class="small muted">PDFs and DOCXs only — the working files stay here.</span>
+    <span class="small muted">PDFs and DOCXs only. The working files stay here.</span>
   </p>
   <p class="small muted">
     PDF is the filing artefact; DOCX is the editable copy. Every coordinate on the page comes from
-    the passage the reader actually read — nothing is written by a model. Check the biblio block
+    the passage the reader actually read, and nothing is written by a model. Check the biblio block
     and the application identification before filing.
   </p>
 </div>

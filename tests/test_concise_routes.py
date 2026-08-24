@@ -95,13 +95,15 @@ def test_the_publication_number_is_prefilled_from_the_report(client, report):
     assert "US 2025/0033224 A1" in body
 
 
-def test_a_report_with_no_reading_stage_says_so_instead_of_rendering_an_empty_table(
-        client, tmp_path, monkeypatch):
+def test_a_report_with_no_reading_stage_goes_back_to_the_report(client, tmp_path, monkeypatch):
+    """There is nothing to describe and nothing to choose, so there is no page. The report's own
+    phase bar carries the one real action, which is running the full search."""
     monkeypatch.setattr(webapp, "REPORTS", tmp_path)
     slug = "adhoc-noreading"
     (tmp_path / ("%s.deep.json" % slug)).write_text(json.dumps({"references": []}))
-    body = client.get("/report/%s/concise" % slug).get_data(as_text=True)
-    assert "no per-claim evidence" in body or "no full-text reading stage" in body
+    r = client.get("/report/%s/concise" % slug)
+    assert r.status_code == 302
+    assert r.headers["Location"].endswith("/report/%s" % slug)
 
 
 def test_posting_builds_both_formats_and_offers_them(client, report):
@@ -109,8 +111,10 @@ def test_posting_builds_both_formats_and_offers_them(client, report):
                     data={"pubs": ["US-11413727-B2"], "app_no": "18/915,337",
                           "pub_no": "US 2025/0033224 A1", "title": "Portable vacuum gripper",
                           "inventor": "Nhon Hoa Nguyen"})
-    assert r.status_code == 200
-    assert b'id="cdProg"' in r.data, "the POST should come back with the progress bar"
+    #  Post/Redirect/Get: the POST hands back a redirect so a refresh cannot re-submit it and
+    #  start a second build over the same directory.
+    assert r.status_code == 302
+    assert b'id="cdProg"' in client.get(r.headers["Location"]).data, "no progress bar on the GET"
     j = _finished(report)
     assert j.get("state") == "done", j.get("error")
     out = webapp.CONCISE_DIR / report
@@ -225,6 +229,41 @@ def test_a_closed_window_is_said_on_the_page_not_only_in_the_packet(client, repo
     body = client.get("/report/%s/concise" % report).get_data(as_text=True)
     assert "window closed on" in body
     assert "may not be entered" in body
+
+
+def test_the_one_click_package_skips_the_flagged_candidates(client, report, monkeypatch):
+    """The button spends one fee unit without asking anything else, so it must not spend it on a
+    document the picker itself flags as not prior art or as commonly owned."""
+    import submission as S
+
+    seen = {}
+
+    def classify(slug, cands, deep):
+        for i, c in enumerate(cands):
+            c["basis"] = S.NOT_ART if i == 0 else S.PUBLIC
+            c["co_owned"] = i == 1
+            c["default_include"] = c["basis"] == S.PUBLIC and not c["co_owned"]
+        return cands
+
+    def fake_build(deep, pubs, subject, **kw):
+        seen["pubs"] = list(pubs)
+        return []
+
+    import concise_description as cd
+    monkeypatch.setattr(webapp, "_classify", classify)
+    monkeypatch.setattr(cd, "office_action_candidates", lambda report: [])
+    monkeypatch.setattr(cd, "candidates",
+                        lambda report, deep, limit=40, collapse_families=True: [
+                            {"pub": "US-11413727-B2", "title": "t"}] + [
+                            {"pub": "US-%07d-B2" % i, "title": "t"} for i in range(2, 15)])
+    monkeypatch.setattr(cd, "build", fake_build)
+    client.post("/report/%s/concise" % report, data={"auto": "10", "app_no": "18/915,337"})
+    _finished(report)
+    assert seen.get("pubs"), "the build was never reached"
+    #  The first candidate is not prior art and the second is commonly owned; neither may be in it.
+    assert "US-11413727-B2" not in seen["pubs"]
+    assert "US-0000002-B2" not in seen["pubs"]
+    assert len(seen["pubs"]) == S.ITEMS_PER_UNIT, "one click is exactly one fee unit"
 
 
 def test_going_over_the_chosen_fee_budget_is_refused_with_the_money_named(client, report):
