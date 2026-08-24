@@ -253,6 +253,10 @@ Background, and in the Detailed Description only to incorporate a document by re
 the title, summary, claims or abstract. Never cite a key that is not in the index; never
 characterise a reference beyond what its file actually says. If the file does not support the
 statement you want to make, make a weaker statement or none.
+Every reference listed in prior_art/INDEX.md must be addressed by an accurate citation in the
+Background. If a reference is peripheral, state only the supported teaching that matters and why
+it does not bear on the claimed combination.
+Never omit a listed reference solely because it is less relevant.
 
 REFERENCE NUMERALS
 Keep draft/numerals.md in step with the text at all times: every numeral used anywhere appears
