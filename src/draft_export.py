@@ -23,7 +23,8 @@ import draft_cite
 WORKING_DRAFT_NOTICE = ""
 
 
-def _filing_sections(version: Mapping[str, Any]) -> dict[str, str]:
+def application_sections(version: Mapping[str, Any]) -> dict[str, str]:
+    """Application sections with drafting-only citation keys made filing-readable."""
     try:
         return {str(key): draft_cite.filing_citations(str(value or ""))
                 for key, value in dict(version.get("sections") or {}).items()}
@@ -50,7 +51,7 @@ def download_name(project: Mapping[str, Any], version_no: int, suffix: str) -> s
 def render_markdown(project: Mapping[str, Any], version: Mapping[str, Any],
                     references: Sequence[Mapping[str, Any]] = ()) -> str:
     """Render only the clean application text in filing section order."""
-    sections = _filing_sections(version)
+    sections = application_sections(version)
     return drafting.render_application_markdown(sections).strip() + "\n"
 
 
@@ -79,7 +80,7 @@ def _add_text(doc: Document, text: str, *, claims: bool = False) -> None:
 def render_docx(project: Mapping[str, Any], version: Mapping[str, Any],
                 references: Sequence[Mapping[str, Any]] = ()) -> BytesIO:
     """Build clean editable application text with USPTO-oriented layout defaults."""
-    sections = _filing_sections(version)
+    sections = application_sections(version)
     doc = Document()
     sec = doc.sections[0]
     sec.page_width, sec.page_height = Inches(8.5), Inches(11)
@@ -140,7 +141,7 @@ def render_pdf(project: Mapping[str, Any], version: Mapping[str, Any],
     title_style = ParagraphStyle(
         "PatentTitle", parent=heading, alignment=1, fontSize=14, leading=18, spaceAfter=18)
     story = []
-    sections = _filing_sections(version)
+    sections = application_sections(version)
     for index, (key, label) in enumerate(drafting.SECTION_ORDER):
         if key in {"claims", "abstract"}:
             story.append(PageBreak())
