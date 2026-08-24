@@ -1665,6 +1665,12 @@ def _apply_pixel_grounding(png: bytes, numerals, semantic: dict) -> dict:
 def _expected_closed_region_count(caption: str) -> int | None:
     """Read an explicit exact count only when the brief says the shapes are closed."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    two_rectangle_boundary = re.search(
+        r"\bbounded only by (?:the )?outer (?:(?:rectangle|edge) and (?:the )?inner "
+        r"(?:rectangle|edge)|and inner rectangles?)\b", text)
+    if (re.search(r"\bone rectangle with a second,? smaller rectangle inside it\b", text) and
+            two_rectangle_boundary):
+        return 2
     number = r"(\d{1,2}|" + "|".join(_SMALL_NUMBERS[1:]) + r")"
     match = re.search(
         r"\bexactly\s+" + number +
@@ -1804,8 +1810,16 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
         text,
     )
     expected = _expected_closed_region_count(text)
+    continuous_ring_rectangles = bool(
+        re.search(r"\brectangular ring\b", text) and
+        re.search(r"\bone rectangle with a second,? smaller rectangle inside it\b", text) and
+        re.search(r"\bno (?:diagonal|line)[^.]{0,120}\bline crosses the band\b", text) and
+        re.search(r"\bbounded only by (?:the )?outer (?:(?:rectangle|edge) and (?:the )?inner "
+                  r"(?:rectangle|edge)|and inner rectangles?)\b", text))
     rectangle_count = {"two": 2, "three": 3}.get(
         count_match.group(1) if count_match else "", 0)
+    if not rectangle_count and continuous_ring_rectangles:
+        rectangle_count = 2
     if (not rectangle_count and expected == 2 and
             re.search(r"\bboth\b[^.]{0,60}\brectangular\b", text)):
         rectangle_count = 2
@@ -1820,7 +1834,7 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
     has_circle = bool(re.search(
         r"\b(?:one\s+(?:circle|circular)|circle\s+at\s+the\s+cent(?:er|re))\b", text))
     nested = bool(
-        separately_named_rectangles or
+        separately_named_rectangles or continuous_ring_rectangles or
         "nested" in text or "outside inward" in text or "outside to inside" in text or
         "one nested inside the other" in text or
         re.search(
@@ -1836,6 +1850,7 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
         r"(?:no\s+third|those\s+two\s+alone))\b", text))
     rectangles_only = rectangles_only or bool(re.search(
         r"\bexactly two closed lines and no others\b", text))
+    rectangles_only = rectangles_only or continuous_ring_rectangles
     if (not nested or not rectangle_count or
             expected != rectangle_count + int(has_circle) or
             (not has_circle and not rectangles_only)):
@@ -1868,10 +1883,15 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
 def _deterministic_pulling_scene_png(caption: str) -> bytes | None:
     """Render the simple tile, machine, and single-stroke pulling-element scene exactly."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    plain_body_only = bool(
+        re.search(r"\bone plain rectangular body\b", text) and
+        re.search(r"\bno housing, grip or other part is drawn\b", text))
+    legacy_housings = bool(
+        re.search(r"\bplain slab\b[^.]{0,100}\btwo closed housings\b", text))
     requirements = (
         re.search(r"\bcovering element\b[^.]{0,100}\b(?:plain\s+)?tile\b", text),
         re.search(r"\bmachine\b[^.]{0,100}\bright-hand\b", text),
-        re.search(r"\bplain slab\b[^.]{0,100}\btwo closed housings\b", text),
+        plain_body_only or legacy_housings,
         re.search(r"\bband\b[^.]{0,80}\bunderside\b", text),
         re.search(r"\bflexible pulling element\b[^.]{0,100}\b(?:one|single)\b"
                   r"[^.]{0,60}\b(?:curved\s+)?(?:line|path|stroke)\b", text),
@@ -1911,9 +1931,10 @@ def _deterministic_pulling_scene_png(caption: str) -> bytes | None:
         [(985, 405), (1215, 325), (1215, 405), (985, 485)],
         fill="white", outline="black", width=4)
 
-    # Two closed housings carried by the slab. Their interiors remain empty.
-    draw.ellipse((825, 284, 920, 344), fill="white", outline="black", width=4)
-    draw.ellipse((1000, 306, 1095, 366), fill="white", outline="black", width=4)
+    if legacy_housings:
+        # Two closed housings carried by the slab. Their interiors remain empty.
+        draw.ellipse((825, 284, 920, 344), fill="white", outline="black", width=4)
+        draw.ellipse((1000, 306, 1095, 366), fill="white", outline="black", width=4)
 
     # Sample one cubic curve as one open stroke. It has no paired boundary and encloses no area.
     start, control_1 = (729, 430), (570, 430)
@@ -1937,16 +1958,22 @@ def _deterministic_pulling_scene_png(caption: str) -> bytes | None:
 
 
 def _deterministic_grip_scene_png(caption: str) -> bytes | None:
-    """Render the simple tile-mounted machine with one exact closed grip outline."""
+    """Render the simple tile-mounted machine with the specified closed grip geometry."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    single_outline = bool(re.search(
+        r"\bhandle\b[^.]{0,160}\bone closed outline\b[^.]{0,50}\bopen area\b", text))
+    finite_width_ring = bool(
+        re.search(r"\bhandle\b[^.]{0,180}\bclosed ring shape\b[^.]{0,60}"
+                  r"\bopen area\b", text) and
+        re.search(r"\bbar forming that ring\b[^.]{0,40}\bown width\b", text))
     requirements = (
         re.search(r"\bcovering element\b[^.]{0,100}\b(?:plain\s+)?tile\b", text),
         re.search(r"\bmachine\b[^.]{0,100}\bleft-hand\b", text),
-        re.search(r"\bplain rectangular slab\b[^.]{0,120}\btwo closed housings\b", text),
+        re.search(r"\bplain rectangular slab\b", text),
+        re.search(r"\btwo (?:plain )?closed housings\b", text),
         re.search(r"\bgrip\b[^.]{0,50}\babove\b", text),
         re.search(r"\bband\b[^.]{0,80}\bunderside\b", text),
-        re.search(r"\bhandle\b[^.]{0,160}\bone closed outline\b"
-                  r"[^.]{0,50}\bopen area\b", text),
+        single_outline or finite_width_ring,
     )
     if not all(requirements):
         return None
@@ -1994,6 +2021,21 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
         ))
     grip.extend([(585, 255), (285, 255)])
     draw.line(grip, fill="black", width=5, joint="curve")
+    if finite_width_ring:
+        inner_grip = [(315, 230), (315, 175)]
+        for index in range(1, 81):
+            t = index / 80
+            one_minus_t = 1 - t
+            inner_grip.append((
+                round(one_minus_t ** 3 * 315 +
+                      3 * one_minus_t ** 2 * t * 345 +
+                      3 * one_minus_t * t ** 2 * 525 + t ** 3 * 555),
+                round(one_minus_t ** 3 * 175 +
+                      3 * one_minus_t ** 2 * t * 110 +
+                      3 * one_minus_t * t ** 2 * 110 + t ** 3 * 175),
+            ))
+        inner_grip.extend([(555, 230), (315, 230)])
+        draw.line(inner_grip, fill="black", width=5, joint="curve")
 
     out = io.BytesIO()
     image.save(out, format="PNG", compress_level=9)
@@ -2001,13 +2043,21 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
 
 
 def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
-    """Render the exact open-clearance section with only two vertical boundary lines."""
+    """Render the exact four-body fragmentary section with an open clearance."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    legacy_left_column = bool(re.search(
+        r"\btwo side lines\b[^.]{0,100}\bonly vertical lines\b", text))
+    centred_column = bool(
+        re.search(r"\bcolumn stands\b[^.]{0,80}\bmidway across\b", text) and
+        re.search(r"\bopen unhatched paper on both sides\b", text) and
+        re.search(r"\bhatching continuous from side to side\b[^.]{0,80}"
+                  r"\bdirectly beneath the column\b", text) and
+        re.search(r"\bno band is interrupted, broken or partly unhatched\b", text))
     requirements = (
         re.search(r"\bfour hatched bodies\b[^.]{0,80}\bnothing else\b", text),
         re.search(r"\bone upright column\b[^.]{0,80}\bthree horizontal bands\b", text),
-        re.search(r"\btwo side lines\b[^.]{0,100}\bonly vertical lines\b", text),
-        re.search(r"\bbetween\b[^.]{0,100}\bbottom of the column\b[^.]{0,100}"
+        legacy_left_column or centred_column,
+        re.search(r"\bbetween\b[^.]{0,100}\bbottom (?:line )?of the column\b[^.]{0,100}"
                   r"\btop line of the uppermost band\b", text),
         re.search(r"\bopen unhatched (?:space|paper)\b", text),
         re.search(r"\bbeneath the lowest band\b", text),
@@ -2024,16 +2074,17 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
         hatch_draw.line((start, 900, start + 900, 0), fill="black", width=2)
     hatch_mask = Image.new("L", image.size, 0)
     mask_draw = ImageDraw.Draw(hatch_mask)
-    mask_draw.rectangle((254, 0, 496, 316), fill=255)
+    column_left, column_right = ((575, 825) if centred_column else (250, 500))
+    mask_draw.rectangle((column_left + 4, 0, column_right - 4, 316), fill=255)
     mask_draw.rectangle((0, 414, 1399, 546), fill=255)
     mask_draw.rectangle((0, 554, 1399, 676), fill=255)
     mask_draw.rectangle((0, 684, 1399, 796), fill=255)
     image.paste(hatch_layer, (0, 0), hatch_mask)
 
     draw = ImageDraw.Draw(image)
-    draw.line((250, 0, 250, 320), fill="black", width=4)
-    draw.line((500, 0, 500, 320), fill="black", width=4)
-    draw.line((250, 320, 500, 320), fill="black", width=4)
+    draw.line((column_left, 0, column_left, 320), fill="black", width=4)
+    draw.line((column_right, 0, column_right, 320), fill="black", width=4)
+    draw.line((column_left, 320, column_right, 320), fill="black", width=4)
     for y in (410, 550, 680, 800):
         draw.line((0, y, 1399, y), fill="black", width=4)
 
