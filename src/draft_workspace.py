@@ -285,6 +285,17 @@ def _brief(project: Mapping[str, Any]) -> str:
                  "- Prior-art search: none was run. Work with whatever art is in prior_art/, and "
                  "say plainly in your summary that the art you were given may be incomplete.")
     notes = _clean(project.get("inventor_notes"), 40_000)
+    # Projects created by the former intake form can retain instructions that directly conflict
+    # with the filing-clean gate. Preserve every other filing choice while upgrading only those
+    # two known legacy defaults to the current deterministic treatment.
+    notes = notes.replace(
+        "Priority status is not confirmed; leave a drafting note requesting it.",
+        "No domestic or foreign priority claim was supplied. Use 'Not applicable.' in the "
+        "cross-reference section.")
+    notes = notes.replace(
+        "Government support status is not confirmed; leave a drafting note requesting it.",
+        "No government support was supplied. Use 'Not applicable.' in the government support "
+        "section.")
     if notes:
         lines += ["", "## Inventor and filing notes", "", notes]
     return "\n".join(lines)

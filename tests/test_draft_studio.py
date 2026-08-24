@@ -1859,6 +1859,24 @@ def test_a_project_with_no_prior_art_is_told_so_rather_than_left_to_guess(tmp_pa
     assert "may be incomplete" in brief
 
 
+def test_legacy_intake_notes_cannot_request_placeholders_in_a_workspace(tmp_path, monkeypatch):
+    monkeypatch.setattr(draft_workspace, "root", lambda: tmp_path)
+    workspace = draft_workspace.build(project={
+        "id": 4,
+        "title": "t",
+        "disclosure_text": "d" * 60,
+        "inventor_notes": (
+            "Filing and drafting instructions:\n"
+            "Priority status is not confirmed; leave a drafting note requesting it.\n"
+            "Government support status is not confirmed; leave a drafting note requesting it."
+        ),
+    })
+
+    brief = (workspace / "input" / "brief.md").read_text()
+    assert brief.count("Not applicable.") == 2
+    assert not re.search(r"drafting note|not confirmed|placeholder", brief, re.IGNORECASE)
+
+
 def test_the_previous_review_reaches_the_next_iteration(tmp_path, monkeypatch):
     monkeypatch.setattr(draft_workspace, "root", lambda: tmp_path)
     workspace = draft_workspace.build(
