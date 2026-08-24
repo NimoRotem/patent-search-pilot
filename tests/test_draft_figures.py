@@ -2124,6 +2124,18 @@ def test_deterministic_nested_plan_accepts_ring_outer_inner_edge_wording():
     assert draft_figures._deterministic_nested_plan_png(specification) is not None
 
 
+def test_deterministic_nested_plan_accepts_widely_spaced_ring_edges():
+    specification = (
+        "The sheet shows one rectangular ring and nothing else. The ring is drawn with two "
+        "closed thin lines and those two alone: its outer edge and its inner edge. Both are "
+        "rectangular, and they are spaced widely apart on all four sides, so that the band "
+        "between them is broad. The finished sheet carries just those two closed lines."
+    )
+
+    assert draft_figures._expected_closed_region_count(specification) == 2
+    assert draft_figures._deterministic_nested_plan_png(specification) is not None
+
+
 def test_deterministic_nested_plan_uses_even_width_corridors():
     specification = (
         "The whole sheet contains four outlines and nothing else. From the outside inward, "

@@ -1798,7 +1798,8 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
         "one nested inside the other" in text or
         (rectangle_count == 2 and
          re.search(r"\bouter\s+edge\b[^.]{0,100}\binner\s+edge\b", text) and
-         re.search(r"\bspaced\s+apart\s+on\s+all\s+four\s+sides\b", text)) or
+         re.search(
+             r"\bspaced(?:\s+[a-z]+)?\s+apart\s+on\s+all\s+four\s+sides\b", text)) or
         ("second rectangle within" in text and "third rectangle within" in text))
     rectangles_only = bool(re.search(r"\b(?:no other line|nothing else)\b", text))
     if (not nested or not rectangle_count or
