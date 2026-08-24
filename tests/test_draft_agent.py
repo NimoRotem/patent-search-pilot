@@ -143,6 +143,38 @@ def test_api_overload_retries_a_fresh_review_in_a_new_session(monkeypatch, tmp_p
     assert any("provider" in step["text"].lower() for step in result.steps)
 
 
+def test_connection_loss_mid_response_retries_from_the_saved_workspace(monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "api")
+    monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRIES", 1)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
+    monkeypatch.setattr(draft_agent, "new_session_id", lambda: "retry-session")
+    monkeypatch.setattr(
+        draft_agent, "_wait_for_rate_limit_retry", lambda _seconds, cancel=None: True)
+    calls = []
+
+    def run_once(**values):
+        calls.append(values)
+        if len(calls) == 1:
+            return draft_agent.AgentRun(
+                session_id=values["session_id"], model="opus",
+                error="API Error: Connection lost mid-response. The response may be incomplete.")
+        return draft_agent.AgentRun(
+            ok=True, session_id=values["session_id"], model="opus",
+            result={"action": "revised"})
+
+    monkeypatch.setattr(draft_agent, "_run_once", run_once)
+
+    result = draft_agent.run(
+        workspace=Path(tmp_path), prompt="repair", system_prompt="system", schema={},
+        session_id="first-session", resume=False)
+
+    assert result.ok is True
+    assert [(call["resume"], call["session_id"]) for call in calls] == [
+        (False, "first-session"),
+        (False, "retry-session"),
+    ]
+
+
 def test_api_rate_limit_retry_keeps_a_resumed_drafting_session(monkeypatch, tmp_path):
     monkeypatch.setattr(draft_agent, "AUTH_MODE", "api")
     monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRIES", 1)
