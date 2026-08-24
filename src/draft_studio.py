@@ -303,7 +303,8 @@ FILES
   input/request.md        what the user is asking for THIS turn
   input/materials/        anything else the user uploaded
   prior_art/              the references, with INDEX.md listing the citation keys
-  draft/01-title.md … draft/09-abstract.md    the application, body text only, no heading lines
+  draft/01-title.md, draft/02-cross-reference.md, draft/10-government-support.md, then
+  draft/03-field.md through draft/09-abstract.md    application body text, no heading lines
   draft/numerals.md       the reference-numeral table
   figures/                one file per drawing
   review/previous-qa.md   what the reviewer found last time - fix it
@@ -732,6 +733,9 @@ def candidate_snapshot_for_repair(snapshot: Any) -> dict[str, Any] | None:
     sections = {}
     for key, _name, _heading in draft_workspace.SECTION_FILES:
         value = raw_sections.get(key)
+        if key == "government_support" and (value is None or value == ""):
+            sections[key] = ""
+            continue
         if not isinstance(value, str) or not value.strip():
             return None
         sections[key] = human_text(value.replace("\x00", "").strip())

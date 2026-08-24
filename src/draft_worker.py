@@ -44,8 +44,8 @@ def _missing_sections(generated) -> list[str]:
 def _generate(system_prompt: str, user_prompt: str):
     """One model call, plus ONE corrective call for any section it left out.
 
-    Measured, and it reproduced every time: asked for nine sections with the project title
-    already present in SOURCE_DATA, the model returned eight and silently omitted `title` —
+    Measured, and it reproduced every time: asked for all sections with the project title
+    already present in SOURCE_DATA, the model silently omitted `title` -
     apparently treating a title it had been given as one it need not restate. The validator is
     strict and rightly refuses an incomplete draft, so every attempt failed and the whole
     generation (a 21,000-character prompt, three times over) was thrown away over one short

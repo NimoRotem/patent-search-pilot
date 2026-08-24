@@ -32,6 +32,7 @@ import drafting
 GOOD = {
     "title": "Vacuum Lifting Tool With Interchangeable Sealing Ring",
     "cross_reference": "This application claims no priority.",
+    "government_support": "Not applicable.",
     "field": "The disclosure relates to portable vacuum lifting tools.",
     "background": "Handheld vacuum lifters are known [REF:US-11223344-B2]. Such tools use a "
                   "single fixed seal, which limits the surfaces they can grip.",
@@ -799,6 +800,16 @@ def test_an_empty_section_fails():
     assert checks_for(broken)["Every section is written"]["status"] == "fail"
 
 
+def test_missing_government_support_fails_the_filing_preflight():
+    broken = dict(GOOD)
+    del broken["government_support"]
+
+    with pytest.raises(drafting.DraftingValidationError,
+                       match="Statement Regarding Federally Sponsored Research or Development"):
+        draft_studio.validate_snapshot(
+            {"sections": broken, "numerals": NUMERALS, "figures": FIGURES}, ALLOWED)
+
+
 def test_open_drafting_notes_are_a_filing_blocker():
     broken = dict(GOOD)
     broken["detailed_description"] += " [DRAFTING NOTE: confirm the ring material.]"
@@ -827,6 +838,21 @@ def test_every_placeholder_form_is_a_filing_blocker(placeholder):
 def test_sections_survive_a_write_and_read_round_trip(tmp_path):
     draft_workspace.write_sections(tmp_path, GOOD)
     assert draft_workspace.read_sections(tmp_path) == GOOD
+
+
+def test_government_support_has_a_standalone_workspace_file_in_filing_order(tmp_path):
+    draft_workspace.write_sections(tmp_path, GOOD)
+
+    keys = [key for key, _name, _heading in draft_workspace.SECTION_FILES]
+    assert keys.index("cross_reference") < keys.index("government_support") < keys.index("field")
+    path = tmp_path / "draft" / "10-government-support.md"
+    assert path.read_text(encoding="utf-8") == "Not applicable.\n"
+
+    path.write_text(
+        "## Statement Regarding Federally Sponsored Research or Development\n\n"
+        "Not applicable.\n",
+        encoding="utf-8")
+    assert draft_workspace.read_sections(tmp_path)["government_support"] == "Not applicable."
 
 
 def test_a_heading_the_agent_added_back_is_dropped_but_real_headings_survive(tmp_path):
@@ -911,6 +937,22 @@ def test_an_existing_draft_is_split_on_its_headings():
     assert out["background"] == "Lifters are known."
     assert out["claims"] == "1. A tool."
     assert "body 12" in out["detailed_description"]
+
+
+def test_an_existing_draft_preserves_a_government_support_statement():
+    document = (
+        "Vacuum Tool\n\n"
+        "CROSS-REFERENCE TO RELATED APPLICATIONS\n\nNot applicable.\n\n"
+        "STATEMENT REGARDING FEDERALLY SPONSORED RESEARCH OR DEVELOPMENT\n\n"
+        "This invention was made with support under Award 123.\n\n"
+        "FIELD OF THE INVENTION\n\nThe disclosure relates to tools."
+    )
+
+    out = draft_workspace.seed_sections_from_document(document)
+
+    assert out["cross_reference"] == "Not applicable."
+    assert out["government_support"] == "This invention was made with support under Award 123."
+    assert out["field"] == "The disclosure relates to tools."
 
 
 def test_a_document_with_no_recognisable_headings_is_kept_whole_not_dropped():
@@ -1307,6 +1349,40 @@ def test_the_filing_text_numbers_its_paragraphs_and_orders_the_parts():
     assert "[0001]" in text
     assert text.index("BACKGROUND OF THE INVENTION") < text.index("CLAIMS")
     assert text.index("CLAIMS") < text.index("ABSTRACT OF THE DISCLOSURE")
+
+
+def test_government_support_is_exported_once_in_required_filing_order():
+    from docx import Document
+
+    heading = "STATEMENT REGARDING FEDERALLY SPONSORED RESEARCH OR DEVELOPMENT"
+    text = draft_uspto.filing_text({"title": "x"}, {"sections": GOOD})
+    document = Document(draft_uspto.render_filing_docx(
+        {"title": GOOD["title"]}, {"sections": GOOD},
+        readiness_report={"blockers": []}))
+    word_text = "\n".join(paragraph.text for paragraph in document.paragraphs)
+
+    for exported in (text, word_text):
+        assert exported.count(heading) == 1
+        cross = exported.index("CROSS-REFERENCE TO RELATED APPLICATIONS")
+        support = exported.index(heading)
+        statement = exported.index("Not applicable.")
+        field = exported.index("FIELD OF THE INVENTION")
+        assert cross < support < statement < field
+
+
+def test_legacy_candidate_missing_government_support_is_preserved_for_automatic_repair():
+    legacy = {key: value for key, value in GOOD.items() if key != "government_support"}
+
+    repaired = draft_studio.candidate_snapshot_for_repair({
+        "sections": legacy, "numerals": NUMERALS, "figures": FIGURES,
+    })
+
+    assert repaired is not None
+    assert repaired["sections"]["government_support"] == ""
+
+
+def test_source_reviewer_reads_the_standalone_government_support_file():
+    assert "draft/10-government-support.md" in draft_qa.SOURCE_REVIEW_PROMPT
 
 
 def test_standard_exports_contain_only_clean_application_text():

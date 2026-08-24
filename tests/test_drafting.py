@@ -38,6 +38,7 @@ def generated_sections(citation="US-11223344-B2"):
     return {
         "title": "Configurable Vacuum Lifting Tool",
         "cross_reference": "Not applicable.",
+        "government_support": "Not applicable.",
         "field": "The disclosure relates to portable vacuum lifting tools.",
         "background": f"Some tools identify interchangeable accessories [REF:{citation}].",
         "summary": "A handle reads an identifier associated with an attached base plate.",
@@ -106,6 +107,29 @@ def test_generated_sections_validate_selected_citations_and_render_in_order():
     offsets = [markdown.index(heading) for heading in headings]
     assert offsets == sorted(offsets)
     assert markdown.endswith("\n")
+
+
+def test_government_support_is_a_required_standalone_section():
+    payload = generated_sections()
+    del payload["government_support"]
+
+    with pytest.raises(drafting.DraftingValidationError,
+                       match="missing the government_support section"):
+        drafting.normalize_generated_sections(payload, ["US-11223344-B2"])
+
+    keys = [key for key, _heading in drafting.SECTION_ORDER]
+    assert keys.index("cross_reference") < keys.index("government_support") < keys.index("field")
+
+
+def test_legacy_version_without_government_support_still_renders_for_repair():
+    legacy = generated_sections()
+    del legacy["government_support"]
+
+    rendered = drafting.render_application_markdown(legacy)
+
+    assert "## Statement Regarding Federally Sponsored Research or Development" in rendered
+    assert rendered.index("Cross-Reference") < rendered.index("Statement Regarding")
+    assert rendered.index("Statement Regarding") < rendered.index("Field of the Disclosure")
 
 
 @pytest.mark.parametrize("mutation,message", [
