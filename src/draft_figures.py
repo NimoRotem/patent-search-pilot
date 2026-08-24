@@ -2031,12 +2031,61 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
     return out.getvalue()
 
 
+def _deterministic_chamber_section_png(caption: str) -> bytes | None:
+    """Render the exact slab, two cut legs, chamber, band, and one broken line."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    requirements = (
+        re.search(r"\bshows four bodies\b[^.]{0,80}\bone broken line\b"
+                  r"[^.]{0,60}\bnothing else\b", text),
+        re.search(r"\bhorizontal hatched slab\b", text),
+        re.search(r"\bclosed loop cut twice\b[^.]{0,100}\btwo short hatched legs\b", text),
+        re.search(r"\bhatched band across the bottom\b", text),
+        re.search(r"\bone closed housing\b", text),
+        re.search(r"\bbroken line runs from inside the housing to the chamber\b", text),
+        re.search(r"\bno passage, duct, opening or other structure is depicted\b", text),
+    )
+    if not all(requirements):
+        return None
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1400, 900), "white")
+    hatch_layer = Image.new("RGB", image.size, "white")
+    hatch_draw = ImageDraw.Draw(hatch_layer)
+    for start in range(-900, 1401, 30):
+        hatch_draw.line((start, 900, start + 900, 0), fill="black", width=2)
+    hatch_mask = Image.new("L", image.size, 0)
+    mask_draw = ImageDraw.Draw(hatch_mask)
+    for box in (
+            (204, 224, 1196, 356),
+            (264, 364, 376, 616),
+            (1024, 364, 1136, 616),
+            (164, 624, 1236, 756)):
+        mask_draw.rectangle(box, fill=255)
+    image.paste(hatch_layer, (0, 0), hatch_mask)
+
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((200, 220, 1200, 360), outline="black", width=4)
+    draw.rectangle((260, 360, 380, 620), outline="black", width=4)
+    draw.rectangle((1020, 360, 1140, 620), outline="black", width=4)
+    draw.rectangle((160, 620, 1240, 760), outline="black", width=4)
+    draw.rounded_rectangle(
+        (740, 90, 990, 220), radius=24, fill="white", outline="black", width=4)
+    for top in range(145, 521, 36):
+        draw.line((865, top, 865, min(top + 20, 520)), fill="black", width=4)
+
+    out = io.BytesIO()
+    image.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
+
+
 def _deterministic_geometry_png(caption: str) -> bytes | None:
     """Select an exact renderer only when the brief describes a supported simple geometry."""
     return (_deterministic_nested_plan_png(caption) or
             _deterministic_pulling_scene_png(caption) or
             _deterministic_grip_scene_png(caption) or
-            _deterministic_fragmentary_section_png(caption))
+            _deterministic_fragmentary_section_png(caption) or
+            _deterministic_chamber_section_png(caption))
 
 
 def _apply_topology_audit(png: bytes, caption: str, semantic: dict) -> dict:
