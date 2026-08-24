@@ -1034,6 +1034,9 @@ def test_cross_provider_geometry_review_uses_anthropic_pixels_and_caches_clean_r
     assert [item["type"] for item in content] == ["image", "text"]
     prompt = content[1]["text"].lower()
     assert "every visible" in prompt and "wire" in prompt and "specification" in prompt
+    assert "black stroke centerlines" in prompt
+    assert "supporting surface" in prompt and "occlusion" in prompt
+    assert "finite-width ring" in prompt and "outer and inner" in prompt
 
 
 def test_required_cross_provider_geometry_review_fails_closed_without_a_credential(monkeypatch):
@@ -1072,6 +1075,135 @@ def test_cross_provider_geometry_veto_is_applied_to_same_provider_consensus(monk
     assert audited["cross_provider_geometry_audit"]["unexpected"] == [
         "double-line power cable"]
     assert "power cable" in " ".join(audited["errors"]).lower()
+
+
+def test_exact_deterministic_geometry_can_resolve_extra_geometry_dissent(monkeypatch):
+    caption = """
+    The covering element 36 is one large plain tile, a flat rectangular panel seen in
+    perspective. The machine stands on its left-hand part, leaving a wide open expanse of tile
+    to the right. The machine is a plain rectangular slab standing on a band that runs round its
+    underside. Two plain closed housings stand on the top face, one left and one right, and a
+    grip stands above the slab between them. The handle 44 is drawn as a closed ring shape
+    enclosing an open area, the bar forming that ring having its own width.
+    """
+    numerals = [
+        "10 = vibration device", "12 = base", "18 = vibration motor",
+        "20 = air-extraction mechanism", "24 = perimeter member",
+        "36 = covering element", "44 = handle",
+    ]
+    png = draft_figures._deterministic_geometry_png(caption)
+    assert png is not None
+    spec_hash = draft_figures.specification_hash("FIG. 1", caption, numerals)
+    dissent = {
+        "ok": False, "inspected": True, "matches_spec": False,
+        "model_name": draft_figures.cross_provider_model(),
+        "prompt_version": draft_figures.CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
+        "review_count": draft_figures.CROSS_PROVIDER_GEOMETRY_REVIEW_COUNT,
+        "specification_hash": spec_hash,
+        "missing": [], "missing_geometry": [],
+        "unexpected": ["nonexistent third ring contour"],
+        "errors": ["The ring appears to have three contours."],
+        "summary": "Every required body is visible, but one extra contour appears.",
+    }
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k: dissent)
+    semantic = {
+        "ok": True, "inspected": True, "errors": [], "missing": [], "unexpected": [],
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+    }
+
+    audited = draft_figures._apply_cross_provider_geometry_gate(
+        semantic, png, label="FIG. 1", caption=caption, numerals=numerals)
+
+    cross = audited["cross_provider_geometry_audit"]
+    assert audited["ok"] is True and cross["ok"] is True
+    assert cross["reviewer_ok"] is False
+    assert cross["reviewer_errors"] == dissent["errors"]
+    assert cross["consensus_resolution"]["version"] == (
+        draft_figures.DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION)
+    assert cross["consensus_resolution"]["exact_renderer_match"] is True
+    assert draft_figures.current_cross_provider_geometry_audit(
+        cross, specification_hash=spec_hash) is True
+
+
+def test_deterministic_resolution_fails_closed_for_missing_geometry(monkeypatch):
+    caption = """
+    The covering element 36 is one large plain tile seen in perspective. The machine stands on
+    its left-hand part. The machine is a plain rectangular slab standing on a band round its
+    underside. Two plain closed housings stand on the top face and a grip stands above them.
+    The handle 44 is drawn as a closed ring shape enclosing an open area, the bar forming that
+    ring having its own width.
+    """
+    numerals = ["36 = covering element", "44 = handle"]
+    png = draft_figures._deterministic_geometry_png(caption)
+    assert png is not None
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k: {
+            "ok": False, "inspected": True, "missing": ["44"],
+            "missing_geometry": ["The handle is absent."], "unexpected": [],
+            "errors": ["Required handle not found."],
+        })
+    semantic = {
+        "ok": True, "inspected": True, "errors": [], "missing": [], "unexpected": [],
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+    }
+
+    audited = draft_figures._apply_cross_provider_geometry_gate(
+        semantic, png, label="FIG. 1", caption=caption, numerals=numerals)
+
+    assert audited["ok"] is False
+    assert "required handle" in " ".join(audited["errors"]).lower()
+
+
+def test_deterministic_resolution_fails_closed_for_a_pixel_mismatch(monkeypatch):
+    caption = """
+    The covering element 36 is one large plain tile seen in perspective. The machine stands on
+    its left-hand part. The machine is a plain rectangular slab standing on a band round its
+    underside. Two plain closed housings stand on the top face and a grip stands above them.
+    The handle 44 is drawn as a closed ring shape enclosing an open area, the bar forming that
+    ring having its own width.
+    """
+    numerals = ["36 = covering element", "44 = handle"]
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k: {
+            "ok": False, "inspected": True, "missing": [], "missing_geometry": [],
+            "unexpected": ["unrequested cable"], "errors": ["Extra cable."],
+        })
+    semantic = {
+        "ok": True, "inspected": True, "errors": [], "missing": [], "unexpected": [],
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+    }
+
+    audited = draft_figures._apply_cross_provider_geometry_gate(
+        semantic, blank_png(1400, 900), label="FIG. 1", caption=caption, numerals=numerals)
+
+    assert audited["ok"] is False
+    assert "extra cable" in " ".join(audited["errors"]).lower()
+
+
+def test_malformed_deterministic_resolution_is_rejected_without_raising():
+    audit = accepted_cross_provider_geometry_audit(
+        specification_hash="a" * 64,
+        reviewer_ok=False,
+        reviewer_missing_geometry=[],
+        consensus_resolution={
+            "version": draft_figures.DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION,
+            "exact_renderer_match": True,
+            "png_sha256": "b" * 64,
+            "renderer_png_sha256": "b" * 64,
+            "semantic_review_count": "not-an-integer",
+            "specification_hash": "a" * 64,
+        },
+    )
+
+    assert draft_figures.current_cross_provider_geometry_audit(
+        audit, specification_hash="a" * 64) is False
 
 
 def test_cached_same_provider_semantics_still_run_cross_provider_geometry_gate(monkeypatch):

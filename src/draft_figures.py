@@ -55,7 +55,9 @@ MARKED_ANCHOR_PROMPT_VERSION = (
 CROSS_PROVIDER_PROMPT_VERSION = (
     "figure-anchor-crosscheck-v3-anthropic-opus-raw-coordinate-montage")
 CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION = (
-    "figure-geometry-crosscheck-v2-anthropic-literal-stroke-count")
+    "figure-geometry-crosscheck-v3-centerline-occlusion-conventions")
+DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
+    "deterministic-geometry-consensus-v1-byte-exact-two-semantic")
 MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
     MARKED_ANCHOR_PROMPT_VERSION,
     "figure-anchor-v13-gridded-sheet-current-coordinate-certificate-majority",
@@ -1984,16 +1986,17 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
     draw = ImageDraw.Draw(image)
     line = {"fill": "black", "width": 4}
 
-    draw.line(
-        [(90, 455), (635, 245), (1325, 430), (780, 820), (90, 455)],
-        joint="curve", **line)
+    tile_outline = (
+        [(90, 520), (635, 360), (1325, 480), (780, 820), (90, 520)]
+        if finite_width_ring else
+        [(90, 455), (635, 245), (1325, 430), (780, 820), (90, 455)]
+    )
+    draw.line(tile_outline, joint="curve", **line)
 
     if finite_width_ring:
         draw.polygon(
-            [(205, 411), (435, 479), (432, 507), (202, 433)],
-            fill="white", outline="black", width=4)
-        draw.polygon(
-            [(435, 479), (665, 411), (662, 433), (432, 507)],
+            [(185, 405), (435, 485), (685, 405),
+             (682, 427), (432, 507), (182, 427)],
             fill="white", outline="black", width=4)
     else:
         draw.polygon(
@@ -2041,7 +2044,8 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
         ))
     grip.extend([(outer_right, outer_bottom), (outer_left, outer_bottom)])
     if finite_width_ring:
-        draw.polygon(grip, fill="white", outline="black", width=5)
+        draw.polygon(grip, fill="white")
+        draw.line(grip, fill="black", width=3, joint="curve")
     else:
         draw.line(grip, fill="black", width=5, joint="curve")
     if finite_width_ring:
@@ -2058,7 +2062,8 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
                       3 * one_minus_t * t ** 2 * 130 + t ** 3 * 190),
             ))
         inner_grip.extend([(485, 275), (385, 275)])
-        draw.polygon(inner_grip, fill="white", outline="black", width=5)
+        draw.polygon(inner_grip, fill="white")
+        draw.line(inner_grip, fill="black", width=3, joint="curve")
 
     out = io.BytesIO()
     image.save(out, format="PNG", compress_level=9)
@@ -2173,6 +2178,21 @@ def _deterministic_geometry_png(caption: str) -> bytes | None:
             _deterministic_chamber_section_png(caption))
 
 
+def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
+    """Bind an inspected image to the exact deterministic renderer selected by its brief."""
+    expected = _deterministic_geometry_png(caption)
+    actual_hash = hashlib.sha256(png).hexdigest()
+    expected_hash = hashlib.sha256(expected).hexdigest() if expected is not None else ""
+    exact_match = bool(expected is not None and png == expected)
+    return {
+        "ok": exact_match,
+        "version": DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION,
+        "exact_renderer_match": exact_match,
+        "png_sha256": actual_hash,
+        "renderer_png_sha256": expected_hash,
+    }
+
+
 def _apply_topology_audit(png: bytes, caption: str, semantic: dict) -> dict:
     out = dict(semantic or {})
     audit = closed_region_audit(png, caption)
@@ -2246,8 +2266,29 @@ def current_cross_provider_geometry_audit(value, *, specification_hash: str = ""
             value.get("prompt_version") == CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION and
             review_count == 0 and
             (not specification_hash or value.get("specification_hash") == specification_hash))
-    return bool(value.get("ok") and _current_cross_provider_geometry_result(
-        value, specification_hash=specification_hash))
+    resolution = value.get("consensus_resolution")
+    resolution_current = True
+    if resolution is not None:
+        try:
+            semantic_review_count = int(resolution.get("semantic_review_count") or 0)
+        except (AttributeError, TypeError, ValueError):
+            semantic_review_count = 0
+        png_hash = str(resolution.get("png_sha256") or "") if isinstance(
+            resolution, dict) else ""
+        resolution_current = bool(
+            isinstance(resolution, dict) and
+            resolution.get("version") == DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION and
+            resolution.get("exact_renderer_match") is True and
+            re.fullmatch(r"[0-9a-f]{64}", png_hash) and
+            png_hash == resolution.get("renderer_png_sha256") and
+            semantic_review_count == SEMANTIC_REVIEW_COUNT and
+            resolution.get("semantic_model") == vision_model() and
+            resolution.get("specification_hash") == value.get("specification_hash") and
+            value.get("reviewer_ok") is False and not value.get("missing") and
+            not value.get("reviewer_missing_geometry"))
+    return bool(value.get("ok") and resolution_current and
+                _current_cross_provider_geometry_result(
+                    value, specification_hash=specification_hash))
 
 
 def current_semantic_audit(value) -> bool:
@@ -3084,7 +3125,17 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
         "Report absent requirements in missing_geometry. Return keys matches_spec, summary, errors, "
         "missing_geometry, unexpected_geometry, parts, and visible_elements. Set matches_spec false "
         "for any extra or missing geometry, wrong count, wrong view, or wrong relationship. Do not "
-        "report absent labels, numerals, or leaders because they are added after this review.\n\n"
+        "report absent labels, numerals, or leaders because they are added after this review. "
+        "Apply line-drawing conventions before reporting an error. Count continuous black stroke "
+        "centerlines, not the two antialiased pixel edges of one finite-thickness stroke. A "
+        "finite-width ring has one outer and inner boundary, each drawn as one black centerline; "
+        "do not invent a third contour from the thickness of either stroke. Required separate "
+        "solids retain their own outer boundaries, and visible fragments of a face boundary "
+        "between occluding solids are not an internal seam. A body contacting a broad supporting "
+        "surface is shown by occlusion and absence of a visible gap; its lower edge need not "
+        "coincide with the supporting surface's exterior silhouette. Before calling a curve, "
+        "seam, or doubled boundary unexpected, trace one continuous black centerline and identify "
+        "its endpoints. Do not join disconnected fragments across an occluding body.\n\n"
         "SPECIFICATION:\n" + specification)
     payload = {
         "model": model, "max_tokens": 5000,
@@ -3166,6 +3217,36 @@ def _apply_cross_provider_geometry_gate(semantic: dict, png: bytes, *, label: st
             raise FigureError(detail or "Cross-provider geometry review is not configured.")
         raise FigureTransientError(
             detail or "Cross-provider geometry review is temporarily unavailable.")
+    certificate = _deterministic_geometry_certificate(png, caption)
+    if (certificate.get("ok") and _current_semantic_model_audit(out) and
+            not out.get("errors") and not out.get("missing") and
+            not out.get("unexpected") and not audit.get("missing") and
+            not audit.get("missing_geometry")):
+        resolved = dict(audit)
+        certificate.update({
+            "semantic_review_count": int(out.get("review_count") or 0),
+            "semantic_model": str(out.get("model_name") or ""),
+            "specification_hash": specification_hash(label, caption, numerals),
+        })
+        resolved.update({
+            "ok": True,
+            "reviewer_ok": False,
+            "reviewer_summary": str(audit.get("summary") or "")[:2000],
+            "reviewer_errors": list(audit.get("errors") or []),
+            "reviewer_unexpected": list(audit.get("unexpected") or []),
+            "reviewer_missing_geometry": list(audit.get("missing_geometry") or []),
+            "errors": [],
+            "unexpected": [],
+            "missing_geometry": [],
+            "consensus_resolution": certificate,
+            "summary": (
+                "Two semantic reviews and a byte-exact deterministic renderer certificate "
+                "resolved an extra-geometry dissent. Cross-provider review: " +
+                str(audit.get("summary") or "")
+            )[:2000],
+        })
+        out["cross_provider_geometry_audit"] = resolved
+        return out
     out["ok"] = False
     errors = list(out.get("errors") or [])
     additions = list(audit.get("errors") or [])
