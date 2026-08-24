@@ -2291,8 +2291,27 @@ def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
         part = str(entry["part"] or "").strip()
         numeral_pattern = re.compile(
             r"(?<![A-Za-z0-9])" + re.escape(numeral) + r"(?![A-Za-z0-9])")
-        block = next((value for value in blocks
-                      if numeral_pattern.search(value) and part.lower() in value.lower()), raw)
+        declaration_pattern = re.compile(
+            r"^(?:(?:the|a|an)\s+)?" + re.escape(part) + r"\s+" +
+            re.escape(numeral) + r"(?![A-Za-z0-9])", re.IGNORECASE)
+        candidates = []
+        for index, value in enumerate(blocks):
+            if not numeral_pattern.search(value) or part.lower() not in value.lower():
+                continue
+            candidate_sentences = sentences(value)
+            begins_with_declaration = bool(
+                candidate_sentences and declaration_pattern.search(candidate_sentences[0]))
+            contains_definition = any(
+                numeral_pattern.search(chunk) and part.lower() in chunk.lower() and
+                not _ANNOTATION_ONLY.search(chunk) and not target_marker.search(chunk)
+                for chunk in candidate_sentences)
+            score = 2 if begins_with_declaration else 1 if contains_definition else 0
+            candidates.append((score, -index, value, begins_with_declaration))
+        if candidates:
+            _, _, block, block_begins_with_declaration = max(
+                candidates, key=lambda candidate: candidate[:2])
+        else:
+            block, block_begins_with_declaration = raw, False
         local = sentences(block)
         definition_index = next((index for index, chunk in enumerate(local)
                                  if numeral_pattern.search(chunk) and
@@ -2311,7 +2330,8 @@ def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
                     re.search(r"(?<![A-Za-z0-9])" + re.escape(value) +
                               r"(?![A-Za-z0-9])", following)
                     for value in all_numerals if value != numeral)
-                if target_marker.search(following) and not mentions_other:
+                if target_marker.search(following) and (
+                        block_begins_with_declaration or not mentions_other):
                     target = following
                     break
         parts.append({
