@@ -66,7 +66,7 @@ MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
 ))
 MARKED_PROGRESS_VERSION = "marked-progress-v3-numbered-sheet-layout"
 OCR_PROMPT_VERSION = "google-vision-document-text-v2-sheet-number"
-PIXEL_ANCHOR_VERSION = "pixel-anchor-v5-open-surface-clearance-repair"
+PIXEL_ANCHOR_VERSION = "pixel-anchor-v6-reviewed-surface-clearance-repair"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 4
@@ -305,6 +305,9 @@ _HORIZONTAL_LINE_TARGET_RE = re.compile(
 _VERTICAL_LINE_TARGET_RE = re.compile(
     r"\b(?:left|right)\s+(?:vertical\s+)?(?:edge|line|boundary)\b|"
     r"\bvertical\s+(?:edge|line|boundary)\b",
+    re.IGNORECASE)
+_VISIBLE_SURFACE_TARGET_RE = re.compile(
+    r"\b(?:top|bottom|front(?:-facing)?|rear(?:-facing)?|flat|planar)\s+surface\b",
     re.IGNORECASE)
 _BROAD_INTERIOR_TARGET_RE = re.compile(
     r"\bwell\s+inside\b|\bwhite\s+(?:space|margin|region)\b|"
@@ -1381,8 +1384,9 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         strong = nearby[run_values >= max(12, round(longest * 0.5))]
         return int(strong[np.argmin(distance_sq[strong])]) if len(strong) else nearest
 
-    def deeper_in_same_white_region(pixel_x: int, pixel_y: int, x: int, y: int):
-        """Move a boundary-near surface target inward without crossing a drawn boundary."""
+    def deeper_in_same_white_region(pixel_x: int, pixel_y: int, x: int, y: int, *,
+                                    allow_nearby_component: bool = False):
+        """Move a surface target to clear white pixels, preserving its component when possible."""
         nonlocal white_component_labels, white_clearance
         try:
             from scipy import ndimage
@@ -1402,8 +1406,15 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                 )
             component = int(white_component_labels[pixel_y, pixel_x])
             if component <= 0:
-                return None
-            component_mask = white_component_labels == component
+                if not allow_nearby_component:
+                    return None
+                component_mask = ~ink
+                repair_snap = min(max_snap, 100)
+                same_component = False
+            else:
+                component_mask = white_component_labels == component
+                repair_snap = max_snap
+                same_component = True
             maximum = float(white_clearance[component_mask].max(initial=0.0))
             if maximum < _MIN_BROAD_INTERIOR_CLEARANCE:
                 return None
@@ -1415,7 +1426,7 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
             safe_norm_x = safe_x * 1000.0 / max(1, width - 1)
             safe_norm_y = safe_y * 1000.0 / max(1, height - 1)
             distance_sq = ((safe_norm_x - x) ** 2) + ((safe_norm_y - y) ** 2)
-            nearby = np.flatnonzero(distance_sq <= float(max_snap) ** 2)
+            nearby = np.flatnonzero(distance_sq <= float(repair_snap) ** 2)
             if not len(nearby):
                 return None
             nearest = int(nearby[np.argmin(distance_sq[nearby])])
@@ -1424,16 +1435,24 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                 "y": round(float(safe_norm_y[nearest])),
                 "distance": sqrt(float(distance_sq[nearest])),
                 "clearance": float(white_clearance[safe_y[nearest], safe_x[nearest]]),
+                "same_component": same_component,
             }
 
-        # SciPy is optional in older production environments. Flood-fill the current white
-        # component, then inspect nearby pixels in increasing distance order. Limiting the ink
-        # set to the reachable neighborhood keeps the vectorized fallback bounded.
+        # SciPy is optional in older production environments. Prefer the current white component,
+        # then inspect nearby pixels in increasing distance order. Limiting the ink set to the
+        # reachable neighborhood keeps the vectorized fallback bounded.
         component_image = binary.copy()
-        if component_image.getpixel((pixel_x, pixel_y)) != 255:
+        if component_image.getpixel((pixel_x, pixel_y)) == 255:
+            ImageDraw.floodfill(component_image, (pixel_x, pixel_y), 128, thresh=0)
+            component_mask = np.asarray(component_image) == 128
+            repair_snap = max_snap
+            same_component = True
+        elif allow_nearby_component:
+            component_mask = ~ink
+            repair_snap = min(max_snap, 100)
+            same_component = False
+        else:
             return None
-        ImageDraw.floodfill(component_image, (pixel_x, pixel_y), 128, thresh=0)
-        component_mask = np.asarray(component_image) == 128
         candidate_y, candidate_x = np.nonzero(component_mask)
         if not len(candidate_x):
             return None
@@ -1442,7 +1461,7 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         candidate_distance_sq = (
             (candidate_norm_x - x) ** 2 + (candidate_norm_y - y) ** 2)
         candidate_indexes = np.flatnonzero(
-            candidate_distance_sq <= float(max_snap) ** 2)
+            candidate_distance_sq <= float(repair_snap) ** 2)
         if not len(candidate_indexes):
             return None
         # A two-pixel lattice is precise enough for label placement and avoids evaluating every
@@ -1483,6 +1502,7 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                         "y": round(float(candidate_norm_y[nearest])),
                         "distance": sqrt(float(candidate_distance_sq[nearest])),
                         "clearance": sqrt(float(clearance_sq[int(accepted[0])])),
+                        "same_component": same_component,
                     }
         return None
 
@@ -1504,7 +1524,9 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         is_exterior = bool(exterior[pixel_y, pixel_x])
         is_empty_space = bool(_EMPTY_ANCHOR_PART_RE.search(part))
         evidence = str(item.get("evidence") or "")
-        targets_broad_interior = bool(_BROAD_INTERIOR_TARGET_RE.search(evidence))
+        targets_visible_surface = bool(_VISIBLE_SURFACE_TARGET_RE.search(evidence))
+        targets_broad_interior = bool(
+            targets_visible_surface or _BROAD_INTERIOR_TARGET_RE.search(evidence))
         requires_ink = bool(
             _LINE_ANCHOR_PART_RE.search(part) or (
                 _has_explicit_line_target(evidence) and not targets_broad_interior)
@@ -1519,7 +1541,9 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                 distance_sq = ((ink_norm_x - x) ** 2) + ((ink_norm_y - y) ** 2)
                 clearance = sqrt(float(distance_sq.min()))
                 if clearance < _MIN_BROAD_INTERIOR_CLEARANCE:
-                    moved = deeper_in_same_white_region(pixel_x, pixel_y, x, y)
+                    moved = deeper_in_same_white_region(
+                        pixel_x, pixel_y, x, y,
+                        allow_nearby_component=targets_visible_surface)
                     if moved is not None:
                         new_x, new_y = int(moved["x"]), int(moved["y"])
                         item["x"], item["y"] = new_x, new_y
@@ -1527,7 +1551,10 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                             "numeral": numeral, "part": part,
                             "from_x": x, "from_y": y, "to_x": new_x, "to_y": new_y,
                             "distance": round(float(moved["distance"]), 1),
-                            "reason": "moved deeper inside the same visible white region",
+                            "reason": (
+                                "moved deeper inside the same visible white region"
+                                if moved.get("same_component", True) else
+                                "moved to a nearby clear point on the reviewed surface"),
                         })
                         x, y = new_x, new_y
                     else:
