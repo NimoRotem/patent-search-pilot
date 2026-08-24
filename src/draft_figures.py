@@ -1988,12 +1988,20 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
         [(90, 455), (635, 245), (1325, 430), (780, 820), (90, 455)],
         joint="curve", **line)
 
-    draw.polygon(
-        [(185, 405), (435, 485), (428, 535), (178, 455)],
-        fill="white", outline="black", width=4)
-    draw.polygon(
-        [(435, 485), (685, 405), (678, 455), (428, 535)],
-        fill="white", outline="black", width=4)
+    if finite_width_ring:
+        draw.polygon(
+            [(205, 411), (435, 479), (432, 507), (202, 433)],
+            fill="white", outline="black", width=4)
+        draw.polygon(
+            [(435, 479), (665, 411), (662, 433), (432, 507)],
+            fill="white", outline="black", width=4)
+    else:
+        draw.polygon(
+            [(185, 405), (435, 485), (428, 535), (178, 455)],
+            fill="white", outline="black", width=4)
+        draw.polygon(
+            [(435, 485), (685, 405), (678, 455), (428, 535)],
+            fill="white", outline="black", width=4)
 
     draw.polygon(
         [(185, 325), (435, 405), (685, 325), (435, 255)],
@@ -2005,37 +2013,52 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
         [(435, 405), (685, 325), (685, 405), (435, 485)],
         fill="white", outline="black", width=4)
 
-    draw.ellipse((245, 284, 340, 344), fill="white", outline="black", width=4)
-    draw.ellipse((530, 284, 625, 344), fill="white", outline="black", width=4)
-    grip = [(285, 255), (285, 155)]
+    if finite_width_ring:
+        draw.rounded_rectangle(
+            (245, 250, 335, 340), radius=12, fill="white", outline="black", width=4)
+        draw.rounded_rectangle(
+            (535, 250, 625, 340), radius=12, fill="white", outline="black", width=4)
+        outer_left, outer_right = 360, 510
+        outer_bottom, outer_shoulder, outer_control = 300, 180, 95
+    else:
+        draw.ellipse((245, 284, 340, 344), fill="white", outline="black", width=4)
+        draw.ellipse((530, 284, 625, 344), fill="white", outline="black", width=4)
+        outer_left, outer_right = 285, 585
+        outer_bottom, outer_shoulder, outer_control = 255, 155, 55
+    grip = [(outer_left, outer_bottom), (outer_left, outer_shoulder)]
     for index in range(1, 81):
         t = index / 80
         one_minus_t = 1 - t
         grip.append((
-            round(one_minus_t ** 3 * 285 +
-                  3 * one_minus_t ** 2 * t * 315 +
-                  3 * one_minus_t * t ** 2 * 555 + t ** 3 * 585),
-            round(one_minus_t ** 3 * 155 +
-                  3 * one_minus_t ** 2 * t * 55 +
-                  3 * one_minus_t * t ** 2 * 55 + t ** 3 * 155),
+            round(one_minus_t ** 3 * outer_left +
+                  3 * one_minus_t ** 2 * t * (outer_left + 30) +
+                  3 * one_minus_t * t ** 2 * (outer_right - 30) +
+                  t ** 3 * outer_right),
+            round(one_minus_t ** 3 * outer_shoulder +
+                  3 * one_minus_t ** 2 * t * outer_control +
+                  3 * one_minus_t * t ** 2 * outer_control +
+                  t ** 3 * outer_shoulder),
         ))
-    grip.extend([(585, 255), (285, 255)])
-    draw.line(grip, fill="black", width=5, joint="curve")
+    grip.extend([(outer_right, outer_bottom), (outer_left, outer_bottom)])
     if finite_width_ring:
-        inner_grip = [(315, 230), (315, 175)]
+        draw.polygon(grip, fill="white", outline="black", width=5)
+    else:
+        draw.line(grip, fill="black", width=5, joint="curve")
+    if finite_width_ring:
+        inner_grip = [(385, 275), (385, 190)]
         for index in range(1, 81):
             t = index / 80
             one_minus_t = 1 - t
             inner_grip.append((
-                round(one_minus_t ** 3 * 315 +
-                      3 * one_minus_t ** 2 * t * 345 +
-                      3 * one_minus_t * t ** 2 * 525 + t ** 3 * 555),
-                round(one_minus_t ** 3 * 175 +
-                      3 * one_minus_t ** 2 * t * 110 +
-                      3 * one_minus_t * t ** 2 * 110 + t ** 3 * 175),
+                round(one_minus_t ** 3 * 385 +
+                      3 * one_minus_t ** 2 * t * 400 +
+                      3 * one_minus_t * t ** 2 * 470 + t ** 3 * 485),
+                round(one_minus_t ** 3 * 190 +
+                      3 * one_minus_t ** 2 * t * 130 +
+                      3 * one_minus_t * t ** 2 * 130 + t ** 3 * 190),
             ))
-        inner_grip.extend([(555, 230), (315, 230)])
-        draw.line(inner_grip, fill="black", width=5, joint="curve")
+        inner_grip.extend([(485, 275), (385, 275)])
+        draw.polygon(inner_grip, fill="white", outline="black", width=5)
 
     out = io.BytesIO()
     image.save(out, format="PNG", compress_level=9)
