@@ -626,7 +626,7 @@ def _figure_checks(sections: Mapping[str, str],
             brief_issues.append(
                 f"{label}: ambiguous multi-stroke cord {match.group(0)[:180]!r}; depict the "
                 "cord, cable, or pulling element as one curved path and identify that path")
-        if match := _ARBITRARY_OPEN_PAPER_SPACING_RE.search(caption):
+        for match in _ARBITRARY_OPEN_PAPER_SPACING_RE.finditer(caption):
             brief_issues.append(
                 f"{label}: arbitrary open-paper spacing {match.group(0)[:180]!r}; state a "
                 "disclosure-grounded physical spacing between bodies or omit the whitespace "

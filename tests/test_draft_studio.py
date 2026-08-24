@@ -330,6 +330,21 @@ def test_renderer_only_open_paper_between_solid_bodies_is_refused(caption):
     assert "open-paper spacing" in " ".join(check["items"]).lower()
 
 
+def test_every_open_paper_spacing_on_one_sheet_is_reported_together():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "Each body is large, with open white paper between neighbours. "
+            "The duct is broad, with open paper between it and the motor housing."
+        ),
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    issues = [item for item in check["items"] if "open-paper spacing" in item]
+
+    assert len(issues) == 2
+
+
 def test_an_endpoint_deliberately_disconnected_from_its_named_part_is_refused():
     figures = [{
         **FIGURES[0],
