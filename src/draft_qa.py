@@ -125,6 +125,12 @@ _ARBITRARY_STROKE_COUNT_RE = re.compile(
     r"(?:one|two|three|four|five|six|\d+)\s+"
     r"(?:(?:long|parallel|straight|curved)\s+){0,3}lines?\b",
     re.IGNORECASE)
+_AMBIGUOUS_MULTI_STROKE_CORD_RE = re.compile(
+    r"\b(?:cord|cable|electrical\s+supply|pulling\s+element)\b"
+    r"[^.\n]{0,200}\b(?:strip|band)\b[^.\n]{0,160}"
+    r"\b(?:plain\s+white|white|open|plain)\s+(?:paper|space)\b"
+    r"[^.\n]{0,80}\b(?:interior|inside|between)\b",
+    re.IGNORECASE)
 _ARBITRARY_EXACT_ENDPOINT_TARGET_RE = re.compile(
     r"\bidentified\b(?=[^.\n]{0,260}\b(?:"
     r"cent(?:er|re)|midpoint|mid-point|mid[- ]?(?:height|width|depth)|halfway|quarter|"
@@ -611,6 +617,10 @@ def _figure_checks(sections: Mapping[str, str],
             brief_issues.append(
                 f"{label}: arbitrary exact stroke count {match.group(0)[:180]!r}; name the "
                 "part and its positive geometry without controlling the renderer's line count")
+        if match := _AMBIGUOUS_MULTI_STROKE_CORD_RE.search(caption):
+            brief_issues.append(
+                f"{label}: ambiguous multi-stroke cord {match.group(0)[:180]!r}; depict the "
+                "cord, cable, or pulling element as one curved path and identify that path")
         for exact_target in _ARBITRARY_EXACT_ENDPOINT_TARGET_RE.finditer(caption):
             brief_issues.append(
                 f"{label}: arbitrary exact endpoint target {exact_target.group(0)[:180]!r}; "
