@@ -1556,6 +1556,31 @@ def test_source_fidelity_preflight_blocks_rendering_unsupported_geometry(
     assert caught.value.report["verdict"] == "fail"
 
 
+def test_source_reviewer_outage_retries_saved_candidate_without_draft_repair(
+        monkeypatch, tmp_path):
+    qa = Mock()
+    qa.review_sources.return_value = {
+        "ok": False,
+        "error": "API Error: 529 Overloaded. This is a server-side issue.",
+        "summary": "", "findings": [], "cost_usd": 0.0,
+        "duration_ms": 100, "model": "review-model",
+    }
+    runner = draft_studio.TurnRunner(Mock(), Mock(), qa=qa)
+    render = Mock(return_value={"ok": True})
+    monkeypatch.setattr(draft_figures, "ensure_project_figures", render)
+    monkeypatch.setattr(draft_figures, "checkpoint_project_figures", Mock())
+
+    with pytest.raises(draft_studio.SourceReviewUnavailable) as caught:
+        runner._ensure_figures(
+            turn_id=3, lease="lease", project_id=7, user_id=91,
+            sections=GOOD, numerals=NUMERALS, figures=FIGURES,
+            disclosure="the inventor disclosed a body and pump", workspace=tmp_path)
+
+    render.assert_not_called()
+    assert caught.value.retry_without_repair is True
+    assert "529 Overloaded" in str(caught.value)
+
+
 def test_clean_source_preflight_is_cached_before_repeated_rendering(monkeypatch, tmp_path):
     qa = Mock()
     qa.review_sources.return_value = {

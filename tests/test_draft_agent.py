@@ -106,6 +106,43 @@ def test_api_rate_limit_retries_a_fresh_review_in_a_new_session(monkeypatch, tmp
     assert any("rate limit" in step["text"].lower() for step in result.steps)
 
 
+def test_api_overload_retries_a_fresh_review_in_a_new_session(monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "api")
+    monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRIES", 1)
+    monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRY_SECONDS", 65)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
+    monkeypatch.setattr(draft_agent, "new_session_id", lambda: "retry-session")
+    waits = []
+    monkeypatch.setattr(
+        draft_agent, "_wait_for_rate_limit_retry",
+        lambda seconds, cancel=None: waits.append(seconds) or True)
+    calls = []
+
+    def run_once(**values):
+        calls.append(values)
+        if len(calls) == 1:
+            return draft_agent.AgentRun(
+                session_id=values["session_id"], model="opus", duration_ms=25,
+                error="API Error: 529 Overloaded. This is a server-side issue.")
+        return draft_agent.AgentRun(
+            ok=True, session_id=values["session_id"], model="opus",
+            result={"summary": "reviewed"}, duration_ms=75)
+
+    monkeypatch.setattr(draft_agent, "_run_once", run_once)
+
+    result = draft_agent.run(
+        workspace=Path(tmp_path), prompt="review", system_prompt="system", schema={},
+        session_id="review-session", resume=False)
+
+    assert result.ok is True
+    assert waits == [65]
+    assert [(call["resume"], call["session_id"]) for call in calls] == [
+        (False, "review-session"),
+        (False, "retry-session"),
+    ]
+    assert any("provider" in step["text"].lower() for step in result.steps)
+
+
 def test_api_rate_limit_retry_keeps_a_resumed_drafting_session(monkeypatch, tmp_path):
     monkeypatch.setattr(draft_agent, "AUTH_MODE", "api")
     monkeypatch.setattr(draft_agent, "RATE_LIMIT_RETRIES", 1)
