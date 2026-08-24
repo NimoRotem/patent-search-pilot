@@ -1301,10 +1301,35 @@ def test_only_compatible_two_trace_semantic_reviews_are_accepted():
     }) is True
     assert draft_figures.current_semantic_audit({**current, "review_count": 1}) is False
     assert draft_figures.current_semantic_audit({**current, "prompt_version": "old"}) is False
+    assert draft_figures.current_semantic_audit({
+        **current,
+        "pixel_anchor_audit": {
+            **current["pixel_anchor_audit"],
+            "version": "pixel-anchor-v2-sheet-boundary-clearance",
+        },
+    }) is False
     assert draft_figures.current_semantic_audit({**current, "pixel_anchor_audit": {}}) is False
     assert draft_figures.current_semantic_audit({**current, "topology_audit": {}}) is False
     assert draft_figures.current_semantic_audit({**current, "marked_anchor_audit": {}}) is False
     assert draft_figures.current_semantic_audit({"ok": True}) is False
+
+
+def test_marked_progress_ignores_coordinates_saved_under_old_grounding_rules(monkeypatch):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda _key: {
+        "version": "marked-progress-v1-final-coordinate-certificates",
+        "anchors": [{
+            "numeral": "24", "x": 500, "y": 206,
+            "visible": True, "evidence": "space between two boundary lines",
+        }],
+        "certificates": {}, "coordinate_history": {"24": [[500, 206]]},
+        "attempts": 6,
+    })
+
+    assert draft_figures._marked_progress_get(
+        b"old pixels", label="FIG. 3", caption="nested plan",
+        numerals=["24 = perimeter member"],
+    ) is None
 
 
 def test_current_marked_audit_accepts_a_fully_certified_v9_review():
