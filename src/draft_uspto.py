@@ -52,6 +52,23 @@ FILING_ORDER = (
 _NOTE_RE = re.compile(r"\[DRAFTING NOTE:([^\]]*)\]", re.IGNORECASE)
 
 
+def _filing_sections(version: Mapping[str, Any]) -> dict[str, str]:
+    import draft_cite
+    try:
+        return {str(key): draft_cite.filing_citations(str(value or ""))
+                for key, value in dict(version.get("sections") or {}).items()}
+    except ValueError as exc:
+        raise drafting.DraftingValidationError(str(exc)) from exc
+
+
+def _filing_label(value: Any) -> str:
+    import draft_cite
+    try:
+        return draft_cite.filing_citations(str(value or ""))
+    except ValueError as exc:
+        raise drafting.DraftingValidationError(str(exc)) from exc
+
+
 # =============================================================================================
 # Readiness
 # =============================================================================================
@@ -316,13 +333,13 @@ def numbered_paragraphs(text: str, start: int) -> tuple[list[str], int]:
 
 def filing_text(project: Mapping[str, Any], version: Mapping[str, Any]) -> str:
     """The specification as plain text, in 37 CFR 1.77(b) order with numbered paragraphs."""
-    sections = dict(version.get("sections") or {})
+    sections = _filing_sections(version)
     lines: list[str] = []
     counter = 1
     for key, heading, numbered in FILING_ORDER:
         body = str(sections.get(key) or "").strip()
         if key == "title":
-            lines += [heading, "", body or str(project.get("title") or ""), ""]
+            lines += [heading, "", body or _filing_label(project.get("title") or ""), ""]
             continue
         if not body:
             continue
@@ -341,7 +358,7 @@ def filing_text(project: Mapping[str, Any], version: Mapping[str, Any]) -> str:
 
 def ads_fields(project: Mapping[str, Any], version: Mapping[str, Any]) -> list[dict[str, str]]:
     """What goes on the Application Data Sheet, as far as we legitimately know it."""
-    sections = dict(version.get("sections") or {})
+    sections = _filing_sections(version)
     inventors = [line.strip() for line in
                  re.split(r"[\n;]+", str(project.get("inventors") or "")) if line.strip()]
     cross_reference = str(sections.get("cross_reference") or "").strip()
@@ -409,7 +426,7 @@ def render_filing_docx(project: Mapping[str, Any], version: Mapping[str, Any], *
     from docx.oxml.ns import qn
     from docx.shared import Inches, Pt
 
-    sections = dict(version.get("sections") or {})
+    sections = _filing_sections(version)
     document = Document()
     layout = document.sections[0]
     layout.page_width, layout.page_height = Inches(8.5), Inches(11)
@@ -442,7 +459,7 @@ def render_filing_docx(project: Mapping[str, Any], version: Mapping[str, Any], *
         body = str(sections.get(key) or "").strip()
         if key == "title":
             heading(title)
-            plain(body or str(project.get("title") or ""))
+            plain(body or _filing_label(project.get("title") or ""))
             continue
         if not body:
             continue

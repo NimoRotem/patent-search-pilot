@@ -1301,6 +1301,41 @@ def test_standard_exports_contain_only_clean_application_text():
     assert "3. The vacuum lifting tool of claim 2" in text
 
 
+def test_every_application_export_replaces_internal_citation_tokens():
+    from docx import Document
+    from pypdf import PdfReader
+
+    project = {"title": GOOD["title"]}
+    version = {"version_no": 1, "sections": GOOD, "citations": ALLOWED}
+    expected = "U.S. Patent No. 11,223,344"
+
+    markdown = draft_export.render_markdown(project, version, [])
+    word = Document(draft_export.render_docx(project, version, []))
+    word_text = "\n".join(paragraph.text for paragraph in word.paragraphs)
+    pdf = PdfReader(draft_export.render_pdf(project, version, []))
+    pdf_text = "\n".join((page.extract_text() or "") for page in pdf.pages)
+    filing_text = draft_uspto.filing_text(project, version)
+    filing_word = Document(draft_uspto.render_filing_docx(
+        project, version,
+        readiness_report={"blockers": [], "formalities": [], "remaining": [],
+                          "fees": {"total": 3, "independent": 1,
+                                   "multiple_dependent": 0, "billable": 3}}))
+    filing_word_text = "\n".join(paragraph.text for paragraph in filing_word.paragraphs)
+
+    for exported in (markdown, word_text, pdf_text, filing_text, filing_word_text):
+        assert "[REF:" not in exported
+        assert expected in exported
+
+
+def test_filing_citation_display_handles_us_application_publications_and_rejects_bad_tokens():
+    rendered = draft_cite.filing_citations(
+        "A related device is described in [REF:US-2023103821-A1].")
+    assert rendered == ("A related device is described in U.S. Patent Application Publication "
+                        "No. US 2023/0103821 A1.")
+    with pytest.raises(ValueError, match="Malformed internal citation token"):
+        draft_cite.filing_citations("See [REF:the related patent].")
+
+
 def test_filing_docx_uses_clean_formal_drawing_pages_with_required_margins():
     import io
     from PIL import Image
