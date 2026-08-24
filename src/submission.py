@@ -298,6 +298,21 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False):
                               "s" if len(want_copy) == 1 else "") if not lack
                            else "Missing for document(s) %s. The submission cannot be entered "
                                 "without them." % ", ".join(str(x) for x in lack)))
+        #  A SEPARATE CHECK, because a copy can be present and still not be the document. See
+        #  submission_package.inspect_copy: the GB 874,600 copy was its drawing sheets only.
+        thin = ["Doc %s (%s): %d pages with no readable text, so this is a drawings bundle or an "
+                "unsearchable scan rather than the specification. Check it opens as the whole "
+                "document before filing."
+                % (d["n"], (d.get("biblio") or {}).get("label") or d["pub"],
+                   (copies.get(d["pub"]) or {}).get("pages", 0))
+                for d in want_copy
+                if isinstance(copies.get(d["pub"]), dict)
+                and copies[d["pub"]].get("drawings_only")]
+        out.append(Finding("COPY-COMPLETE", "1.290(d)(3)",
+                           "Each copy is the whole document, not part of one",
+                           OK if not thin else ACTION,
+                           "Every attached copy carries the document's text." if not thin
+                           else " ".join(thin)))
 
     # -- (d)(4) translations -------------------------------------------------------------------
     want_tr = [d for d in docs if needs_translation(d)]
@@ -330,6 +345,15 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False):
             bad.append("Doc %s needs an issuing office and a publication date" % d["n"])
         if k == NPL and not (b.get("title") and b.get("issue_date_pretty")):
             bad.append("Doc %s needs a title and a publication date" % d["n"])
+        #  THE NAME HAS TO BE PRINTABLE, not merely present. CN 216190291 U was filed identifying
+        #  its inventor as "■■": the filing font has no CJK glyphs and the record held no Latin
+        #  form. `printable_party` falls back to the applicant, and when even that is unprintable
+        #  the packet fails here rather than putting boxes where a person's name belongs.
+        who = concise_render.printable_party(b)[1]
+        if who and not concise_render.is_latin(who):
+            bad.append("Doc %s: %r cannot be printed in the filing font and there is no Latin "
+                       "applicant to name instead. Supply a romanised name or the applicant."
+                       % (d["n"], who))
     out.append(Finding("LIST-FORMAT", "1.290(e)", "How each item must be identified",
                        OK if not bad else ACTION,
                        "Every item carries the fields its own type requires, U.S. patents and "
@@ -502,10 +526,14 @@ def _identification(doc):
                 ("First named inventor", b.get("inventor")),
                 ("Publication date", b.get("issue_date_pretty"))]
     if k == FOREIGN:
+        #  (e)(3) accepts "the applicant, patentee, or first named inventor", and that OR is what
+        #  lets a document whose only personal name is CJK be identified in a script the filing
+        #  font can print. See concise_render.printable_party.
+        who_label, who = concise_render.printable_party(b)
         return [("Issuing office", office),
                 ("Document number", b.get("label") or b.get("pub")),
-                ("Applicant, patentee or first named inventor",
-                 b.get("inventor") or b.get("assignee")),
+                ("Applicant" if who_label == "Applicant"
+                 else "Applicant, patentee or first named inventor", who),
                 ("Publication date", b.get("issue_date_pretty"))]
     return [("Author", b.get("author") or b.get("inventor")),
             ("Title", b.get("title")),
@@ -550,7 +578,7 @@ def document_list_and_statements(docs, subject, copies, translations, win,
                      "Publication date", "Copy / translation"],
              lambda d: [str(d["n"]),
                         "%s %s" % (office_of(d)[1], d["biblio"].get("label") or d["pub"]),
-                        d["biblio"].get("inventor") or d["biblio"].get("assignee") or "",
+                        concise_render.printable_party(d["biblio"])[1],
                         d["biblio"].get("issue_date_pretty") or "",
                         "; ".join(filter(None, [
                             "copy attached" if copies.get(d["pub"]) else "COPY OUTSTANDING",
@@ -671,7 +699,7 @@ def manifest_csv(docs, copies, translations) -> str:
     for d in docs:
         b = d.get("biblio") or {}
         wr.writerow([d["n"], b.get("label") or d["pub"], item_kind(d), office_of(d)[0],
-                     b.get("inventor") or "", b.get("issue_date_pretty") or "",
+                     concise_render.printable_party(b)[1], b.get("issue_date_pretty") or "",
                      "yes", "yes" if copies.get(d["pub"]) else
                      ("not required" if not needs_copy(d) else "NO"),
                      "yes" if translations.get(d["pub"]) else

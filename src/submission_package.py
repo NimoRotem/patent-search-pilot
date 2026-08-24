@@ -123,6 +123,38 @@ def fetch_copy(pub):
     return b""
 
 
+def inspect_copy(blob):
+    """What is actually in this copy. -> {"pages", "chars", "drawings_only"}
+
+    PRESENCE IS NOT COMPLETENESS, and the difference reached a filing. The copy attached for
+    GB 874,600 A was six pages of figures whose own header reads "COMPLETE SPECIFICATION, 4 SHEETS,
+    This drawing is a reproduction of the Original on a reduced scale": the drawing sheets alone,
+    with no front page, no description and no claims. The concise description for that document
+    quoted its abstract eight times, so an examiner checking a quotation against the filed copy
+    would not have found it.
+
+    A patent facsimile with no extractable text at all is either a pure image scan or a drawings
+    bundle, and both need a human to look before they are filed as "the item".
+    """
+    out = {"pages": 0, "chars": 0, "drawings_only": False}
+    if not blob:
+        return out
+    try:
+        import io as _io
+
+        from pypdf import PdfReader
+        r = PdfReader(_io.BytesIO(blob))
+        out["pages"] = len(r.pages)
+        text = " ".join((p.extract_text() or "") for p in r.pages)
+        out["chars"] = len("".join(text.split()))
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return out
+    #  Under ~40 characters a page there is no specification text in here, whatever the page count.
+    out["drawings_only"] = bool(out["pages"]) and out["chars"] < 40 * out["pages"]
+    return out
+
+
 def outstanding(docs, translations):
     """What a human still has to supply before this can be filed. -> [str]"""
     out = []

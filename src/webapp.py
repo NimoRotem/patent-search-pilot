@@ -5924,7 +5924,9 @@ def _concise_package(out, docs, subject, report=None):
                 traceback.print_exc()
                 blob = b""
             if blob:
-                copies[pub] = True
+                #  What is IN the copy, not merely that there is one: a drawings-only facsimile
+                #  is present and is not the document. See submission_package.inspect_copy.
+                copies[pub] = sp.inspect_copy(blob)
                 (out / ("40_Copy_Doc%02d_%s.pdf" % (n, stem))).write_bytes(blob)
         if submission.needs_translation(d):
             try:

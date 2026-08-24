@@ -31,6 +31,41 @@ def _esc(s):
     return _html.escape(str(s or ""))
 
 
+def is_latin(name):
+    """True when every letter can be typeset by the filing font. U+2E80 starts the CJK blocks."""
+    return all(ord(c) < 0x2E80 for c in str(name or ""))
+
+
+def printable_party(biblio):
+    """Who to name on the paper for this document, and what to call them. -> (label, value)
+
+    1.290(e)(3) identifies a foreign document by "the applicant, patentee, or first named
+    inventor", and that OR is the way out of a problem this hit twice. The filing font has no CJK
+    glyphs, so a Chinese or Japanese personal name with no Latin form in the record printed as a
+    row of solid black boxes on a paper filed at the USPTO: CN 216190291 U went out identifying its
+    inventor as "■■".
+
+    Preferring a romanisation is not always possible, because a romanisation is not always in the
+    record: for that CN document all seven inventors are Chinese-only and nothing carries a Latin
+    form. Transliterating is not an option either, since a name nobody verified does not belong on
+    a filing. The applicant does carry a Latin name, and the rule accepts it, so the paper names
+    the applicant and says so.
+
+    Falls back to the unprintable name only when there is no Latin alternative at all, and the
+    audit fails the packet in that case rather than filing boxes.
+    """
+    b = biblio or {}
+    inventor = str(b.get("inventor") or "").strip()
+    if inventor and is_latin(inventor):
+        return "First Named Inventor", inventor
+    applicant = str(b.get("assignee") or "").strip()
+    #  An assignee field can hold several, comma-joined. The first is the one to name.
+    first = applicant.split(",")[0].strip() if applicant else ""
+    if first and is_latin(first):
+        return "Applicant", first
+    return "First Named Inventor", inventor
+
+
 def running_head(subject):
     """The line at the head and foot of every page of the filed paper.
 
@@ -199,7 +234,7 @@ def to_pdf(doc_model) -> bytes:
     #  priority date were neither required nor safe to print: assignment changes hands over
     #  time and these values come from a cache that does not always match the current public
     #  record, so the paper asserted ownership facts it had no need to assert.
-    for lbl, val in (("First Named Inventor", b.get("inventor")),
+    for lbl, val in (printable_party(b),
                      ("Issue Date" if b.get("kind") == "patent" else "Publication Date",
                       b.get("issue_date_pretty")),
                      ("Title", b.get("title"))):
@@ -280,7 +315,7 @@ def to_docx(doc_model) -> bytes:
     dp.add_run("Document %s: %s (“Document %s”)" % (
         doc_model["n"], b["label"], doc_model["n"])).bold = True
     #  Identification fields only. See the note in to_pdf.
-    for lbl, val in (("First Named Inventor", b.get("inventor")),
+    for lbl, val in (printable_party(b),
                      ("Issue Date" if b.get("kind") == "patent" else "Publication Date",
                       b.get("issue_date_pretty")),
                      ("Title", b.get("title"))):
