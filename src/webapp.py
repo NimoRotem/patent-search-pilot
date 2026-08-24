@@ -5796,7 +5796,7 @@ def concise_descriptions(slug):
         #  The build runs in a thread and the page reloads when it finishes, so what the
         #  build DECIDED has to be read back from the job or it is lost at that reload.
         j = _concise_job(slug) or {}
-        return _render_picker(report=rep_for_pick, slug=slug,
+        return _render_picker(report=rep_for_pick, _deep=deep, slug=slug,
                               cands=_classify(slug, cands, deep),
                               docs=_concise_built(slug), subject=subject, error=None,
                               blocked=j.get("blocked") or [],
@@ -5817,7 +5817,7 @@ def concise_descriptions(slug):
         #  commonly owned, is a deliberate choice and cannot be made by a button.
         pubs = [c["pub"] for c in _classify(slug, cands, deep) if c.get("default_include")][:top]
     if not pubs:
-        return _render_picker(report=rep_for_pick, slug=slug, cands=_classify(slug, cands, deep),
+        return _render_picker(report=rep_for_pick, _deep=deep, slug=slug, cands=_classify(slug, cands, deep),
                               docs=_concise_built(slug), subject=subject,
                               error="Select at least one document."), 400
     #  Only a publication this report actually read can be described: `pubs` is user input that
@@ -5836,7 +5836,7 @@ def concise_descriptions(slug):
     pubs = [p for p in pubs if p in known]
     if not pubs:
         return _render_picker(
-            report=rep_for_pick, slug=slug, cands=cands, docs=_concise_built(slug),
+            report=rep_for_pick, _deep=deep, slug=slug, cands=cands, docs=_concise_built(slug),
             subject=subject,
             error=("None of the selected documents carry per-claim evidence in this report: %s"
                    % ", ".join(unknown[:5]))), 400
@@ -5867,14 +5867,14 @@ def concise_descriptions(slug):
                 % (budget_units, "" if budget_units == 1 else "s", allowed, len(pubs),
                    want_units, _sub._money(dollars), filing_identity["entity_size"],
                    len(pubs) - allowed))
-        return _render_picker(report=rep_for_pick, slug=slug, cands=_classify(slug, cands, deep),
+        return _render_picker(report=rep_for_pick, _deep=deep, slug=slug, cands=_classify(slug, cands, deep),
                               docs=_concise_built(slug), subject=subject, error=over), 400
     chosen_model = (request.form.get("model") or "").strip() or None
     if chosen_model:
         import model_pool
         ok = {m["name"] for m in model_pool.choices() if m["available"]}
         if chosen_model not in ok:
-            return _render_picker(report=rep_for_pick,
+            return _render_picker(report=rep_for_pick, _deep=deep,
                 slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
                 error=("%s is not a model this host can use right now. Available: %s"
                        % (chosen_model, ", ".join(sorted(ok)) or "none"))), 400
@@ -6083,6 +6083,19 @@ def _render_picker(report=None, **kw):
     except Exception:                                                     # noqa: BLE001
         traceback.print_exc()
         ctx["passed_over"] = []
+    #  WHAT THE SEARCH FOUND ABOUT THE CLAIMS THEMSELVES, which is not a filing decision and had
+    #  nowhere to be said: the limitations exactly one document reaches, and the ones nothing
+    #  reaches at all. The second decides whether a claim survives.
+    ctx.setdefault("sole_reach", [])
+    ctx.setdefault("unreached", [])
+    deep = ctx.pop("_deep", None)
+    if deep:
+        try:
+            import concise_description as _cd
+            ctx["sole_reach"] = _cd.sole_reach_notes(deep)
+            ctx["unreached"] = _cd.unreached_limitations(deep)
+        except Exception:                                                 # noqa: BLE001
+            traceback.print_exc()
     return render_template("concise.html", **ctx)
 
 

@@ -1948,6 +1948,9 @@ tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
   border:1px solid currentColor;white-space:nowrap}
 .flag-warn{color:#7a5b00;background:#fff8e6}
 .flag-bad{color:#8a1f11;background:#fdefed}
+/*  Not a warning. A document the United States cannot use is often the best one on another
+    track, and it should not wear the same colour as one that is simply out. */
+.flag-ok{color:#1c5c34;background:#eef7f0}
 .qhelp{display:inline-flex;align-items:center;justify-content:center;width:1.05rem;height:1.05rem;
   margin-left:.25rem;border:1px solid var(--border,#bbb);border-radius:50%;font-size:.7rem;
   color:var(--muted,#666);cursor:pointer;user-select:none;vertical-align:text-top}

@@ -491,6 +491,66 @@ def _ledger_weights(report):
 UNREADABLE_SHOWN = 5
 
 
+def sole_reach_notes(deep):
+    """Limitations exactly one reference in the whole search reaches, and what it actually says.
+
+    NOT A FILING LIST. A reference here may have nothing chartable at all, and one of them is the
+    applicant's own: neither belongs in a picker of documents to file. It belongs on the page
+    because it is the single most valuable thing a search of 233 documents can report, and the
+    picker had nowhere to say it.
+
+    On adhoc-efbf2979420b this is one row. Claim 1[e] is "the contact surface angle ranges in size
+    from 170° to 190°", exactly one reference of 233 is not absent on it, that reference is
+    Schmalz's own DE 10 2024 105 114 A1, and what it actually teaches is 130° to 170°. The
+    limitation, the document, the overlap and the fact that no passage was ever quoted are four
+    separate things a practitioner needs before building a case on it, and all four are here.
+    """
+    labels = {c.get("label"): c for c in (deep or {}).get("claims") or [] if isinstance(c, dict)}
+    reach = {}
+    for ref in ((deep or {}).get("references") or []):
+        for c in (ref.get("claims") or []):
+            if not isinstance(c, dict) or not c.get("item"):
+                continue
+            if (c.get("verdict") or "") == "absent":
+                continue
+            reach.setdefault(c["item"], []).append((ref, c))
+    out = []
+    for label, hits in reach.items():
+        if len(hits) != 1:
+            continue
+        ref, cell = hits[0]
+        out.append({
+            "limitation": label,
+            "text": str((labels.get(label) or {}).get("text") or "").strip(),
+            "pub": ref.get("pub"), "title": ref.get("title") or "",
+            "verdict": cell.get("verdict") or "",
+            "grounding": cell.get("grounding") or "",
+            #  A chart row needs both. Without them the document says something and cannot be
+            #  filed saying it, which is exactly the case worth flagging.
+            "chartable": ((cell.get("verdict") or "") in _USABLE_VERDICTS
+                          and (cell.get("grounding") or "") == "verified"),
+            "note": " ".join(str(cell.get("note") or "").split())[:400],
+        })
+    return sorted(out, key=lambda d: (_claim_no(d["limitation"]), d["limitation"]))
+
+
+def unreached_limitations(deep):
+    """Limitations NO reference in the search reaches at all. -> [{"limitation", "text"}]
+
+    The other half of the same answer, and the one that decides whether a claim survives. Said
+    plainly rather than left to be inferred from an empty column.
+    """
+    labels = [c for c in (deep or {}).get("claims") or [] if isinstance(c, dict)]
+    touched = set()
+    for ref in ((deep or {}).get("references") or []):
+        for c in (ref.get("claims") or []):
+            if isinstance(c, dict) and c.get("item") and (c.get("verdict") or "") != "absent":
+                touched.add(c["item"])
+    return [{"limitation": c.get("label"),
+             "text": str(c.get("text") or "").strip()}
+            for c in labels if c.get("label") not in touched]
+
+
 def _by_marginal_coverage(ranked):
     """Re-order so each document is the one that adds most to what the ones above it already cover.
 
@@ -509,13 +569,17 @@ def _by_marginal_coverage(ranked):
     remaining = list(ranked)
     seen, out = set(), []
     while remaining:
+        #  NO EARLY EXIT. "The head contributes all of its own coverage" does not mean nothing
+        #  beats it: a head adding one new limitation loses to a document adding three. An exit on
+        #  that condition left the order almost untouched, and it hid the case this pass exists
+        #  for. Schmalz's own DE 10 2024 105 114 A1 charts ONE limitation and is the only document
+        #  in the search that reaches it, the 170 to 190 degree contact surface angle of claim 1.
+        #  It ranked 142nd. The loop is quadratic and the list is a few hundred; that is nothing.
         best_i, best_new = 0, -1
         for i, d in enumerate(remaining):
             new = len(set(d.get("covers") or []) - seen)
             if new > best_new:
                 best_i, best_new = i, new
-            if best_new == len(d.get("covers") or []) and best_new > 0 and i == 0:
-                break                       # the head already adds everything it has; take it
         d = remaining.pop(best_i)
         d["new_limitations"] = len(set(d.get("covers") or []) - seen)
         seen |= set(d.get("covers") or [])
@@ -574,6 +638,21 @@ def candidates(report, deep, limit=40, collapse_families=True):
     #  construed limitations this reference reads on. `n_rows` is not it, because dependent claims
     #  collapse to one row each.
     n_limitations_of = {}
+    #  WHICH LIMITATIONS ONLY ONE REFERENCE IN THE WHOLE SEARCH REACHES. This is the single most
+    #  valuable thing a search can say and it had no representation anywhere: on
+    #  adhoc-efbf2979420b exactly one document of 233 is not absent on claim 1[e], the 170 to 190
+    #  degree contact surface angle, and it ranked 142nd because the one cell it has is unquoted.
+    #  A document like that may be unfilable here and decisive somewhere else, and either way the
+    #  practitioner has to be told it exists.
+    reach = {}
+    for ref in (deep.get("references") or []):
+        for c in (ref.get("claims") or []):
+            if isinstance(c, dict) and c.get("item") and (c.get("verdict") or "") != "absent":
+                reach.setdefault(c["item"], set()).add(ref.get("pub"))
+    sole = {next(iter(pubs)): lab for lab, pubs in reach.items() if len(pubs) == 1}
+    sole_of = {}
+    for pub, lab in sole.items():
+        sole_of.setdefault(pub, []).append(lab)
 
     out = []
     for ref in (deep.get("references") or []):
@@ -605,6 +684,7 @@ def candidates(report, deep, limit=40, collapse_families=True):
             "reads_on": len({c.get("item") for c in cells
                              if (c.get("verdict") or "") != "absent"}),
             "covers": sorted(covered, key=lambda x: (_claim_no(x), str(x))),
+            "sole_reach": sorted(sole_of.get(pub) or [], key=lambda x: (_claim_no(x), str(x))),
             "claims": sorted({r["claim_no"] for r in rows}),
             "anticipates": sorted(w.get("anticipates") or [], key=_claim_no),
             "adds": sorted(w.get("adds") or [], key=_claim_no),
@@ -657,15 +737,23 @@ def candidates(report, deep, limit=40, collapse_families=True):
         seen_fam[fam] = d
         kept.append(d)
     head = kept[:limit]
-    #  THE UNREADABLE ONES STAY VISIBLE. Sorting them to the bottom is right, and it also pushes
-    #  them past `limit`, out of the picker and out of the "considered and not selected" table
-    #  computed from it: a reference the claim grid ranks at the very top would then vanish with
-    #  no explanation anywhere, which is the silent drop this whole change is about. So the few
-    #  the grid ranks highest come back, at the end, carrying their flag and never pre-selected.
+    #  TWO KINDS OF DOCUMENT COME BACK PAST THE LIMIT, because both are things a practitioner has
+    #  to be told exist and neither can earn its place on coverage.
+    #
+    #  The unreadable ones, because sorting them to the bottom also sorts them out of the picker
+    #  and out of the "considered and not selected" table computed from it: a reference the claim
+    #  grid ranks at the very top would then vanish with no explanation anywhere, which is the
+    #  silent drop this whole change is about.
+    #
+    #  And the sole-reach ones, because "no other document in this search reaches that limitation"
+    #  is the most valuable sentence a search produces and it does not correlate with rank at all.
+    #  DE 10 2024 105 114 A1 is the only one of 233 not absent on claim 1[e] and ranked 142nd.
     if len(head) >= limit:
         shown = {d["pub"] for d in head}
         extra = sorted((d for d in kept if d["pub"] not in shown and not d["readable"]),
                        key=lambda d: -int(d.get("reads_on") or 0))[:UNREADABLE_SHOWN]
+        shown |= {d["pub"] for d in extra}
+        extra += [d for d in kept if d["pub"] not in shown and d.get("sole_reach")]
         head = head + extra
     return head
 

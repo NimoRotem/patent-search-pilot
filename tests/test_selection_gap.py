@@ -137,10 +137,15 @@ def test_an_unread_reference_is_never_pre_selected(monkeypatch):
 def test_the_unread_ones_the_grid_ranks_highest_stay_on_the_page():
     """Sorting them to the bottom also sorts them past the limit, and a grid-topping reference
     that vanishes with no explanation is the silent drop this whole change is about."""
-    readable = [_ref("US-R%03d-A1" % i, LIMS[:2], absent=LIMS[2:], rank=i) for i in range(60)]
-    unread = [_ref("US-UNREAD-A1", LIMS[:6], rank=1)]
+    #  The readable ones between them reach EVERY limitation, so the unread one is not the sole
+    #  reference for anything: it can only come back through the unread reserve, which is what
+    #  this test is for. Without that, it returns through the sole-reach door and the guard passes
+    #  with the reserve deleted.
+    readable = [_ref("US-R%03d-A1" % i, LIMS, rank=i) for i in range(60)]
+    unread = [_ref("US-UNREAD-A1", LIMS, rank=1)]
     out = cd.candidates(_report_with_unread("US-UNREAD-A1"), _deep(readable + unread), limit=40)
     pubs = [c["pub"] for c in out]
+    assert not cd.sole_reach_notes(_deep(readable + unread)), "the fixture must have no sole reach"
     assert "US-UNREAD-A1" in pubs, "it fell off the page entirely"
     assert pubs.index("US-UNREAD-A1") >= 40, "it must be after everything that can be filed"
     assert len(out) <= 40 + cd.UNREADABLE_SHOWN
@@ -207,3 +212,122 @@ def _patch_db(monkeypatch, rows):
             return cm()
 
     monkeypatch.setitem(sys.modules, "db", DB)
+
+
+# ------------------------------- 5. the one document that reaches something nothing else does
+
+def _lonely():
+    """The real shape: not absent on one limitation, and nothing quotable to chart it with."""
+    ref = _ref("DE-SELF-A1", [], absent=LIMS[:5], rank=200)
+    ref["claims"].append({"item": LIMS[5], "verdict": "partial", "bar": "teaches",
+                          "grounding": "teaches-unquoted",
+                          "note": "discloses 130 to 170 degrees, which overlaps the claimed "
+                                  "170 to 190 only at the endpoint"})
+    return ref
+
+
+def test_the_only_reference_reaching_a_limitation_is_reported_even_with_nothing_chartable():
+    """The most valuable sentence a search produces, and it had nowhere to appear.
+
+    It is not a filing candidate: with no quotable passage there is no chart row to build, and on
+    the measured report the document is the applicant's own. It goes on the page as a finding
+    about the CLAIMS, with what it actually teaches, because a practitioner building a case on it
+    needs the overlap and the absence of a quotation as much as the reach.
+    """
+    others = [_ref("US-R%03d-A1" % i, LIMS[:3], absent=LIMS[3:], rank=i) for i in range(60)]
+    deep = _deep(others + [_lonely()])
+
+    notes = cd.sole_reach_notes(deep)
+    assert [n["limitation"] for n in notes] == [LIMS[5]], notes
+    n = notes[0]
+    assert n["pub"] == "DE-SELF-A1"
+    assert n["chartable"] is False, "an unquoted teaching cannot be charted"
+    assert "overlaps the claimed" in n["note"], "say what it actually teaches"
+    assert n["text"] == "limitation 6", "name the limitation in the claim's own words"
+
+    #  And it is NOT offered as a document to file, because there is nothing to file for it.
+    assert "DE-SELF-A1" not in [c["pub"] for c in cd.candidates({}, deep, limit=40)]
+
+
+def test_a_sole_reach_document_is_offered_even_when_it_adds_nothing_chartable():
+    """The exact shape of the real one, which is why the reserve exists at all.
+
+    DE 10 2024 105 114 A1 charts one limitation, claim 1[a], which a hundred and one other
+    references also chart, so it adds nothing to the cover and ranks 142nd. It is also the only
+    document of 233 not absent on claim 1[e]. Coverage will never bring it back and it has to
+    come back, so the reserve does it.
+    """
+    lonely = _ref("DE-SELF-A1", [LIMS[0]], absent=LIMS[1:5], rank=200)
+    lonely["claims"].append({"item": LIMS[5], "verdict": "partial", "bar": "teaches",
+                             "grounding": "teaches-unquoted", "note": "n"})
+    others = [_ref("US-R%03d-A1" % i, LIMS[:5], rank=i) for i in range(60)]
+    deep = _deep(others + [lonely])
+    out = cd.candidates({}, deep, limit=40)
+    by = {c["pub"]: c for c in out}
+    assert by["DE-SELF-A1"]["new_limitations"] == 0, "it must add nothing, or the greedy carries it"
+    assert "DE-SELF-A1" in by, "a one-of-a-kind fell off the page: %d rows" % len(out)
+    assert by["DE-SELF-A1"]["sole_reach"] == [LIMS[5]]
+
+
+def test_a_limitation_nothing_reaches_is_said_plainly():
+    """The other half of the same answer, and the one that decides whether a claim survives.
+
+    A reference that says "absent" and a reference with no cell for the limitation at all mean
+    the same thing here: nobody reaches it. Both count as unreached.
+    """
+    deep = _deep([_ref("US-A-A1", LIMS[:2], absent=LIMS[2:4])])
+    got = {u["limitation"] for u in cd.unreached_limitations(deep)}
+    assert got == set(LIMS[2:]), got
+    assert cd.unreached_limitations(_deep([_ref("US-A-A1", LIMS)])) == []
+    #  and it carries the claim's own words, because a label alone says nothing
+    assert cd.unreached_limitations(deep)[0]["text"] == "limitation 3"
+
+
+def test_a_limitation_two_references_reach_makes_neither_of_them_sole():
+    deep = _deep([_ref("US-A-A1", LIMS[:2], absent=LIMS[2:]),
+                  _ref("US-B-A1", LIMS[:2], absent=LIMS[2:])])
+    assert all(not c["sole_reach"] for c in cd.candidates({}, deep))
+
+
+# ------------------------------------------------- 6. dead here, decisive at another office
+
+def test_a_self_collision_the_us_cannot_use_says_where_it_can_be_used():
+    """Counsel, 2026-08-24: "Dead in the US, lethal in Germany, and not available at the EPO. That
+    is why the system should flag self-collisions rather than filter them: what is unusable in one
+    office is decisive in another." """
+    note = S.elsewhere_note("DE", us_reachable=False, co_owned=True)
+    assert "§ 3(2) PatG" in note and "DPMA" in note
+    assert "102(a)(2)" in note, "say what took it away here"
+    assert "own earlier filing is the strongest" in note
+
+    ep = S.elsewhere_note("EP", us_reachable=False, co_owned=False)
+    assert "54(3)" in ep and "European Patent Office" in ep
+
+    #  A document the United States CAN reach and that is not commonly owned has nothing to say.
+    assert S.elsewhere_note("DE", us_reachable=True, co_owned=False) == ""
+    #  And an office with no equivalent right in the table is not given an invented one.
+    assert S.elsewhere_note("TW", us_reachable=False, co_owned=False) == ""
+
+
+def test_the_note_reaches_the_candidate(monkeypatch):
+    import datetime
+    _patch_db(monkeypatch, {"DE-1-A1": {
+        "publication_number": "DE-1-A1", "publication_date": datetime.date(2026, 1, 5),
+        "filing_date": datetime.date(2017, 4, 27),
+        "earliest_priority_date": datetime.date(2017, 4, 27),
+        "owners": ["J. Schmalz GmbH"], "country": "DE"}})
+    out = S.classify_candidates([{"pub": "DE-1-A1"}], "2024-09-09", ["J Schmalz GmbH"])
+    assert out[0]["basis"] == S.NOT_ART, "a DE national publication is outside 102(a)(2)"
+    assert out[0]["co_owned"] is True
+    assert "PatG" in out[0]["elsewhere"], out[0]["elsewhere"]
+
+
+def test_public_art_gets_no_elsewhere_note(monkeypatch):
+    """It is prior art everywhere already. A note saying so would be noise on most of the table."""
+    import datetime
+    _patch_db(monkeypatch, {"DE-2-A1": {
+        "publication_number": "DE-2-A1", "publication_date": datetime.date(2020, 1, 1),
+        "filing_date": datetime.date(2019, 1, 1),
+        "earliest_priority_date": datetime.date(2019, 1, 1), "owners": [], "country": "DE"}})
+    out = S.classify_candidates([{"pub": "DE-2-A1"}], "2024-09-09")
+    assert out[0]["basis"] == S.PUBLIC and out[0]["elsewhere"] == ""

@@ -380,6 +380,64 @@ def _norm_owner(name):
     return " ".join(s.split())
 
 
+#  Where an earlier-filed, later-published application is still prior art when the United States
+#  cannot reach it. Keyed on the office that issued the document, because that is what decides.
+#  Deliberately NOT a general prior-art engine: it answers one question, "this is out here, is it
+#  out everywhere", and it names the statute so the answer can be checked.
+_ELSEWHERE = {
+    "EP": ("European Patent Office", "EPC Art. 54(3)",
+           "an earlier-filed European application published after the filing date is novelty-only "
+           "art at the EPO"),
+    "WO": ("European Patent Office", "EPC Art. 54(3)",
+           "a Euro-PCT entering the European phase is an Art. 54(3) right"),
+    "DE": ("German Patent and Trade Mark Office", "§ 3(2) PatG",
+           "an earlier German application published after the priority date of the German family "
+           "member is novelty-only self-collision art at the DPMA"),
+    "FR": ("France (INPI)", "Art. L611-11 CPI",
+           "an earlier French application published later counts for novelty only"),
+    "GB": ("United Kingdom Intellectual Property Office", "s.2(3) Patents Act 1977",
+           "an earlier UK application published later counts for novelty only"),
+    "JP": ("Japan Patent Office", "Art. 29bis Patent Act",
+           "an earlier Japanese application published later is enlarged prior art"),
+    "CN": ("China National Intellectual Property Administration", "Art. 22(2) Patent Law",
+           "an earlier Chinese application published later defeats novelty"),
+}
+
+
+def elsewhere_note(country, us_reachable, co_owned):
+    """What this document is worth at another office when the United States cannot use it. -> str
+
+    Counsel, 2026-08-24, on Schmalz's own DE 10 2024 105 114 A1: "Dead in the US, lethal in
+    Germany, and not available at the EPO. That is why the system should flag self-collisions
+    rather than filter them: what is unusable in one office is decisive in another." It teaches
+    the one limitation of claim 1 that has no other art anywhere in the world, and it is the
+    German track's best document precisely because it is the applicant's own.
+
+    Two reasons the United States lets a document go, and they do not travel the same way. If the
+    office is outside 102(a)(2)'s reach, the equivalent right at THAT office usually still exists.
+    If 102(b)(2)(C) took it because of common ownership, no other office has that exception at
+    all, so an own-filing that is dead here is live everywhere else.
+    """
+    code = str(country or "").upper()[:2]
+    entry = _ELSEWHERE.get(code)
+    if not entry:
+        return ""
+    office, statute, how = entry
+    if not us_reachable:
+        note = ("Outside 102(a)(2)'s reach in the United States, but at the %s this is %s art: %s."
+                % (office, statute, how))
+    elif co_owned:
+        note = ("102(b)(2)(C) may remove this in the United States because of common ownership. "
+                "No other office has that exception: at the %s it is %s art, %s."
+                % (office, statute, how))
+    else:
+        return ""
+    if co_owned:
+        note += (" An applicant's own earlier filing is the strongest kind of document there, "
+                 "because nothing else has to be combined with it.")
+    return note
+
+
 def classify_candidates(cands, subject_efd, subject_owners=()):
     """Annotate each candidate with its date basis and whether it looks commonly owned.
 
@@ -411,6 +469,7 @@ def classify_candidates(cands, subject_efd, subject_owners=()):
             _as_date(r.get("earliest_priority_date")) or _as_date(r.get("filing_date")))
         country = str(r.get("country") or (c.get("pub") or "")[:2]).upper()
         c["not_art_why"] = ""
+        c["elsewhere"] = ""
         if not efd or not (pub_d or eff):
             c["basis"] = UNKNOWN
         elif pub_d and pub_d < efd:
@@ -450,6 +509,12 @@ def classify_candidates(cands, subject_efd, subject_owners=()):
         #  it came from. Still listed, still choosable, never chosen for you.
         c["default_include"] = (c["basis"] in (PUBLIC, SECRET) and not c["co_owned"]
                                 and c.get("readable", True))
+        #  KEPT OUT HERE IS NOT WORTHLESS. A later-published application the United States cannot
+        #  reach, or one 102(b)(2)(C) removes because it is the applicant's own, is frequently the
+        #  best document there is at another office. Filtering it silently loses that.
+        if c["basis"] in (SECRET, NOT_ART) and eff and efd and eff < efd:
+            c["elsewhere"] = elsewhere_note(
+                country, search_modes.secret_art_reaches(country), c["co_owned"])
     return cands
 
 

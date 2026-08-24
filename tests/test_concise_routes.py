@@ -294,6 +294,50 @@ def test_the_one_click_package_skips_the_flagged_candidates(client, report, monk
     assert len(seen["pubs"]) == S.ITEMS_PER_UNIT, "one click is exactly one fee unit"
 
 
+def test_the_page_says_what_it_passed_over_and_what_only_one_document_reaches(client, report,
+                                                                              monkeypatch):
+    """Three things a practitioner otherwise reconstructs by hand from two pages: why a document
+    the claim grid ranks highly is not in the selection, which limitations exactly one reference
+    in the whole search reaches, and which nothing reaches at all."""
+    import concise_description as cd
+    import submission as S
+
+    def classify(slug, cands, deep):
+        for c in cands:
+            #  The one the claim grid ranks FIRST is not in the selection. That is the case worth
+            #  explaining, and the one a practitioner otherwise reconstructs by hand.
+            c.update(basis=S.PUBLIC, co_owned=False, readable=True,
+                     default_include=c["pub"] != "US-0000001-B2")
+        return cands
+
+    monkeypatch.setattr(webapp, "_classify", classify)
+    monkeypatch.setattr(cd, "office_action_candidates", lambda report: [])
+    monkeypatch.setattr(cd, "candidates",
+                        lambda report, deep, limit=40, collapse_families=True: [
+                            {"pub": "US-%07d-B2" % i, "title": "t", "rows": 1, "strong": 1,
+                             "claims": "1", "reads_on": 30 - i, "n_limitations": 2,
+                             "readable": True, "sole_reach": [], "new_limitations": 0}
+                            for i in range(1, 14)])
+    monkeypatch.setattr(cd, "sole_reach_notes", lambda deep: [
+        {"limitation": "claim 1[e]", "text": "the contact surface angle ranges from 170 to 190",
+         "pub": "DE-1-A1", "title": "Polschuh", "verdict": "partial",
+         "grounding": "teaches-unquoted", "chartable": False,
+         "note": "discloses 130 to 170, overlapping the claimed range only at the endpoint"}])
+    monkeypatch.setattr(cd, "unreached_limitations", lambda deep: [
+        {"limitation": "claim 9[b]", "text": "a second pole shoe"}])
+
+    body = client.get("/report/%s/concise" % report).get_data(as_text=True)
+    #  passed over, with the reason that governs
+    assert "Considered and not selected" in body
+    assert "reads on 29 limitations but only 2" in body
+    #  what only one document reaches, and what it actually teaches
+    assert "claim 1[e]" in body and "DE-1-A1" in body
+    assert "overlapping the claimed range only at the endpoint" in body
+    assert "cannot be" in body and "charted" in body, "say it cannot be filed saying it"
+    #  and what nothing reaches
+    assert "No reference in this search reaches" in body and "claim 9[b]" in body
+
+
 def test_going_over_the_chosen_fee_budget_is_refused_with_the_money_named(client, report):
     """The budget is a ceiling on the server too. A browser that skipped the script, or a hand
     posted form, must not quietly buy a second fee unit on the filer's behalf."""
