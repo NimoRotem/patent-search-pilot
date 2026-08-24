@@ -2070,6 +2070,28 @@ def test_pixel_grounding_keeps_an_open_perspective_surface_off_a_crossing_cable(
     assert abs(anchors[0]["y"] - (780 - (anchors[0]["x"] - 100) * 130 / 600)) >= 20
 
 
+def test_pixel_grounding_moves_a_shared_boundary_into_the_requested_lower_surface():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((200, 200, 800, 800), outline="black", width=8)
+    draw.line((200, 500, 800, 500), fill="black", width=8)
+    draw.line((200, 548, 800, 548), fill="black", width=8)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["24 = perimeter member"], [{
+            "numeral": "24", "x": 500, "y": 500, "visible": True,
+            "evidence": (
+                "the front-facing surface of the lower band located beneath the main slab"
+            ),
+        }], preserve_reviewed_line_target=True)
+
+    assert audit["ok"] is True and audit["ungrounded"] == []
+    assert audit["adjusted"][0]["numeral"] == "24"
+    assert 508 < anchors[0]["y"] < 540
+
+
 def test_pixel_grounding_does_not_leave_a_bounded_surface_for_more_clearance():
     image = Image.new("RGB", (1000, 1000), "white")
     draw = ImageDraw.Draw(image)
