@@ -3046,7 +3046,12 @@ def test_terminal_filing_gate_failure_continues_from_saved_candidate_without_use
     assert "Try again" not in message
 
 
-def test_terminal_provider_disconnect_continues_a_saved_candidate_without_user_input():
+@pytest.mark.parametrize("error", [
+    "StudioError: API Error: Connection lost mid-response. The response may be incomplete.",
+    ("FigureTransientError: the image model could not draw this figure: the image model "
+     "returned no response parts (IMAGE_RECITATION)"),
+])
+def test_terminal_provider_disconnect_continues_a_saved_candidate_without_user_input(error):
     import draft_studio_service as service
 
     repository = Mock()
@@ -3075,9 +3080,7 @@ def test_terminal_provider_disconnect_continues_a_saved_candidate_without_user_i
     }
 
     result = service._fail(
-        runner, claimed,
-        "StudioError: API Error: Connection lost mid-response. The response may be incomplete.",
-        retryable=True)
+        runner, claimed, error, retryable=True)
 
     assert result["status"] == "failed"
     queued = repository.enqueue_turn_safely.call_args
