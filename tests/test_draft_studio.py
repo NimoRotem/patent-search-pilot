@@ -295,6 +295,18 @@ def test_blanket_shape_background_and_stroke_controls_are_refused_before_drawing
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
 
+def test_an_exact_separator_line_count_is_refused_before_drawing():
+    figures = [{
+        **FIGURES[0],
+        "caption": "Three stacked hatched bands are separated by one horizontal line.",
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "exact stroke count" in " ".join(check["items"]).lower()
+
+
 @pytest.mark.parametrize("caption", [
     (
         "The electrical supply cord is a slender strip of even width with plain white paper "

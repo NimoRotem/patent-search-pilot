@@ -121,9 +121,9 @@ _ARBITRARY_BACKGROUND_EXCLUSION_RE = re.compile(
     r"|\bno\s+other\s+(?:tile|floor(?:ing)?|background(?:\s+panel)?)\b",
     re.IGNORECASE)
 _ARBITRARY_STROKE_COUNT_RE = re.compile(
-    r"\b(?:bounded|outlined|drawn|formed)\s+by\s+(?:exactly\s+)?"
+    r"\b(?:bounded|outlined|drawn|formed|separated)\s+by\s+(?:exactly\s+)?"
     r"(?:one|two|three|four|five|six|\d+)\s+"
-    r"(?:(?:long|parallel|straight|curved)\s+){0,3}lines?\b",
+    r"(?:(?:long|parallel|straight|curved|horizontal|vertical|diagonal)\s+){0,3}lines?\b",
     re.IGNORECASE)
 _AMBIGUOUS_MULTI_STROKE_CORD_RE = re.compile(
     r"\b(?:cord|cable|electrical\s+supply|pulling\s+element)\b"
