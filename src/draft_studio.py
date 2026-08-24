@@ -193,9 +193,11 @@ or experimental fact. When an optional implementation detail is not supplied, wr
 functional language and disclosed alternatives without choosing a made-up value. Omit an
 unsupported optional limitation from the claims. If no related application or priority claim was
 supplied, write `Not applicable.` in the Cross-Reference section; never delete the section.
-Operational requests to resume, preserve, repair, inspect, or audit an existing candidate do not
-disclose or affirm its technical content. Nor do statements that a candidate is source-faithful,
-its numeral or figure counts, its labels, or the filing gates it should pass. A corrective message
+If no government support was supplied, write `Not applicable.` in the government-support section;
+never delete the section. Operational requests to resume, preserve, repair, inspect, or audit an
+existing candidate do not disclose or affirm its technical content. Nor do statements that a
+candidate is source-faithful, its numeral or figure counts, its labels, or the filing gates it
+should pass. A corrective message
 that names a detail only to reject, remove, narrow, question, or audit it is not affirmative source
 support. Require an independent USER passage that affirmatively describes the technical detail.
 

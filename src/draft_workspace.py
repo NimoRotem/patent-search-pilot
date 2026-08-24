@@ -133,6 +133,8 @@ def read_sections(workspace: Path) -> dict[str, str]:
             match = _HEADING_RE.match(lines[0])
             if match and _same_heading(match.group(1), heading):
                 lines.pop(0)
+            elif _same_heading(lines[0], heading):
+                lines.pop(0)
         out[key] = "\n".join(lines).strip()
     return out
 
