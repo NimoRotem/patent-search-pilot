@@ -518,3 +518,70 @@ def test_a_leader_landing_on_a_genuinely_different_part_still_blocks(figure, pro
     offenders = [i for i in blocking(validate_figure(context))
                  if i.rule_id == "GEO009" and i.entity_id == owner]
     assert offenders, "a leader ending on another part is exactly what GEO009 is for"
+
+
+def test_only_the_most_recent_of_our_own_figures_ride_along(figure):
+    """Every figure was appended, so figure twelve carried eleven of its own plus three others."""
+    graph, _plan, spec = figure
+    sheets = [Sheet(pub="US1111111A", index=0, png=ART)]
+    ours = [b"\x89PNG\r\n\x1a\n" + bytes([n]) * 40 for n in range(6)]
+    sent: list[list[bytes]] = []
+
+    def capture(prompt, references, model, temperature):
+        sent.append(list(references))
+        return ART
+
+    import pytest as _pytest
+    with _pytest.MonkeyPatch.context() as patch:
+        patch.setattr(generate, "_generate_once", capture)
+        patch.setattr(generate, "_client", lambda: None)
+        result = generate.draw(spec, graph, sheets, earlier=ours, model="stub")
+
+    assert result.ok
+    assert len(sent) == 1
+    assert len(sent[0]) == 1 + generate.MAX_EARLIER_FIGURES
+    assert sent[0][-generate.MAX_EARLIER_FIGURES:] == ours[-generate.MAX_EARLIER_FIGURES:], (
+        "the newest of our own figures must be the last images the model sees")
+
+
+def test_the_prompt_says_how_many_of_our_figures_it_is_being_shown(figure):
+    """It said "the last reference image" while N were attached, so the model matched one."""
+    graph, _plan, spec = figure
+    one = generate.build_prompt(spec, graph, reference_count=4, earlier_figures=[b"a"])
+    assert "The last reference image is a figure YOU drew" in one
+
+    two = generate.build_prompt(spec, graph, reference_count=5, earlier_figures=[b"a", b"b"])
+    assert "The last 2 reference images are figures YOU drew" in two
+
+    none = generate.build_prompt(spec, graph, reference_count=3)
+    assert "YOU drew" not in none
+
+
+def test_smuggled_text_that_gets_past_the_artwork_check_still_fails_the_sheet(figure, profile):
+    """The second of the two layers. A numeral the artwork carried is an addition, not a misread.
+
+    A misread pairs an unknown numeral with one of OURS going missing to account for it.
+    Smuggled text has nothing missing beside it, so it does not pair off and it still blocks.
+    """
+    from pfc import vision
+    from pfc.layout import build_scene
+    from pfc.providers.mock import SvgReadingVerifier
+    from pfc.render import render_svg
+
+    graph, _plan, spec = figure
+    scene = build_scene(spec, graph, profile)
+    svg = render_svg(scene, profile)
+    observed = SvgReadingVerifier().observe_svg(svg)
+
+    # What the artwork would have carried, had the first layer missed it.
+    observed.visible_text.append("777")
+    smuggled = observed.visible_references[0].model_copy()
+    smuggled.reference = "777"
+    smuggled.confidence = 0.95
+    observed.visible_references.append(smuggled)
+
+    result = vision.diff(spec, scene, observed, profile)
+    assert not result.misread_references, "nothing of ours went missing to explain it"
+    assert "777" in result.unexpected_references
+    issues = vision.issues_from_diff(result, observed, spec.figure_id)
+    assert [i for i in blocking(issues) if i.rule_id in {"VIS002", "VIS007"}]

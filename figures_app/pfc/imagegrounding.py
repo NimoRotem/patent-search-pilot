@@ -152,6 +152,26 @@ def defects(located: Located, spec: FigureSpec, graph: PatentGraph) -> list[str]
     return reasons
 
 
+def guarded_twice() -> str:
+    """Why a numeral an image model wrote has two independent chances of being caught.
+
+    Stated here because it is the property the whole reference-guided mode rests on and it was
+    only implicit, spread across two modules that do not import each other:
+
+    1. **Before the numerals go on.** This module reads the bare artwork and any character on it
+       sends the sheet back to be redrawn. That is :func:`defects`, and it is unconditional.
+    2. **After.** ``vision`` reads the FINISHED sheet and reports text the figure does not
+       account for, as VIS007. Text the artwork smuggled past step one surfaces there, and it
+       does NOT pair off as a misread, because a misread pairs an unknown numeral with one of
+       ours going missing to account for it; smuggled text is an addition with nothing missing.
+
+    The gap the two do not cover: artwork carrying a numeral this figure legitimately has, drawn
+    somewhere else on the sheet. Step one is the only guard against that one, which is why it
+    stays unconditional and why it is never traded for a retry.
+    """
+    return "artwork checked before compositing, finished sheet checked after"
+
+
 def concerns(located: Located, graph: Optional[PatentGraph] = None) -> list[str]:
     """Worth a human's eye, not worth discarding the drawing over."""
     notes: list[str] = []

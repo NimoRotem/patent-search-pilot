@@ -39,6 +39,14 @@ COST_LEADER_CROSS = 400.0
 COST_EDGE_CROSS = 120.0
 COST_BEND = 18.0
 COST_DISTANCE = 1.0
+# Two numerals that do not overlap but sit a hair apart cost the same, under the rule above, as
+# two at opposite corners, so the search has no reason to prefer the readable one. On
+# US-2024/0246200-A1 that put 350 and 314 shoulder to shoulder and an independent reader read
+# 350 as 390. A soft term, weighted well under every hard constraint, spreads them where there is
+# room and yields immediately where there is not: a tie-breaker, never a veto.
+COST_CROWDING = 60.0
+# The separation, in numeral heights, at which crowding stops being charged for at all.
+CROWDING_REACH = 2.2
 
 # Eight directions, near then far. Near is preferred by the distance term; far exists so a
 # crowded corner of the sheet still has somewhere to put a numeral.
@@ -155,6 +163,11 @@ def _cost(profile: DrawingProfile, node: LayoutNode, label_point: tuple[float, f
     for label in placed:
         if box.overlaps(label.box.inflated(profile.min_label_gap)):
             cost += COST_LABEL_OVERLAP
+        else:
+            gap = distance((box.cx, box.cy), (label.box.cx, label.box.cy))
+            reach = profile.reference_height * CROWDING_REACH
+            if gap < reach:
+                cost += COST_CROWDING * (1.0 - gap / reach)
         for a in segments(route):
             for b in segments(label.leader_points):
                 if segments_cross(a, b):

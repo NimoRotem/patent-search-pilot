@@ -649,6 +649,10 @@ class SemanticDiff(Strict):
     direction_mismatches: list[dict[str, Any]] = Field(default_factory=list)
     unsupported_visible_text: list[str] = Field(default_factory=list)
     possible_unexpected_objects: list[str] = Field(default_factory=list)
+    # ``(what we drew, what the reader called it)`` for numerals the reader plainly misread: one
+    # of ours reported missing and an unknown one reported in its place, differing by a single
+    # character. Two findings, one reading error, and neither is a defect in the sheet.
+    misread_references: list[list[str]] = Field(default_factory=list)
 
     @property
     def clean(self) -> bool:

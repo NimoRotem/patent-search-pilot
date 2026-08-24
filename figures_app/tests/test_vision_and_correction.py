@@ -204,3 +204,123 @@ def test_a_leader_reading_as_a_different_component_still_blocks(figure, profile)
     blockers = [issue for issue in blocking(issues)
                 if issue.rule_id == "VIS003" and issue.detail.get("measured") == "target"]
     assert blockers, "a leader that reads as naming another part has to block"
+
+
+def test_a_numeral_misread_is_one_finding_not_three(figure, profile):
+    """350 read as 390 came back as VIS001, VIS002 and VIS007 on a sheet with no defect.
+
+    All seven numerals on it were from the registry. A numeral of ours vanishing at the exact
+    moment an unknown one of the same length appears in its place is one reading error.
+    """
+    _graph, _plan, spec, scene, svg = figure
+    observed = observe(svg)
+    drawn = scene.labels[0].reference_numeral
+    read_as = drawn[:-1] + ("9" if drawn[-1] != "9" else "8")
+
+    for reference in observed.visible_references:
+        if reference.reference == drawn:
+            reference.reference = read_as
+            reference.confidence = 0.95
+    observed.visible_text = [read_as if text == drawn else text
+                             for text in observed.visible_text]
+
+    result = vision.diff(spec, scene, observed, profile)
+    assert result.misread_references == [[drawn, read_as]]
+    assert drawn not in result.missing_references
+    assert read_as not in result.unexpected_references
+    assert read_as not in result.unsupported_visible_text
+
+    issues = vision.issues_from_diff(result, observed, spec.figure_id)
+    assert not [i for i in blocking(issues) if i.rule_id in {"VIS001", "VIS002", "VIS007"}]
+    told = [i for i in issues if i.rule_id == "VIS011"]
+    assert told and told[0].severity == "warning"
+    assert drawn in told[0].message and read_as in told[0].message
+
+
+def test_a_numeral_the_compiler_never_placed_still_blocks(figure, profile):
+    """The guard that makes the reference-guided mode safe. Extra text, nothing of ours missing."""
+    _graph, _plan, spec, scene, svg = figure
+    observed = observe(svg)
+    invented = "999"
+    assert invented not in {label.reference_numeral for label in scene.labels}
+
+    stolen = copy.deepcopy(observed.visible_references[0])
+    stolen.reference = invented
+    stolen.confidence = 0.95
+    observed.visible_references.append(stolen)
+    observed.visible_text.append(invented)
+
+    result = vision.diff(spec, scene, observed, profile)
+    assert invented in result.unexpected_references, "nothing of ours went missing to explain it"
+    assert not result.misread_references
+    issues = vision.issues_from_diff(result, observed, spec.figure_id)
+    assert [i for i in blocking(issues) if i.rule_id == "VIS002"]
+
+
+def test_a_numeral_genuinely_absent_still_blocks(figure, profile):
+    """A missing numeral with no unexpected one to pair with is a defect, not a misread."""
+    _graph, _plan, spec, scene, svg = figure
+    numeral = scene.labels[0].reference_numeral
+    broken = svg.replace(f'data-reference-label="{numeral}"', 'data-removed="1"', 1)
+
+    result = vision.diff(spec, scene, observe(broken), profile)
+    assert numeral in result.missing_references
+    assert not result.misread_references
+    issues = vision.issues_from_diff(result, observe(broken), spec.figure_id)
+    assert [i for i in blocking(issues) if i.rule_id == "VIS001"]
+
+
+def test_a_wholly_different_numeral_is_not_treated_as_a_misread(figure, profile):
+    """Two characters apart is a different numeral. Only a single-character slip pairs off."""
+    from pfc.vision import _one_character_apart
+
+    assert _one_character_apart("350", "390")        # the one that happened
+    assert _one_character_apart("350", "310")
+    assert not _one_character_apart("350", "391")    # two digits differ
+    assert not _one_character_apart("350", "3500")   # a different length
+    assert not _one_character_apart("350", "350")    # the same numeral
+    assert not _one_character_apart("", "")
+
+
+def test_a_repair_that_changes_the_drawing_and_nothing_else_stops_and_says_so():
+    """The guard for the class of bug that cost three sessions.
+
+    GEO009 fired on a nested part, then on a container, then on two parts sharing a box. Each
+    time no placement satisfied it, the repair moved the numeral three times, and the report
+    said "3 correction passes" as though effort had been made.
+    """
+    from pfc.pipeline import _defect_signature, _unsatisfiable_note
+    from pfc.schemas import ValidationIssue
+
+    def issue(rule, entity, numeral):
+        return ValidationIssue(rule_id=rule, severity="blocking", category="geometry",
+                               message="x", figure_id="FIG_1", entity_id=entity,
+                               reference_numeral=numeral)
+
+    first = [issue("GEO009", "e142", "142")]
+    again = [issue("GEO009", "e142", "142")]
+    moved_on = [issue("GEO005", "e142", "142")]
+
+    assert _defect_signature(first) == _defect_signature(again), "the same defect, unrepaired"
+    assert _defect_signature(first) != _defect_signature(moved_on)
+
+    note = _unsatisfiable_note(again, 2)
+    assert "GEO009" in note
+    assert "2 passes" in note
+    assert "cannot be satisfied" in note or "does not address it" in note
+
+
+def test_the_signature_ignores_warnings_and_message_wording():
+    """Only blocking issues stall a figure, and a reworded message is not a different defect."""
+    from pfc.pipeline import _defect_signature
+    from pfc.schemas import ValidationIssue
+
+    def issue(rule, severity, message):
+        return ValidationIssue(rule_id=rule, severity=severity, category="geometry",
+                               message=message, figure_id="FIG_1", entity_id="e1",
+                               reference_numeral="1")
+
+    blocked = [issue("GEO009", "blocking", "one wording")]
+    reworded = [issue("GEO009", "blocking", "quite another wording"),
+                issue("VIS008", "warning", "a passing remark")]
+    assert _defect_signature(blocked) == _defect_signature(reworded)

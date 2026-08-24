@@ -83,7 +83,7 @@ def usability(description: str) -> tuple[bool, int, str]:
     _sections, paragraphs = parse.parse_sections(text)
     body = parse.description_paragraphs(paragraphs)
     if not body:
-        return False, 0, ("no detailed description in it, only front matter and background — "
+        return False, 0, ("no detailed description in it, only front matter and background, so "
                           "the document is truncated before the part that carries the numerals")
     registry = numerals_module.build_registry(body)
     if len(registry) < MIN_NUMERALS:
@@ -96,11 +96,16 @@ def usability(description: str) -> tuple[bool, int, str]:
 # the rungs
 # ---------------------------------------------------------------------------
 def _from_our_stores(pub: str) -> dict:
-    """The pre-built corpus and the shared docstore. Free, instant, ours."""
-    record = pilot.corpus_record(pub)
+    """The pre-built corpus and the shared docstore. Free, instant, ours.
+
+    Asked strictly, because the ladder writes down every answer and a store that could not be
+    REACHED must not be recorded as a store that does not hold the publication. That distinction
+    is the whole point of the notes this module emits.
+    """
+    record = pilot.corpus_record(pub, strict=True)
     if record.get("description") or record.get("claims"):
         return record
-    return pilot.docstore_record(pub)
+    return pilot.docstore_record(pub, strict=True)
 
 
 def _adapter_details(pub: str, adapter_name: str, timeout: float) -> dict:

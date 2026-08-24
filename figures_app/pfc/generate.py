@@ -33,6 +33,12 @@ from .schemas import FigureSpec, PatentGraph
 
 MAX_PNG_BYTES = 12 * 1024 * 1024
 ATTEMPTS = 3
+# How many of OUR earlier figures ride along as consistency references. Every figure was being
+# appended, so a twelve-figure patent reached figure twelve carrying eleven of its own sheets plus
+# three from the neighbours: fourteen images for one drawing, at a cost and a latency that grow
+# with the patent, and with the instruction still speaking of "the last reference image" as though
+# there were one. The two most recent carry the shape; the rest carry the bill.
+MAX_EARLIER_FIGURES = 2
 
 SYSTEM = """You draw patent figures. Black line art on a white background, uniform line weight,
 no shading, no hatching except where asked, no colour, no perspective tricks, no photorealism.
@@ -177,10 +183,14 @@ def build_prompt(spec: FigureSpec, graph: PatentGraph, *, reference_count: int,
         lines.append("\nThe steps, as a flow of plain boxes joined by arrows, in this order:")
         lines.extend(f"  - {step.text}" for step in spec.steps)
     if earlier_figures:
+        count = len(earlier_figures)
+        which = ("The last reference image is a figure YOU drew for this same patent."
+                 if count == 1 else
+                 f"The last {count} reference images are figures YOU drew for this same patent.")
         lines.append(
-            "\nThe last reference image is a figure YOU drew for this same patent. Any part that "
-            "appears in both must be drawn the same way here as it was there: same shape, same "
-            "proportions, same level of detail. Only the viewpoint may change.")
+            f"\n{which} Any part that appears in one of them and in this figure must be drawn the "
+            "same way here as it was there: same shape, same proportions, same level of detail. "
+            "Only the viewpoint may change.")
     lines.append(
         "\nRemember: no text, no numbers, no labels anywhere on the drawing. Leave white space "
         "around each part for numerals to be added later.")
@@ -220,9 +230,12 @@ def draw(spec: FigureSpec, graph: PatentGraph, references: Sequence[Sheet],
     draft_figures = _client()
     model = model or draft_figures.image_model()
     reference_blobs = [sheet.png for sheet in references if sheet.ok]
-    reference_blobs.extend(blob for blob in earlier if blob)
+    # Most recent first in intent, appended last in order, so the newest of our own figures is
+    # the final image the model sees and the prompt's "the last ... reference images" is true.
+    ours = [blob for blob in earlier if blob][-MAX_EARLIER_FIGURES:]
+    reference_blobs.extend(ours)
     prompt = build_prompt(spec, graph, reference_count=len(reference_blobs),
-                          earlier_figures=[b for b in earlier if b])
+                          earlier_figures=ours)
     out = Generated(prompt=prompt,
                     references=[f"{sheet.pub}#{sheet.index}" for sheet in references
                                 if sheet.ok])

@@ -105,6 +105,42 @@ def _observed_position(reference, scene: LayoutScene, image_size: tuple[int, int
     return ((x0 + x1) / 2 * scale_x, (y0 + y1) / 2 * scale_y)
 
 
+def _one_character_apart(left: str, right: str) -> bool:
+    """Same length, differing in exactly one position. A 5 read as a 9, not a different numeral."""
+    if len(left) != len(right) or left == right:
+        return False
+    return sum(1 for a, b in zip(left, right) if a != b) == 1
+
+
+def _reconcile_misreads(result: SemanticDiff) -> None:
+    """One numeral misread is two findings. Pair them up rather than reporting both.
+
+    Measured on US-2024/0246200-A1: the reader read 350 as 390 and the figure came back with
+    three blocking issues, VIS001, VIS002 and VIS007, for a sheet whose seven numerals were all
+    from the registry. A numeral of ours going missing at the same moment an unknown one of the
+    same length appears in its place is a reading error, not a defect, and the pairing is what
+    distinguishes it from an image model having written a numeral of its own: that would be
+    EXTRA text, with nothing of ours disappearing to account for it.
+
+    Anything that does not pair off is left exactly where it was and still blocks.
+    """
+    if not result.missing_references or not result.unexpected_references:
+        return
+    unclaimed = list(result.unexpected_references)
+    still_missing: list[str] = []
+    for expected in result.missing_references:
+        match = next((seen for seen in unclaimed if _one_character_apart(expected, seen)), None)
+        if match is None:
+            still_missing.append(expected)
+            continue
+        unclaimed.remove(match)
+        result.misread_references.append([expected, match])
+        result.unsupported_visible_text = [text for text in result.unsupported_visible_text
+                                           if text != match]
+    result.missing_references = still_missing
+    result.unexpected_references = unclaimed
+
+
 def diff(spec: FigureSpec, scene: LayoutScene, observed: ObservedFigure,
          profile: DrawingProfile, *, image_size: tuple[int, int] = (0, 0),
          graph_relations: Optional[dict] = None) -> SemanticDiff:
@@ -213,6 +249,9 @@ def diff(spec: FigureSpec, scene: LayoutScene, observed: ObservedFigure,
     if len(confident_objects) > expected_objects:
         result.possible_unexpected_objects = [
             component.description[:80] for component in confident_objects[expected_objects:]]
+
+    # Last, because it withdraws findings the passes above have all had their say on.
+    _reconcile_misreads(result)
     return result
 
 
@@ -266,6 +305,14 @@ def issues_from_diff(result: SemanticDiff, observed: ObservedFigure,
     for description in result.possible_unexpected_objects:
         add("VIS008", f"An object was seen that this figure does not specify: {description!r}.",
             severity="warning", detail={"description": description})
+    for drawn, seen in result.misread_references:
+        # Not a defect in the sheet. Reported because a numeral a reader struggles with is worth
+        # a human's glance, and because silently withdrawing two blocking findings would be the
+        # kind of quiet substitution this compiler is not allowed to make.
+        add("VIS011", f"An independent reader read the numeral {drawn} on this sheet as {seen}. "
+                      f"{drawn} is where the layout placed it; nothing else was printed.",
+            severity="warning", repair="none", reference_numeral=drawn,
+            detail={"drawn": drawn, "read_as": seen})
     # A verifier answers these two in whatever form it likes: sometimes a numeral, sometimes a
     # sentence describing what it saw. Both are useful; only the first can drive a repair, so
     # only the first sets a reference for the correction loop to act on.
@@ -286,6 +333,16 @@ def issues_from_diff(result: SemanticDiff, observed: ObservedFigure,
             repair="reroute_leader" if numeral else "none",
             reference_numeral=numeral or None)
     return issues
+
+
+def _merge_pairs(first: list, second: list) -> list:
+    """Both readers' misread pairs, in order, without repeating one they both made."""
+    out: list = []
+    for pair in list(first) + list(second):
+        item = [str(value) for value in pair]
+        if item not in out:
+            out.append(item)
+    return out
 
 
 def reconcile(first: SemanticDiff, second: Optional[SemanticDiff]) -> tuple[SemanticDiff, bool]:
@@ -320,6 +377,9 @@ def reconcile(first: SemanticDiff, second: Optional[SemanticDiff]) -> tuple[Sema
         unsupported_visible_text=sorted(set(first.unsupported_visible_text) &
                                         set(second.unsupported_visible_text)),
         possible_unexpected_objects=[],
+        # A misread by EITHER reader is worth showing. Intersecting them would hide the common
+        # case, which is one reader stumbling on a numeral the other read cleanly.
+        misread_references=_merge_pairs(first.misread_references, second.misread_references),
     )
     disagreed = (not first.clean or not second.clean) and agreed.clean
     return agreed, disagreed

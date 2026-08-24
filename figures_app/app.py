@@ -139,6 +139,62 @@ def _sweep() -> None:
             continue
 
 
+def _reconcile_interrupted() -> int:
+    """Close out jobs whose worker died with the process that owned it.
+
+    A compilation runs on a daemon thread. Restart the service, or lose it to an OOM, and that
+    thread is gone while ``job.json`` still says ``running`` at 40%: the page polls forever and
+    the account has no way to tell a job that is working from one that stopped existing during a
+    deploy. Nothing else notices, because the thread that would have written the error is the
+    thread that died.
+
+    Called once at import, which is once per worker process. The test is whether the process
+    that took the job is still alive, not how long ago it last said something: a stage can take
+    minutes, so any timeout long enough not to kill a working job is too long to be useful, and
+    a second worker starting up must not close a job the first one began a moment ago.
+    """
+    if not JOBS_DIR.is_dir():
+        return 0
+    closed = 0
+    for path in sorted(JOBS_DIR.iterdir()):
+        if not path.is_dir():
+            continue
+        state = _read_state(path.name)
+        if not state or state.get("state") != "running":
+            continue
+        if _process_alive(state.get("worker_pid")):
+            continue
+        _write_state(path.name, state="error", status="BLOCKED", pct=100,
+                     message="this compilation was interrupted, most likely by the service "
+                             "restarting. Nothing was lost except the run itself; submit it "
+                             "again.")
+        closed += 1
+    return closed
+
+
+def _process_alive(pid) -> bool:
+    """Is that process still there? Absent or unreadable counts as gone.
+
+    A job record written before this field existed has no pid, and predates the running process
+    by definition, so it is closed.
+    """
+    try:
+        number = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if number <= 0:
+        return False
+    try:
+        os.kill(number, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True          # alive and owned by somebody else
+    except OSError:
+        return False
+    return True
+
+
 # ---------------------------------------------------------------------------
 # running a compilation
 # ---------------------------------------------------------------------------
@@ -147,6 +203,9 @@ def _start(job_id: str, config: JobConfig, upload, link: str) -> None:
         _write_state(job_id, stage=stage, message=message, pct=pct)
 
     def work() -> None:
+        # Written from inside the worker, so the record names the process that is actually doing
+        # the compiling. See _reconcile_interrupted.
+        _write_state(job_id, worker_pid=os.getpid())
         try:
             outcome = run_job(job_id, root=_job_dir(job_id), config=config,
                               upload=upload, link=link, progress=progress)
@@ -172,6 +231,13 @@ def _start(job_id: str, config: JobConfig, upload, link: str) -> None:
 
 
 def _config_from_form(form) -> JobConfig:
+    """The submitted settings, or a ValueError naming the field that is wrong.
+
+    It used to answer any invalid field by returning ``JobConfig()``: the whole set of defaults.
+    So a request that asked for the reference-guided style and got one other field wrong was
+    quietly compiled as a schematic, in the generic jurisdiction, and nothing anywhere said so.
+    Substituting a different job for the one that was asked for is worse than refusing it.
+    """
     def flag(name: str) -> bool:
         return str(form.get(name, "")).lower() in {"1", "true", "yes", "on"}
 
@@ -185,11 +251,14 @@ def _config_from_form(form) -> JobConfig:
         try:
             payload["max_figures"] = int(form["max_figures"])
         except (TypeError, ValueError):
-            pass
+            raise ValueError(f"max_figures is not a number: {form['max_figures']!r}") from None
     try:
         return JobConfig(**payload)
-    except Exception:
-        return JobConfig()
+    except Exception as exc:
+        fields = ", ".join(sorted(
+            str(error.get("loc", ("?",))[0]) for error in getattr(exc, "errors", lambda: [])()
+        )) or "one of the settings"
+        raise ValueError(f"{fields} is not a value this compiler accepts") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +279,12 @@ def create_job():
     elif not link:
         return jsonify({"error": "attach a patent PDF or paste a patent link"}), 400
 
+    # Read before the slot is taken, so a rejected setting cannot hold one.
+    try:
+        config = _config_from_form(request.form)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
     if not _slots.acquire(blocking=False):
         return jsonify({"error": "the compiler is already working on as many patents as this "
                                  "box will take, please try again shortly"}), 429
@@ -220,7 +295,6 @@ def create_job():
     try:
         _sweep()
         job_id = uuid.uuid4().hex
-        config = _config_from_form(request.form)
         _write_state(job_id, owner_user_id=int(authgate.user().get("id") or 0),
                      state="running", status="QUEUED", stage="INGEST", pct=2,
                      message="Reading the patent",
@@ -340,7 +414,9 @@ def _unhandled(error: Exception):
 @app.get("/healthz")
 def healthz():
     return jsonify({"ok": True, "service": "patent-figure-compiler",
-                    "jobs": len(list(JOBS_DIR.glob("*"))) if JOBS_DIR.is_dir() else 0})
+                    "jobs": len(list(JOBS_DIR.glob("*"))) if JOBS_DIR.is_dir() else 0,
+                    "slots_in_use": MAX_CONCURRENT - getattr(_slots, "_value",
+                                                             MAX_CONCURRENT)})
 
 
 def _load(job_id: str, name: str):
@@ -413,6 +489,30 @@ def pretty_status(value: str) -> str:
     return str(value or "").replace("_", " ").title()
 
 
+def _on_start() -> None:
+    """Run once per worker process, and never a reason the service will not come up.
+
+    Both of these are housekeeping. A read-only data directory or a job record another process
+    is mid-write on is worth a line in the log and nothing more: refusing to start would turn a
+    tidy-up into an outage, and this runs at import, where an exception takes the worker with it.
+    """
+    try:
+        JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        traceback.print_exc()
+        print(f"[pfc] {JOBS_DIR} could not be created: {exc}", flush=True)
+        return
+    try:
+        closed = _reconcile_interrupted()
+    except Exception:
+        traceback.print_exc()
+        return
+    if closed:
+        print(f"[pfc] closed {closed} job(s) interrupted by a restart", flush=True)
+
+
+_on_start()
+
+
 if __name__ == "__main__":
-    JOBS_DIR.mkdir(parents=True, exist_ok=True)
     app.run(host="127.0.0.1", port=int(os.environ.get("PORT", "8637")), debug=False)

@@ -145,3 +145,41 @@ def test_a_numeral_never_sits_on_the_outline_it_names(housing_document, profile)
             continue        # a part's numeral legitimately sits inside its housing
         assert not label.box.overlaps(node.box), (
             f"{label.reference_numeral} is printed on the outline of the object it names")
+
+
+def test_two_numerals_are_spread_when_there_is_room_to_spread_them():
+    """Non-overlapping but shoulder to shoulder cost the same as opposite corners.
+
+    On US-2024/0246200-A1 that put 350 and 314 side by side and an independent reader read 350
+    as 390. The crowding term is a tie-breaker: it must never outrank a hard constraint.
+    """
+    from pfc.layout import leaders
+
+    assert leaders.COST_CROWDING < leaders.COST_EDGE_CROSS
+    assert leaders.COST_CROWDING < leaders.COST_LABEL_OVERLAP
+    assert leaders.COST_CROWDING < leaders.COST_LEADER_CROSS
+    assert leaders.COST_CROWDING < leaders.COST_HITS_NODE
+    assert leaders.COST_CROWDING < leaders.COST_AMBIGUOUS
+    assert leaders.COST_CROWDING < leaders.COST_ON_ARTWORK
+    assert leaders.COST_CROWDING < leaders.COST_OUTSIDE
+
+
+def test_the_crowding_term_falls_to_nothing_at_its_reach(profile):
+    """It has to yield entirely where there is no room, or a crowded sheet gets no labels."""
+    from pfc.layout import leaders
+    from pfc.schemas import Box, LayoutLabel, Point
+
+    def crowding_between(gap: float) -> float:
+        here = Box(x=0.0, y=0.0, width=40.0, height=20.0)
+        label = LayoutLabel(reference_numeral="1", entity_id="e1",
+                            position=Point(x=gap, y=0.0),
+                            leader_points=[Point(x=gap, y=0.0), Point(x=gap, y=1.0)],
+                            text_width=40.0, text_height=20.0)
+        reach = profile.reference_height * leaders.CROWDING_REACH
+        distance = abs(label.box.cx - here.cx)
+        return 0.0 if distance >= reach else leaders.COST_CROWDING * (1.0 - distance / reach)
+
+    reach = profile.reference_height * leaders.CROWDING_REACH
+    assert crowding_between(reach * 3) == 0.0
+    assert crowding_between(reach * 0.5) > 0.0
+    assert crowding_between(reach * 0.5) < leaders.COST_CROWDING

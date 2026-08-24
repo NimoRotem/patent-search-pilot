@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import time
 import uuid
 
 import pytest
@@ -270,3 +271,241 @@ def test_a_signed_out_api_call_is_401_json_not_a_login_page(client):
     assert response.status_code == 401
     assert response.mimetype == "application/json"
     assert response.get_json()["login"]
+
+
+def test_a_job_interrupted_by_a_restart_does_not_poll_forever(tmp_path, monkeypatch):
+    """A compilation runs on a daemon thread. Restart the service and that thread is gone while
+    ``job.json`` still says running at 40%, so the page spins and the account cannot tell a job
+    that is working from one that stopped existing during a deploy."""
+    import importlib
+
+    monkeypatch.setenv("PFC_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("SECRET_KEY", "test-key-not-used-for-anything-real")
+    monkeypatch.setenv("PILOT_ROOT", str(tmp_path / "no-pilot-here"))
+    import app as web
+
+    web = importlib.reload(web)
+    orphan = uuid.uuid4().hex
+    finished = uuid.uuid4().hex
+    web._write_state(orphan, owner_user_id=1, state="running", status="QUEUED",
+                     stage="EXTRACT", pct=40, message="Reading the description",
+                     worker_pid=999_999)          # a process that is not there
+    web._write_state(finished, owner_user_id=1, state="done", status="PARTIAL", pct=100)
+
+    # What a fresh worker process does at import.
+    assert web._reconcile_interrupted() == 1
+
+    after = web._read_state(orphan)
+    assert after["state"] == "error"
+    assert after["pct"] == 100
+    assert "interrupted" in after["message"]
+    assert "submit it again" in after["message"]
+    assert web._read_state(finished)["state"] == "done", "a finished job is left alone"
+
+    # And it is idempotent, because every worker process runs it.
+    assert web._reconcile_interrupted() == 0
+
+
+def test_health_reports_how_many_slots_are_in_use(client):
+    web, http = client
+    body = http.get("/healthz").get_json()
+    assert body["ok"] is True
+    assert body["slots_in_use"] == 0
+    web._slots.acquire()
+    try:
+        assert http.get("/healthz").get_json()["slots_in_use"] == 1
+    finally:
+        web._slots.release()
+
+
+def test_a_setting_the_compiler_does_not_accept_is_refused_not_silently_swapped(
+        client_no_pipeline):
+    """It answered any bad field by compiling with the WHOLE default set.
+
+    So a request asking for the reference-guided style with one other field wrong was quietly
+    compiled as a schematic, in the generic jurisdiction, and nothing said so.
+    """
+    _web, http, _started = client_no_pipeline
+    response = http.post("/v1/jobs", data={"url": "US-1-A1",
+                                           "figure_style": "reference_guided",
+                                           "jurisdiction": "atlantis"})
+    assert response.status_code == 400
+    assert "jurisdiction" in response.get_json()["error"]
+
+    response = http.post("/v1/jobs", data={"url": "US-1-A1", "max_figures": "many"})
+    assert response.status_code == 400
+    assert "max_figures" in response.get_json()["error"]
+
+
+def test_a_refused_setting_does_not_hold_a_concurrency_slot(client_no_pipeline):
+    """Two bad submissions used to be enough to make the box look permanently busy."""
+    web, http, _started = client_no_pipeline
+    before = web._slots._value
+    for _ in range(3):
+        assert http.post("/v1/jobs", data={"url": "US-1-A1",
+                                           "jurisdiction": "atlantis"}).status_code == 400
+    assert web._slots._value == before
+
+
+def test_the_style_that_was_asked_for_is_the_style_that_is_recorded(client_no_pipeline):
+    """The job's own record has to agree with the request that made it."""
+    web, http, started = client_no_pipeline
+    response = http.post("/v1/jobs", data={"url": "US-1-A1",
+                                           "figure_style": "reference_guided",
+                                           "jurisdiction": "epo",
+                                           "verification_level": "strict"})
+    assert response.status_code == 202
+    state = web._read_state(response.get_json()["job_id"])
+    assert state["config"]["figure_style"] == "reference_guided"
+    assert state["config"]["jurisdiction"] == "epo"
+    assert state["config"]["verification_level"] == "strict"
+    # and the config the worker was actually handed is that same one, not a re-read of the form.
+    assert started[-1][1].figure_style == "reference_guided"
+    assert started[-1][1].verification_level == "strict"
+
+
+def test_startup_housekeeping_never_stops_the_service_coming_up(tmp_path, monkeypatch):
+    """It runs at import. An exception there takes the worker process with it.
+
+    A read-only data directory is a reason to log a line, not a reason for /figures to 502.
+    """
+    import importlib
+
+    unwritable = tmp_path / "read-only"
+    unwritable.mkdir()
+    unwritable.chmod(0o500)
+    monkeypatch.setenv("PFC_DATA_DIR", str(unwritable / "nested"))
+    monkeypatch.setenv("SECRET_KEY", "test-key-not-used-for-anything-real")
+    monkeypatch.setenv("PILOT_ROOT", str(tmp_path / "no-pilot-here"))
+    try:
+        import app as web
+
+        web = importlib.reload(web)          # must not raise
+        assert web.app is not None
+    finally:
+        unwritable.chmod(0o700)
+
+    # And a job record that cannot be parsed does not stop the sweep either.
+    monkeypatch.setenv("PFC_DATA_DIR", str(tmp_path / "usable"))
+    import app as web
+
+    web = importlib.reload(web)
+    broken = web.JOBS_DIR / uuid.uuid4().hex
+    broken.mkdir(parents=True)
+    (broken / "job.json").write_text("{not json at all")
+    good = uuid.uuid4().hex
+    web._write_state(good, owner_user_id=1, state="running", pct=10)
+    assert web._reconcile_interrupted() == 1
+    assert web._read_state(good)["state"] == "error"
+
+
+def test_a_job_a_live_worker_still_owns_is_left_alone(tmp_path, monkeypatch):
+    """With more than one worker, the second starting up must not close the first one's job.
+
+    Any timeout long enough not to kill a working job is too long to be useful, because a single
+    stage can run for minutes. So the test is whether the process that took the job is alive.
+    """
+    import importlib
+    import os
+
+    monkeypatch.setenv("PFC_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("SECRET_KEY", "test-key-not-used-for-anything-real")
+    monkeypatch.setenv("PILOT_ROOT", str(tmp_path / "no-pilot-here"))
+    import app as web
+
+    web = importlib.reload(web)
+    mine = uuid.uuid4().hex
+    theirs = uuid.uuid4().hex
+    ancient = uuid.uuid4().hex
+    web._write_state(mine, owner_user_id=1, state="running", pct=30, worker_pid=os.getpid())
+    web._write_state(theirs, owner_user_id=1, state="running", pct=30, worker_pid=999_999)
+    web._write_state(ancient, owner_user_id=1, state="running", pct=30)   # predates the field
+
+    assert web._reconcile_interrupted() == 2
+    assert web._read_state(mine)["state"] == "running", "a live worker still owns this one"
+    assert web._read_state(theirs)["state"] == "error"
+    assert web._read_state(ancient)["state"] == "error"
+
+
+def test_the_worker_records_which_process_took_the_job(client, monkeypatch):
+    """The record has to name the process doing the compiling, or nothing can check it."""
+    import os
+    import threading
+
+    web, _http = client
+    finished = threading.Event()
+
+    def fake_run_job(job_id, **kwargs):
+        raise RuntimeError("nothing is compiled in a test")
+
+    monkeypatch.setattr(web, "run_job", fake_run_job)
+    monkeypatch.setattr(web._slots, "release", lambda: finished.set())
+
+    job_id = uuid.uuid4().hex
+    web._write_state(job_id, owner_user_id=1, state="running", pct=2)
+    web._start(job_id, web.JobConfig(), None, "US-1-A1")
+    assert finished.wait(timeout=10), "the worker thread never finished"
+
+    state = web._read_state(job_id)
+    assert state["worker_pid"] == os.getpid()
+    assert state["state"] == "error", "and the failure was recorded rather than swallowed"
+
+
+def test_no_text_this_app_shows_a_human_carries_an_em_dash():
+    """A house rule, and one that is only ever broken by accident.
+
+    It reached a user once already: the full-text ladder printed "only front matter and
+    background, the document is truncated" into the notes on the results page, with an em dash
+    where that comma is. Grepping is the stated way to verify the rule, so the grep lives here
+    rather than in somebody's memory.
+
+    Exempt: docstrings and comments, which reach a reader of the source rather than a reader of
+    the page; this test directory, which ships to nobody; and character classes and strip sets,
+    which MATCH an em dash in a patent's own text rather than printing one. Prose is told apart
+    from a pattern by having words in it.
+    """
+    import ast
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parent.parent
+    offences = []
+
+    def is_prose(value: str) -> bool:
+        # A regex is not prose however many letters it contains: FIG, URE, body and A-Za-z all
+        # look like words. Backslash escapes and a bracketed dash class give it away.
+        if "\\b" in value or "\\s" in value or "\\d" in value or "[-" in value:
+            return False
+        return len(re.findall(r"[A-Za-z]{3,}", value)) >= 4
+
+    for path in sorted(root.rglob("*.py")):
+        if ".venv" in path.parts or "__pycache__" in path.parts or "tests" in path.parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        docstrings = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                                 ast.AsyncFunctionDef)):
+                body = getattr(node, "body", None)
+                if body and isinstance(body[0], ast.Expr) \
+                        and isinstance(body[0].value, ast.Constant) \
+                        and isinstance(body[0].value.value, str):
+                    docstrings.add(id(body[0].value))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                continue
+            if "\u2014" not in node.value or id(node) in docstrings:
+                continue
+            if not is_prose(node.value):
+                continue
+            offences.append(f"{path.relative_to(root)}:{node.lineno} {node.value[:70]!r}")
+
+    for name in ("templates", "static"):
+        folder = root / name
+        if not folder.is_dir():
+            continue
+        for path in sorted(folder.rglob("*")):
+            if path.is_file() and "\u2014" in path.read_text(encoding="utf-8", errors="ignore"):
+                offences.append(str(path.relative_to(root)))
+
+    assert not offences, "em dashes reaching a human: " + "; ".join(offences)

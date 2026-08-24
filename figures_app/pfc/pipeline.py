@@ -431,6 +431,7 @@ def _compile_figure(spec, graph, profile, figure_plan, config: JobConfig,
     issues = validate_figure(context)
 
     attempt = 0
+    seen_signatures = {_defect_signature(issues)}
     while blocking(issues) and attempt < correction.MAX_ATTEMPTS:
         outcome = correction.correct(spec, graph, bundle.scene, profile, issues, attempt)
         attempt += 1
@@ -441,6 +442,11 @@ def _compile_figure(spec, graph, profile, figure_plan, config: JobConfig,
         record.corrections_applied.extend(outcome.applied)
         context.figure = bundle
         issues = validate_figure(context)
+        signature = _defect_signature(issues)
+        if signature in seen_signatures:
+            record.corrections_applied.append(_unsatisfiable_note(issues, attempt))
+            break
+        seen_signatures.add(signature)
 
     observed = None
     if verifier is not None and not blocking(issues):
@@ -448,6 +454,7 @@ def _compile_figure(spec, graph, profile, figure_plan, config: JobConfig,
                                           paths, record)
         issues = issues + vision_issues
         extra = 0
+        seen_vision = {_defect_signature(vision_issues)}
         while blocking(vision_issues) and attempt + extra < correction.MAX_ATTEMPTS:
             outcome = correction.correct(spec, graph, bundle.scene, profile, vision_issues,
                                          attempt + extra)
@@ -464,6 +471,12 @@ def _compile_figure(spec, graph, profile, figure_plan, config: JobConfig,
             observed, vision_issues = _verify(bundle, profile, verifier, call_log, config,
                                               paths, record)
             issues = issues + vision_issues
+            signature = _defect_signature(vision_issues)
+            if signature in seen_vision:
+                record.corrections_applied.append(
+                    _unsatisfiable_note(vision_issues, attempt + extra))
+                break
+            seen_vision.add(signature)
         attempt += extra
 
     record.correction_attempts = attempt
@@ -475,6 +488,31 @@ def _compile_figure(spec, graph, profile, figure_plan, config: JobConfig,
     _write_json(paths.debug / f"{_stem(spec.figure_number)}_scene.json",
                 bundle.scene.model_dump())
     return bundle
+
+
+def _defect_signature(issues) -> tuple:
+    """What is wrong with this figure, as a comparable value."""
+    return tuple(sorted((issue.rule_id, issue.entity_id or "", issue.reference_numeral or "")
+                        for issue in blocking(issues)))
+
+
+def _unsatisfiable_note(issues, attempt: int) -> str:
+    """Said out loud when repairing changed the drawing and changed nothing about the defect.
+
+    This is the guard for a class of bug that cost three separate sessions here. GEO009 fired on
+    a part nested inside another, then on a container's own outline, then on two parts a reader
+    had given one box between them: in each case no placement existed that satisfied the rule,
+    the repair dutifully moved the numeral three times, and the report said "3 correction passes"
+    as though the compiler had tried its best rather than chased its own tail. A rule with no
+    satisfying assignment is a defect in the rule, and it now says so on the sheet where it
+    happened instead of waiting to be noticed.
+    """
+    names = sorted({issue.rule_id for issue in blocking(issues)})
+    return (f"repairing changed the drawing and left {', '.join(names)} reporting exactly the "
+            f"same thing, so the run stopped after {attempt} pass"
+            f"{'' if attempt == 1 else 'es'} rather than chase it. Either the rule cannot be "
+            f"satisfied for this figure or the repair it asks for does not address it; both are "
+            f"worth a look before this figure is redrawn")
 
 
 def _stem(figure_number: str) -> str:

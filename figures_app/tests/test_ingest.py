@@ -39,8 +39,8 @@ def stub(monkeypatch):
     monkeypatch.setattr(ingest.pilot, "figure_dir", lambda pub: None)
 
     # The compiler's own ladder: our stores first, then our reader, then the paid channel.
-    monkeypatch.setattr(fulltext.pilot, "corpus_record", lambda pub: {})
-    monkeypatch.setattr(fulltext.pilot, "docstore_record", lambda pub: {})
+    monkeypatch.setattr(fulltext.pilot, "corpus_record", lambda pub, strict=False: {})
+    monkeypatch.setattr(fulltext.pilot, "docstore_record", lambda pub, strict=False: {})
 
     def adapter_details(pub, adapter_name, timeout=90.0):
         calls.append(adapter_name)
@@ -178,9 +178,10 @@ def test_the_ladder_walks_past_a_source_that_returns_a_truncated_document(monkey
     """The reported failure on US-2024/0246200-A1: the first free rung returned 40,000
     characters of background with no numerals and the compiler accepted it."""
     asked: list[str] = []
-    monkeypatch.setattr(fulltext.pilot, "corpus_record", lambda pub: {})
+    monkeypatch.setattr(fulltext.pilot, "corpus_record", lambda pub, strict=False: {})
     monkeypatch.setattr(fulltext.pilot, "docstore_record",
-                        lambda pub: {"description": TRUNCATED, "claims": "1. A gripper."})
+                        lambda pub, strict=False: {"description": TRUNCATED,
+                                                   "claims": "1. A gripper."})
 
     def adapter_details(pub, adapter_name, timeout=90.0):
         asked.append(adapter_name)
@@ -209,8 +210,8 @@ def test_pqai_is_never_asked():
 def test_our_own_stores_are_asked_before_anything_that_costs(monkeypatch):
     asked: list[str] = []
     monkeypatch.setattr(fulltext.pilot, "corpus_record",
-                        lambda pub: {"description": COMPLETE, "claims": "1. A."})
-    monkeypatch.setattr(fulltext.pilot, "docstore_record", lambda pub: {})
+                        lambda pub, strict=False: {"description": COMPLETE, "claims": "1. A."})
+    monkeypatch.setattr(fulltext.pilot, "docstore_record", lambda pub, strict=False: {})
     monkeypatch.setattr(fulltext.pilot, "adapter_details",
                         lambda pub, adapter_name, timeout=90.0: asked.append(adapter_name) or {})
     got = fulltext.fetch("US-1-A1", [])
@@ -220,9 +221,10 @@ def test_our_own_stores_are_asked_before_anything_that_costs(monkeypatch):
 
 def test_the_fullest_incomplete_answer_is_kept_when_every_source_falls_short(monkeypatch):
     """Better to compile what can be compiled and say it is incomplete than to refuse."""
-    monkeypatch.setattr(fulltext.pilot, "corpus_record", lambda pub: {})
+    monkeypatch.setattr(fulltext.pilot, "corpus_record", lambda pub, strict=False: {})
     monkeypatch.setattr(fulltext.pilot, "docstore_record",
-                        lambda pub: {"description": TRUNCATED, "claims": "1. A gripper."})
+                        lambda pub, strict=False: {"description": TRUNCATED,
+                                                   "claims": "1. A gripper."})
     monkeypatch.setattr(fulltext.pilot, "adapter_details",
                         lambda pub, adapter_name, timeout=90.0: {})
     notes: list[str] = []
@@ -230,3 +232,34 @@ def test_the_fullest_incomplete_answer_is_kept_when_every_source_falls_short(mon
     assert got.ok
     assert got.source.endswith("(incomplete)")
     assert any("not enough to label a figure" in note for note in notes)
+
+
+def test_every_stub_of_a_pilot_call_matches_the_real_signature():
+    """A double that cannot be called the way the product calls it is a false green.
+
+    ``_from_our_stores`` started passing ``strict=True``. The doubles here took ``pub`` only, so
+    the call raised TypeError, the ladder caught it as "that source failed", and three tests
+    reported the ladder skipping our own corpus as though that were the behaviour under test.
+    The stub is a contract with the real function and nothing was checking it.
+    """
+    import inspect
+
+    from pfc import pilot
+
+    # (what the product calls, with what) for every pilot call the ladder makes.
+    calls = [
+        (pilot.corpus_record, ("US-1-A1",), {"strict": True}),
+        (pilot.docstore_record, ("US-1-A1",), {"strict": True}),
+        (pilot.display_record, ("US-1-A1",), {"strict": True}),
+        (pilot.adapter_details, ("US-1-A1", "gpatents_direct"), {"timeout": 90.0}),
+    ]
+    for function, args, kwargs in calls:
+        inspect.signature(function).bind(*args, **kwargs)
+
+    # And the doubles those tests install have to accept the same call.
+    doubles = [
+        lambda pub, strict=False: {},
+        lambda pub, adapter_name, timeout=90.0: {},
+    ]
+    inspect.signature(doubles[0]).bind("US-1-A1", strict=True)
+    inspect.signature(doubles[1]).bind("US-1-A1", "gpatents_direct", timeout=90.0)
