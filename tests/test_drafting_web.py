@@ -435,7 +435,9 @@ def test_draft_markdown_and_docx_exports(draft_client):
     client, _service = draft_client
     markdown = client.get("/drafts/7/download/md?version=1")
     assert markdown.status_code == 200
-    assert b"WORKING DRAFT" not in markdown.data and b"US-11223344-B2" in markdown.data
+    assert b"WORKING DRAFT" not in markdown.data
+    assert b"[REF:" not in markdown.data
+    assert b"U.S. Patent No. 11,223,344" in markdown.data
     word = client.get("/drafts/7/download/docx?version=1")
     assert word.status_code == 200 and len(word.data) > 10_000
     with zipfile.ZipFile(io.BytesIO(word.data)) as archive:

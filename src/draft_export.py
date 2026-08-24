@@ -18,8 +18,24 @@ from reportlab.lib.units import inch
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate
 
 import drafting
+import draft_cite
 
 WORKING_DRAFT_NOTICE = ""
+
+
+def _filing_sections(version: Mapping[str, Any]) -> dict[str, str]:
+    try:
+        return {str(key): draft_cite.filing_citations(str(value or ""))
+                for key, value in dict(version.get("sections") or {}).items()}
+    except ValueError as exc:
+        raise drafting.DraftingValidationError(str(exc)) from exc
+
+
+def _filing_label(value: Any) -> str:
+    try:
+        return draft_cite.filing_citations(str(value or ""))
+    except ValueError as exc:
+        raise drafting.DraftingValidationError(str(exc)) from exc
 
 
 def _clean_filename(value: str, fallback: str = "us-patent-draft") -> str:
@@ -34,7 +50,7 @@ def download_name(project: Mapping[str, Any], version_no: int, suffix: str) -> s
 def render_markdown(project: Mapping[str, Any], version: Mapping[str, Any],
                     references: Sequence[Mapping[str, Any]] = ()) -> str:
     """Render only the clean application text in filing section order."""
-    sections = version.get("sections") or {}
+    sections = _filing_sections(version)
     return drafting.render_application_markdown(sections).strip() + "\n"
 
 
@@ -63,7 +79,7 @@ def _add_text(doc: Document, text: str, *, claims: bool = False) -> None:
 def render_docx(project: Mapping[str, Any], version: Mapping[str, Any],
                 references: Sequence[Mapping[str, Any]] = ()) -> BytesIO:
     """Build clean editable application text with USPTO-oriented layout defaults."""
-    sections = version.get("sections") or {}
+    sections = _filing_sections(version)
     doc = Document()
     sec = doc.sections[0]
     sec.page_width, sec.page_height = Inches(8.5), Inches(11)
@@ -81,7 +97,8 @@ def render_docx(project: Mapping[str, Any], version: Mapping[str, Any],
         style.font.name = "Times New Roman"
         style._element.rPr.rFonts.set(qn("w:eastAsia"), "Times New Roman")
 
-    doc.core_properties.title = str(sections.get("title") or project.get("title") or "")[:255]
+    doc.core_properties.title = _filing_label(
+        sections.get("title") or project.get("title") or "")[:255]
     doc.core_properties.subject = "US utility patent application"
 
     for index, (key, heading) in enumerate(drafting.SECTION_ORDER):
@@ -90,7 +107,8 @@ def render_docx(project: Mapping[str, Any], version: Mapping[str, Any],
         if index == 0:
             title = doc.add_paragraph(style="Title")
             title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            title.add_run(str(sections.get(key) or project.get("title") or "Untitled"))
+            title.add_run(_filing_label(
+                sections.get(key) or project.get("title") or "Untitled"))
             continue
         doc.add_heading(heading.upper(), level=1)
         _add_text(doc, str(sections.get(key) or ""), claims=(key == "claims"))
@@ -108,7 +126,8 @@ def render_pdf(project: Mapping[str, Any], version: Mapping[str, Any],
     doc = SimpleDocTemplate(
         output, pagesize=letter, leftMargin=inch, rightMargin=0.75 * inch,
         topMargin=0.75 * inch, bottomMargin=0.75 * inch,
-        title=str((version.get("sections") or {}).get("title") or project.get("title") or "")[:255],
+        title=_filing_label(
+            (version.get("sections") or {}).get("title") or project.get("title") or "")[:255],
         subject="US utility patent application",
     )
     styles = getSampleStyleSheet()
@@ -121,13 +140,14 @@ def render_pdf(project: Mapping[str, Any], version: Mapping[str, Any],
     title_style = ParagraphStyle(
         "PatentTitle", parent=heading, alignment=1, fontSize=14, leading=18, spaceAfter=18)
     story = []
-    sections = version.get("sections") or {}
+    sections = _filing_sections(version)
     for index, (key, label) in enumerate(drafting.SECTION_ORDER):
         if key in {"claims", "abstract"}:
             story.append(PageBreak())
         content = str(sections.get(key) or "").strip()
         if index == 0:
-            story.append(Paragraph(html.escape(content or str(project.get("title") or "Untitled")),
+            story.append(Paragraph(html.escape(
+                content or _filing_label(project.get("title") or "Untitled")),
                                    title_style))
             continue
         story.append(Paragraph(html.escape(label.upper()), heading))
