@@ -2444,6 +2444,25 @@ def test_deterministic_nested_plan_accepts_positive_one_rectangle_inside_another
     assert audit["ok"] is True and audit["observed"] == 2
 
 
+def test_deterministic_nested_plan_accepts_inset_ring_without_bare_paper_instruction():
+    specification = (
+        "The sheet shows the perimeter member 24 as one rectangular ring, and within it the "
+        "second side 16 as a plain open field; no other body is drawn. The ring is drawn as one "
+        "rectangle with a smaller rectangle inside it, the inner rectangle standing clear of "
+        "each of the four sides of the outer rectangle. The band of paper lying between the "
+        "outer rectangle and the inner rectangle is the drawn body. It runs continuously all "
+        "the way round. The field enclosed by the inner rectangle is left entirely open paper. "
+        "The ring stands well in from every side of the drawing area."
+    )
+
+    png = draft_figures._deterministic_nested_plan_png(specification)
+
+    assert draft_figures._expected_closed_region_count(specification) == 2
+    assert png is not None
+    audit = draft_figures.closed_region_audit(png, specification)
+    assert audit["ok"] is True and audit["observed"] == 2
+
+
 def test_deterministic_pulling_scene_accepts_source_clean_single_path_wording():
     specification = """
     The covering element 36 is one large plain tile filling the lower part of the drawing
