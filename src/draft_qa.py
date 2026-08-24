@@ -127,7 +127,9 @@ _ARBITRARY_STROKE_COUNT_RE = re.compile(
     re.IGNORECASE)
 _AMBIGUOUS_MULTI_STROKE_CORD_RE = re.compile(
     r"\b(?:cord|cable|electrical\s+supply|pulling\s+element)\b"
-    r"[^.\n]{0,200}\b(?:strip|band)\b[^.\n]{0,160}"
+    r"(?:[^.\n]{0,200}\b(?:strip|band)\b|"
+    r"[^.\n]{0,240}\.\s+It\s+is\s+drawn\s+as\s+"
+    r"[^.\n]{0,80}\b(?:strip|band)\b)[^.\n]{0,160}"
     r"\b(?:plain\s+white|white|open|plain)\s+(?:paper|space)\b"
     r"[^.\n]{0,80}\b(?:interior|inside|between)\b",
     re.IGNORECASE)
