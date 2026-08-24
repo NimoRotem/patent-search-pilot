@@ -1996,7 +1996,7 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
     if finite_width_ring:
         draw.polygon(
             [(185, 405), (435, 485), (685, 405),
-             (682, 427), (432, 507), (182, 427)],
+             (682, 457), (432, 537), (182, 457)],
             fill="white", outline="black", width=4)
     else:
         draw.polygon(
@@ -2124,6 +2124,9 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
 def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     """Render the exact slab, two cut legs, chamber, band, and one broken line."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    single_line_only = bool(
+        re.search(r"\bno passage, duct, opening or other structure is depicted\b", text) or
+        re.search(r"\bthat broken line being all that is drawn for it\b", text))
     requirements = (
         re.search(r"\bshows four bodies\b[^.]{0,80}\bone broken line\b"
                   r"[^.]{0,60}\bnothing else\b", text),
@@ -2132,7 +2135,7 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
         re.search(r"\bhatched band across the bottom\b", text),
         re.search(r"\bone closed housing\b", text),
         re.search(r"\bbroken line runs from inside the housing to the chamber\b", text),
-        re.search(r"\bno passage, duct, opening or other structure is depicted\b", text),
+        single_line_only,
     )
     if not all(requirements):
         return None
