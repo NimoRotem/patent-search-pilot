@@ -5672,7 +5672,7 @@ def concise_descriptions(slug):
     deep = _concise_deep(slug)
     if not deep or not (deep.get("references") or []):
         return render_template("concise.html", slug=slug, cands=[], docs=[],
-                               subject=_concise_subject(slug), error=(
+                               subject=_concise_subject(slug), **_filing_context(), error=(
                                    "This report has no full-text reading stage, so there is no "
                                    "per-claim evidence to describe. Re-run the search at depth "
                                    "'deep' first."))
@@ -5691,15 +5691,18 @@ def concise_descriptions(slug):
         #  The build runs in a thread and the page reloads when it finishes, so what the
         #  build DECIDED has to be read back from the job or it is lost at that reload.
         j = _concise_job(slug) or {}
-        return render_template("concise.html", slug=slug, cands=cands,
+        return render_template("concise.html", slug=slug,
+                               cands=_classify(slug, cands, deep),
                                docs=_concise_built(slug), subject=subject, error=None,
                                blocked=j.get("blocked") or [],
-                               verdict=j.get("verdict") or _concise_verdict_on_disk(slug))
+                               verdict=j.get("verdict") or _concise_verdict_on_disk(slug),
+                               **_filing_context())
 
     pubs = [p.strip() for p in request.form.getlist("pubs") if p.strip()]
     if not pubs:
-        return render_template("concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
-                               error="Select at least one document."), 400
+        return render_template("concise.html", slug=slug, cands=_classify(slug, cands, deep),
+                               docs=_concise_built(slug), subject=subject,
+                               error="Select at least one document.", **_filing_context()), 400
     #  Only a publication this report actually read can be described: `pubs` is user input that
     #  becomes a document lookup and a filename. Filtering it silently, though, hands back a
     #  success page with nothing on it and no reason, so an unknown one is named and refused.
@@ -5726,6 +5729,9 @@ def concise_descriptions(slug):
     #  A model the reader picked in the rebuild dialog. Validated here rather than in the worker:
     #  an unknown name must fail the request in front of the person who typed it, not eight
     #  documents into a background build.
+    #  CAPTURED IN THE REQUEST. The build thread has no session, so who signs and at what entity
+    #  size has to be read here and carried in.
+    filing_identity = _filing_identity()
     chosen_model = (request.form.get("model") or "").strip() or None
     if chosen_model:
         import model_pool
@@ -5745,9 +5751,9 @@ def concise_descriptions(slug):
 
     if (_concise_job(slug) or {}).get("state") == "running":
         #  A second click must not start a second build over the same output directory.
-        return render_template("concise.html", slug=slug, cands=cands,
+        return render_template("concise.html", slug=slug, cands=_classify(slug, cands, deep),
                                docs=_concise_built(slug), subject=subject, error=None,
-                               blocked=[], family_notes=[], building=True)
+                               blocked=[], family_notes=[], building=True, **_filing_context())
 
     with _CONCISE_JOBS_LOCK:
         #  total counts one step per document for the build, one for the compliance pass, and one
@@ -5811,7 +5817,8 @@ def concise_descriptions(slug):
                          msg="Building the document list, statements and translations",
                          blocked=[{"pub": b.get("pub"), "why": b.get("why")}
                                   for b in blocked])
-            findings = _concise_package(out, docs, subject, report=rep_for_pick) or []
+            findings = _concise_package(out, docs, subject, report=rep_for_pick,
+                                        identity=filing_identity) or []
             try:
                 import submission
                 _state, _sentence = submission.verdict(findings)
@@ -5829,9 +5836,9 @@ def concise_descriptions(slug):
                          error="Could not build the documents: %s" % str(exc)[:200])
 
     threading.Thread(target=_work, name="concise-build", daemon=True).start()
-    return render_template("concise.html", slug=slug, cands=cands, docs=_concise_built(slug),
-                           subject=subject, error=None, blocked=[], family_notes=[],
-                           building=True)
+    return render_template("concise.html", slug=slug, cands=_classify(slug, cands, deep),
+                           docs=_concise_built(slug), subject=subject, error=None, blocked=[],
+                           family_notes=[], building=True, **_filing_context())
 
 
 def _concise_doc_paths(slug, n):
@@ -5883,6 +5890,47 @@ def concise_document(slug, n):
                            error=err, saved=saved)
 
 
+def _filing_identity():
+    """Who signs and at what entity size. Small entity unless the profile says otherwise."""
+    user = auth.current_user()
+    if not user:
+        return {"entity_size": "small", "signature_name": "", "signature_title": ""}
+    try:
+        return accounts.filing_identity(user["id"])
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return {"entity_size": "small", "signature_name": "", "signature_title": ""}
+
+
+def _filing_context():
+    """Everything the picker needs to price and explain a selection."""
+    import submission
+    ident = _filing_identity()
+    return {"identity": ident,
+            "fee_choices": submission.fee_choices(ident["entity_size"]),
+            "items_per_unit": submission.ITEMS_PER_UNIT,
+            "secret_help": submission.SECRET_HELP,
+            "co_owned_help": submission.CO_OWNED_HELP,
+            "basis_help": submission.BASIS_HELP}
+
+
+def _classify(slug, cands, deep):
+    """Date basis and common ownership for every candidate, before anything is built.
+
+    Both used to surface only on the compliance pass, AFTER a model call had been spent on each
+    document and with no way for the person choosing to see the choice.
+    """
+    import submission
+    try:
+        import concise_description
+        facts = concise_description.subject_facts((deep or {}).get("subject_label") or "") or {}
+        return submission.classify_candidates(cands, facts.get("efd"),
+                                              facts.get("assignees") or [])
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return cands
+
+
 def _concise_verdict_on_disk(slug):
     """The packet's own verdict, read back from READ_ME_FIRST.txt. -> str
 
@@ -5902,7 +5950,7 @@ def _concise_verdict_on_disk(slug):
         return ""
 
 
-def _concise_package(out, docs, subject, report=None):
+def _concise_package(out, docs, subject, report=None, identity=None):
     """Assemble everything 1.290 requires beside the concise descriptions, then AUDIT the result.
 
     Never raises: a failure here must not lose the descriptions, which are the expensive part and
@@ -5947,13 +5995,18 @@ def _concise_package(out, docs, subject, report=None):
     #  The exemption is only claimed when it is actually available; three or fewer items WITHOUT
     #  the 1.290(g) statement still pays the fee (MPEP 1134.01).
     exemption = submission.exemption_available(len(docs))
+    #  PASSED IN, never read here: this runs on the build thread, which outlives the request and
+    #  has no session to ask who is signing.
+    ident = identity or {"entity_size": "small", "signature_name": "", "signature_title": ""}
     findings = submission.audit(docs, subject, copies, translations, win,
-                                exemption_claimed=exemption)
+                                exemption_claimed=exemption,
+                                entity_size=ident["entity_size"], identity=ident)
     for name, fn in (
             ("00_AUDIT.pdf", lambda: submission.audit_pdf(findings, docs, subject, win)),
             ("01_DocumentList_and_Statements.pdf",
              lambda: submission.document_list_and_statements(
-                 docs, subject, copies, translations, win, exemption_claimed=exemption)),
+                 docs, subject, copies, translations, win, exemption_claimed=exemption,
+                 entity_size=ident["entity_size"], identity=ident)),
             ("MANIFEST.csv", lambda: submission.manifest_csv(docs, copies, translations)),
     ):
         try:

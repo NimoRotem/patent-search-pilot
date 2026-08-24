@@ -116,9 +116,45 @@ def needs_translation(doc):
     return office_of(doc)[0] in _NON_ENGLISH_OFFICES
 
 
+#  37 CFR 1.17(o), fee code 1818/2818, from the USPTO schedule effective 2025-01-19 and read on
+#  2026-08-24. A third party is NOT eligible for the micro entity discount, which is why there are
+#  only two numbers here. Overridable because a fee schedule changes and a stale constant on a
+#  filing paper is worse than one somebody can correct.
+FEE_PER_UNIT = {"large": float(os.environ.get("USPTO_1290_FEE_LARGE", "195")),
+                "small": float(os.environ.get("USPTO_1290_FEE_SMALL", "78"))}
+FEE_SCHEDULE_DATE = os.environ.get("USPTO_FEE_SCHEDULE_DATE", "19 January 2025")
+ITEMS_PER_UNIT = 10
+
+
+def _money(v):
+    return ("%.2f" % float(v)).rstrip("0").rstrip(".")
+
+
 def fee_units(n_items):
     """1.290(f): one unit of the 1.17(o) fee per ten items OR FRACTION THEREOF."""
-    return int(math.ceil(max(int(n_items), 0) / 10.0)) if n_items else 0
+    return int(math.ceil(max(int(n_items), 0) / float(ITEMS_PER_UNIT))) if n_items else 0
+
+
+def fee_amount(n_items, entity_size="small"):
+    """What this many items costs. -> (units, dollars, per_unit)"""
+    per = FEE_PER_UNIT.get(str(entity_size or "small"), FEE_PER_UNIT["small"])
+    units = fee_units(n_items)
+    return units, round(units * per, 2), per
+
+
+def fee_choices(entity_size="small", max_units=5):
+    """The budget a person actually picks from: how many units, and how many documents that buys.
+
+    The fee steps in tens, so choosing "two units" is choosing "up to twenty documents". Offering
+    the unit and letting the app fill the slots is the honest way round: the alternative is a
+    reader adding an eleventh document and silently doubling the bill.
+    """
+    per = FEE_PER_UNIT.get(str(entity_size or "small"), FEE_PER_UNIT["small"])
+    return [{"units": u, "max_documents": u * ITEMS_PER_UNIT, "dollars": round(u * per, 2),
+             "label": "%d unit%s, up to %d documents, $%s"
+                      % (u, "" if u == 1 else "s", u * ITEMS_PER_UNIT,
+                         ("%.2f" % (u * per)).rstrip("0").rstrip("."))}
+            for u in range(1, int(max_units) + 1)]
 
 
 def exemption_available(n_items):
@@ -198,6 +234,119 @@ def window(publication_date, first_rejection_date=None, notice_of_allowance_date
             "why": ""}
 
 
+#  ---- what a candidate is, BEFORE a model call is spent on it ---------------------------------
+#  The two facts that decide whether a document belongs in a submission at all are its date basis
+#  and whether it is the applicant's own work. Both were only discovered after the build, on the
+#  compliance pass, which is the wrong end: by then the document has cost a model call and the
+#  person choosing never saw the choice. They are computed here from the corpus, for the picker.
+
+PUBLIC, SECRET, NOT_ART, UNKNOWN = "public", "secret", "not_art", "unknown"
+
+BASIS_HELP = {
+    PUBLIC: "Published before this application's earliest effective filing date, so it is prior "
+            "art to everyone under 35 U.S.C. 102(a)(1) and EPC Art. 54(2). Nothing disqualifies "
+            "it and no exception reaches it.",
+    SECRET: "Filed before this application but published after it. In the United States that "
+            "makes it prior art only under 102(a)(2), and in Europe only under EPC Art. 54(3).",
+    NOT_ART: "Neither published nor filed before this application's earliest effective filing "
+             "date. It is not prior art against these claims and listing it invites the examiner "
+             "to disregard the submission.",
+}
+
+SECRET_HELP = (
+    "<b>What it is.</b> A document filed before this application but published afterwards. It was "
+    "secret on the day the application was filed, and the law reaches back to its filing date "
+    "anyway.\n\n"
+    "<b>United States.</b> Citable under 35 U.S.C. 102(a)(2), and available for obviousness under "
+    "103 as well as for novelty. Two things can take it away: it must have been effectively filed "
+    "before this application's earliest effective filing date, which depends on its own priority "
+    "chain actually supporting the passage you rely on; and 102(b)(2)(C) disqualifies it entirely "
+    "if it and this application were commonly owned, or subject to an obligation of assignment to "
+    "the same person, before that date.\n\n"
+    "<b>Europe.</b> The equivalent is EPC Art. 54(3): it counts for NOVELTY ONLY and can never "
+    "support an inventive-step attack, and there is no common-ownership exception, so an "
+    "applicant's own earlier filing is 54(3) art against them.\n\n"
+    "<b>When to include it.</b> When it anticipates a claim outright and you can show its priority "
+    "chain supports the disclosure you cite. <b>When not to.</b> When your case rests on combining "
+    "it with something else in Europe, when the priority chain is long or doubtful, or when there "
+    "is any chance of common ownership.")
+
+CO_OWNED_HELP = (
+    "<b>What it is.</b> This document and the application under examination share an applicant or "
+    "assignee, so far as the record here shows.\n\n"
+    "<b>United States.</b> If they were commonly owned, or under an obligation of assignment to "
+    "the same person, before this application's earliest effective filing date, then 35 U.S.C. "
+    "102(b)(2)(C) removes the document as prior art under 102(a)(2) ENTIRELY. Filing it invites "
+    "the examiner to disregard it and weakens everything filed with it. It does NOT rescue a "
+    "document that is prior art under 102(a)(1): a published-early document stays prior art "
+    "whoever owns it.\n\n"
+    "<b>Europe.</b> There is no such exception. Under EPC Art. 54(3) an applicant's own "
+    "earlier-filed, later-published European application is prior art against them, for novelty. "
+    "Common ownership changes nothing.\n\n"
+    "<b>When to include it.</b> When the document is 102(a)(1) public art, where ownership is "
+    "irrelevant, or when you are filing at the EPO. <b>When not to.</b> When it is only 102(a)(2) "
+    "art in a U.S. submission, which is when the exception bites. The names matched here are the "
+    "ones in the record and may be stale or incomplete: check the assignment before relying on "
+    "either answer.")
+
+
+def _norm_owner(name):
+    """Company names for comparison: case, punctuation and the corporate suffix all drop out."""
+    s = re.sub(r"[^a-z0-9 ]+", " ", str(name or "").lower())
+    s = re.sub(r"\b(inc|llc|ltd|limited|gmbh|co|corp|corporation|company|kk|kabushiki|kaisha|"
+               r"ag|sa|bv|nv|oy|ab|as|pty|plc|lp|llp|spa|srl|pte)\b", " ", s)
+    return " ".join(s.split())
+
+
+def classify_candidates(cands, subject_efd, subject_owners=()):
+    """Annotate each candidate with its date basis and whether it looks commonly owned.
+
+    Mutates and returns `cands`, so the picker and the ranking stay one list. Reads one row per
+    candidate from the corpus, in one query, because this runs on a page load.
+    """
+    pubs = [c.get("pub") for c in cands if c.get("pub")]
+    if not pubs:
+        return cands
+    efd = _as_date(subject_efd)
+    mine = {_norm_owner(o) for o in (subject_owners or []) if _norm_owner(o)}
+    rows = {}
+    try:
+        import db
+        with db.cursor() as cur:
+            cur.execute(
+                "SELECT p.publication_number, p.publication_date, p.filing_date, "
+                "       p.earliest_priority_date, "
+                "       array_remove(array_agg(pa.raw_name) FILTER "
+                "         (WHERE pa.role='assignee'), NULL) AS owners "
+                "  FROM publications p LEFT JOIN parties pa ON pa.publication_id = p.id "
+                " WHERE p.publication_number = ANY(%s) GROUP BY 1,2,3,4", (pubs,))
+            rows = {r["publication_number"]: r for r in cur.fetchall()}
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+    for c in cands:
+        r = rows.get(c.get("pub")) or {}
+        pub_d, eff = _as_date(r.get("publication_date")), (
+            _as_date(r.get("earliest_priority_date")) or _as_date(r.get("filing_date")))
+        if not efd or not (pub_d or eff):
+            c["basis"] = UNKNOWN
+        elif pub_d and pub_d < efd:
+            c["basis"] = PUBLIC
+        elif eff and eff < efd:
+            c["basis"] = SECRET
+        else:
+            c["basis"] = NOT_ART
+        owners = [o for o in (r.get("owners") or []) if o]
+        shared = sorted({o for o in owners if _norm_owner(o) in mine})
+        c["owners"] = owners[:3]
+        c["co_owned"] = bool(shared)
+        c["co_owned_with"] = shared[:2]
+        c["published"] = str(pub_d) if pub_d else ""
+        #  What the picker should tick by default: public art yes, secret art yes but flagged,
+        #  and never something that is not prior art or is the applicant's own.
+        c["default_include"] = c["basis"] in (PUBLIC, SECRET) and not c["co_owned"]
+    return cands
+
+
 def prosecution_dates(report):
     """Publication, first rejection and notice of allowance for the subject, from the file wrapper
     this search already read. -> (publication_date, first_rejection, notice_of_allowance)"""
@@ -243,7 +392,8 @@ class Finding:
         return [self.id, self.cite, self.title, self.status, self.detail]
 
 
-def audit(docs, subject, copies, translations, win, exemption_claimed=False):
+def audit(docs, subject, copies, translations, win, exemption_claimed=False,
+          entity_size="small", identity=None):
     """Every 1.290 requirement, checked against the packet that was actually built. -> [Finding]"""
     out = []
     n = len(docs)
@@ -256,9 +406,14 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False):
         d = win["deadline"]
         extra = (" The window may extend if the first rejection is mailed after that date, but it "
                  "cannot be relied on." if "no rejection" in win["basis"] else "")
+        #  A DEADLINE, NOT A COUNTDOWN. The PDF is written once and read later, so "20 days away"
+        #  is wrong by one the next morning and by a fortnight in a fortnight. The date does not
+        #  move; the days remaining are shown live on the page instead.
         out.append(Finding("TIMING", "1.290(b)", "The submission window", OK,
-                           "Open. File before %s, which is %d day%s away.%s"
-                           % (d, win["days_left"], "" if win["days_left"] == 1 else "s", extra),
+                           "Open. File before %s. That was %d day%s from the date of this audit, "
+                           "%s; count from today, not from the number in this line.%s"
+                           % (d, win["days_left"], "" if win["days_left"] == 1 else "s",
+                              datetime.date.today(), extra),
                            win["basis"]))
     else:
         out.append(Finding("TIMING", "1.290(b)", "The submission window", BLOCKED,
@@ -330,10 +485,15 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False):
                                 % ", ".join(str(x) for x in lack_tr)))
 
     # -- (d)(5) statements ---------------------------------------------------------------------
+    signer = (identity or {}).get("signature_name") or ""
     out.append(Finding("STATEMENTS", "1.290(d)(5)", "The two statements by the submitting party",
-                       ACTION,
-                       "Both are on the document list paper and both are unsigned. They are made "
-                       "by the party, not by this tool: read them and adopt them in Patent Center."))
+                       OK if signer else ACTION,
+                       "Both are on the document list paper, signed /%s/ under 37 CFR 1.4(d)(2). "
+                       "Read them before filing: they are your statements, and inserting the "
+                       "signature is your act." % signer if signer
+                       else "Both are on the document list paper and both are UNSIGNED. Set a "
+                            "signature in your profile, or sign them in Patent Center. They are "
+                            "made by the party, not by this tool."))
 
     # -- (e) the list's own format --------------------------------------------------------------
     bad = []
@@ -361,7 +521,7 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False):
                        "every page." if not bad else "; ".join(bad)))
 
     # -- (f)/(g) fee -----------------------------------------------------------------------------
-    units = fee_units(n)
+    units, dollars, per = fee_amount(n, entity_size)
     if exemption_claimed and exemption_available(n):
         out.append(Finding("FEE", "1.290(g)", "The fee, or the exemption", ACTION,
                            "The exemption is claimed for %d item%s. It is only available if this "
@@ -371,8 +531,11 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False):
     else:
         out.append(Finding("FEE", "1.290(f)", "The fee, or the exemption", ACTION,
                            "%d item%s means %d unit%s of the 1.17(o) fee, charged per ten items "
-                           "or fraction thereof. Pay it in Patent Center at the current rate."
-                           % (n, "" if n == 1 else "s", units, "" if units == 1 else "s")
+                           "or fraction thereof: $%s at the %s-entity rate of $%s a unit "
+                           "(schedule of %s). A third party cannot use the micro-entity discount. "
+                           "Pay it in Patent Center and check the rate has not moved."
+                           % (n, "" if n == 1 else "s", units, "" if units == 1 else "s",
+                              _money(dollars), entity_size, _money(per), FEE_SCHEDULE_DATE)
                            + ("" if not exemption_available(n) else
                               " The 1.290(g) exemption would remove it if this is your first and "
                               "only submission here and you make that statement.")))
@@ -469,6 +632,9 @@ def _styles():
         "td": ParagraphStyle("td", parent=base, fontSize=9.5, leading=12),
         "note": ParagraphStyle("note", parent=base, fontSize=9, leading=11.5,
                                textColor=colors.HexColor("#333333"), spaceBefore=8),
+        #  An S-signature is read as a signature, so it is set apart from the prose around it.
+        "sig": ParagraphStyle("sig", parent=base, fontName="Times-Italic", fontSize=13,
+                              leading=17, spaceBefore=10, spaceAfter=4),
     }
 
 
@@ -542,8 +708,38 @@ def _identification(doc):
             ("Publisher and place", b.get("publisher") or "")]
 
 
+def signature_block(story, st, identity):
+    """The 37 CFR 1.4(d)(2) S-signature, or a line to sign by hand.
+
+    An S-signature is the signer's own name between forward slashes. It is inserted here because
+    the signer told this tool to insert it, which is the same posture as any e-filing form: the
+    paper says so, so nobody can read it as the machine having signed anything.
+    """
+    ident = identity or {}
+    name = str(ident.get("signature_name") or "").strip()
+    title = str(ident.get("signature_title") or "").strip()
+    story.append(Paragraph("SIGNATURE", st["h2"]))
+    if name:
+        story.append(Paragraph("/%s/" % _esc(name), st["sig"]))
+        story.append(Paragraph("%s%s<br/>Date: %s"
+                               % (_esc(name), (", " + _esc(title)) if title else "",
+                                  datetime.date.today().isoformat()), st["body"]))
+        story.append(Paragraph(
+            "Signed under 37 CFR 1.4(d)(2). The signature above was applied from the signer's own "
+            "stored signature at the signer's instruction; the statements above are the signer's.",
+            st["note"]))
+    else:
+        story.append(Paragraph("/______________________________/", st["sig"]))
+        story.append(Paragraph("Printed name: ______________________________<br/>"
+                               "Date: ______________________________", st["body"]))
+        story.append(Paragraph(
+            "NOT SIGNED. 37 CFR 1.4 requires a signature. Set one in your profile so it is applied "
+            "here, or sign this paper before filing.", st["note"]))
+
+
 def document_list_and_statements(docs, subject, copies, translations, win,
-                                 exemption_claimed=False) -> bytes:
+                                 exemption_claimed=False, entity_size="small",
+                                 identity=None) -> bytes:
     """1.290(d)(1)+(e) and 1.290(d)(5)+(g), on one paper, in the shape PTO/SB/429 asks for."""
     st = _styles()
     buf = io.BytesIO()
@@ -602,6 +798,7 @@ def document_list_and_statements(docs, subject, copies, translations, win,
         "CFR 1.290.", st["body"]))
 
     n = len(docs)
+    units, dollars, per = fee_amount(n, entity_size)
     story.append(Paragraph("FEE", st["h2"]))
     if exemption_claimed and exemption_available(n):
         story.append(Paragraph(
@@ -615,8 +812,11 @@ def document_list_and_statements(docs, subject, copies, translations, win,
         story.append(Paragraph(
             "This submission lists <b>%d item%s</b>. Under 37 CFR 1.290(f) the fee set by 37 CFR "
             "1.17(o) is due for every ten items or fraction thereof, so <b>%d unit%s</b> of that "
-            "fee applies. It is calculated and paid in Patent Center at the rate then in force."
-            % (n, "" if n == 1 else "s", fee_units(n), "" if fee_units(n) == 1 else "s"),
+            "fee applies: <b>$%s</b> at the %s-entity rate of $%s a unit, from the schedule of %s. "
+            "A third party is not eligible for the micro-entity discount. It is paid in Patent "
+            "Center; check the rate has not moved."
+            % (n, "" if n == 1 else "s", units, "" if units == 1 else "s", _money(dollars),
+               entity_size, _money(per), FEE_SCHEDULE_DATE),
             st["body"]))
         if exemption_available(n):
             story.append(Paragraph(
@@ -628,8 +828,8 @@ def document_list_and_statements(docs, subject, copies, translations, win,
 
     story.append(Paragraph(
         "These statements are made by the party filing the submission. They are reproduced here "
-        "so they can be read and checked before they are adopted in Patent Center; nothing in "
-        "this packet signs them.", st["note"]))
+        "so they can be read and checked before they are adopted in Patent Center.", st["note"]))
+    signature_block(story, st, identity)
 
     if win.get("deadline"):
         story.append(Paragraph(
