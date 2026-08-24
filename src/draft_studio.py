@@ -249,6 +249,8 @@ Keep each figure brief at or below 2800 characters. Include only disclosure-grou
 relationships needed to identify the listed parts. Never invent arbitrary exact counts,
 proportions, relative heights, corner shapes, line counts, or placement constraints merely to
 control the renderer. If a visual constraint is not in the disclosure or specification, omit it.
+Describe a cord, cable, wire, hose, or pulling element as one curved path and target that path.
+Never define it as a white-interior strip or by counting outline strokes.
 Numeral endpoint instructions identify the part, not an aesthetic coordinate. Prefer a broad
 interior target such as well inside the part or its hatching. Do not require a midpoint, quarter,
 exact depth, or toward-an-end placement unless that location is disclosure-grounded or necessary

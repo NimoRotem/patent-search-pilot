@@ -295,6 +295,22 @@ def test_blanket_shape_background_and_stroke_controls_are_refused_before_drawing
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
 
+@pytest.mark.parametrize("part", ["electrical supply cord", "pulling element cable"])
+def test_a_white_interior_cord_strip_is_refused_before_drawing(part):
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            f"The {part} is a slender strip of even width with plain white paper along its "
+            "interior. Identified well inside that strip."
+        ),
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "ambiguous multi-stroke cord" in " ".join(check["items"]).lower()
+
+
 def test_an_endpoint_deliberately_disconnected_from_its_named_part_is_refused():
     figures = [{
         **FIGURES[0],
@@ -1364,6 +1380,7 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "Do not list more than eight numerals on one sheet" in system
     assert str(draft_qa.MAX_FIGURE_BRIEF_CHARS) in system
     assert "arbitrary exact counts" in system
+    assert "white-interior strip" in system
     assert "Numeral endpoint instructions identify the part" in system
     assert "broad interior target" in draft_studio.FINALIZE_PROMPT
     assert "Replace ordinal geometry references" in draft_studio.FINALIZE_PROMPT
