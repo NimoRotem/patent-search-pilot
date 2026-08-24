@@ -273,11 +273,11 @@ class StudioService:
         if not availability.get("ok"):
             raise drafting.DraftingConflict(
                 f"The drafting agent is not available on this server: {availability['reason']}")
-        if kind != "initial":
-            self.repository.add_message(project_id, "user", message)
         turn = self.repository.enqueue_turn_safely(
             project_id, principal.user_id, kind=kind, user_message=message,
             project_revision=int(project["revision"]), idempotency_key=idempotency_key)
+        if kind != "initial":
+            self.repository.add_message(project_id, "user", message)
         kick()
         return turn
 
