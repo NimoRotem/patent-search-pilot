@@ -2266,6 +2266,39 @@ def test_deterministic_grip_scene_accepts_source_clean_single_outline_wording():
     assert image.getpixel((585, 220)) < 32
 
 
+def test_deterministic_fragmentary_section_preserves_open_clearance_and_four_bodies():
+    specification = """
+    The sheet shows four hatched bodies and nothing else: one upright column and three
+    horizontal bands lying one above another beneath it. The column stands in the left-hand
+    part. Its two side lines run straight down from the upper limit to one horizontal line that
+    closes it below. Each band is one single hatched rectangle running the whole way from the
+    left-hand limit to the right-hand limit. The two side lines of the column are the only
+    vertical lines anywhere on the sheet. Between the line closing the bottom of the column and
+    the top line of the uppermost band lies open unhatched space, plainly apart and not touching.
+    Open unhatched paper lies beneath the lowest band.
+    """
+
+    png = draft_figures._deterministic_fragmentary_section_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    image = Image.open(io.BytesIO(png)).convert("L")
+    assert image.getpixel((700, 365)) == 255
+    assert image.getpixel((700, 850)) == 255
+    assert min(image.crop((20, 420, 1380, 790)).getextrema()) == 0
+    vertical_runs = []
+    vertical_x = [
+        x for x in range(image.width)
+        if sum(image.getpixel((x, y)) < 32 for y in range(20, 301)) > 250
+    ]
+    for x in vertical_x:
+        if not vertical_runs or x > vertical_runs[-1][-1] + 1:
+            vertical_runs.append([x])
+        else:
+            vertical_runs[-1].append(x)
+    assert len(vertical_runs) == 2
+
+
 def test_deterministic_nested_plan_uses_even_width_corridors():
     specification = (
         "The whole sheet contains four outlines and nothing else. From the outside inward, "
