@@ -66,7 +66,7 @@ MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
 ))
 MARKED_PROGRESS_VERSION = "marked-progress-v3-numbered-sheet-layout"
 OCR_PROMPT_VERSION = "google-vision-document-text-v2-sheet-number"
-PIXEL_ANCHOR_VERSION = "pixel-anchor-v3-target-kind-and-nearest-boundary"
+PIXEL_ANCHOR_VERSION = "pixel-anchor-v4-same-region-interior-repair"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 4
@@ -1329,6 +1329,8 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         ink_norm_x = ink_norm_y = np.asarray([], dtype=float)
 
     axis_run_cache = {}
+    white_component_labels = None
+    white_clearance = None
 
     def axis_runs(axis: str):
         cached = axis_run_cache.get(axis)
@@ -1377,6 +1379,111 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
             return nearest
         strong = nearby[run_values >= max(12, round(longest * 0.5))]
         return int(strong[np.argmin(distance_sq[strong])]) if len(strong) else nearest
+
+    def deeper_in_same_white_region(pixel_x: int, pixel_y: int, x: int, y: int):
+        """Move a boundary-near surface target inward without crossing a drawn boundary."""
+        nonlocal white_component_labels, white_clearance
+        try:
+            from scipy import ndimage
+        except ModuleNotFoundError:
+            ndimage = None
+        if ndimage is not None:
+            if white_component_labels is None or white_clearance is None:
+                white = ~ink
+                white_component_labels, _count = ndimage.label(
+                    white, structure=np.ones((3, 3), dtype="uint8"))
+                white_clearance = ndimage.distance_transform_edt(
+                    white,
+                    sampling=(
+                        1000.0 / max(1, height - 1),
+                        1000.0 / max(1, width - 1),
+                    ),
+                )
+            component = int(white_component_labels[pixel_y, pixel_x])
+            if component <= 0:
+                return None
+            component_mask = white_component_labels == component
+            maximum = float(white_clearance[component_mask].max(initial=0.0))
+            if maximum < _MIN_BROAD_INTERIOR_CLEARANCE:
+                return None
+            desired = min(float(_MIN_BROAD_INTERIOR_CLEARANCE * 2), maximum)
+            safe_y, safe_x = np.nonzero(
+                component_mask & (white_clearance >= desired - 1e-6))
+            if not len(safe_x):
+                return None
+            safe_norm_x = safe_x * 1000.0 / max(1, width - 1)
+            safe_norm_y = safe_y * 1000.0 / max(1, height - 1)
+            distance_sq = ((safe_norm_x - x) ** 2) + ((safe_norm_y - y) ** 2)
+            nearby = np.flatnonzero(distance_sq <= float(max_snap) ** 2)
+            if not len(nearby):
+                return None
+            nearest = int(nearby[np.argmin(distance_sq[nearby])])
+            return {
+                "x": round(float(safe_norm_x[nearest])),
+                "y": round(float(safe_norm_y[nearest])),
+                "distance": sqrt(float(distance_sq[nearest])),
+                "clearance": float(white_clearance[safe_y[nearest], safe_x[nearest]]),
+            }
+
+        # SciPy is optional in older production environments. Flood-fill the current white
+        # component, then inspect nearby pixels in increasing distance order. Limiting the ink
+        # set to the reachable neighborhood keeps the vectorized fallback bounded.
+        component_image = binary.copy()
+        if component_image.getpixel((pixel_x, pixel_y)) != 255:
+            return None
+        ImageDraw.floodfill(component_image, (pixel_x, pixel_y), 128, thresh=0)
+        component_mask = np.asarray(component_image) == 128
+        candidate_y, candidate_x = np.nonzero(component_mask)
+        if not len(candidate_x):
+            return None
+        candidate_norm_x = candidate_x * 1000.0 / max(1, width - 1)
+        candidate_norm_y = candidate_y * 1000.0 / max(1, height - 1)
+        candidate_distance_sq = (
+            (candidate_norm_x - x) ** 2 + (candidate_norm_y - y) ** 2)
+        candidate_indexes = np.flatnonzero(
+            candidate_distance_sq <= float(max_snap) ** 2)
+        if not len(candidate_indexes):
+            return None
+        # A two-pixel lattice is precise enough for label placement and avoids evaluating every
+        # pixel in a large enclosed field.
+        lattice = candidate_indexes[
+            ((candidate_x[candidate_indexes] - pixel_x) % 2 == 0) &
+            ((candidate_y[candidate_indexes] - pixel_y) % 2 == 0)]
+        if len(lattice):
+            candidate_indexes = lattice
+        candidate_indexes = candidate_indexes[
+            np.argsort(candidate_distance_sq[candidate_indexes])]
+        ink_radius = float(max_snap + _MIN_BROAD_INTERIOR_CLEARANCE * 2)
+        local_ink = (
+            (np.abs(ink_norm_x - x) <= ink_radius) &
+            (np.abs(ink_norm_y - y) <= ink_radius))
+        local_ink_x = ink_norm_x[local_ink]
+        local_ink_y = ink_norm_y[local_ink]
+        if not len(local_ink_x):
+            return None
+        for required_clearance in (
+                float(_MIN_BROAD_INTERIOR_CLEARANCE * 1.5),
+                float(_MIN_BROAD_INTERIOR_CLEARANCE)):
+            for start in range(0, len(candidate_indexes), 64):
+                indexes = candidate_indexes[start:start + 64]
+                values_x = candidate_norm_x[indexes]
+                values_y = candidate_norm_y[indexes]
+                clearance_sq = np.min(
+                    (values_x[:, None] - local_ink_x[None, :]) ** 2 +
+                    (values_y[:, None] - local_ink_y[None, :]) ** 2,
+                    axis=1,
+                )
+                accepted = np.flatnonzero(
+                    clearance_sq >= required_clearance ** 2)
+                if len(accepted):
+                    nearest = int(indexes[int(accepted[0])])
+                    return {
+                        "x": round(float(candidate_norm_x[nearest])),
+                        "y": round(float(candidate_norm_y[nearest])),
+                        "distance": sqrt(float(candidate_distance_sq[nearest])),
+                        "clearance": sqrt(float(clearance_sq[int(accepted[0])])),
+                    }
+        return None
 
     adjusted, allowed_spaces, ungrounded = [], [], []
     occupied: dict[tuple[int, int], str] = {}
@@ -1437,13 +1544,25 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                 distance_sq = ((ink_norm_x - x) ** 2) + ((ink_norm_y - y) ** 2)
                 clearance = sqrt(float(distance_sq.min()))
                 if clearance < _MIN_BROAD_INTERIOR_CLEARANCE:
-                    ungrounded.append({
-                        "numeral": numeral, "part": part,
-                        "reason": (
-                            f"broad interior target has only {clearance:.1f} units of clearance "
-                            "from visible lines; widen the target region or place the endpoint "
-                            "deeper inside it"),
-                    })
+                    moved = deeper_in_same_white_region(pixel_x, pixel_y, x, y)
+                    if moved is not None:
+                        new_x, new_y = int(moved["x"]), int(moved["y"])
+                        item["x"], item["y"] = new_x, new_y
+                        adjusted.append({
+                            "numeral": numeral, "part": part,
+                            "from_x": x, "from_y": y, "to_x": new_x, "to_y": new_y,
+                            "distance": round(float(moved["distance"]), 1),
+                            "reason": "moved deeper inside the same enclosed region",
+                        })
+                        x, y = new_x, new_y
+                    else:
+                        ungrounded.append({
+                            "numeral": numeral, "part": part,
+                            "reason": (
+                                f"broad interior target has only {clearance:.1f} units of "
+                                "clearance from visible lines; widen the target region or place "
+                                "the endpoint deeper inside it"),
+                        })
             else:
                 ungrounded.append({
                     "numeral": numeral, "part": part,
