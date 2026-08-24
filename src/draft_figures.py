@@ -1498,7 +1498,7 @@ def _expected_closed_region_count(caption: str) -> int | None:
     number = r"(\d{1,2}|" + "|".join(_SMALL_NUMBERS[1:]) + r")"
     match = re.search(
         r"\bexactly\s+" + number +
-        r"\s+(?:separate\s+)?(?:closed\s+)?"
+        r"\s+(?:(?:separate|closed|nested|rectangular|circular)\s+)*"
         r"(shapes?|outlines?|curves?|loops?|lines?)\b", text)
     if not match:
         match = re.search(
@@ -1507,6 +1507,7 @@ def _expected_closed_region_count(caption: str) -> int | None:
             r"(shapes?|outlines?|curves?|loops?|lines?)\s+and\s+nothing\s+else\b", text)
     closed_shapes = re.search(
         r"\b(?:single\s+|continuous\s+|separate\s+)?closed\s+"
+        r"(?:(?:thin|solid|continuous)\s+)*"
         r"(?:shapes?|outlines?|curves?|loops?|lines?)\b", text)
     closed_shapes = closed_shapes or re.search(
         r"\beach(?:\s+(?:shape|outline|curve|loop))?\s+is\s+drawn\b[^.]{0,80}"
@@ -1622,22 +1623,44 @@ def closed_region_audit(png: bytes, caption: str) -> dict:
 def _deterministic_nested_plan_png(caption: str) -> bytes | None:
     """Render an exact simple nested plan when a raster model cannot honor the count."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
-    if (_expected_closed_region_count(text) != 4 or
-            not re.search(r"\bthree\s+(?:(?:nested\s+)?rectangles?|rectangular)\b", text) or
-            not re.search(
-                r"\b(?:one\s+(?:circle|circular)|circle\s+at\s+the\s+cent(?:er|re))\b",
-                text) or
-            not ("nested" in text or "outside inward" in text or
-                 "outside to inside" in text or
-                 ("second rectangle within" in text and "third rectangle within" in text))):
+    count_match = re.search(
+        r"\b(two|three)\s+(?:(?:nested\s+)?rectangles?|rectangular(?:\s+outlines?)?)\b",
+        text,
+    )
+    rectangle_count = {"two": 2, "three": 3}.get(
+        count_match.group(1) if count_match else "", 0)
+    has_circle = bool(re.search(
+        r"\b(?:one\s+(?:circle|circular)|circle\s+at\s+the\s+cent(?:er|re))\b", text))
+    expected = _expected_closed_region_count(text)
+    nested = bool(
+        "nested" in text or "outside inward" in text or "outside to inside" in text or
+        "one nested inside the other" in text or
+        ("second rectangle within" in text and "third rectangle within" in text))
+    rectangles_only = bool(re.search(r"\b(?:no other line|nothing else)\b", text))
+    if (not nested or not rectangle_count or
+            expected != rectangle_count + int(has_circle) or
+            (not has_circle and not rectangles_only)):
         return None
     from PIL import Image, ImageDraw
 
     image = Image.new("RGB", (1400, 900), "white")
     draw = ImageDraw.Draw(image)
-    for box in ((140, 90, 1260, 810), (240, 190, 1160, 710), (340, 290, 1060, 610)):
+    boxes = [
+        (140 + 100 * index, 90 + 100 * index,
+         1260 - 100 * index, 810 - 100 * index)
+        for index in range(rectangle_count)
+    ]
+    for box in boxes:
         draw.rectangle(box, outline="black", width=4)
-    draw.ellipse((580, 330, 820, 570), outline="black", width=4)
+    if has_circle:
+        left, top, right, bottom = boxes[-1]
+        diameter = round((right - left) / 3)
+        center_x, center_y = (left + right) // 2, (top + bottom) // 2
+        radius = diameter // 2
+        draw.ellipse(
+            (center_x - radius, center_y - radius,
+             center_x + radius, center_y + radius),
+            outline="black", width=4)
     out = io.BytesIO()
     image.save(out, format="PNG", compress_level=9)
     return out.getvalue()
@@ -4246,17 +4269,29 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
     semantic = {}
     correction = ""
     active_generation = None
+    automatic_instruction = (
+        not str(instruction or "").strip() or
+        str(instruction).startswith("Automatically reconcile this sheet"))
+    deterministic_png = (
+        _deterministic_nested_plan_png(caption)
+        if not region and not source_png and automatic_instruction else None)
     part_by_numeral = {entry["numeral"]: entry["part"] for entry in numeral_entries(numerals)}
     for attempt in range(MAX_SEMANTIC_ATTEMPTS):
         if not region:
-            candidate_prompt = prompt
-            if correction:
-                retained = max(0, MAX_PROMPT_CHARS - len(correction) - 2)
-                candidate_prompt = prompt[:retained] + "\n\n" + correction
-            retry_source = previous if attempt == 0 else (
-                None if attempt == 2 or _semantic_has_text_contamination(semantic) else raw_png)
-            raw_png = _cached_generate(candidate_prompt, retry_source)
-            active_generation = (candidate_prompt, retry_source)
+            if attempt == 0 and deterministic_png is not None:
+                raw_png = deterministic_png
+                source_kind = "deterministic"
+            else:
+                source_kind = "photo_to_sketch" if source_png else "generated"
+                candidate_prompt = prompt
+                if correction:
+                    retained = max(0, MAX_PROMPT_CHARS - len(correction) - 2)
+                    candidate_prompt = prompt[:retained] + "\n\n" + correction
+                retry_source = previous if attempt == 0 else (
+                    None if attempt == 2 or _semantic_has_text_contamination(semantic)
+                    else raw_png)
+                raw_png = _cached_generate(candidate_prompt, retry_source)
+                active_generation = (candidate_prompt, retry_source)
         semantic = inspect_semantics(
             raw_png, label=label, caption=caption, numerals=numerals)
         if semantic.get("ok"):

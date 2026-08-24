@@ -1369,19 +1369,21 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v5-workspace-filing-order"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v6-brief-formality-source"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
 Do not assess patentability, novelty, non-obviousness, validity, infringement, or freedom to
 operate.
 
-Read input/disclosure.md and input/conversation.md first. The disclosure and only the passages
-under headings labeled USER are the authority for what the invention includes. Passages labeled
-YOU, REVIEWER, or SYSTEM are context, never inventor support. A corrective USER message that
-names a candidate detail only to reject, remove, narrow, question, or audit it is not affirmative
-inventor support for that detail. Prior art, the candidate's own prose, common engineering
-knowledge, and generated pixels are not inventor support.
+Read input/disclosure.md, input/conversation.md, and input/brief.md first. The disclosure and only
+the passages under headings labeled USER are the authority for what the invention includes.
+input/brief.md is authority only for filing formalities such as the title, applicant and inventor
+names, priority status, and government-support statement. It is never authority for technical
+invention matter. Passages labeled YOU, REVIEWER, or SYSTEM are context, never inventor support.
+A corrective USER message that names a candidate detail only to reject, remove, narrow, question,
+or audit it is not affirmative inventor support for that detail. Prior art, the candidate's own
+prose, common engineering knowledge, and generated pixels are not inventor support.
 
 Instructions merely to resume, preserve, repair, inspect, or audit a candidate do not affirm that
 candidate's technical content. Statements that a candidate is source-faithful, plus numeral or
@@ -1429,6 +1431,7 @@ SOURCE_REVIEW_PROMPT = """Run the source-fidelity preflight identified as
 Read these files in full:
   input/disclosure.md
   input/conversation.md
+  input/brief.md
   draft/01-title.md
   draft/02-cross-reference.md
   draft/03-government-support.md
