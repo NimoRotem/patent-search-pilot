@@ -2299,6 +2299,37 @@ def test_deterministic_fragmentary_section_preserves_open_clearance_and_four_bod
     assert len(vertical_runs) == 2
 
 
+def test_deterministic_chamber_section_has_two_legs_and_one_broken_line():
+    specification = """
+    The sheet shows four bodies, one broken line, and nothing else: one horizontal hatched
+    slab; one closed loop cut twice, appearing as two short hatched legs hanging from the
+    underside of the slab, one at each end; one hatched band across the bottom on which both
+    legs stand; and one closed housing standing on the upper face of the slab. One broken line
+    runs from inside the housing to the chamber, indicating fluid communication, and no
+    passage, duct, opening or other structure is depicted. The chamber is the broad open space
+    between the two legs, below the slab and above the band.
+    """
+
+    png = draft_figures._deterministic_chamber_section_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    image = Image.open(io.BytesIO(png)).convert("L")
+    assert image.getpixel((650, 480)) == 255
+    assert min(image.crop((270, 390, 370, 590)).getextrema()) == 0
+    assert min(image.crop((1030, 390, 1130, 590)).getextrema()) == 0
+    assert image.getpixel((300, 620)) < 32
+    assert image.getpixel((1080, 620)) < 32
+    broken_runs = []
+    for y in (value for value in range(380, 601)
+              if image.getpixel((865, value)) < 32):
+        if not broken_runs or y > broken_runs[-1][-1] + 1:
+            broken_runs.append([y])
+        else:
+            broken_runs[-1].append(y)
+    assert 4 <= len(broken_runs) <= 8
+
+
 def test_deterministic_nested_plan_uses_even_width_corridors():
     specification = (
         "The whole sheet contains four outlines and nothing else. From the outside inward, "
