@@ -1667,6 +1667,14 @@ def _expected_closed_region_count(caption: str) -> int | None:
     if (re.search(r"\bone rectangle with a second,? smaller rectangle inside it\b", text) and
             two_rectangle_boundary):
         return 2
+    positive_rectangular_ring = bool(
+        re.search(r"\brectangular ring\b", text) and
+        re.search(r"\bno other body is drawn\b", text) and
+        re.search(r"\bone rectangle with a smaller rectangle inside it\b", text) and
+        re.search(r"\bfield enclosed by the inner rectangle\b[^.]{0,80}\bopen paper\b", text) and
+        re.search(r"\bbeyond the outer rectangle\b[^.]{0,80}\bpaper is bare\b", text))
+    if positive_rectangular_ring:
+        return 2
     number = r"(\d{1,2}|" + "|".join(_SMALL_NUMBERS[1:]) + r")"
     match = re.search(
         r"\bexactly\s+" + number +
@@ -1812,9 +1820,18 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
         re.search(r"\bno (?:diagonal|line)[^.]{0,120}\bline crosses the band\b", text) and
         re.search(r"\bbounded only by (?:the )?outer (?:(?:rectangle|edge) and (?:the )?inner "
                   r"(?:rectangle|edge)|and inner rectangles?)\b", text))
+    positive_rectangular_ring = bool(
+        re.search(r"\brectangular ring\b", text) and
+        re.search(r"\bno other body is drawn\b", text) and
+        re.search(r"\bone rectangle with a smaller rectangle inside it\b", text) and
+        re.search(r"\binner rectangle standing clear of\b[^.]{0,80}\bfour sides\b", text) and
+        re.search(r"\bfield enclosed by the inner rectangle\b[^.]{0,80}\bopen paper\b", text) and
+        re.search(r"\bbeyond the outer rectangle\b[^.]{0,80}\bpaper is bare\b", text))
     rectangle_count = {"two": 2, "three": 3}.get(
         count_match.group(1) if count_match else "", 0)
     if not rectangle_count and continuous_ring_rectangles:
+        rectangle_count = 2
+    if not rectangle_count and positive_rectangular_ring:
         rectangle_count = 2
     if (not rectangle_count and expected == 2 and
             re.search(r"\bboth\b[^.]{0,60}\brectangular\b", text)):
@@ -1831,6 +1848,7 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
         r"\b(?:one\s+(?:circle|circular)|circle\s+at\s+the\s+cent(?:er|re))\b", text))
     nested = bool(
         separately_named_rectangles or continuous_ring_rectangles or
+        positive_rectangular_ring or
         "nested" in text or "outside inward" in text or "outside to inside" in text or
         "one nested inside the other" in text or
         re.search(
@@ -1846,7 +1864,7 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
         r"(?:no\s+third|those\s+two\s+alone))\b", text))
     rectangles_only = rectangles_only or bool(re.search(
         r"\bexactly two closed lines and no others\b", text))
-    rectangles_only = rectangles_only or continuous_ring_rectangles
+    rectangles_only = rectangles_only or continuous_ring_rectangles or positive_rectangular_ring
     if (not nested or not rectangle_count or
             expected != rectangle_count + int(has_circle) or
             (not has_circle and not rectangles_only)):
@@ -1882,6 +1900,10 @@ def _deterministic_pulling_scene_png(caption: str) -> bytes | None:
     plain_body_only = bool(
         re.search(r"\bone plain rectangular body\b", text) and
         re.search(r"\bno housing, grip or other part is drawn\b", text))
+    plain_body_only = plain_body_only or bool(
+        re.search(r"\bone plain rectangular body\b", text) and
+        re.search(r"\brectangular body and the band beneath it\b[^.]{0,100}"
+                  r"\bwhole of the machine drawn on this sheet\b", text))
     legacy_housings = bool(
         re.search(r"\bplain slab\b[^.]{0,100}\btwo closed housings\b", text))
     requirements = (
@@ -2075,6 +2097,13 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
         re.search(r"\bhatching continuous from side to side\b[^.]{0,80}"
                   r"\bdirectly beneath the column\b", text) and
         re.search(r"\bno band is interrupted, broken or partly unhatched\b", text))
+    positive_open_sides_column = bool(
+        re.search(r"\bcolumn stands above the uppermost band\b", text) and
+        re.search(r"\bopen (?:stretch|paper)\b[^.]{0,100}\bon each side\b", text) and
+        re.search(r"\bhatching continuous from side to side\b[^.]{0,100}"
+                  r"\bdirectly beneath the column\b", text) and
+        re.search(r"\beach band reading as one whole hatched body\b", text))
+    centred_column = centred_column or positive_open_sides_column
     requirements = (
         re.search(r"\bfour hatched bodies\b[^.]{0,80}\bnothing else\b", text),
         re.search(r"\bone upright column\b[^.]{0,80}\bthree horizontal bands\b", text),
