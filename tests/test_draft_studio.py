@@ -1383,7 +1383,7 @@ def test_drawing_repairs_can_never_change_the_invention_to_match_bad_pixels():
 
 
 def test_figure_plan_repairs_remove_stale_references_from_the_old_sheet():
-    prompt = " ".join(draft_studio.FINALIZE_PROMPT.split())
+    prompt = " ".join(draft_studio.DRAFT_SYSTEM.split())
     assert "remove every use of that numeral and its canonical part name from the old sheet" \
         in prompt
     assert "describe it generically as an unnumbered" in prompt
