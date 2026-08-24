@@ -1851,6 +1851,33 @@ def test_clean_source_preflight_is_cached_before_repeated_rendering(monkeypatch,
     assert render.call_count == 2
 
 
+def test_source_preflight_cache_changes_when_filing_brief_changes(monkeypatch, tmp_path):
+    qa = Mock()
+    qa.review_sources.return_value = {
+        "ok": True, "summary": "Every candidate detail has affirmative support.",
+        "findings": [], "cost_usd": 0.1, "duration_ms": 100,
+        "model": "review-model",
+    }
+    runner = draft_studio.TurnRunner(Mock(), Mock(), qa=qa)
+    monkeypatch.setattr(draft_figures, "ensure_project_figures", Mock(return_value={"ok": True}))
+    monkeypatch.setattr(draft_figures, "checkpoint_project_figures", Mock())
+    monkeypatch.setattr(draft_figures, "materialize_review_images", Mock(return_value=[]))
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    brief = input_dir / "brief.md"
+    brief.write_text("Applicant: First Applicant\n", encoding="utf-8")
+    values = dict(
+        turn_id=3, lease="lease", project_id=7, user_id=91,
+        sections=GOOD, numerals=NUMERALS, figures=FIGURES,
+        disclosure="the inventor disclosed a body and pump", workspace=tmp_path)
+
+    runner._ensure_figures(**values)
+    brief.write_text("Applicant: Corrected Applicant\n", encoding="utf-8")
+    runner._ensure_figures(**values)
+
+    assert qa.review_sources.call_count == 2
+
+
 def test_drawing_only_repairs_cannot_mutate_filing_sources_or_figure_membership(tmp_path):
     draft_workspace.write_sections(tmp_path, GOOD)
     draft_workspace.write_numerals(tmp_path, NUMERALS)
