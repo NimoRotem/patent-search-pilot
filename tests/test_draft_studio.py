@@ -1721,6 +1721,8 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "Replace ordinal geometry references" in draft_studio.FINALIZE_PROMPT
     assert "Never address or mention a draftsperson" in " ".join(system.split())
     assert "broadest statement of the invention that the description fully supports" in system
+    assert "Every reference listed in prior_art/INDEX.md must be addressed" in system
+    assert "Never omit a listed reference solely because it is less relevant" in system
 
 
 def test_drawing_repairs_can_never_change_the_invention_to_match_bad_pixels():
