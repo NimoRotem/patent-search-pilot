@@ -1832,7 +1832,7 @@ def test_pixel_grounding_keeps_an_open_perspective_surface_off_a_crossing_cable(
 
     anchors, audit = draft_figures._ground_anchors_to_pixels(
         raw.getvalue(), ["36 = covering element"], [{
-            "numeral": "36", "x": 200, "y": 770, "visible": True,
+            "numeral": "36", "x": 200, "y": 758, "visible": True,
             "evidence": (
                 "The top surface of the large tile, in the open area to the left of the machine."
             ),
@@ -1840,7 +1840,7 @@ def test_pixel_grounding_keeps_an_open_perspective_surface_off_a_crossing_cable(
 
     assert audit["ok"] is True and audit["ungrounded"] == []
     assert audit["adjusted"][0]["numeral"] == "36"
-    assert audit["adjusted"][0]["reason"] == "moved deeper inside the same visible white region"
+    assert audit["adjusted"][0]["reason"] == "moved to a nearby clear point on the reviewed surface"
     assert 100 < anchors[0]["x"] < 900
     assert 500 < anchors[0]["y"] < 900
     assert abs(anchors[0]["y"] - (780 - (anchors[0]["x"] - 100) * 130 / 600)) >= 20
