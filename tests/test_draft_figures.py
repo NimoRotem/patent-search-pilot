@@ -2476,8 +2476,36 @@ def test_deterministic_grip_scene_draws_two_boundaries_for_a_finite_width_ring()
         assert image.getpixel((x, 300)) < 32
     for x in (245, 335, 535, 625):
         assert sum(image.getpixel((x, y)) < 32 for y in range(235, 351)) > 60
-    assert image.getpixel((428, 535)) == 255
-    assert image.getpixel((432, 507)) < 32
+    assert image.getpixel((428, 560)) == 255
+    assert image.getpixel((432, 537)) < 32
+
+
+def test_deterministic_grip_scene_leaves_room_for_a_callout_inside_the_band():
+    specification = """
+    The covering element 36 is one large plain tile, a flat rectangular panel seen in
+    perspective. The machine stands on its left-hand part, leaving a wide open expanse of tile
+    to the right. The machine is a plain rectangular slab standing on a band that runs round its
+    underside. Two plain closed housings stand on the top face, one left and one right, and a
+    grip stands above the slab between them. The handle 44 is drawn as a closed ring shape
+    enclosing an open area, the bar forming that ring having its own width.
+    """
+
+    png = draft_figures._deterministic_grip_scene_png(specification)
+
+    assert png is not None
+    image = Image.open(io.BytesIO(png)).convert("L")
+    # At the middle of the viewer-facing right band, leave enough white surface between
+    # its two boundary strokes for an endpoint dot to sit clearly inside either boundary.
+    ink_runs = []
+    for y in range(390, 520):
+        if image.getpixel((560, y)) >= 32:
+            continue
+        if not ink_runs or y > ink_runs[-1][-1] + 1:
+            ink_runs.append([y])
+        else:
+            ink_runs[-1].append(y)
+    assert len(ink_runs) >= 2
+    assert ink_runs[-1][0] - ink_runs[-2][-1] >= 32
 
 
 def test_deterministic_fragmentary_section_preserves_open_clearance_and_four_bodies():
@@ -2569,6 +2597,23 @@ def test_deterministic_chamber_section_has_two_legs_and_one_broken_line():
         else:
             broken_runs[-1].append(y)
     assert 4 <= len(broken_runs) <= 8
+
+
+def test_deterministic_chamber_section_accepts_positive_single_line_wording():
+    specification = """
+    The sheet shows four bodies, all shown schematically, one broken line, and nothing else:
+    one horizontal hatched slab; one closed loop cut twice, appearing as two short hatched legs
+    hanging from the underside of the slab, one at each end; one hatched band across the bottom,
+    on which both legs stand; and one closed housing standing on the upper face of the slab.
+    One broken line runs from inside the housing to the chamber, indicating schematically the
+    fluid communication between the housing and the chamber, that broken line being all that is
+    drawn for it.
+    """
+
+    png = draft_figures._deterministic_chamber_section_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
 
 
 def test_deterministic_nested_plan_uses_even_width_corridors():
