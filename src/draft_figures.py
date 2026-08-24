@@ -1854,6 +1854,148 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
     return out.getvalue()
 
 
+def _deterministic_pulling_scene_png(caption: str) -> bytes | None:
+    """Render the simple tile, machine, and single-stroke pulling-element scene exactly."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    requirements = (
+        re.search(r"\bcovering element\b[^.]{0,100}\b(?:plain\s+)?tile\b", text),
+        re.search(r"\bmachine\b[^.]{0,100}\bright-hand\b", text),
+        re.search(r"\bplain slab\b[^.]{0,100}\btwo closed housings\b", text),
+        re.search(r"\bband\b[^.]{0,80}\bunderside\b", text),
+        re.search(r"\bflexible pulling element\b[^.]{0,100}\b(?:one|single)\b"
+                  r"[^.]{0,60}\b(?:curved\s+)?(?:line|path|stroke)\b", text),
+        re.search(r"\bruns?\s+(?:away\s+)?to\s+the\s+left\b", text),
+        re.search(r"\bsag(?:ging|s)\b", text),
+    )
+    if not all(requirements):
+        return None
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1400, 900), "white")
+    draw = ImageDraw.Draw(image)
+    line = {"fill": "black", "width": 4}
+
+    # One unpartitioned covering tile, shown as a perspective quadrilateral.
+    draw.line(
+        [(90, 455), (635, 245), (1325, 430), (780, 820), (90, 455)],
+        joint="curve", **line)
+
+    # The sole lower band is one broad front surface and is the only machine part on the tile.
+    draw.polygon(
+        [(735, 405), (985, 485), (978, 535), (728, 455)],
+        fill="white", outline="black", width=4)
+    draw.polygon(
+        [(985, 485), (1215, 405), (1208, 455), (978, 535)],
+        fill="white", outline="black", width=4)
+
+    # A plain slab with only its outer top, front, and right boundaries.
+    draw.polygon(
+        [(735, 325), (985, 405), (1215, 325), (965, 255)],
+        fill="white", outline="black", width=4)
+    draw.polygon(
+        [(735, 325), (735, 405), (985, 485), (985, 405)],
+        fill="white", outline="black", width=4)
+    draw.polygon(
+        [(985, 405), (1215, 325), (1215, 405), (985, 485)],
+        fill="white", outline="black", width=4)
+
+    # Two closed housings carried by the slab. Their interiors remain empty.
+    draw.ellipse((825, 284, 920, 344), fill="white", outline="black", width=4)
+    draw.ellipse((1000, 306, 1095, 366), fill="white", outline="black", width=4)
+
+    # Sample one cubic curve as one open stroke. It has no paired boundary and encloses no area.
+    start, control_1 = (729, 430), (570, 430)
+    control_2, end = (390, 555), (175, 475)
+    points = []
+    for index in range(81):
+        t = index / 80
+        one_minus_t = 1 - t
+        x = (one_minus_t ** 3 * start[0] +
+             3 * one_minus_t ** 2 * t * control_1[0] +
+             3 * one_minus_t * t ** 2 * control_2[0] + t ** 3 * end[0])
+        y = (one_minus_t ** 3 * start[1] +
+             3 * one_minus_t ** 2 * t * control_1[1] +
+             3 * one_minus_t * t ** 2 * control_2[1] + t ** 3 * end[1])
+        points.append((round(x), round(y)))
+    draw.line(points, fill="black", width=5, joint="curve")
+
+    out = io.BytesIO()
+    image.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
+
+
+def _deterministic_grip_scene_png(caption: str) -> bytes | None:
+    """Render the simple tile-mounted machine with one exact closed grip outline."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    requirements = (
+        re.search(r"\bcovering element\b[^.]{0,100}\b(?:plain\s+)?tile\b", text),
+        re.search(r"\bmachine\b[^.]{0,100}\bleft-hand\b", text),
+        re.search(r"\bplain rectangular slab\b[^.]{0,120}\btwo closed housings\b", text),
+        re.search(r"\bgrip\b[^.]{0,50}\babove\b", text),
+        re.search(r"\bband\b[^.]{0,80}\bunderside\b", text),
+        re.search(r"\bhandle\b[^.]{0,160}\bone closed outline\b"
+                  r"[^.]{0,50}\bopen area\b", text),
+    )
+    if not all(requirements):
+        return None
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1400, 900), "white")
+    draw = ImageDraw.Draw(image)
+    line = {"fill": "black", "width": 4}
+
+    draw.line(
+        [(90, 455), (635, 245), (1325, 430), (780, 820), (90, 455)],
+        joint="curve", **line)
+
+    draw.polygon(
+        [(185, 405), (435, 485), (428, 535), (178, 455)],
+        fill="white", outline="black", width=4)
+    draw.polygon(
+        [(435, 485), (685, 405), (678, 455), (428, 535)],
+        fill="white", outline="black", width=4)
+
+    draw.polygon(
+        [(185, 325), (435, 405), (685, 325), (435, 255)],
+        fill="white", outline="black", width=4)
+    draw.polygon(
+        [(185, 325), (185, 405), (435, 485), (435, 405)],
+        fill="white", outline="black", width=4)
+    draw.polygon(
+        [(435, 405), (685, 325), (685, 405), (435, 485)],
+        fill="white", outline="black", width=4)
+
+    draw.ellipse((245, 284, 340, 344), fill="white", outline="black", width=4)
+    draw.ellipse((530, 284, 625, 344), fill="white", outline="black", width=4)
+    grip = [(285, 255), (285, 155)]
+    for index in range(1, 81):
+        t = index / 80
+        one_minus_t = 1 - t
+        grip.append((
+            round(one_minus_t ** 3 * 285 +
+                  3 * one_minus_t ** 2 * t * 315 +
+                  3 * one_minus_t * t ** 2 * 555 + t ** 3 * 585),
+            round(one_minus_t ** 3 * 155 +
+                  3 * one_minus_t ** 2 * t * 55 +
+                  3 * one_minus_t * t ** 2 * 55 + t ** 3 * 155),
+        ))
+    grip.extend([(585, 255), (285, 255)])
+    draw.line(grip, fill="black", width=5, joint="curve")
+
+    out = io.BytesIO()
+    image.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
+
+
+def _deterministic_geometry_png(caption: str) -> bytes | None:
+    """Select an exact renderer only when the brief describes a supported simple geometry."""
+    return (_deterministic_nested_plan_png(caption) or
+            _deterministic_pulling_scene_png(caption) or
+            _deterministic_grip_scene_png(caption))
+
+
 def _apply_topology_audit(png: bytes, caption: str, semantic: dict) -> dict:
     out = dict(semantic or {})
     audit = closed_region_audit(png, caption)
@@ -4483,7 +4625,7 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
         not str(instruction or "").strip() or
         str(instruction).startswith("Automatically reconcile this sheet"))
     deterministic_png = (
-        _deterministic_nested_plan_png(caption)
+        _deterministic_geometry_png(caption)
         if not region and not source_png and automatic_instruction else None)
     part_by_numeral = {entry["numeral"]: entry["part"] for entry in numeral_entries(numerals)}
     for attempt in range(MAX_SEMANTIC_ATTEMPTS):
@@ -4528,7 +4670,7 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
              "Keep all geometry that already matches. ") +
             "Include no text or digits.")
     if not semantic.get("ok") and not region:
-        deterministic = _deterministic_nested_plan_png(caption)
+        deterministic = _deterministic_geometry_png(caption)
         if deterministic is not None:
             raw_png = deterministic
             semantic = inspect_semantics(
