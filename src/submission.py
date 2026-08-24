@@ -61,6 +61,7 @@ from reportlab.platypus import (BaseDocTemplate, Frame, PageTemplate, Paragraph,
                                 TableStyle)
 
 import concise_render
+import pdf_fonts
 import search_modes                          # the forum rule: which offices 102(a)(2) reaches
 
 # --------------------------------------------------------------------------------- item typing
@@ -650,21 +651,21 @@ def verdict(findings):
 # --------------------------------------------------------------------------------- rendering
 
 def _styles():
-    base = ParagraphStyle("s", fontName="Times-Roman", fontSize=10.5, leading=13,
+    base = ParagraphStyle("s", fontName=pdf_fonts.font(pdf_fonts.SERIF), fontSize=10.5, leading=13,
                           alignment=TA_LEFT, spaceAfter=0)
     return {
-        "h": ParagraphStyle("h", parent=base, fontName="Times-Bold", fontSize=12, leading=15,
+        "h": ParagraphStyle("h", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), fontSize=12, leading=15,
                             spaceAfter=7),
-        "h2": ParagraphStyle("h2", parent=base, fontName="Times-Bold", fontSize=11, leading=14,
+        "h2": ParagraphStyle("h2", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), fontSize=11, leading=14,
                              spaceBefore=12, spaceAfter=5),
-        "app": ParagraphStyle("app", parent=base, fontName="Times-Italic", spaceAfter=10),
+        "app": ParagraphStyle("app", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_ITALIC), spaceAfter=10),
         "body": ParagraphStyle("body", parent=base, spaceBefore=3, spaceAfter=7),
-        "th": ParagraphStyle("th", parent=base, fontName="Times-Bold", fontSize=9.5, leading=12),
+        "th": ParagraphStyle("th", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), fontSize=9.5, leading=12),
         "td": ParagraphStyle("td", parent=base, fontSize=9.5, leading=12),
         "note": ParagraphStyle("note", parent=base, fontSize=9, leading=11.5,
                                textColor=colors.HexColor("#333333"), spaceBefore=8),
         #  An S-signature is read as a signature, so it is set apart from the prose around it.
-        "sig": ParagraphStyle("sig", parent=base, fontName="Times-Italic", fontSize=13,
+        "sig": ParagraphStyle("sig", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_ITALIC), fontSize=13,
                               leading=17, spaceBefore=10, spaceAfter=4),
     }
 
@@ -676,7 +677,7 @@ def _template(buf, subject, title):
 
     def _page(canv, docobj):
         canv.saveState()
-        canv.setFont("Times-Roman", 9)
+        canv.setFont(pdf_fonts.font(pdf_fonts.SERIF), 9)
         canv.setFillColor(colors.HexColor("#333333"))
         canv.drawString(inch, letter[1] - 0.6 * inch, running)
         canv.drawRightString(letter[0] - inch, 0.6 * inch, "Page %d" % canv.getPageNumber())
@@ -701,6 +702,10 @@ def _esc(s):
 def _grid(data, widths):
     t = Table(data, colWidths=widths, repeatRows=1)
     t.setStyle(TableStyle([
+        #  A Table whose cells are Paragraphs STILL emits its own default cell font, and
+        #  that default is an unembedded Helvetica. Naming it here is what keeps a base-14
+        #  resource out of a paper Patent Center validates.
+        ("FONTNAME", (0, 0), (-1, -1), pdf_fonts.font(pdf_fonts.SERIF)),
         ("GRID", (0, 0), (-1, -1), 0.6, colors.HexColor("#444444")),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EFEFEF")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),

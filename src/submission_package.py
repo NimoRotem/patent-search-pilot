@@ -46,6 +46,7 @@ from reportlab.platypus import (BaseDocTemplate, Frame, PageTemplate, Paragraph,
                                 TableStyle)
 
 import concise_render
+import pdf_fonts
 
 #  A U.S. patent or U.S. pre-grant publication needs no copy: 1.290(d)(3) excludes exactly those.
 _US_PUB = re.compile(r"^US", re.I)
@@ -157,14 +158,14 @@ def inspect_copy(blob):
 
 
 def _styles():
-    base = ParagraphStyle("sp", fontName="Times-Roman", fontSize=11, leading=13.5,
+    base = ParagraphStyle("sp", fontName=pdf_fonts.font(pdf_fonts.SERIF), fontSize=11, leading=13.5,
                           alignment=TA_LEFT, spaceAfter=0)
     return {
-        "h": ParagraphStyle("h", parent=base, fontName="Times-Bold", fontSize=11.5, leading=14,
+        "h": ParagraphStyle("h", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), fontSize=11.5, leading=14,
                             spaceAfter=6),
-        "app": ParagraphStyle("app", parent=base, fontName="Times-Italic", spaceAfter=10),
+        "app": ParagraphStyle("app", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_ITALIC), spaceAfter=10),
         "body": ParagraphStyle("body", parent=base, spaceBefore=4, spaceAfter=7),
-        "th": ParagraphStyle("th", parent=base, fontName="Times-Bold", fontSize=10, leading=12.5),
+        "th": ParagraphStyle("th", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), fontSize=10, leading=12.5),
         "td": ParagraphStyle("td", parent=base, fontSize=10, leading=12.5),
         "note": ParagraphStyle("note", parent=base, fontSize=9.5, leading=12,
                                textColor=colors.HexColor("#333333"), spaceBefore=8),
@@ -176,7 +177,7 @@ def _doc(buf, subject, title):
 
     def _page(canv, docobj):
         canv.saveState()
-        canv.setFont("Times-Roman", 9.5)
+        canv.setFont(pdf_fonts.font(pdf_fonts.SERIF), 9.5)
         canv.setFillColor(colors.HexColor("#333333"))
         canv.drawString(inch, letter[1] - 0.62 * inch, running)
         canv.drawString(inch, 0.62 * inch, running)

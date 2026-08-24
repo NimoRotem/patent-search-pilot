@@ -15,6 +15,8 @@ import html as _html
 import io
 import re
 
+import pdf_fonts
+
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import letter
@@ -28,7 +30,17 @@ HEADING = ("CONCISE DESCRIPTION OF RELEVANCE: THIRD-PARTY SUBMISSION "
 
 
 def _esc(s):
-    return _html.escape(str(s or ""))
+    """Escape for reportlab's Paragraph markup, and keep every glyph drawable.
+
+    The second half matters as much as the first. Asked for a character the current face has no
+    glyph for, reportlab silently substitutes ZapfDingbats, and a Chinese name printed on a filed
+    document list as two solid black squares. Runs outside the Latin face are wrapped in a span
+    pointing at an embedded fallback, so the paper says what it means or the render fails loudly.
+
+    Every caller feeds a Paragraph. The running head goes to canvas.drawString and does NOT come
+    through here, which is why this can return markup.
+    """
+    return pdf_fonts.with_fallback(_html.escape(str(s or "")))
 
 
 def is_latin(name):
@@ -184,16 +196,16 @@ def filing_notes(doc_model):
 
 
 def _styles():
-    base = ParagraphStyle("cd", fontName="Times-Roman", fontSize=11, leading=13.5,
+    base = ParagraphStyle("cd", fontName=pdf_fonts.font(pdf_fonts.SERIF), fontSize=11, leading=13.5,
                           alignment=TA_LEFT, spaceAfter=0)
     return {
-        "h": ParagraphStyle("h", parent=base, fontName="Times-Bold", fontSize=11.5, leading=14,
+        "h": ParagraphStyle("h", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), fontSize=11.5, leading=14,
                             spaceAfter=6),
-        "app": ParagraphStyle("app", parent=base, fontName="Times-Italic", spaceAfter=8),
-        "doc": ParagraphStyle("doc", parent=base, fontName="Times-Bold", spaceAfter=3),
+        "app": ParagraphStyle("app", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_ITALIC), spaceAfter=8),
+        "doc": ParagraphStyle("doc", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), spaceAfter=3),
         "bib": ParagraphStyle("bib", parent=base, leftIndent=20, spaceAfter=1),
         "body": ParagraphStyle("body", parent=base, spaceBefore=6, spaceAfter=9),
-        "th": ParagraphStyle("th", parent=base, fontName="Times-Bold", fontSize=10.5, leading=13),
+        "th": ParagraphStyle("th", parent=base, fontName=pdf_fonts.font(pdf_fonts.SERIF_BOLD), fontSize=10.5, leading=13),
         "td": ParagraphStyle("td", parent=base, fontSize=10.5, leading=13),
         "cite": ParagraphStyle("cite", parent=base, fontSize=10.5, leading=13, leftIndent=10,
                                bulletIndent=2, spaceBefore=1),
@@ -210,7 +222,7 @@ def to_pdf(doc_model) -> bytes:
 
     def _page(canv, docobj):
         canv.saveState()
-        canv.setFont("Times-Roman", 9.5)
+        canv.setFont(pdf_fonts.font(pdf_fonts.SERIF), 9.5)
         canv.setFillColor(colors.HexColor("#333333"))
         canv.drawString(inch, letter[1] - 0.62 * inch, running)
         canv.drawString(inch, 0.62 * inch, running)
@@ -260,6 +272,10 @@ def to_pdf(doc_model) -> bytes:
     w = letter[0] - 2 * inch
     tbl = Table(data, colWidths=[w * 0.46, w * 0.54], repeatRows=1)
     tbl.setStyle(TableStyle([
+        #  A Table whose cells are Paragraphs STILL emits its own default cell font, and
+        #  that default is an unembedded Helvetica. Naming it here is what keeps a base-14
+        #  resource out of a paper Patent Center validates.
+        ("FONTNAME", (0, 0), (-1, -1), pdf_fonts.font(pdf_fonts.SERIF)),
         ("GRID", (0, 0), (-1, -1), 0.6, colors.HexColor("#444444")),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EFEFEF")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),

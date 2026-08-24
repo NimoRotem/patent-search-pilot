@@ -266,3 +266,110 @@ def test_no_em_dash_reaches_a_paper_that_gets_filed():
     for what, text in papers.items():
         for dash in ("—", "–"):
             assert dash not in text, "%s carries %r" % (what, dash)
+
+
+# ------------------------------------------------------------- 6. the fonts on the filed page
+
+def _fonts_of(blob):
+    """{BaseFont: is it embedded} for every font resource on every page."""
+    import io
+    from pypdf import PdfReader
+    out = {}
+    for pg in PdfReader(io.BytesIO(blob)).pages:
+        res = (pg.get("/Resources") or {}).get("/Font") or {}
+        try:
+            res = res.get_object()
+        except Exception:                                                 # noqa: BLE001
+            pass
+        for k in res:
+            f = res[k].get_object()
+            d = f.get("/FontDescriptor")
+            out[str(f.get("/BaseFont"))] = bool(d) and any(
+                x in d.get_object() for x in ("/FontFile", "/FontFile2", "/FontFile3"))
+    return out
+
+
+def _cjk_doc():
+    """The real CN 216190291 U shape: a Chinese-only inventor and a Latin applicant."""
+    return _doc(n=3, biblio={
+        "pub": "CN-216190291-U", "label": "CN 216190291 U", "kind": "foreign", "country": "CN",
+        "inventor": "徐勇", "assignee": "Hubei Sanliu Heavy Industries Co., Ltd.",
+        "title": "永磁起重器", "issue_date_pretty": "April 5, 2022"})
+
+
+def _filed_papers():
+    """One of each paper that goes to the Office, with a document that exercises the fallback."""
+    import submission as S
+    import submission_package as sp
+    d = _cjk_doc()
+    win = S.window("2026-03-12", today=datetime.date(2026, 8, 24))
+    return {
+        "concise description": concise_render.to_pdf(d),
+        "audit": S.audit_pdf(S.audit([d], SUBJECT, {}, {}, win), [d], SUBJECT, win),
+        "document list": S.document_list_and_statements([d], SUBJECT, {}, {}, win),
+        "translation": sp.translation_pdf(
+            d, {"rows": [{"id": 1, "english": "a magnet in the housing"}], "engine": "t"},
+            SUBJECT),
+    }
+
+
+def test_this_host_can_embed_every_face_a_filing_needs():
+    """A box with no font files renders a filing on the base-14 and it bounces at upload. That is
+    an environment fault, not a code one, so it is said here rather than discovered at Patent
+    Center."""
+    import pdf_fonts
+    assert pdf_fonts.missing() == [], (
+        "install the fonts: %s" % pdf_fonts.missing())
+
+
+def test_every_filed_pdf_embeds_all_of_its_fonts():
+    """Patent Center's PDF guidelines list an unembedded font as a validation failure, and
+    reportlab's default faces are the base-14, which are never embedded. Measured on the packet
+    for adhoc-efbf2979420b: seventeen of twenty-one papers would have bounced.
+
+    A Table is the trap. Its cells here are all Paragraphs, so every style names an embedded face,
+    and the Table STILL emitted its own default cell font. So did the canvas.
+    """
+    for what, blob in _filed_papers().items():
+        fonts = _fonts_of(blob)
+        assert fonts, "%s has no font resources at all" % what
+        unembedded = sorted(n for n, emb in fonts.items() if not emb)
+        assert not unembedded, "%s carries %s" % (what, unembedded)
+
+
+def test_a_name_the_latin_face_cannot_draw_is_not_printed_as_boxes():
+    """Asked for a glyph it does not have, reportlab substitutes ZapfDingbats. 徐勇 went onto a
+    filed document list as ■■, which leaves the 1.290(e)(4) identification blank."""
+    for what, blob in _filed_papers().items():
+        text = _pdf_text(blob)
+        for glyph in ("■", "�"):
+            assert glyph not in text, "%s printed %r" % (what, glyph)
+
+
+def test_the_paper_identifies_the_party_by_a_name_it_can_print():
+    """1.290(e)(3) accepts the applicant, the patentee OR the first named inventor, and that OR is
+    the way out: the applicant carries a Latin name where all seven inventors do not."""
+    text = _pdf_text(concise_render.to_pdf(_cjk_doc()))
+    assert "Hubei Sanliu" in text
+    assert "Applicant" in text
+
+
+def test_cjk_that_has_no_alternative_still_renders_and_still_extracts():
+    """A title or a quoted passage has no applicant to fall back on, so it has to be drawn. It
+    also has to come back out: a Table cell in a face with no CJK glyphs dropped the characters
+    from the text layer entirely, which is a paper that looks right and is not searchable."""
+    text = _pdf_text(concise_render.to_pdf(_cjk_doc()))
+    assert "永磁起重器" in text, "the CJK title did not survive into the text layer"
+
+
+def test_the_fallback_only_wraps_what_it_has_to():
+    """Wrapping everything would work and would also make every paper a CJK font embedding. The
+    span is only around the runs the Latin face cannot draw."""
+    import pdf_fonts
+    assert pdf_fonts.with_fallback("Takeshi Ide") == "Takeshi Ide"
+    assert pdf_fonts.with_fallback("Jörg Müller, Renée Lévesque") == "Jörg Müller, Renée Lévesque"
+    out = pdf_fonts.with_fallback("Inventor: 徐勇 (CN)")
+    assert out.startswith("Inventor: <font face=") and out.endswith("</font> (CN)")
+    #  and it steps over the markup the caller already escaped rather than splitting an entity
+    assert pdf_fonts.with_fallback("A &amp; B") == "A &amp; B"
+    assert "&amp;" in pdf_fonts.with_fallback("徐 &amp; 勇")
