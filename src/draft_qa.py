@@ -1344,6 +1344,96 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v1-complete-ledger"
+SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
+application. You are independent of the drafting agent. Review only whether the proposed patent
+text and drawing specifications are supported by the inventor sources and internally consistent.
+Do not assess patentability, novelty, non-obviousness, validity, infringement, or freedom to
+operate.
+
+Read input/disclosure.md and input/conversation.md first. The disclosure and only the passages
+under headings labeled USER are the authority for what the invention includes. Passages labeled
+YOU, REVIEWER, or SYSTEM are context, never inventor support. A corrective USER message that
+names a candidate detail only to reject, remove, narrow, question, or audit it is not affirmative
+inventor support for that detail. Prior art, the candidate's own prose, common engineering
+knowledge, and generated pixels are not inventor support.
+
+Build a complete source ledger before returning. Trace every limitation in every claim, every
+numbered part, and every specific structure, relationship, result, material, shape, position,
+connection, operating condition, and variant in the description or figure briefs to an exact
+affirmative passage in the disclosure or conversation. Report every untraced item as a critical
+disclosure_fidelity finding, including optional embodiments and dependent-claim limitations.
+Quote the candidate wording and the inventor passage that supports it. When no affirmative
+passage exists, say that explicitly and quote the nearest source passage that shows the gap.
+
+Then check the text itself: claims and description must use the same relationships and terms;
+every numbered part must mean one thing; figure descriptions and briefs must depict only
+source-supported structures; and no drafting note, placeholder, open question, instruction,
+unresolved alternative, or internal comment may remain. Report every verified inconsistency.
+
+Do not inspect or rely on rendered images in this preflight. A later independent review checks
+the final pixels and citations. Return an empty findings array when, and only when, the full ledger
+is supported and the proposed text is internally consistent. Every finding must include concrete
+evidence and a filing-clean automatic fix."""
+
+SOURCE_REVIEW_PROMPT = """Run the source-fidelity preflight identified as
+%(version)s.
+
+Read these files in full:
+  input/disclosure.md
+  input/conversation.md
+  draft/01-title.md through draft/09-abstract.md
+  draft/numerals.md
+  every Markdown brief in figures/
+
+Ignore rendered image files. Return the complete structured review."""
+
+
+def review_sources(workspace: Path, *, transcript: Path | None = None, model: str = "",
+                   timeout: int = draft_agent.QA_TIMEOUT) -> dict[str, Any]:
+    """Run a fail-closed text and source-ledger review before spending on drawings."""
+    try:
+        run = draft_agent.run(
+            workspace=workspace,
+            prompt=SOURCE_REVIEW_PROMPT % {"version": SOURCE_REVIEW_VERSION},
+            system_prompt=SOURCE_REVIEW_SYSTEM,
+            schema=REVIEW_SCHEMA,
+            session_id=draft_agent.new_session_id(),
+            resume=False,
+            model=model or draft_agent.QA_MODEL,
+            tools="Read,Glob,Grep",
+            timeout=timeout,
+            transcript=transcript,
+        )
+    except draft_agent.AgentError as exc:
+        return {"ok": False, "error": str(exc), "findings": [], "summary": "",
+                "cost_usd": 0.0, "duration_ms": 0,
+                "model": model or draft_agent.QA_MODEL}
+    if not run.ok:
+        return {"ok": False, "error": run.error, "findings": [], "summary": "",
+                "cost_usd": run.cost_usd, "duration_ms": run.duration_ms,
+                "model": run.model}
+    summary = str(run.result.get("summary") or "").strip()[:8000]
+    raw_findings = run.result.get("findings")
+    findings = normalize_findings(raw_findings)
+    if (not summary or not isinstance(raw_findings, list)
+            or len(findings) != len(raw_findings)):
+        return {
+            "ok": False,
+            "error": "The source reviewer returned an empty summary or malformed finding.",
+            "findings": [], "summary": "", "cost_usd": run.cost_usd,
+            "duration_ms": run.duration_ms, "model": run.model,
+        }
+    return {
+        "ok": True,
+        "error": "",
+        "summary": summary,
+        "findings": findings,
+        "cost_usd": run.cost_usd,
+        "duration_ms": run.duration_ms,
+        "model": run.model,
+    }
+
 
 def review(workspace: Path, *, checks: Sequence[Mapping[str, Any]],
            transcript: Path | None = None, model: str = "",

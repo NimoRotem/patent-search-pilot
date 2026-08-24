@@ -61,6 +61,18 @@ class StudioError(drafting.DraftingError):
     pass
 
 
+class SourceFidelityInspectionError(StudioError):
+    """A completed pre-render review that found source or text blockers."""
+
+    def __init__(self, report: Mapping[str, Any]):
+        self.report = human_text(dict(report))
+        findings = self.report.get("findings") or []
+        detail = str(self.report.get("last_error") or self.report.get("summary") or "")
+        if findings:
+            detail = f"{len(findings)} source-fidelity finding(s) must be repaired."
+        super().__init__(detail or "The source-fidelity preflight did not pass.")
+
+
 class DrawingInspectionError(StudioError):
     def __init__(self, errors: Sequence[str]):
         self.errors = [str(item)[:2000] for item in errors if str(item).strip()]
@@ -872,8 +884,10 @@ class StudioRepository:
     def messages(self, project_id: int, *, limit: int = 400) -> list[dict[str, Any]]:
         self._ready()
         with self._cursor() as cur:
-            cur.execute("SELECT * FROM app_draft_messages WHERE project_id=%s "
-                        "ORDER BY id LIMIT %s", (int(project_id), int(limit)))
+            cur.execute(
+                "SELECT * FROM (SELECT * FROM app_draft_messages WHERE project_id=%s "
+                "ORDER BY id DESC LIMIT %s) recent ORDER BY id",
+                (int(project_id), int(limit)))
             out = []
             for row in cur.fetchall():
                 item = dict(row)
@@ -1335,6 +1349,7 @@ class TurnRunner:
         self.agent = agent
         self.qa = qa
         self.workspace = workspace
+        self._source_review_cache: dict[str, dict[str, Any]] = {}
 
     # -- inputs ---------------------------------------------------------------------------------
     def _load(self, project_id: int) -> dict[str, Any]:
@@ -1362,8 +1377,8 @@ class TurnRunner:
         loaded = self._load(project_id)
         project = loaded["project"]
         documents = self.repository.documents(project_id)
-        history = [m for m in self.repository.messages(project_id, limit=60)
-                   if m["role"] in ("user", "agent")][-24:]
+        history = [m for m in self.repository.messages(project_id, limit=400)
+                   if m["role"] in ("user", "agent")]
         latest_qa = self.repository.latest_qa(project_id)
         sections = loaded["sections"]
         seeded = False
@@ -1512,6 +1527,63 @@ class TurnRunner:
                         figures: Sequence[Mapping[str, Any]], disclosure: str,
                         workspace: Path) -> dict[str, Any]:
         import draft_figures
+
+        self.repository.heartbeat(turn_id, lease, stage="checking source fidelity")
+        conversation_path = workspace / "input" / "conversation.md"
+        conversation = (conversation_path.read_text(encoding="utf-8")
+                        if conversation_path.exists() else "")
+        configured_version = getattr(self.qa, "SOURCE_REVIEW_VERSION", "")
+        source_review_version = (configured_version if isinstance(configured_version, str)
+                                 and configured_version else draft_qa.SOURCE_REVIEW_VERSION)
+        source_material = {
+            "version": source_review_version,
+            "disclosure": disclosure,
+            "conversation": conversation,
+            "sections": dict(sections),
+            "numerals": [dict(item) for item in numerals],
+            "figures": [dict(item) for item in figures],
+        }
+        source_hash = hashlib.sha256(json.dumps(
+            source_material, ensure_ascii=False, sort_keys=True,
+            separators=(",", ":")).encode("utf-8")).hexdigest()
+        report = self._source_review_cache.get(source_hash)
+        if report is None:
+            transcript = workspace / ".agent" / (
+                f"source-review-{turn_id:04d}-{source_hash[:12]}.jsonl")
+            transcript.parent.mkdir(parents=True, exist_ok=True)
+            outcome = self.qa.review_sources(workspace, transcript=transcript)
+            findings = list(outcome.get("findings") or [])
+            completed = bool(outcome.get("ok"))
+            passed = completed and not findings
+            detail = (str(outcome.get("summary") or "").strip() or
+                      ("The independent source-fidelity review completed without findings."
+                       if passed else str(outcome.get("error") or "").strip() or
+                       "The independent source-fidelity review did not pass."))
+            check = {
+                "name": "Source fidelity is clean before rendering",
+                "status": "pass" if passed else "fail",
+                "severity": "info" if passed else "error",
+                "category": "disclosure_fidelity",
+                "detail": detail[:4000],
+                "items": [str(item.get("title") or "Source-fidelity finding")[:600]
+                          for item in findings],
+            }
+            report = human_text({
+                "status": "complete" if completed else "failed",
+                "verdict": "pass" if passed else "fail",
+                "summary": detail[:8000],
+                "checks": [check],
+                "findings": findings,
+                "counts": draft_qa.counts_for([check], findings),
+                "cost_usd": outcome.get("cost_usd") or 0.0,
+                "duration_ms": int(outcome.get("duration_ms") or 0),
+                "model_name": outcome.get("model") or "",
+                "last_error": outcome.get("error") or "",
+            })
+            self._source_review_cache[source_hash] = report
+        if filing_blockers(report):
+            raise SourceFidelityInspectionError(report)
+
         draft_figures.checkpoint_project_figures(turn_id, project_id, user_id)
 
         def check_cancel() -> None:
@@ -1674,6 +1746,8 @@ class TurnRunner:
                         workspace=workspace, allowed=allowed, sections=sections,
                         numerals=snapshot["numerals"], figures=snapshot["figures"],
                         review_index=review_index)
+                except SourceFidelityInspectionError as exc:
+                    report = exc.report
                 except DrawingInspectionError as exc:
                     check = {
                         "name": "Every drawing sheet passes geometry, leader, and OCR inspection",
