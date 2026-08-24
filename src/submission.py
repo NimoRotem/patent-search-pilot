@@ -252,9 +252,19 @@ BASIS_HELP = {
             "it and no exception reaches it.",
     SECRET: "Filed before this application but published after it. In the United States that "
             "makes it prior art only under 102(a)(2), and in Europe only under EPC Art. 54(3).",
-    NOT_ART: "Neither published nor filed before this application's earliest effective filing "
-             "date. It is not prior art against these claims and listing it invites the examiner "
-             "to disregard the submission.",
+    NOT_ART: "<b>Not prior art against these claims in the United States.</b> One of two "
+             "reasons, and the row says which.\n\n"
+             "<b>The dates.</b> It was neither published nor filed before this application's "
+             "earliest effective filing date, so nothing reaches it.\n\n"
+             "<b>The office it came from.</b> It was filed first and published later, which "
+             "leaves only 35 U.S.C. 102(a)(2), and 102(a)(2) reaches U.S. patents, U.S. "
+             "pre-grant publications and PCT applications designating the United States, and "
+             "nothing else. A JP, TW, CN, DE or GB national publication in that position is not "
+             "prior art here at all. Note this is a UNITED STATES answer: the same document may "
+             "be EPC Art. 54(3) art at the EPO if it is a European application or a Euro-PCT "
+             "entering the European phase.\n\n"
+             "Either way, listing it invites the examiner to disregard it, and a submission is "
+             "read as a whole.",
 }
 
 SECRET_HELP = (
