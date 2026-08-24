@@ -296,6 +296,42 @@ def test_blanket_shape_background_and_stroke_controls_are_refused_before_drawing
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
 
+def test_generic_negative_boundary_controls_are_refused_before_drawing():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "A slab stands on a separate band and carries two closed housings. "
+            "No face has a rim, ledge, chamfer or second boundary drawn inside its edges."
+        ),
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "generic negative linework control" in " ".join(check["items"]).lower()
+    with pytest.raises(
+            draft_studio.FilingPreflightError,
+            match="Drawing briefs are concise and renderable"):
+        draft_studio.validate_snapshot(
+            {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
+
+
+@pytest.mark.parametrize("control", [
+    "Every outline is one thin unbroken line.",
+    "Where two faces meet, they meet along one shared edge drawn once and serving both.",
+])
+def test_generic_face_linework_controls_are_refused_before_drawing(control):
+    figures = [{
+        **FIGURES[0],
+        "caption": "A slab stands on a separate band and carries two closed housings. " + control,
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "generic face-linework control" in " ".join(check["items"]).lower()
+
+
 def test_an_exact_separator_line_count_is_refused_before_drawing():
     figures = [{
         **FIGURES[0],
@@ -1735,8 +1771,12 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "open paper between solid bodies" in system
     assert "keep all line work inside the drawing area" in system
     assert "white-interior strip" in system
+    assert "generic negative bans on linework" in system
+    assert "shared face edge to be drawn once" in system
     assert "Numeral endpoint instructions identify the part" in system
     assert "broad interior target" in draft_studio.FINALIZE_PROMPT
+    assert "generic negative linework controls" in draft_studio.FINALIZE_PROMPT
+    assert "generic face-linework controls" in draft_studio.FINALIZE_PROMPT
     assert "Replace ordinal geometry references" in draft_studio.FINALIZE_PROMPT
     assert "Never address or mention a draftsperson" in " ".join(system.split())
     assert "broadest statement of the invention that the description fully supports" in system

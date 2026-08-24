@@ -125,6 +125,17 @@ _ARBITRARY_STROKE_COUNT_RE = re.compile(
     r"(?:one|two|three|four|five|six|\d+)\s+"
     r"(?:(?:long|parallel|straight|curved|horizontal|vertical|diagonal)\s+){0,3}lines?\b",
     re.IGNORECASE)
+_GENERIC_NEGATIVE_LINEWORK_RE = re.compile(
+    r"\bno\b[^.\n]{0,180}\b(?:rim|ledge|chamfer|"
+    r"(?:second|extra|additional|inner|internal|inset|parallel|double(?:d)?)\s+"
+    r"(?:boundary|edge|line|outline|stroke))\b",
+    re.IGNORECASE)
+_GENERIC_FACE_LINEWORK_RE = re.compile(
+    r"\bevery\s+(?:visible\s+)?(?:outline|edge|boundary)\b"
+    r"[^.\n]{0,80}\b(?:one|single)\b[^.\n]{0,60}\b(?:line|stroke)\b"
+    r"|\bwhere\s+two\s+faces\s+meet\b[^.\n]{0,120}\bshared\s+edge\b"
+    r"[^.\n]{0,60}\bdrawn\s+once\b",
+    re.IGNORECASE)
 _AMBIGUOUS_MULTI_STROKE_CORD_RE = re.compile(
     r"\b(?:cord|cable|electrical\s+supply|pulling\s+element)\b"
     r"(?:[^.\n]{0,200}\b(?:strip|band)\b|"
@@ -642,6 +653,16 @@ def _figure_checks(sections: Mapping[str, str],
             brief_issues.append(
                 f"{label}: arbitrary exact stroke count {match.group(0)[:180]!r}; name the "
                 "part and its positive geometry without controlling the renderer's line count")
+        if match := _GENERIC_NEGATIVE_LINEWORK_RE.search(caption):
+            brief_issues.append(
+                f"{label}: generic negative linework control {match.group(0)[:180]!r}; "
+                "describe the required bodies and their relationships positively so necessary "
+                "edges of separate solids are not mistaken for forbidden geometry")
+        if match := _GENERIC_FACE_LINEWORK_RE.search(caption):
+            brief_issues.append(
+                f"{label}: generic face-linework control {match.group(0)[:180]!r}; describe "
+                "the required solids, faces, contacts, and occlusions without prescribing how "
+                "the renderer strokes every face edge")
         if match := _AMBIGUOUS_MULTI_STROKE_CORD_RE.search(caption):
             brief_issues.append(
                 f"{label}: ambiguous multi-stroke cord {match.group(0)[:180]!r}; depict the "
