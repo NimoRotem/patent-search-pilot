@@ -307,3 +307,40 @@ def test_unknown_browser_page_is_branded_but_unknown_api_stays_json(account_clie
     assert "That page is not available" in page.get_data(as_text=True)
     api = account_client.get("/api/qa-page-that-does-not-exist")
     assert api.status_code == 404 and api.is_json and api.get_json()["error"] == "not found"
+
+
+def _signed_in(client):
+    with client.session_transaction() as session:
+        session["user_id"] = USER["id"]
+        session["session_version"] = USER["session_version"]
+
+
+def test_the_profile_carries_the_filing_details_a_submission_needs(account_client):
+    """Entity size and signature are printed on a paper filed at the USPTO, so they are set once
+    here rather than retyped into every submission. Small entity is the default because it is the
+    common case, and a third party can never claim micro entity."""
+    _signed_in(account_client)
+    body = account_client.get("/account").get_data(as_text=True)
+    assert "Filing details" in body
+    assert 'name="entity_size"' in body and 'value="small"' in body and 'value="large"' in body
+    assert 'name="signature_name"' in body and 'name="signature_title"' in body
+    assert "1.4(d)(2)" in body, "say what the signature legally is"
+    assert "micro-entity" in body, "a third party cannot use it and the page should say so"
+    #  The signature is never echoed into a password field or a hidden one; it is plain and
+    #  editable, because replacing it has to be as easy as setting it.
+    assert 'type="text" name="signature_name"' in body
+
+
+def test_saving_the_filing_details_reaches_the_account(account_client, monkeypatch):
+    saved = {}
+    monkeypatch.setattr(accounts, "set_filing_identity",
+                        lambda uid, **kw: saved.update(kw, uid=uid) or dict(USER))
+    _signed_in(account_client)
+    page = account_client.get("/account")
+    r = account_client.post("/account", data={
+        "csrf_token": _csrf(page), "action": "filing", "entity_size": "large",
+        "signature_name": "Nimo Rotem", "signature_title": "Director"})
+    assert r.status_code == 200
+    assert saved == {"uid": USER["id"], "entity_size": "large",
+                     "signature_name": "Nimo Rotem", "signature_title": "Director"}
+    assert "Filing details saved" in r.get_data(as_text=True)
