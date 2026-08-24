@@ -660,14 +660,7 @@ def test_cross_provider_veto_coordinates_are_repaired_and_recertified(monkeypatc
         }
 
     monkeypatch.setattr(draft_figures, "inspect_marked_anchors", marked)
-    layout = draft_figures._annotation_layout(raw, anchors, 1.0)
     desired_x, desired_y = 700, 400
-    suggested_x = round(
-        (layout["source_x"] + desired_x * layout["source"].width / 1000) *
-        1000 / layout["canvas_width"])
-    suggested_y = round(
-        (layout["source_y"] + desired_y * layout["source"].height / 1000) *
-        1000 / layout["canvas_height"])
     cross_calls = []
 
     def cross_provider(*_args, **_kwargs):
@@ -680,7 +673,7 @@ def test_cross_provider_veto_coordinates_are_repaired_and_recertified(monkeypatc
                 "labels": [{
                     "numeral": "10", "correct": False, "repairable": True,
                     "evidence": "the top face center is visible",
-                    "suggested_x": suggested_x, "suggested_y": suggested_y,
+                    "suggested_x": desired_x, "suggested_y": desired_y,
                 }],
             }
         return accepted_cross_provider_audit(
@@ -734,8 +727,11 @@ def test_cross_provider_endpoint_review_uses_anthropic_pixels_and_normalizes_its
 
     monkeypatch.setattr(draft_figures, "_anthropic_endpoint_message", anthropic)
 
+    raw = blank_png()
     audit = draft_figures.inspect_cross_provider_endpoints(
-        blank_png(), label="FIG. 1",
+        raw, raw_png=raw,
+        anchors=[{"numeral": "10", "x": 400, "y": 565, "visible": True}],
+        label="FIG. 1",
         caption="The device 10 is identified on its top face.",
         numerals=["10 = device"])
 
@@ -748,8 +744,11 @@ def test_cross_provider_endpoint_review_uses_anthropic_pixels_and_normalizes_its
     assert len(calls) == 1 and calls[0][1] == "test-anthropic-key"
     assert calls[0][0]["thinking"] == {"type": "disabled"}
     assert calls[0][0]["messages"][0]["content"][0]["type"] == "image"
-    prompt = calls[0][0]["messages"][0]["content"][1]["text"]
-    assert "suggested_x" in prompt and "0 to 1000" in prompt
+    assert [item["type"] for item in calls[0][0]["messages"][0]["content"]] == [
+        "image", "image", "image", "text"]
+    prompt = calls[0][0]["messages"][0]["content"][3]["text"]
+    assert "suggested_x" in prompt and "raw geometry sheet" in prompt
+    assert "CURRENT" in prompt and "0 to 1000" in prompt
     assert saved and saved[0][1]["provider"] == "anthropic"
 
 
