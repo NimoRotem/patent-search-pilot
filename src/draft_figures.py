@@ -64,9 +64,10 @@ MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
     "figure-anchor-v10-full-sheet-correction-coordinate-certificate-majority",
     "figure-anchor-v9-local-part-coordinate-certificate-majority-with-correction",
 ))
-MARKED_PROGRESS_VERSION = "marked-progress-v3-numbered-sheet-layout"
-OCR_PROMPT_VERSION = "google-vision-document-text-v2-sheet-number"
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v8-reviewed-surface-neighborhood-repair"
+MARKED_PROGRESS_VERSION = (
+    "marked-progress-v4-pixel-grounding-bound-" + PIXEL_ANCHOR_VERSION)
+OCR_PROMPT_VERSION = "google-vision-document-text-v2-sheet-number"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 4
@@ -991,7 +992,8 @@ def _marked_progress_get(raw_png: bytes, *, label: str, caption: str,
     value = _analysis_cache_get(_marked_progress_key(
         raw_png, label=label, caption=caption, numerals=numerals,
         sheet_number=sheet_number))
-    if not value or value.get("version") != MARKED_PROGRESS_VERSION:
+    if (not value or value.get("version") != MARKED_PROGRESS_VERSION or
+            value.get("pixel_anchor_version") != PIXEL_ANCHOR_VERSION):
         return None
     expected = {entry["numeral"] for entry in numeral_entries(numerals)}
     anchors = []
@@ -1079,6 +1081,7 @@ def _marked_progress_put(raw_png: bytes, *, label: str, caption: str, numerals,
     _record_anchor_coordinate_history(history, anchors)
     result = {
         "version": MARKED_PROGRESS_VERSION,
+        "pixel_anchor_version": PIXEL_ANCHOR_VERSION,
         "specification_hash": specification_hash(label, caption, numerals),
         "anchors": [dict(item) for item in anchors or ()],
         "certificates": {str(key): dict(value)

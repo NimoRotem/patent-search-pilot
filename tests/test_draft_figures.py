@@ -1665,6 +1665,25 @@ def test_marked_progress_ignores_coordinates_saved_under_old_grounding_rules(mon
     ) is None
 
 
+def test_marked_progress_ignores_current_layout_saved_under_old_pixel_grounding(monkeypatch):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda _key: {
+        "version": draft_figures.MARKED_PROGRESS_VERSION,
+        "pixel_anchor_version": "pixel-anchor-v7-old-grounding",
+        "anchors": [{
+            "numeral": "36", "x": 203, "y": 800,
+            "visible": True, "evidence": "reviewed surface point",
+        }],
+        "certificates": {}, "coordinate_history": {"36": [[203, 800]]},
+        "attempts": draft_figures.MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS,
+    })
+
+    assert draft_figures._marked_progress_get(
+        b"same raw geometry", label="FIG. 5", caption="perspective cable embodiment",
+        numerals=["36 = covering element"],
+    ) is None
+
+
 def test_current_marked_audit_accepts_a_fully_certified_v9_review():
     audit = accepted_marked_anchor_audit(
         prompt_version=(
