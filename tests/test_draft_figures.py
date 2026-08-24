@@ -1403,6 +1403,28 @@ def test_pixel_grounding_keeps_a_planar_surface_endpoint_inside_its_region(part)
     assert (anchors[0]["x"], anchors[0]["y"]) == (150, 150)
 
 
+def test_pixel_grounding_keeps_a_space_between_named_edges_off_the_edges():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((100, 100, 900, 900), outline="black", width=8)
+    draw.rectangle((200, 200, 800, 800), outline="black", width=8)
+    draw.rectangle((350, 350, 650, 650), outline="black", width=8)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["24 = perimeter member"], [{
+            "numeral": "24", "x": 500, "y": 275, "visible": True,
+            "evidence": (
+                "a point in the space between the top edge of the middle rectangle "
+                "and the top edge of the innermost rectangle"
+            ),
+        }])
+
+    assert audit["ok"] is True and audit["adjusted"] == []
+    assert (anchors[0]["x"], anchors[0]["y"]) == (500, 275)
+
+
 def test_pixel_grounding_rejects_a_narrow_white_margin_for_a_broad_interior_target():
     image = Image.new("RGB", (1000, 1000), "white")
     draw = ImageDraw.Draw(image)
