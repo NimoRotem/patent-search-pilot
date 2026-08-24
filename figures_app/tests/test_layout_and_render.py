@@ -222,3 +222,86 @@ def test_a_working_converter_reports_no_failure(tmp_path, profile):
         assert "pdf_error" not in written
     if "png" in written:
         assert "png_error" not in written
+
+
+def test_reaching_further_never_costs_more_than_crossing_another_leader():
+    """Distance is in sheet units; every other weight is a constant.
+
+    So their ratio was a function of how big the drawing is. On a raster-backed sheet the
+    numerals sit in the margin and leaders run 300 to 850 units, which made crossing another
+    leader (400) cheaper than reaching 400 units further, and FIG. 4 of US-2024/0246200-A1 came
+    back with four crossing pairs that no amount of re-placing would undo.
+    """
+    from pfc.layout import leaders
+
+    assert leaders.DISTANCE_CEILING < leaders.COST_LEADER_CROSS, (
+        "the largest possible distance difference has to lose to one crossing")
+    assert leaders.DISTANCE_CEILING < leaders.COST_LABEL_OVERLAP
+    assert leaders.DISTANCE_CEILING < leaders.COST_HITS_NODE
+    assert leaders.DISTANCE_CEILING < leaders.COST_AMBIGUOUS
+    assert leaders.DISTANCE_CEILING < leaders.COST_OUTSIDE
+    # and it still discriminates below the ceiling, or numerals wander off their objects
+    assert leaders.DISTANCE_CEILING > leaders.COST_BEND * 4
+
+
+def test_the_distance_term_is_bounded_so_a_crossing_always_costs_more(profile):
+    """The invariant, checked where it lives: in the cost function, not in a constant.
+
+    An unbounded distance term is a crossing waiting to happen on any sheet big enough. On
+    US-2024/0246200-A1 leaders ran 300 to 850 units against COST_LEADER_CROSS at 400.
+    """
+    from pfc.layout import leaders
+    from pfc.schemas import Box, LayoutNode, Point
+
+    area = Box(x=profile.drawing_left, y=profile.drawing_top,
+               width=profile.drawing_width, height=profile.drawing_height)
+    node = LayoutNode(entity_id="e1", reference_numeral="110", caption="", shape="box",
+                      box=Box(x=area.x + 40, y=area.y + 40, width=200.0, height=140.0),
+                      depth=1, role="primary")
+
+    # A numeral as far from its object as the sheet allows, with nothing else on the sheet.
+    far = (area.right - 200.0, area.bottom - 120.0)
+    target = (node.box.right, node.box.bottom)
+    route = [Point(x=far[0], y=far[1]), Point(x=target[0], y=target[1])]
+    cost = leaders._cost(profile, node, far, route, target, [node], [], [], area, "110")
+
+    span = ((area.width ** 2 + area.height ** 2) ** 0.5)
+    assert span > 2000, "the fixture sheet has to be big enough for this to mean anything"
+    assert cost < leaders.COST_LEADER_CROSS, (
+        f"a leader spanning the sheet costs {cost:.0f}, so crossing one at "
+        f"{leaders.COST_LEADER_CROSS:.0f} would be the cheaper choice")
+
+
+def test_three_numerals_on_one_object_get_leaders_that_do_not_cross(profile):
+    """The case the ceiling was for: several numerals pointing at one box in a perspective view.
+
+    A reader that cannot separate three parts returns one box for all three. Their leaders have
+    to approach it from different sides rather than converge and cross.
+    """
+    from pfc.layout.leaders import place_labels
+    from pfc.geometry import segments, segments_cross
+    from pfc.schemas import Box, LayoutNode, LayoutScene
+
+    shared = Box(x=700.0, y=800.0, width=900.0, height=500.0)
+    nodes = [LayoutNode(entity_id=f"e{n}", reference_numeral=str(n), caption="", shape="box",
+                        box=shared.model_copy(), depth=1, role="primary")
+             for n in (110, 120, 130)]
+    scene = LayoutScene(
+        figure_id="FIG_4", figure_number="4", figure_type="mechanical_schematic",
+        profile_id=profile.version_tag, sheet_width=profile.sheet_width,
+        sheet_height=profile.sheet_height,
+        drawing_area=Box(x=profile.drawing_left, y=profile.drawing_top,
+                         width=profile.drawing_width, height=profile.drawing_height),
+        nodes=nodes, edges=[], labels=[], caption="t", sheet_number=1, sheet_total=1,
+        artwork=True, artwork_box=Box(x=600.0, y=700.0, width=1100.0, height=700.0))
+
+    placed = place_labels(scene, profile).labels
+    assert len(placed) == 3
+    crossings = 0
+    for first in range(len(placed)):
+        for second in range(first + 1, len(placed)):
+            for a in segments(placed[first].leader_points):
+                for b in segments(placed[second].leader_points):
+                    if segments_cross(a, b):
+                        crossings += 1
+    assert crossings == 0, f"{crossings} crossing pair(s) among three leaders to one box"

@@ -39,6 +39,14 @@ COST_LEADER_CROSS = 400.0
 COST_EDGE_CROSS = 120.0
 COST_BEND = 18.0
 COST_DISTANCE = 1.0
+# Distance is measured in sheet units and every other weight is a constant, so their ratio was
+# quietly a function of how big the drawing is. On a raster-backed sheet the numerals sit in the
+# margin around the artwork and leaders run 300 to 850 units, which made crossing another leader
+# (400) CHEAPER than reaching 400 units further, and FIG. 4 of US-2024/0246200-A1 came back with
+# four crossing pairs that no amount of re-placing would undo. Past this ceiling a leader is
+# simply "far", and how much further it goes must not outweigh a correctness term. Kept just
+# under COST_LEADER_CROSS so the largest possible distance difference loses to one crossing.
+DISTANCE_CEILING = COST_LEADER_CROSS * 0.9
 # Two numerals that do not overlap but sit a hair apart cost the same, under the rule above, as
 # two at opposite corners, so the search has no reason to prefer the readable one. On
 # US-2024/0246200-A1 that put 350 and 314 shoulder to shoulder and an independent reader read
@@ -137,7 +145,7 @@ def _cost(profile: DrawingProfile, node: LayoutNode, label_point: tuple[float, f
     if not (area.x <= target[0] <= area.right and area.y <= target[1] <= area.bottom):
         return COST_OUTSIDE
 
-    cost = COST_DISTANCE * distance(label_point, target)
+    cost = min(COST_DISTANCE * distance(label_point, target), DISTANCE_CEILING)
     cost += COST_BEND * (len(route) - 2)
     if artwork is not None and box.overlaps(artwork):
         cost += COST_ON_ARTWORK
