@@ -2010,6 +2010,28 @@ def test_deterministic_nested_plan_has_exactly_three_rectangles_and_one_circle()
     assert draft_figures._deterministic_nested_plan_png(rewritten) is not None
 
 
+def test_deterministic_nested_plan_supports_two_rectangle_only_sheet_with_margins():
+    specification = (
+        "The whole sheet contains exactly two rectangular outlines, one nested inside the "
+        "other, and no other line of any kind. Each rectangle is one closed thin line. The whole "
+        "drawing stands clear of the edges of the sheet."
+    )
+
+    png = draft_figures._deterministic_nested_plan_png(specification)
+
+    assert draft_figures._expected_closed_region_count(specification) == 2
+    assert png is not None
+    audit = draft_figures.closed_region_audit(png, specification)
+    assert audit["ok"] is True and audit["observed"] == 2
+    image = Image.open(io.BytesIO(png)).convert("L")
+    black_x = [x for x in range(image.width) for y in range(image.height)
+               if image.getpixel((x, y)) < 32]
+    black_y = [y for x in range(image.width) for y in range(image.height)
+               if image.getpixel((x, y)) < 32]
+    assert min(black_x) >= 100 and max(black_x) <= image.width - 100
+    assert min(black_y) >= 75 and max(black_y) <= image.height - 75
+
+
 def test_deterministic_nested_plan_uses_even_width_corridors():
     specification = (
         "The whole sheet contains four outlines and nothing else. From the outside inward, "
@@ -2061,7 +2083,7 @@ def test_deterministic_nested_plan_scales_the_circle_to_one_third_of_inner_recta
     assert 0.30 <= circle_diameter / inner_width <= 0.36
 
 
-def test_render_uses_deterministic_nested_plan_after_generated_counts_fail(monkeypatch):
+def test_render_uses_deterministic_nested_plan_before_raster_generation(monkeypatch):
     bad = blank_png(1000, 800)
     specification = (
         "The whole sheet contains four outlines and nothing else. From the outside inward, "
@@ -2069,7 +2091,10 @@ def test_render_uses_deterministic_nested_plan_after_generated_counts_fail(monke
         "once as one closed line."
     )
     monkeypatch.setattr(draft_figures, "MAX_SEMANTIC_ATTEMPTS", 1)
-    monkeypatch.setattr(draft_figures, "_cached_generate", lambda *a, **k: bad)
+    generated = []
+    monkeypatch.setattr(
+        draft_figures, "_cached_generate",
+        lambda *a, **k: generated.append((a, k)) or bad)
     monkeypatch.setattr(draft_figures, "_discard_cached_generation", lambda *a, **k: None)
 
     def inspect(png, **_kwargs):
@@ -2130,6 +2155,7 @@ def test_render_uses_deterministic_nested_plan_after_generated_counts_fail(monke
         numerals=["16 = second side", "24 = perimeter member", "30 = extraction opening"])
 
     assert result["semantic_audit"]["ok"] is True
+    assert generated == []
     assert saved[0]["source_kind"] == "deterministic"
     assert draft_figures.closed_region_audit(
         saved[0]["base_png"], specification)["observed"] == 4

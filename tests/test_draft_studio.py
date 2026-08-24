@@ -1431,6 +1431,8 @@ def test_legacy_candidate_missing_government_support_is_preserved_for_automatic_
 
 
 def test_source_reviewer_reads_the_standalone_government_support_file():
+    assert "input/brief.md" in draft_qa.SOURCE_REVIEW_PROMPT
+    assert "authority only for filing formalities" in draft_qa.SOURCE_REVIEW_SYSTEM
     assert "draft/03-government-support.md" in draft_qa.SOURCE_REVIEW_PROMPT
 
 
