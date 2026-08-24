@@ -255,6 +255,10 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
     done = [0]
 
     earlier_artwork: list = []
+    # Set the first time the image model refuses for quota. Every later figure would find the
+    # same, so they stop asking: on a real run all four spent three attempts each discovering it
+    # and each wrote a raw 429 payload into the report.
+    out_of_quota: list = []
 
     def compile_one(numbered) -> Optional[FigureBundle]:
         sheet_number, (figure_id, spec) = numbered
@@ -266,7 +270,8 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
                                      neighbourhood=(neighbourhood
                                                     if config.figure_style == "reference_guided"
                                                     else None),
-                                     locator=locator, earlier=earlier_artwork)
+                                     locator=locator, earlier=earlier_artwork,
+                                     exhausted=out_of_quota)
         except UnsupportedFigure as exc:
             record.status = "BLOCKED"
             record.reason = str(exc)
@@ -331,6 +336,13 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
             reason = written.get(f"{kind}_error")
             if reason:
                 export_failures.setdefault(kind, set()).add(reason)
+
+    if out_of_quota:
+        notes.append(
+            "the image model ran out of quota partway through this job, so the figures after "
+            "that point were drawn from the specification rather than in the idiom of the "
+            "neighbouring art. They are complete and checked; they are just plainer. Running the "
+            "same patent again once the quota resets produces the reference-guided drawings")
 
     # Once per job, not once per figure: a missing converter fails all forty identically.
     for kind, reasons in sorted(export_failures.items()):
@@ -403,7 +415,8 @@ def _compile_figure(spec, graph, profile, figure_plan, config: JobConfig,
                     record: FigureResult, verifier, call_log, paths: JobPaths, *,
                     sheet_number: int, sheet_total: int,
                     neighbourhood=None, locator=None,
-                    earlier: Optional[list] = None) -> FigureBundle:
+                    earlier: Optional[list] = None,
+                    exhausted: Optional[list] = None) -> FigureBundle:
     """One figure, from its specification to a checked sheet.
 
     Everything after the graph happens here, so the whole of a figure's fate — laid out,
@@ -411,11 +424,14 @@ def _compile_figure(spec, graph, profile, figure_plan, config: JobConfig,
     for one figure without reference to any other.
     """
     bundle: Optional[FigureBundle] = None
-    if config.figure_style == "reference_guided" and neighbourhood is not None:
+    if (config.figure_style == "reference_guided" and neighbourhood is not None
+            and not exhausted):
         drawn = referencemode.draw_figure(
             spec, graph, profile, neighbourhood, locator,
             earlier=list(earlier or ()), sheet_number=sheet_number, sheet_total=sheet_total)
         record.corrections_applied.extend(drawn.notes)
+        if drawn.exhausted and exhausted is not None:
+            exhausted.append(drawn.failed)
         if drawn.ok:
             bundle = FigureBundle(spec=spec, scene=drawn.scene, svg=drawn.svg,
                                   artwork=drawn.artwork)
@@ -425,12 +441,24 @@ def _compile_figure(spec, graph, profile, figure_plan, config: JobConfig,
             _write_json(paths.debug / f"{_stem(spec.figure_number)}_artwork.json",
                         {"references": drawn.references, "notes": drawn.notes})
             (paths.figures / f"{_stem(spec.figure_number)}_art.png").write_bytes(drawn.artwork)
+        elif drawn.exhausted:
+            # Not a fact about the drawing. "The reference-guided drawing was not usable
+            # (ClientError: 429 RESOURCE_EXHAUSTED {...})" is what this used to say, on all four
+            # figures, with the raw payload in it.
+            record.corrections_applied.append(
+                "the image model is out of quota on this box, so this figure was drawn from the "
+                "specification instead. Nothing is wrong with it; run it again when the quota "
+                "resets to get the reference-guided drawing")
         else:
             # A figure that could not be generated or grounded is drawn the deterministic way
             # rather than left out. Something correct and plain beats nothing.
             record.corrections_applied.append(
                 f"the reference-guided drawing was not usable ({drawn.failed}), so this figure "
                 "was drawn from the specification instead")
+    elif config.figure_style == "reference_guided" and exhausted:
+        record.corrections_applied.append(
+            "the image model had already run out of quota earlier in this job, so this figure "
+            "was drawn from the specification without asking again")
 
     if bundle is None:
         scene = build_scene(spec, graph, profile, sheet_number=sheet_number,

@@ -615,3 +615,55 @@ def test_smuggled_text_that_gets_past_the_artwork_check_still_fails_the_sheet(fi
     assert "777" in result.unexpected_references
     issues = vision.issues_from_diff(result, observed, spec.figure_id)
     assert [i for i in blocking(issues) if i.rule_id in {"VIS002", "VIS007"}]
+
+
+def test_a_quota_refusal_is_not_a_failed_drawing(figure, profile, neighbourhood, monkeypatch):
+    """Seen on a real run: all four figures wrote a raw 429 payload into the report.
+
+    "The reference-guided drawing was not usable (ClientError: 429 RESOURCE_EXHAUSTED {...})" is
+    a sentence about the box, dressed as a sentence about the drawing, four times over.
+    """
+    graph, _plan, spec = figure
+
+    def out_of_quota(spec, graph, references, earlier=(), model="", temperature=0.32):
+        raise generate.GenerationExhausted("the image model is out of quota on this box")
+
+    monkeypatch.setattr(referencemode.generate, "draw", out_of_quota)
+    drawn = referencemode.draw_figure(spec, graph, profile, neighbourhood, object())
+
+    assert not drawn.ok
+    assert drawn.exhausted, "the caller has to be able to stop asking"
+    assert "out of quota" in drawn.failed
+    assert "429" not in drawn.failed and "RESOURCE_EXHAUSTED" not in drawn.failed
+
+
+def test_the_shapes_a_quota_refusal_arrives_in_are_all_recognised():
+    """It comes back as an SDK error, an HTTP status or a message, depending on the transport."""
+    from pfc.generate import _is_exhausted
+
+    assert _is_exhausted(RuntimeError("429 RESOURCE_EXHAUSTED"))
+    assert _is_exhausted(RuntimeError("Quota exceeded for aiplatform.googleapis.com"))
+    assert _is_exhausted(RuntimeError("rate limit reached, please retry"))
+    assert _is_exhausted(RuntimeError("Too Many Requests"))
+    assert _is_exhausted(type("ClientError", (Exception,), {})("resource_exhausted"))
+
+    # And what must NOT be mistaken for it, because those are worth retrying.
+    assert not _is_exhausted(RuntimeError("the image model returned no image"))
+    assert not _is_exhausted(RuntimeError("500 INTERNAL"))
+    assert not _is_exhausted(RuntimeError("deadline exceeded"))
+
+
+def test_a_quota_refusal_only_costs_one_figure_the_time_to_find_out(figure, profile,
+                                                                    neighbourhood, monkeypatch):
+    """Every later figure would find the same thing, so they stop asking."""
+    graph, _plan, spec = figure
+    asked = []
+
+    def out_of_quota(spec, graph, references, earlier=(), model="", temperature=0.32):
+        asked.append(1)
+        raise generate.GenerationExhausted("the image model is out of quota on this box")
+
+    monkeypatch.setattr(referencemode.generate, "draw", out_of_quota)
+    drawn = referencemode.draw_figure(spec, graph, profile, neighbourhood, object())
+    assert drawn.exhausted
+    assert len(asked) == 1, "it must not retry a refusal that will not change"

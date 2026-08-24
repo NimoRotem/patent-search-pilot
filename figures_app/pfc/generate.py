@@ -79,6 +79,27 @@ class GenerationUnavailable(RuntimeError):
     """No image model on this host."""
 
 
+class GenerationExhausted(RuntimeError):
+    """The image model is out of quota. Not now, rather than not ever, and not this drawing.
+
+    Distinct because the answer is different in every direction: retrying inside the figure is
+    pointless, retrying the NEXT figure is worse than pointless because it spends the same
+    seconds finding out again, and the sentence a human needs says the box ran out of quota
+    rather than that the drawing could not be made. Seen on a real run, where all four figures
+    each burned three attempts and each wrote a raw 429 payload into the report.
+    """
+
+
+# What a quota or rate-limit refusal looks like across the transports this can arrive on.
+_EXHAUSTED = ("resource_exhausted", "429", "quota", "rate limit", "rate_limit",
+              "too many requests")
+
+
+def _is_exhausted(exc: Exception) -> bool:
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return any(marker in text for marker in _EXHAUSTED)
+
+
 def _client():
     from . import pilot
 
@@ -246,6 +267,9 @@ def draw(spec: FigureSpec, graph: PatentGraph, references: Sequence[Sheet],
         try:
             png = _generate_once(prompt, reference_blobs, model, temperature)
         except Exception as exc:
+            if _is_exhausted(exc):
+                raise GenerationExhausted(
+                    "the image model is out of quota on this box") from exc
             last = f"{type(exc).__name__}: {str(exc)[:160]}"
             time.sleep(0.4 * (2 ** attempt) + random.uniform(0, 0.2))
             continue

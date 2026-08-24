@@ -43,6 +43,9 @@ class Drawn:
     references: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     failed: str = ""
+    # The image model is out of quota. Every later figure in this job will find the same, so the
+    # caller stops asking rather than spending the same seconds on each of them.
+    exhausted: bool = False
 
     @property
     def ok(self) -> bool:
@@ -88,6 +91,10 @@ def draw_figure(spec: FigureSpec, graph: PatentGraph, profile: DrawingProfile,
     for attempt in range(MAX_DRAW_ATTEMPTS):
         try:
             generated = generate.draw(spec, graph, references, earlier=earlier)
+        except generate.GenerationExhausted as exc:
+            out.exhausted = True
+            out.failed = str(exc)
+            return out
         except generate.GenerationUnavailable as exc:
             out.failed = f"no image model is available: {exc}"
             return out
