@@ -1809,9 +1809,18 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
     if (not rectangle_count and expected == 2 and
             re.search(r"\bboth\b[^.]{0,60}\brectangular\b", text)):
         rectangle_count = 2
+    separately_named_rectangles = bool(
+        expected == 2 and
+        re.search(r"\brectangular ring\b", text) and
+        re.search(r"\bone rectangle\b[^.]{0,100}\bouter edge of the ring\b", text) and
+        re.search(r"\bone smaller rectangle within it\b[^.]{0,100}"
+                  r"\binner edge of the ring\b", text))
+    if not rectangle_count and separately_named_rectangles:
+        rectangle_count = 2
     has_circle = bool(re.search(
         r"\b(?:one\s+(?:circle|circular)|circle\s+at\s+the\s+cent(?:er|re))\b", text))
     nested = bool(
+        separately_named_rectangles or
         "nested" in text or "outside inward" in text or "outside to inside" in text or
         "one nested inside the other" in text or
         re.search(
@@ -1825,6 +1834,8 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
     rectangles_only = bool(re.search(
         r"\b(?:no other line|nothing else|two\s+closed(?:\s+\w+){0,2}\s+lines?\s+and\s+"
         r"(?:no\s+third|those\s+two\s+alone))\b", text))
+    rectangles_only = rectangles_only or bool(re.search(
+        r"\bexactly two closed lines and no others\b", text))
     if (not nested or not rectangle_count or
             expected != rectangle_count + int(has_circle) or
             (not has_circle and not rectangles_only)):

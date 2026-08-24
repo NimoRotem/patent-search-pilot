@@ -2212,6 +2212,19 @@ def test_deterministic_nested_plan_accepts_source_clean_ring_wording():
     assert draft_figures._deterministic_nested_plan_png(specification) is not None
 
 
+def test_deterministic_nested_plan_accepts_separately_named_outer_and_inner_lines():
+    specification = (
+        "The sheet shows the perimeter member as one rectangular ring and no other body. "
+        "The whole sheet carries exactly two closed lines and no others: one rectangle, which "
+        "is the outer edge of the ring, and one smaller rectangle within it, which is the inner "
+        "edge of the ring. The band lying between those two lines is the drawn body. Beyond the "
+        "outer rectangle the paper is bare on every side."
+    )
+
+    assert draft_figures._expected_closed_region_count(specification) == 2
+    assert draft_figures._deterministic_nested_plan_png(specification) is not None
+
+
 def test_deterministic_pulling_scene_accepts_source_clean_single_path_wording():
     specification = """
     The covering element 36 is one large plain tile filling the lower part of the drawing
