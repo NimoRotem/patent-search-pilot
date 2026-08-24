@@ -73,6 +73,12 @@ class SourceFidelityInspectionError(StudioError):
         super().__init__(detail or "The source-fidelity preflight did not pass.")
 
 
+class SourceReviewUnavailable(StudioError):
+    """The independent reviewer failed, so retry the saved candidate unchanged."""
+
+    retry_without_repair = True
+
+
 class DrawingInspectionError(StudioError):
     def __init__(self, errors: Sequence[str]):
         self.errors = [str(item)[:2000] for item in errors if str(item).strip()]
@@ -1559,6 +1565,10 @@ class TurnRunner:
             outcome = self.qa.review_sources(workspace, transcript=transcript)
             findings = list(outcome.get("findings") or [])
             completed = bool(outcome.get("ok"))
+            if not completed:
+                detail = (str(outcome.get("error") or "").strip() or
+                          "The independent source reviewer did not return a valid result.")
+                raise SourceReviewUnavailable(detail)
             passed = completed and not findings
             detail = (str(outcome.get("summary") or "").strip() or
                       ("The independent source-fidelity review completed without findings."

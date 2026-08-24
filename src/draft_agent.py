@@ -447,6 +447,17 @@ def _rate_limit_error(error: str) -> bool:
         "too many requests" in text)
 
 
+def _transient_provider_error(error: str) -> bool:
+    """Recognize provider failures that are safe to repeat with the same workspace."""
+    text = str(error or "").lower()
+    return bool(
+        _rate_limit_error(text) or
+        re.search(r"(?:^|\D)(?:500|502|503|504|529)(?:\D|$)", text) or
+        any(phrase in text for phrase in (
+            "overloaded", "service unavailable", "temporarily unavailable",
+            "server-side issue", "internal server error")))
+
+
 def _wait_for_rate_limit_retry(seconds: int,
                                cancel: threading.Event | None = None) -> bool:
     """Wait through a provider window while still honoring a user cancellation."""
@@ -478,11 +489,11 @@ def _merge_attempts(previous: AgentRun, current: AgentRun, message: str) -> Agen
 
 
 def _run_with_rate_limit_retries(common: Mapping[str, Any], *, auth_mode: str) -> AgentRun:
-    """Retry transient per-minute limits without weakening the independent-session boundary."""
+    """Retry transient provider failures without weakening the session boundary."""
     current = _run_once(**common, auth_mode=auth_mode)
     for retry_index in range(RATE_LIMIT_RETRIES):
         cancel = common.get("cancel")
-        if (current.ok or current.cancelled or not _rate_limit_error(current.error) or
+        if (current.ok or current.cancelled or not _transient_provider_error(current.error) or
                 (cancel is not None and cancel.is_set())):
             return current
         delay = RATE_LIMIT_RETRY_SECONDS * (retry_index + 1)
@@ -499,8 +510,8 @@ def _run_with_rate_limit_retries(common: Mapping[str, Any], *, auth_mode: str) -
             auth_mode=auth_mode)
         current = _merge_attempts(
             current, retried,
-            f"The provider rate limit was reached, so the run waited {delay} seconds and "
-            "retried automatically.")
+            f"The provider returned a temporary error or rate limit, so the run waited "
+            f"{delay} seconds and retried automatically.")
     return current
 
 
