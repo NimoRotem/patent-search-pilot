@@ -64,7 +64,7 @@ MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
     "figure-anchor-v10-full-sheet-correction-coordinate-certificate-majority",
     "figure-anchor-v9-local-part-coordinate-certificate-majority-with-correction",
 ))
-PIXEL_ANCHOR_VERSION = "pixel-anchor-v8-reviewed-surface-neighborhood-repair"
+PIXEL_ANCHOR_VERSION = "pixel-anchor-v9-reviewed-boundary-over-hatching"
 MARKED_PROGRESS_VERSION = (
     "marked-progress-v4-pixel-grounding-bound-" + PIXEL_ANCHOR_VERSION)
 OCR_PROMPT_VERSION = "google-vision-document-text-v2-sheet-number"
@@ -322,6 +322,7 @@ _NEGATED_TARGET_RE = re.compile(
     r"\b(?:not|never|excluding|excluded|exclude|clear\s+of|away\s+from|rather\s+than)\b",
     re.IGNORECASE)
 _MAX_ANCHOR_SNAP = 220
+_REVIEWED_LINE_TARGET_SNAP = 36
 _MIN_BROAD_INTERIOR_CLEARANCE = 24
 _MIN_ANCHOR_SHEET_MARGIN = 30
 
@@ -1367,12 +1368,17 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
             return nearest
         runs = axis_runs(axis)
         # Three independent marked-coordinate reviews can identify a short face more precisely
-        # than a whole-sheet run-length heuristic. Confirm that their proposed point is on a
-        # visible line, but do not pull it onto a longer neighboring boundary afterward.
-        if (preserve_reviewed_line_target and
-                float(distance_sq[nearest]) <= 12.0 ** 2 and
-                int(runs[ink_y[nearest], ink_x[nearest]]) >= 12):
-            return nearest
+        # than a whole-sheet run-length heuristic. A hatch stroke can sit closer to the proposed
+        # coordinate than the reviewed boundary, so choose the nearest substantial axis-aligned
+        # run inside a tight neighborhood before considering a longer neighboring boundary.
+        if preserve_reviewed_line_target:
+            reviewed = np.flatnonzero(
+                distance_sq <= float(min(max_snap, _REVIEWED_LINE_TARGET_SNAP)) ** 2)
+            if len(reviewed):
+                reviewed_runs = runs[ink_y[reviewed], ink_x[reviewed]]
+                substantial = reviewed[reviewed_runs >= 12]
+                if len(substantial):
+                    return int(substantial[np.argmin(distance_sq[substantial])])
         substantial_run = max(
             12, round((width if axis == "horizontal" else height) * 0.08))
         if int(runs[ink_y[nearest], ink_x[nearest]]) >= substantial_run:
