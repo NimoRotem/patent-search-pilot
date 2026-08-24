@@ -8,6 +8,17 @@
   still be filed, but the practitioner should know that before it goes in the envelope.
 #}
 <h1 style="margin-bottom:.2em">Concise descriptions of relevance</h1>
+{% if cands and not building|default(false) %}
+<form method="post" action="{{ url_for('concise_descriptions', slug=slug) }}"
+      style="margin:10px 0 14px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="auto" value="10">
+  <button class="btn primary" type="submit">Build the top-10 package</button>
+  <span class="small muted">The ten strongest documents by what the ledger says they kill,
+    office actions first, one per family, covering as many claims as the evidence supports.
+    About 5 minutes.</span>
+</form>
+{% endif %}
 <p class="small muted" style="margin-top:0">
   Third-party preissuance submission under 37 CFR § 1.290 — one document per reference, built from
   this search's per-claim evidence. <a href="{{ url_for('report', slug=slug) }}">back to the report</a>
@@ -129,9 +140,11 @@
 <form method="post" id="cdForm"{% if building|default(false) %} hidden{% endif %} action="{{ url_for('concise_descriptions', slug=slug) }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-  <div class="card" style="margin:1em 0;padding:1em">
-    <h2 style="margin-top:0">The application under examination</h2>
-    <p class="small muted" style="margin-top:0">
+  <details class="card" style="margin:1em 0;padding:1em">
+    <summary style="cursor:pointer"><b>The application under examination</b>
+      <span class="small muted">{{ subject.app_no or subject.pub_no or 'name it before filing' }}
+        &middot; edit</span></summary>
+    <p class="small muted" style="margin-top:.6em">
       Named on every page. The search may have been run from a family member or an uploaded draft,
       so these are editable.
     </p>
@@ -143,7 +156,7 @@
     </div>
     <label class="small" style="display:block;margin-top:.6em">Number the first document as
       <input name="start_at" value="1" size="3"></label>
-  </div>
+  </details>
 
   <div class="card" style="margin:1em 0;padding:1em">
     <h2 style="margin-top:0">Documents</h2>

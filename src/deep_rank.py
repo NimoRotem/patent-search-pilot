@@ -640,6 +640,8 @@ _ENV_KNOB = {
     "CONCEPT_PASS_TOP": "DEEP_RANK_CONCEPT_PASS_TOP",
     "BATCH_PER_LIM": "DEEP_RANK_BATCH_PER_LIM",
     "BATCH_TAIL_MAX": "DEEP_RANK_BATCH_TAIL_MAX",
+    "RESCUE_CLAIMS": "DEEP_RANK_RESCUE_CLAIMS",
+    "CLAIM_REACH_CAP": "DEEP_RANK_CLAIM_REACH_CAP",
 }
 
 
@@ -661,7 +663,10 @@ def _budget(overrides):
             "CONCEPT_PASS_TOP": CONCEPT_PASS_TOP,
             #  Zero here means "this depth did not set it": the caller falls back to the
             #  quick or deep constant, so a budget that omits the tail changes nothing.
-            "BATCH_PER_LIM": 0, "BATCH_TAIL_MAX": 0}
+            "BATCH_PER_LIM": 0, "BATCH_TAIL_MAX": 0,
+            "RESCUE_CLAIMS": 1 if RESCUE_CLAIMS else 0,
+            #  0 = unlimited, the historical behaviour. A ten-minute profile sets a cap.
+            "CLAIM_REACH_CAP": 0}
     applied = set()
     for k, v in (overrides or {}).items():
         if k not in base or v is None:
@@ -1399,7 +1404,8 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
             by_pub_row = {r["pub"]: r for r in rows}
             #  Quick tier: reach_map still feeds the batch tail, but nothing claims a
             #  full-document read slot , there is no full-read wave to claim from.
-            for pub in ([] if quick else claim_reach.quota(reach_map)):
+            for pub in ([] if quick else claim_reach.quota(
+                    reach_map, cap=(B["CLAIM_REACH_CAP"] or None))):
                 r = by_pub_row.get(pub)
                 if r is not None and pub not in seen:
                     chosen.append(r)
@@ -1506,7 +1512,9 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
 
     #  THE PASSAGE TAIL , read the screened-but-uncut population per limitation, in batches.
     #  See the BATCH_TAIL knob for why this exists and what it replaces.
-    if BATCH_TAIL and claim_items and reach_map:
+    #  A find run sets BATCH_TAIL_MAX to -1: phase 1 is retrieval evidence only, and the
+    #  sweep this skips is exactly what the ledger phase buys.
+    if BATCH_TAIL and claim_items and reach_map and (B["BATCH_TAIL_MAX"] or 1) > 0:
         try:
             #  A whole extra reading wave. Nothing here is worth paying for on a run somebody
             #  else now owns, and the handler below re-raises so the stop is not mistaken for a
@@ -1625,7 +1633,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
             ledger = None
 
     rescue = {"ran": False}
-    if RESCUE_CLAIMS and claim_items and not quick:
+    if RESCUE_CLAIMS and B.get("RESCUE_CLAIMS", 1) and claim_items and not quick:
         t2 = time.time()
         try:
             rescued_refs, rescue = claim_rescue.run(

@@ -472,6 +472,25 @@ def search_designs(query: str, before: str = "", limit: int = 0) -> dict:
             "remaining": a.remaining, "warnings": a.pop_warnings(), "enabled": True}
 
 
+def design_details(design_number: str) -> dict:
+    """One design's full record, for a lookup by number.
+
+    Returns {} when the adapter has no credentials, and raises whatever the API raised
+    otherwise: a reader who typed a real number and got an empty card would conclude the
+    design does not exist.
+    """
+    from . import _submit, _new_client
+    a = _adapter()
+    if not a.enabled():
+        return {}
+
+    async def go():
+        async with _new_client(WEB_TIMEOUT) as c:
+            return await a.details(design_number, c)
+
+    return _submit(go(), timeout=WEB_TIMEOUT + 10)
+
+
 def design_view(design_number: str, order: int = 1, thumbnail: bool = True) -> bytes:
     """One drawing, fetched server-side.
 
