@@ -6189,6 +6189,31 @@ def _concise_package(out, docs, subject, report=None, identity=None):
     return findings
 
 
+#  What a filing artefact is called inside the archive, and which files are not filing artefacts.
+#  One function rather than two filters and a rename spread through the route: the pair of them
+#  were redundant, so no test could tell them apart and no defect injection could reach either.
+ZIP_FILING_SUFFIXES = (".pdf", ".docx", ".csv", ".txt")
+
+
+def zip_member_name(name):
+    """-> the name this file takes in the archive, or None if it does not belong in one.
+
+    The archive is what gets filed, so it carries the whole package: the audit, the document list
+    and statements, the descriptions, the copies and the translations. The `.md` and the
+    `.model.json` are working files, and a model.json in an envelope to the Office would be the
+    raw cells behind the paper going out with it.
+    """
+    if name.endswith(".md") or name.endswith(".model.json"):
+        return None
+    if not name.endswith(ZIP_FILING_SUFFIXES):
+        return None
+    if not name.startswith("ConciseDescription_"):
+        return name
+    #  The descriptions sort between the list and the copies, and the document number is padded
+    #  to two digits so they sort among themselves and with the copies, which already are.
+    return "10_" + re.sub(r"_Doc(\d)_", lambda m: "_Doc0%s_" % m.group(1), name)
+
+
 @app.route("/report/<slug>/concise.zip")
 def concise_zip(slug):
     """Every filing artefact for this search in one archive.
@@ -6205,23 +6230,10 @@ def concise_zip(slug):
     import zipfile
     buf = _io.BytesIO()
     n = 0
-    #  THE WHOLE PACKAGE, not only the descriptions: the document list, the statements, the
-    #  translations and the note saying what a human still has to attach. The `.md` and
-    #  `.model.json` are working files and stay out.
     #  SORT ON THE NAME THE ARCHIVE WILL CARRY, not the one on disk. Prefixing after the sort put
     #  every description AFTER the copies and the translations, which is the exact opposite of
     #  what the prefix is for, and an unpadded number put Document 10 in front of Document 1.
-    entries = []
-    for p in sorted(d.iterdir()):
-        if p.suffix == ".md" or p.name.endswith(".model.json"):
-            continue
-        if p.suffix not in (".pdf", ".docx", ".csv", ".txt"):
-            continue
-        arc = p.name
-        if arc.startswith("ConciseDescription_"):
-            #  Padded to two digits so it sorts with the copies, which already are.
-            arc = "10_" + re.sub(r"_Doc(\d)_", lambda m: "_Doc0%s_" % m.group(1), arc)
-        entries.append((arc, p))
+    entries = [(a, p) for a, p in ((zip_member_name(p.name), p) for p in d.iterdir()) if a]
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for arc, p in sorted(entries):
             z.write(p, arcname=arc)
