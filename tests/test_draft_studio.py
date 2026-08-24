@@ -3268,6 +3268,7 @@ def test_terminal_filing_gate_failure_continues_from_saved_candidate_without_use
 
 @pytest.mark.parametrize("error", [
     "StudioError: API Error: Connection lost mid-response. The response may be incomplete.",
+    "SourceReviewUnavailable: The drafting agent produced no result (exit code 143).",
     ("FigureTransientError: the image model could not draw this figure: the image model "
      "returned no response parts (IMAGE_RECITATION)"),
 ])
