@@ -6890,6 +6890,8 @@ def draft_studio_page(project_id):
     try:
         _user, principal = _draft_identity()
         state = _studio().state(principal, project_id)
+    except drafting.DraftingPermissionDenied:
+        return redirect(url_for("auth.login", next=request.path))
     except drafting.DraftingError as exc:
         return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
     #  The page renders itself from exactly the same JSON the poller fetches, so there is one
