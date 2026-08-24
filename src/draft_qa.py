@@ -189,6 +189,7 @@ that this these those it its as such which when where while than then so if not 
 comprising comprises comprise including includes include having has have had wherein whereby
 said one two three first second third plurality least more most other another each any all
 about substantially generally approximately configured adapted arranged thereof therein thereto
+operable further
 """.split())
 
 
@@ -1362,6 +1363,10 @@ Instructions merely to resume, preserve, repair, inspect, or audit a candidate d
 candidate's technical content. Statements that a candidate is source-faithful, plus numeral or
 figure counts, labels, and filing gates do not affirm any structure assigned to those counts or
 labels. Require an independent affirmative USER passage that describes the technical substance.
+
+Prior-art characterizations in the Background do not require inventor support. Do not report one
+merely because the inventor did not mention that reference. A later independent review traces
+each characterization to the files in prior_art/. Prior art still cannot support invention text.
 
 Build a complete source ledger before returning. Trace every limitation in every claim, every
 numbered part, and every specific structure, relationship, result, material, shape, position,
