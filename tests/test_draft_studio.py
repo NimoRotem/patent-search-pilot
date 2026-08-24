@@ -317,6 +317,19 @@ def test_a_white_interior_cord_strip_is_refused_before_drawing(caption):
     assert "ambiguous multi-stroke cord" in " ".join(check["items"]).lower()
 
 
+@pytest.mark.parametrize("caption", [
+    "Each body is large, with open white paper between neighbours.",
+    "The duct is broad, with open paper between it and the motor housing.",
+])
+def test_renderer_only_open_paper_between_solid_bodies_is_refused(caption):
+    figures = [{**FIGURES[0], "caption": caption}, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "open-paper spacing" in " ".join(check["items"]).lower()
+
+
 def test_an_endpoint_deliberately_disconnected_from_its_named_part_is_refused():
     figures = [{
         **FIGURES[0],
@@ -1386,6 +1399,7 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "Do not list more than eight numerals on one sheet" in system
     assert str(draft_qa.MAX_FIGURE_BRIEF_CHARS) in system
     assert "arbitrary exact counts" in system
+    assert "open paper between solid bodies" in system
     assert "white-interior strip" in system
     assert "Numeral endpoint instructions identify the part" in system
     assert "broad interior target" in draft_studio.FINALIZE_PROMPT

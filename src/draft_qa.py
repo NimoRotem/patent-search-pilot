@@ -133,6 +133,9 @@ _AMBIGUOUS_MULTI_STROKE_CORD_RE = re.compile(
     r"\b(?:plain\s+white|white|open|plain)\s+(?:paper|space)\b"
     r"[^.\n]{0,80}\b(?:interior|inside|between)\b",
     re.IGNORECASE)
+_ARBITRARY_OPEN_PAPER_SPACING_RE = re.compile(
+    r"\bwith\s+open\s+(?:white\s+)?paper\s+between\b",
+    re.IGNORECASE)
 _ARBITRARY_EXACT_ENDPOINT_TARGET_RE = re.compile(
     r"\bidentified\b(?=[^.\n]{0,260}\b(?:"
     r"cent(?:er|re)|midpoint|mid-point|mid[- ]?(?:height|width|depth)|halfway|quarter|"
@@ -623,6 +626,11 @@ def _figure_checks(sections: Mapping[str, str],
             brief_issues.append(
                 f"{label}: ambiguous multi-stroke cord {match.group(0)[:180]!r}; depict the "
                 "cord, cable, or pulling element as one curved path and identify that path")
+        if match := _ARBITRARY_OPEN_PAPER_SPACING_RE.search(caption):
+            brief_issues.append(
+                f"{label}: arbitrary open-paper spacing {match.group(0)[:180]!r}; state a "
+                "disclosure-grounded physical spacing between bodies or omit the whitespace "
+                "instruction")
         for exact_target in _ARBITRARY_EXACT_ENDPOINT_TARGET_RE.finditer(caption):
             brief_issues.append(
                 f"{label}: arbitrary exact endpoint target {exact_target.group(0)[:180]!r}; "
