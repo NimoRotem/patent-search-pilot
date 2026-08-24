@@ -104,7 +104,7 @@ def write_sections(workspace: Path, sections: Mapping[str, str]) -> None:
     draft.mkdir(parents=True, exist_ok=True)
     for key, name, heading in SECTION_FILES:
         body = _clean(sections.get(key), 400_000)
-        _write(draft / name, f"<!-- {heading} - body text only, no heading line. -->\n\n{body}")
+        _write(draft / name, body)
 
 
 def read_sections(workspace: Path) -> dict[str, str]:
@@ -150,9 +150,6 @@ def write_numerals(workspace: Path, numerals: Sequence[Mapping[str, Any]]) -> No
         for item in numerals if _clean(item.get("numeral"), 8))
     _write(Path(workspace) / "draft" / NUMERALS_FILE,
            "# Reference numerals\n\n"
-           "Every numeral used anywhere in the specification or on a drawing appears here exactly\n"
-           "once, against ONE part name. Keep this table and the text in step: it is checked\n"
-           "mechanically after every iteration.\n\n"
            "| Numeral | Part |\n| --- | --- |\n" + (rows or "| | |"))
 
 
@@ -264,7 +261,7 @@ def build(*, project: Mapping[str, Any], references: Sequence[Mapping[str, Any]]
         for _key, name, heading in SECTION_FILES:
             path = workspace / "draft" / name
             if not path.exists():
-                _write(path, f"<!-- {heading} - body text only, no heading line. -->\n")
+                _write(path, "")
     if numerals or not (workspace / "draft" / NUMERALS_FILE).exists():
         write_numerals(workspace, numerals)
     #  Written unconditionally, including empty: the workspace mirrors the stored version, so a
