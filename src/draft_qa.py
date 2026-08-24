@@ -242,7 +242,9 @@ def _sections_present(sections: Mapping[str, str]) -> dict[str, Any]:
     if missing:
         return _check("Every section is written", "fail",
                       f"{len(missing)} section(s) are still empty.", items=missing)
-    return _check("Every section is written", "pass", "All nine sections carry text.")
+    return _check(
+        "Every section is written", "pass",
+        f"All {len(draft_workspace.SECTION_FILES)} sections carry text.")
 
 
 def _title_form(title: str) -> dict[str, Any]:
@@ -1367,7 +1369,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v3-brief-only-schematic-conventions"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v4-government-support"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1427,7 +1429,10 @@ SOURCE_REVIEW_PROMPT = """Run the source-fidelity preflight identified as
 Read these files in full:
   input/disclosure.md
   input/conversation.md
-  draft/01-title.md through draft/09-abstract.md
+  draft/01-title.md
+  draft/02-cross-reference.md
+  draft/10-government-support.md
+  draft/03-field.md through draft/09-abstract.md
   draft/numerals.md
   every Markdown brief in figures/
 

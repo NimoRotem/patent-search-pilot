@@ -23,6 +23,7 @@ def sections():
     return {
         "title": "Configurable Vacuum Lifting Tool",
         "cross_reference": "Not applicable.",
+        "government_support": "Not applicable.",
         "field": "The disclosure relates to portable vacuum lifting tools.",
         "background": "Accessory readers are described in selected art [REF:US-11223344-B2].",
         "summary": "A handle identifies an attached base plate.",

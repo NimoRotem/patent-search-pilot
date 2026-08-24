@@ -42,6 +42,8 @@ EFS_URL = "https://patentcenter.uspto.gov/"
 FILING_ORDER = (
     ("title", "TITLE OF THE INVENTION", False),
     ("cross_reference", "CROSS-REFERENCE TO RELATED APPLICATIONS", True),
+    ("government_support",
+     "STATEMENT REGARDING FEDERALLY SPONSORED RESEARCH OR DEVELOPMENT", True),
     ("field", "FIELD OF THE INVENTION", True),
     ("background", "BACKGROUND OF THE INVENTION", True),
     ("summary", "BRIEF SUMMARY OF THE INVENTION", True),

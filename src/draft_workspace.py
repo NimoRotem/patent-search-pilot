@@ -46,6 +46,8 @@ FALLBACK_ROOT = Path(__file__).resolve().parents[1] / "data" / "draft_workspaces
 SECTION_FILES = (
     ("title", "01-title.md", "Title"),
     ("cross_reference", "02-cross-reference.md", "Cross-Reference to Related Applications"),
+    ("government_support", "10-government-support.md",
+     "Statement Regarding Federally Sponsored Research or Development"),
     ("field", "03-field.md", "Field of the Disclosure"),
     ("background", "04-background.md", "Background"),
     ("summary", "05-summary.md", "Summary"),
@@ -535,6 +537,8 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------------------------
 _SEED_HEADINGS = (
     ("cross_reference", r"cross[- ]?reference|related applications?|priority claim"),
+    ("government_support", r"federally sponsored research|government (?:support|rights)|"
+                           r"federal (?:support|funding|award)"),
     ("field", r"technical field|field of (the )?(invention|disclosure)|^field$"),
     ("background", r"background|prior art|description of (the )?related art"),
     ("summary", r"summary|brief summary"),
