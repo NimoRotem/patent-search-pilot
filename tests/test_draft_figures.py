@@ -1820,6 +1820,32 @@ def test_pixel_grounding_accepts_a_wide_white_margin_for_a_broad_interior_target
     assert (anchors[0]["x"], anchors[0]["y"]) == (175, 500)
 
 
+def test_pixel_grounding_keeps_an_open_perspective_surface_off_a_crossing_cable():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    # The left side is occluded or cropped, so flood fill connects the visible tile surface to
+    # the paper even though the independent semantic reviews can identify that surface.
+    draw.line((100, 500, 900, 500, 900, 900, 100, 900), fill="black", width=8)
+    draw.line((100, 780, 700, 650), fill="black", width=8)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["36 = covering element"], [{
+            "numeral": "36", "x": 200, "y": 770, "visible": True,
+            "evidence": (
+                "The top surface of the large tile, in the open area to the left of the machine."
+            ),
+        }])
+
+    assert audit["ok"] is True and audit["ungrounded"] == []
+    assert audit["adjusted"][0]["numeral"] == "36"
+    assert audit["adjusted"][0]["reason"] == "moved deeper inside the same visible white region"
+    assert 100 < anchors[0]["x"] < 900
+    assert 500 < anchors[0]["y"] < 900
+    assert abs(anchors[0]["y"] - (780 - (anchors[0]["x"] - 100) * 130 / 600)) >= 20
+
+
 def test_pixel_grounding_moves_a_boundary_near_anchor_deeper_into_the_same_wide_region():
     specification = (
         "The sheet shows one rectangular ring and nothing else. The ring is drawn with two "

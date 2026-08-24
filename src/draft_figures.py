@@ -66,7 +66,7 @@ MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
 ))
 MARKED_PROGRESS_VERSION = "marked-progress-v3-numbered-sheet-layout"
 OCR_PROMPT_VERSION = "google-vision-document-text-v2-sheet-number"
-PIXEL_ANCHOR_VERSION = "pixel-anchor-v4-same-region-interior-repair"
+PIXEL_ANCHOR_VERSION = "pixel-anchor-v5-open-surface-clearance-repair"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 4
@@ -309,6 +309,7 @@ _VERTICAL_LINE_TARGET_RE = re.compile(
 _BROAD_INTERIOR_TARGET_RE = re.compile(
     r"\bwell\s+inside\b|\bwhite\s+(?:space|margin|region)\b|"
     r"\bclear\s+of\s+(?:both|all)\b|"
+    r"\b(?:top|bottom|front(?:-facing)?|rear(?:-facing)?|flat|planar)\s+surface\b|"
     r"\b(?:area|band|corridor|field|interior|margin|region|space|surface)\s+"
     r"(?:inside|within|between)\b",
     re.IGNORECASE)
@@ -1510,9 +1511,38 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         ) and not is_empty_space
         requires_broad_interior = bool(
             targets_broad_interior
-        ) and not _HATCHED_TARGET_RE.search(evidence) and not requires_ink and not is_exterior
+        ) and not _HATCHED_TARGET_RE.search(evidence) and not requires_ink
         if is_exterior and is_empty_space:
             allowed_spaces.append({"numeral": numeral, "part": part, "x": x, "y": y})
+        elif requires_broad_interior:
+            if len(ink_x):
+                distance_sq = ((ink_norm_x - x) ** 2) + ((ink_norm_y - y) ** 2)
+                clearance = sqrt(float(distance_sq.min()))
+                if clearance < _MIN_BROAD_INTERIOR_CLEARANCE:
+                    moved = deeper_in_same_white_region(pixel_x, pixel_y, x, y)
+                    if moved is not None:
+                        new_x, new_y = int(moved["x"]), int(moved["y"])
+                        item["x"], item["y"] = new_x, new_y
+                        adjusted.append({
+                            "numeral": numeral, "part": part,
+                            "from_x": x, "from_y": y, "to_x": new_x, "to_y": new_y,
+                            "distance": round(float(moved["distance"]), 1),
+                            "reason": "moved deeper inside the same visible white region",
+                        })
+                        x, y = new_x, new_y
+                    else:
+                        ungrounded.append({
+                            "numeral": numeral, "part": part,
+                            "reason": (
+                                f"broad interior target has only {clearance:.1f} units of "
+                                "clearance from visible lines; widen the target region or place "
+                                "the endpoint deeper inside it"),
+                        })
+            else:
+                ungrounded.append({
+                    "numeral": numeral, "part": part,
+                    "reason": "the drawing contains no visible geometry",
+                })
         elif is_exterior or requires_ink:
             if len(ink_x):
                 distance_sq = ((ink_norm_x - x) ** 2) + ((ink_norm_y - y) ** 2)
@@ -1534,35 +1564,6 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                         "numeral": numeral, "part": part,
                         "reason": f"nearest visible geometry is {distance:.1f} units away",
                     })
-            else:
-                ungrounded.append({
-                    "numeral": numeral, "part": part,
-                    "reason": "the drawing contains no visible geometry",
-                })
-        elif requires_broad_interior:
-            if len(ink_x):
-                distance_sq = ((ink_norm_x - x) ** 2) + ((ink_norm_y - y) ** 2)
-                clearance = sqrt(float(distance_sq.min()))
-                if clearance < _MIN_BROAD_INTERIOR_CLEARANCE:
-                    moved = deeper_in_same_white_region(pixel_x, pixel_y, x, y)
-                    if moved is not None:
-                        new_x, new_y = int(moved["x"]), int(moved["y"])
-                        item["x"], item["y"] = new_x, new_y
-                        adjusted.append({
-                            "numeral": numeral, "part": part,
-                            "from_x": x, "from_y": y, "to_x": new_x, "to_y": new_y,
-                            "distance": round(float(moved["distance"]), 1),
-                            "reason": "moved deeper inside the same enclosed region",
-                        })
-                        x, y = new_x, new_y
-                    else:
-                        ungrounded.append({
-                            "numeral": numeral, "part": part,
-                            "reason": (
-                                f"broad interior target has only {clearance:.1f} units of "
-                                "clearance from visible lines; widen the target region or place "
-                                "the endpoint deeper inside it"),
-                        })
             else:
                 ungrounded.append({
                     "numeral": numeral, "part": part,
