@@ -183,3 +183,42 @@ def test_the_crowding_term_falls_to_nothing_at_its_reach(profile):
     assert crowding_between(reach * 3) == 0.0
     assert crowding_between(reach * 0.5) > 0.0
     assert crowding_between(reach * 0.5) < leaders.COST_CROWDING
+
+
+def test_a_missing_converter_is_reported_rather_than_dropping_the_pdf(tmp_path, profile,
+                                                                      monkeypatch):
+    """The PDF is what gets filed and the PNG is what the page shows. Losing them was silent.
+
+    This host needed cairosvg installed by hand. Without it every figure would have shipped as
+    an SVG alone, with a broken preview and nothing anywhere saying why.
+    """
+    from pfc import render
+
+    def no_converter(*args, **kwargs):
+        raise render.ExportUnavailable("cairosvg is not installed on this box")
+
+    monkeypatch.setattr(render, "svg_to_pdf", no_converter)
+    monkeypatch.setattr(render, "svg_to_png", no_converter)
+    monkeypatch.setattr(render, "png_via_pdf", no_converter)
+
+    written = render.export_all("<svg xmlns='http://www.w3.org/2000/svg'/>", profile,
+                                tmp_path, "fig_1")
+    assert written["svg"] == "fig_1.svg", "the canonical drawing is still written"
+    assert "pdf" not in written and "png" not in written
+    assert "cairosvg" in written["pdf_error"]
+    assert "cairosvg" in written["png_error"]
+    assert "via PDF" in written["png_error"], "both routes to a PNG are named"
+
+
+def test_a_working_converter_reports_no_failure(tmp_path, profile):
+    """The other half: a successful export must not carry an error key."""
+    from pfc import render
+
+    written = render.export_all(
+        "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'></svg>",
+        profile, tmp_path, "fig_1")
+    assert "svg" in written
+    if "pdf" in written:
+        assert "pdf_error" not in written
+    if "png" in written:
+        assert "png_error" not in written

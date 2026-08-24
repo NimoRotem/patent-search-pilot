@@ -89,7 +89,14 @@ def png_via_pdf(svg: str, profile: DrawingProfile, dpi: int = 200) -> bytes:
 
 def export_all(svg: str, profile: DrawingProfile, destination: Path, stem: str,
                dpi: int = 200) -> dict[str, str]:
-    """Write ``<stem>.svg`` and, where a converter exists, the PDF and PNG beside it."""
+    """Write ``<stem>.svg`` and, where a converter exists, the PDF and PNG beside it.
+
+    The PDF is the artefact a filing actually needs and the PNG is what the results page shows,
+    so losing either is worth saying. It used to be silent: this host needed cairosvg installed
+    by hand, and without it every figure would have shipped as an SVG alone with a broken
+    preview and nothing anywhere explaining it. Failures come back under ``pdf_error`` and
+    ``png_error`` for the caller to report once per job.
+    """
     destination.mkdir(parents=True, exist_ok=True)
     written: dict[str, str] = {}
     svg_path = destination / f"{stem}.svg"
@@ -98,17 +105,18 @@ def export_all(svg: str, profile: DrawingProfile, destination: Path, stem: str,
     try:
         (destination / f"{stem}.pdf").write_bytes(svg_to_pdf(svg, profile))
         written["pdf"] = f"{stem}.pdf"
-    except Exception:
-        pass
+    except Exception as exc:
+        written["pdf_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
     try:
         (destination / f"{stem}.png").write_bytes(svg_to_png(svg, profile, dpi))
         written["png"] = f"{stem}.png"
-    except Exception:
+    except Exception as first:
         try:
             (destination / f"{stem}.png").write_bytes(png_via_pdf(svg, profile, dpi))
             written["png"] = f"{stem}.png"
-        except Exception:
-            pass
+        except Exception as second:
+            written["png_error"] = (f"{type(first).__name__}: {str(first)[:110]}; and via PDF, "
+                                    f"{type(second).__name__}: {str(second)[:110]}")
     return written
 
 

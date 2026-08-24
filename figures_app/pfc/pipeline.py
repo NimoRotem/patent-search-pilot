@@ -316,6 +316,7 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
             target.reason = target.reason or issue.message
 
     stage("EXPORT")
+    export_failures: dict[str, set] = {}
     by_id = {bundle.spec.figure_id: bundle for bundle in bundles}
     for record in results:
         bundle = by_id.get(record.figure_id)
@@ -326,6 +327,18 @@ def run_job(job_id: str, *, root: Path, config: JobConfig,
         record.svg_path = written.get("svg", "")
         record.pdf_path = written.get("pdf", "")
         record.png_path = written.get("png", "")
+        for kind in ("pdf", "png"):
+            reason = written.get(f"{kind}_error")
+            if reason:
+                export_failures.setdefault(kind, set()).add(reason)
+
+    # Once per job, not once per figure: a missing converter fails all forty identically.
+    for kind, reasons in sorted(export_failures.items()):
+        notes.append(
+            f"the {kind.upper()} of every figure could not be written ({'; '.join(sorted(reasons))[:200]}). "
+            f"The SVG is complete and is the canonical drawing; the {kind.upper()} is a "
+            f"conversion of it, so this is a converter missing on this box rather than anything "
+            f"wrong with the figures")
 
     _pair_originals(document, results, paths, verifier is not None, notes)
 
