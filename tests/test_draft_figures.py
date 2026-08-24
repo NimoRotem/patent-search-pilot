@@ -95,7 +95,8 @@ def accept_pixel_grounding(monkeypatch):
         })
     monkeypatch.setattr(
         draft_figures, "_ground_anchors_to_pixels",
-        lambda _png, _numerals, anchors: ([dict(item) for item in anchors], dict(accepted)))
+        lambda _png, _numerals, anchors, **_kwargs: (
+            [dict(item) for item in anchors], dict(accepted)))
     monkeypatch.setattr(
         draft_figures, "inspect_marked_anchors",
         lambda *args, **kwargs: accepted_marked_anchor_audit())
@@ -583,8 +584,8 @@ def test_compose_rejects_a_tight_cluster_of_six_uncertified_coordinates(monkeypa
     monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
     monkeypatch.setattr(
         draft_figures, "_ground_anchors_to_pixels",
-        lambda _png, _numerals, values: ([dict(item) for item in values],
-                                         dict(accepted_pixel)))
+        lambda _png, _numerals, values, **_kwargs: ([dict(item) for item in values],
+                                                    dict(accepted_pixel)))
     monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
         "ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
         "other_text": [], "confidence": 0.99,
@@ -649,8 +650,8 @@ def test_cross_provider_veto_rejects_unanimous_same_provider_certificate(monkeyp
     monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
     monkeypatch.setattr(
         draft_figures, "_ground_anchors_to_pixels",
-        lambda _png, _numerals, values: ([dict(item) for item in values],
-                                         dict(accepted_pixel)))
+        lambda _png, _numerals, values, **_kwargs: ([dict(item) for item in values],
+                                                    dict(accepted_pixel)))
     monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
         "ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
         "other_text": [], "confidence": 0.99,
@@ -712,8 +713,8 @@ def test_cross_provider_veto_coordinates_are_repaired_and_recertified(monkeypatc
     monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
     monkeypatch.setattr(
         draft_figures, "_ground_anchors_to_pixels",
-        lambda _png, _numerals, values: ([dict(item) for item in values],
-                                         dict(accepted_pixel)))
+        lambda _png, _numerals, values, **_kwargs: ([dict(item) for item in values],
+                                                    dict(accepted_pixel)))
     monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
         "ok": True, "numerals": ["10"], "figure_label": "FIG. 1",
         "other_text": [], "confidence": 0.99,
@@ -852,8 +853,8 @@ def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypat
     }
     monkeypatch.setattr(
         draft_figures, "_ground_anchors_to_pixels",
-        lambda _png, _numerals, anchors: ([dict(item) for item in anchors],
-                                           dict(accepted_pixel)))
+        lambda _png, _numerals, anchors, **_kwargs: ([dict(item) for item in anchors],
+                                                      dict(accepted_pixel)))
     monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
         "ok": True, "numerals": ["26"], "figure_label": "FIG. 2",
         "other_text": [], "confidence": 0.99})
@@ -915,8 +916,8 @@ def test_compose_accumulates_consensus_for_unchanged_endpoint_coordinates(monkey
     }
     monkeypatch.setattr(
         draft_figures, "_ground_anchors_to_pixels",
-        lambda _png, _numerals, anchors: ([dict(item) for item in anchors],
-                                           dict(accepted_pixel)))
+        lambda _png, _numerals, anchors, **_kwargs: ([dict(item) for item in anchors],
+                                                      dict(accepted_pixel)))
     monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
         "ok": True, "numerals": ["10", "12"], "figure_label": "FIG. 1",
         "other_text": [], "confidence": 0.99})
@@ -985,8 +986,8 @@ def test_compose_resumes_repaired_coordinates_after_a_process_restart(monkeypatc
     }
     monkeypatch.setattr(
         draft_figures, "_ground_anchors_to_pixels",
-        lambda _png, _numerals, anchors: ([dict(item) for item in anchors],
-                                           dict(accepted_pixel)))
+        lambda _png, _numerals, anchors, **_kwargs: ([dict(item) for item in anchors],
+                                                      dict(accepted_pixel)))
     monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
         "ok": True, "numerals": ["26"], "figure_label": "FIG. 2",
         "other_text": [], "confidence": 0.99})
@@ -1111,8 +1112,8 @@ def test_compose_retries_layout_without_moving_a_certified_endpoint(monkeypatch)
     monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
     monkeypatch.setattr(
         draft_figures, "_ground_anchors_to_pixels",
-        lambda _png, _numerals, values: ([dict(item) for item in values],
-                                         dict(accepted_pixel)))
+        lambda _png, _numerals, values, **_kwargs: ([dict(item) for item in values],
+                                                    dict(accepted_pixel)))
     scales = []
 
     def annotate(_png, _label, _anchors, *, scale, sheet_number=""):
@@ -1165,8 +1166,8 @@ def test_compose_retains_a_passing_layout_scale_across_endpoint_repairs(monkeypa
     monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
     monkeypatch.setattr(
         draft_figures, "_ground_anchors_to_pixels",
-        lambda _png, _numerals, values: ([dict(item) for item in values],
-                                         dict(accepted_pixel)))
+        lambda _png, _numerals, values, **_kwargs: ([dict(item) for item in values],
+                                                    dict(accepted_pixel)))
     scales = []
 
     def annotate(_png, _label, _anchors, *, scale, sheet_number=""):
@@ -1227,8 +1228,8 @@ def test_compose_does_not_let_leader_routing_move_a_geometry_endpoint(monkeypatc
     monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
     monkeypatch.setattr(
         draft_figures, "_ground_anchors_to_pixels",
-        lambda _png, _numerals, values: ([dict(item) for item in values],
-                                         dict(accepted_pixel)))
+        lambda _png, _numerals, values, **_kwargs: ([dict(item) for item in values],
+                                                    dict(accepted_pixel)))
     scales = []
 
     def annotate(_png, _label, _anchors, *, scale, sheet_number=""):
@@ -1317,8 +1318,8 @@ def test_compose_continues_an_eight_round_checkpoint_after_context_upgrade(monke
     monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
     monkeypatch.setattr(
         draft_figures, "_ground_anchors_to_pixels",
-        lambda _png, _numerals, values: ([dict(item) for item in values],
-                                         dict(accepted_pixel)))
+        lambda _png, _numerals, values, **_kwargs: ([dict(item) for item in values],
+                                                    dict(accepted_pixel)))
     monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
         "ok": True, "numerals": ["22"], "figure_label": "FIG. 3",
         "other_text": [], "confidence": 0.99})
@@ -1638,6 +1639,25 @@ def test_pixel_grounding_keeps_the_nearest_substantial_boundary_over_a_farther_l
     assert audit["ok"] is True
     assert audit["adjusted"][0]["numeral"] == "26"
     assert 395 <= anchors[0]["y"] <= 405
+
+
+def test_pixel_grounding_preserves_a_reviewed_short_boundary_correction():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((700, 200, 800, 450), outline="black", width=6)
+    draw.line((100, 572, 900, 572), fill="black", width=6)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["26 = bearing face"], [{
+            "numeral": "26", "x": 750, "y": 450, "visible": True,
+            "evidence": "the bottom horizontal line of the upper column",
+        }], preserve_reviewed_line_target=True)
+
+    assert audit["ok"] is True
+    assert 745 <= anchors[0]["x"] <= 755
+    assert 445 <= anchors[0]["y"] <= 455
 
 
 def test_pixel_grounding_prefers_a_long_vertical_boundary_over_nearby_hatching():
