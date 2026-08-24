@@ -1572,6 +1572,9 @@ def test_the_independent_reviewer_checks_source_fidelity_before_internal_consist
         in preflight
     assert "simple generic outline" in preflight
     assert "depiction convention" in preflight
+    assert "must stay confined to the figure brief" in preflight
+    assert "by way of example" in preflight
+    assert "any closed outline" in preflight
     assert "Do not inspect or rely on rendered images" in preflight
 
 
