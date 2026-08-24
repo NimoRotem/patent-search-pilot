@@ -295,14 +295,20 @@ def test_blanket_shape_background_and_stroke_controls_are_refused_before_drawing
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
 
-@pytest.mark.parametrize("part", ["electrical supply cord", "pulling element cable"])
-def test_a_white_interior_cord_strip_is_refused_before_drawing(part):
+@pytest.mark.parametrize("caption", [
+    (
+        "The electrical supply cord is a slender strip of even width with plain white paper "
+        "along its interior. Identified well inside that strip."
+    ),
+    (
+        "The pulling element cable runs away from the device in one sweep. It is drawn as a "
+        "broad strip of even width with plain white paper along its interior."
+    ),
+])
+def test_a_white_interior_cord_strip_is_refused_before_drawing(caption):
     figures = [{
         **FIGURES[0],
-        "caption": (
-            f"The {part} is a slender strip of even width with plain white paper along its "
-            "interior. Identified well inside that strip."
-        ),
+        "caption": caption,
     }, FIGURES[1]]
 
     check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
