@@ -760,9 +760,28 @@ def test_a_publication_number_written_without_a_token_is_surfaced():
     assert check["status"] == "warn" and "US-7654321-B1" in check["items"][0]
 
 
-def test_supplied_art_that_is_never_cited_is_reported_without_failing():
+def test_supplied_art_that_is_never_cited_is_a_filing_error():
     check = checks_for(allowed=ALLOWED + ["US-8888888-B2"])["Supplied art is addressed"]
-    assert check["status"] == "warn" and "US-8888888-B2" in check["items"]
+    assert check["status"] == "fail" and check["severity"] == "error"
+    assert "US-8888888-B2" in check["items"]
+
+
+def test_uncited_supplied_art_is_refused_before_any_image_call():
+    snapshot = {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+
+    with pytest.raises(
+            draft_studio.FilingPreflightError,
+            match="Supplied art is addressed") as caught:
+        draft_studio.validate_snapshot(snapshot, ALLOWED + ["US-8888888-B2"])
+    assert caught.value.category == "internal_logic"
+
+
+def test_a_supplied_art_set_with_no_citations_is_a_filing_error():
+    sections = {**GOOD, "background": "Known handheld lifting tools use fixed seals."}
+
+    check = checks_for(sections=sections)["Prior art is cited"]
+
+    assert check["status"] == "fail" and check["severity"] == "error"
 
 
 def test_citation_token_extraction():
