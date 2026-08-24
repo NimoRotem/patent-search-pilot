@@ -2515,6 +2515,28 @@ def test_an_orphan_drawing_edit_explicitly_forbids_all_numerals(monkeypatch):
     assert captured["numerals"] == []
 
 
+def test_rejected_studio_message_does_not_pollute_the_conversation(monkeypatch):
+    import draft_studio_service
+
+    drafting_service = Mock()
+    drafting_service.repository.get_project.return_value = {
+        "id": 7, "status": "generating", "revision": 4,
+    }
+    repository = Mock()
+    repository.enqueue_turn_safely.side_effect = drafting.DraftingConflict(
+        "The drafting agent is still working on the previous message.")
+    service = draft_studio_service.StudioService(
+        drafting_service, repository=repository)
+    monkeypatch.setattr(
+        draft_studio_service.draft_agent, "availability", lambda: {"ok": True})
+
+    with pytest.raises(drafting.DraftingConflict):
+        service.start_turn(
+            Mock(user_id=91), 7, message="Apply the source-fidelity repair.")
+
+    repository.add_message.assert_not_called()
+
+
 # =============================================================================================
 # False positives, each measured on a real 20-claim draft before it was fixed
 # =============================================================================================
