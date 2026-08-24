@@ -55,7 +55,7 @@ MARKED_ANCHOR_PROMPT_VERSION = (
 CROSS_PROVIDER_PROMPT_VERSION = (
     "figure-anchor-crosscheck-v3-anthropic-opus-raw-coordinate-montage")
 CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION = (
-    "figure-geometry-crosscheck-v1-anthropic-exhaustive-unrequested-elements")
+    "figure-geometry-crosscheck-v2-anthropic-literal-stroke-count")
 MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
     MARKED_ANCHOR_PROMPT_VERSION,
     "figure-anchor-v13-gridded-sheet-current-coordinate-certificate-majority",
@@ -64,7 +64,7 @@ MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
     "figure-anchor-v10-full-sheet-correction-coordinate-certificate-majority",
     "figure-anchor-v9-local-part-coordinate-certificate-majority-with-correction",
 ))
-PIXEL_ANCHOR_VERSION = "pixel-anchor-v9-reviewed-boundary-over-hatching"
+PIXEL_ANCHOR_VERSION = "pixel-anchor-v10-bounded-surface-fidelity"
 MARKED_PROGRESS_VERSION = (
     "marked-progress-v4-pixel-grounding-bound-" + PIXEL_ANCHOR_VERSION)
 OCR_PROMPT_VERSION = "google-vision-document-text-v2-sheet-number"
@@ -1277,6 +1277,17 @@ def cross_provider_geometry_audit(expected, result) -> dict:
         if not description or not evidence:
             inventory_errors.append(
                 "A visible-element inventory item lacks a description or pixel evidence.")
+        single_stroke_required = bool(re.search(
+            r"\b(?:single|one)\b[^.;]{0,120}\b(?:lines?|paths?|curves?|strokes?)\b",
+            matched, re.IGNORECASE))
+        multiple_strokes_observed = bool(re.search(
+            r"\b(?:double[- ]line|two\b[^.;]{0,80}\b(?:parallel|closely\s+spaced)\b"
+            r"[^.;]{0,80}\b(?:lines?|paths?|curves?|strokes?))\b",
+            description + " " + evidence, re.IGNORECASE))
+        if single_stroke_required and multiple_strokes_observed:
+            unexpected.append(
+                "A single-stroke requirement is rendered with multiple strokes: " +
+                (evidence or description))
         if not required or not matched:
             unexpected.append(
                 (description or "Unidentified visible geometry") +
@@ -1554,7 +1565,8 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                 if clearance < _MIN_BROAD_INTERIOR_CLEARANCE:
                     moved = deeper_in_same_white_region(
                         pixel_x, pixel_y, x, y,
-                        allow_nearby_component=targets_visible_surface)
+                        allow_nearby_component=(
+                            targets_visible_surface and bool(ink[pixel_y, pixel_x])))
                     if moved is not None:
                         new_x, new_y = int(moved["x"]), int(moved["y"])
                         item["x"], item["y"] = new_x, new_y
@@ -2742,7 +2754,9 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
         "concrete pixel evidence. Set required true only when the exact element is expressly required "
         "by the specification, and identify that requirement in matched_requirement. Report every "
         "unmatched element in unexpected_geometry, including an unrequested wire, cable, hose, or "
-        "other unnumbered path leaving a housing. "
+        "other unnumbered path leaving a housing. Treat explicit drawing-primitive counts literally: "
+        "when the specification requires one single line, path, curve, or stroke, two parallel "
+        "boundary strokes are not one line and must be rejected even if they depict one cable. "
         "Report absent requirements in missing_geometry. Return keys matches_spec, summary, errors, "
         "missing_geometry, unexpected_geometry, parts, and visible_elements. Set matches_spec false "
         "for any extra or missing geometry, wrong count, wrong view, or wrong relationship. Do not "
