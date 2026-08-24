@@ -703,6 +703,29 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False,
                            % (len(want_tr), "" if len(want_tr) == 1 else "s") if not lack_tr
                            else "Missing for document(s) %s."
                                 % ", ".join(str(x) for x in lack_tr)))
+        #  A CHARACTER THE SOURCE SCAN COULD NOT RESOLVE. Google's OCR of a 1986 Japanese
+        #  publication put a solid black square mid-sentence, and it went onto a paper filed at
+        #  the Office looking exactly like a rendering failure of ours. It is not: it is what the
+        #  machine translation says, and the paper already states that the original governs. So it
+        #  is named rather than edited, because editing a translation to look tidier is the one
+        #  thing that would actually be wrong.
+        smudged = []
+        for d in want_tr:
+            tr = translations.get(d["pub"]) or {}
+            body = " ".join(str(tr.get(k) or "") for k in ("claims", "text"))
+            n_bad = sum(body.count(ch) for ch in ("�", "■", "□"))
+            if n_bad:
+                smudged.append("Doc %s (%s): %d"
+                               % (d["n"], (d.get("biblio") or {}).get("label") or d["pub"],
+                                  n_bad))
+        if smudged:
+            out.append(Finding(
+                "TRANSLATION-OCR", "1.290(d)(4)", "The translation is legible as furnished", NOTE,
+                "The machine translation carries characters the source scan could not resolve, "
+                "printed as they came: %s. They are in the translation, not in this rendering, "
+                "and the paper already states that the original publication governs. Read the "
+                "passage before filing and consider whether a human translation is worth the "
+                "cost for that document." % "; ".join(smudged)))
 
     # -- (d)(5) statements ---------------------------------------------------------------------
     #  The same test the renderer applies, so the audit can never call a paper signed that the

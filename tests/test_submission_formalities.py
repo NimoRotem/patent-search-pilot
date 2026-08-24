@@ -373,3 +373,32 @@ def test_the_fallback_only_wraps_what_it_has_to():
     #  and it steps over the markup the caller already escaped rather than splitting an entity
     assert pdf_fonts.with_fallback("A &amp; B") == "A &amp; B"
     assert "&amp;" in pdf_fonts.with_fallback("徐 &amp; 勇")
+
+
+def test_a_character_the_source_scan_could_not_read_is_named_not_edited():
+    """Google's OCR of a 1986 Japanese publication put a solid black square mid-sentence, and it
+    went onto a filed paper looking exactly like a rendering failure of ours. It is not: it is
+    what the machine translation says. Editing a translation to look tidier is the one response
+    that would actually be wrong, so the audit names it and the paper carries it as it came.
+    """
+    import submission as S
+
+    d = _doc(n=4, biblio={"pub": "JP-S6165742-A", "label": "JP S61-65742 A", "country": "JP",
+                          "kind": "foreign", "inventor": "A Inventor",
+                          "issue_date_pretty": "April 4, 1986"})
+    win = S.window("2026-03-12", today=datetime.date(2026, 8, 24))
+    dirty = {"JP-S6165742-A": {"text": "the plate jr, ■, and :jS2 at intersections",
+                               "claims": "", "engine": "t"}}
+    clean = {"JP-S6165742-A": {"text": "the plate and the bracket at intersections",
+                               "claims": "", "engine": "t"}}
+
+    f = {x.id: x for x in S.audit([d], SUBJECT, {}, dirty, win)}
+    assert "TRANSLATION-OCR" in f, "an unreadable character on a filed paper went unmentioned"
+    assert f["TRANSLATION-OCR"].status == S.NOTE, "it is a thing to read, not a thing to fix"
+    assert "Doc 4 (JP S61-65742 A): 1" in f["TRANSLATION-OCR"].detail
+    assert "not in this rendering" in f["TRANSLATION-OCR"].detail, (
+        "say whose fault it is, or somebody spends an hour on the renderer")
+
+    assert "TRANSLATION-OCR" not in {x.id for x in S.audit([d], SUBJECT, {}, clean, win)}
+    #  and the translation still has to be attached at all, which is the (d)(4) finding proper
+    assert f["TRANSLATION"].status == S.OK
