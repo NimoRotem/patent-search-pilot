@@ -1358,6 +1358,11 @@ names a candidate detail only to reject, remove, narrow, question, or audit it i
 inventor support for that detail. Prior art, the candidate's own prose, common engineering
 knowledge, and generated pixels are not inventor support.
 
+Instructions merely to resume, preserve, repair, inspect, or audit a candidate do not affirm that
+candidate's technical content. Statements that a candidate is source-faithful, plus numeral or
+figure counts, labels, and filing gates do not affirm any structure assigned to those counts or
+labels. Require an independent affirmative USER passage that describes the technical substance.
+
 Build a complete source ledger before returning. Trace every limitation in every claim, every
 numbered part, and every specific structure, relationship, result, material, shape, position,
 connection, operating condition, and variant in the description or figure briefs to an exact
