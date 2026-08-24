@@ -854,6 +854,12 @@ def test_government_support_has_a_standalone_workspace_file_in_filing_order(tmp_
         encoding="utf-8")
     assert draft_workspace.read_sections(tmp_path)["government_support"] == "Not applicable."
 
+    path.write_text(
+        "STATEMENT REGARDING FEDERALLY SPONSORED RESEARCH OR DEVELOPMENT\n\n"
+        "Not applicable.\n",
+        encoding="utf-8")
+    assert draft_workspace.read_sections(tmp_path)["government_support"] == "Not applicable."
+
 
 def test_a_heading_the_agent_added_back_is_dropped_but_real_headings_survive(tmp_path):
     draft_workspace.write_sections(tmp_path, GOOD)
@@ -1383,6 +1389,11 @@ def test_legacy_candidate_missing_government_support_is_preserved_for_automatic_
 
 def test_source_reviewer_reads_the_standalone_government_support_file():
     assert "draft/10-government-support.md" in draft_qa.SOURCE_REVIEW_PROMPT
+
+
+def test_drafting_agent_has_a_filing_clean_default_for_no_government_support():
+    assert "If no government support was supplied" in draft_studio.DRAFT_SYSTEM
+    assert "government-support section" in draft_studio.DRAFT_SYSTEM
 
 
 def test_standard_exports_contain_only_clean_application_text():
