@@ -789,11 +789,12 @@ def generate_png(prompt, previous_png=None):
     started = time.time()
     last_error = None
     resp = None
+    parts = None
     capacity_exhausted = False
+    missing_content_exhausted = False
     for attempt in range(6):
         try:
             resp = _model_call(prompt, previous_png)
-            break
         except Exception as exc:                         # transport only, bounded retries
             last_error = exc
             capacity_exhausted = _image_capacity_exhausted(exc)
@@ -803,21 +804,40 @@ def generate_png(prompt, previous_png=None):
             delay = (min(30, 2 * (2 ** attempt)) if capacity_exhausted
                      else 0.35 * (2 ** attempt))
             time.sleep(delay + random.uniform(0, 0.2))
-    if resp is None:
+            continue
+
+        um = getattr(resp, "usage_metadata", None)
+        llm._record_usage(getattr(um, "prompt_token_count", 0) if um else 0,
+                          getattr(um, "candidates_token_count", 0) if um else 0)
+        candidate = None
+        try:
+            candidate = resp.candidates[0]
+            raw_parts = candidate.content.parts
+            parts = list(raw_parts) if raw_parts is not None else []
+        except Exception:
+            parts = []
+        if parts:
+            break
+
+        finish_reason = getattr(candidate, "finish_reason", None) if candidate else None
+        finish_label = (getattr(finish_reason, "name", None) or str(finish_reason or "UNKNOWN"))
+        last_error = RuntimeError(
+            f"the image model returned no response parts ({finish_label})")
+        resp = None
+        if attempt + 1 >= 3:
+            missing_content_exhausted = True
+            break
+        time.sleep(0.35 * (2 ** attempt) + random.uniform(0, 0.2))
+
+    if resp is None or parts is None:
         print(json.dumps({"event": "draft_figure_llm", "provider": "vertex",
                           "model": image_model(), "prompt_version": FIGURE_PROMPT_VERSION,
                           "latency_ms": int((time.time() - started) * 1000),
                           "cache_hit": False, "success": False}), flush=True)
-        error_class = FigureTransientError if capacity_exhausted else FigureError
+        error_class = (FigureTransientError
+                       if capacity_exhausted or missing_content_exhausted else FigureError)
         raise error_class(
             f"the image model could not draw this figure: {str(last_error)[:200]}") from last_error
-    um = getattr(resp, "usage_metadata", None)
-    llm._record_usage(getattr(um, "prompt_token_count", 0) if um else 0,
-                      getattr(um, "candidates_token_count", 0) if um else 0)
-    try:
-        parts = resp.candidates[0].content.parts
-    except Exception:
-        raise FigureError("the image model returned nothing")
     for p in parts:
         blob = getattr(p, "inline_data", None)
         if blob and blob.data:
