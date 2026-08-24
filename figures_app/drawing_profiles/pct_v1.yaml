@@ -1,0 +1,61 @@
+# PCT drawing profile — Rule 11.5/11.13, A4 with the usable surface the rule prescribes.
+#
+# Every length is in millimetres. The renderer works in integer-friendly "units" where
+# units_per_mm units make one millimetre, so a letter sheet is 2159 x 2794 units and a 3.2 mm
+# numeral is 32 units tall. Keeping the scene in units rather than millimetres means the
+# geometry validators compare whole numbers and a rounding difference cannot turn a passing
+# figure into a failing one.
+profile_id: pct
+version: "1.0"
+title: PCT (Rule 11)
+
+page:
+  width_mm: 210.0
+  height_mm: 297.0
+  units_per_mm: 10
+  margins_mm:
+    top: 25.0
+    left: 25.0
+    right: 15.0
+    bottom: 10.0
+
+typography:
+  # Liberation Sans is metric-compatible with Helvetica and Arial and is what
+  # fontconfig resolves both to on the deployment host, so the sheet is drawn in the
+  # face the profile names rather than in whatever the renderer fell back to.
+  allowed_fonts: ["Helvetica", "Arial", "Liberation Sans", "DejaVu Sans"]
+  font_family: "Helvetica, Arial, sans-serif"
+  min_reference_height_mm: 3.2
+  reference_height_mm: 3.6
+  caption_height_mm: 4.0
+  # Advance width of one character as a fraction of the character height. Helvetica digits are
+  # 0.556 em on a 0.716 em cap height; 0.62 is that ratio with a little slack, and it is what the
+  # geometry validator uses to box a label without a font-metrics dependency.
+  char_width_ratio: 0.62
+
+lines:
+  min_line_width_mm: 0.20
+  stroke_mm: 0.35
+  thin_stroke_mm: 0.25
+  arrow_length_mm: 3.0
+  arrow_width_mm: 1.8
+
+spacing:
+  min_component_gap_mm: 5.0
+  min_label_gap_mm: 2.0
+  leader_clearance_mm: 1.5
+  min_node_width_mm: 20.0
+  min_node_height_mm: 10.0
+  rank_gap_mm: 18.0
+  sibling_gap_mm: 10.0
+  container_padding_mm: 8.0
+
+annotations:
+  reference_numerals_only: true
+  allow_component_captions: true
+  monochrome: true
+
+figure_numbering:
+  label_format: "FIG. {number}"
+  sheet_number_format: "{sheet}/{total}"
+  label_position: bottom

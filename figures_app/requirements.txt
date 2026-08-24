@@ -1,0 +1,36 @@
+# The compiler's own venv, deliberately separate from the search application's.
+#
+# The search app runs hour-long jobs that die if its process restarts, and its venv carries the
+# reranker's torch stack. Installing anything into it to satisfy this app would be a risk taken
+# for no reason, so this app has its own, holding only what it and the search-app modules it
+# imports actually need.
+Flask==3.1.*
+gunicorn==23.*
+pydantic==2.*
+PyYAML==6.*
+
+# SVG -> PDF/PNG. The SVG is the artifact; both other formats are conversions of that exact
+# file, never separately drawn. Needs libcairo2, which is already present wherever poppler is.
+CairoSVG==2.7.*
+Pillow>=10,<12
+
+# Vertex AI, for the reasoning and vision roles. Authenticated as the VM's service account, so
+# there is no key to hold here.
+google-genai>=1.20
+
+# What the search-app modules this app imports need in turn:
+#   authgate + db            -> psycopg
+#   config                   -> python-dotenv
+#   enrich / enrich_display  -> requests
+#   ingest_input (docx path) -> python-docx
+#   llm                      -> tenacity
+#   mongo_corpus             -> pymongo
+psycopg[binary]==3.2.*
+python-dotenv>=1.0
+requests>=2.31
+python-docx>=1.1
+tenacity>=8.2
+pymongo>=4.6
+
+# Test only.
+pytest>=8.0

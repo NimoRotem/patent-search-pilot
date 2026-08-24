@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Patent figure compiler{% endblock %}</title>
+<style>
+:root{
+  --ink:#111418; --ink-2:#4a545e; --ink-3:#7b8794;
+  --line:#dfe4e9; --line-2:#eef1f4; --paper:#ffffff; --wash:#f6f8fa;
+  --ok:#146c43; --ok-bg:#e7f4ec; --warn:#8a5a00; --warn-bg:#fdf4e3;
+  --bad:#a12d2f; --bad-bg:#fbeceb; --link:#0b5cab;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--wash);color:var(--ink);
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--link)}
+header.top{background:var(--paper);border-bottom:1px solid var(--line);padding:14px 24px;
+  display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+header.top h1{font-size:17px;margin:0;font-weight:600;letter-spacing:-.01em}
+header.top .sub{color:var(--ink-3);font-size:13px}
+header.top .spacer{flex:1}
+main{max-width:1220px;margin:0 auto;padding:24px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:20px;
+  margin-bottom:20px}
+.card h2{font-size:15px;margin:0 0 14px;font-weight:600}
+.card h3{font-size:14px;margin:20px 0 8px;font-weight:600}
+label{display:block;font-size:13px;color:var(--ink-2);margin:0 0 5px}
+input[type=text],input[type=file],select{width:100%;padding:9px 11px;border:1px solid var(--line);
+  border-radius:7px;background:var(--paper);font:inherit;color:var(--ink)}
+input[type=text]:focus,select:focus{outline:2px solid #b9d5f2;outline-offset:-1px;border-color:#8fb8e0}
+.row{display:flex;gap:16px;flex-wrap:wrap}
+.row>*{flex:1;min-width:200px}
+button{background:var(--ink);color:#fff;border:0;border-radius:7px;padding:10px 18px;
+  font:inherit;font-weight:500;cursor:pointer}
+button:hover{background:#000}
+button[disabled]{background:var(--ink-3);cursor:default}
+button.ghost{background:var(--paper);color:var(--ink);border:1px solid var(--line)}
+button.ghost:hover{background:var(--line-2)}
+.muted{color:var(--ink-3);font-size:13px}
+.hint{color:var(--ink-2);font-size:13px;margin:6px 0 0}
+.badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;
+  letter-spacing:.01em}
+.badge.ok{background:var(--ok-bg);color:var(--ok)}
+.badge.warn{background:var(--warn-bg);color:var(--warn)}
+.badge.bad{background:var(--bad-bg);color:var(--bad)}
+.badge.plain{background:var(--line-2);color:var(--ink-2)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line-2);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3);font-weight:600}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+.bar{height:6px;background:var(--line-2);border-radius:99px;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--ink);transition:width .35s ease}
+ul.plain{margin:8px 0;padding-left:18px}
+ul.plain li{margin:3px 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+.sheet{border:1px solid var(--line);border-radius:8px;background:var(--paper);overflow:hidden}
+.sheet .cap{padding:7px 11px;border-bottom:1px solid var(--line-2);font-size:12px;
+  color:var(--ink-3);display:flex;gap:8px;align-items:center}
+.sheet .cap .spacer{flex:1}
+.sheet img,.sheet object{display:block;width:100%;height:auto;background:#fff}
+.sheet .empty{padding:40px 16px;text-align:center;color:var(--ink-3);font-size:13px}
+.issue{border-left:3px solid var(--bad);background:var(--bad-bg);padding:9px 12px;
+  border-radius:0 6px 6px 0;margin:7px 0;font-size:13.5px}
+.issue.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+.issue .rid{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--ink-2);
+  margin-right:7px}
+details summary{cursor:pointer;font-size:13px;color:var(--ink-2);padding:4px 0}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Patent figure compiler</h1>
+  <span class="sub">figures built from the words of a patent, then checked against them</span>
+  <span class="spacer"></span>
+  {% if user and user.email %}<span class="muted">{{ user.email }}</span>{% endif %}
+  <a class="muted" href="{{ url_for('index') }}">New compilation</a>
+</header>
+<main>{% block body %}{% endblock %}</main>
+{% block script %}{% endblock %}
+</body>
+</html>
