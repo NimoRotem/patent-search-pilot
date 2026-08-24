@@ -1505,6 +1505,9 @@ def test_the_independent_reviewer_checks_source_fidelity_before_internal_consist
     assert "corrective USER message that names a candidate detail only to reject" in preflight
     assert "passages under headings labeled USER are the authority" in preflight
     assert "YOU, REVIEWER, or SYSTEM are context, never inventor support" in preflight
+    assert "Instructions merely to resume, preserve, repair, inspect, or audit a candidate" \
+        in preflight
+    assert "numeral or figure counts, labels, and filing gates do not affirm" in preflight
     assert "Do not inspect or rely on rendered images" in preflight
 
 
