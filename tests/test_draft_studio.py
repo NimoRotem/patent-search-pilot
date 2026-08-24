@@ -684,6 +684,16 @@ def test_a_claim_term_absent_from_the_description_is_flagged_but_cannot_fail_the
     assert any("titanium" in item for item in check["items"])
 
 
+def test_claim_support_ignores_operable_and_further_as_boilerplate():
+    broken = dict(GOOD)
+    broken["claims"] += ("\n\n4. The vacuum lifting tool of claim 1, wherein the pump is operable "
+                         "to draw air, and further comprising the passage.")
+    check = checks_for(broken)["Claim terms appear in the description"]
+    reported = " ".join(check.get("items") or [])
+    assert "operable" not in reported
+    assert "further" not in reported
+
+
 # =============================================================================================
 # Citations
 # =============================================================================================
@@ -1511,6 +1521,8 @@ def test_the_independent_reviewer_checks_source_fidelity_before_internal_consist
     assert "Instructions merely to resume, preserve, repair, inspect, or audit a candidate" \
         in preflight
     assert "numeral or figure counts, labels, and filing gates do not affirm" in preflight
+    assert "Prior-art characterizations in the Background do not require inventor support" \
+        in preflight
     assert "Do not inspect or rely on rendered images" in preflight
 
 
