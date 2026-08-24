@@ -1521,6 +1521,25 @@ def test_pixel_grounding_prefers_a_long_boundary_over_nearby_hatching():
     assert 495 <= anchors[0]["y"] <= 505
 
 
+def test_pixel_grounding_keeps_the_nearest_substantial_boundary_over_a_farther_longer_one():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.line((350, 400, 650, 400), fill="black", width=6)
+    draw.line((100, 550, 900, 550), fill="black", width=6)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["26 = bearing face"], [{
+            "numeral": "26", "x": 500, "y": 410, "visible": True,
+            "evidence": "the bottom horizontal line of the column",
+        }])
+
+    assert audit["ok"] is True
+    assert audit["adjusted"][0]["numeral"] == "26"
+    assert 395 <= anchors[0]["y"] <= 405
+
+
 def test_pixel_grounding_prefers_a_long_vertical_boundary_over_nearby_hatching():
     image = Image.new("RGB", (1000, 1000), "white")
     draw = ImageDraw.Draw(image)
