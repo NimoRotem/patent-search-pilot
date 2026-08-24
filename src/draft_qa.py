@@ -111,6 +111,20 @@ _NO_OTHER_PANEL_RE = re.compile(
     r"\b(?:the\s+)?(?:one|only)\s+(?:slab|plate|panel)\b[^.\n]{0,140}"
     r"\bno\s+other\b[^.\n]{0,80}\b(?:slab|plate|panel)\b",
     re.IGNORECASE)
+_ARBITRARY_GLOBAL_SHAPE_EXCLUSION_RE = re.compile(
+    r"\bno\b(?=[^.\n]{0,160}\b(?:circle|ring|disc|disk|hole|ellipse)s?\b)"
+    r"[^.\n]{0,160}\b(?:appears?|shown|drawn)\b[^.\n]{0,80}"
+    r"\b(?:anywhere|on\s+the\s+(?:sheet|figure|drawing))\b",
+    re.IGNORECASE)
+_ARBITRARY_BACKGROUND_EXCLUSION_RE = re.compile(
+    r"\bno\s+(?:visible\s+)?(?:joint|grid|seam)\s+lines?\b"
+    r"|\bno\s+other\s+(?:tile|floor(?:ing)?|background(?:\s+panel)?)\b",
+    re.IGNORECASE)
+_ARBITRARY_STROKE_COUNT_RE = re.compile(
+    r"\b(?:bounded|outlined|drawn|formed)\s+by\s+(?:exactly\s+)?"
+    r"(?:one|two|three|four|five|six|\d+)\s+"
+    r"(?:(?:long|parallel|straight|curved)\s+){0,3}lines?\b",
+    re.IGNORECASE)
 _ARBITRARY_EXACT_ENDPOINT_TARGET_RE = re.compile(
     r"\bidentified\b(?=[^.\n]{0,260}\b(?:"
     r"cent(?:er|re)|midpoint|mid-point|mid[- ]?(?:height|width|depth)|halfway|quarter|"
@@ -585,6 +599,18 @@ def _figure_checks(sections: Mapping[str, str],
             brief_issues.append(
                 f"{label}: contradictory sheet exclusivity requires a drawn tile or floor "
                 "while also saying no other slab, plate, or panel is drawn")
+        if match := _ARBITRARY_GLOBAL_SHAPE_EXCLUSION_RE.search(caption):
+            brief_issues.append(
+                f"{label}: blanket shape exclusion {match.group(0)[:180]!r}; describe only "
+                "the positive, disclosure-grounded geometry that must appear")
+        if match := _ARBITRARY_BACKGROUND_EXCLUSION_RE.search(caption):
+            brief_issues.append(
+                f"{label}: arbitrary background exclusion {match.group(0)[:180]!r}; omit "
+                "background-control instructions that do not identify a listed part")
+        if match := _ARBITRARY_STROKE_COUNT_RE.search(caption):
+            brief_issues.append(
+                f"{label}: arbitrary exact stroke count {match.group(0)[:180]!r}; name the "
+                "part and its positive geometry without controlling the renderer's line count")
         for exact_target in _ARBITRARY_EXACT_ENDPOINT_TARGET_RE.finditer(caption):
             brief_issues.append(
                 f"{label}: arbitrary exact endpoint target {exact_target.group(0)[:180]!r}; "
