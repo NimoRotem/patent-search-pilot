@@ -62,9 +62,9 @@ MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
     "figure-anchor-v10-full-sheet-correction-coordinate-certificate-majority",
     "figure-anchor-v9-local-part-coordinate-certificate-majority-with-correction",
 ))
-MARKED_PROGRESS_VERSION = "marked-progress-v1-final-coordinate-certificates"
+MARKED_PROGRESS_VERSION = "marked-progress-v2-pixel-grounding-rules"
 OCR_PROMPT_VERSION = "google-vision-document-text-v1"
-PIXEL_ANCHOR_VERSION = "pixel-anchor-v2-sheet-boundary-clearance"
+PIXEL_ANCHOR_VERSION = "pixel-anchor-v3-target-kind-and-nearest-boundary"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
 MAX_LEADER_REPAIR_ATTEMPTS = 4
