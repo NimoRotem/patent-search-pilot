@@ -17,6 +17,7 @@ the intermediate model: a value that is right in the model and wrong on the page
 5. Assignee and earliest priority date are not 1.290(e) identification fields, and the assignee
    values did not cleanly match the public record.
 """
+import datetime
 import json
 import os
 import sys
@@ -238,3 +239,49 @@ def test_assignee_and_priority_date_are_not_printed():
     #  and what 1.290(e) does ask for is still there
     assert "First Named Inventor" in text
     assert "Publication Date" in text or "Issue Date" in text
+
+
+def test_no_em_dash_reaches_a_paper_that_gets_filed():
+    """An em dash was in the heading of every concise description filed at the Office, and in the
+    PDF's own metadata title. It is a house rule that none of them ship, and the place to enforce
+    it is the rendered bytes rather than a reviewer's eye.
+    """
+    import io
+
+    import concise_md
+    import concise_render as cr
+    import submission as S
+
+    docs = [{"n": 1, "pub": "JP-2007301640-A",
+             "biblio": {"pub": "JP-2007301640-A", "label": "JP 2007301640 A", "kind": "foreign",
+                        "country": "JP", "inventor": "Takeshi Ide",
+                        "issue_date_pretty": "November 22, 2007",
+                        "title": "Faceplate for magnetic chuck"},
+             "summary": "It discloses a faceplate for a magnetic chuck.",
+             "rows": [{"claim_no": "1", "claim_text": "a magnet in a housing",
+                       "quote_claim": "claim 1", "prose": "The reference discloses a magnet.",
+                       "quote": "a magnet is arranged in the housing", "location": "[0004]"}],
+             "compliance": {}}]
+    subject = {"app_no": "19/318,450", "pub_no": "US 2026/0070232 A1",
+               "title": "Magnetic gripper", "inventor": "A Inventor"}
+    docs[0]["subject"] = subject
+    win = S.window("2026-03-12", today=datetime.date(2026, 8, 24))
+
+    def _text(blob):
+        from pypdf import PdfReader
+        r = PdfReader(io.BytesIO(blob))
+        meta = " ".join(str(v) for v in (r.metadata or {}).values())
+        return meta + "\n" + "\n".join((p.extract_text() or "") for p in r.pages)
+
+    papers = {
+        "the concise description": _text(cr.to_pdf(docs[0])),
+        "its markdown": concise_md.to_markdown(docs[0]),
+        "the audit": _text(S.audit_pdf(S.audit(docs, subject, {}, {}, win), docs, subject, win)),
+        "the document list": _text(S.document_list_and_statements(docs, subject, {}, {}, win)),
+        "the manifest": S.manifest_csv(docs, {}, {}),
+        "the subject line": cr.subject_line(subject),
+        "the running head": cr.running_head(subject),
+    }
+    for what, text in papers.items():
+        for dash in ("—", "–"):
+            assert dash not in text, "%s carries %r" % (what, dash)

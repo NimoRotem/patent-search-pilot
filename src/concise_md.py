@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import re
 
-H_MAIN = "# CONCISE DESCRIPTION OF RELEVANCE — THIRD-PARTY SUBMISSION UNDER 37 CFR § 1.290"
+H_MAIN = "# CONCISE DESCRIPTION OF RELEVANCE: THIRD-PARTY SUBMISSION UNDER 37 CFR § 1.290"
 
 
 class MarkdownShapeError(ValueError):

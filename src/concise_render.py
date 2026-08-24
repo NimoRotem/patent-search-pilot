@@ -23,7 +23,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import (BaseDocTemplate, Frame, PageTemplate, Paragraph, Table,
                                 TableStyle)
 
-HEADING = ("CONCISE DESCRIPTION OF RELEVANCE — THIRD-PARTY SUBMISSION "
+HEADING = ("CONCISE DESCRIPTION OF RELEVANCE: THIRD-PARTY SUBMISSION "
            "UNDER 37 CFR § 1.290")
 
 
@@ -101,7 +101,7 @@ def subject_line(subject):
         tail.append("“%s”" % subject["title"])
     if subject.get("inventor"):
         tail.append(subject["inventor"])
-    return " — ".join([x for x in [head] + tail if x])
+    return ", ".join([x for x in [head] + tail if x])
 
 
 def _left_cell(row, pub_no_label):
@@ -218,7 +218,7 @@ def to_pdf(doc_model) -> bytes:
 
     tmpl = BaseDocTemplate(buf, pagesize=letter, leftMargin=inch, rightMargin=inch,
                            topMargin=0.95 * inch, bottomMargin=0.95 * inch,
-                           title="Concise Description of Relevance — %s" % doc_model["pub"],
+                           title="Concise Description of Relevance: %s" % doc_model["pub"],
                            author="Third-party submission under 37 CFR 1.290")
     frame = Frame(inch, 0.95 * inch, letter[0] - 2 * inch, letter[1] - 1.9 * inch, id="f")
     tmpl.addPageTemplates([PageTemplate(id="p", frames=[frame], onPage=_page)])
