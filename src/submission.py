@@ -162,6 +162,11 @@ def fee_choices(entity_size="small", max_units=5):
     return out
 
 
+#  How many rows the passed-over table may carry. Long enough that a document worth having is
+#  in it, short enough that somebody reads to the bottom.
+PASSED_OVER_MAX = 25
+
+
 def passed_over(cands, budget_items):
     """Documents the claim grid ranks highly that this selection does not include, with the reason.
 
@@ -180,17 +185,39 @@ def passed_over(cands, budget_items):
             picked.append(c)
             n += 1
         ranked.append(c)
-    top = sorted([c for c in ranked if c.get("reads_on")],
-                 key=lambda c: -int(c.get("reads_on") or 0))[:max(budget_items, 10)]
     chosen = {c.get("pub") for c in picked}
-    out = []
+    with_reach = [c for c in ranked if c.get("reads_on")]
+    top = sorted(with_reach, key=lambda c: -int(c.get("reads_on") or 0))[:max(budget_items, 10)]
+    #  AND EVERY PUBLIC-ART DOCUMENT AT LEAST AS BROAD AS THE NARROWEST ONE SELECTED. A cap on the
+    #  top by breadth is not enough on its own: Schunk's DE 10 2022 135 066 A1 reads on 16, sat
+    #  outside the top ten, and is 102(a)(1) art with no 102(b)(2) argument available against it,
+    #  while the member of the same disclosure that WAS in reach is 102(a)(2) only. "You picked
+    #  something narrower and legally weaker than this" is the sentence worth printing.
+    floor = min([int(c.get("reads_on") or 0) for c in picked] or [0])
+    if floor:
+        top += [c for c in with_reach
+                if c.get("basis") == PUBLIC and int(c.get("reads_on") or 0) >= floor
+                and c not in top]
+    out, seen = [], set()
     for c in top:
-        if c.get("pub") in chosen:
+        if c.get("pub") in chosen or c.get("pub") in seen:
             continue
+        seen.add(c.get("pub"))
         out.append({"pub": c.get("pub"), "title": c.get("title") or "",
                     "reads_on": c.get("reads_on"), "charts": c.get("n_limitations") or 0,
+                    #  THE BASIS BELONGS HERE, because the ranking cannot see it and it is often
+                    #  the fact that decides. Schunk's DE 10 2022 135 066 A1 published before the
+                    #  filing date, so it is 102(a)(1) art with no 102(b)(2) argument available
+                    #  against it, while the US member of the same disclosure is 102(a)(2) only.
+                    #  A coverage order will always prefer the weaker one.
+                    "basis": c.get("basis") or "",
+                    "basis_label": BASIS_LABEL.get(c.get("basis") or "", ""),
                     "why": _why_not(c, budget_items)})
-    return out
+    #  Public art first among equals: it is the stronger document and it is the one somebody
+    #  scanning this table should see before they run out of patience. Capped for the same
+    #  reason, because a table of sixty-nine is a table nobody reads and this exists to be read.
+    out.sort(key=lambda d: (d["basis"] != PUBLIC, -int(d["reads_on"] or 0)))
+    return out[:PASSED_OVER_MAX]
 
 
 def _why_not(c, budget_items):
@@ -206,9 +233,10 @@ def _why_not(c, budget_items):
         return "its dates could not be established, so its status as prior art is unknown"
     charts, reads = int(c.get("n_limitations") or 0), int(c.get("reads_on") or 0)
     if reads and charts < reads:
-        return ("it reads on %d limitations but only %d carry a verified passage, so the chart "
+        return ("it reads on %d limitations but only %d %s a verified passage, so the chart "
                 "filed for it would have %d row%s"
-                % (reads, charts, charts, "" if charts == 1 else "s"))
+                % (reads, charts, "carries" if charts == 1 else "carry",
+                   charts, "" if charts == 1 else "s"))
     return ("it ranks below the %d documents this fee budget pays for" % budget_items)
 
 
@@ -296,6 +324,14 @@ def window(publication_date, first_rejection_date=None, notice_of_allowance_date
 #  person choosing never saw the choice. They are computed here from the corpus, for the picker.
 
 PUBLIC, SECRET, NOT_ART, UNKNOWN = "public", "secret", "not_art", "unknown"
+
+#  Short enough to sit in a table cell, and it says the statute rather than a word like "strong".
+BASIS_LABEL = {
+    PUBLIC: "102(a)(1) public art",
+    SECRET: "102(a)(2) only",
+    NOT_ART: "not prior art here",
+    UNKNOWN: "dates unknown",
+}
 
 BASIS_HELP = {
     PUBLIC: "Published before this application's earliest effective filing date, so it is prior "

@@ -331,3 +331,47 @@ def test_public_art_gets_no_elsewhere_note(monkeypatch):
         "earliest_priority_date": datetime.date(2019, 1, 1), "owners": [], "country": "DE"}})
     out = S.classify_candidates([{"pub": "DE-2-A1"}], "2024-09-09")
     assert out[0]["basis"] == S.PUBLIC and out[0]["elsewhere"] == ""
+
+
+# ------------------------------- 7. public art the coverage order cannot see
+
+def _c(pub, reads, charts, basis=S.PUBLIC, picked=False, readable=True):
+    return {"pub": pub, "title": "t", "reads_on": reads, "n_limitations": charts,
+            "basis": basis, "default_include": picked, "readable": readable}
+
+
+def test_public_art_at_least_as_broad_as_something_selected_is_always_named():
+    """The coverage order cannot see the basis, and the basis is often what decides.
+
+    Schunk's DE 10 2022 135 066 A1 published before the filing date, so it is 102(a)(1) art with
+    no 102(b)(2) argument available against it. The member of the same disclosure that ranked
+    higher is 102(a)(2) only. It read on 16, sat outside the top ten by breadth, and appeared
+    nowhere: not in the picker, not in the passed-over table, not on any page.
+    """
+    cands = [_c("US-P%02d-A1" % i, 30 - i, 20, picked=True) for i in range(10)]
+    #  Exactly at the floor, which is the boundary worth pinning: the narrowest document actually
+    #  selected reads on 21, so 21 is "at least as broad as something you picked".
+    cands.append(_c("DE-STRONG-A1", 21, 1))
+    cands.append(_c("US-WEAK-A1", 21, 1, basis=S.SECRET))
+    out = {p["pub"]: p for p in S.passed_over(cands, budget_items=10)}
+    assert "DE-STRONG-A1" in out, "public art as broad as a selected document was not named"
+    assert out["DE-STRONG-A1"]["basis_label"] == "102(a)(1) public art"
+    assert "only 1 carries a verified passage" in out["DE-STRONG-A1"]["why"]
+    #  Below the floor it is not forced in: the table has to stay readable.
+    thin = cands + [_c("DE-NARROW-A1", 3, 1)]
+    assert "DE-NARROW-A1" not in {p["pub"] for p in S.passed_over(thin, budget_items=10)}
+
+
+def test_public_art_is_listed_before_the_rest():
+    cands = [_c("US-P%02d-A1" % i, 30 - i, 20, picked=True) for i in range(10)]
+    cands += [_c("US-SECRET-A1", 29, 2, basis=S.SECRET), _c("DE-PUBLIC-A1", 21, 2)]
+    order = [p["pub"] for p in S.passed_over(cands, budget_items=10)]
+    assert order.index("DE-PUBLIC-A1") < order.index("US-SECRET-A1"), order
+
+
+def test_the_table_is_capped_so_somebody_reads_to_the_bottom():
+    cands = [_c("US-P%02d-A1" % i, 30, 20, picked=True) for i in range(10)]
+    cands += [_c("US-X%03d-A1" % i, 30, 1) for i in range(200)]
+    out = S.passed_over(cands, budget_items=10)
+    assert len(out) == S.PASSED_OVER_MAX
+    assert len({p["pub"] for p in out}) == len(out), "a document was listed twice"

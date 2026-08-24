@@ -6076,10 +6076,12 @@ def _render_picker(report=None, **kw):
     ctx.update(kw)
     #  WHAT THE SELECTION LEFT OUT, named. Computed here rather than in the template so the reason
     #  is one testable function and not a chain of Jinja conditions.
+    deep_for_notes = kw.get("_deep")
     try:
         import submission
-        ctx["passed_over"] = submission.passed_over(ctx.get("cands") or [],
-                                                    submission.ITEMS_PER_UNIT)
+        wide = _considered(kw.get("slug"), report, deep_for_notes, ctx.get("cands") or []) \
+            if deep_for_notes else (ctx.get("cands") or [])
+        ctx["passed_over"] = submission.passed_over(wide, submission.ITEMS_PER_UNIT)
     except Exception:                                                     # noqa: BLE001
         traceback.print_exc()
         ctx["passed_over"] = []
@@ -6099,6 +6101,13 @@ def _render_picker(report=None, **kw):
     return render_template("concise.html", **ctx)
 
 
+#  How deep the "considered and not selected" table looks. The picker shows 40, and a document
+#  that is legally the strongest thing in the search can sit well below that: Schunk's
+#  DE 10 2022 135 066 A1 published before the filing date, so it is clean 102(a)(1) art, and it
+#  charts one limitation because nobody quoted the German text. It was nowhere on the page.
+PASSED_OVER_DEPTH = 200
+
+
 def _classify(slug, cands, deep):
     """Date basis and common ownership for every candidate, before anything is built.
 
@@ -6114,6 +6123,27 @@ def _classify(slug, cands, deep):
     except Exception:                                                     # noqa: BLE001
         traceback.print_exc()
         return cands
+
+
+def _considered(slug, report, deep, shown):
+    """Everything the ranking looked at, classified, for the passed-over table. -> [cand]
+
+    A wider list than the picker's on purpose. Whether a document is 102(a)(1) art or only
+    102(a)(2) is not something the coverage ranking can see, and it is frequently the fact that
+    decides: on adhoc-efbf2979420b the strongest document in the search by that measure sat at
+    rank 141 because the reader never quoted its German text, and no page mentioned it.
+    """
+    try:
+        import concise_description
+        wide = concise_description.candidates(report or {}, deep or {},
+                                              limit=PASSED_OVER_DEPTH)
+        picked = {c.get("pub") for c in shown or []}
+        #  The ones already on the picker keep the classification they were given there.
+        rest = [c for c in wide if c.get("pub") not in picked]
+        return list(shown or []) + _classify(slug, rest, deep)
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return list(shown or [])
 
 
 def _concise_verdict_on_disk(slug):
