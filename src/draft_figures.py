@@ -62,8 +62,8 @@ MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((
     "figure-anchor-v10-full-sheet-correction-coordinate-certificate-majority",
     "figure-anchor-v9-local-part-coordinate-certificate-majority-with-correction",
 ))
-MARKED_PROGRESS_VERSION = "marked-progress-v2-pixel-grounding-rules"
-OCR_PROMPT_VERSION = "google-vision-document-text-v1"
+MARKED_PROGRESS_VERSION = "marked-progress-v3-numbered-sheet-layout"
+OCR_PROMPT_VERSION = "google-vision-document-text-v2-sheet-number"
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v3-target-kind-and-nearest-boundary"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
@@ -491,12 +491,25 @@ _STOPWORDS = frozenset((
     "wherein", "whereby", "also", "may", "can", "be", "as", "its", "their", "this", "these"))
 
 _FIGURE_ID_RE = re.compile(r"\bFIG(?:URE)?S?\.?\s*([0-9]+[A-Za-z]?)\b", re.IGNORECASE)
+_SHEET_NUMBER_RE = re.compile(
+    r"(?<![A-Za-z0-9])(\d{1,3})\s*/\s*(\d{1,3})(?![A-Za-z0-9])")
 
 
 def canonical_figure_label(value) -> str:
     """The filing label named by a verbose or truncated figure heading."""
     match = _FIGURE_ID_RE.search(str(value or ""))
     return f"FIG. {match.group(1).upper()}" if match else str(value or "").strip()[:40]
+
+
+def canonical_sheet_number(value) -> str:
+    """Normalize one USPTO drawing-sheet identifier such as `2/5`."""
+    match = _SHEET_NUMBER_RE.fullmatch(str(value or "").strip())
+    if not match:
+        return ""
+    sheet, total = int(match.group(1)), int(match.group(2))
+    if sheet < 1 or total < 1 or sheet > total or total > MAX_FIGURES:
+        return ""
+    return f"{sheet}/{total}"
 
 
 def figure_key(value) -> str:
@@ -935,19 +948,22 @@ def _analysis_cache_put(key: str, *, stage: str, provider: str, model: str,
         pass
 
 
-def _marked_progress_key(raw_png: bytes, *, label: str, caption: str, numerals) -> str:
+def _marked_progress_key(raw_png: bytes, *, label: str, caption: str, numerals,
+                         sheet_number: str = "") -> str:
     return _analysis_cache_key(
-        "marked-progress", raw_png, specification_hash(label, caption, numerals),
+        "marked-progress", raw_png,
+        specification_hash(label, caption, numerals) + ":" + canonical_sheet_number(sheet_number),
         "deterministic-compositor", MARKED_PROGRESS_VERSION)
 
 
 def _marked_progress_get(raw_png: bytes, *, label: str, caption: str,
-                         numerals) -> dict | None:
+                         numerals, sheet_number: str = "") -> dict | None:
     """Load only structurally valid endpoint progress for this exact image and specification."""
     if "PYTEST_CURRENT_TEST" in os.environ:
         return None
     value = _analysis_cache_get(_marked_progress_key(
-        raw_png, label=label, caption=caption, numerals=numerals))
+        raw_png, label=label, caption=caption, numerals=numerals,
+        sheet_number=sheet_number))
     if not value or value.get("version") != MARKED_PROGRESS_VERSION:
         return None
     expected = {entry["numeral"] for entry in numeral_entries(numerals)}
@@ -1024,7 +1040,7 @@ def _marked_progress_get(raw_png: bytes, *, label: str, caption: str,
 
 def _marked_progress_put(raw_png: bytes, *, label: str, caption: str, numerals,
                          anchors, certificates: dict, attempts: int,
-                         coordinate_history=None) -> None:
+                         coordinate_history=None, sheet_number: str = "") -> None:
     """Durably replace partial endpoint progress after each completed correction round."""
     if "PYTEST_CURRENT_TEST" in os.environ:
         return
@@ -1047,7 +1063,9 @@ def _marked_progress_put(raw_png: bytes, *, label: str, caption: str, numerals,
         "attempts": int(attempts),
     }
     ensure_schema()
-    key = _marked_progress_key(raw_png, label=label, caption=caption, numerals=numerals)
+    key = _marked_progress_key(
+        raw_png, label=label, caption=caption, numerals=numerals,
+        sheet_number=sheet_number)
     with db.cursor() as cur:
         cur.execute(
             "INSERT INTO app_draft_figure_analysis_cache "
@@ -2722,7 +2740,7 @@ def _spread_y(items: list[dict], height: int, *, top: int, bottom: int) -> list[
             for index, item in enumerate(items)]
 
 
-def _annotation_layout(png: bytes, anchors, scale: float) -> dict:
+def _annotation_layout(png: bytes, anchors, scale: float, *, sheet_number: str = "") -> dict:
     from PIL import Image, ImageOps
     source = Image.open(io.BytesIO(png)).convert("RGB")
     source.thumbnail((1400, 1100))
@@ -2732,14 +2750,16 @@ def _annotation_layout(png: bytes, anchors, scale: float) -> dict:
     left_items = [item for item in entries if int(item.get("x") or 0) <= 500]
     right_items = [item for item in entries if item not in left_items]
     font_size = max(24, round(26 * float(scale)))
+    sheet_font_size = max(font_size + 6, round(font_size * 1.25))
     row = font_size + 10
     needed_height = max(source.height, (max(len(left_items), len(right_items), 1) * row) + 70)
     side = max(170, font_size * 5)
-    top = 25
+    top = sheet_font_size + 16 if canonical_sheet_number(sheet_number) else 25
     bottom = max(90, font_size * 3)
     return {
         "source": source, "entries": entries, "left_items": left_items,
-        "right_items": right_items, "font_size": font_size, "row": row,
+        "right_items": right_items, "font_size": font_size,
+        "sheet_font_size": sheet_font_size, "row": row,
         "needed_height": needed_height, "side": side, "top": top, "bottom": bottom,
         "source_x": side, "source_y": top + (needed_height - source.height) // 2,
         "canvas_width": source.width + side * 2,
@@ -2834,10 +2854,12 @@ def _optimize_leader_rows(routes, clearance: int):
     return optimized
 
 
-def annotate_png(png: bytes, label: str, anchors, *, scale: float = 1.0) -> bytes:
+def annotate_png(png: bytes, label: str, anchors, *, scale: float = 1.0,
+                 sheet_number: str = "") -> bytes:
     """Add exact numerals and leaders with Pillow, never with a text-generating model."""
     from PIL import Image, ImageDraw
-    layout = _annotation_layout(png, anchors, scale)
+    sheet_number = canonical_sheet_number(sheet_number)
+    layout = _annotation_layout(png, anchors, scale, sheet_number=sheet_number)
     source = layout["source"]
     left_items, right_items = layout["left_items"], layout["right_items"]
     font_size, row = layout["font_size"], layout["row"]
@@ -2848,6 +2870,12 @@ def annotate_png(png: bytes, label: str, anchors, *, scale: float = 1.0) -> byte
     canvas.paste(source, (source_x, source_y))
     draw = ImageDraw.Draw(canvas)
     font = _font(font_size)
+    if sheet_number:
+        sheet_font = _font(layout["sheet_font_size"])
+        sheet_box = draw.textbbox((0, 0), sheet_number, font=sheet_font)
+        sheet_width = sheet_box[2] - sheet_box[0]
+        draw.text(((canvas.width - sheet_width) // 2, 4), sheet_number,
+                  fill="black", font=sheet_font)
     dot_radius = max(6, font_size // 8)
     routes = []
     for side_name, group in (("left", left_items), ("right", right_items)):
@@ -2894,11 +2922,12 @@ def annotate_png(png: bytes, label: str, anchors, *, scale: float = 1.0) -> byte
 
 
 def _repair_leader_anchors(raw_png: bytes, anchors, audit: dict, *, scale: float,
-                           protected=()) -> tuple[list, bool]:
+                           protected=(), sheet_number: str = "") -> tuple[list, bool]:
     """Map reviewer-suggested final-sheet points back into the geometry coordinate system."""
     repaired = [dict(item) for item in anchors or ()]
     protected_numerals = {_clean_numeral(value) for value in protected or ()}
-    layout = _annotation_layout(raw_png, repaired, scale)
+    layout = _annotation_layout(
+        raw_png, repaired, scale, sheet_number=sheet_number)
     source = layout["source"]
     records = {_clean_numeral(item.get("numeral")): item
                for item in (audit or {}).get("labels") or [] if isinstance(item, dict)}
@@ -3128,7 +3157,8 @@ def _apply_cross_provider_endpoint_gate(certified: dict, png: bytes, *, raw_png:
 
 
 def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals,
-                           semantic: dict) -> tuple[bytes, dict, dict, list, dict]:
+                           semantic: dict, sheet_number: str = ""
+                           ) -> tuple[bytes, dict, dict, list, dict]:
     """Typeset, OCR, trace, and if possible repair the final leader endpoints."""
     png, labels, leaders = b"", {}, {}
     anchors = [dict(item) for item in semantic.get("anchors") or []]
@@ -3139,7 +3169,8 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
     coordinate_history = {}
     completed_marked_attempts = 0
     progress = _marked_progress_get(
-        raw_png, label=label, caption=caption, numerals=numerals)
+        raw_png, label=label, caption=caption, numerals=numerals,
+        sheet_number=sheet_number)
     if progress:
         anchors = [dict(item) for item in progress["anchors"]]
         marked_certificates = {
@@ -3156,7 +3187,7 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             raw_png, label=label, caption=caption, numerals=numerals,
             anchors=anchors, certificates=marked_certificates,
             attempts=completed_marked_attempts,
-            coordinate_history=coordinate_history)
+            coordinate_history=coordinate_history, sheet_number=sheet_number)
     else:
         _record_anchor_coordinate_history(coordinate_history, anchors)
 
@@ -3176,7 +3207,8 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
         _marked_progress_put(
             raw_png, label=label, caption=caption, numerals=numerals,
             anchors=anchors, certificates=marked_certificates,
-            attempts=attempts, coordinate_history=coordinate_history)
+            attempts=attempts, coordinate_history=coordinate_history,
+            sheet_number=sheet_number)
         return bool(pixel_audit.get("ok"))
 
     marked_attempts = (
@@ -3191,9 +3223,12 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             used_scale_index = leader_scale_index
             for candidate_index in range(leader_scale_index, len(layout_scales)):
                 used_scale = layout_scales[candidate_index]
-                png = annotate_png(raw_png, label, anchors, scale=used_scale)
-                label_inspection = inspect_labels(png, label)
-                labels = ocr_audit(numerals, label_inspection, label)
+                png = annotate_png(
+                    raw_png, label, anchors, scale=used_scale,
+                    sheet_number=sheet_number)
+                label_inspection = inspect_labels(png, label, sheet_number)
+                labels = ocr_audit(
+                    numerals, label_inspection, label, sheet_number=sheet_number)
                 if labels.get("ok"):
                     used_scale_index = candidate_index
                     break
@@ -3207,7 +3242,7 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             # remain under the semantic and marked-coordinate reviews even before certification.
             anchors, changed = _repair_leader_anchors(
                 raw_png, anchors, leaders, scale=used_scale,
-                protected=_anchor_positions(anchors))
+                protected=_anchor_positions(anchors), sheet_number=sheet_number)
             if not changed:
                 if used_scale_index + 1 < len(layout_scales):
                     leader_scale_index = used_scale_index + 1
@@ -3220,7 +3255,8 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             _marked_progress_put(
                 raw_png, label=label, caption=caption, numerals=numerals,
                 anchors=anchors, certificates=marked_certificates,
-                attempts=marked_attempt, coordinate_history=coordinate_history)
+                attempts=marked_attempt, coordinate_history=coordinate_history,
+                sheet_number=sheet_number)
             if not pixel_audit.get("ok"):
                 leaders = dict(leaders)
                 leaders["ok"] = False
@@ -3274,7 +3310,8 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             _marked_progress_put(
                 raw_png, label=label, caption=caption, numerals=numerals,
                 anchors=anchors, certificates=marked_certificates,
-                attempts=marked_attempt, coordinate_history=coordinate_history)
+                attempts=marked_attempt, coordinate_history=coordinate_history,
+                sheet_number=sheet_number)
             break
         if marked_attempt >= MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS:
             marked = {
@@ -3308,7 +3345,7 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
                     raw_png, label=label, caption=caption, numerals=numerals,
                     anchors=anchors, certificates=marked_certificates,
                     attempts=marked_attempt + 1,
-                    coordinate_history=coordinate_history)
+                    coordinate_history=coordinate_history, sheet_number=sheet_number)
                 break
             if repair_cross_provider_veto(marked, attempts=marked_attempt + 1):
                 continue
@@ -3316,14 +3353,14 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
                 raw_png, label=label, caption=caption, numerals=numerals,
                 anchors=anchors, certificates=marked_certificates,
                 attempts=marked_attempt + 1,
-                coordinate_history=coordinate_history)
+                coordinate_history=coordinate_history, sheet_number=sheet_number)
             break
         if marked_attempt + 1 >= MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS:
             _marked_progress_put(
                 raw_png, label=label, caption=caption, numerals=numerals,
                 anchors=anchors, certificates=marked_certificates,
                 attempts=marked_attempt + 1,
-                coordinate_history=coordinate_history)
+                coordinate_history=coordinate_history, sheet_number=sheet_number)
             break
         repair_audit = dict(marked)
         repair_audit["incorrect"] = [
@@ -3336,7 +3373,7 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
                 raw_png, label=label, caption=caption, numerals=numerals,
                 anchors=anchors, certificates=marked_certificates,
                 attempts=marked_attempt + 1,
-                coordinate_history=coordinate_history)
+                coordinate_history=coordinate_history, sheet_number=sheet_number)
             break
         anchors, pixel_audit = _ground_anchors_to_pixels(raw_png, numerals, anchors)
         _record_rejected_anchor_coordinates(
@@ -3347,7 +3384,7 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             raw_png, label=label, caption=caption, numerals=numerals,
             anchors=anchors, certificates=marked_certificates,
             attempts=marked_attempt + 1,
-            coordinate_history=coordinate_history)
+            coordinate_history=coordinate_history, sheet_number=sheet_number)
         if not pixel_audit.get("ok"):
             leaders = dict(leaders)
             leaders["ok"] = False
@@ -3376,7 +3413,8 @@ def parse_ocr_response(payload: dict) -> dict:
     """Normalize Google Cloud Vision OCR while preserving duplicate reference numerals."""
     response = ((payload or {}).get("responses") or [{}])[0]
     if response.get("error"):
-        return {"ok": False, "numerals": [], "figure_label": "", "other_text": [],
+        return {"ok": False, "numerals": [], "figure_label": "", "sheet_numbers": [],
+                "other_text": [],
                 "confidence": 0.0, "error": str(response["error"])[:300]}
     annotation = response.get("fullTextAnnotation") or {}
     text = str(annotation.get("text") or "")
@@ -3387,6 +3425,9 @@ def parse_ocr_response(payload: dict) -> dict:
     figure_label = canonical_figure_label(figure_match.group(0)) if figure_match else ""
     without_label = (text[:figure_match.start()] + text[figure_match.end():]
                      if figure_match else text)
+    sheet_numbers = [f"{int(match.group(1))}/{int(match.group(2))}"
+                     for match in _SHEET_NUMBER_RE.finditer(without_label)]
+    without_label = _SHEET_NUMBER_RE.sub(" ", without_label)
     numerals = [_clean_numeral(match.group(0)) for match in
                 re.finditer(r"(?<![A-Za-z0-9])(?:[A-Za-z]?\d{1,4}[A-Za-z]?)(?![A-Za-z0-9])",
                             without_label)]
@@ -3403,13 +3444,14 @@ def parse_ocr_response(payload: dict) -> dict:
                         confidences.append(float(word["confidence"]))
     confidence = sum(confidences) / len(confidences) if confidences else (1.0 if text else 0.0)
     return {"ok": bool(text), "numerals": numerals, "figure_label": figure_label,
+            "sheet_numbers": sheet_numbers,
             "other_text": other_text, "confidence": confidence, "raw_text": text[:2000]}
 
 
-def inspect_labels(png: bytes, label: str = "") -> dict:
+def inspect_labels(png: bytes, label: str = "", sheet_number: str = "") -> dict:
     """Read the final pixels with Google Cloud Vision OCR, independently of the LLM reviewer."""
     model = "DOCUMENT_TEXT_DETECTION"
-    context = canonical_figure_label(label)
+    context = canonical_figure_label(label) + ":" + canonical_sheet_number(sheet_number)
     key = _analysis_cache_key("ocr", png, context, model, OCR_PROMPT_VERSION)
     cached = _analysis_cache_get(key)
     request_id = str(uuid.uuid4())
@@ -3441,7 +3483,8 @@ def inspect_labels(png: bytes, label: str = "") -> dict:
                    success=bool(result.get("ok")))
         return result
     except Exception as exc:
-        result = {"ok": False, "numerals": [], "figure_label": "", "other_text": [],
+        result = {"ok": False, "numerals": [], "figure_label": "", "sheet_numbers": [],
+                  "other_text": [],
                   "confidence": 0.0, "error": f"Could not OCR drawing labels: {str(exc)[:180]}"}
         _audit_log(request_id=request_id, provider="google_vision", model=model, stage="ocr",
                    prompt_version=OCR_PROMPT_VERSION,
@@ -3470,23 +3513,59 @@ def numeral_audit(expected, detected) -> dict:
             "missing": missing, "unexpected": unexpected, "duplicates": duplicates}
 
 
-def ocr_audit(expected, inspection: dict, label: str) -> dict:
+def ocr_audit(expected, inspection: dict, label: str, *, sheet_number: str = "") -> dict:
     audit = numeral_audit(expected, (inspection or {}).get("numerals") or [])
     expected_label = canonical_figure_label(label)
     detected_label = canonical_figure_label((inspection or {}).get("figure_label"))
     correct_label = bool(expected_label and detected_label == expected_label)
+    requested_sheet_number = str(sheet_number or "").strip()
+    expected_sheet_number = canonical_sheet_number(requested_sheet_number)
+    detected_sheet_numbers = []
+    for raw in (inspection or {}).get("sheet_numbers") or []:
+        compact = re.sub(r"\s+", "", str(raw or ""))
+        detected_sheet_numbers.append(canonical_sheet_number(compact) or compact)
+    correct_sheet_number = bool(
+        (not requested_sheet_number or expected_sheet_number) and
+        (not expected_sheet_number or detected_sheet_numbers == [expected_sheet_number]))
     other_text = [str(item)[:100] for item in (inspection or {}).get("other_text") or []]
     confidence = float((inspection or {}).get("confidence") or 0.0)
     audit.update({
         "inspected": bool((inspection or {}).get("ok")), "expected_figure_label": expected_label,
         "detected_figure_label": detected_label, "correct_figure_label": correct_label,
+        "expected_sheet_number": expected_sheet_number,
+        "detected_sheet_numbers": detected_sheet_numbers,
+        "correct_sheet_number": correct_sheet_number,
         "other_text": other_text, "confidence": confidence,
+        "prompt_version": OCR_PROMPT_VERSION,
     })
     if (inspection or {}).get("error"):
         audit["error"] = str(inspection["error"])[:300]
-    audit["ok"] = bool(audit["ok"] and audit["inspected"] and correct_label and not other_text and
+    audit["ok"] = bool(audit["ok"] and audit["inspected"] and correct_label and
+                       correct_sheet_number and not other_text and
                        confidence >= MIN_OCR_CONFIDENCE)
     return audit
+
+
+def current_ocr_audit(value, *, expected_sheet_number: str = "") -> bool:
+    """Accept only exact OCR from the current label and sheet-number gate."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return False
+    if not isinstance(value, dict) or not value.get("ok"):
+        return False
+    requested = str(expected_sheet_number or "").strip()
+    expected = canonical_sheet_number(requested)
+    if requested and not expected:
+        return False
+    return bool(
+        value.get("inspected") and value.get("prompt_version") == OCR_PROMPT_VERSION and
+        value.get("correct_figure_label") and
+        (not expected or (
+            value.get("expected_sheet_number") == expected and
+            value.get("detected_sheet_numbers") == [expected] and
+            value.get("correct_sheet_number"))))
 
 
 def inspect_numerals(png: bytes) -> dict:
@@ -3663,11 +3742,14 @@ def materialize_review_images(project_id: int, user_id: int, workspace: Path) ->
     for stale in directory.glob("rendered-*.png"):
         stale.unlink()
     written = 0
-    for figure in listing(project_id, user_id):
+    figures = listing(project_id, user_id)
+    for index, figure in enumerate(figures, 1):
         active_version = int(figure.get("active_version") or 0)
         active = next((row for row in figure.get("versions") or ()
                        if int(row.get("version_no") or 0) == active_version), None) or {}
-        if not ((active.get("numeral_audit") or {}).get("ok") and
+        if not (current_ocr_audit(
+                    active.get("numeral_audit") or {},
+                    expected_sheet_number=f"{index}/{len(figures)}") and
                 current_semantic_audit(active.get("semantic_audit") or {}) and
                 current_leader_audit(active.get("leader_audit") or {})):
             continue
@@ -3793,13 +3875,17 @@ def _semantic_has_text_contamination(semantic) -> bool:
 
 def render_figure(project_id, user_id, *, label, caption, sections=None, instruction="",
                   figure_id=None, base_version=None, disclosure="", source_png=None,
-                  region=None, numerals=None, sort_order=0):
+                  region=None, numerals=None, sort_order=0, sheet_number: str = ""):
     """Generate (or re-generate) one figure and store the result as a new version.
 
     With `figure_id` this is an EDIT: the currently active image is passed back to the model with
     the instruction, so the change applies to that drawing rather than producing a new one.
     """
     sections = sections or {}
+    requested_sheet_number = str(sheet_number or "").strip()
+    sheet_number = canonical_sheet_number(requested_sheet_number)
+    if requested_sheet_number and not sheet_number:
+        raise FigureError("invalid drawing-sheet number")
     numerals = (numerals_for(sections, caption, disclosure) if numerals is None
                 else list(numerals))
     previous = source_png
@@ -3884,7 +3970,8 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
     # printed leader to its endpoint. When it finds a misplaced endpoint, its suggested point is
     # mapped back into geometry coordinates and the compositor retries without human editing.
     png, labels, leaders, anchors, pixel_audit = _compose_checked_sheet(
-        raw_png, label=label, caption=caption, numerals=numerals, semantic=semantic)
+        raw_png, label=label, caption=caption, numerals=numerals, semantic=semantic,
+        sheet_number=sheet_number)
     # OCR is the strongest text-contamination detector in this pipeline. If it finds writing in
     # the model-generated geometry, larger deterministic labels cannot remove those pixels. Start
     # from a clean canvas, semantically recheck the new geometry, and run all final-pixel gates
@@ -3912,7 +3999,8 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
                 active_generation = None
                 continue
             png, labels, leaders, anchors, pixel_audit = _compose_checked_sheet(
-                raw_png, label=label, caption=caption, numerals=numerals, semantic=semantic)
+                raw_png, label=label, caption=caption, numerals=numerals, semantic=semantic,
+                sheet_number=sheet_number)
             if labels.get("ok") or not labels.get("other_text"):
                 break
             _discard_cached_generation(*active_generation)
@@ -3926,6 +4014,8 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
                 issues.append(key.replace("_", " ") + " " + ", ".join(labels[key]))
         if not labels.get("correct_figure_label"):
             issues.append("wrong figure label")
+        if not labels.get("correct_sheet_number"):
+            issues.append("wrong drawing-sheet number")
         if float(labels.get("confidence") or 0) < MIN_OCR_CONFIDENCE:
             issues.append(f"confidence {float(labels.get('confidence') or 0):.2f}")
         detail = labels.get("error") or "; ".join(issues) or "the OCR result was not exact"
@@ -4003,6 +4093,7 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
         expected_hash = specification_hash(label, caption, expected)
         current = by_key.get(figure_key(label))
         canonical_label = canonical_figure_label(label)
+        sheet_number = f"{index}/{len(specs)}"
         stored_caption = caption[:400]
         if (current and (
                 str(current.get("figure_label") or "") != canonical_label or
@@ -4021,7 +4112,9 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
         def accepted_for_current_spec(version) -> bool:
             stored_set = {_clean_numeral(value) for value in
                           (version.get("numeral_audit") or {}).get("expected") or []}
-            return bool((version.get("numeral_audit") or {}).get("ok") and
+            return bool(current_ocr_audit(
+                            version.get("numeral_audit") or {},
+                            expected_sheet_number=sheet_number) and
                         current_semantic_audit(version.get("semantic_audit") or {}) and
                         current_leader_audit(version.get("leader_audit") or {}) and
                         expected_set == stored_set and
@@ -4050,6 +4143,7 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
                 sections=sections, disclosure=disclosure, numerals=expected,
                 figure_id=(current or {}).get("id"),
                 sort_order=index,
+                sheet_number=sheet_number,
                 instruction="Automatically reconcile this sheet with the current filing text.")
         except FigureTransientError:
             raise

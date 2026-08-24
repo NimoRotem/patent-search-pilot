@@ -26,6 +26,18 @@ def accepted_leader_audit(**values):
     }
 
 
+def accepted_ocr_audit(sheet_number="1/1", expected=("10",), **values):
+    return {
+        "ok": True, "inspected": True, "expected": list(expected),
+        "prompt_version": draft_figures.OCR_PROMPT_VERSION,
+        "correct_figure_label": True,
+        "expected_sheet_number": sheet_number,
+        "detected_sheet_numbers": [sheet_number],
+        "correct_sheet_number": True,
+        **values,
+    }
+
+
 def accepted_marked_anchor_audit(**values):
     return {
         "ok": True, "inspected": True,
@@ -252,6 +264,70 @@ def test_cloud_vision_ocr_keeps_duplicates_and_separates_the_figure_label():
     assert found["figure_label"] == "FIG. 2"
     assert found["other_text"] == []
     assert found["confidence"] > 0.95
+
+
+def test_cloud_vision_ocr_separates_the_sheet_number_from_reference_numerals():
+    response = {"responses": [{
+        "fullTextAnnotation": {
+            "text": "1 / 5\n10 12\nFIG. 1\n",
+            "pages": [{"blocks": [{"paragraphs": [{"words": [
+                {"confidence": 0.99}, {"confidence": 0.98},
+                {"confidence": 0.97}, {"confidence": 0.96},
+            ]}]}]}],
+        }
+    }]}
+
+    found = draft_figures.parse_ocr_response(response)
+
+    assert found["sheet_numbers"] == ["1/5"]
+    assert found["numerals"] == ["10", "12"]
+    assert found["figure_label"] == "FIG. 1"
+    assert found["other_text"] == []
+
+
+def test_ocr_audit_requires_the_exact_single_sheet_number_when_expected():
+    inspection = {
+        "ok": True, "numerals": ["10"], "figure_label": "FIG. 2",
+        "sheet_numbers": ["2/5"], "other_text": [], "confidence": 0.99,
+    }
+
+    good = draft_figures.ocr_audit(
+        ["10 = body"], inspection, "FIG. 2", sheet_number="2/5")
+    wrong = draft_figures.ocr_audit(
+        ["10 = body"], inspection, "FIG. 2", sheet_number="3/5")
+
+    assert good["ok"] is True
+    assert good["correct_sheet_number"] is True
+    assert good["detected_sheet_numbers"] == ["2/5"]
+    assert wrong["ok"] is False
+    assert wrong["correct_sheet_number"] is False
+
+
+def test_current_ocr_audit_rejects_an_old_gate_or_different_sheet_total():
+    current = accepted_ocr_audit("2/5")
+
+    assert draft_figures.current_ocr_audit(
+        current, expected_sheet_number="2/5") is True
+    assert draft_figures.current_ocr_audit(
+        current, expected_sheet_number="2/6") is False
+    assert draft_figures.current_ocr_audit(
+        {**current, "prompt_version": "old"}, expected_sheet_number="2/5") is False
+
+
+def test_ocr_audit_rejects_an_extra_invalid_sheet_marking():
+    inspection = {
+        "ok": True, "numerals": ["10"], "figure_label": "FIG. 2",
+        "sheet_numbers": ["2/5", "0/5"], "other_text": [], "confidence": 0.99,
+    }
+
+    audit = draft_figures.ocr_audit(
+        ["10 = body"], inspection, "FIG. 2", sheet_number="2/5")
+
+    assert audit["ok"] is False
+    assert audit["correct_sheet_number"] is False
+    assert audit["detected_sheet_numbers"] == ["2/5", "0/5"]
+    assert draft_figures.current_ocr_audit(
+        accepted_ocr_audit("2/5"), expected_sheet_number="2/0") is False
 
 
 def test_ocr_audit_requires_the_right_figure_label_exact_numerals_and_no_other_text():
@@ -1039,7 +1115,7 @@ def test_compose_retries_layout_without_moving_a_certified_endpoint(monkeypatch)
                                          dict(accepted_pixel)))
     scales = []
 
-    def annotate(_png, _label, _anchors, *, scale):
+    def annotate(_png, _label, _anchors, *, scale, sheet_number=""):
         scales.append(scale)
         return raw
 
@@ -1093,7 +1169,7 @@ def test_compose_retains_a_passing_layout_scale_across_endpoint_repairs(monkeypa
                                          dict(accepted_pixel)))
     scales = []
 
-    def annotate(_png, _label, _anchors, *, scale):
+    def annotate(_png, _label, _anchors, *, scale, sheet_number=""):
         scales.append(scale)
         return raw
 
@@ -1155,7 +1231,7 @@ def test_compose_does_not_let_leader_routing_move_a_geometry_endpoint(monkeypatc
                                          dict(accepted_pixel)))
     scales = []
 
-    def annotate(_png, _label, _anchors, *, scale):
+    def annotate(_png, _label, _anchors, *, scale, sheet_number=""):
         scales.append(scale)
         return raw
 
@@ -1935,6 +2011,25 @@ def test_labels_are_overlaid_deterministically_after_geometry_review():
     ])
 
 
+def test_sheet_number_is_overlaid_at_top_center_and_larger_than_reference_numerals():
+    raw = blank_png()
+    anchors = [
+        {"numeral": "10", "x": 200, "y": 300, "visible": True, "evidence": "body"},
+    ]
+    output = draft_figures.annotate_png(
+        raw, "FIG. 1", anchors, sheet_number="1/5")
+    layout = draft_figures._annotation_layout(raw, anchors, 1.0, sheet_number="1/5")
+    image = Image.open(io.BytesIO(output)).convert("L")
+    top_band = image.crop((0, 0, image.width, layout["source_y"]))
+    ink_x = [x for y in range(top_band.height) for x in range(top_band.width)
+             if top_band.getpixel((x, y)) < 32]
+
+    assert ink_x
+    assert abs(((min(ink_x) + max(ink_x)) / 2) - (image.width / 2)) < 3
+    assert layout["sheet_font_size"] > layout["font_size"]
+    assert output != draft_figures.annotate_png(raw, "FIG. 1", anchors, sheet_number="2/5")
+
+
 def test_deterministic_leader_endpoint_has_a_vision_visible_dot():
     raw = blank_png()
     anchors = [{"numeral": "10", "x": 500, "y": 500,
@@ -2584,8 +2679,8 @@ def test_render_increases_deterministic_label_size_until_ocr_is_exact(monkeypatc
                                     "visible": True, "evidence": "body"}]})
     monkeypatch.setattr(
         draft_figures, "annotate_png",
-        lambda png, label, anchors, scale=1.0: scales.append(scale) or
-        original(png, label, anchors, scale=scale))
+        lambda png, label, anchors, scale=1.0, sheet_number="": scales.append(scale) or
+        original(png, label, anchors, scale=scale, sheet_number=sheet_number))
     inspections = iter([
         {"ok": True, "numerals": ["10", "10"], "figure_label": "FIG. 1",
          "other_text": [], "confidence": 0.96},
@@ -2626,6 +2721,7 @@ def test_ensure_project_figures_draws_every_missing_spec_with_canonical_parts(mo
     assert out["ok"] is True and out["generated"] == 2 and len(calls) == 2
     assert calls[0]["numerals"] == ["10 = body", "12 = pump"]
     assert [call["sort_order"] for call in calls] == [1, 2]
+    assert [call["sheet_number"] for call in calls] == ["1/2", "2/2"]
 
 
 def test_ensure_project_figures_preserves_complete_geometry_brief(monkeypatch):
@@ -2740,10 +2836,40 @@ def test_changed_figure_spec_is_reinspected_even_when_its_numerals_are_unchanged
     assert len(calls) == 1
 
 
+def test_wrong_sheet_total_is_recomposed_even_when_geometry_is_current(monkeypatch):
+    spec = {"label": "FIG. 1", "caption": "side view", "numerals": ["10"]}
+    digest = draft_figures.specification_hash("FIG. 1", "side view", ["10 = body"])
+    active = {
+        "version_no": 1,
+        "numeral_audit": accepted_ocr_audit("1/2"),
+        "semantic_audit": accepted_semantic_audit(specification_hash=digest),
+        "leader_audit": accepted_leader_audit(specification_hash=digest),
+    }
+    monkeypatch.setattr(draft_figures, "listing", lambda *a: [{
+        "id": 8, "figure_label": "FIG. 1", "caption": "side view", "sort_order": 1,
+        "active_version": 1, "versions": [active],
+    }])
+    calls = []
+    monkeypatch.setattr(draft_figures, "render_figure", lambda *a, **values: (
+        calls.append(values) or {
+            "figure_id": 8, "numeral_audit": {"ok": True},
+            "semantic_audit": accepted_semantic_audit(),
+            "leader_audit": accepted_leader_audit(),
+        }))
+    monkeypatch.setattr(draft_figures, "archive_figure", lambda *a: True)
+
+    out = draft_figures.ensure_project_figures(
+        7, 91, sections={}, disclosure="body",
+        numeral_table=[{"numeral": "10", "part": "body"}], figure_specs=[spec])
+
+    assert out["generated"] == 1 and out["reused"] == 0
+    assert calls[0]["sheet_number"] == "1/1"
+
+
 def test_obsolete_and_duplicate_sheets_are_archived_without_losing_history(monkeypatch):
     spec = {"label": "FIG. 1", "caption": "side view", "numerals": ["10"]}
     digest = draft_figures.specification_hash("FIG. 1", "side view", ["10 = body"])
-    active = {"version_no": 1, "numeral_audit": {"ok": True, "expected": ["10"]},
+    active = {"version_no": 1, "numeral_audit": accepted_ocr_audit(),
               "semantic_audit": accepted_semantic_audit(specification_hash=digest),
               "leader_audit": accepted_leader_audit(specification_hash=digest)}
     monkeypatch.setattr(draft_figures, "listing", lambda *a: [
@@ -2771,7 +2897,7 @@ def test_existing_figure_metadata_is_refreshed_from_the_current_spec(monkeypatch
         spec["label"], spec["caption"], ["10 = body"])
     active = {
         "version_no": 4,
-        "numeral_audit": {"ok": True, "expected": ["10"]},
+        "numeral_audit": accepted_ocr_audit(),
         "semantic_audit": accepted_semantic_audit(specification_hash=digest),
         "leader_audit": accepted_leader_audit(specification_hash=digest),
     }
@@ -2801,13 +2927,13 @@ def test_exact_checked_historical_sheet_is_reactivated_after_a_rollback(monkeypa
     digest = draft_figures.specification_hash("FIG. 1", "side view", ["10 = body"])
     stale = {
         "version_no": 1,
-        "numeral_audit": {"ok": True, "expected": ["10"]},
+        "numeral_audit": accepted_ocr_audit(),
         "semantic_audit": accepted_semantic_audit(specification_hash="old-spec"),
         "leader_audit": accepted_leader_audit(specification_hash="old-spec"),
     }
     checked = {
         "version_no": 4,
-        "numeral_audit": {"ok": True, "expected": ["10"]},
+        "numeral_audit": accepted_ocr_audit(),
         "semantic_audit": accepted_semantic_audit(specification_hash=digest),
         "leader_audit": accepted_leader_audit(specification_hash=digest),
     }
@@ -2895,7 +3021,7 @@ def test_checked_images_are_materialized_for_the_independent_reviewer(monkeypatc
     (figures_dir / "rendered-old.png").write_bytes(b"old")
     monkeypatch.setattr(draft_figures, "listing", lambda *a: [{
         "id": 8, "figure_label": "FIG. 1: side view", "active_version": 2,
-        "versions": [{"version_no": 2, "numeral_audit": {"ok": True},
+        "versions": [{"version_no": 2, "numeral_audit": accepted_ocr_audit(),
                       "semantic_audit": accepted_semantic_audit(),
                       "leader_audit": accepted_leader_audit()}],
     }])

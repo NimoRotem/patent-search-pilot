@@ -404,22 +404,28 @@ def _numeral_checks(spec_text: str, claims_text: str,
     figure_numerals = set(figure_values)
     figure_numerals.discard("")
     duplicate_drawing_numerals = []
-    unreadable_drawings = [
-        str(figure.get("label") or "drawing")
-        for figure in figures
-        if "numeral_audit" in figure and
-        not bool((figure.get("numeral_audit") or {}).get("inspected"))
-    ]
+    unreadable_drawings = []
+    for sheet_index, figure in enumerate(figures, 1):
+        if "numeral_audit" not in figure:
+            continue
+        expected_sheet_number = f"{sheet_index}/{len(figures)}"
+        if not draft_figures.current_ocr_audit(
+                figure.get("numeral_audit") or {},
+                expected_sheet_number=expected_sheet_number):
+            unreadable_drawings.append(
+                f"{figure.get('label') or 'drawing'}: expected sheet "
+                f"{expected_sheet_number}")
     if unreadable_drawings:
         out.append(_check(
             "Drawing pixels were inspected", "fail",
-            "The reference-numeral audit could not read one or more drawing sheets. The draft "
-            "cannot be marked consistent until those pixels are checked.",
+            "The current OCR audit could not confirm the exact reference numerals, view label, "
+            "and consecutive sheet number on one or more drawing sheets.",
             items=unreadable_drawings))
     elif any("numeral_audit" in figure for figure in figures):
         out.append(_check(
             "Drawing pixels were inspected", "pass",
-            "The reference numerals were read from every generated drawing."))
+            "The reference numerals, view labels, and sheet numbers were read from every "
+            "generated drawing."))
     for figure in figures:
         values = [_drawing_numeral(n) for n in (figure.get("numerals") or [])]
         counts = Counter(value for value in values if value)
