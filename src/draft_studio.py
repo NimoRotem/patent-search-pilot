@@ -332,6 +332,11 @@ a drawing defect; it does not become part of the invention.
 For a figure-plan coverage failure, never delete a disclosed part, numeral definition, or
 supporting specification text. Redistribute labels among focused sheets, or add a focused sheet
 when necessary, and synchronize the drawing descriptions.
+When moving a numeral to another or focused sheet, remove every use of that numeral and its
+canonical part name from the old sheet brief. If the old sheet still needs the structure only as
+context, describe it generically as an unnumbered block, slab, housing, line, or other simple
+shape without its canonical part name or numeral; otherwise omit it. Never delete the focused
+sheet merely to fix stale references on the old brief.
 
 If a figure brief is over-specified, shorten it by removing invented rendering constraints while
 preserving the authoritative text, numeral table, disclosed geometry, and required relationships.

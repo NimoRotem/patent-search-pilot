@@ -1358,6 +1358,14 @@ def test_drawing_repairs_can_never_change_the_invention_to_match_bad_pixels():
     assert "regenerate the sheet from the authoritative text" in normalized
 
 
+def test_figure_plan_repairs_remove_stale_references_from_the_old_sheet():
+    prompt = " ".join(draft_studio.FINALIZE_PROMPT.split())
+    assert "remove every use of that numeral and its canonical part name from the old sheet" \
+        in prompt
+    assert "describe it generically as an unnumbered" in prompt
+    assert "Never delete the focused sheet merely to fix stale references" in prompt
+
+
 def test_the_independent_reviewer_checks_source_fidelity_before_internal_consistency():
     system = draft_qa.REVIEW_SYSTEM
     normalized = " ".join(system.split())
