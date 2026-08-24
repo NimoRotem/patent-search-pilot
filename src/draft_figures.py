@@ -1667,12 +1667,15 @@ def _expected_closed_region_count(caption: str) -> int | None:
     if (re.search(r"\bone rectangle with a second,? smaller rectangle inside it\b", text) and
             two_rectangle_boundary):
         return 2
+    outer_ring_field = bool(
+        re.search(r"\bbeyond the outer rectangle\b[^.]{0,80}\bpaper is bare\b", text) or
+        re.search(r"\bring stands well in from every side of (?:the )?drawing area\b", text))
     positive_rectangular_ring = bool(
         re.search(r"\brectangular ring\b", text) and
         re.search(r"\bno other body is drawn\b", text) and
         re.search(r"\bone rectangle with a smaller rectangle inside it\b", text) and
         re.search(r"\bfield enclosed by the inner rectangle\b[^.]{0,80}\bopen paper\b", text) and
-        re.search(r"\bbeyond the outer rectangle\b[^.]{0,80}\bpaper is bare\b", text))
+        outer_ring_field)
     if positive_rectangular_ring:
         return 2
     number = r"(\d{1,2}|" + "|".join(_SMALL_NUMBERS[1:]) + r")"
@@ -1820,13 +1823,16 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
         re.search(r"\bno (?:diagonal|line)[^.]{0,120}\bline crosses the band\b", text) and
         re.search(r"\bbounded only by (?:the )?outer (?:(?:rectangle|edge) and (?:the )?inner "
                   r"(?:rectangle|edge)|and inner rectangles?)\b", text))
+    outer_ring_field = bool(
+        re.search(r"\bbeyond the outer rectangle\b[^.]{0,80}\bpaper is bare\b", text) or
+        re.search(r"\bring stands well in from every side of (?:the )?drawing area\b", text))
     positive_rectangular_ring = bool(
         re.search(r"\brectangular ring\b", text) and
         re.search(r"\bno other body is drawn\b", text) and
         re.search(r"\bone rectangle with a smaller rectangle inside it\b", text) and
         re.search(r"\binner rectangle standing clear of\b[^.]{0,80}\bfour sides\b", text) and
         re.search(r"\bfield enclosed by the inner rectangle\b[^.]{0,80}\bopen paper\b", text) and
-        re.search(r"\bbeyond the outer rectangle\b[^.]{0,80}\bpaper is bare\b", text))
+        outer_ring_field)
     rectangle_count = {"two": 2, "three": 3}.get(
         count_match.group(1) if count_match else "", 0)
     if not rectangle_count and continuous_ring_rectangles:
