@@ -123,16 +123,46 @@ def test_an_unmatched_shape_is_reported_not_thrown_away(figure, profile, neighbo
     assert any("check the drawing" in note for note in drawn.notes)
 
 
-def test_a_part_that_cannot_be_found_is_reported_not_invented(
+def test_a_part_that_cannot_be_found_is_redrawn_and_then_given_up_on(
         figure, profile, neighbourhood, monkeypatch):
+    """A drawing short of a part it is specified to show is not a drawing with a small gap.
+
+    REF004 says the numeral belongs here and was not printed, SEM002 says the component is
+    absent, and no amount of moving a label repairs either. Measured on US-2024/0246200-A1,
+    three of four figures blocked exactly this way while the deterministic renderer, which draws
+    every specified part by construction, would have produced all three. So it is redrawn, and
+    when the attempts run out the figure falls back to the renderer that cannot omit anything.
+
+    What must never happen, and is the older half of this test: inventing a numeral or a box for
+    a part nobody can see. The part is NAMED and the sheet is given up on.
+    """
     graph, _plan, spec = figure
     area = Box(x=254.0, y=254.0, width=1400.0, height=1000.0)
     missing = spec.entities[-1].entity_id
+    numeral = graph.entity(missing).reference_numeral
     _patch(monkeypatch, _located(spec, area, skip=[missing]))
+
+    drawn = referencemode.draw_figure(spec, graph, profile, neighbourhood, object())
+    assert not drawn.ok, "an incomplete sheet is handed back to the deterministic renderer"
+    assert numeral in drawn.failed, "the part that could not be drawn has to be named"
+    redraws = [note for note in drawn.notes if "was redrawn" in note]
+    assert len(redraws) == referencemode.MAX_DRAW_ATTEMPTS - 1, redraws
+    assert all(numeral in note for note in redraws)
+    # The last attempt was not redrawn, it was given up on, and the note says so.
+    last = [note for note in drawn.notes if "was the last" in note]
+    assert len(last) == 1 and numeral in last[0]
+
+
+def test_a_sheet_showing_every_part_is_kept(figure, profile, neighbourhood, monkeypatch):
+    """The other side of it: nothing missing, nothing redrawn, one attempt."""
+    graph, _plan, spec = figure
+    area = Box(x=254.0, y=254.0, width=1400.0, height=1000.0)
+    _patch(monkeypatch, _located(spec, area))
     drawn = referencemode.draw_figure(spec, graph, profile, neighbourhood, object())
     assert drawn.ok
-    assert any("could not be found" in note for note in drawn.notes)
-    assert missing not in {label.entity_id for label in drawn.scene.labels}
+    assert not [note for note in drawn.notes if "was redrawn" in note]
+    assert {label.entity_id for label in drawn.scene.labels} == \
+        {entity.entity_id for entity in spec.entities}
 
 
 def test_the_sheet_is_reproducible_from_the_scene_and_the_artwork(

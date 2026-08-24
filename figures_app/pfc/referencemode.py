@@ -32,7 +32,7 @@ from .providers import VisionVerifier
 from .render import render_svg
 from .schemas import FigureSpec, LayoutScene, PatentGraph
 
-MAX_DRAW_ATTEMPTS = 2
+MAX_DRAW_ATTEMPTS = 3
 
 
 @dataclass
@@ -47,6 +47,15 @@ class Drawn:
     @property
     def ok(self) -> bool:
         return self.scene is not None and bool(self.svg)
+
+
+def _missing_names(located, graph: PatentGraph) -> list[str]:
+    """The numerals of the parts this figure needs and the reader could not find."""
+    names: list[str] = []
+    for entity_id in located.missing:
+        entity = graph.entity(entity_id)
+        names.append(str(entity.reference_numeral or entity_id) if entity else str(entity_id))
+    return names
 
 
 def _image_size(png: bytes) -> tuple[int, int]:
@@ -92,33 +101,40 @@ def draw_figure(spec: FigureSpec, graph: PatentGraph, profile: DrawingProfile,
         located = imagegrounding.locate(generated.png, spec, graph, box, verifier)
         problems = imagegrounding.defects(located, spec, graph)
         if problems:
-            out.notes.append(
-                f"attempt {attempt + 1} was redrawn: " + "; ".join(problems))
             if attempt + 1 < MAX_DRAW_ATTEMPTS:
+                out.notes.append(
+                    f"attempt {attempt + 1} was redrawn: " + "; ".join(problems))
                 continue
+            out.notes.append(f"attempt {attempt + 1} was the last: " + "; ".join(problems))
             out.failed = problems[0]
             return out
         out.notes.extend(imagegrounding.concerns(located, graph))
-        if not located.ok:
-            out.notes.append(
-                f"attempt {attempt + 1} was redrawn: none of the parts could be found in it")
+        short = _missing_names(located, graph)
+        if short:
+            # Every part this figure is specified to show has to be findable in the drawing.
+            # A sheet short of one is not a sheet with a small gap: REF004 says the numeral
+            # belongs here and was not printed, SEM002 says the component is absent, and neither
+            # can be repaired by moving a label. Measured on US-2024/0246200-A1, three of four
+            # figures blocked exactly this way while the deterministic renderer, which draws
+            # every specified part by construction, would have produced all three.
+            listed = ", ".join(short)
             if attempt + 1 < MAX_DRAW_ATTEMPTS:
+                out.notes.append(
+                    f"attempt {attempt + 1} was redrawn: {len(short)} part(s) this figure has "
+                    f"to show could not be found in it ({listed})")
                 continue
-            out.failed = "the parts could not be found in the generated artwork"
+            out.notes.append(
+                f"attempt {attempt + 1} was the last: {len(short)} part(s) this figure has to "
+                f"show could not be found in it ({listed})")
+            out.failed = (f"after {MAX_DRAW_ATTEMPTS} attempts the generated artwork still did "
+                          f"not show {listed}, and a figure that omits a part it is specified "
+                          f"to show cannot be corrected by moving a numeral")
             return out
 
         scene = traced_layout.build(spec, graph, located, profile, artwork_box=box,
                                     sheet_number=sheet_number, sheet_total=sheet_total)
         out.scene = scene
         out.svg = render_svg(scene, profile, generated.png)
-        if located.missing:
-            names = []
-            for entity_id in located.missing:
-                entity = graph.entity(entity_id)
-                names.append(entity.reference_numeral or entity_id if entity else entity_id)
-            out.notes.append(
-                f"{len(located.missing)} part(s) specified for this figure could not be found in "
-                f"the artwork ({', '.join(str(n) for n in names)}), so they carry no numeral")
         area = box
         return out
 
