@@ -6735,6 +6735,7 @@ def draft_print(project_id):
         if not version_no:
             raise drafting.DraftingNotFound("No draft version is ready to print.")
         version = service.get_version(principal, project_id, version_no)
+        version = {**version, "sections": draft_export.application_sections(version)}
         return render_template("draft_print.html", project=project, version=version,
                                section_order=drafting.SECTION_ORDER,
                                notice=draft_export.WORKING_DRAFT_NOTICE)

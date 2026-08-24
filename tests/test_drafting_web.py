@@ -445,6 +445,10 @@ def test_draft_markdown_and_docx_exports(draft_client):
     assert b"CLAIMS" in document_xml and b"ABSTRACT" in document_xml
     pdf = client.get("/drafts/7/download/pdf?version=1")
     assert pdf.status_code == 200 and pdf.data.startswith(b"%PDF") and len(pdf.data) > 3_000
+    printed = client.get("/drafts/7/print?version=1")
+    assert printed.status_code == 200
+    assert b"[REF:" not in printed.data
+    assert b"U.S. Patent No. 11,223,344" in printed.data
 
 
 def test_legacy_section_edits_and_restore_cannot_publish_unreviewed_versions(draft_client):
