@@ -204,13 +204,24 @@
             <br><span class="flag flag-bad">same owner as the application{% if c.co_owned_with %}: {{ c.co_owned_with|join(', ')|truncate(60) }}{% endif %}</span>
               <span class="qhelp" data-help="coowned" role="button" tabindex="0" aria-label="When to include a commonly owned document">?</span>
             {% endif %}
+            {#  NEVER READ IN FULL. The description would rest on an abstract, and an abstract maps
+                generously: these score high on coverage, not low. #}
+            {% if c.readable is defined and not c.readable %}
+            <br><span class="flag flag-bad">full text never read</span>
+              <span class="qhelp" data-help="unread" role="button" tabindex="0" aria-label="Why an unread document is not offered">?</span>
+            {% endif %}
             {% if c.family_siblings %}<br><span class="small muted">also published as {{ c.family_siblings[:3]|join(', ') }}{% if c.family_siblings|length > 3 %} and {{ c.family_siblings|length - 3 }} more{% endif %}. One member is filed; the family is one disclosure</span>{% endif %}</td>
           <td class="small">
             {% if c.anticipates %}<b>anticipates {{ c.anticipates|join(', ') }}</b><br>{% endif %}
             {% if c.office == 'applied' %}<b>applied by the examiner</b><br>
             {% elif c.office == 'considered' %}considered by the Office<br>{% endif %}
             {% if c.adds %}discloses what {{ c.adds[:4]|join(', ') }} adds<br>{% endif %}
-            {% if c.strong_indep %}{{ c.strong_indep }} on the independent claims{% endif %}
+            {% if c.strong_indep %}{{ c.strong_indep }} on the independent claims<br>{% endif %}
+            {#  BOTH COVERAGE NUMBERS, because the claim grid shows one of them and the chart is
+                built from the other, and reconciling the two by hand is twenty minutes. #}
+            {% if c.n_limitations is defined %}
+            <span class="muted">charts {{ c.n_limitations }} limitation{{ '' if c.n_limitations == 1 else 's' }}{% if c.reads_on and c.reads_on != c.n_limitations %}, reads on {{ c.reads_on }}{% endif %}{% if c.new_limitations %}, {{ c.new_limitations }} that nothing above it charts{% endif %}</span>
+            {% endif %}
           </td>
           <td class="small">{{ c.claims|join(', ') }}</td>
           <td>{{ c.n_rows }}</td>
@@ -245,7 +256,31 @@
     <span class="small muted">One model call per document to phrase the disclosure column; the
       citations are attached from the record.</span>
 
-    {#  The two explanations, once each, opened by any (?) in the table. #}
+    {#  CONSIDERED AND NOT SELECTED. The claim grid on the report page ranks by what a reference
+        reads on; the chart filed for it is built from what carries a verified passage. When those
+        two disagree the selection looks arbitrary from either page alone, and reconciling it by
+        hand is twenty minutes. So the documents the grid ranks highest that this selection does
+        not take are listed here with the reason, one line each. #}
+    {% if passed_over %}
+    <details class="card" style="margin:1em 0;padding:.8em 1em">
+      <summary style="cursor:pointer"><b>Considered and not selected</b>
+        <span class="small muted">{{ passed_over|length }} document{{ '' if passed_over|length == 1 else 's' }} the claim grid ranks highly that this selection leaves out</span></summary>
+      <table class="tbl small" style="margin-top:.6em">
+        <thead><tr><th>Reference</th><th>Reads on</th><th>Charts</th><th>Why not</th></tr></thead>
+        <tbody>
+        {% for p in passed_over %}
+          <tr><td><b>{{ p.pub }}</b><br><span class="muted">{{ p.title[:70] }}</span></td>
+              <td>{{ p.reads_on }}</td><td>{{ p.charts }}</td><td>{{ p.why }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="small muted" style="margin:.5em 0 0">Tick any of them in the table above to
+        include it. Nothing here is refused, only not chosen for you.</p>
+    </details>
+    {% endif %}
+
+    {#  The explanations, once each, opened by any (?) in the table. #}
+    <div id="helpUnread" class="qhelp-body" hidden>{{ unread_help }}</div>
     <div id="helpSecret" class="qhelp-body" hidden>{{ secret_help }}</div>
     <div id="helpCoowned" class="qhelp-body" hidden>{{ co_owned_help }}</div>
     <div id="helpBasis" class="qhelp-body" hidden>{{ basis_help['not_art'] }}</div>
@@ -285,13 +320,31 @@
   function count() {
     return rows.filter(function (r) { return r.querySelector('.pickbox').checked; }).length;
   }
+  function eligibleLeft() {
+    return rows.filter(function (r) {
+      return r.dataset.eligible === '1' && !r.querySelector('.pickbox').checked;
+    }).length;
+  }
   function paint() {
     var n = count(), u = Math.max(1, Math.ceil(n / per)), budget = parseInt(sel.value, 10);
     var over = u > budget;
+    /*  THE FEE IS A STEP, SO THE UNUSED SLOTS ARE ALREADY PAID FOR. 1.290(f) charges per ten
+        items or fraction thereof: thirteen documents and twenty documents cost the same two
+        units. A package that stopped at thirteen left seven slots bought and empty, and nothing
+        said so. */
+    var slots = budget * per - n, spare = Math.min(slots, eligibleLeft());
     tally.innerHTML = n + ' selected, ' + u + ' fee unit' + (u === 1 ? '' : 's') + ', $'
       + cost(n).toFixed(2).replace(/\.00$/, '')
       + (over ? ' <b class="flag flag-bad">more than the ' + budget
-                + ' unit' + (budget === 1 ? '' : 's') + ' you chose</b>' : '');
+                + ' unit' + (budget === 1 ? '' : 's') + ' you chose</b>'
+              : (spare > 0
+                 ? ' &middot; <b>' + slots + ' more document' + (slots === 1 ? '' : 's')
+                   + ' cost nothing extra</b> at this fee. '
+                   + '<button type="button" class="btn ghost sm" id="feeFill">Use '
+                   + spare + ' more</button>'
+                 : ''));
+    var b = document.getElementById('feeFill');
+    if (b) { b.addEventListener('click', function () { fill(); }); }
   }
   /*  Filling the budget ticks the ELIGIBLE candidates in the order the ranking already put them:
       public art and secret art, never something that is not prior art on the dates and never a
@@ -312,8 +365,10 @@
   var dlg = document.getElementById('qhelpDlg');
   var titles = {secret: 'Secret prior art, 102(a)(2) and EPC 54(3)',
                 coowned: 'Commonly owned documents',
-                basis: 'Not prior art on the dates'};
-  var bodies = {secret: 'helpSecret', coowned: 'helpCoowned', basis: 'helpBasis'};
+                basis: 'Not prior art on the dates',
+                unread: 'Full text never read'};
+  var bodies = {secret: 'helpSecret', coowned: 'helpCoowned', basis: 'helpBasis',
+                unread: 'helpUnread'};
   function openHelp(kind) {
     if (!dlg || !dlg.showModal) return;
     document.getElementById('qhelpTitle').textContent = titles[kind] || 'About this flag';

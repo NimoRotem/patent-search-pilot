@@ -162,6 +162,56 @@ def fee_choices(entity_size="small", max_units=5):
     return out
 
 
+def passed_over(cands, budget_items):
+    """Documents the claim grid ranks highly that this selection does not include, with the reason.
+
+    Counsel, 2026-08-24: "Never drop a top-N coverage reference silently. If the selector passes
+    over something the grid ranks first, say so and say why. A one-line 'considered and not
+    selected, because X' would have turned twenty minutes of reconciliation into thirty seconds."
+
+    The grid's number is `reads_on`, every limitation the reference is not simply absent from,
+    which is what a practitioner sees on the report page. The selection uses `n_limitations`, what
+    could actually be charted. When those two disagree, that IS the reason, and it is the one that
+    is invisible from either page on its own.
+    """
+    picked, ranked, n = [], [], 0
+    for c in cands or []:
+        if c.get("default_include") and n < budget_items:
+            picked.append(c)
+            n += 1
+        ranked.append(c)
+    top = sorted([c for c in ranked if c.get("reads_on")],
+                 key=lambda c: -int(c.get("reads_on") or 0))[:max(budget_items, 10)]
+    chosen = {c.get("pub") for c in picked}
+    out = []
+    for c in top:
+        if c.get("pub") in chosen:
+            continue
+        out.append({"pub": c.get("pub"), "title": c.get("title") or "",
+                    "reads_on": c.get("reads_on"), "charts": c.get("n_limitations") or 0,
+                    "why": _why_not(c, budget_items)})
+    return out
+
+
+def _why_not(c, budget_items):
+    """One line: why this document is not in the selection. Ordered by which reason governs."""
+    if not c.get("readable", True):
+        return ("its full text was never read, so everything charted for it rests on an abstract")
+    if c.get("basis") == NOT_ART:
+        return c.get("not_art_why") or "it is not prior art against these claims"
+    if c.get("co_owned"):
+        return ("it appears to share an owner with the application, which 102(b)(2)(C) may remove "
+                "as prior art entirely")
+    if c.get("basis") == UNKNOWN:
+        return "its dates could not be established, so its status as prior art is unknown"
+    charts, reads = int(c.get("n_limitations") or 0), int(c.get("reads_on") or 0)
+    if reads and charts < reads:
+        return ("it reads on %d limitations but only %d carry a verified passage, so the chart "
+                "filed for it would have %d row%s"
+                % (reads, charts, charts, "" if charts == 1 else "s"))
+    return ("it ranks below the %d documents this fee budget pays for" % budget_items)
+
+
 def exemption_available(n_items):
     """1.290(g): three or fewer items. The STATEMENT is what actually buys the exemption, and
     MPEP 1134.01 says three or fewer without it still pays, so this is only half the test."""
@@ -268,6 +318,23 @@ BASIS_HELP = {
              "read as a whole.",
 }
 
+UNREAD_HELP = (
+    "<b>What it is.</b> The search identified this document and screened it as worth reading, and "
+    "then could not read it: the corpus holds a title and an abstract for it and no full text. "
+    "Everything said about it here rests on that abstract.\n\n"
+    "<b>Why it is not offered.</b> Not because it scored badly. Because it scores WELL and should "
+    "not. A short text gets mapped generously onto many limitations, and every passage verifies "
+    "against the abstract it was taken from, so an unread reference can top a coverage ranking on "
+    "the strength of two hundred words. Counsel, 2026-08-24, on US 8,991,263: a fibre-testing "
+    "snubbing clamp charted against \"pole shoes guide a magnetic field portion\". That is the "
+    "kind of reach an examiner notices, and a submission is read as a whole.\n\n"
+    "<b>When to include it.</b> When you have read the document yourself and the mapping holds. "
+    "The concise description filed for it is still built from the evidence in this report, so "
+    "check every row against the real document first. <b>When not to.</b> Any other time. Fetch "
+    "the office copy and re-run the reading instead: the full text usually says a great deal more "
+    "than the abstract, in both directions."
+)
+
 SECRET_HELP = (
     "<b>What it is.</b> A document filed before this application but published afterwards. It was "
     "secret on the day the application was filed, and the law reaches back to its filing date "
@@ -372,8 +439,17 @@ def classify_candidates(cands, subject_efd, subject_owners=()):
         c["co_owned_with"] = shared[:2]
         c["published"] = str(pub_d) if pub_d else ""
         #  What the picker should tick by default: public art yes, secret art yes but flagged,
-        #  and never something that is not prior art or is the applicant's own.
-        c["default_include"] = c["basis"] in (PUBLIC, SECRET) and not c["co_owned"]
+        #  and never something that is not prior art, or is the applicant's own, or that the
+        #  search could not read.
+        #
+        #  UNREADABLE IS A HARD EXCLUSION, whatever it scores. A reference the corpus holds only a
+        #  title and an abstract for produces a description resting on that abstract, and the
+        #  mapping is a reach: counsel, 2026-08-24, on US 8,991,263, a fibre-testing snubbing clamp
+        #  charted against "pole shoes guide a magnetic field portion". It scores HIGH, not low,
+        #  because a short text gets mapped generously and every cell verifies against the abstract
+        #  it came from. Still listed, still choosable, never chosen for you.
+        c["default_include"] = (c["basis"] in (PUBLIC, SECRET) and not c["co_owned"]
+                                and c.get("readable", True))
     return cands
 
 

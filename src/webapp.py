@@ -6060,6 +6060,7 @@ def _filing_context(report=None):
             "items_per_unit": submission.ITEMS_PER_UNIT,
             "secret_help": submission.SECRET_HELP,
             "co_owned_help": submission.CO_OWNED_HELP,
+            "unread_help": submission.UNREAD_HELP,
             "basis_help": submission.BASIS_HELP}
 
 
@@ -6073,6 +6074,15 @@ def _render_picker(report=None, **kw):
     """
     ctx = _filing_context(report)
     ctx.update(kw)
+    #  WHAT THE SELECTION LEFT OUT, named. Computed here rather than in the template so the reason
+    #  is one testable function and not a chain of Jinja conditions.
+    try:
+        import submission
+        ctx["passed_over"] = submission.passed_over(ctx.get("cands") or [],
+                                                    submission.ITEMS_PER_UNIT)
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        ctx["passed_over"] = []
     return render_template("concise.html", **ctx)
 
 

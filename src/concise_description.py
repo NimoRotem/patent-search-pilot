@@ -486,6 +486,43 @@ def _ledger_weights(report):
     return out, len(claims)
 
 
+#  How many never-read references the picker still shows, so a grid-topping one is never silently
+#  gone. Enough to explain the ranking, few enough not to crowd out documents that can be filed.
+UNREADABLE_SHOWN = 5
+
+
+def _by_marginal_coverage(ranked):
+    """Re-order so each document is the one that adds most to what the ones above it already cover.
+
+    Breadth alone is the wrong greedy. Twelve documents that each read on the same twelve popular
+    limitations cover twelve limitations between them; eleven of those plus one that reaches a
+    thirteenth cover thirteen. Counsel, 2026-08-24, on a Schunk family the package omitted: "it is
+    the only third-party document in the entire search that reads on claim 16's groove-shaped
+    receptacle". A ranking that cannot see that will pass it over every time.
+
+    So this is set cover, greedily: repeatedly take the document contributing the most limitations
+    nothing above it contributes, breaking ties on the order it was handed. Once nothing new is
+    left to add the remainder keeps that order, because at that point breadth is all there is.
+    Only used when nothing anticipates: an anticipation is decisive on its own and does not want
+    reordering by how much company it keeps.
+    """
+    remaining = list(ranked)
+    seen, out = set(), []
+    while remaining:
+        best_i, best_new = 0, -1
+        for i, d in enumerate(remaining):
+            new = len(set(d.get("covers") or []) - seen)
+            if new > best_new:
+                best_i, best_new = i, new
+            if best_new == len(d.get("covers") or []) and best_new > 0 and i == 0:
+                break                       # the head already adds everything it has; take it
+        d = remaining.pop(best_i)
+        d["new_limitations"] = len(set(d.get("covers") or []) - seen)
+        seen |= set(d.get("covers") or [])
+        out.append(d)
+    return out
+
+
 def candidates(report, deep, limit=40, collapse_families=True):
     """References worth offering, ORDERED BY WHAT THEY DO TO THE CLAIMS, not by row count.
 
@@ -500,6 +537,14 @@ def candidates(report, deep, limit=40, collapse_families=True):
     it against this family, then whole dependent additions, then evidence on the independent
     claims, and only then breadth. One document per DOCDB family, because two members of one
     family are one disclosure and a submission that cites both spends two slots to say one thing.
+
+    AND A FALLBACK, because that order has a hole. Counsel, 2026-08-24: on a target where nothing
+    anticipates and the Office has applied nothing, the first two keys are ties for every
+    candidate, and the ranking falls through to weaker tie-breakers before construed-limitation
+    coverage gets a vote at all. A Schunk family reading on 16 of 32 limitations, ahead of nine of
+    the thirteen selected, dropped out of the package entirely. Coverage IS the signal in a
+    103-only case, it is already computed, and it now leads the order whenever nothing in the set
+    anticipates anything.
     """
     claims = deep.get("claims") or []
     weights, _ = _ledger_weights(report)
@@ -517,6 +562,18 @@ def candidates(report, deep, limit=40, collapse_families=True):
     considered = set(mined.get("considered") or []) - applied
     indep = {c.get("label") for c in claims
              if isinstance(c, dict) and c.get("independent")}
+    #  WHAT THE SEARCH COULD NOT READ. A reference the corpus holds only a title and an abstract
+    #  for was screened as worth reading and then never read, so any description of it rests on
+    #  the abstract alone. Counsel, 2026-08-24: US 8,991,263 is a fibre-testing snubbing clamp and
+    #  its mapping onto "pole shoes guide a magnetic field portion" is a reach. Unreadable is a
+    #  hard exclusion from a filing set, whatever it scores.
+    unread = {r.get("pub") for r in
+              (((report or {}).get("deep_rank") or {}).get("not_readable") or [])
+              if isinstance(r, dict) and r.get("pub")}
+    #  The number the claim grid shows, and the one a practitioner reconciles against: how many
+    #  construed limitations this reference reads on. `n_rows` is not it, because dependent claims
+    #  collapse to one row each.
+    n_limitations_of = {}
 
     out = []
     for ref in (deep.get("references") or []):
@@ -528,10 +585,26 @@ def candidates(report, deep, limit=40, collapse_families=True):
         strong_indep = sum(1 for c in (ref.get("claims") or [])
                            if isinstance(c, dict) and c.get("item") in indep
                            and (c.get("bar") or "") == "discloses")
+        cells = [c for c in (ref.get("claims") or []) if isinstance(c, dict) and c.get("item")]
+        #  TWO COVERAGE NUMBERS, and the difference between them is a thing to say out loud.
+        #  `reads_on` is what the claim grid on the report page shows: every limitation this
+        #  reference is not simply absent from. `n_limitations` is what could actually be FILED:
+        #  a chart row needs a usable verdict AND a passage that was found in the document. A
+        #  reference can read on sixteen limitations and support nine, and a practitioner
+        #  reconciling the package against the grid deserves to be told which number is which.
+        covered = {c.get("item") for c in cells
+                   if (c.get("verdict") or "") in _USABLE_VERDICTS
+                   and (c.get("grounding") or "") == "verified"}
+        n_limitations = len(covered)
+        n_limitations_of[pub] = n_limitations
         out.append({
             "pub": pub, "title": ref.get("title") or "",
             "family": ref.get("family"),
             "n_rows": len(rows), "n_strong": sum(1 for r in rows if r["strong"]),
+            "n_limitations": n_limitations,
+            "reads_on": len({c.get("item") for c in cells
+                             if (c.get("verdict") or "") != "absent"}),
+            "covers": sorted(covered, key=lambda x: (_claim_no(x), str(x))),
             "claims": sorted({r["claim_no"] for r in rows}),
             "anticipates": sorted(w.get("anticipates") or [], key=_claim_no),
             "adds": sorted(w.get("adds") or [], key=_claim_no),
@@ -539,11 +612,33 @@ def candidates(report, deep, limit=40, collapse_families=True):
             #  Authority, not similarity: an examiner used this document against this family.
             "office": ("applied" if pub in applied else
                        "considered" if pub in considered else ""),
+            "readable": pub not in unread,
             "rank": ref.get("rank") or 9999,
         })
-    out.sort(key=lambda d: (-len(d["anticipates"]), d["office"] != "applied",
-                            -len(d["adds"]), -d["strong_indep"], d["office"] != "considered",
-                            -d["n_strong"], -d["n_rows"], d["rank"]))
+    #  ANTICIPATION DECIDES WHEN THERE IS ANY. When there is none, the first two keys are ties for
+    #  everything and coverage has to lead or it never votes at all.
+    if any(d["anticipates"] for d in out):
+        out.sort(key=lambda d: (-len(d["anticipates"]), d["office"] != "applied",
+                                -len(d["adds"]), -d["strong_indep"], d["office"] != "considered",
+                                -d["n_strong"], -d["n_rows"], d["rank"]))
+        for d in out:
+            d["new_limitations"] = d["n_limitations"]
+    else:
+        #  UNREADABLE GOES LAST, AND GOES LAST FIRST. A reference the corpus holds only an
+        #  abstract for scores HIGH on coverage, not low: a short text gets mapped generously
+        #  onto many limitations and every cell verifies against the abstract it came from. On
+        #  adhoc-efbf2979420b, US 6,332,502 was never read in full and came out top of the
+        #  coverage order with 25 of 32. Left in, it also swallows the marginal-coverage pass and
+        #  starves every readable document of anything new to add. So it is separated before the
+        #  greedy runs, not filtered out of the picker: it is still shown, still choosable, and
+        #  never chosen for you.
+        readable = [d for d in out if d["readable"]]
+        unreadable = [d for d in out if not d["readable"]]
+        key = (lambda d: (d["office"] != "applied", -d["n_limitations"], -len(d["adds"]),
+                          -d["strong_indep"], d["office"] != "considered",
+                          -d["n_strong"], -d["n_rows"], d["rank"]))
+        out = (_by_marginal_coverage(sorted(readable, key=key))
+               + _by_marginal_coverage(sorted(unreadable, key=key)))
     #  FAMILY COLLAPSE AT SELECTION, not after building. Building a document costs a model call and
     #  an enrichment fetch, so a sibling dropped later is money already spent on a page nobody
     #  files. Siblings are named on the survivor so the choice stays visible.
@@ -561,7 +656,18 @@ def candidates(report, deep, limit=40, collapse_families=True):
             continue
         seen_fam[fam] = d
         kept.append(d)
-    return kept[:limit]
+    head = kept[:limit]
+    #  THE UNREADABLE ONES STAY VISIBLE. Sorting them to the bottom is right, and it also pushes
+    #  them past `limit`, out of the picker and out of the "considered and not selected" table
+    #  computed from it: a reference the claim grid ranks at the very top would then vanish with
+    #  no explanation anywhere, which is the silent drop this whole change is about. So the few
+    #  the grid ranks highest come back, at the end, carrying their flag and never pre-selected.
+    if len(head) >= limit:
+        shown = {d["pub"] for d in head}
+        extra = sorted((d for d in kept if d["pub"] not in shown and not d["readable"]),
+                       key=lambda d: -int(d.get("reads_on") or 0))[:UNREADABLE_SHOWN]
+        head = head + extra
+    return head
 
 
 def _bare(pub):
