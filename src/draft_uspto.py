@@ -9,9 +9,8 @@ ready":
                 no named inventor.  These are listed as blockers and the export says so.
   FORMALITIES   things the USPTO will object to but which do not stop a filing date - a title
                 over 500 characters, an abstract over 150 words.
-  NOT OUR JOB   the oath or declaration, the entity-status certification, formal drawings under
-                37 CFR 1.84, the fee payment, and the attorney's own review.  These are listed as
-                what remains, never silently ticked off.
+  ADMINISTRATIVE the oath or declaration, entity-status certification, fee payment, and optional
+                 practitioner review. These are listed as what remains, never silently ticked off.
 
 NO FEE AMOUNTS ARE PRINTED.  The counts that drive them (total claims, independent claims,
 multiple dependent claims, specification sheet count) are computed exactly, and which surcharges
@@ -228,14 +227,18 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
     import draft_figures
     specs_by_key = {draft_figures.figure_key(spec.get("label")): spec
                     for spec in figure_specs if isinstance(spec, Mapping)}
-    for figure in figures:
+    for sheet_index, figure in enumerate(figures, 1):
         label = figure.get("figure_label") or figure.get("label") or "drawing"
         active = next((row for row in (figure.get("versions") or [])
                        if int(row.get("version_no") or 0) ==
                        int(figure.get("active_version") or 0)), None) or {}
-        if not (active.get("numeral_audit") or {}).get("ok"):
+        expected_sheet_number = f"{sheet_index}/{len(figures)}"
+        if not draft_figures.current_ocr_audit(
+                active.get("numeral_audit") or {},
+                expected_sheet_number=expected_sheet_number):
             live_drawing_failures.append(
-                f"{label}: OCR numeral inspection did not pass")
+                f"{label}: OCR numeral, view-label, or sheet-number inspection did not pass "
+                f"for sheet {expected_sheet_number}")
         if not draft_figures.current_semantic_audit(active.get("semantic_audit") or {}):
             live_drawing_failures.append(
                 f"{label}: current semantic drawing consensus did not pass")
@@ -270,8 +273,6 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
         "statement where one is permitted.",
         "An Application Data Sheet (37 CFR 1.76) - the fields are pre-filled in the package.",
         "Entity-status certification if claiming small or micro entity fees (37 CFR 1.27, 1.29).",
-        "Formal drawings meeting 37 CFR 1.84. Nothing in this product checks sheet size, margins, "
-        "line weight, shading or lettering.",
         "An Information Disclosure Statement listing the art you are aware of (37 CFR 1.56, 1.97). "
         "The citation listing in this package is a starting point, not a signed form.",
         "The filing, search and examination fees due on the counts above.",
@@ -403,6 +404,7 @@ def render_filing_docx(project: Mapping[str, Any], version: Mapping[str, Any], *
         raise drafting.DraftingValidationError(
             "The filing gate has blockers; a filing document was not created.")
     from docx import Document
+    from docx.enum.section import WD_SECTION
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
     from docx.shared import Inches, Pt
@@ -463,20 +465,34 @@ def render_filing_docx(project: Mapping[str, Any], version: Mapping[str, Any], *
     plain(str(sections.get("abstract") or "").strip())
 
     if figure_images:
-        for figure in figure_images:
+        drawing_layout = document.add_section(WD_SECTION.NEW_PAGE)
+        drawing_layout.page_width, drawing_layout.page_height = Inches(8.5), Inches(11)
+        # 37 CFR 1.84(g): 1 inch top and left, 5/8 inch right, 3/8 inch bottom.
+        drawing_layout.top_margin = drawing_layout.left_margin = Inches(1)
+        drawing_layout.right_margin = Inches(0.625)
+        drawing_layout.bottom_margin = Inches(0.375)
+        for index, figure in enumerate(figure_images):
             png = bytes(figure.get("png") or b"")
             if not png:
                 continue
-            document.add_page_break()
-            heading("DRAWING SHEETS")
             picture = document.add_paragraph()
+            if index:
+                picture.paragraph_format.page_break_before = True
             picture.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            picture.add_run().add_picture(BytesIO(png), width=Inches(6.5))
-            label = str(figure.get("label") or "").strip()
-            if label:
-                caption = document.add_paragraph()
-                caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                caption.add_run(label).bold = True
+            picture.paragraph_format.space_before = Pt(0)
+            picture.paragraph_format.space_after = Pt(0)
+            picture.paragraph_format.line_spacing = 1.0
+            from PIL import Image
+            with Image.open(BytesIO(png)) as image:
+                pixel_width, pixel_height = image.size
+            max_width, max_height = 6.875, 9.5
+            width = max_width
+            height = width * pixel_height / max(1, pixel_width)
+            if height > max_height:
+                height = max_height
+                width = height * pixel_width / max(1, pixel_height)
+            picture.add_run().add_picture(
+                BytesIO(png), width=Inches(width), height=Inches(height))
 
     output = BytesIO()
     document.save(output)

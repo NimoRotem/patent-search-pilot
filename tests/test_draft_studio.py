@@ -1056,13 +1056,20 @@ def test_more_than_three_independent_claims_triggers_a_surcharge():
 def checked_figures(*labels):
     labels = labels or tuple(spec["label"] for spec in FIGURES)
     out = []
-    for label in labels:
+    for sheet_index, label in enumerate(labels, 1):
         spec = next(item for item in FIGURES
                     if draft_figures.figure_key(item["label"]) == draft_figures.figure_key(label))
         expected = draft_figures.expected_entries(spec, NUMERALS)
         digest = draft_figures.specification_hash(spec["label"], spec["caption"], expected)
         out.append({"figure_label": label, "active_version": 1, "versions": [{
-            "version_no": 1, "numeral_audit": {"ok": True},
+            "version_no": 1, "numeral_audit": {
+                "ok": True, "inspected": True,
+                "prompt_version": draft_figures.OCR_PROMPT_VERSION,
+                "correct_figure_label": True,
+                "expected_sheet_number": f"{sheet_index}/{len(labels)}",
+                "detected_sheet_numbers": [f"{sheet_index}/{len(labels)}"],
+                "correct_sheet_number": True,
+            },
             "leader_audit": {
                 "ok": True, "inspected": True, "specification_hash": digest,
                 "model_name": draft_figures.vision_model(),
@@ -1151,6 +1158,19 @@ def test_readiness_rechecks_the_active_drawing_instead_of_trusting_old_qa():
         qa=clean_qa(), figures=figures)
     assert not report["ready"]
     assert any("active drawings" in item["title"] for item in report["blockers"])
+
+
+def test_readiness_rejects_a_wrong_or_stale_drawing_sheet_number():
+    figures = checked_figures()
+    figures[0]["versions"][0]["numeral_audit"]["expected_sheet_number"] = "1/3"
+    figures[0]["versions"][0]["numeral_audit"]["detected_sheet_numbers"] = ["1/3"]
+
+    report = draft_uspto.readiness(
+        project={"inventors": "Dana", "applicant": "Example"},
+        version=clean_version(), qa=clean_qa(), figures=figures)
+
+    assert not report["ready"]
+    assert any("sheet 1/2" in item["items"] for item in report["blockers"])
 
 
 def test_readiness_blocks_a_sheet_without_final_leader_placement_approval():
@@ -1281,7 +1301,7 @@ def test_standard_exports_contain_only_clean_application_text():
     assert "3. The vacuum lifting tool of claim 2" in text
 
 
-def test_filing_docx_includes_every_checked_drawing_sheet():
+def test_filing_docx_uses_clean_formal_drawing_pages_with_required_margins():
     import io
     from PIL import Image
     from docx import Document
@@ -1298,7 +1318,20 @@ def test_filing_docx_includes_every_checked_drawing_sheet():
     document = Document(output)
     text = "\n".join(paragraph.text for paragraph in document.paragraphs)
     assert len(document.inline_shapes) == 1
-    assert "DRAWING SHEETS" in text and "FIG. 1" in text
+    assert len(document.sections) == 2
+    drawing_section = document.sections[-1]
+    assert drawing_section.top_margin.inches == pytest.approx(1.0)
+    assert drawing_section.left_margin.inches == pytest.approx(1.0)
+    assert drawing_section.right_margin.inches == pytest.approx(0.625)
+    assert drawing_section.bottom_margin.inches == pytest.approx(0.375)
+    shape = document.inline_shapes[0]
+    assert shape.width.inches <= 6.875
+    assert shape.height.inches <= 9.625
+    assert "DRAWING SHEETS" not in text
+    drawing_paragraph = next(
+        paragraph for paragraph in document.paragraphs
+        if paragraph._p.xpath(".//w:drawing"))
+    assert drawing_paragraph.text == ""
     for forbidden in ("(not supplied)", "STILL REQUIRED", "NOT READY", "legal advice"):
         assert forbidden.lower() not in text.lower()
 
