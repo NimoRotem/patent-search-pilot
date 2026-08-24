@@ -1554,6 +1554,9 @@ class TurnRunner:
         conversation_path = workspace / "input" / "conversation.md"
         conversation = (conversation_path.read_text(encoding="utf-8")
                         if conversation_path.exists() else "")
+        brief_path = workspace / "input" / "brief.md"
+        brief = (brief_path.read_text(encoding="utf-8")
+                 if brief_path.exists() else "")
         configured_version = getattr(self.qa, "SOURCE_REVIEW_VERSION", "")
         source_review_version = (configured_version if isinstance(configured_version, str)
                                  and configured_version else draft_qa.SOURCE_REVIEW_VERSION)
@@ -1561,6 +1564,7 @@ class TurnRunner:
             "version": source_review_version,
             "disclosure": disclosure,
             "conversation": conversation,
+            "brief": brief,
             "sections": dict(sections),
             "numerals": [dict(item) for item in numerals],
             "figures": [dict(item) for item in figures],
