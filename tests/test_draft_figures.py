@@ -1856,6 +1856,35 @@ def test_deterministic_leader_endpoint_has_a_vision_visible_dot():
     assert output.getpixel((target_x, target_y + 6))[0] < 32
 
 
+def test_a_leader_route_never_runs_through_another_terminal_dot():
+    raw = blank_png()
+    anchors = [
+        {"numeral": "16", "x": 100, "y": 500, "visible": True},
+        {"numeral": "24", "x": 200, "y": 500, "visible": True},
+        {"numeral": "30", "x": 500, "y": 500, "visible": True},
+    ]
+    layout = draft_figures._annotation_layout(raw, anchors, 2.2)
+    output = Image.open(io.BytesIO(
+        draft_figures.annotate_png(raw, "FIG. 3", anchors, scale=2.2)))
+    first_x = layout["source_x"] + round(100 * layout["source"].width / 1000)
+    target_y = layout["source_y"] + round(500 * layout["source"].height / 1000)
+
+    # The line for numeral 24 used to run horizontally through numeral 16's dot.
+    assert output.getpixel((first_x + 35, target_y))[0] > 240
+
+
+def test_leader_row_optimizer_removes_endpoint_collisions_and_crossings():
+    routes = [
+        {"line_x": 0, "y": 0, "target_x": 100, "target_y": 100, "side": "left"},
+        {"line_x": 0, "y": 100, "target_x": 200, "target_y": 100, "side": "left"},
+        {"line_x": 0, "y": 200, "target_x": 500, "target_y": 100, "side": "left"},
+    ]
+
+    optimized = draft_figures._optimize_leader_rows(routes, clearance=15)
+
+    assert draft_figures._leader_layout_score(optimized, 15)[:2] == (0, 0)
+
+
 def test_terminal_dot_has_a_white_halo_when_it_lands_on_black_geometry():
     image = Image.new("RGB", (640, 420), "white")
     ImageDraw.Draw(image).line((0, 210, 639, 210), fill="black", width=18)
