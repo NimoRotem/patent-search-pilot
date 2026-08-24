@@ -34,6 +34,37 @@
         <button class="btn" type="submit">Save preferences</button>
       </form>
     </section>
+    {#  FILING DETAILS. Both of these are printed on papers filed at the USPTO, so they are set
+        once here rather than retyped into a submission. Small entity is the default because it is
+        the common case; a third party can never claim micro entity. #}
+    <section class="panel accountpanel">
+      <h2>Filing details</h2>
+      <p class="small muted">Used on third-party submissions under 37 CFR 1.290: the entity size
+        prices the fee and the signature is applied to the statements you file.</p>
+      <form method="post" class="authform">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="filing">
+        <label for="entity-size">Entity size</label>
+        <select id="entity-size" name="entity_size">
+          <option value="small" {{ 'selected' if (user.entity_size or 'small') == 'small' }}>Small entity</option>
+          <option value="large" {{ 'selected' if user.entity_size == 'large' }}>Large entity, undiscounted</option>
+        </select>
+        <p class="fieldhint">The 37 CFR 1.17(o) fee is charged per ten documents or fraction
+          thereof. A third party is not eligible for the micro-entity discount.</p>
+        <label for="signature-name">Signature name</label>
+        <input id="signature-name" type="text" name="signature_name" maxlength="120"
+               autocomplete="off" value="{{ user.signature_name or '' }}"
+               placeholder="e.g. Nimo Rotem">
+        <p class="fieldhint">Applied as an S-signature under 37 CFR 1.4(d)(2), printed between
+          forward slashes: <code>/Nimo Rotem/</code>. Inserting it is your act; leave it blank to
+          get a blank line to sign by hand. No slashes in the name.</p>
+        <label for="signature-title">Title or capacity <span class="muted">(optional)</span></label>
+        <input id="signature-title" type="text" name="signature_title" maxlength="120"
+               autocomplete="off" value="{{ user.signature_title or '' }}"
+               placeholder="e.g. Director">
+        <button class="btn ghost" type="submit">Save filing details</button>
+      </form>
+    </section>
     {#  SHARING, SET ONCE. Every finished report gets its public link automatically and this is the
         password that guards it, so it is typed here rather than on each report. Stored hashed and
         copied onto each link, which is why it cannot be shown back: it can be replaced, not read.

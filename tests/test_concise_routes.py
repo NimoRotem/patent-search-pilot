@@ -50,7 +50,18 @@ def report(tmp_path, monkeypatch):
                         lambda pub: "The gripper has a base element 141 having an elliptical "
                                     "track 148 around its periphery.")
     webapp._CONCISE_JOBS.clear()
-    return slug
+    yield slug
+    #  NO TEST ENDS WITH A BUILD STILL RUNNING. The worker is a daemon thread that reads
+    #  CONCISE_DIR at write time, so one left over from a finished test writes into the NEXT
+    #  test's directory and runs its stale-file sweep there, deleting what that test just wrote.
+    #  That is what it looked like: an unrelated test failing on a missing .model.json, only in a
+    #  full-file run, with its own job reported done.
+    import time as _t
+    for _ in range(300):
+        if (webapp._concise_job(slug) or {}).get("state") != "running":
+            break
+        _t.sleep(0.1)
+    webapp._CONCISE_JOBS.clear()
 
 
 import time
@@ -140,9 +151,55 @@ def test_the_download_route_never_serves_the_internal_model(client, report):
     _finished(report)
     listed = [p.name for p in (webapp.CONCISE_DIR / report).iterdir()]
     model = [n for n in listed if n.endswith(".model.json")]
-    assert model, "the model should be written for provenance"
+    assert model, ("the model should be written for provenance; directory held %s, job was %s"
+                   % (listed, webapp._concise_job(report)))
     assert client.get("/report/%s/concise/%s" % (report, model[0])).status_code == 404
 
 
 def test_a_bad_slug_is_not_a_path(client):
     assert client.get("/report/..%2f..%2fetc/concise").status_code in (301, 308, 404)
+
+
+def test_the_picker_opens_on_one_fee_unit_and_pre_picks_what_it_buys(client, report, monkeypatch):
+    """1.290(f) charges per ten items or fraction thereof, so the page opens on the cheapest unit
+    and fills exactly the slots that unit pays for. It counts ELIGIBLE candidates, because a
+    flagged document must not consume a paid slot it will not be filed in."""
+    import re
+
+    import submission as S
+
+    #  Twelve candidates, two of them flagged, so a naive "first ten rows" would pick eight.
+    def classify(slug, cands, deep):
+        for i, c in enumerate(cands):
+            c["basis"] = S.NOT_ART if i in (1, 3) else S.PUBLIC
+            c["co_owned"] = False
+            c["default_include"] = c["basis"] == S.PUBLIC
+        return cands
+
+    import concise_description as cd
+    monkeypatch.setattr(webapp, "_classify", classify)
+    monkeypatch.setattr(cd, "office_action_candidates", lambda report: [])
+    monkeypatch.setattr(cd, "candidates",
+                        lambda report, deep, limit=40, collapse_families=True: [
+                            {"pub": "US-%07d-B2" % i, "title": "t", "rows": 1,
+                             "strong": 1, "claims": "1"} for i in range(1, 13)])
+    body = client.get("/report/%s/concise" % report).get_data(as_text=True)
+    assert re.search(r'<option value="1"\s*selected', body), "it should open on one fee unit"
+    checked = re.findall(r'class="pickbox"[^>]*checked', body, re.S)
+    assert len(checked) == 10, "one unit buys ten documents, %d were pre-picked" % len(checked)
+    assert body.count('data-eligible="1"') == 10
+    assert "$%s" % S._money(S.fee_amount(1, "small")[1]) in body
+
+
+def test_going_over_the_chosen_fee_budget_is_refused_with_the_money_named(client, report):
+    """The budget is a ceiling on the server too. A browser that skipped the script, or a hand
+    posted form, must not quietly buy a second fee unit on the filer's behalf."""
+    r = client.post("/report/%s/concise" % report,
+                    data={"pubs": ["US-11413727-B2"] * 11, "app_no": "18/915,337",
+                          "fee_units": "1"})
+    assert r.status_code == 400
+    body = r.get_data(as_text=True)
+    assert "1 fee unit" in body and "up to 10 documents" in body
+    assert "$" in body, "tell them what the overrun costs, not just that it is one"
+    #  and the picker is still on the page, so the overrun can actually be fixed
+    assert 'name="pubs"' in body

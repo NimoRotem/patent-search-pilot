@@ -746,6 +746,17 @@ def account():
                     preferred_jurisdiction=request.form.get("preferred_jurisdiction", "US"))
                 g.patent_user = user
                 message = "Account preferences saved."
+            elif action == "filing":
+                #  Both of these end up on a paper filed at the USPTO: the entity size sets the
+                #  fee and the signature is applied under 37 CFR 1.4(d)(2). Set once, used every
+                #  time, so nobody retypes them into a filing.
+                user = accounts.set_filing_identity(
+                    user["id"],
+                    entity_size=request.form.get("entity_size", "small"),
+                    signature_name=request.form.get("signature_name", ""),
+                    signature_title=request.form.get("signature_title", ""))
+                g.patent_user = user
+                message = "Filing details saved."
             elif action == "share":
                 #  ONE password for every link this account publishes. Set once here, copied onto
                 #  each report at publish time, never shown again. Clearing it also stops anything

@@ -5671,11 +5671,11 @@ def concise_descriptions(slug):
         auth.require_csrf()
     deep = _concise_deep(slug)
     if not deep or not (deep.get("references") or []):
-        return render_template("concise.html", slug=slug, cands=[], docs=[],
-                               subject=_concise_subject(slug), **_filing_context(), error=(
-                                   "This report has no full-text reading stage, so there is no "
-                                   "per-claim evidence to describe. Re-run the search at depth "
-                                   "'deep' first."))
+        return _render_picker(slug=slug, cands=[], docs=[],
+                              subject=_concise_subject(slug), error=(
+                                  "This report has no full-text reading stage, so there is no "
+                                  "per-claim evidence to describe. Re-run the search at depth "
+                                  "'deep' first."))
     import concise_description
     import concise_render
     #  The REPORT, not {}: the picker ranks on what the ledger says each reference kills and on
@@ -5691,18 +5691,17 @@ def concise_descriptions(slug):
         #  The build runs in a thread and the page reloads when it finishes, so what the
         #  build DECIDED has to be read back from the job or it is lost at that reload.
         j = _concise_job(slug) or {}
-        return render_template("concise.html", slug=slug,
-                               cands=_classify(slug, cands, deep),
-                               docs=_concise_built(slug), subject=subject, error=None,
-                               blocked=j.get("blocked") or [],
-                               verdict=j.get("verdict") or _concise_verdict_on_disk(slug),
-                               **_filing_context())
+        return _render_picker(slug=slug,
+                              cands=_classify(slug, cands, deep),
+                              docs=_concise_built(slug), subject=subject, error=None,
+                              blocked=j.get("blocked") or [],
+                              verdict=j.get("verdict") or _concise_verdict_on_disk(slug))
 
     pubs = [p.strip() for p in request.form.getlist("pubs") if p.strip()]
     if not pubs:
-        return render_template("concise.html", slug=slug, cands=_classify(slug, cands, deep),
-                               docs=_concise_built(slug), subject=subject,
-                               error="Select at least one document.", **_filing_context()), 400
+        return _render_picker(slug=slug, cands=_classify(slug, cands, deep),
+                              docs=_concise_built(slug), subject=subject,
+                              error="Select at least one document."), 400
     #  Only a publication this report actually read can be described: `pubs` is user input that
     #  becomes a document lookup and a filename. Filtering it silently, though, hands back a
     #  success page with nothing on it and no reason, so an unknown one is named and refused.
@@ -5718,10 +5717,9 @@ def concise_descriptions(slug):
     unknown = [p for p in pubs if p not in known]
     pubs = [p for p in pubs if p in known]
     if not pubs:
-        return render_template(
-            "concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
-            error=("None of the selected documents carry per-claim evidence in this report: %s"
-                   % ", ".join(unknown[:5]))), 400
+        return _render_picker(slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
+                              error=("None of the selected documents carry per-claim evidence "
+                                     "in this report: %s" % ", ".join(unknown[:5]))), 400
     #  EVERYTHING THE THREAD NEEDS IS CAPTURED HERE. The worker outlives this request, so it may
     #  not touch `request` at all.
     start_at = int(request.form.get("start_at") or 1)
@@ -5732,13 +5730,32 @@ def concise_descriptions(slug):
     #  CAPTURED IN THE REQUEST. The build thread has no session, so who signs and at what entity
     #  size has to be read here and carried in.
     filing_identity = _filing_identity()
+    #  THE BUDGET IS A CEILING, checked here and not only in the browser. 1.290(f) charges per ten
+    #  items or fraction thereof, so an eleventh document doubles the bill; somebody who chose one
+    #  unit and then hand-posted twelve pubs should be told, not quietly charged twice.
+    import submission as _sub
+    try:
+        budget_units = max(1, int(request.form.get("fee_units") or 0))
+    except ValueError:
+        budget_units = 0
+    if budget_units and _sub.fee_units(len(pubs)) > budget_units:
+        allowed = budget_units * _sub.ITEMS_PER_UNIT
+        want_units, dollars, _per = _sub.fee_amount(len(pubs), filing_identity["entity_size"])
+        over = ("You chose %d fee unit%s, which pays for up to %d documents, but %d are selected. "
+                "That would cost %d units, $%s at the %s-entity rate. Either raise the fee budget "
+                "or deselect %d."
+                % (budget_units, "" if budget_units == 1 else "s", allowed, len(pubs),
+                   want_units, _sub._money(dollars), filing_identity["entity_size"],
+                   len(pubs) - allowed))
+        return _render_picker(slug=slug, cands=_classify(slug, cands, deep),
+                              docs=_concise_built(slug), subject=subject, error=over), 400
     chosen_model = (request.form.get("model") or "").strip() or None
     if chosen_model:
         import model_pool
         ok = {m["name"] for m in model_pool.choices() if m["available"]}
         if chosen_model not in ok:
-            return render_template(
-                "concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
+            return _render_picker(
+                slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
                 error=("%s is not a model this host can use right now. Available: %s"
                        % (chosen_model, ", ".join(sorted(ok)) or "none"))), 400
     mode = "novelty"
@@ -5751,9 +5768,9 @@ def concise_descriptions(slug):
 
     if (_concise_job(slug) or {}).get("state") == "running":
         #  A second click must not start a second build over the same output directory.
-        return render_template("concise.html", slug=slug, cands=_classify(slug, cands, deep),
-                               docs=_concise_built(slug), subject=subject, error=None,
-                               blocked=[], family_notes=[], building=True, **_filing_context())
+        return _render_picker(slug=slug, cands=_classify(slug, cands, deep),
+                              docs=_concise_built(slug), subject=subject, error=None,
+                              blocked=[], family_notes=[], building=True)
 
     with _CONCISE_JOBS_LOCK:
         #  total counts one step per document for the build, one for the compliance pass, and one
@@ -5836,9 +5853,9 @@ def concise_descriptions(slug):
                          error="Could not build the documents: %s" % str(exc)[:200])
 
     threading.Thread(target=_work, name="concise-build", daemon=True).start()
-    return render_template("concise.html", slug=slug, cands=_classify(slug, cands, deep),
-                           docs=_concise_built(slug), subject=subject, error=None, blocked=[],
-                           family_notes=[], building=True, **_filing_context())
+    return _render_picker(slug=slug, cands=_classify(slug, cands, deep),
+                          docs=_concise_built(slug), subject=subject, error=None, blocked=[],
+                          family_notes=[], building=True)
 
 
 def _concise_doc_paths(slug, n):
@@ -5912,6 +5929,19 @@ def _filing_context():
             "secret_help": submission.SECRET_HELP,
             "co_owned_help": submission.CO_OWNED_HELP,
             "basis_help": submission.BASIS_HELP}
+
+
+def _render_picker(**kw):
+    """The one way this page is rendered.
+
+    Three of the eight render sites are error paths, which is exactly where a forgotten context
+    key turns an honest 400 into a 500: adding `identity` to the template broke the unknown
+    publication branch and nothing but a test noticed. So the context is merged here, once, and
+    an explicit argument still wins.
+    """
+    ctx = _filing_context()
+    ctx.update(kw)
+    return render_template("concise.html", **ctx)
 
 
 def _classify(slug, cands, deep):
