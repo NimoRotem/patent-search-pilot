@@ -6208,17 +6208,24 @@ def concise_zip(slug):
     #  THE WHOLE PACKAGE, not only the descriptions: the document list, the statements, the
     #  translations and the note saying what a human still has to attach. The `.md` and
     #  `.model.json` are working files and stay out.
+    #  SORT ON THE NAME THE ARCHIVE WILL CARRY, not the one on disk. Prefixing after the sort put
+    #  every description AFTER the copies and the translations, which is the exact opposite of
+    #  what the prefix is for, and an unpadded number put Document 10 in front of Document 1.
+    entries = []
+    for p in sorted(d.iterdir()):
+        if p.suffix == ".md" or p.name.endswith(".model.json"):
+            continue
+        if p.suffix not in (".pdf", ".docx", ".csv", ".txt"):
+            continue
+        arc = p.name
+        if arc.startswith("ConciseDescription_"):
+            #  Padded to two digits so it sorts with the copies, which already are.
+            arc = "10_" + re.sub(r"_Doc(\d)_", lambda m: "_Doc0%s_" % m.group(1), arc)
+        entries.append((arc, p))
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for p in sorted(d.iterdir()):
-            if p.suffix == ".md" or p.name.endswith(".model.json"):
-                continue
-            if p.suffix in (".pdf", ".docx", ".csv", ".txt"):
-                #  The descriptions sort between the list and the copies rather than
-                #  by their own name, so the archive reads in filing order.
-                arc = ("10_" + p.name) if p.name.startswith("ConciseDescription_") \
-                    else p.name
-                z.write(p, arcname=arc)
-                n += 1
+        for arc, p in sorted(entries):
+            z.write(p, arcname=arc)
+            n += 1
     if not n:
         abort(404)
     buf.seek(0)

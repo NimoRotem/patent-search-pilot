@@ -160,6 +160,34 @@ def test_the_download_route_never_serves_the_internal_model(client, report):
     assert client.get("/report/%s/concise/%s" % (report, model[0])).status_code == 404
 
 
+def test_the_archive_reads_in_filing_order(client, report, monkeypatch):
+    """The numeric prefixes exist so somebody opening the zip walks the packet in order. The
+    prefix was being added AFTER the sort, so every description landed behind the copies and the
+    translations, and an unpadded number put Document 10 in front of Document 1."""
+    import io
+    import zipfile
+
+    d = webapp.CONCISE_DIR / report
+    d.mkdir(parents=True, exist_ok=True)
+    for name in ("00_AUDIT.pdf", "01_DocumentList_and_Statements.pdf",
+                 "ConciseDescription_Doc1_USA.pdf", "ConciseDescription_Doc2_USB.pdf",
+                 "ConciseDescription_Doc10_USJ.pdf", "40_Copy_Doc02_USB.pdf",
+                 "50_Translation_Doc02_USB.pdf", "MANIFEST.csv", "READ_ME_FIRST.txt"):
+        (d / name).write_bytes(b"x")
+    (d / "ConciseDescription_Doc1_USA.model.json").write_text("{}")
+
+    names = zipfile.ZipFile(io.BytesIO(
+        client.get("/report/%s/concise.zip" % report).data)).namelist()
+    assert names == sorted(names), "the archive is not in its own name order"
+    assert names[0] == "00_AUDIT.pdf" and names[1].startswith("01_")
+    doc = [n for n in names if "ConciseDescription" in n]
+    assert doc == ["10_ConciseDescription_Doc01_USA.pdf",
+                   "10_ConciseDescription_Doc02_USB.pdf",
+                   "10_ConciseDescription_Doc10_USJ.pdf"]
+    assert names.index(doc[-1]) < names.index("40_Copy_Doc02_USB.pdf")
+    assert not [n for n in names if n.endswith(".model.json")], "a working file got in"
+
+
 def test_a_bad_slug_is_not_a_path(client):
     assert client.get("/report/..%2f..%2fetc/concise").status_code in (301, 308, 404)
 
