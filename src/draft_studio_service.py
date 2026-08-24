@@ -768,7 +768,13 @@ def _continue_terminal_filing_repair(repository: Any, claimed: Mapping[str, Any]
     """Continue a blocked filing gate or a valid candidate interrupted by its provider."""
     filing_gate_stopped = str(error).startswith(_FILING_GATE_EXHAUSTED)
     interrupted_candidate = False
-    if not filing_gate_stopped and draft_agent._transient_provider_error(error):
+    # A graceful worker restart terminates its drafting or review subprocess with SIGTERM. The
+    # shell reports that signal as exit code 143. Treat that like a provider disconnect only when
+    # a complete candidate was checkpointed, so a deployment cannot strand filing-ready work.
+    interrupted_run = bool(
+        draft_agent._transient_provider_error(error) or
+        re.search(r"\bexit code (?:130|143)\b", str(error), re.IGNORECASE))
+    if not filing_gate_stopped and interrupted_run:
         try:
             candidate = repository.retry_candidate(int(result.get("id") or claimed["id"]))
             interrupted_candidate = bool(
