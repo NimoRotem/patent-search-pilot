@@ -455,7 +455,9 @@ def _transient_provider_error(error: str) -> bool:
         re.search(r"(?:^|\D)(?:500|502|503|504|529)(?:\D|$)", text) or
         any(phrase in text for phrase in (
             "overloaded", "service unavailable", "temporarily unavailable",
-            "server-side issue", "internal server error")))
+            "server-side issue", "internal server error", "connection lost",
+            "connection reset", "connection closed", "unexpected eof", "broken pipe",
+            "network error")))
 
 
 def _wait_for_rate_limit_retry(seconds: int,

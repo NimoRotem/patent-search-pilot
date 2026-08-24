@@ -3001,6 +3001,47 @@ def test_terminal_filing_gate_failure_continues_from_saved_candidate_without_use
     assert "Try again" not in message
 
 
+def test_terminal_provider_disconnect_continues_a_saved_candidate_without_user_input():
+    import draft_studio_service as service
+
+    repository = Mock()
+    repository.fail_turn.return_value = {
+        "id": 31,
+        "project_id": 7,
+        "requested_by_user_id": 91,
+        "project_revision": 4,
+        "idempotency_key": None,
+        "status": "failed",
+    }
+    repository.retry_candidate.return_value = {
+        "turn_id": 31,
+        "snapshot": {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES},
+        "qa_report": {"verdict": "fail"},
+    }
+    repository.enqueue_turn_safely.return_value = {"id": 32, "status": "queued"}
+    runner = Mock(repository=repository)
+    claimed = {
+        "id": 31,
+        "project_id": 7,
+        "requested_by_user_id": 91,
+        "project_revision": 4,
+        "idempotency_key": None,
+        "lease_token": "lease",
+    }
+
+    result = service._fail(
+        runner, claimed,
+        "StudioError: API Error: Connection lost mid-response. The response may be incomplete.",
+        retryable=True)
+
+    assert result["status"] == "failed"
+    queued = repository.enqueue_turn_safely.call_args
+    assert queued.args == (7, 91)
+    assert queued.kwargs["kind"] == "qa_fix"
+    assert queued.kwargs["idempotency_key"] == "auto-filing-repair-31-1"
+    assert "No action is required" in repository.add_message.call_args.args[2]
+
+
 def test_automatic_filing_repair_chain_stops_at_its_durable_safety_limit():
     import draft_studio_service as service
 

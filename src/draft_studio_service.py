@@ -743,8 +743,8 @@ def _fail(runner: draft_studio.TurnRunner, claimed: Mapping[str, Any], error: st
         try:
             if continuation == "queued":
                 message = (
-                    "The candidate did not pass every filing check in that turn. Automatic "
-                    "repair has continued from the saved candidate in a new turn. No action is "
+                    "The candidate did not complete every filing check in that turn. Automatic "
+                    "work has continued from the saved candidate in a new turn. No action is "
                     "required.")
             elif continuation == "limit":
                 message = (
@@ -765,8 +765,19 @@ def _fail(runner: draft_studio.TurnRunner, claimed: Mapping[str, Any], error: st
 
 def _continue_terminal_filing_repair(repository: Any, claimed: Mapping[str, Any],
                                      result: Mapping[str, Any], error: str) -> str:
-    """Start the next bounded QA turn when a complete candidate exhausted this turn's gates."""
-    if not str(error).startswith(_FILING_GATE_EXHAUSTED):
+    """Continue a blocked filing gate or a valid candidate interrupted by its provider."""
+    filing_gate_stopped = str(error).startswith(_FILING_GATE_EXHAUSTED)
+    interrupted_candidate = False
+    if not filing_gate_stopped and draft_agent._transient_provider_error(error):
+        try:
+            candidate = repository.retry_candidate(int(result.get("id") or claimed["id"]))
+            interrupted_candidate = bool(
+                isinstance(candidate, Mapping) and
+                isinstance(candidate.get("snapshot"), Mapping) and
+                candidate.get("snapshot"))
+        except Exception:                                      # noqa: BLE001
+            interrupted_candidate = False
+    if not filing_gate_stopped and not interrupted_candidate:
         return ""
     prior_key = str(result.get("idempotency_key") or claimed.get("idempotency_key") or "")
     matched = _AUTOMATIC_FILING_REPAIR_KEY.fullmatch(prior_key)
