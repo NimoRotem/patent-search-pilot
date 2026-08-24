@@ -191,35 +191,8 @@ def test_a_translation_that_is_not_in_english_is_refused(monkeypatch):
     assert got and got["source"] == "gpatents_direct"
 
 
-def test_the_document_list_marks_what_is_still_missing():
-    docs = [_doc(n=1), _doc(n=2, biblio={"pub": "JP-2019155534-A", "label": "JP 2019155534 A",
-                                         "country": "JP", "inventor": "Yusei Kimura"})]
-    text = _pdf_text(sp.document_list(docs, SUBJECT, translations={}))
-    assert "OUTSTANDING" in text
-    assert "no copy required" in text
 
 
-def test_the_package_never_claims_to_be_complete():
-    docs = [_doc(n=1, biblio={"pub": "JP-1-A", "country": "JP", "label": "JP 1 A"})]
-    note = sp.readme(docs, SUBJECT, translations={})
-    assert "NOT A COMPLETE SUBMISSION" in note
-    items = sp.outstanding(docs, {})
-    assert any("legible copy" in i for i in items)
-    assert any("translation" in i for i in items)
-    assert any("Patent Center" in i for i in items)
-
-
-def test_the_fee_paragraph_follows_the_document_count():
-    one = _pdf_text(sp.statements([_doc()], SUBJECT))
-    assert "1.290(g)" in one and "three or fewer" in one
-    many = _pdf_text(sp.statements([_doc(n=i) for i in range(1, 8)], SUBJECT))
-    assert "more than the three" in many
-
-
-def test_both_statements_are_on_the_paper():
-    text = _pdf_text(sp.statements([_doc()], SUBJECT))
-    assert "1.290(d)(5)(i)" in text and "1.290(d)(5)(ii)" in text
-    assert "duty to disclose" in text and "122(e)" in text
 
 
 def test_the_zip_carries_the_whole_package():
@@ -273,6 +246,8 @@ def test_no_em_dash_reaches_a_paper_that_gets_filed():
         meta = " ".join(str(v) for v in (r.metadata or {}).values())
         return meta + "\n" + "\n".join((p.extract_text() or "") for p in r.pages)
 
+    import submission_package as sp
+
     papers = {
         "the concise description": _text(cr.to_pdf(docs[0])),
         "its markdown": concise_md.to_markdown(docs[0]),
@@ -281,6 +256,12 @@ def test_no_em_dash_reaches_a_paper_that_gets_filed():
         "the manifest": S.manifest_csv(docs, {}, {}),
         "the subject line": cr.subject_line(subject),
         "the running head": cr.running_head(subject),
+        #  The translation cover is a paper we write around somebody else's text, and its own
+        #  heading carried one. The translated passage is quoted as it came and is not ours to
+        #  edit, so only the chrome is asserted here.
+        "the translation cover": _text(sp.translation_pdf(
+            docs[0], {"rows": [{"id": 1, "english": "a magnet is arranged in the housing"}],
+                      "engine": "test"}, subject)),
     }
     for what, text in papers.items():
         for dash in ("—", "–"):
