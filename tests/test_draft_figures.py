@@ -1820,6 +1820,28 @@ def test_pixel_grounding_accepts_a_wide_white_margin_for_a_broad_interior_target
     assert (anchors[0]["x"], anchors[0]["y"]) == (175, 500)
 
 
+def test_pixel_grounding_moves_a_boundary_near_anchor_deeper_into_the_same_wide_region():
+    specification = (
+        "The sheet shows one rectangular ring and nothing else. The ring is drawn with two "
+        "closed thin lines and those two alone: its outer edge and its inner edge. Both are "
+        "rectangular, and they are spaced apart on all four sides. The opening inside the ring "
+        "is left plain, so that the finished sheet carries just those two closed lines."
+    )
+    png = draft_figures._deterministic_nested_plan_png(specification)
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        png, ["24 = perimeter member"], [{
+            "numeral": "24", "x": 500, "y": 200, "visible": True,
+            "evidence": "the band-like surface between the outer and inner rectangular outlines",
+        }])
+
+    assert audit["ok"] is True and audit["ungrounded"] == []
+    assert audit["adjusted"][0]["numeral"] == "24"
+    assert anchors[0]["x"] == 500
+    assert 120 <= anchors[0]["y"] <= 180
+    assert draft_figures.closed_region_audit(png, specification)["observed"] == 2
+
+
 def test_pixel_grounding_does_not_apply_white_clearance_to_hatched_material():
     image = Image.new("RGB", (1000, 1000), "white")
     draw = ImageDraw.Draw(image)
@@ -2184,6 +2206,76 @@ def test_render_uses_deterministic_nested_plan_before_raster_generation(monkeypa
     assert saved[0]["source_kind"] == "deterministic"
     assert draft_figures.closed_region_audit(
         saved[0]["base_png"], specification)["observed"] == 4
+
+
+def test_render_keeps_an_exact_deterministic_ring_when_vision_anchor_is_near_its_edge(
+        monkeypatch):
+    specification = (
+        "The sheet shows one rectangular ring and nothing else. The ring is drawn with two "
+        "closed thin lines and those two alone: its outer edge and its inner edge. Both are "
+        "rectangular, and they are spaced apart on all four sides. The opening inside the ring "
+        "is left plain, so that the finished sheet carries just those two closed lines."
+    )
+    generated = []
+    monkeypatch.setattr(
+        draft_figures, "_cached_generate",
+        lambda *args, **kwargs: generated.append((args, kwargs)) or blank_png())
+    monkeypatch.setattr(draft_figures, "_discard_cached_generation", lambda *a, **k: None)
+    monkeypatch.setattr(
+        draft_figures, "inspect_semantics",
+        lambda *_args, **_kwargs: {
+            "ok": True,
+            "anchors": [
+                {"numeral": "16", "x": 500, "y": 500, "visible": True,
+                 "evidence": "the plain field inside the inner rectangular outline"},
+                {"numeral": "24", "x": 500, "y": 200, "visible": True,
+                 "evidence": (
+                     "the band-like surface between the outer and inner rectangular outlines")},
+            ],
+        })
+    accepted_labels = {
+        "ok": True, "detected": ["16", "24"], "expected": ["16", "24"],
+        "correct_figure_label": True, "other_text": [], "confidence": 0.99,
+    }
+    accepted_leaders = {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [],
+        "marked_anchor_audit": accepted_marked_anchor_audit(),
+    }
+    captured = {}
+
+    def compose(png, **kwargs):
+        captured["semantic"] = kwargs["semantic"]
+        return (
+            png, dict(accepted_labels), dict(accepted_leaders),
+            list(kwargs["semantic"]["anchors"]),
+            dict(kwargs["semantic"]["pixel_anchor_audit"]),
+        )
+
+    monkeypatch.setattr(draft_figures, "_compose_checked_sheet", compose)
+    monkeypatch.setattr(draft_figures, "create_figure", lambda *a, **k: {"id": 45})
+    saved = []
+
+    def save(_figure_id, **kwargs):
+        saved.append(kwargs)
+        return {
+            "version_no": 1, "audit": kwargs["ocr_audit"],
+            "semantic_audit": kwargs["semantic_audit"],
+            "leader_audit": kwargs["leader_audit"],
+            "detected_numerals": ["16", "24"],
+        }
+
+    monkeypatch.setattr(draft_figures, "_audited_version", save)
+
+    draft_figures.render_figure(
+        7, 91, label="FIG. 3", caption=specification,
+        numerals=["16 = second side", "24 = perimeter member"])
+
+    assert generated == []
+    assert saved[0]["source_kind"] == "deterministic"
+    assert captured["semantic"]["pixel_anchor_audit"]["ok"] is True
+    anchor = next(item for item in captured["semantic"]["anchors"]
+                  if item["numeral"] == "24")
+    assert 120 <= anchor["y"] <= 180
 
 
 def test_closed_region_audit_is_not_required_without_an_exact_closed_shape_clause():
