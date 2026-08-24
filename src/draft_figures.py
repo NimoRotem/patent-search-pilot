@@ -305,7 +305,9 @@ _VERTICAL_LINE_TARGET_RE = re.compile(
     re.IGNORECASE)
 _BROAD_INTERIOR_TARGET_RE = re.compile(
     r"\bwell\s+inside\b|\bwhite\s+(?:space|margin|region)\b|"
-    r"\bclear\s+of\s+(?:both|all)\b",
+    r"\bclear\s+of\s+(?:both|all)\b|"
+    r"\b(?:area|band|corridor|field|interior|margin|region|space|surface)\s+"
+    r"(?:inside|within|between)\b",
     re.IGNORECASE)
 _HATCHED_TARGET_RE = re.compile(r"\bhatch\w*\b", re.IGNORECASE)
 _NEGATED_TARGET_RE = re.compile(
@@ -1263,11 +1265,13 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         is_exterior = bool(exterior[pixel_y, pixel_x])
         is_empty_space = bool(_EMPTY_ANCHOR_PART_RE.search(part))
         evidence = str(item.get("evidence") or "")
+        targets_broad_interior = bool(_BROAD_INTERIOR_TARGET_RE.search(evidence))
         requires_ink = bool(
-            _LINE_ANCHOR_PART_RE.search(part) or _has_explicit_line_target(evidence)
+            _LINE_ANCHOR_PART_RE.search(part) or (
+                _has_explicit_line_target(evidence) and not targets_broad_interior)
         ) and not is_empty_space
         requires_broad_interior = bool(
-            _BROAD_INTERIOR_TARGET_RE.search(evidence)
+            targets_broad_interior
         ) and not _HATCHED_TARGET_RE.search(evidence) and not requires_ink and not is_exterior
         if is_exterior and is_empty_space:
             allowed_spaces.append({"numeral": numeral, "part": part, "x": x, "y": y})
