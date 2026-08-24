@@ -1984,6 +1984,25 @@ def test_pixel_grounding_preserves_a_reviewed_short_boundary_correction():
     assert 445 <= anchors[0]["y"] <= 455
 
 
+def test_pixel_grounding_preserves_reviewed_boundary_behind_nearby_hatching():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.line((375, 466, 550, 466), fill="black", width=6)
+    draw.line((50, 529, 950, 529), fill="black", width=6)
+    draw.line((425, 425, 475, 475), fill="black", width=4)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["26 = bearing face"], [{
+            "numeral": "26", "x": 450, "y": 450, "visible": True,
+            "evidence": "the horizontal line forming the bottom edge of the column",
+        }], preserve_reviewed_line_target=True)
+
+    assert audit["ok"] is True
+    assert 462 <= anchors[0]["y"] <= 470
+
+
 def test_pixel_grounding_prefers_a_long_vertical_boundary_over_nearby_hatching():
     image = Image.new("RGB", (1000, 1000), "white")
     draw = ImageDraw.Draw(image)
