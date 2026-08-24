@@ -240,6 +240,11 @@ Use a structural view, system diagram, or process flow as appropriate to the dis
 Normally use two to four figures. Do not list more than eight numerals on one sheet. When more
 structure must be shown, add a focused detail or sectional sheet instead of overcrowding one image,
 then synchronize the Brief Description of the Drawings and Detailed Description.
+When moving a numeral to another or focused sheet, remove every use of that numeral and its
+canonical part name from the old sheet brief. If the old sheet still needs the structure only as
+context, describe it generically as an unnumbered block, slab, housing, line, or other simple
+shape without its canonical part name or numeral; otherwise omit it. Never delete the focused
+sheet merely to fix stale references on the old brief.
 Keep each figure brief at or below 2800 characters. Include only disclosure-grounded geometry and
 relationships needed to identify the listed parts. Never invent arbitrary exact counts,
 proportions, relative heights, corner shapes, line counts, or placement constraints merely to
@@ -332,11 +337,6 @@ a drawing defect; it does not become part of the invention.
 For a figure-plan coverage failure, never delete a disclosed part, numeral definition, or
 supporting specification text. Redistribute labels among focused sheets, or add a focused sheet
 when necessary, and synchronize the drawing descriptions.
-When moving a numeral to another or focused sheet, remove every use of that numeral and its
-canonical part name from the old sheet brief. If the old sheet still needs the structure only as
-context, describe it generically as an unnumbered block, slab, housing, line, or other simple
-shape without its canonical part name or numeral; otherwise omit it. Never delete the focused
-sheet merely to fix stale references on the old brief.
 
 If a figure brief is over-specified, shorten it by removing invented rendering constraints while
 preserving the authoritative text, numeral table, disclosed geometry, and required relationships.
