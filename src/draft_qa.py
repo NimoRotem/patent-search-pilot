@@ -1487,7 +1487,12 @@ def _source_review_quality_error(summary: str,
     for finding in findings:
         for field, minimum in minimums.items():
             value = str(finding.get(field) or "").strip()
-            if len(value) < minimum or len(value.split()) < 2:
+            precise_path = bool(
+                field == "where" and
+                re.search(r"(?:^|/)[^/\s]+\.[a-z0-9]{1,12}(?::\d+(?:-\d+)?)?$",
+                          value, re.IGNORECASE)
+            )
+            if len(value) < minimum or (len(value.split()) < 2 and not precise_path):
                 return (
                     "The source reviewer returned a non-substantive finding whose "
                     f"{field} field did not contain reviewable evidence."

@@ -1756,6 +1756,48 @@ def test_source_preflight_retries_a_non_substantive_structured_result(monkeypatc
     assert sessions[0] != sessions[1]
 
 
+def test_source_preflight_accepts_a_precise_file_path_as_finding_location(monkeypatch):
+    calls = 0
+
+    def fake_run(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return draft_agent.AgentRun(ok=True, model="review-model", result={
+            "summary": (
+                "Every claim limitation and numbered part was traced to affirmative inventor "
+                "disclosure. The numeral table and every figure brief use those supported parts "
+                "consistently. One formalities finding remains in the abstract, and no drafting "
+                "note, placeholder, question, or instruction remains elsewhere in the draft."
+            ),
+            "findings": [{
+                "severity": "minor",
+                "category": "formalities",
+                "title": "Abstract exceeds the conservative word limit",
+                "where": "draft/10-abstract.md",
+                "detail": (
+                    "The conservative count treats hyphenated compounds as separate words and "
+                    "places the abstract above the filing limit."
+                ),
+                "evidence": (
+                    "The abstract contains the phrases air-extraction mechanism and "
+                    "low-friction perimeter member."
+                ),
+                "fix": (
+                    "Replace the longer phrase with supported shorter wording while preserving "
+                    "the disclosed technical substance."
+                ),
+            }],
+        })
+
+    monkeypatch.setattr(draft_agent, "run", fake_run)
+
+    outcome = draft_qa.review_sources(Path("/tmp"))
+
+    assert outcome["ok"] is True
+    assert [item["where"] for item in outcome["findings"]] == ["draft/10-abstract.md"]
+    assert calls == 1
+
+
 def test_source_preflight_fails_closed_after_repeated_non_substantive_results(monkeypatch):
     calls = 0
 
