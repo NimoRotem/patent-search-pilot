@@ -5312,6 +5312,16 @@ def _draft_report_choices(user, limit=300):
     return choices
 
 
+def _draft_party_defaults(user, values=None):
+    values = dict(values or {})
+    if not values.get("inventors"):
+        values["inventors"] = user.get("default_inventors") or user.get("full_name") or ""
+    if not values.get("applicant"):
+        values["applicant"] = (user.get("default_applicant") or user.get("organization") or
+                               user.get("full_name") or "")
+    return values
+
+
 def _draft_new_context(user, principal, slug, selected=None, values=None, error=""):
     choices = _draft_report_choices(user)
     report_view = None
@@ -5320,11 +5330,7 @@ def _draft_new_context(user, principal, slug, selected=None, values=None, error=
             report_view = _draft_report_loader(principal, slug, user["id"])
         except drafting.DraftingError as exc:
             error = error or str(exc)
-    values = dict(values or {})
-    if not values.get("applicant"):
-        values["applicant"] = user.get("default_applicant") or user.get("organization") or ""
-    if not values.get("inventors"):
-        values["inventors"] = user.get("default_inventors") or user.get("full_name") or ""
+    values = _draft_party_defaults(user, values)
     if report_view:
         account_search = accounts.get_search(user["id"], slug) or {}
         source_document = report_view.get("query_document") or {}
@@ -5767,6 +5773,7 @@ def draft_start():
                    "government_support_details", "claim_strategy", "means_plus_function",
                    "protected_terms", "filing_deadline")}
         values["claim_types"] = request.form.getlist("claim_types")
+        values = _draft_party_defaults(user, values)
         try:
             # A finished owned search is already a complete intake. The action on the report is a
             # POST so one click can create durable state without turning a GET into a mutation.
