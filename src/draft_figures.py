@@ -1416,8 +1416,10 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         nonlocal white_component_labels, white_clearance
         lower_surface = bool(_LOWER_SURFACE_TARGET_RE.search(evidence))
         upper_surface = bool(_UPPER_SURFACE_TARGET_RE.search(evidence))
+        visible_surface = bool(_VISIBLE_SURFACE_TARGET_RE.search(evidence))
         directional_surface = bool(lower_surface or upper_surface)
         directional_repair = bool(allow_nearby_component and directional_surface)
+        narrow_surface_repair = bool(visible_surface)
         directional_clearance = float(_MIN_DIRECTIONAL_SURFACE_CLEARANCE)
 
         def requested_side(candidate_x, candidate_y):
@@ -1461,11 +1463,14 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                 same_component = True
             maximum = float(white_clearance[component_mask].max(initial=0.0))
             minimum_clearance = (
-                directional_clearance if directional_repair else
+                directional_clearance
+                if directional_repair or narrow_surface_repair else
                 float(_MIN_BROAD_INTERIOR_CLEARANCE))
             if maximum < minimum_clearance:
                 return None
             if directional_repair:
+                desired = directional_clearance
+            elif narrow_surface_repair:
                 desired = directional_clearance
             elif allow_nearby_component:
                 desired = float(_MIN_BROAD_INTERIOR_CLEARANCE * 1.5)
@@ -1538,7 +1543,7 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
             return None
         required_clearances = (
             (directional_clearance,)
-            if directional_repair else
+            if directional_repair or narrow_surface_repair else
             (float(_MIN_BROAD_INTERIOR_CLEARANCE * 1.5),
              float(_MIN_BROAD_INTERIOR_CLEARANCE)))
         for required_clearance in required_clearances:
@@ -2888,6 +2893,30 @@ def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
         "figure_label": canonical_figure_label(label),
         "parts": parts,
     }, ensure_ascii=False, sort_keys=True)
+
+
+def _bind_anchor_target_evidence(anchors, *, label: str, caption: str, numerals) -> list[dict]:
+    """Make the brief's explicit endpoint target authoritative during pixel grounding."""
+    repaired = [dict(item) for item in anchors or ()]
+    try:
+        parts = json.loads(
+            _marked_endpoint_specification(label, caption, numerals)).get("parts") or []
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return repaired
+    targets = {}
+    for entry in parts:
+        if not isinstance(entry, dict):
+            continue
+        numeral = _clean_numeral(entry.get("numeral"))
+        part = str(entry.get("part") or "").strip()
+        target = str(entry.get("target") or "").strip()
+        if numeral and target and target != f"On the visible {part} geometry.":
+            targets[numeral] = target
+    for item in repaired:
+        target = targets.get(_clean_numeral(item.get("numeral")))
+        if target:
+            item["evidence"] = target
+    return repaired
 
 
 def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict:
@@ -4473,6 +4502,8 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             for key, value in progress.get("coordinate_history", {}).items()
         }
         completed_marked_attempts = int(progress["attempts"])
+        anchors = _bind_anchor_target_evidence(
+            anchors, label=label, caption=caption, numerals=numerals)
         anchors, pixel_audit = _ground_anchors_to_pixels(
             raw_png, numerals, anchors, preserve_reviewed_line_target=True)
         _record_anchor_coordinate_history(coordinate_history, anchors)
@@ -4483,6 +4514,8 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             attempts=completed_marked_attempts,
             coordinate_history=coordinate_history, sheet_number=sheet_number)
     else:
+        anchors = _bind_anchor_target_evidence(
+            anchors, label=label, caption=caption, numerals=numerals)
         _record_anchor_coordinate_history(coordinate_history, anchors)
 
     def repair_cross_provider_veto(value: dict, *, attempts: int) -> bool:
