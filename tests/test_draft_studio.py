@@ -2567,6 +2567,44 @@ def test_restart_resumes_a_checkpointed_candidate_without_rerunning_the_agent(
     assert repository.complete_turn.call_args.kwargs["session_id"] == "draft-session"
 
 
+def test_automatic_continuation_reuses_a_prior_turn_gate_checkpoint():
+    marker = {
+        "session_id": "draft-session", "model": "draft-model", "cost_usd": 0.5,
+        "duration_ms": 1000, "num_turns": 1, "steps": [],
+        "result": {"action": "revised", "summary": "complete candidate",
+                   "reasoning": [], "changes": [], "questions": [],
+                   "prior_art_strategy": "", "answer": ""},
+    }
+    context = {
+        "resuming_candidate_turn_id": 60,
+        "prepared_qa": {"_gate_resume": marker},
+    }
+
+    run = draft_studio._gate_resume_run(context, {
+        "id": 61, "kind": "gate_resume",
+        "idempotency_key": "auto-filing-repair-60-1",
+    })
+
+    assert run is not None
+    assert run.session_id == "draft-session"
+    assert run.result["summary"] == "complete candidate"
+
+
+def test_client_qa_fix_cannot_reuse_a_prior_turn_gate_checkpoint():
+    context = {
+        "resuming_candidate_turn_id": 60,
+        "prepared_qa": {"_gate_resume": {
+            "session_id": "draft-session",
+            "result": {"action": "revised", "summary": "complete candidate"},
+        }},
+    }
+
+    assert draft_studio._gate_resume_run(context, {
+        "id": 61, "kind": "qa_fix",
+        "idempotency_key": "auto-filing-repair-60-1",
+    }) is None
+
+
 def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, tmp_path):
     class Repository:
         def __init__(self):
@@ -3578,7 +3616,7 @@ def test_terminal_provider_disconnect_continues_a_saved_candidate_without_user_i
     assert result["status"] == "failed"
     queued = repository.enqueue_turn_safely.call_args
     assert queued.args == (7, 91)
-    assert queued.kwargs["kind"] == "qa_fix"
+    assert queued.kwargs["kind"] == "gate_resume"
     assert queued.kwargs["idempotency_key"] == "auto-filing-repair-31-1"
     assert "No action is required" in repository.add_message.call_args.args[2]
 

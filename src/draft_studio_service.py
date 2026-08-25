@@ -811,7 +811,8 @@ def _continue_terminal_filing_repair(repository: Any, claimed: Mapping[str, Any]
     revision = int(result.get("project_revision") or claimed["project_revision"])
     try:
         repository.enqueue_turn_safely(
-            project_id, user_id, kind="qa_fix",
+            project_id, user_id,
+            kind="gate_resume" if interrupted_candidate else "qa_fix",
             user_message=(
                 "Continue automatic filing repair from the saved candidate and its previous QA "
                 "report. Resolve every blocker, regenerate any rejected drawing geometry, rerun "

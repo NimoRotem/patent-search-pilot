@@ -52,6 +52,7 @@ LEASE_SECONDS = 2400                           # a full drafting turn plus its r
 MAX_FINALIZATION_ROUNDS = max(
     2, min(int(os.environ.get("DRAFT_FINALIZATION_ROUNDS", "6")), 6))
 _GATE_RESUME_KEY = "_gate_resume"
+_AUTOMATIC_GATE_RESUME_TURN_KEY = re.compile(r"^auto-filing-repair-\d+-\d+$")
 _SCHEMA_LOCK = threading.Lock()
 _SCHEMA_READY = False
 _MIGRATION = Path(__file__).resolve().parents[1] / "sql" / "006_draft_agent.sql"
@@ -133,8 +134,16 @@ def _gate_resume_report(runs: Sequence[draft_agent.AgentRun],
 
 def _gate_resume_run(context: Mapping[str, Any], turn: Mapping[str, Any]
                      ) -> draft_agent.AgentRun | None:
-    """Restore an agent result only for the same interrupted leased turn."""
-    if int(context.get("resuming_candidate_turn_id") or 0) != int(turn["id"]):
+    """Restore an agent result for its interrupted turn or automatic continuation."""
+    candidate_turn_id = int(context.get("resuming_candidate_turn_id") or 0)
+    current_turn_id = int(turn["id"])
+    same_turn = candidate_turn_id == current_turn_id
+    automatic_continuation = bool(
+        0 < candidate_turn_id < current_turn_id and
+        str(turn.get("kind") or "") == "gate_resume" and
+        _AUTOMATIC_GATE_RESUME_TURN_KEY.fullmatch(
+            str(turn.get("idempotency_key") or "")))
+    if not same_turn and not automatic_continuation:
         return None
     prepared = context.get("prepared_qa")
     marker = prepared.get(_GATE_RESUME_KEY) if isinstance(prepared, Mapping) else None
