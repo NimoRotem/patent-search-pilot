@@ -34,18 +34,26 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
       <span>Evidence-backed patent search and drafting. Not legal advice.</span>
     </div>
     <nav class="footlinks" aria-label="Footer navigation">
-      <a href="{{ request.script_root }}/how-it-works">How it works</a>
-      <a href="{{ request.script_root }}/about">Coverage</a>
+      <a href="{{ request.script_root }}/about">How it works</a>
       {% if current_user %}
         <a href="{{ request.script_root }}/account">Account</a>
       {% elif account_mode %}
         <a href="{{ request.script_root }}/register">Create account</a>
       {% endif %}
     </nav>
+    {#  WHAT WAS HERE: "Postgres 17 and pgvector. 4,984,254 publications. 8 CPC classes. US, EP,
+        WO, DE. Current to 2026-08-18. Semantic, agentic and external patent API retrieval." On
+        every page of the product, in the footer. It is the database version, the corpus size and
+        the exact scope of our coverage, which is a specification sheet for a competitor and
+        nothing a customer acts on. It lives on the admin Coverage page now. #}
+    {% if current_is_admin and corpus and corpus.publications %}
     <details class="systemscope">
       <summary>System coverage</summary>
-      <p>Postgres 17 and pgvector. {% if corpus and corpus.publications %}{{ '{:,}'.format(corpus.publications) }} publications{% else %}Local corpus{% endif %}. {{ corpus.cpc_count or 8 }} CPC classes. {{ (corpus.jurisdictions or ['US','EP','WO','DE'])|join(', ') }}{% if corpus.max_date_str %}. Current to {{ corpus.max_date_str }}{% endif %}. Semantic, agentic and external patent API retrieval.</p>
+      <p>{{ '{:,}'.format(corpus.publications) }} publications, {{ corpus.cpc_count or 8 }} CPC
+        classes, {{ (corpus.jurisdictions or ['US','EP','WO','DE'])|join(', ') }}{% if corpus.max_date_str %}, current to {{ corpus.max_date_str }}{% endif %}.
+        <a href="{{ request.script_root }}/corpus">Coverage</a></p>
     </details>
+    {% endif %}
   </div>
 </footer>
 <script src="{{ url_for('static', filename='app.js', v=asset_version) }}"></script>

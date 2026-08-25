@@ -2054,3 +2054,13 @@ tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
   border-top:1px solid var(--s2);padding-top:10px}
 .phasebuy{display:grid;gap:5px;align-content:start;margin:0}
 .phasenote{font-size:12px;color:var(--muted);line-height:1.4}
+
+/*  The (?) mark, used anywhere a control needs explaining without a paragraph beside it.
+    Deliberately quiet: it is an offer, not an instruction. */
+.qmark{display:inline-flex;align-items:center;justify-content:center;width:1.15rem;height:1.15rem;
+  padding:0;margin-left:.3rem;border:1px solid var(--border,#c9c9c4);border-radius:50%;
+  background:none;font:inherit;font-size:.72rem;line-height:1;color:var(--muted,#6b6b66);
+  cursor:pointer;vertical-align:middle}
+.qmark:hover,.qmark:focus-visible{border-color:var(--accent);color:var(--fg,#222)}
+.qmarkdlg p{margin:.6rem 0}
+.qmarkdlg p:first-child{margin-top:0}

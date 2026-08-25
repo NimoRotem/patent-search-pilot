@@ -2448,14 +2448,20 @@ def index():
 
 @app.route("/about")
 def about():
-    """What the system is, plus the same scope disclosure the report and the exports carry."""
+    """What the tool does, in the order it does it, and what it will not do.
+
+    This was two pages. /about was a specification sheet naming the database version, the
+    embedding model, the passage count and the machine size; /how-it-works told the same pipeline
+    properly. A reader deciding whether to trust a search needs the second and never the first,
+    and the only person the first served well was a competitor reading the schema.
+    """
     return render_template("about.html", corpus=corpus_facts.facts())
 
 
 @app.route("/how-it-works")
 def how_it_works():
-    """The pipeline in plain language. Public, for the same reason /about is."""
-    return render_template("how_it_works.html", corpus=corpus_facts.facts())
+    """Merged into /about. Kept as a redirect: it is linked from the footer and from e-mails."""
+    return redirect(request.script_root + "/about")
 
 
 def _history_entries(limit=200):

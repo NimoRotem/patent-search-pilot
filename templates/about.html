@@ -1,92 +1,120 @@
 {% extends "base.html" %}
-{% block title %}About | IPtorch{% endblock %}
+{% block title %}About IPtorch{% endblock %}
 {% block body %}
-{#  PUBLIC. The scope panel is the same _scope.html include the RESULTS page and every export use,
-    so this page and the disclosure a user reads at the point of decision can never drift apart.
-    The system description below is deliberately specific: a reader should be able to tell what
-    the tool is actually doing without being sold to.  #}
+{#  ONE PAGE, PUBLIC. This was two: /about, a specification sheet naming the database version, the
+    embedding model, the vector count and the machine size, and /how-it-works, the same pipeline
+    told properly. A reader deciding whether to trust a search does not need the schema, and a
+    competitor reading the schema is the only person the old page served well.
+
+    What is left is what the tool does, in the order it does it, and what it will not do. The
+    measurements that used to be here are on the admin Coverage page, which is where an engineer
+    looks and a customer does not. Everything still on this page is either a plain description of
+    behaviour or a live figure from corpus_facts, never a hardcoded number.  #}
 <div class="hero">
   <div class="wrap">
-    <h1>About</h1>
-    <p class="lede">A prior-art search engine that reads the references it returns. Built on our
-      own corpus of
-      {% if corpus.publications %}{{ '{:,}'.format(corpus.publications) }} publications{% else %}patent publications{% endif %}
-      in Postgres with pgvector, an agentic retrieval cascade, and a full-text reading stage that
-      grounds every statement it makes in a verbatim quote.</p>
+    <p class="eyebrow">Prior art search</p>
+    <h1>Search that reads the patents</h1>
+    <p class="lede">Most prior art tools rank documents by how similar they look and leave the
+      reading to you. IPtorch reads the strongest references in full and tells you, claim by
+      claim, what each one actually discloses, with the passage it came from.</p>
   </div>
 </div>
 
-<div class="wrap">
+<div class="wrap steps">
 
-  <section class="panel">
-    <h2>The system, in one page</h2>
-    <div class="deftable">
-      <div><b>Database</b></div>
-      <div>PostgreSQL 17 with the pgvector extension, on a dedicated 8-core, 64&nbsp;GB machine.
-        Not a vector database product: an ordinary relational database that also holds embeddings,
-        so a single query can combine semantic similarity, full-text search, CPC classification,
-        citation edges and legal dates. One HNSW index over the passage embeddings.</div>
-
-      <div><b>What is indexed</b></div>
-      <div>{% if corpus.publications %}{{ '{:,}'.format(corpus.publications) }}{% else %}Millions of{% endif %}
-        publications{% if corpus.chunks %}, split into {{ '{:.1f} million'.format(corpus.chunks / 1000000) }} separately
-        embedded passages{% endif %}: each claim on its own, each claim again with its parent folded in,
-        each description paragraph, each figure caption, the abstract, and the whole document.
-        Chunking per claim is what lets a result cite "claim 7" rather than "this document looks
-        similar". Coverage by office and by text depth is in the scope panel below.</div>
-
-      <div><b>Embeddings</b></div>
-      <div>Google Vertex AI <code>gemini-embedding-001</code> at 768 dimensions. Benchmarked
-        against 1024 and 3072 on the same evaluation set: identical scores, so the larger vectors
-        buy nothing here and are not paid for.</div>
-
-      <div><b>Where the data comes from</b></div>
-      <div>Bulk ingest from Google's <code>patents-public-data</code> on BigQuery, refreshed
-        weekly{% if corpus.max_date_str %}; the corpus currently runs to {{ corpus.max_date_str }}{% endif %}.
-        Text and drawings that Google lacks for DE, EP and WO documents are recovered from the
-        European Patent Office's OPS service.</div>
-
-      <div><b>External sources</b></div>
-      <div>Every search also fans out live to SerpApi Google Patents, BigQuery, PQAI, EPO OPS,
-        USPTO ODP, Lens.org, OpenAlex and IP Australia. Each reports its own state on the report
-        page, and a source that fails or times out degrades the search rather than breaking it.
-        External sources supply breadth and display detail; ranking is always done here, because
-        ranking needs the full text and most APIs return only bibliography.</div>
-
-      <div><b>Reading and ranking</b></div>
-      <div>Retrieval produces a few thousand candidate families. Roughly 600 are screened by a
-        language model, the strongest ~180 are read in full, and the ranking is computed from what
-        each was measured to disclose: a verbatim quote per feature, located by code, refuted by
-        an independent pass, and weighted by how rare that disclosure is across the references
-        actually read. <a href="{{ request.script_root }}/how-it-works">The step-by-step version</a>.</div>
-
-      <div><b>Language models</b></div>
-      <div>Gemini 2.5 Flash on Vertex AI for extraction, query expansion, screening, reading and
-        refutation. A <code>bge-reranker-v2-m3</code> cross-encoder orders the shortlist. Dates,
-        filtering, deduplication, quote grounding and quote location are deterministic code, never
-        a model.</div>
+  <section class="step">
+    <div class="stepno">1</div>
+    <div class="stepbody">
+      <h2>Describe the invention, or hand it a document</h2>
+      <p>Type it in plain language, drop a PDF, or paste a patent number or link. From a document
+        we pull out the text and the drawings and rebuild the claim set, then show it to you to
+        correct before anything is searched. Fix a claim and the search uses your correction.</p>
     </div>
   </section>
 
-  {% with variant='search' %}{% include "_scope.html" %}{% endwith %}
-
-  <section class="panel" aria-labelledby="honesty-h" style="margin-top:16px">
-    <h2 id="honesty-h">What this is not</h2>
-    <p>A prior-art retrieval and drafting aid. Not a search opinion, not a freedom-to-operate
-      clearance, not legal advice. It does not state a conclusion about novelty, inventive step,
-      validity or infringement, and the report says so on its face and in every export.</p>
-    <p>A filled cell in the element by reference chart means a passage of that reference was
-      quoted verbatim, located, and survived a pass asked to refute it. It does not mean the
-      element is anticipated. That judgement is the reader's.</p>
+  <section class="step">
+    <div class="stepno">2</div>
+    <div class="stepbody">
+      <h2>It searches many ways, not one</h2>
+      <p>A long description makes one blurry query. We break the invention into its distinct
+        technical ideas and search each one separately, in more than one phrasing, and fuse the
+        results. Our own patent database is searched alongside the public registers, so a document
+        that only one of them holds still turns up.</p>
+    </div>
   </section>
 
-  <div class="ctarow" style="margin:18px 0 40px">
-    {% if current_user %}
-    <a class="btn" href="{{ request.script_root }}/">Start a search</a>
-    {% else %}
-    <a class="btn" href="{{ request.script_root }}/register">Create a free account</a>
-    <a class="btn ghost" href="{{ request.script_root }}/how-it-works">How it works</a>
+  <section class="step">
+    <div class="stepno">3</div>
+    <div class="stepbody">
+      <h2>Then it reads the best ones properly</h2>
+      <p>The strongest candidates are read in full, not skimmed from an abstract. Each is mapped
+        against your claims one limitation at a time: disclosed, partly disclosed, or absent. A
+        reference that only looks relevant falls away at this stage, which is the stage most tools
+        do not have.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="stepno">4</div>
+    <div class="stepbody">
+      <h2>Every statement carries its evidence</h2>
+      <p>A finding is only as good as the sentence behind it, so each one is tied to a verbatim
+        passage with its paragraph number, and quotations are checked back against the document
+        before they reach you. Where a passage could not be found, the row says so rather than
+        quietly standing.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="stepno">5</div>
+    <div class="stepbody">
+      <h2>And it hands you something you can file</h2>
+      <p>The report is a claim chart you can read, export and share. From the same evidence it will
+        build a complete third-party preissuance submission under 37 CFR 1.290: the concise
+        descriptions, the document list, the copies and translations, the fee position and an audit
+        of every requirement the rule sets, in one archive ready to upload.</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="wrap">
+  <section class="panel" style="padding:1.1em 1.3em;margin:1.6em 0">
+    <h2 style="margin-top:0">Also in the box</h2>
+    <div class="deftable">
+      <div><b>Register lookup</b></div>
+      <div>Any publication, application or grant number, in any format, resolved against the US,
+        European, German and WIPO registers: the family, the file history, and the deadlines that
+        are still open. EU registered designs answer here too, by number or by what the product
+        is.</div>
+
+      <div><b>Your library</b></div>
+      <div>Every search is kept, with its evidence, so a question asked six months ago can be
+        reopened rather than re-run.</div>
+    </div>
+  </section>
+
+  {#  THE ONE LIMIT THAT CHANGES WHAT A READER SHOULD DO. The wall of measurements this replaced
+      stated a recall figure, a date ceiling, a class count and three audited error rates. All of
+      them were true and none of them told a patent attorney anything they would act on beyond
+      what these four sentences say. #}
+  <section class="panel" style="padding:1.1em 1.3em;margin:1.6em 0">
+    <h2 style="margin-top:0">What this is, and what it is not</h2>
+    <p style="margin:.4em 0">This is a search tool. It finds and explains prior art, and it is
+      good at it. It is not a clearance search, a freedom-to-operate opinion or a patentability
+      opinion, and no result here should be read as one.</p>
+    <p style="margin:.4em 0"><b>A short result list is not a clear field.</b> No search covers
+      everything: not this one, and not the professional searches that cost thousands. If the
+      question is whether something can be filed or sold, that decision belongs to an attorney
+      working from a full collection.</p>
+    <p style="margin:.4em 0"><b>Check the citations.</b> Every finding is quoted and pinpointed so
+      that checking one takes seconds. Do it before you rely on it. Machine-written analysis
+      overreaches sometimes, and the quotation is there so you can catch it when it does.</p>
+    {% if corpus.max_date_str %}
+    <p class="small muted" style="margin:.7em 0 0">Our own database currently runs to
+      {{ corpus.max_date_str }}. Anything published after that is reached through the live
+      registers rather than from it.</p>
     {% endif %}
-  </div>
+  </section>
 </div>
 {% endblock %}

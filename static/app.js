@@ -2705,3 +2705,57 @@ async function streamNewCards(){
     open(btn);
   });
 })();
+
+
+/*  ------------------------------------------------------------------ the (?) mark, anywhere
+    A page that explains itself in a paragraph beside every control is a page nobody finishes
+    reading. The explanation is still worth having, so it moves one click away: the control says
+    what it is, and the (?) beside it says how it works and when it matters.
+
+    Usage is one element and no wiring:
+
+        <button type="button" class="qmark" data-title="Concept search"
+                data-help="Breaks the description into…">?</button>
+
+    Two paragraphs: separate with a blank line. `type="button"` matters inside a form, and the
+    markup is a <button> rather than a <span> so it is reachable by keyboard without a tabindex.
+*/
+(function questionMarks() {
+  var dlg = null;
+
+  function ensure() {
+    if (dlg) { return dlg; }
+    dlg = document.createElement('dialog');
+    dlg.className = 'dlg qmarkdlg';
+    dlg.innerHTML =
+      '<form method="dialog" class="stack" style="min-width:min(34rem,92vw)">' +
+      '<h3 class="h3" data-t style="margin-top:0"></h3>' +
+      '<div class="small" data-b style="line-height:1.6"></div>' +
+      '<div style="display:flex;margin-top:.7rem"><span class="grow"></span>' +
+      '<button class="btn ghost sm" value="close">Close</button></div></form>';
+    document.body.appendChild(dlg);
+    return dlg;
+  }
+
+  function open(btn) {
+    var d = ensure();
+    if (!d.showModal) { return; }                 // no <dialog>: leave the title attribute to it
+    d.querySelector('[data-t]').textContent = btn.getAttribute('data-title') || 'About this';
+    var body = btn.getAttribute('data-help') || '';
+    d.querySelector('[data-b]').innerHTML = body.split(/\n\s*\n/).map(function (p) {
+      //  The text is authored in the template, never from a user, but escape it anyway: this is
+      //  one line and it means a future data-help that IS user text cannot inject.
+      var e = document.createElement('div');
+      e.textContent = p.trim();
+      return '<p>' + e.innerHTML + '</p>';
+    }).join('');
+    d.showModal();
+  }
+
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('.qmark');
+    if (!b) { return; }
+    ev.preventDefault();
+    open(b);
+  });
+})();

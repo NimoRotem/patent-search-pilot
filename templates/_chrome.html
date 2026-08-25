@@ -39,14 +39,13 @@
       </nav>
     {% else %}
       <nav class="primarynav publicnav" aria-label="Primary navigation">
-        <a href="{{ request.script_root }}/how-it-works" class="navitem{% if endpoint == 'how_it_works' %} active{% endif %}"{% if endpoint == 'how_it_works' %} aria-current="page"{% endif %}>How it works</a>
-        <a href="{{ request.script_root }}/about" class="navitem{% if endpoint == 'about' %} active{% endif %}"{% if endpoint == 'about' %} aria-current="page"{% endif %}>About</a>
+        <a href="{{ request.script_root }}/about" class="navitem{% if endpoint == 'about' %} active{% endif %}"{% if endpoint == 'about' %} aria-current="page"{% endif %}>How it works</a>
       </nav>
     {% endif %}
 
     <nav class="utilitynav" aria-label="Account and help">
       {% if signed_in or not account_mode %}
-        <a class="helpnav{% if endpoint == 'how_it_works' %} active{% endif %}" href="{{ request.script_root }}/how-it-works"{% if endpoint == 'how_it_works' %} aria-current="page"{% endif %}>How it works</a>
+        <a class="helpnav{% if endpoint == 'about' %} active{% endif %}" href="{{ request.script_root }}/about"{% if endpoint == 'about' %} aria-current="page"{% endif %}>How it works</a>
       {% endif %}
       {% if current_is_admin %}<a href="{{ request.script_root }}/admin/users"{% if endpoint.startswith('auth.admin_') %} class="active" aria-current="page"{% endif %}>Admin</a>{% endif %}
       {% if current_user %}

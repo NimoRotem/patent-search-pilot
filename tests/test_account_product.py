@@ -58,7 +58,12 @@ def test_named_login_and_account_navigation(account_client, monkeypatch):
     assert "Patent Analyst" in body and "/account" in body and "/logout" in body
     assert "analyst@example.test" in body
     assert 'aria-label="Primary navigation"' in body
-    assert re.search(r'href="/drafts"[^>]*>\s*Drafting\s*</a>', body)
+    #  DRAFTING IS WITHHELD FROM CUSTOMERS while it is unfinished, so a named account that is
+    #  not an administrator must not be offered it. See test_loopback_is_not_the_internet.py for
+    #  the route gate that backs this up: hiding a link hides it from a reader, not from a URL.
+    assert not re.search(r'href="/drafts"[^>]*>\s*Drafting\s*</a>', body), (
+        "a customer was offered the unfinished drafting area")
+    assert not re.search(r'>\s*Coverage\s*</a>', body), "a customer was offered the corpus page"
     assert re.search(r'href="/account"[^>]*class="accountnav"[^>]*>.*?'
                      r'<span class="accountemail">analyst@example\.test</span>', body, re.S)
     assert re.search(r'href="/"[^>]*aria-current="page"[^>]*>\s*Search\s*</a>', body)
