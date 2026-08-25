@@ -55,6 +55,12 @@ TITLE_CHAR_LIMIT = 500               # 37 CFR 1.72(a)
 _FIG_RE = re.compile(r"\bFIGS?\.?\s*([0-9]+[A-Za-z]?)", re.IGNORECASE)
 _FIG_RANGE_RE = re.compile(r"\bFIGS?\.?\s*([0-9]+[A-Za-z]?)\s*(?:-|–|\u2014|to|through|and)\s*"
                            r"([0-9]+[A-Za-z]?)", re.IGNORECASE)
+_SECTION_VIEW_LINE_RE = re.compile(
+    r"(?:^|[.!?]\s+)\s*FIGS?\.?\s*(?P<view>[0-9]+[A-Za-z]?)\b"
+    r"[^.\n]{0,500}\btaken\s+on\s+line\s+"
+    r"(?P<designation>[0-9]+[A-Za-z]?)\s*[-\u2012-\u2015]\s*"
+    r"(?P=designation)\s+of\s+FIGS?\.?\s*(?P<source>[0-9]+[A-Za-z]?)\b",
+    re.IGNORECASE | re.MULTILINE)
 _FIGURE_NUMERAL_DECLARATION_RE = re.compile(
     r"(?im)^[ \t>*_#-]*(?:reference\s+)?numerals?\s+"
     r"(?:appearing|shown|included)(?:\s+on\s+(?:this|the)\s+(?:figure|sheet))?"
@@ -443,7 +449,9 @@ def _numeral_checks(spec_text: str, claims_text: str,
         expected_sheet_number = f"{sheet_index}/{len(figures)}"
         if not draft_figures.current_ocr_audit(
                 figure.get("numeral_audit") or {},
-                expected_sheet_number=expected_sheet_number):
+                expected_sheet_number=expected_sheet_number,
+                expected_section_designations=draft_figures.section_designations(
+                    figure.get("caption") or "")):
             unreadable_drawings.append(
                 f"{figure.get('label') or 'drawing'}: expected sheet "
                 f"{expected_sheet_number}")
@@ -451,12 +459,13 @@ def _numeral_checks(spec_text: str, claims_text: str,
         out.append(_check(
             "Drawing pixels were inspected", "fail",
             "The current OCR audit could not confirm the exact reference numerals, view label, "
-            "and consecutive sheet number on one or more drawing sheets.",
+            "section designations, and consecutive sheet number on one or more drawing sheets.",
             items=unreadable_drawings))
     elif any("numeral_audit" in figure for figure in figures):
         out.append(_check(
             "Drawing pixels were inspected", "pass",
-            "The reference numerals, view labels, and sheet numbers were read from every "
+            "The reference numerals, view labels, section designations, and sheet numbers were "
+            "read from every "
             "generated drawing."))
     for figure in figures:
         values = [_drawing_numeral(n) for n in (figure.get("numerals") or [])]
@@ -752,6 +761,60 @@ def _figure_checks(sections: Mapping[str, str],
             out.append(_check(
                 "Figure-sheet numbering is unique and contiguous", "pass",
                 f"{len(figures)} sheet(s), numbered 1 through {len(figures)}."))
+
+    figures_by_number = {
+        figure_number(figure.get("label")): figure for figure in figures
+        if figure_number(figure.get("label"))
+    }
+    section_references = {
+        (match.group("view").upper(), match.group("designation").upper(),
+         match.group("source").upper())
+        for text in (sections.get("drawing_descriptions", ""),
+                     sections.get("detailed_description", ""))
+        for match in _SECTION_VIEW_LINE_RE.finditer(str(text or ""))
+    }
+    section_issues = []
+    expected_by_source: dict[str, set[str]] = defaultdict(set)
+    for view, designation, source in sorted(section_references):
+        expected_by_source[source].add(designation)
+        if view != designation:
+            section_issues.append(
+                f"FIG. {view}: line {designation}-{designation} must carry the same "
+                "designation as the resulting section view")
+        source_spec = figures_by_number.get(source)
+        if not source_spec:
+            section_issues.append(
+                f"FIG. {view}: source FIG. {source} has no drawing brief for line "
+                f"{designation}-{designation}")
+            continue
+        actual = set(draft_figures.section_designations(source_spec.get("caption") or ""))
+        if designation not in actual:
+            section_issues.append(
+                f"FIG. {source}: source-view brief does not specify both arrows and repeated "
+                f"designation {designation} for line {designation}-{designation} leading to "
+                f"FIG. {view}")
+        listed = {_drawing_numeral(item) for item in source_spec.get("numerals") or ()}
+        if designation in listed:
+            section_issues.append(
+                f"FIG. {source}: section designation {designation} is incorrectly listed as a "
+                "reference numeral")
+    for source, source_spec in figures_by_number.items():
+        actual = set(draft_figures.section_designations(source_spec.get("caption") or ""))
+        extras = sorted(actual - expected_by_source.get(source, set()), key=_numeral_sort)
+        section_issues.extend(
+            f"FIG. {source}: cutting line {designation}-{designation} has no matching section "
+            "view in the application text" for designation in extras)
+    if section_issues:
+        out.append(_check(
+            "Section views have matching source-view cutting lines", "fail",
+            "Every section view taken on a named line must have the same repeated designation, "
+            "both view arrows, and a renderable cutting line in its source-view brief.",
+            severity="error", items=section_issues))
+    else:
+        out.append(_check(
+            "Section views have matching source-view cutting lines", "pass",
+            (f"All {len(section_references)} named section line(s) match their source views."
+             if section_references else "No named section line requires a source-view mark.")))
 
     undescribed = sorted(in_detail - described, key=_numeral_sort)
     if undescribed:
@@ -1348,6 +1411,10 @@ WHAT TO CHECK, in this order of importance:
    what the detailed description says it shows. Nothing is described as being shown in a figure
    that the figure's own file does not contain. Open every figures/rendered-*.png image and verify
    the actual visible geometry and printed reference numerals, not only the Markdown drawing brief.
+   For every sectional view taken on line N-N of a source view, open that source-view image and
+   verify the broken cutting-plane line, one matching section designation at each end, and both
+   arrows pointing in the viewing direction stated by the brief. A section designation is not a
+   reference numeral and must not have a numeral leader.
 
    A patent drawing need not depict every claim limitation or an implementation detail that the
    inventor did not disclose. Report an omission only when the application says that the figure
@@ -1436,7 +1503,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v8-required-findings-output"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v9-section-line-consistency"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1484,7 +1551,9 @@ passage exists, say that explicitly and quote the nearest source passage that sh
 
 Then check the text itself: claims and description must use the same relationships and terms;
 every numbered part must mean one thing; figure descriptions and briefs must depict only
-source-supported structures; and no drafting note, placeholder, open question, instruction,
+source-supported structures; every named section line must use the same repeated designation in
+the resulting view, source-view brief, and drawing description; and no drafting note, placeholder,
+open question, instruction,
 unresolved alternative, or internal comment may remain. Report every verified inconsistency.
 
 Do not inspect or rely on rendered images in this preflight. A later independent review checks

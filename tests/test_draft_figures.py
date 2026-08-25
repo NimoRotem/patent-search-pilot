@@ -36,6 +36,9 @@ def accepted_ocr_audit(sheet_number="1/1", expected=("10",), **values):
         "expected_sheet_number": sheet_number,
         "detected_sheet_numbers": [sheet_number],
         "correct_sheet_number": True,
+        "expected_section_designations": [],
+        "detected_section_designations": [],
+        "correct_section_designations": True,
         **values,
     }
 
@@ -90,6 +93,13 @@ def accepted_semantic_audit(**values):
             "ok": True, "inspected": False, "required": False,
             "version": draft_figures.CLOSED_REGION_AUDIT_VERSION,
         },
+        "section_mark_audit": {
+            "ok": True, "inspected": False, "required": False,
+            "summary": "No cutting-plane designation is required.",
+            "expected": [], "marks": [], "errors": [], "review_count": 0,
+            "model_name": "deterministic-parser",
+            "prompt_version": draft_figures.SECTION_MARK_PROMPT_VERSION,
+        },
         "marked_anchor_audit": accepted_marked_anchor_audit(**marked_values),
         **values,
     }
@@ -128,6 +138,12 @@ def test_semantic_response_schema_is_inline_for_vertex():
     marked_fields = draft_figures.MARKED_ANCHOR_RESPONSE_SCHEMA["properties"]["labels"][
         "items"]["properties"]
     assert {"repairable", "suggested_x", "suggested_y"} <= set(marked_fields)
+    section_marks = json.dumps(draft_figures.SECTION_MARK_RESPONSE_SCHEMA)
+    assert '"$ref"' not in section_marks and '"$defs"' not in section_marks
+    section_fields = draft_figures.SECTION_MARK_RESPONSE_SCHEMA["properties"]["marks"][
+        "items"]["properties"]
+    assert {"start_x", "start_y", "end_x", "end_y", "view_dx", "view_dy"} <= set(
+        section_fields)
 
 
 def test_image_generation_uses_its_dedicated_location_client(monkeypatch):
@@ -376,6 +392,107 @@ def test_cloud_vision_ocr_separates_the_sheet_number_from_reference_numerals():
     assert found["other_text"] == []
 
 
+def test_section_designations_are_required_only_on_the_source_view_with_a_cutting_plane():
+    source_view = (
+        "A broken cutting-plane line crosses the upper carriage. A short arrow at each end "
+        "points left. Each end carries the numeral 3, so the line reads as line 3-3; the two "
+        "marks are section designations, not reference numerals.")
+    resulting_view = (
+        "FIG. 3 is a sectional view taken on line 3-3 of FIG. 1. Cut material is hatched.")
+
+    assert draft_figures.section_designations(source_view) == ["3"]
+    assert draft_figures.section_designations(resulting_view) == []
+
+
+def test_section_mark_consensus_requires_two_complete_coordinate_reviews():
+    first = {
+        "matches_spec": True, "summary": "line crosses the named carriage", "errors": [],
+        "marks": [{
+            "designation": "3", "start_x": 510, "start_y": 90,
+            "end_x": 510, "end_y": 430, "view_dx": -1000, "view_dy": 0,
+            "evidence": "outer endpoint to jaw face on the radial center line",
+        }],
+    }
+    second = {
+        "matches_spec": True, "summary": "same cutting plane", "errors": [],
+        "marks": [{
+            "designation": "3", "start_x": 500, "start_y": 100,
+            "end_x": 500, "end_y": 440, "view_dx": -1000, "view_dy": 0,
+            "evidence": "the specified top carriage axis",
+        }],
+    }
+
+    accepted = draft_figures.section_mark_consensus(["3"], [first, second])
+    divergent = draft_figures.section_mark_consensus([
+        "3"], [first, {**second, "marks": [{
+            **second["marks"][0], "start_x": 850, "end_x": 850,
+        }]}])
+
+    assert accepted["ok"] is True
+    assert accepted["review_count"] == draft_figures.SECTION_MARK_REVIEW_COUNT
+    assert accepted["marks"] == [{
+        "designation": "3", "start_x": 505, "start_y": 95,
+        "end_x": 505, "end_y": 435, "view_dx": -1000, "view_dy": 0,
+        "evidence": (
+            "outer endpoint to jaw face on the radial center line | "
+            "the specified top carriage axis"),
+    }]
+    assert divergent["ok"] is False
+    assert any("disagree" in item.lower() for item in divergent["errors"])
+
+
+def test_no_section_mark_is_a_current_deterministic_audit():
+    audit = draft_figures.inspect_section_marks(
+        blank_png(), label="FIG. 1", caption="Plan view of the body.", anchors=[])
+
+    assert audit["ok"] is True and audit["required"] is False
+    assert draft_figures.current_section_mark_audit(audit) is True
+    assert draft_figures.current_section_mark_audit({**audit, "prompt_version": "old"}) is False
+
+
+def test_required_section_mark_uses_two_coordinate_grid_vision_reviews(monkeypatch):
+    calls = []
+
+    class Response:
+        usage_metadata = None
+        parsed = {
+            "matches_spec": True, "summary": "the specified radial cutting plane", "errors": [],
+            "marks": [{
+                "designation": "3", "start_x": 500, "start_y": 80,
+                "end_x": 500, "end_y": 440, "view_dx": -1000, "view_dy": 0,
+                "evidence": "from outside the frame to the pad face",
+            }],
+        }
+
+    class Models:
+        def generate_content(self, **values):
+            calls.append(values)
+            return Response()
+
+    class Client:
+        models = Models()
+
+    monkeypatch.setattr(draft_figures.llm, "_client", lambda: Client())
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *args: None)
+    monkeypatch.setattr(draft_figures, "_analysis_cache_put", lambda *args, **kwargs: None)
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **kwargs: None)
+
+    audit = draft_figures.inspect_section_marks(
+        blank_png(), label="FIG. 1",
+        caption=(
+            "A broken cutting-plane line crosses the top carriage. Each end carries 3, so the "
+            "line reads as line 3-3. Both arrows point left."),
+        anchors=[{"numeral": "30", "x": 500, "y": 230, "visible": True}],
+    )
+
+    assert audit["ok"] is True and audit["required"] is True
+    assert draft_figures.current_section_mark_audit(audit) is True
+    assert len(calls) == draft_figures.SECTION_MARK_REVIEW_COUNT
+    assert all("line 3-3" in call["contents"][-1].lower() for call in calls)
+    assert all(len([item for item in call["contents"]
+                    if getattr(item, "inline_data", None)]) == 2 for call in calls)
+
+
 def test_ocr_audit_requires_the_exact_single_sheet_number_when_expected():
     inspection = {
         "ok": True, "numerals": ["10"], "figure_label": "FIG. 2",
@@ -394,6 +511,31 @@ def test_ocr_audit_requires_the_exact_single_sheet_number_when_expected():
     assert wrong["correct_sheet_number"] is False
 
 
+def test_ocr_audit_accounts_for_exact_duplicate_section_designations_separately():
+    inspection = {
+        "ok": True, "numerals": ["3", "10", "3"], "figure_label": "FIG. 1",
+        "sheet_numbers": ["1/4"], "other_text": [], "confidence": 0.99,
+    }
+
+    accepted = draft_figures.ocr_audit(
+        ["10 = frame"], inspection, "FIG. 1", sheet_number="1/4",
+        section_designations=["3"])
+    missing = draft_figures.ocr_audit(
+        ["10 = frame"], {**inspection, "numerals": ["3", "10"]},
+        "FIG. 1", sheet_number="1/4", section_designations=["3"])
+    duplicate = draft_figures.ocr_audit(
+        ["10 = frame"], {**inspection, "numerals": ["3", "10", "3", "3"]},
+        "FIG. 1", sheet_number="1/4", section_designations=["3"])
+
+    assert accepted["ok"] is True
+    assert accepted["detected"] == ["10"]
+    assert accepted["expected_section_designations"] == ["3", "3"]
+    assert accepted["detected_section_designations"] == ["3", "3"]
+    assert accepted["correct_section_designations"] is True
+    assert missing["ok"] is False and missing["correct_section_designations"] is False
+    assert duplicate["ok"] is False and duplicate["correct_section_designations"] is False
+
+
 def test_current_ocr_audit_rejects_an_old_gate_or_different_sheet_total():
     current = accepted_ocr_audit("2/5")
 
@@ -403,6 +545,24 @@ def test_current_ocr_audit_rejects_an_old_gate_or_different_sheet_total():
         current, expected_sheet_number="2/6") is False
     assert draft_figures.current_ocr_audit(
         {**current, "prompt_version": "old"}, expected_sheet_number="2/5") is False
+    assert draft_figures.current_ocr_audit(
+        current, expected_sheet_number="2/5", expected_section_designations=["3"]) is False
+
+
+def test_current_section_mark_audit_rejects_invalid_stored_coordinates():
+    current = {
+        "ok": True, "inspected": True, "required": True,
+        "expected": ["3"], "errors": [], "review_count": 2,
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SECTION_MARK_PROMPT_VERSION,
+        "marks": [{
+            "designation": "3", "start_x": 500, "start_y": 300,
+            "end_x": 500, "end_y": 300, "view_dx": -1000, "view_dy": 0,
+            "evidence": "collapsed line",
+        }],
+    }
+
+    assert draft_figures.current_section_mark_audit(current) is False
 
 
 def test_ocr_audit_rejects_an_extra_invalid_sheet_marking():
@@ -2280,6 +2440,7 @@ def test_only_compatible_two_trace_semantic_reviews_are_accepted(monkeypatch):
             "ok": True, "inspected": False, "required": False,
             "version": draft_figures.CLOSED_REGION_AUDIT_VERSION,
         },
+        "section_mark_audit": accepted_semantic_audit()["section_mark_audit"],
         "marked_anchor_audit": accepted_marked_anchor_audit(),
     }
     assert draft_figures.current_semantic_audit(current) is True
@@ -4486,6 +4647,35 @@ def test_sheet_number_is_overlaid_at_top_center_and_larger_than_reference_numera
     assert output != draft_figures.annotate_png(raw, "FIG. 1", anchors, sheet_number="2/5")
 
 
+def test_cutting_plane_arrows_and_both_section_designations_are_overlaid_deterministically():
+    raw = blank_png()
+    anchors = [{"numeral": "10", "x": 250, "y": 500, "visible": True}]
+    marks = [{
+        "designation": "3", "start_x": 500, "start_y": 100,
+        "end_x": 500, "end_y": 800, "view_dx": -1000, "view_dy": 0,
+    }]
+    plain = draft_figures.annotate_png(raw, "FIG. 1", anchors)
+    marked = draft_figures.annotate_png(
+        raw, "FIG. 1", anchors, section_marks=marks)
+    layout = draft_figures._annotation_layout(raw, anchors, 1.0)
+    image = Image.open(io.BytesIO(marked)).convert("L")
+    line_x = layout["source_x"] + round(500 * layout["source"].width / 1000)
+    start_y = layout["source_y"] + round(100 * layout["source"].height / 1000)
+    end_y = layout["source_y"] + round(800 * layout["source"].height / 1000)
+    line_ink = sum(
+        image.getpixel((line_x, y)) < 32 for y in range(start_y, end_y + 1))
+    left_end_ink = sum(
+        image.getpixel((x, y)) < 32
+        for x in range(max(0, line_x - 80), line_x)
+        for y in range(max(0, start_y - 45), min(image.height, start_y + 46)))
+
+    assert marked != plain
+    assert line_ink > 80
+    assert left_end_ink > 25
+    assert marked == draft_figures.annotate_png(
+        raw, "FIG. 1", anchors, section_marks=marks)
+
+
 def test_deterministic_leader_endpoint_has_a_vision_visible_dot():
     raw = blank_png()
     anchors = [{"numeral": "10", "x": 500, "y": 500,
@@ -4623,6 +4813,25 @@ def test_geometry_prompt_removes_section_marks_and_spells_geometric_numbers():
     assert "section line" not in prompt.lower()
 
 
+def test_geometry_prompt_strips_a_complete_hyphenated_cutting_plane_paragraph():
+    caption = (
+        "The upper frame half 10 surrounds the pipe 90.\n\n"
+        "A short broken cutting-plane line lies on the radial centre line. Its outer end lies "
+        "outside the frame and its inner end stops at the jaw pad 40. A short arrow at each end "
+        "points left. Each end carries 3 as the section designation, so it reads as line 3-3; "
+        "it is not a reference numeral.\n\n"
+        "The latch 16 bridges the frame ends.")
+
+    cleaned = draft_figures._geometry_text(
+        caption, ["10 = upper frame half", "90 = pipe", "40 = jaw pad", "16 = latch"])
+
+    assert "upper frame half" in cleaned and "latch" in cleaned
+    assert "cutting" not in cleaned.lower()
+    assert "outer end" not in cleaned.lower() and "inner end" not in cleaned.lower()
+    assert "arrow" not in cleaned.lower() and "designation" not in cleaned.lower()
+    assert "line -" not in cleaned.lower()
+
+
 def test_geometry_spec_strips_arbitrary_annotation_point_placement():
     caption = (
         "The second side 16 is the straight lower edge of the slab. "
@@ -4712,6 +4921,7 @@ def test_leader_review_spec_contains_only_annotation_routing():
     assert specification == {
         "figure_label": "FIG. 2",
         "expected_numerals": ["24", "36"],
+        "section_designations": [],
     }
     assert "perimeter member" not in json.dumps(specification).lower()
 
@@ -5586,9 +5796,10 @@ def test_checked_images_include_exact_audit_evidence_for_the_independent_reviewe
         "figure_label": "FIG. 1", "rendered_file": "rendered-FIG-1.png",
         "rendered_sha256": hashlib.sha256(b"checked").hexdigest(),
         "specification_hash": digest,
-        "ocr": {
-            "ok": True, "expected_numerals": ["10"], "detected_numerals": ["10"],
-            "expected_sheet_number": "1/1", "detected_sheet_number": "1/1",
+            "ocr": {
+                "ok": True, "expected_numerals": ["10"], "detected_numerals": ["10"],
+                "expected_section_designations": [], "detected_section_designations": [],
+                "expected_sheet_number": "1/1", "detected_sheet_number": "1/1",
             "detected_figure_label": "FIG. 1",
         },
         "geometry": {
@@ -5597,7 +5808,14 @@ def test_checked_images_include_exact_audit_evidence_for_the_independent_reviewe
             "summary": "The sectional hatches and every solid boundary match the brief.",
             "missing": [], "unexpected": [], "errors": [],
         },
-        "deterministic_section_hatching": section_certificate,
+            "deterministic_section_hatching": section_certificate,
+            "section_marks": {
+                "ok": True, "required": False, "reviewer": "deterministic-parser",
+                "prompt_version": draft_figures.SECTION_MARK_PROMPT_VERSION,
+                "review_count": 0,
+                "summary": "No cutting-plane designation is required.",
+                "marks": [],
+            },
         "leaders": {
             "ok": True,
             "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
