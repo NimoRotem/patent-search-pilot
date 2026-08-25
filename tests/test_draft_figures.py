@@ -3296,6 +3296,37 @@ def test_deterministic_chamber_section_uses_exact_component_anchors():
         "12", "14", "20", "22", "24", "36"}
 
 
+def test_flush_chamber_section_moves_the_perimeter_anchor_with_the_leg():
+    specification = """
+    The sheet shows four bodies, one broken line, and nothing else: one horizontal hatched
+    slab, the base 12; one closed loop cut twice, appearing as two short hatched legs hanging
+    from the underside of the slab, one at each end of the slab, the outer side of each leg
+    standing flush with the corresponding end of the slab; one hatched band across the bottom,
+    the covering element 36; and one closed housing standing on the upper face of the slab, the
+    air-extraction mechanism 20. One broken line runs from inside the housing to the chamber 22,
+    that broken line being all that is drawn for the fluid communication.
+    - The perimeter member 24 appears as the two legs. Identified well inside the hatching of the
+      right-hand leg.
+    """
+    png = draft_figures._deterministic_chamber_section_png(specification)
+    semantic = {
+        "ok": True,
+        "anchors": [{
+            "numeral": "24", "x": 500, "y": 500,
+            "visible": True, "evidence": "perimeter member",
+        }],
+    }
+
+    grounded = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, ["24 = perimeter member"], semantic)
+    grounded = draft_figures._apply_pixel_grounding(
+        png, ["24 = perimeter member"], grounded)
+
+    assert grounded["anchors"][0]["x"] == draft_figures._pixel_to_normalized(1140, 1400)
+    assert grounded["anchors"][0]["y"] == draft_figures._pixel_to_normalized(475, 900)
+    assert grounded["pixel_anchor_audit"]["ok"] is True
+
+
 def test_deterministic_fragmentary_section_uses_exact_component_anchors():
     specification = """
     The sheet shows four hatched bodies: one upright column, the perimeter member 24, and three
@@ -3815,6 +3846,25 @@ def test_deterministic_chamber_section_has_two_legs_and_one_broken_line():
         else:
             broken_runs[-1].append(y)
     assert 4 <= len(broken_runs) <= 8
+
+
+def test_deterministic_chamber_section_honors_flush_perimeter_legs():
+    specification = """
+    The sheet shows four bodies, one broken line, and nothing else: one horizontal hatched
+    slab; one closed loop cut twice, appearing as two short hatched legs hanging from the
+    underside of the slab, one at each end of the slab, the outer side of each leg standing
+    flush with the corresponding end of the slab; one hatched band across the bottom on which
+    both legs stand; and one closed housing standing on the upper face of the slab. One broken
+    line runs from inside the housing to the chamber, indicating fluid communication, and no
+    passage, duct, opening or other structure is depicted.
+    """
+
+    png = draft_figures._deterministic_chamber_section_png(specification)
+
+    assert png is not None
+    image = Image.open(io.BytesIO(png)).convert("L")
+    assert sum(image.getpixel((200, y)) < 32 for y in range(370, 611)) > 230
+    assert sum(image.getpixel((1200, y)) < 32 for y in range(370, 611)) > 230
 
 
 def test_deterministic_chamber_section_accepts_positive_single_line_wording():
