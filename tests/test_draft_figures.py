@@ -2638,6 +2638,41 @@ def test_deterministic_grip_scene_leaves_room_for_a_callout_inside_the_band():
     assert ink_runs[-1][0] - ink_runs[-2][-1] >= 32
 
 
+def test_deterministic_section_renderers_differentiate_touching_body_hatching(monkeypatch):
+    original = draft_figures._paste_hatched_box
+    observed = []
+
+    def record(image, box, *, angle):
+        observed.append(angle)
+        return original(image, box, angle=angle)
+
+    monkeypatch.setattr(draft_figures, "_paste_hatched_box", record)
+    fragmentary = """
+    The sheet shows four hatched bodies and nothing else: one upright column and three
+    horizontal bands lying one above another beneath it. Each band runs the whole way across,
+    from the left-hand limit of the drawing area to the right, each carrying regularly spaced
+    oblique parallel hatching continuous from side to side, including directly beneath the
+    column, each band reading as one whole hatched body, the hatching of each band being angled
+    differently from that of the band it touches and from that of the column. Open unhatched
+    paper lies beneath the lowest band. The column stands above the uppermost band, with an open
+    stretch of that band and open paper on each side of it. Between the bottom line of the column
+    and the top line of the uppermost band lies open unhatched space.
+    """
+    chamber = """
+    The sheet shows four bodies, one broken line, and nothing else: one horizontal hatched slab;
+    one closed loop cut twice, appearing as two short hatched legs hanging from the underside of
+    the slab, one at each end; one hatched band across the bottom on which both legs stand; and
+    one closed housing standing on the upper face of the slab. One broken line runs from inside
+    the housing to the chamber, and no passage, duct, opening or other structure is depicted.
+    """
+
+    assert draft_figures._deterministic_fragmentary_section_png(fragmentary) is not None
+    assert observed == [45, -45, 60, -60]
+    observed.clear()
+    assert draft_figures._deterministic_chamber_section_png(chamber) is not None
+    assert observed == [45, -45, -45, 60]
+
+
 def test_deterministic_fragmentary_section_preserves_open_clearance_and_four_bodies():
     specification = """
     The sheet shows four hatched bodies and nothing else: one upright column and three
@@ -2687,7 +2722,7 @@ def test_deterministic_fragmentary_section_centres_column_over_unbroken_bands():
 
     assert png is not None
     image = Image.open(io.BytesIO(png)).convert("L")
-    assert image.getpixel((700, 200)) < 32
+    assert min(image.crop((650, 150, 750, 250)).getextrema()) == 0
     assert image.getpixel((375, 200)) == 255
     assert min(image.crop((650, 420, 750, 540)).getextrema()) == 0
     vertical_x = [
@@ -2717,7 +2752,7 @@ def test_deterministic_fragmentary_section_accepts_positive_open_sides_wording()
     assert png is not None
     assert draft_figures._deterministic_geometry_png(specification) == png
     image = Image.open(io.BytesIO(png)).convert("L")
-    assert image.getpixel((700, 200)) < 32
+    assert min(image.crop((650, 150, 750, 250)).getextrema()) == 0
     assert image.getpixel((375, 200)) == 255
     assert min(image.crop((650, 420, 750, 540)).getextrema()) == 0
 
@@ -2762,6 +2797,20 @@ def test_deterministic_chamber_section_accepts_positive_single_line_wording():
     One broken line runs from inside the housing to the chamber, indicating schematically the
     fluid communication between the housing and the chamber, that broken line being all that is
     drawn for it.
+    """
+
+    png = draft_figures._deterministic_chamber_section_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+
+
+def test_deterministic_chamber_section_accepts_exact_one_line_inventory_wording():
+    specification = """
+    The sheet shows four bodies, all shown schematically, one broken line, and nothing else:
+    one horizontal hatched slab; one closed loop cut twice, appearing as two short hatched legs
+    hanging from the underside of the slab, one at each end; one hatched band across the bottom;
+    and one closed housing. One broken line runs from inside the housing to the chamber.
     """
 
     png = draft_figures._deterministic_chamber_section_png(specification)

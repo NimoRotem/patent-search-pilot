@@ -1389,7 +1389,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v6-brief-formality-source"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v7-substantive-ledger"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1468,50 +1468,90 @@ Read these files in full:
 Ignore rendered image files. Return the complete structured review."""
 
 
+def _source_review_quality_error(summary: str,
+                                 findings: Sequence[Mapping[str, Any]]) -> str:
+    """Reject schema-valid filler that does not evidence the required full-ledger review."""
+    words = re.findall(r"[a-z][a-z0-9_-]*", summary.casefold())
+    coverage = (
+        re.search(r"\bclaim", summary, re.IGNORECASE),
+        re.search(r"\b(?:numeral|reference number|numbered part)", summary, re.IGNORECASE),
+        re.search(r"\b(?:figure|drawing)", summary, re.IGNORECASE),
+        re.search(r"\b(?:source|disclos|support|affirmative|trac)", summary, re.IGNORECASE),
+    )
+    if len(summary) < 120 or len(words) < 20 or not all(coverage):
+        return (
+            "The source reviewer returned a non-substantive summary instead of evidence that "
+            "claims, numerals, figures, and inventor sources were all checked."
+        )
+    minimums = {"title": 8, "where": 5, "detail": 40, "evidence": 20, "fix": 20}
+    for finding in findings:
+        for field, minimum in minimums.items():
+            value = str(finding.get(field) or "").strip()
+            if len(value) < minimum or len(value.split()) < 2:
+                return (
+                    "The source reviewer returned a non-substantive finding whose "
+                    f"{field} field did not contain reviewable evidence."
+                )
+    return ""
+
+
 def review_sources(workspace: Path, *, transcript: Path | None = None, model: str = "",
                    timeout: int = draft_agent.QA_TIMEOUT) -> dict[str, Any]:
     """Run a fail-closed text and source-ledger review before spending on drawings."""
-    try:
-        run = draft_agent.run(
-            workspace=workspace,
-            prompt=SOURCE_REVIEW_PROMPT % {"version": SOURCE_REVIEW_VERSION},
-            system_prompt=SOURCE_REVIEW_SYSTEM,
-            schema=REVIEW_SCHEMA,
-            session_id=draft_agent.new_session_id(),
-            resume=False,
-            model=model or draft_agent.QA_MODEL,
-            tools="Read,Glob,Grep",
-            timeout=timeout,
-            transcript=transcript,
-        )
-    except draft_agent.AgentError as exc:
-        return {"ok": False, "error": str(exc), "findings": [], "summary": "",
-                "cost_usd": 0.0, "duration_ms": 0,
-                "model": model or draft_agent.QA_MODEL}
-    if not run.ok:
-        return {"ok": False, "error": run.error, "findings": [], "summary": "",
-                "cost_usd": run.cost_usd, "duration_ms": run.duration_ms,
-                "model": run.model}
-    summary = str(run.result.get("summary") or "").strip()[:8000]
-    raw_findings = run.result.get("findings")
-    findings = normalize_findings(raw_findings)
-    if (not summary or not isinstance(raw_findings, list)
-            or len(findings) != len(raw_findings)):
-        return {
-            "ok": False,
-            "error": "The source reviewer returned an empty summary or malformed finding.",
-            "findings": [], "summary": "", "cost_usd": run.cost_usd,
-            "duration_ms": run.duration_ms, "model": run.model,
-        }
-    return {
-        "ok": True,
-        "error": "",
-        "summary": summary,
-        "findings": findings,
-        "cost_usd": run.cost_usd,
-        "duration_ms": run.duration_ms,
-        "model": run.model,
-    }
+    total_cost = 0.0
+    total_duration = 0
+    last_model = model or draft_agent.QA_MODEL
+    for quality_attempt in range(2):
+        try:
+            run = draft_agent.run(
+                workspace=workspace,
+                prompt=SOURCE_REVIEW_PROMPT % {"version": SOURCE_REVIEW_VERSION},
+                system_prompt=SOURCE_REVIEW_SYSTEM,
+                schema=REVIEW_SCHEMA,
+                session_id=draft_agent.new_session_id(),
+                resume=False,
+                model=model or draft_agent.QA_MODEL,
+                tools="Read,Glob,Grep",
+                timeout=timeout,
+                transcript=transcript,
+            )
+        except draft_agent.AgentError as exc:
+            return {"ok": False, "error": str(exc), "findings": [], "summary": "",
+                    "cost_usd": total_cost, "duration_ms": total_duration,
+                    "model": last_model}
+        total_cost += float(run.cost_usd or 0.0)
+        total_duration += int(run.duration_ms or 0)
+        last_model = run.model or last_model
+        if not run.ok:
+            return {"ok": False, "error": run.error, "findings": [], "summary": "",
+                    "cost_usd": total_cost, "duration_ms": total_duration,
+                    "model": last_model}
+        summary = str(run.result.get("summary") or "").strip()[:8000]
+        raw_findings = run.result.get("findings")
+        findings = normalize_findings(raw_findings)
+        if (not summary or not isinstance(raw_findings, list)
+                or len(findings) != len(raw_findings)):
+            quality_error = "The source reviewer returned an empty summary or malformed finding."
+        else:
+            quality_error = _source_review_quality_error(summary, findings)
+        if not quality_error:
+            return {
+                "ok": True,
+                "error": "",
+                "summary": summary,
+                "findings": findings,
+                "cost_usd": total_cost,
+                "duration_ms": total_duration,
+                "model": last_model,
+            }
+        if quality_attempt == 1:
+            return {
+                "ok": False,
+                "error": quality_error,
+                "findings": [], "summary": "", "cost_usd": total_cost,
+                "duration_ms": total_duration, "model": last_model,
+            }
+    raise AssertionError("unreachable")
 
 
 def review(workspace: Path, *, checks: Sequence[Mapping[str, Any]],
