@@ -265,11 +265,33 @@ Needs `graphviz` (`apt-get install -y graphviz`) for block diagrams and flow cha
 `cairosvg` plus `pypdf` for the raster checks and the PDF. Each reports itself by name if absent.
 
 Models are reached over Vertex AI as the VM's own service account, so there is no key to rotate
-into this app. `FM_FAST_MODEL` reads the draft, `FM_DEEP_MODEL` decides what the figures are.
+into this app. `FM_FAST_MODEL` reads the draft, `FM_DEEP_MODEL` plans and builds the scenes.
 
-Budget roughly a minute per figure: the deep model is left free to think, and figures are rendered
-in order because each one constrains the next. A replan reuses the scenes of figures it did not
-change.
+### How long it takes, and why
+
+| | |
+|---|---|
+| a three-figure draft | about 80 seconds |
+| an eighteen-figure granted patent, including a full replan | about 8 minutes |
+
+The scenes are the bulk of the model time and they run **together**, eight at a time
+(`FM_SCENE_WORKERS`). Each is an independent call over a passage already selected for it; they
+were sequential only because the appearance store made figure N depend on figure N-1, and that
+constraint is now imposed afterwards instead, deterministically, by letting the first figure in
+label order decide what a part looks like. Drawing stays sequential and in label order, because
+it costs a tenth of a second and it is what makes a housing look like itself in every view.
+
+Thinking is budgeted per role (`FM_PLAN_THINKING`, `FM_SCENE_THINKING`, `FM_REVISE_THINKING`).
+Unbounded, a scene call spent ninety seconds on work that converges in fifteen. A plan revision
+gets the shortest budget of the three: it arrives with the compliance errors quoted and has to
+correct them, which is not the same job as designing the set.
+
+What is left is the planner, at roughly a minute to two for a large draft, and it is the one
+place the thinking earns its cost.
+
+The compliance check is not a model at all and should not be a bottleneck either. Colour, stray
+ink and hairlines are whole-image operations in Pillow rather than a Python loop over nine million
+pixels, which took a sheet from nine seconds to 0.8, and sheets are checked concurrently.
 
 ## Deployment
 

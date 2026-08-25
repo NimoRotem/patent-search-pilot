@@ -35,6 +35,7 @@ SCENE_MODEL = os.environ.get("FM_SCENE_MODEL", DEEP_MODEL)
 # took ten minutes.
 PLAN_THINKING = int(os.environ.get("FM_PLAN_THINKING", "6144"))
 SCENE_THINKING = int(os.environ.get("FM_SCENE_THINKING", "3072"))
+REVISE_THINKING = int(os.environ.get("FM_REVISE_THINKING", "2048"))
 
 _local = threading.local()
 

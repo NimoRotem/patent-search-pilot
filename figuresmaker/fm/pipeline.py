@@ -296,7 +296,11 @@ def run(*, text: str = "", url: str = "", upload: Optional[tuple[str, bytes]] = 
     for plan_attempt in range(MAX_PLAN_ATTEMPTS):
         attempts["plan"] = plan_attempt + 1
         progress("plan", "running", "" if not feedback else "revising after the compliance check")
-        plan = plan_mod.build_plan(sections, registry, claim_list, llm.deep(log), feedback)
+        # The first plan is a design problem and is worth thinking about. A revision is not: it
+        # arrives with the compliance errors quoted and has to correct them, so it gets a shorter
+        # leash, which is most of a minute back on any job that needs one.
+        reasoner = llm.deep(log) if not feedback else llm.deep(log, budget=llm.REVISE_THINKING)
+        plan = plan_mod.build_plan(sections, registry, claim_list, reasoner, feedback)
         if not plan.figures:
             raise ValueError("the planner produced no figures for this draft.")
         progress("plan", "done", f"{len(plan.figures)} figure(s)")
