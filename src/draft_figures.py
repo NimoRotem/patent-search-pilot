@@ -1586,7 +1586,7 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         part = parts.get(numeral, "")
         is_exterior = bool(exterior[pixel_y, pixel_x])
         is_empty_space = bool(_EMPTY_ANCHOR_PART_RE.search(part))
-        evidence = str(item.get("evidence") or "")
+        evidence = str(item.get("target_evidence") or item.get("evidence") or "")
         targets_visible_surface = bool(_VISIBLE_SURFACE_TARGET_RE.search(evidence))
         targets_broad_interior = bool(
             targets_visible_surface or _BROAD_INTERIOR_TARGET_RE.search(evidence))
@@ -2915,7 +2915,7 @@ def _bind_anchor_target_evidence(anchors, *, label: str, caption: str, numerals)
     for item in repaired:
         target = targets.get(_clean_numeral(item.get("numeral")))
         if target:
-            item["evidence"] = target
+            item["target_evidence"] = target
     return repaired
 
 
@@ -4190,7 +4190,8 @@ def annotate_png(png: bytes, label: str, anchors, *, scale: float = 1.0,
             width = box[2] - box[0]
             text_x = 28 if side_name == "left" else canvas.width - 28 - width
             line_x = text_x + width + 8 if side_name == "left" else text_x - 8
-            preserve_target = _has_explicit_line_target(item.get("evidence"))
+            preserve_target = _has_explicit_line_target(
+                item.get("target_evidence") or item.get("evidence"))
             routes.append({
                 "line_x": line_x, "y": y, "target_x": target_x, "target_y": target_y,
                 "text_x": text_x, "numeral": numeral, "preserve_target": preserve_target,
