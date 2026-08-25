@@ -89,6 +89,10 @@ MARKED_ANCHOR_REVIEW_COUNT = 3
 CROSS_PROVIDER_REVIEW_COUNT = 1
 CROSS_PROVIDER_GEOMETRY_REVIEW_COUNT = 1
 CROSS_PROVIDER_GEOMETRY_TOKEN_BUDGETS = (5000, 9000)
+CROSS_PROVIDER_GEOMETRY_REQUIRED_KEYS = frozenset((
+    "matches_spec", "summary", "errors", "missing_geometry", "unexpected_geometry",
+    "parts", "visible_elements",
+))
 MARKED_ANCHOR_CORRECTION_GAIN = 1.0
 MIN_OCR_CONFIDENCE = float(os.environ.get("PATENT_FIGURE_OCR_CONFIDENCE", "0.85"))
 MAX_REVIEW_COORDINATE = 50_000
@@ -3873,11 +3877,17 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
                 if isinstance(item, dict) and item.get("type") == "text"
             ]
             parsed = llm._extract_json("\n".join(text_blocks))
-            if not isinstance(parsed, dict):
+            missing_keys = sorted(
+                CROSS_PROVIDER_GEOMETRY_REQUIRED_KEYS - set(parsed)
+                if isinstance(parsed, dict) else CROSS_PROVIDER_GEOMETRY_REQUIRED_KEYS)
+            if not isinstance(parsed, dict) or missing_keys:
                 stop_reason = str(response.get("stop_reason") or "unknown")
+                missing_detail = (
+                    ", missing_keys=" + ",".join(missing_keys)) if missing_keys else ""
                 last_error = ValueError(
                     "Anthropic geometry audit did not return complete JSON "
-                    f"(stop_reason={stop_reason}, text_chars={sum(map(len, text_blocks))}).")
+                    f"(stop_reason={stop_reason}, text_chars={sum(map(len, text_blocks))}"
+                    f"{missing_detail}).")
                 if attempt + 1 < len(CROSS_PROVIDER_GEOMETRY_TOKEN_BUDGETS):
                     _audit_log(
                         request_id=request_id, provider="anthropic", model=model,

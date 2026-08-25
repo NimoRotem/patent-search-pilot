@@ -1346,7 +1346,12 @@ def test_cross_provider_geometry_review_uses_anthropic_pixels_and_caches_clean_r
     assert "finite-width ring" in prompt and "outer and inner" in prompt
 
 
-def test_cross_provider_geometry_retries_a_truncated_json_response(monkeypatch):
+@pytest.mark.parametrize("first_text", [
+    "{\"matches_spec\":",
+    json.dumps({"matches_spec": True, "parts": [], "visible_elements": []}),
+])
+def test_cross_provider_geometry_retries_an_incomplete_structured_response(
+        monkeypatch, first_text):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
     monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_MODEL", "claude-opus-5")
     monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: None)
@@ -1378,7 +1383,7 @@ def test_cross_provider_geometry_retries_a_truncated_json_response(monkeypatch):
             return {
                 "stop_reason": "max_tokens",
                 "usage": {"input_tokens": 90, "output_tokens": 5000},
-                "content": [{"type": "text", "text": "{\"matches_spec\":"}],
+                "content": [{"type": "text", "text": first_text}],
             }
         return {
             "stop_reason": "end_turn",
