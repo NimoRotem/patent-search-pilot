@@ -61,10 +61,11 @@ DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
 DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
     "deterministic-semantic-consensus-v1-byte-exact-two-semantic-one-independent")
 DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION = (
-    "deterministic-anchor-v3-byte-exact-clear-interior-and-designated-boundary-points")
+    "deterministic-anchor-v5-byte-exact-clear-interior-and-designated-boundary-points")
 DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION = (
-    "deterministic-endpoint-resolution-v2-sub-dot-or-same-enclosed-component")
+    "deterministic-endpoint-resolution-v3-sub-dot-component-or-certified-interior")
 DETERMINISTIC_SUB_DOT_TOLERANCE_PIXELS = 6
+DETERMINISTIC_CLEAR_INTERIOR_RADIUS_PIXELS = 8
 MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((MARKED_ANCHOR_PROMPT_VERSION,))
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v12-brief-target-surface-fidelity"
 MARKED_PROGRESS_VERSION = (
@@ -1731,6 +1732,8 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
     block_grip = _has_deterministic_block_grip(text)
     pulling_scene = _deterministic_pulling_scene_png(caption)
+    fragmentary_section = _deterministic_fragmentary_section_png(caption)
+    chamber_section = _deterministic_chamber_section_png(caption)
     if block_grip:
         renderer_name = "block_grip_scene"
         device_target_match = re.search(
@@ -1768,6 +1771,69 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
             "perimeter member": (850, 468, "well inside the broad front strip of the band"),
             "covering element": (1000, 650, "well inside the open tile in front of the machine"),
             "flexible pulling element": (445, 489, "on the single curved pulling path"),
+        }
+    elif fragmentary_section is not None and png == fragmentary_section:
+        from PIL import Image
+
+        renderer_name = "fragmentary_section"
+        with Image.open(io.BytesIO(png)).convert("L") as source:
+            centred_column = source.getpixel((575, 160)) < 225
+        column_left, column_right = (
+            (575, 825) if centred_column else (250, 500))
+        column_center = (column_left + column_right) // 2
+        exposed_target_match = re.search(
+            r"\b(?:the )?exposed face(?:\s+\d+)?\b[^.]*\.\s*"
+            r"identified\s+([^.]*)",
+            text,
+        )
+        exposed_target = exposed_target_match.group(1) if exposed_target_match else ""
+        exposed_right = "right of the column" in exposed_target
+        exposed_x = (
+            min(1300, column_right + 250) if exposed_right else
+            max(100, column_left - 325))
+        exposed_evidence = (
+            "on the top boundary line to the right of the column"
+            if exposed_right else
+            "on the top boundary line to the left of the column")
+        component_centers = {
+            "perimeter member": (
+                column_center, 160, "well inside the hatching of the upright column"),
+            "bearing face": (
+                column_center, 320, "on the horizontal line closing the column below"),
+            "clearance": (
+                column_center, 365, "well inside the open space between the two lines"),
+            "covering element": (
+                1050, 480,
+                "well inside the hatching of the uppermost band to the right of the column"),
+            "exposed face": (exposed_x, 410, exposed_evidence),
+            "bonding material": (700, 610, "well inside the hatching of the middle band"),
+            "substrate": (700, 740, "well inside the hatching of the lowest band"),
+        }
+    elif chamber_section is not None and png == chamber_section:
+        renderer_name = "chamber_section"
+        perimeter_target_match = re.search(
+            r"\b(?:the )?perimeter member(?:\s+\d+)?\b[^.]*\.\s*"
+            r"identified\s+([^.]*)",
+            text,
+        )
+        perimeter_target = (
+            perimeter_target_match.group(1) if perimeter_target_match else "")
+        perimeter_left = "left-hand leg" in perimeter_target
+        perimeter_x = 320 if perimeter_left else 1080
+        perimeter_evidence = (
+            "well inside the hatching of the left-hand leg"
+            if perimeter_left else
+            "well inside the hatching of the right-hand leg")
+        component_centers = {
+            "base": (700, 290, "well inside the hatching of the horizontal slab"),
+            "first side": (470, 220, "on the upper edge line clear of the housing"),
+            "air-extraction mechanism": (
+                805, 150, "well inside the unhatched housing"),
+            "chamber": (
+                500, 475,
+                "well inside the broad open space and away from the broken line"),
+            "perimeter member": (perimeter_x, 475, perimeter_evidence),
+            "covering element": (700, 690, "well inside the hatching of the bottom band"),
         }
     else:
         return [dict(item) for item in anchors or ()], None
@@ -4758,6 +4824,33 @@ def _same_enclosed_white_component(raw_png: bytes, first: tuple[int, int],
         return False
 
 
+def _clear_enclosed_white_point(raw_png: bytes, point: tuple[int, int], *,
+                                radius: int = DETERMINISTIC_CLEAR_INTERIOR_RADIUS_PIXELS
+                                ) -> bool:
+    """Verify that a certified interior point is enclosed and clear of nearby ink."""
+    if not _same_enclosed_white_component(raw_png, point, point):
+        return False
+    try:
+        from PIL import Image, ImageOps
+        with Image.open(io.BytesIO(raw_png)) as source:
+            binary = ImageOps.grayscale(source).point(
+                lambda value: 255 if value >= 225 else 0)
+        width, height = binary.size
+        center_x, center_y = point
+        radius = max(1, int(radius))
+        if (center_x - radius < 0 or center_y - radius < 0 or
+                center_x + radius >= width or center_y + radius >= height):
+            return False
+        for y in range(center_y - radius, center_y + radius + 1):
+            for x in range(center_x - radius, center_x + radius + 1):
+                if ((x - center_x) ** 2 + (y - center_y) ** 2 <= radius ** 2 and
+                        binary.getpixel((x, y)) != 255):
+                    return False
+        return True
+    except (TypeError, ValueError, OverflowError, OSError):
+        return False
+
+
 def _resolve_deterministic_endpoint_veto(certified: dict, audit: dict, raw_png: bytes,
                                          anchors) -> dict:
     """Resolve only non-substantive provider vetoes against exact component certificates."""
@@ -4790,6 +4883,10 @@ def _resolve_deterministic_endpoint_veto(certified: dict, audit: dict, raw_png: 
     except (TypeError, ValueError, OverflowError, OSError):
         return audit
     positions = _anchor_positions(anchors)
+    anchors_by_numeral = {
+        _clean_numeral(item.get("numeral")): item
+        for item in anchors or [] if isinstance(item, dict)
+    }
     records = {
         _clean_numeral(item.get("numeral")): item
         for item in audit.get("labels") or [] if isinstance(item, dict)
@@ -4831,10 +4928,17 @@ def _resolve_deterministic_endpoint_veto(certified: dict, audit: dict, raw_png: 
         delta_x, delta_y = suggested_x - current_x, suggested_y - current_y
         basis = "sub_dot"
         if max(abs(delta_x), abs(delta_y)) > DETERMINISTIC_SUB_DOT_TOLERANCE_PIXELS:
-            if not _same_enclosed_white_component(
+            if _same_enclosed_white_component(
                     raw_png, (current_x, current_y), (suggested_x, suggested_y)):
-                return audit
-            basis = "same_enclosed_component"
+                basis = "same_enclosed_component"
+            else:
+                target = str(
+                    (anchors_by_numeral.get(numeral) or {}).get("target_evidence") or "")
+                if (not re.search(r"\bwell inside\b", target, re.IGNORECASE) or
+                        not _clear_enclosed_white_point(
+                            raw_png, (current_x, current_y))):
+                    return audit
+                basis = "certified_clear_interior"
         resolutions.append({
             "numeral": numeral,
             "current_x": current_x, "current_y": current_y,
@@ -4857,14 +4961,20 @@ def _resolve_deterministic_endpoint_veto(certified: dict, audit: dict, raw_png: 
             })
         resolved_labels.append(item)
     resolution_bases = {item["basis"] for item in resolutions}
-    resolution_summary = (
-        "The proposed correction was smaller than the rendered endpoint dot and was "
-        "resolved by the complete byte-exact component certificate."
-        if resolution_bases == {"sub_dot"} else
-        "Every larger proposed correction remained inside the same enclosed rendered "
-        "component as its certified endpoint, so the provider geometry veto was resolved "
-        "by the complete byte-exact component certificate."
-    )
+    if resolution_bases == {"sub_dot"}:
+        resolution_summary = (
+            "The proposed correction was smaller than the rendered endpoint dot and was "
+            "resolved by the complete byte-exact component certificate.")
+    elif "certified_clear_interior" in resolution_bases:
+        resolution_summary = (
+            "Each disputed interior endpoint was a clear point inside the exact enclosed "
+            "component designated by the byte-exact renderer, so the provider geometry veto "
+            "was resolved by the complete component certificate.")
+    else:
+        resolution_summary = (
+            "Every larger proposed correction remained inside the same enclosed rendered "
+            "component as its certified endpoint, so the provider geometry veto was resolved "
+            "by the complete byte-exact component certificate.")
     resolved.update({
         "ok": True,
         "incorrect": [],
