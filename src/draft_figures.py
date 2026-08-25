@@ -88,6 +88,7 @@ LEADER_REVIEW_COUNT = 2
 MARKED_ANCHOR_REVIEW_COUNT = 3
 CROSS_PROVIDER_REVIEW_COUNT = 1
 CROSS_PROVIDER_GEOMETRY_REVIEW_COUNT = 1
+CROSS_PROVIDER_GEOMETRY_TOKEN_BUDGETS = (5000, 9000)
 MARKED_ANCHOR_CORRECTION_GAIN = 1.0
 MIN_OCR_CONFIDENCE = float(os.environ.get("PATENT_FIGURE_OCR_CONFIDENCE", "0.85"))
 MAX_REVIEW_COORDINATE = 50_000
@@ -3826,7 +3827,7 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
         "its endpoints. Do not join disconnected fragments across an occluding body.\n\n"
         "SPECIFICATION:\n" + specification)
     payload = {
-        "model": model, "max_tokens": 5000,
+        "model": model, "max_tokens": CROSS_PROVIDER_GEOMETRY_TOKEN_BUDGETS[0],
         "thinking": {"type": "disabled"},
         "system": system,
         "messages": [{
@@ -3840,43 +3841,99 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
             ],
         }],
     }
-    started = time.time()
-    request_id = str(uuid.uuid4())
-    try:
-        response = _anthropic_endpoint_message(payload, api_key=api_key)
-        text_blocks = [
-            str(item.get("text") or "") for item in response.get("content") or []
-            if isinstance(item, dict) and item.get("type") == "text"
-        ]
-        parsed = llm._extract_json("\n".join(text_blocks))
-        if not isinstance(parsed, dict):
-            raise ValueError("Anthropic geometry audit did not return complete JSON.")
-        result = cross_provider_geometry_audit(numerals, parsed)
-        usage = response.get("usage") or {}
-        input_tokens = int(usage.get("input_tokens") or 0)
-        output_tokens = int(usage.get("output_tokens") or 0)
-        llm._record_usage(input_tokens, output_tokens)
-        _audit_log(
-            request_id=request_id, provider="anthropic", model=model,
-            stage="cross_provider_geometry",
-            prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
-            latency_ms=int((time.time() - started) * 1000), cache_hit=False,
-            success=result["inspected"], input_tokens=input_tokens,
-            output_tokens=output_tokens)
-    except Exception as exc:
+    result = None
+    last_error: Exception | None = None
+    failure_logged = False
+    for attempt, token_budget in enumerate(CROSS_PROVIDER_GEOMETRY_TOKEN_BUDGETS):
+        attempt_payload = dict(payload)
+        attempt_payload["max_tokens"] = token_budget
+        if attempt:
+            retry_user = (
+                user + "\n\nThis is a structured-output retry. Keep every required key, but make "
+                "each evidence sentence concise so the complete JSON object fits in this response.")
+            attempt_payload["messages"] = [{
+                "role": "user",
+                "content": [
+                    payload["messages"][0]["content"][0],
+                    {"type": "text", "text": retry_user},
+                ],
+            }]
+        started = time.time()
+        request_id = str(uuid.uuid4())
+        input_tokens = 0
+        output_tokens = 0
+        try:
+            response = _anthropic_endpoint_message(attempt_payload, api_key=api_key)
+            usage = response.get("usage") or {}
+            input_tokens = int(usage.get("input_tokens") or 0)
+            output_tokens = int(usage.get("output_tokens") or 0)
+            llm._record_usage(input_tokens, output_tokens)
+            text_blocks = [
+                str(item.get("text") or "") for item in response.get("content") or []
+                if isinstance(item, dict) and item.get("type") == "text"
+            ]
+            parsed = llm._extract_json("\n".join(text_blocks))
+            if not isinstance(parsed, dict):
+                stop_reason = str(response.get("stop_reason") or "unknown")
+                last_error = ValueError(
+                    "Anthropic geometry audit did not return complete JSON "
+                    f"(stop_reason={stop_reason}, text_chars={sum(map(len, text_blocks))}).")
+                if attempt + 1 < len(CROSS_PROVIDER_GEOMETRY_TOKEN_BUDGETS):
+                    _audit_log(
+                        request_id=request_id, provider="anthropic", model=model,
+                        stage="cross_provider_geometry",
+                        prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
+                        latency_ms=int((time.time() - started) * 1000), cache_hit=False,
+                        success=False, input_tokens=input_tokens, output_tokens=output_tokens,
+                        fallback_reason="structured_output_retry")
+                    continue
+                _audit_log(
+                    request_id=request_id, provider="anthropic", model=model,
+                    stage="cross_provider_geometry",
+                    prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
+                    latency_ms=int((time.time() - started) * 1000), cache_hit=False,
+                    success=False, input_tokens=input_tokens, output_tokens=output_tokens,
+                    fallback_reason="transport_or_parse_error")
+                failure_logged = True
+                break
+            result = cross_provider_geometry_audit(numerals, parsed)
+            _audit_log(
+                request_id=request_id, provider="anthropic", model=model,
+                stage="cross_provider_geometry",
+                prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
+                latency_ms=int((time.time() - started) * 1000), cache_hit=False,
+                success=result["inspected"], input_tokens=input_tokens,
+                output_tokens=output_tokens)
+            break
+        except Exception as exc:
+            last_error = exc
+            _audit_log(
+                request_id=request_id, provider="anthropic", model=model,
+                stage="cross_provider_geometry",
+                prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
+                latency_ms=int((time.time() - started) * 1000), cache_hit=False,
+                success=False, input_tokens=input_tokens, output_tokens=output_tokens,
+                fallback_reason="transport_or_parse_error")
+            failure_logged = True
+            break
+    if result is None:
         result = {
             "ok": False, "inspected": False, "summary": "",
             "expected": expected, "observed": [], "missing": expected,
             "unexpected": [], "duplicates": [], "missing_geometry": [],
-            "errors": ["Cross-provider geometry inspection failed: " + str(exc)[:500]],
+            "errors": [
+                "Cross-provider geometry inspection failed: " +
+                str(last_error or "unknown error")[:500]
+            ],
             "parts": [], "visible_elements": [],
         }
-        _audit_log(
-            request_id=request_id, provider="anthropic", model=model,
-            stage="cross_provider_geometry",
-            prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
-            latency_ms=int((time.time() - started) * 1000), cache_hit=False,
-            success=False, fallback_reason="transport_or_parse_error")
+        if not failure_logged:
+            _audit_log(
+                request_id=str(uuid.uuid4()), provider="anthropic", model=model,
+                stage="cross_provider_geometry",
+                prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
+                latency_ms=0, cache_hit=False,
+                success=False, fallback_reason="transport_or_parse_error")
     result.update({
         "model_name": model,
         "prompt_version": CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,

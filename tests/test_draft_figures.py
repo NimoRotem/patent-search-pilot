@@ -1346,6 +1346,90 @@ def test_cross_provider_geometry_review_uses_anthropic_pixels_and_caches_clean_r
     assert "finite-width ring" in prompt and "outer and inner" in prompt
 
 
+def test_cross_provider_geometry_retries_a_truncated_json_response(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_MODEL", "claude-opus-5")
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: None)
+    monkeypatch.setattr(draft_figures, "_analysis_cache_put", lambda *_args, **_kwargs: None)
+    usage = []
+    audits = []
+    calls = []
+    monkeypatch.setattr(draft_figures.llm, "_record_usage", lambda *values: usage.append(values))
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **values: audits.append(values))
+
+    complete = {
+        "matches_spec": True,
+        "summary": "Only the requested housing is visible.",
+        "errors": [], "missing_geometry": [], "unexpected_geometry": [],
+        "parts": [{
+            "numeral": "10", "visible": True,
+            "evidence": "One rectangular housing is visible.",
+        }],
+        "visible_elements": [{
+            "description": "rectangular housing", "required": True,
+            "matched_requirement": "10 = housing",
+            "evidence": "One closed rectangular body.",
+        }],
+    }
+
+    def anthropic(payload, *, api_key):
+        calls.append((payload, api_key))
+        if len(calls) == 1:
+            return {
+                "stop_reason": "max_tokens",
+                "usage": {"input_tokens": 90, "output_tokens": 5000},
+                "content": [{"type": "text", "text": "{\"matches_spec\":"}],
+            }
+        return {
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 90, "output_tokens": 35},
+            "content": [{"type": "text", "text": json.dumps(complete)}],
+        }
+
+    monkeypatch.setattr(draft_figures, "_anthropic_endpoint_message", anthropic)
+
+    result = draft_figures.inspect_cross_provider_geometry(
+        blank_png(), label="FIG. 1", caption="A housing.", numerals=["10 = housing"])
+
+    assert result["ok"] is True
+    assert len(calls) == 2
+    assert calls[1][0]["max_tokens"] > calls[0][0]["max_tokens"]
+    retry_prompt = calls[1][0]["messages"][0]["content"][1]["text"].lower()
+    assert "concise" in retry_prompt and "complete json" in retry_prompt
+    assert usage == [(90, 5000), (90, 35)]
+    assert [audit["success"] for audit in audits] == [False, True]
+    assert audits[0]["fallback_reason"] == "structured_output_retry"
+
+
+def test_cross_provider_geometry_fails_closed_after_two_truncated_json_responses(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: None)
+    audits = []
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **values: audits.append(values))
+    monkeypatch.setattr(draft_figures.llm, "_record_usage", lambda *_args: None)
+    calls = []
+
+    def anthropic(payload, *, api_key):
+        calls.append((payload, api_key))
+        return {
+            "stop_reason": "max_tokens",
+            "usage": {"input_tokens": 90, "output_tokens": payload["max_tokens"]},
+            "content": [{"type": "text", "text": "{\"matches_spec\":"}],
+        }
+
+    monkeypatch.setattr(draft_figures, "_anthropic_endpoint_message", anthropic)
+
+    result = draft_figures.inspect_cross_provider_geometry(
+        blank_png(), label="FIG. 1", caption="A housing.", numerals=["10 = housing"])
+
+    assert result["ok"] is False and result["inspected"] is False
+    assert len(calls) == 2
+    assert "max_tokens" in " ".join(result["errors"])
+    assert [audit["fallback_reason"] for audit in audits] == [
+        "structured_output_retry", "transport_or_parse_error"]
+    assert audits[1]["output_tokens"] == 9000
+
+
 def test_required_cross_provider_geometry_review_fails_closed_without_a_credential(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_REQUIRED", "1")
