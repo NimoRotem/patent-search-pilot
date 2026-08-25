@@ -958,6 +958,59 @@ def test_byte_exact_certificate_resolves_same_enclosed_component_provider_misrea
     assert resolution["coordinates"][0]["basis"] == "same_enclosed_component"
 
 
+def test_byte_exact_certificate_resolves_a_clear_interior_provider_misread(monkeypatch):
+    specification = """
+    The covering element 36 is one large plain tile seen in perspective. The machine stands on
+    its right-hand part, leaving a wide open expanse of tile to the left. The machine is one
+    plain rectangular body standing on a band that runs round its underside. The body and the
+    band are the whole of the machine drawn on this sheet. The flexible pulling element 46 is
+    drawn as one slack curved path, a single continuous curved line. It runs away to the left,
+    sagging gently over the open expanse of tile.
+    """
+    raw = draft_figures._deterministic_pulling_scene_png(specification)
+    assert raw is not None
+    anchors = [{
+        "numeral": "24", "x": 608, "y": 521, "visible": True,
+        "target_evidence": "well inside the broad front strip of the band",
+    }]
+    monkeypatch.setattr(draft_figures, "inspect_cross_provider_endpoints", lambda *a, **k: {
+        "ok": False, "inspected": True, "incorrect": ["24"],
+        "reported_matches_spec": False,
+        "expected": ["24"], "observed": ["24"],
+        "missing": [], "unexpected": [], "duplicates": [],
+        "errors": ["Numeral 24: the endpoint is below the front strip."],
+        "labels": [{
+            "numeral": "24", "correct": False, "repairable": True,
+            "evidence": "Current (851, 468); suggested boundary point (862, 442).",
+            "suggested_x": 862, "suggested_y": 442,
+        }],
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1400, "coordinate_height": 900,
+        "model_name": draft_figures.cross_provider_model(),
+        "prompt_version": draft_figures.CROSS_PROVIDER_PROMPT_VERSION,
+        "review_count": draft_figures.CROSS_PROVIDER_REVIEW_COUNT,
+    })
+    certified = {
+        "ok": True, "inspected": True,
+        "model_name": "deterministic-compositor",
+        "prompt_version": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        "certificate_version": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        "review_count": 0,
+        "coordinate_certificates": [{
+            "numeral": "24", "x": 608, "y": 521,
+            "certificate_source": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        }],
+    }
+
+    result = draft_figures._apply_cross_provider_endpoint_gate(
+        certified, raw, raw_png=raw, anchors=anchors,
+        label="FIG. 5", caption=specification, numerals=["24 = perimeter member"])
+
+    assert result["ok"] is True
+    resolution = result["cross_provider_audit"]["deterministic_resolution"]
+    assert resolution["coordinates"][0]["basis"] == "certified_clear_interior"
+
+
 def test_cross_provider_veto_coordinates_are_repaired_and_recertified(monkeypatch):
     raw = blank_png(1000, 1000)
     anchors = [{"numeral": "10", "x": 400, "y": 565, "visible": True,
@@ -3146,6 +3199,120 @@ def test_deterministic_pulling_scene_uses_exact_band_and_path_anchors():
     assert certificate["renderer"] == "pulling_scene"
     assert {item["numeral"] for item in certificate["anchors"]} == {
         "10", "24", "36", "46"}
+
+
+def test_deterministic_chamber_section_uses_exact_component_anchors():
+    specification = """
+    The sheet shows four bodies, one broken line, and nothing else: one horizontal
+    hatched slab, the base 12; one closed loop cut twice, appearing as two short hatched legs
+    hanging from the underside of the slab, one at each end; one hatched band across the bottom,
+    the covering element 36; and one closed housing standing on the upper face of the slab, the
+    air-extraction mechanism 20. One broken line runs from inside the housing to the chamber 22,
+    that broken line being all that is drawn for the fluid communication.
+    - The base 12 is the slab. Identified well inside its hatching.
+    - The first side 14 is the upper face of the base 12. Identified on its upper edge line clear
+      of the housing.
+    - The air-extraction mechanism 20 is the housing. Identified well inside that housing.
+    - The chamber 22 is the broad open space between the two legs. Identified well inside that
+      open space, away from the broken line.
+    - The perimeter member 24 appears as the two legs. Identified well inside the hatching of the
+      right-hand leg.
+    - The covering element 36 is the bottom band. Identified well inside its hatching.
+    """
+    numerals = [
+        "12 = base", "14 = first side", "20 = air-extraction mechanism",
+        "22 = chamber", "24 = perimeter member", "36 = covering element",
+    ]
+    png = draft_figures._deterministic_chamber_section_png(specification)
+    assert png is not None
+    initial = [{
+        "numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+        "visible": True, "evidence": entry,
+    } for entry in numerals]
+
+    grounded = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {"ok": True, "anchors": initial})
+    grounded = draft_figures._apply_pixel_grounding(png, numerals, grounded)
+
+    positions = {
+        item["numeral"]: (item["x"], item["y"])
+        for item in grounded["anchors"]
+    }
+    assert positions["14"] == (
+        draft_figures._pixel_to_normalized(470, 1400),
+        draft_figures._pixel_to_normalized(220, 900),
+    )
+    assert positions["22"] == (
+        draft_figures._pixel_to_normalized(500, 1400),
+        draft_figures._pixel_to_normalized(475, 900),
+    )
+    assert positions["24"] == (
+        draft_figures._pixel_to_normalized(1080, 1400),
+        draft_figures._pixel_to_normalized(475, 900),
+    )
+    assert grounded["pixel_anchor_audit"]["ok"] is True
+    certificate = grounded["deterministic_anchor_certificate"]
+    assert certificate["renderer"] == "chamber_section"
+    assert {item["numeral"] for item in certificate["anchors"]} == {
+        "12", "14", "20", "22", "24", "36"}
+
+
+def test_deterministic_fragmentary_section_uses_exact_component_anchors():
+    specification = """
+    The sheet shows four hatched bodies: one upright column, the perimeter member 24, and three
+    horizontal bands lying one above another beneath it, all four shown schematically. Each band
+    runs across the drawing area from side to side, with hatching continuous from side to side,
+    including directly beneath the column. Open unhatched paper lies beneath the lowest band. The
+    column stands above the uppermost band, with an open stretch of that band on each side of it.
+    Between the bottom line of the column and the top line of the uppermost band lies open
+    unhatched space.
+    - The perimeter member 24 is the column. Identified well inside its hatching.
+    - The bearing face 26 is the bottom line of the column. Identified on that line.
+    - The clearance 34 is the open space. Identified well inside it.
+    - The covering element 36 is the uppermost band. Identified well inside its hatching to the
+      right of the column.
+    - The exposed face 38 is the top line of the uppermost band. Identified on that line to the
+      left of the column.
+    - The bonding material 40 is the middle band. Identified well inside its hatching.
+    - The substrate 42 is the lowest band. Identified well inside its hatching.
+    """
+    numerals = [
+        "24 = perimeter member", "26 = bearing face", "34 = clearance",
+        "36 = covering element", "38 = exposed face", "40 = bonding material",
+        "42 = substrate",
+    ]
+    png = draft_figures._deterministic_fragmentary_section_png(specification)
+    assert png is not None
+    initial = [{
+        "numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+        "visible": True, "evidence": entry,
+    } for entry in numerals]
+
+    grounded = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {"ok": True, "anchors": initial})
+    grounded = draft_figures._apply_pixel_grounding(png, numerals, grounded)
+
+    positions = {
+        item["numeral"]: (item["x"], item["y"])
+        for item in grounded["anchors"]
+    }
+    assert positions["26"] == (
+        draft_figures._pixel_to_normalized(700, 1400),
+        draft_figures._pixel_to_normalized(320, 900),
+    )
+    assert positions["34"] == (
+        draft_figures._pixel_to_normalized(700, 1400),
+        draft_figures._pixel_to_normalized(365, 900),
+    )
+    assert positions["38"] == (
+        draft_figures._pixel_to_normalized(250, 1400),
+        draft_figures._pixel_to_normalized(410, 900),
+    )
+    assert grounded["pixel_anchor_audit"]["ok"] is True
+    certificate = grounded["deterministic_anchor_certificate"]
+    assert certificate["renderer"] == "fragmentary_section"
+    assert {item["numeral"] for item in certificate["anchors"]} == {
+        "24", "26", "34", "36", "38", "40", "42"}
 
 
 def test_deterministic_block_grip_replaces_stale_durable_endpoint_progress(monkeypatch):
