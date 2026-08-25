@@ -3695,13 +3695,13 @@ def test_deterministic_chamber_section_accepts_explicit_filing_inventory(monkeyp
     hanging from the underside of the slab, one at each end; one hatched band across the bottom
     on which both legs stand; and one closed housing standing on the upper face of the slab.
     The base is hatched rising to the right at about 45 degrees, both legs are hatched falling to
-    the right at about 45 degrees, and the covering element is hatched rising to the right at a
-    shallow slope. One broken line runs from inside the housing to the chamber. The housing lies
+    the right at about 45 degrees, and the covering element is hatched rising to the right at
+    about 75 degrees. One broken line runs from inside the housing to the chamber. The housing lies
     outside the cut and is drawn in plain outline without hatching.
     """
 
     assert draft_figures._deterministic_chamber_section_png(specification) is not None
-    assert observed == [-45, 45, 45, -20]
+    assert observed == [-45, 45, 45, -75]
 
 
 def test_deterministic_chamber_section_splits_schematic_line_around_solid_base():

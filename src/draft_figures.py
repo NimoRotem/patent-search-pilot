@@ -2487,7 +2487,11 @@ def _requested_section_hatch_angle(text: str, subject_pattern: str, default: int
     if not match:
         return default
     qualifier = match.group(2)
-    magnitude = 20 if "shallow" in qualifier else 45
+    degree_match = re.search(r"\b(?:about\s+)?(\d{1,2})\s*degrees?\b", qualifier)
+    requested = int(degree_match.group(1)) if degree_match else 0
+    magnitude = (
+        requested if 0 < requested < 90 else
+        (20 if "shallow" in qualifier else 45))
     return -magnitude if match.group(1) == "rising" else magnitude
 
 
