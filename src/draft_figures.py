@@ -2132,6 +2132,33 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
     return out.getvalue()
 
 
+def _paste_hatched_box(image, box, *, angle: int) -> None:
+    """Fill one cut body with uniform oblique hatching at the requested distinct angle."""
+    from math import ceil, cos, hypot, radians, sin
+    from PIL import Image, ImageDraw
+
+    width, height = image.size
+    diagonal = hypot(width, height) * 1.5
+    theta = radians(angle)
+    direction_x, direction_y = cos(theta), sin(theta)
+    normal_x, normal_y = -direction_y, direction_x
+    center_x, center_y = width / 2, height / 2
+    hatch_layer = Image.new("RGB", image.size, "white")
+    hatch_draw = ImageDraw.Draw(hatch_layer)
+    for offset in range(-ceil(diagonal), ceil(diagonal) + 1, 30):
+        line_center_x = center_x + normal_x * offset
+        line_center_y = center_y + normal_y * offset
+        hatch_draw.line((
+            round(line_center_x - direction_x * diagonal),
+            round(line_center_y - direction_y * diagonal),
+            round(line_center_x + direction_x * diagonal),
+            round(line_center_y + direction_y * diagonal),
+        ), fill="black", width=2)
+    mask = Image.new("L", image.size, 0)
+    ImageDraw.Draw(mask).rectangle(box, fill=255)
+    image.paste(hatch_layer, (0, 0), mask)
+
+
 def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
     """Render the exact four-body fragmentary section with an open clearance."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
@@ -2165,18 +2192,11 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
     from PIL import Image, ImageDraw
 
     image = Image.new("RGB", (1400, 900), "white")
-    hatch_layer = Image.new("RGB", image.size, "white")
-    hatch_draw = ImageDraw.Draw(hatch_layer)
-    for start in range(-900, 1401, 30):
-        hatch_draw.line((start, 900, start + 900, 0), fill="black", width=2)
-    hatch_mask = Image.new("L", image.size, 0)
-    mask_draw = ImageDraw.Draw(hatch_mask)
     column_left, column_right = ((575, 825) if centred_column else (250, 500))
-    mask_draw.rectangle((column_left + 4, 0, column_right - 4, 316), fill=255)
-    mask_draw.rectangle((0, 414, 1399, 546), fill=255)
-    mask_draw.rectangle((0, 554, 1399, 676), fill=255)
-    mask_draw.rectangle((0, 684, 1399, 796), fill=255)
-    image.paste(hatch_layer, (0, 0), hatch_mask)
+    _paste_hatched_box(image, (column_left + 4, 0, column_right - 4, 316), angle=45)
+    _paste_hatched_box(image, (0, 414, 1399, 546), angle=-45)
+    _paste_hatched_box(image, (0, 554, 1399, 676), angle=60)
+    _paste_hatched_box(image, (0, 684, 1399, 796), angle=-60)
 
     draw = ImageDraw.Draw(image)
     draw.line((column_left, 0, column_left, 320), fill="black", width=4)
@@ -2193,12 +2213,17 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
 def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     """Render the exact slab, two cut legs, chamber, band, and one broken line."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    exact_inventory = re.search(
+        r"\bshows four bodies\b[^.]{0,80}\bone broken line\b"
+        r"[^.]{0,60}\bnothing else\b",
+        text,
+    )
     single_line_only = bool(
         re.search(r"\bno passage, duct, opening or other structure is depicted\b", text) or
-        re.search(r"\bthat broken line being all that is drawn for it\b", text))
+        re.search(r"\bthat broken line being all that is drawn for it\b", text) or
+        exact_inventory)
     requirements = (
-        re.search(r"\bshows four bodies\b[^.]{0,80}\bone broken line\b"
-                  r"[^.]{0,60}\bnothing else\b", text),
+        exact_inventory,
         re.search(r"\bhorizontal hatched slab\b", text),
         re.search(r"\bclosed loop cut twice\b[^.]{0,100}\btwo short hatched legs\b", text),
         re.search(r"\bhatched band across the bottom\b", text),
@@ -2212,19 +2237,10 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     from PIL import Image, ImageDraw
 
     image = Image.new("RGB", (1400, 900), "white")
-    hatch_layer = Image.new("RGB", image.size, "white")
-    hatch_draw = ImageDraw.Draw(hatch_layer)
-    for start in range(-900, 1401, 30):
-        hatch_draw.line((start, 900, start + 900, 0), fill="black", width=2)
-    hatch_mask = Image.new("L", image.size, 0)
-    mask_draw = ImageDraw.Draw(hatch_mask)
-    for box in (
-            (204, 224, 1196, 356),
-            (264, 364, 376, 616),
-            (1024, 364, 1136, 616),
-            (164, 624, 1236, 756)):
-        mask_draw.rectangle(box, fill=255)
-    image.paste(hatch_layer, (0, 0), hatch_mask)
+    _paste_hatched_box(image, (204, 224, 1196, 356), angle=45)
+    _paste_hatched_box(image, (264, 364, 376, 616), angle=-45)
+    _paste_hatched_box(image, (1024, 364, 1136, 616), angle=-45)
+    _paste_hatched_box(image, (164, 624, 1236, 756), angle=60)
 
     draw = ImageDraw.Draw(image)
     draw.rectangle((200, 220, 1200, 360), outline="black", width=4)
