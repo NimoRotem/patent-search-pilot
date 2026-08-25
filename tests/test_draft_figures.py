@@ -965,6 +965,30 @@ def test_cross_provider_endpoint_review_uses_native_raw_pixel_coordinates(
     assert saved and saved[0][1]["provider"] == "anthropic"
 
 
+def test_cross_provider_endpoint_audit_uses_complete_label_evidence_over_boolean():
+    audit = draft_figures.cross_provider_endpoint_audit([
+        "16 = inner field",
+        "24 = perimeter band",
+    ], {
+        "matches_spec": False,
+        "summary": "Both terminal dots are correctly placed.",
+        "errors": [],
+        "labels": [{
+            "numeral": "16",
+            "correct": True,
+            "evidence": "The terminal dot is well inside the inner field.",
+        }, {
+            "numeral": "24",
+            "correct": True,
+            "evidence": "The terminal dot lies midway inside the perimeter band.",
+        }],
+    })
+
+    assert audit["ok"] is True
+    assert audit["incorrect"] == []
+    assert audit["errors"] == []
+
+
 def test_required_cross_provider_review_fails_closed_without_a_credential(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_REQUIRED", "1")
@@ -2804,6 +2828,140 @@ def test_deterministic_grip_scene_accepts_closed_block_grip_wording():
     image = Image.open(io.BytesIO(png)).convert("L")
     for x, y in ((285, 315), (435, 300), (585, 315)):
         assert image.getpixel((x, y)) == 255
+
+
+def test_deterministic_block_grip_uses_exact_component_anchor_centers():
+    specification = """
+    The covering element 36 is one large plain tile seen in perspective. The machine stands on
+    the left-hand part of the tile, leaving a wide open expanse of tile to the right. The machine
+    is one plain rectangular slab standing on a band that runs round its underside, with two
+    closed housings and a grip on the top face of the slab. The two housings stand on the top
+    face of the slab, one at the left and one at the right. The grip stands on the top face
+    between them and is a closed block of the same kind. The band meets the underside of the
+    slab and follows the same rectangular run.
+    - The vibration device 10 is the whole machine. Identified on its outer boundary.
+    - The base 12 is the slab. Identified well inside its broad front face.
+    - The vibration motor 18 is the left housing. Identified well inside its front face.
+    - The air-extraction mechanism 20 is the right housing. Identified well inside its front face.
+    - The perimeter member 24 is the band. Identified well inside its front strip.
+    - The covering element 36 is the tile. Identified well inside the open expanse to the right.
+    - The handle 44 is the grip. Identified well inside its front face.
+    """
+    numerals = [
+        "10 = vibration device", "12 = base", "18 = vibration motor",
+        "20 = air-extraction mechanism", "24 = perimeter member",
+        "36 = covering element", "44 = handle",
+    ]
+    png = draft_figures._deterministic_grip_scene_png(specification)
+    initial = [{
+        "numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+        "visible": True, "evidence": entry,
+    } for entry in numerals]
+
+    grounded = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {"ok": True, "anchors": initial})
+    grounded = draft_figures._apply_pixel_grounding(png, numerals, grounded)
+
+    positions = {
+        item["numeral"]: (item["x"], item["y"])
+        for item in grounded["anchors"]
+    }
+    assert positions["12"] == (
+        draft_figures._pixel_to_normalized(350, 1400),
+        draft_figures._pixel_to_normalized(414, 900),
+    )
+    assert positions["44"] == (
+        draft_figures._pixel_to_normalized(435, 1400),
+        draft_figures._pixel_to_normalized(305, 900),
+    )
+    assert grounded["pixel_anchor_audit"]["ok"] is True
+    certificate = grounded["deterministic_anchor_certificate"]
+    assert certificate["ok"] is True
+    assert {item["numeral"] for item in certificate["anchors"]} == {
+        "10", "12", "18", "20", "24", "36", "44"}
+
+
+def test_deterministic_block_grip_replaces_stale_durable_endpoint_progress(monkeypatch):
+    specification = """
+    The covering element 36 is one large plain tile seen in perspective. The machine stands on
+    the left-hand part of the tile, leaving a wide open expanse of tile to the right. The machine
+    is one plain rectangular slab standing on a band that runs round its underside, with two
+    closed housings and a grip on the top face of the slab. The two housings stand on the top
+    face of the slab, one at the left and one at the right. The grip stands on the top face
+    between them and is a closed block of the same kind. The band meets the underside of the
+    slab and follows the same rectangular run.
+    - The base 12 is the slab. Identified well inside its broad front face.
+    - The handle 44 is the grip. Identified well inside its front face.
+    """
+    numerals = ["12 = base", "44 = handle"]
+    png = draft_figures._deterministic_grip_scene_png(specification)
+    stale = [
+        {"numeral": "12", "x": 900, "y": 100, "visible": True, "evidence": "stale"},
+        {"numeral": "44", "x": 850, "y": 800, "visible": True, "evidence": "stale"},
+    ]
+    monkeypatch.setattr(draft_figures, "_marked_progress_get", lambda *a, **k: {
+        "anchors": stale, "certificates": {}, "attempts": 0,
+        "coordinate_history": {"12": [(900, 100)], "44": [(850, 800)]},
+    })
+    monkeypatch.setattr(draft_figures, "_marked_progress_put", lambda *a, **k: None)
+    monkeypatch.setattr(draft_figures, "inspect_labels", lambda *a, **k: {
+        "ok": True, "numerals": ["12", "44"], "figure_label": "FIG. 1",
+        "sheet_numbers": [], "other_text": [], "confidence": 0.99,
+    })
+    monkeypatch.setattr(draft_figures, "inspect_leaders", lambda *a, **k: {
+        "ok": True, "inspected": True, "errors": [], "incorrect": [], "missing": [],
+        "labels": [],
+    })
+
+    def inspect_marked(_png, **kwargs):
+        expected = {
+            "12": (
+                draft_figures._pixel_to_normalized(350, 1400),
+                draft_figures._pixel_to_normalized(414, 900),
+            ),
+            "44": (
+                draft_figures._pixel_to_normalized(435, 1400),
+                draft_figures._pixel_to_normalized(305, 900),
+            ),
+        }
+        assert {
+            item["numeral"]: (item["x"], item["y"])
+            for item in kwargs["anchors"]
+        } == expected
+        return {
+            "ok": True, "inspected": True, "errors": [], "incorrect": [],
+            "labels": [{
+                "numeral": numeral, "correct": True, "repairable": True,
+                "evidence": "the exact component center is correct",
+            } for numeral in ("12", "44")],
+        }
+
+    monkeypatch.setattr(draft_figures, "inspect_marked_anchors", inspect_marked)
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_endpoints",
+        lambda *a, **k: accepted_cross_provider_audit(labels=[{
+            "numeral": numeral, "correct": True,
+            "evidence": "the exact component center is correct",
+        } for numeral in ("12", "44")]))
+
+    _sheet, labels, leaders, anchors, pixel = draft_figures._compose_checked_sheet(
+        png, label="FIG. 1", caption=specification, numerals=numerals,
+        semantic={"anchors": stale, "pixel_anchor_audit": {"ok": True}})
+
+    assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
+    assert {
+        item["numeral"]: (item["x"], item["y"])
+        for item in anchors
+    } == {
+        "12": (
+            draft_figures._pixel_to_normalized(350, 1400),
+            draft_figures._pixel_to_normalized(414, 900),
+        ),
+        "44": (
+            draft_figures._pixel_to_normalized(435, 1400),
+            draft_figures._pixel_to_normalized(305, 900),
+        ),
+    }
 
 
 def test_deterministic_grip_scene_accepts_source_clean_single_outline_wording():
