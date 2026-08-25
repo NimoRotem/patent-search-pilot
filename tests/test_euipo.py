@@ -9,6 +9,8 @@ import sys
 
 import pytest
 
+import webapp
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if os.path.join(ROOT, "src") not in sys.path:
     sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -488,18 +490,34 @@ def test_health_reports_the_fan_out_flag():
     assert row["search_available"] is True
 
 
-def test_the_corpus_page_reconciles_its_source_table_with_the_designs_page(app_client):
-    """The source table on /corpus describes the retrieval ENGINE's fan-out, a separate app
-    that has no EUIPO adapter, so it correctly reports EUIPO as not available. This app does
-    have one, on its own page. Without a line reconciling the two, a reader sees 'EUIPO: not
-    available' next to a Designs tab in the nav and cannot tell which is true."""
-    html = app_client.get("/corpus").get_data(as_text=True)
+def test_the_coverage_page_reconciles_its_source_table_with_the_designs_tab(app_client):
+    """The source table on /corpus describes the retrieval ENGINE's fan-out, a separate app that
+    has no EUIPO adapter, so it correctly reports EUIPO as not available. This app does have one.
+    Without a line reconciling the two, a reader sees "EUIPO: not available" next to a working
+    designs search and cannot tell which is true.
+
+    The page is admin-only now, so the client has to be an administrator to read it at all.
+    """
+    import accounts
+    import auth as _auth
+
+    webapp.app.config.update(FORCE_AUTH=True, FORCE_ACCOUNTS=True)
+    admin = {"id": 72, "email": "o@example.test", "full_name": "O", "is_admin": True,
+             "is_active": True, "email_on_completion": True, "session_version": 3}
+    real = accounts.get_user
+    accounts.get_user = lambda uid: dict(admin)
+    try:
+        with app_client.session_transaction() as sess:
+            sess["user_id"] = 72
+            sess["session_version"] = 3
+        html = app_client.get("/corpus").get_data(as_text=True)
+    finally:
+        accounts.get_user = real
+        for k in ("FORCE_AUTH", "FORCE_ACCOUNTS"):
+            webapp.app.config.pop(k, None)
+        _auth.reset_limits()
     assert "are searched separately, on the" in html
-    assert "/designs" in html
-
-
-def test_the_designs_page_is_reachable_from_every_page(app_client):
-    assert 'href="/designs"' in app_client.get("/corpus").get_data(as_text=True)
+    assert "#designs" in html, "the reconciling line points nowhere now that the page is a tab"
 
 
 # --------------------------------------------------------------------------- lookup by number
