@@ -2070,6 +2070,28 @@ def test_pixel_grounding_keeps_an_open_perspective_surface_off_a_crossing_cable(
     assert abs(anchors[0]["y"] - (780 - (anchors[0]["x"] - 100) * 130 / 600)) >= 20
 
 
+def test_pixel_grounding_moves_a_shared_boundary_into_the_requested_lower_surface():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((200, 200, 800, 800), outline="black", width=8)
+    draw.line((200, 500, 800, 500), fill="black", width=8)
+    draw.line((200, 548, 800, 548), fill="black", width=8)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["24 = perimeter member"], [{
+            "numeral": "24", "x": 500, "y": 500, "visible": True,
+            "evidence": (
+                "the front-facing surface of the lower band located beneath the main slab"
+            ),
+        }], preserve_reviewed_line_target=True)
+
+    assert audit["ok"] is True and audit["ungrounded"] == []
+    assert audit["adjusted"][0]["numeral"] == "24"
+    assert 508 < anchors[0]["y"] < 540
+
+
 def test_pixel_grounding_does_not_leave_a_bounded_surface_for_more_clearance():
     image = Image.new("RGB", (1000, 1000), "white")
     draw = ImageDraw.Draw(image)
@@ -2434,6 +2456,25 @@ def test_deterministic_nested_plan_accepts_positive_one_rectangle_inside_another
         "outer rectangle and the inner rectangle is the drawn body. It runs continuously all "
         "the way round. The field enclosed by the inner rectangle is left entirely open paper. "
         "Beyond the outer rectangle the paper is bare on every side."
+    )
+
+    png = draft_figures._deterministic_nested_plan_png(specification)
+
+    assert draft_figures._expected_closed_region_count(specification) == 2
+    assert png is not None
+    audit = draft_figures.closed_region_audit(png, specification)
+    assert audit["ok"] is True and audit["observed"] == 2
+
+
+def test_deterministic_nested_plan_accepts_inset_ring_without_bare_paper_instruction():
+    specification = (
+        "The sheet shows the perimeter member 24 as one rectangular ring, and within it the "
+        "second side 16 as a plain open field; no other body is drawn. The ring is drawn as one "
+        "rectangle with a smaller rectangle inside it, the inner rectangle standing clear of "
+        "each of the four sides of the outer rectangle. The band of paper lying between the "
+        "outer rectangle and the inner rectangle is the drawn body. It runs continuously all "
+        "the way round. The field enclosed by the inner rectangle is left entirely open paper. "
+        "The ring stands well in from every side of the drawing area."
     )
 
     png = draft_figures._deterministic_nested_plan_png(specification)

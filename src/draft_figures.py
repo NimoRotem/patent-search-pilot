@@ -59,9 +59,9 @@ CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION = (
 DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
     "deterministic-geometry-consensus-v1-byte-exact-two-semantic")
 MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((MARKED_ANCHOR_PROMPT_VERSION,))
-PIXEL_ANCHOR_VERSION = "pixel-anchor-v10-bounded-surface-fidelity"
+PIXEL_ANCHOR_VERSION = "pixel-anchor-v11-directional-surface-fidelity"
 MARKED_PROGRESS_VERSION = (
-    "marked-progress-v5-native-pixel-repairs-bound-" + PIXEL_ANCHOR_VERSION)
+    "marked-progress-v6-native-pixel-directional-repairs-bound-" + PIXEL_ANCHOR_VERSION)
 OCR_PROMPT_VERSION = "google-vision-document-text-v2-sheet-number"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
@@ -314,12 +314,19 @@ _BROAD_INTERIOR_TARGET_RE = re.compile(
     r"(?:inside|within|between)\b",
     re.IGNORECASE)
 _HATCHED_TARGET_RE = re.compile(r"\bhatch\w*\b", re.IGNORECASE)
+_LOWER_SURFACE_TARGET_RE = re.compile(
+    r"\b(?:beneath|below|under)\b|\blower\s+(?:band|face|region|surface)\b",
+    re.IGNORECASE)
+_UPPER_SURFACE_TARGET_RE = re.compile(
+    r"\b(?:above|over)\b|\bupper\s+(?:band|face|region|surface)\b",
+    re.IGNORECASE)
 _NEGATED_TARGET_RE = re.compile(
     r"\b(?:not|never|excluding|excluded|exclude|clear\s+of|away\s+from|rather\s+than)\b",
     re.IGNORECASE)
 _MAX_ANCHOR_SNAP = 220
 _REVIEWED_LINE_TARGET_SNAP = 36
 _MIN_BROAD_INTERIOR_CLEARANCE = 24
+_MIN_DIRECTIONAL_SURFACE_CLEARANCE = 18
 _MIN_ANCHOR_SHEET_MARGIN = 30
 
 _SCHEMA = (
@@ -1401,9 +1408,28 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         return int(strong[np.argmin(distance_sq[strong])]) if len(strong) else nearest
 
     def deeper_in_same_white_region(pixel_x: int, pixel_y: int, x: int, y: int, *,
-                                    allow_nearby_component: bool = False):
+                                    allow_nearby_component: bool = False,
+                                    evidence: str = ""):
         """Move a surface target to clear white pixels, preserving its component when possible."""
         nonlocal white_component_labels, white_clearance
+        lower_surface = bool(_LOWER_SURFACE_TARGET_RE.search(evidence))
+        upper_surface = bool(_UPPER_SURFACE_TARGET_RE.search(evidence))
+        directional_surface = bool(lower_surface or upper_surface)
+        directional_repair = bool(allow_nearby_component and directional_surface)
+        directional_clearance = float(_MIN_DIRECTIONAL_SURFACE_CLEARANCE)
+
+        def requested_side(candidate_x, candidate_y):
+            if not allow_nearby_component:
+                return candidate_x, candidate_y
+            if lower_surface:
+                keep = candidate_y > pixel_y
+            elif upper_surface:
+                keep = candidate_y < pixel_y
+            else:
+                return candidate_x, candidate_y
+            return ((candidate_x[keep], candidate_y[keep])
+                    if bool(np.any(keep)) else (candidate_x, candidate_y))
+
         try:
             from scipy import ndimage
         except ModuleNotFoundError:
@@ -1432,13 +1458,21 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                 repair_snap = max_snap
                 same_component = True
             maximum = float(white_clearance[component_mask].max(initial=0.0))
-            if maximum < _MIN_BROAD_INTERIOR_CLEARANCE:
+            minimum_clearance = (
+                directional_clearance if directional_repair else
+                float(_MIN_BROAD_INTERIOR_CLEARANCE))
+            if maximum < minimum_clearance:
                 return None
-            desired = min(float(
-                _MIN_BROAD_INTERIOR_CLEARANCE *
-                (1.5 if allow_nearby_component else 2)), maximum)
+            if directional_repair:
+                desired = directional_clearance
+            elif allow_nearby_component:
+                desired = float(_MIN_BROAD_INTERIOR_CLEARANCE * 1.5)
+            else:
+                desired = float(_MIN_BROAD_INTERIOR_CLEARANCE * 2)
+            desired = min(desired, maximum)
             safe_y, safe_x = np.nonzero(
                 component_mask & (white_clearance >= desired - 1e-6))
+            safe_x, safe_y = requested_side(safe_x, safe_y)
             if not len(safe_x):
                 return None
             safe_norm_x = safe_x * 1000.0 / max(1, width - 1)
@@ -1472,6 +1506,7 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         else:
             return None
         candidate_y, candidate_x = np.nonzero(component_mask)
+        candidate_x, candidate_y = requested_side(candidate_x, candidate_y)
         if not len(candidate_x):
             return None
         candidate_norm_x = candidate_x * 1000.0 / max(1, width - 1)
@@ -1499,9 +1534,12 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         local_ink_y = ink_norm_y[local_ink]
         if not len(local_ink_x):
             return None
-        for required_clearance in (
-                float(_MIN_BROAD_INTERIOR_CLEARANCE * 1.5),
-                float(_MIN_BROAD_INTERIOR_CLEARANCE)):
+        required_clearances = (
+            (directional_clearance,)
+            if directional_repair else
+            (float(_MIN_BROAD_INTERIOR_CLEARANCE * 1.5),
+             float(_MIN_BROAD_INTERIOR_CLEARANCE)))
+        for required_clearance in required_clearances:
             for start in range(0, len(candidate_indexes), 64):
                 indexes = candidate_indexes[start:start + 64]
                 values_x = candidate_norm_x[indexes]
@@ -1562,7 +1600,8 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                     moved = deeper_in_same_white_region(
                         pixel_x, pixel_y, x, y,
                         allow_nearby_component=(
-                            targets_visible_surface and bool(ink[pixel_y, pixel_x])))
+                            targets_visible_surface and bool(ink[pixel_y, pixel_x])),
+                        evidence=evidence)
                     if moved is not None:
                         new_x, new_y = int(moved["x"]), int(moved["y"])
                         item["x"], item["y"] = new_x, new_y
@@ -1637,6 +1676,7 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         "inspected": True,
         "version": PIXEL_ANCHOR_VERSION,
         "minimum_sheet_margin": _MIN_ANCHOR_SHEET_MARGIN,
+        "minimum_directional_surface_clearance": _MIN_DIRECTIONAL_SURFACE_CLEARANCE,
         "adjusted": adjusted,
         "allowed_spaces": allowed_spaces,
         "ungrounded": ungrounded,
@@ -1667,12 +1707,15 @@ def _expected_closed_region_count(caption: str) -> int | None:
     if (re.search(r"\bone rectangle with a second,? smaller rectangle inside it\b", text) and
             two_rectangle_boundary):
         return 2
+    outer_ring_field = bool(
+        re.search(r"\bbeyond the outer rectangle\b[^.]{0,80}\bpaper is bare\b", text) or
+        re.search(r"\bring stands well in from every side of (?:the )?drawing area\b", text))
     positive_rectangular_ring = bool(
         re.search(r"\brectangular ring\b", text) and
         re.search(r"\bno other body is drawn\b", text) and
         re.search(r"\bone rectangle with a smaller rectangle inside it\b", text) and
         re.search(r"\bfield enclosed by the inner rectangle\b[^.]{0,80}\bopen paper\b", text) and
-        re.search(r"\bbeyond the outer rectangle\b[^.]{0,80}\bpaper is bare\b", text))
+        outer_ring_field)
     if positive_rectangular_ring:
         return 2
     number = r"(\d{1,2}|" + "|".join(_SMALL_NUMBERS[1:]) + r")"
@@ -1820,13 +1863,16 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
         re.search(r"\bno (?:diagonal|line)[^.]{0,120}\bline crosses the band\b", text) and
         re.search(r"\bbounded only by (?:the )?outer (?:(?:rectangle|edge) and (?:the )?inner "
                   r"(?:rectangle|edge)|and inner rectangles?)\b", text))
+    outer_ring_field = bool(
+        re.search(r"\bbeyond the outer rectangle\b[^.]{0,80}\bpaper is bare\b", text) or
+        re.search(r"\bring stands well in from every side of (?:the )?drawing area\b", text))
     positive_rectangular_ring = bool(
         re.search(r"\brectangular ring\b", text) and
         re.search(r"\bno other body is drawn\b", text) and
         re.search(r"\bone rectangle with a smaller rectangle inside it\b", text) and
         re.search(r"\binner rectangle standing clear of\b[^.]{0,80}\bfour sides\b", text) and
         re.search(r"\bfield enclosed by the inner rectangle\b[^.]{0,80}\bopen paper\b", text) and
-        re.search(r"\bbeyond the outer rectangle\b[^.]{0,80}\bpaper is bare\b", text))
+        outer_ring_field)
     rectangle_count = {"two": 2, "three": 3}.get(
         count_match.group(1) if count_match else "", 0)
     if not rectangle_count and continuous_ring_rectangles:
