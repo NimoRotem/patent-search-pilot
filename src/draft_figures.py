@@ -1733,12 +1733,26 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
     pulling_scene = _deterministic_pulling_scene_png(caption)
     if block_grip:
         renderer_name = "block_grip_scene"
+        device_target_match = re.search(
+            r"\b(?:the )?vibration device(?:\s+\d+)?\b[^.]*\.\s*"
+            r"identified\s+([^.]*)",
+            text,
+        )
+        device_target = device_target_match.group(1) if device_target_match else ""
+        device_boundary_right = bool(
+            "right-hand" in device_target or "outer right" in device_target)
+        device_boundary_x = 685 if device_boundary_right else 185
+        device_boundary_target = (
+            "on the outer right boundary of the whole machine"
+            if device_boundary_right else
+            "on the outer left boundary of the whole machine"
+        )
         # Raw-pixel points come directly from _deterministic_grip_scene_png. Each white-area
         # coordinate is deliberately clear of every enclosing edge; the assembly coordinate is
-        # on the designated right silhouette because that target is explicitly a line.
+        # on the silhouette designated in the figure brief because that target is a line.
         component_centers = {
             "vibration device": (
-                685, 365, "on the outer right boundary of the whole machine"),
+                device_boundary_x, 365, device_boundary_target),
             "base": (300, 400, "well inside the broad front face of the slab"),
             "vibration motor": (280, 312, "well inside the front face of the left housing"),
             "air-extraction mechanism": (

@@ -2992,7 +2992,8 @@ def test_deterministic_block_grip_uses_exact_component_anchor_centers():
     face of the slab, one at the left and one at the right. The grip stands on the top face
     between them and is a closed block of the same kind. The band meets the underside of the
     slab and follows the same rectangular run.
-    - The vibration device 10 is the whole machine. Identified on its outer boundary.
+    - The vibration device 10 is the whole machine. Identified on the outer boundary at its
+      right-hand end.
     - The base 12 is the slab. Identified well inside its broad front face.
     - The vibration motor 18 is the left housing. Identified well inside its front face.
     - The air-extraction mechanism 20 is the right housing. Identified well inside its front face.
@@ -3040,6 +3041,33 @@ def test_deterministic_block_grip_uses_exact_component_anchor_centers():
     assert certificate["ok"] is True
     assert {item["numeral"] for item in certificate["anchors"]} == {
         "10", "12", "18", "20", "24", "36", "44"}
+
+
+def test_deterministic_block_grip_uses_designated_left_device_boundary():
+    specification = """
+    The covering element 36 is one large plain tile seen in perspective. The machine stands on
+    the left-hand part of the tile, leaving a wide open expanse of tile to the right. The machine
+    is one plain rectangular slab standing on a band that runs round its underside, with two
+    closed housings and a grip on the top face of the slab. The two housings stand on the top
+    face of the slab, one at the left and one at the right. The grip stands on the top face
+    between them and is a closed block of the same kind. The band meets the underside of the
+    slab and follows the same rectangular run.
+    - The vibration device 10 is the whole machine. Identified on the upright outline at its
+      left-hand end, clear of the slab face.
+    """
+    png = draft_figures._deterministic_grip_scene_png(specification)
+    initial = [{"numeral": "10", "x": 500, "y": 500, "visible": True}]
+
+    grounded = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, ["10 = vibration device"],
+        {"ok": True, "anchors": initial})
+
+    position = grounded["anchors"][0]
+    assert (position["x"], position["y"]) == (
+        draft_figures._pixel_to_normalized(185, 1400),
+        draft_figures._pixel_to_normalized(365, 900),
+    )
+    assert position["target_evidence"] == "on the outer left boundary of the whole machine"
 
 
 def test_deterministic_block_grip_accepts_source_clean_three_block_wording():
