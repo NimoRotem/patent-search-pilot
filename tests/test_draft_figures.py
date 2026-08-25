@@ -2916,6 +2916,45 @@ def test_deterministic_nested_plan_accepts_well_inset_ring_wording():
     assert audit["ok"] is True and audit["observed"] == 2
 
 
+def test_deterministic_nested_plan_accepts_two_boundary_body_wording():
+    specification = (
+        "Plan view looking straight up at the underside of the machine. The sheet shows the "
+        "underside as one closed body, made up of the perimeter member 24 running all the way "
+        "round it and the second side 16 lying within. Both are shown schematically with a "
+        "rectangular plan outline. The body is bounded by an outer boundary, and well in from "
+        "it on all four sides by an inner boundary. The surface lying between those two "
+        "boundaries is the perimeter member 24. The surface lying within the inner boundary "
+        "is the second side 16. The area outside the outer boundary is background, and "
+        "nothing is drawn there."
+    )
+
+    png = draft_figures._deterministic_nested_plan_png(specification)
+
+    assert draft_figures._expected_closed_region_count(specification) == 2
+    assert png is not None
+    audit = draft_figures.closed_region_audit(png, specification)
+    assert audit["ok"] is True and audit["observed"] == 2
+
+
+def test_deterministic_nested_plan_accepts_two_outline_ring_wording():
+    specification = (
+        "Plan view looking straight up at the underside of the machine. The sheet shows the "
+        "underside as a rectangular ring in the manner of a picture frame. Two closed "
+        "rectangular outlines appear in the view, one held within the other: the outer edge "
+        "of the ring and the inner edge of the ring. The perimeter member 24 is the ring "
+        "surface lying between the outer edge and the inner edge. The second side 16 is the "
+        "plain face held within the inner edge. Beyond the outer edge lies the surrounding "
+        "background."
+    )
+
+    png = draft_figures._deterministic_nested_plan_png(specification)
+
+    assert draft_figures._expected_closed_region_count(specification) == 2
+    assert png is not None
+    audit = draft_figures.closed_region_audit(png, specification)
+    assert audit["ok"] is True and audit["observed"] == 2
+
+
 def test_deterministic_pulling_scene_accepts_source_clean_single_path_wording():
     specification = """
     The covering element 36 is one large plain tile filling the lower part of the drawing

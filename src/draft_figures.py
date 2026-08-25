@@ -1929,9 +1929,60 @@ def _apply_pixel_grounding(png: bytes, numerals, semantic: dict) -> dict:
     return out
 
 
+def _is_two_boundary_rectangular_plan(text: str) -> bool:
+    """Recognize a two-boundary rectangular body without relying on count wording."""
+    if re.search(r"\b(?:circle|third boundary|additional boundary)\b", text):
+        return False
+    boundary_body = all((
+        re.search(r"\bplan view\b", text),
+        re.search(r"\bone closed body\b", text),
+        re.search(r"\brectangular plan outline\b", text),
+        re.search(
+            r"\bbounded by an outer boundary\b[^.]{0,140}\binner boundary\b",
+            text,
+        ),
+        re.search(
+            r"\bsurface lying between (?:those|the) two boundaries\b"
+            r"[^.]{0,120}\bperimeter member\b",
+            text,
+        ),
+        re.search(
+            r"\bsurface lying within the inner boundary\b"
+            r"[^.]{0,120}\bsecond side\b",
+            text,
+        ),
+        re.search(
+            r"\barea outside the outer boundary\b[^.]{0,120}"
+            r"\b(?:background|nothing is drawn)\b",
+            text,
+        ),
+    ))
+    outline_ring = all((
+        re.search(r"\bplan view\b", text),
+        re.search(r"\brectangular ring\b", text),
+        re.search(r"\btwo closed rectangular outlines\b", text),
+        re.search(r"\bone (?:held|lying|sitting) within the other\b", text),
+        re.search(r"\bouter edge of the ring\b", text),
+        re.search(r"\binner edge of the ring\b", text),
+        re.search(
+            r"\bperimeter member\s+\d+\b[^.]{0,120}"
+            r"\bbetween the outer edge and the inner edge\b",
+            text,
+        ),
+        re.search(
+            r"\bsecond side\s+\d+\b[^.]{0,120}\bwithin the inner edge\b",
+            text,
+        ),
+        re.search(r"\bbeyond the outer edge\b[^.]{0,100}\bbackground\b", text),
+    ))
+    return boundary_body or outline_ring
+
+
 def _expected_closed_region_count(caption: str) -> int | None:
     """Read an explicit exact count only when the brief says the shapes are closed."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    if _is_two_boundary_rectangular_plan(text):
+        return 2
     two_rectangle_boundary = re.search(
         r"\bbounded only by (?:the )?outer (?:(?:rectangle|edge) and (?:the )?inner "
         r"(?:rectangle|edge)|and inner rectangles?)\b", text)
@@ -2088,6 +2139,7 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
         text,
     )
     expected = _expected_closed_region_count(text)
+    two_boundary_body = _is_two_boundary_rectangular_plan(text)
     continuous_ring_rectangles = bool(
         re.search(r"\brectangular ring\b", text) and
         re.search(r"\bone rectangle with a second,? smaller rectangle inside it\b", text) and
@@ -2111,6 +2163,8 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
         rectangle_count = 2
     if not rectangle_count and positive_rectangular_ring:
         rectangle_count = 2
+    if not rectangle_count and two_boundary_body:
+        rectangle_count = 2
     if (not rectangle_count and expected == 2 and
             re.search(r"\bboth\b[^.]{0,60}\brectangular\b", text)):
         rectangle_count = 2
@@ -2126,7 +2180,7 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
         r"\b(?:one\s+(?:circle|circular)|circle\s+at\s+the\s+cent(?:er|re))\b", text))
     nested = bool(
         separately_named_rectangles or continuous_ring_rectangles or
-        positive_rectangular_ring or
+        positive_rectangular_ring or two_boundary_body or
         "nested" in text or "outside inward" in text or "outside to inside" in text or
         "one nested inside the other" in text or
         re.search(
@@ -2142,7 +2196,8 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
         r"(?:no\s+third|those\s+two\s+alone))\b", text))
     rectangles_only = rectangles_only or bool(re.search(
         r"\bexactly two closed lines and no others\b", text))
-    rectangles_only = rectangles_only or continuous_ring_rectangles or positive_rectangular_ring
+    rectangles_only = (rectangles_only or continuous_ring_rectangles or
+                       positive_rectangular_ring or two_boundary_body)
     if (not nested or not rectangle_count or
             expected != rectangle_count + int(has_circle) or
             (not has_circle and not rectangles_only)):
