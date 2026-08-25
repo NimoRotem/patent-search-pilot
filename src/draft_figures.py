@@ -62,8 +62,8 @@ DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
     "deterministic-semantic-consensus-v1-byte-exact-two-semantic-one-independent")
 DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION = (
     "deterministic-anchor-v2-byte-exact-clear-interior-points")
-DETERMINISTIC_SUB_DOT_RESOLUTION_VERSION = (
-    "deterministic-sub-dot-endpoint-resolution-v1")
+DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION = (
+    "deterministic-endpoint-resolution-v2-sub-dot-or-same-enclosed-component")
 DETERMINISTIC_SUB_DOT_TOLERANCE_PIXELS = 6
 MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((MARKED_ANCHOR_PROMPT_VERSION,))
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v12-brief-target-surface-fidelity"
@@ -4711,9 +4711,38 @@ def _certified_marked_anchor_audit(audit: dict, certificates: dict, anchors, num
     return result
 
 
-def _resolve_deterministic_sub_dot_veto(certified: dict, audit: dict, raw_png: bytes,
-                                        anchors) -> dict:
-    """Resolve a provider correction too small to move a deterministic endpoint dot."""
+def _same_enclosed_white_component(raw_png: bytes, first: tuple[int, int],
+                                   second: tuple[int, int]) -> bool:
+    """Return true only when two white pixels share one region closed off from the page."""
+    try:
+        from PIL import Image, ImageDraw, ImageOps
+        with Image.open(io.BytesIO(raw_png)) as source:
+            binary = ImageOps.grayscale(source).point(
+                lambda value: 255 if value >= 225 else 0)
+        width, height = binary.size
+        if any(
+                x < 0 or y < 0 or x >= width or y >= height
+                for x, y in (first, second)):
+            return False
+        if binary.getpixel(first) != 255 or binary.getpixel(second) != 255:
+            return False
+        component = binary.copy()
+        ImageDraw.floodfill(component, first, 128, thresh=0)
+        if component.getpixel(second) != 128:
+            return False
+        return not (
+            any(component.getpixel((x, 0)) == 128 for x in range(width)) or
+            any(component.getpixel((x, height - 1)) == 128 for x in range(width)) or
+            any(component.getpixel((0, y)) == 128 for y in range(height)) or
+            any(component.getpixel((width - 1, y)) == 128 for y in range(height))
+        )
+    except (TypeError, ValueError, OverflowError, OSError):
+        return False
+
+
+def _resolve_deterministic_endpoint_veto(certified: dict, audit: dict, raw_png: bytes,
+                                         anchors) -> dict:
+    """Resolve only non-substantive provider vetoes against exact component certificates."""
     if (certified.get("ok") is not True or certified.get("inspected") is not True or
             certified.get("model_name") != "deterministic-compositor" or
             certified.get("prompt_version") != DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION or
@@ -4782,13 +4811,18 @@ def _resolve_deterministic_sub_dot_veto(certified: dict, audit: dict, raw_png: b
         current_x = _normalized_to_pixel(positions[numeral][0], raw_width)
         current_y = _normalized_to_pixel(positions[numeral][1], raw_height)
         delta_x, delta_y = suggested_x - current_x, suggested_y - current_y
+        basis = "sub_dot"
         if max(abs(delta_x), abs(delta_y)) > DETERMINISTIC_SUB_DOT_TOLERANCE_PIXELS:
-            return audit
+            if not _same_enclosed_white_component(
+                    raw_png, (current_x, current_y), (suggested_x, suggested_y)):
+                return audit
+            basis = "same_enclosed_component"
         resolutions.append({
             "numeral": numeral,
             "current_x": current_x, "current_y": current_y,
             "suggested_x": suggested_x, "suggested_y": suggested_y,
             "delta_x": delta_x, "delta_y": delta_y,
+            "basis": basis,
         })
 
     resolved = dict(audit)
@@ -4801,9 +4835,18 @@ def _resolve_deterministic_sub_dot_veto(certified: dict, audit: dict, raw_png: b
                 "provider_correct": item.get("correct") is True,
                 "correct": True,
                 "repairable": False,
-                "resolution_version": DETERMINISTIC_SUB_DOT_RESOLUTION_VERSION,
+                "resolution_version": DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION,
             })
         resolved_labels.append(item)
+    resolution_bases = {item["basis"] for item in resolutions}
+    resolution_summary = (
+        "The proposed correction was smaller than the rendered endpoint dot and was "
+        "resolved by the complete byte-exact component certificate."
+        if resolution_bases == {"sub_dot"} else
+        "Every larger proposed correction remained inside the same enclosed rendered "
+        "component as its certified endpoint, so the provider geometry veto was resolved "
+        "by the complete byte-exact component certificate."
+    )
     resolved.update({
         "ok": True,
         "incorrect": [],
@@ -4812,15 +4855,14 @@ def _resolve_deterministic_sub_dot_veto(certified: dict, audit: dict, raw_png: b
         "provider_incorrect": sorted(incorrect, key=_numeral_order),
         "provider_errors": list(audit.get("errors") or []),
         "deterministic_resolution": {
-            "version": DETERMINISTIC_SUB_DOT_RESOLUTION_VERSION,
+            "version": DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION,
             "tolerance_pixels": DETERMINISTIC_SUB_DOT_TOLERANCE_PIXELS,
             "provider_incorrect": sorted(incorrect, key=_numeral_order),
             "coordinates": resolutions,
         },
         "summary": (
             str(audit.get("summary") or "").strip() + " " +
-            "The proposed correction was smaller than the rendered endpoint dot and was "
-            "resolved by the complete byte-exact component certificate."
+            resolution_summary
         ).strip()[:2000],
     })
     return resolved
@@ -4833,7 +4875,7 @@ def _apply_cross_provider_endpoint_gate(certified: dict, png: bytes, *, raw_png:
     audit = inspect_cross_provider_endpoints(
         png, raw_png=raw_png, anchors=anchors,
         label=label, caption=caption, numerals=numerals)
-    audit = _resolve_deterministic_sub_dot_veto(certified, audit, raw_png, anchors)
+    audit = _resolve_deterministic_endpoint_veto(certified, audit, raw_png, anchors)
     result["cross_provider_audit"] = audit
     if audit.get("ok"):
         return result

@@ -908,6 +908,56 @@ def test_byte_exact_certificate_keeps_a_material_endpoint_correction_as_a_veto(m
     assert result["cross_provider_audit"]["incorrect"] == ["44"]
 
 
+def test_byte_exact_certificate_resolves_same_enclosed_component_provider_misread(monkeypatch):
+    specification = """
+    The covering element 36 is one large plain tile seen in perspective. The machine stands on
+    its right-hand part, leaving a wide open expanse of tile to the left. The machine is one
+    plain rectangular body standing on a band that runs round its underside. The body and the
+    band are the whole of the machine drawn on this sheet. The flexible pulling element 46 is
+    drawn as one slack curved path, a single continuous curved line. It runs away to the left,
+    sagging gently over the open expanse of tile.
+    """
+    raw = draft_figures._deterministic_pulling_scene_png(specification)
+    assert raw is not None
+    anchors = [{"numeral": "24", "x": 608, "y": 521, "visible": True}]
+    monkeypatch.setattr(draft_figures, "inspect_cross_provider_endpoints", lambda *a, **k: {
+        "ok": False, "inspected": True, "incorrect": ["24"],
+        "reported_matches_spec": False,
+        "expected": ["24"], "observed": ["24"],
+        "missing": [], "unexpected": [], "duplicates": [],
+        "errors": ["Numeral 24: the endpoint is below the front strip."],
+        "labels": [{
+            "numeral": "24", "correct": False, "repairable": True,
+            "evidence": "Current (851, 468); suggested interior (851, 447).",
+            "suggested_x": 851, "suggested_y": 447,
+        }],
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1400, "coordinate_height": 900,
+        "model_name": draft_figures.cross_provider_model(),
+        "prompt_version": draft_figures.CROSS_PROVIDER_PROMPT_VERSION,
+        "review_count": draft_figures.CROSS_PROVIDER_REVIEW_COUNT,
+    })
+    certified = {
+        "ok": True, "inspected": True,
+        "model_name": "deterministic-compositor",
+        "prompt_version": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        "certificate_version": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        "review_count": 0,
+        "coordinate_certificates": [{
+            "numeral": "24", "x": 608, "y": 521,
+            "certificate_source": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        }],
+    }
+
+    result = draft_figures._apply_cross_provider_endpoint_gate(
+        certified, raw, raw_png=raw, anchors=anchors,
+        label="FIG. 5", caption=specification, numerals=["24 = perimeter member"])
+
+    assert result["ok"] is True
+    resolution = result["cross_provider_audit"]["deterministic_resolution"]
+    assert resolution["coordinates"][0]["basis"] == "same_enclosed_component"
+
+
 def test_cross_provider_veto_coordinates_are_repaired_and_recertified(monkeypatch):
     raw = blank_png(1000, 1000)
     anchors = [{"numeral": "10", "x": 400, "y": 565, "visible": True,
