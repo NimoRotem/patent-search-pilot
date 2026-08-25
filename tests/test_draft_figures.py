@@ -2890,7 +2890,7 @@ def test_deterministic_block_grip_accepts_source_clean_three_block_wording():
     The covering element 36 is one large plain tile in perspective. The machine stands on its
     left-hand part, leaving a wide open expanse of tile to the right. The machine is one plain
     rectangular slab, the base 12, standing on a band that runs round its underside. Three
-    closed blocks stand side by side on the top face of the slab, clear of one another: the
+    closed blocks stand side by side on its top face, clear of one another: the
     left-hand block is the vibration motor 18, the middle block is the handle 44, and the
     right-hand block is the air-extraction mechanism 20. The perimeter member 24 is the band
     beneath the slab.

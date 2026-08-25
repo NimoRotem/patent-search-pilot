@@ -1712,7 +1712,7 @@ def _has_deterministic_block_grip(text: str) -> bool:
     return bool(
         (re.search(r"\bgrip stands on the top face\b[^.]{0,80}\bbetween them\b", text) and
          re.search(r"\bclosed block of the same kind\b", text)) or
-        (re.search(r"\bthree (?:plain )?closed blocks stand side by side on the top face\b",
+        (re.search(r"\bthree (?:plain )?closed blocks stand side by side on (?:the|its) top face\b",
                    text) and
          re.search(r"\bleft-hand block is the vibration motor\b", text) and
          re.search(r"\bmiddle block is the (?:grip|handle(?:\s+\d+)?)\b", text) and
