@@ -61,7 +61,7 @@ DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
 DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
     "deterministic-semantic-consensus-v1-byte-exact-two-semantic-one-independent")
 DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION = (
-    "deterministic-anchor-v1-byte-exact-component-centers")
+    "deterministic-anchor-v2-byte-exact-clear-interior-points")
 MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((MARKED_ANCHOR_PROMPT_VERSION,))
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v12-brief-target-surface-fidelity"
 MARKED_PROGRESS_VERSION = (
@@ -1730,18 +1730,18 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
     pulling_scene = _deterministic_pulling_scene_png(caption)
     if block_grip:
         renderer_name = "block_grip_scene"
-        # Raw-pixel centers come directly from _deterministic_grip_scene_png. Each white-area
+        # Raw-pixel points come directly from _deterministic_grip_scene_png. Each white-area
         # coordinate is deliberately clear of every enclosing edge; the assembly coordinate is
         # on its left silhouette because that target is explicitly a line.
         component_centers = {
             "vibration device": (185, 365, "on the outer boundary of the whole machine"),
-            "base": (350, 414, "well inside the broad front face of the slab"),
+            "base": (300, 400, "well inside the broad front face of the slab"),
             "vibration motor": (280, 312, "well inside the front face of the left housing"),
             "air-extraction mechanism": (
                 585, 312, "well inside the front face of the right housing"),
             "perimeter member": (350, 480, "well inside the front strip of the lower band"),
             "covering element": (900, 600, "well inside the open tile surface to the right"),
-            "handle": (435, 305, "well inside the front face of the closed block grip"),
+            "handle": (440, 320, "well inside the front face of the closed block grip"),
         }
     elif pulling_scene is not None and png == pulling_scene:
         renderer_name = "pulling_scene"

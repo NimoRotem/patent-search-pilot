@@ -2867,12 +2867,16 @@ def test_deterministic_block_grip_uses_exact_component_anchor_centers():
         for item in grounded["anchors"]
     }
     assert positions["12"] == (
-        draft_figures._pixel_to_normalized(350, 1400),
-        draft_figures._pixel_to_normalized(414, 900),
+        draft_figures._pixel_to_normalized(300, 1400),
+        draft_figures._pixel_to_normalized(400, 900),
     )
     assert positions["44"] == (
-        draft_figures._pixel_to_normalized(435, 1400),
-        draft_figures._pixel_to_normalized(305, 900),
+        draft_figures._pixel_to_normalized(440, 1400),
+        draft_figures._pixel_to_normalized(314, 900),
+    )
+    assert any(
+        item["numeral"] == "44" and item["to_y"] == positions["44"][1]
+        for item in grounded["pixel_anchor_audit"]["adjusted"]
     )
     assert grounded["pixel_anchor_audit"]["ok"] is True
     certificate = grounded["deterministic_anchor_certificate"]
@@ -3020,12 +3024,12 @@ def test_deterministic_block_grip_replaces_stale_durable_endpoint_progress(monke
         for item in anchors
     } == {
         "12": (
-            draft_figures._pixel_to_normalized(350, 1400),
-            draft_figures._pixel_to_normalized(414, 900),
+            draft_figures._pixel_to_normalized(300, 1400),
+            draft_figures._pixel_to_normalized(400, 900),
         ),
         "44": (
-            draft_figures._pixel_to_normalized(435, 1400),
-            draft_figures._pixel_to_normalized(305, 900),
+            draft_figures._pixel_to_normalized(440, 1400),
+            draft_figures._pixel_to_normalized(314, 900),
         ),
     }
 
