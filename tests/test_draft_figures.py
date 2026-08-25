@@ -3869,6 +3869,25 @@ def test_deterministic_chamber_section_honors_flush_perimeter_legs():
     assert sum(image.getpixel((1200, y)) < 32 for y in range(370, 611)) > 230
 
 
+def test_deterministic_chamber_section_honors_compact_flush_wording():
+    specification = """
+    The sheet shows four bodies, all shown schematically, and one broken line: one horizontal
+    hatched slab; one closed loop cut twice, appearing as two short hatched legs hanging from the
+    underside of the slab, one at each end of the slab, the outer side of each leg flush with that
+    end so that the loop runs at the perimeter of the underside; one hatched band across the bottom
+    on which both legs stand; and one closed housing standing on the upper face of the slab. One
+    broken line runs from inside the housing to the chamber, indicating fluid communication, and no
+    passage, duct, opening or other structure is depicted.
+    """
+
+    png = draft_figures._deterministic_chamber_section_png(specification)
+
+    assert png is not None
+    image = Image.open(io.BytesIO(png)).convert("L")
+    assert sum(image.getpixel((200, y)) < 32 for y in range(370, 611)) > 230
+    assert sum(image.getpixel((1200, y)) < 32 for y in range(370, 611)) > 230
+
+
 def test_deterministic_chamber_section_accepts_positive_single_line_wording():
     specification = """
     The sheet shows four bodies, all shown schematically, one broken line, and nothing else:

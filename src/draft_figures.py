@@ -2572,7 +2572,8 @@ def _chamber_section_has_flush_legs(text: str) -> bool:
     return bool(re.search(
         r"\bouter (?:side|face|edge) of each leg\b[^.]{0,160}"
         r"\b(?:flush with|aligned with)\b[^.]{0,100}"
-        r"\bcorresponding (?:end|edge) of (?:the )?(?:slab|base)\b",
+        r"(?:\bcorresponding (?:end|edge) of (?:the )?(?:slab|base)\b|"
+        r"\b(?:that|the respective) (?:end|edge)\b)",
         text,
     ))
 
