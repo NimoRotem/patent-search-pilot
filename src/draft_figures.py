@@ -62,6 +62,9 @@ DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
     "deterministic-semantic-consensus-v1-byte-exact-two-semantic-one-independent")
 DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION = (
     "deterministic-anchor-v2-byte-exact-clear-interior-points")
+DETERMINISTIC_SUB_DOT_RESOLUTION_VERSION = (
+    "deterministic-sub-dot-endpoint-resolution-v1")
+DETERMINISTIC_SUB_DOT_TOLERANCE_PIXELS = 6
 MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((MARKED_ANCHOR_PROMPT_VERSION,))
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v12-brief-target-surface-fidelity"
 MARKED_PROGRESS_VERSION = (
@@ -4693,6 +4696,121 @@ def _certified_marked_anchor_audit(audit: dict, certificates: dict, anchors, num
     return result
 
 
+def _resolve_deterministic_sub_dot_veto(certified: dict, audit: dict, raw_png: bytes,
+                                        anchors) -> dict:
+    """Resolve a provider correction too small to move a deterministic endpoint dot."""
+    if (certified.get("ok") is not True or certified.get("inspected") is not True or
+            certified.get("model_name") != "deterministic-compositor" or
+            certified.get("prompt_version") != DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION or
+            certified.get("certificate_version") != DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION or
+            int(certified.get("review_count") or 0) != 0 or
+            audit.get("ok") or not audit.get("inspected") or
+            audit.get("reported_matches_spec") is not False or
+            audit.get("model_name") != cross_provider_model() or
+            audit.get("prompt_version") != CROSS_PROVIDER_PROMPT_VERSION or
+            int(audit.get("review_count") or 0) != CROSS_PROVIDER_REVIEW_COUNT or
+            audit.get("coordinate_space") != "raw_pixels" or
+            audit.get("missing") or audit.get("unexpected") or audit.get("duplicates")):
+        return audit
+    incorrect = {_clean_numeral(value) for value in audit.get("incorrect") or []}
+    expected = {_clean_numeral(value) for value in audit.get("expected") or []}
+    observed = [_clean_numeral(value) for value in audit.get("observed") or []]
+    if (not incorrect or not expected or set(observed) != expected or
+            len(observed) != len(expected)):
+        return audit
+    try:
+        from PIL import Image
+        with Image.open(io.BytesIO(raw_png)) as source:
+            raw_width, raw_height = source.size
+        if (int(audit.get("coordinate_width")) != raw_width or
+                int(audit.get("coordinate_height")) != raw_height):
+            return audit
+    except (TypeError, ValueError, OverflowError, OSError):
+        return audit
+    positions = _anchor_positions(anchors)
+    records = {
+        _clean_numeral(item.get("numeral")): item
+        for item in audit.get("labels") or [] if isinstance(item, dict)
+    }
+    certificates = {
+        _clean_numeral(item.get("numeral")): item
+        for item in certified.get("coordinate_certificates") or []
+        if isinstance(item, dict)
+    }
+    if (set(records) != expected or set(positions) != expected or set(certificates) != expected):
+        return audit
+    for numeral in expected:
+        certificate = certificates[numeral]
+        if (certificate.get("certificate_source") !=
+                DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION or
+                int(certificate.get("x", -1)) != positions[numeral][0] or
+                int(certificate.get("y", -1)) != positions[numeral][1]):
+            return audit
+    provider_errors = [str(value) for value in audit.get("errors") or [] if str(value).strip()]
+    if (not provider_errors or any(
+            not any(re.search(
+                rf"(?i)(?:^|(?:reference(?: numeral)?|numeral)\s+){re.escape(numeral)}\b",
+                error.strip()) for error in provider_errors)
+            for numeral in incorrect)):
+        return audit
+    resolutions = []
+    for numeral in sorted(incorrect, key=_numeral_order):
+        record = records.get(numeral) or {}
+        if (record.get("correct") is not False or record.get("repairable") is not True or
+                not str(record.get("evidence") or "").strip() or numeral not in positions):
+            return audit
+        try:
+            suggested_x = int(record.get("suggested_x"))
+            suggested_y = int(record.get("suggested_y"))
+        except (TypeError, ValueError, OverflowError):
+            return audit
+        current_x = _normalized_to_pixel(positions[numeral][0], raw_width)
+        current_y = _normalized_to_pixel(positions[numeral][1], raw_height)
+        delta_x, delta_y = suggested_x - current_x, suggested_y - current_y
+        if max(abs(delta_x), abs(delta_y)) > DETERMINISTIC_SUB_DOT_TOLERANCE_PIXELS:
+            return audit
+        resolutions.append({
+            "numeral": numeral,
+            "current_x": current_x, "current_y": current_y,
+            "suggested_x": suggested_x, "suggested_y": suggested_y,
+            "delta_x": delta_x, "delta_y": delta_y,
+        })
+
+    resolved = dict(audit)
+    resolved_labels = []
+    for value in audit.get("labels") or []:
+        item = dict(value)
+        numeral = _clean_numeral(item.get("numeral"))
+        if numeral in incorrect:
+            item.update({
+                "provider_correct": item.get("correct") is True,
+                "correct": True,
+                "repairable": False,
+                "resolution_version": DETERMINISTIC_SUB_DOT_RESOLUTION_VERSION,
+            })
+        resolved_labels.append(item)
+    resolved.update({
+        "ok": True,
+        "incorrect": [],
+        "errors": [],
+        "labels": resolved_labels,
+        "provider_incorrect": sorted(incorrect, key=_numeral_order),
+        "provider_errors": list(audit.get("errors") or []),
+        "deterministic_resolution": {
+            "version": DETERMINISTIC_SUB_DOT_RESOLUTION_VERSION,
+            "tolerance_pixels": DETERMINISTIC_SUB_DOT_TOLERANCE_PIXELS,
+            "provider_incorrect": sorted(incorrect, key=_numeral_order),
+            "coordinates": resolutions,
+        },
+        "summary": (
+            str(audit.get("summary") or "").strip() + " " +
+            "The proposed correction was smaller than the rendered endpoint dot and was "
+            "resolved by the complete byte-exact component certificate."
+        ).strip()[:2000],
+    })
+    return resolved
+
+
 def _apply_cross_provider_endpoint_gate(certified: dict, png: bytes, *, raw_png: bytes,
                                         anchors, label: str, caption: str, numerals) -> dict:
     """Keep same-provider coordinate consensus provisional until an external model agrees."""
@@ -4700,6 +4818,7 @@ def _apply_cross_provider_endpoint_gate(certified: dict, png: bytes, *, raw_png:
     audit = inspect_cross_provider_endpoints(
         png, raw_png=raw_png, anchors=anchors,
         label=label, caption=caption, numerals=numerals)
+    audit = _resolve_deterministic_sub_dot_veto(certified, audit, raw_png, anchors)
     result["cross_provider_audit"] = audit
     if audit.get("ok"):
         return result

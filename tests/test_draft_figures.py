@@ -823,6 +823,91 @@ def test_cross_provider_veto_rejects_unanimous_same_provider_certificate(monkeyp
     assert (final_anchors[0]["x"], final_anchors[0]["y"]) == (400, 565)
 
 
+def test_byte_exact_certificate_resolves_only_a_sub_dot_endpoint_correction(monkeypatch):
+    raw = blank_png(1400, 900)
+    anchors = [{"numeral": "44", "x": 315, "y": 350, "visible": True}]
+    monkeypatch.setattr(draft_figures, "inspect_cross_provider_endpoints", lambda *a, **k: {
+        "ok": False, "inspected": True, "incorrect": ["44"],
+        "reported_matches_spec": False,
+        "expected": ["44"], "observed": ["44"],
+        "missing": [], "unexpected": [], "duplicates": [],
+        "errors": ["44: the endpoint is on an edge."],
+        "labels": [{
+            "numeral": "44", "correct": False, "repairable": True,
+            "evidence": "Current (441, 315); suggested interior (441, 311).",
+            "suggested_x": 441, "suggested_y": 311,
+        }],
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1400, "coordinate_height": 900,
+        "model_name": draft_figures.cross_provider_model(),
+        "prompt_version": draft_figures.CROSS_PROVIDER_PROMPT_VERSION,
+        "review_count": draft_figures.CROSS_PROVIDER_REVIEW_COUNT,
+    })
+    certified = {
+        "ok": True, "inspected": True,
+        "model_name": "deterministic-compositor",
+        "prompt_version": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        "certificate_version": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        "review_count": 0,
+        "coordinate_certificates": [{
+            "numeral": "44", "x": 315, "y": 350,
+            "certificate_source": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        }],
+    }
+
+    result = draft_figures._apply_cross_provider_endpoint_gate(
+        certified, raw, raw_png=raw, anchors=anchors,
+        label="FIG. 1", caption="handle face", numerals=["44 = handle"])
+
+    assert result["ok"] is True
+    audit = result["cross_provider_audit"]
+    assert audit["ok"] is True
+    assert audit["incorrect"] == [] and audit["errors"] == []
+    assert audit["deterministic_resolution"]["provider_incorrect"] == ["44"]
+    assert audit["labels"][0]["correct"] is True
+    assert audit["labels"][0]["provider_correct"] is False
+
+
+def test_byte_exact_certificate_keeps_a_material_endpoint_correction_as_a_veto(monkeypatch):
+    raw = blank_png(1400, 900)
+    anchors = [{"numeral": "44", "x": 315, "y": 350, "visible": True}]
+    monkeypatch.setattr(draft_figures, "inspect_cross_provider_endpoints", lambda *a, **k: {
+        "ok": False, "inspected": True, "incorrect": ["44"],
+        "reported_matches_spec": False,
+        "expected": ["44"], "observed": ["44"],
+        "missing": [], "unexpected": [], "duplicates": [],
+        "errors": ["44: the endpoint is on the wrong feature."],
+        "labels": [{
+            "numeral": "44", "correct": False, "repairable": True,
+            "evidence": "A different feature is at (465, 311).",
+            "suggested_x": 465, "suggested_y": 311,
+        }],
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1400, "coordinate_height": 900,
+        "model_name": draft_figures.cross_provider_model(),
+        "prompt_version": draft_figures.CROSS_PROVIDER_PROMPT_VERSION,
+        "review_count": draft_figures.CROSS_PROVIDER_REVIEW_COUNT,
+    })
+    certified = {
+        "ok": True, "inspected": True,
+        "model_name": "deterministic-compositor",
+        "prompt_version": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        "certificate_version": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        "review_count": 0,
+        "coordinate_certificates": [{
+            "numeral": "44", "x": 315, "y": 350,
+            "certificate_source": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        }],
+    }
+
+    result = draft_figures._apply_cross_provider_endpoint_gate(
+        certified, raw, raw_png=raw, anchors=anchors,
+        label="FIG. 1", caption="handle face", numerals=["44 = handle"])
+
+    assert result["ok"] is False
+    assert result["cross_provider_audit"]["incorrect"] == ["44"]
+
+
 def test_cross_provider_veto_coordinates_are_repaired_and_recertified(monkeypatch):
     raw = blank_png(1000, 1000)
     anchors = [{"numeral": "10", "x": 400, "y": 565, "visible": True,
