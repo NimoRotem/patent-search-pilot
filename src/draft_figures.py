@@ -61,7 +61,7 @@ DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
 DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
     "deterministic-semantic-consensus-v1-byte-exact-two-semantic-one-independent")
 DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION = (
-    "deterministic-anchor-v6-byte-exact-clear-interior-and-designated-boundary-points")
+    "deterministic-anchor-v7-byte-exact-clear-interior-and-boundary-centerlines")
 DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION = (
     "deterministic-endpoint-resolution-v3-sub-dot-component-or-certified-interior")
 DETERMINISTIC_SUB_DOT_TOLERANCE_PIXELS = 6
@@ -1856,7 +1856,7 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
             "well inside the hatching of the right-hand leg")
         component_centers = {
             "base": (700, 290, "well inside the hatching of the horizontal slab"),
-            "first side": (470, 220, "on the upper edge line clear of the housing"),
+            "first side": (470, 222, "on the upper edge line clear of the housing"),
             "air-extraction mechanism": (
                 805, 150, "well inside the unhatched housing"),
             "chamber": (

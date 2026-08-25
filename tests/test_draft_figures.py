@@ -3279,7 +3279,7 @@ def test_deterministic_chamber_section_uses_exact_component_anchors():
     }
     assert positions["14"] == (
         draft_figures._pixel_to_normalized(470, 1400),
-        draft_figures._pixel_to_normalized(220, 900),
+        draft_figures._pixel_to_normalized(222, 900),
     )
     assert positions["22"] == (
         draft_figures._pixel_to_normalized(500, 1400),
