@@ -2217,6 +2217,32 @@ def test_pixel_grounding_moves_a_shared_boundary_into_the_requested_lower_surfac
     assert 508 < anchors[0]["y"] < 540
 
 
+def test_pixel_grounding_uses_the_brief_target_over_stale_semantic_line_evidence():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((200, 500, 800, 550), outline="black", width=4)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+    caption = (
+        "- The perimeter member 24 is the band under the rectangular body. "
+        "Identified well inside the front surface of the band."
+    )
+    anchors = draft_figures._bind_anchor_target_evidence(
+        [{
+            "numeral": "24", "x": 500, "y": 546, "visible": True,
+            "evidence": "the horizontal line defining the top of the front face",
+        }], label="FIG. 5", caption=caption, numerals=["24 = perimeter member"])
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["24 = perimeter member"], anchors,
+        preserve_reviewed_line_target=True)
+
+    assert audit["ok"] is True and audit["ungrounded"] == []
+    assert anchors[0]["evidence"] == (
+        "Identified well inside the front surface of the band.")
+    assert 512 < anchors[0]["y"] < 538
+
+
 def test_pixel_grounding_does_not_leave_a_bounded_surface_for_more_clearance():
     image = Image.new("RGB", (1000, 1000), "white")
     draw = ImageDraw.Draw(image)
