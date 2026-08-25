@@ -61,7 +61,7 @@ DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
 DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
     "deterministic-semantic-consensus-v1-byte-exact-two-semantic-one-independent")
 DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION = (
-    "deterministic-anchor-v2-byte-exact-clear-interior-points")
+    "deterministic-anchor-v3-byte-exact-clear-interior-and-designated-boundary-points")
 DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION = (
     "deterministic-endpoint-resolution-v2-sub-dot-or-same-enclosed-component")
 DETERMINISTIC_SUB_DOT_TOLERANCE_PIXELS = 6
@@ -1735,9 +1735,10 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
         renderer_name = "block_grip_scene"
         # Raw-pixel points come directly from _deterministic_grip_scene_png. Each white-area
         # coordinate is deliberately clear of every enclosing edge; the assembly coordinate is
-        # on its left silhouette because that target is explicitly a line.
+        # on the designated right silhouette because that target is explicitly a line.
         component_centers = {
-            "vibration device": (185, 365, "on the outer boundary of the whole machine"),
+            "vibration device": (
+                685, 365, "on the outer right boundary of the whole machine"),
             "base": (300, 400, "well inside the broad front face of the slab"),
             "vibration motor": (280, 312, "well inside the front face of the left housing"),
             "air-extraction mechanism": (
