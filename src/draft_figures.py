@@ -58,6 +58,8 @@ CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION = (
     "figure-geometry-crosscheck-v3-centerline-occlusion-conventions")
 DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
     "deterministic-geometry-consensus-v1-byte-exact-two-semantic")
+DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
+    "deterministic-semantic-consensus-v1-byte-exact-two-semantic-one-independent")
 MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((MARKED_ANCHOR_PROMPT_VERSION,))
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v11-directional-surface-fidelity"
 MARKED_PROGRESS_VERSION = (
@@ -2293,8 +2295,8 @@ def _apply_topology_audit(png: bytes, caption: str, semantic: dict) -> dict:
     return out
 
 
-def _current_semantic_model_audit(value) -> bool:
-    """Validate the independent model traces before deterministic pixel grounding."""
+def _complete_semantic_model_audit(value) -> bool:
+    """Recognize two current model traces even when their semantic verdict is negative."""
     if isinstance(value, str):
         try:
             value = json.loads(value)
@@ -2307,10 +2309,75 @@ def _current_semantic_model_audit(value) -> bool:
     except (TypeError, ValueError):
         return False
     return bool(
-        value.get("ok") and value.get("inspected") and
+        value.get("inspected") and
         value.get("model_name") == vision_model() and
         value.get("prompt_version") in SEMANTIC_COMPATIBLE_PROMPT_VERSIONS and
         review_count == SEMANTIC_REVIEW_COUNT)
+
+
+def _current_semantic_model_audit(value) -> bool:
+    """Validate the independent model traces before deterministic pixel grounding."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return False
+    return bool(isinstance(value, dict) and value.get("ok") and
+                _complete_semantic_model_audit(value))
+
+
+def _current_deterministic_semantic_resolution(value) -> bool:
+    """Validate the exact-renderer and independent-provider resolution of model dissent."""
+    if not isinstance(value, dict):
+        return False
+    resolution = value.get("semantic_consensus_resolution")
+    cross = value.get("cross_provider_geometry_audit")
+    if not isinstance(resolution, dict) or not isinstance(cross, dict):
+        return False
+    try:
+        review_count = int(resolution.get("semantic_review_count") or 0)
+        cross_review_count = int(resolution.get("cross_provider_review_count") or 0)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    png_hash = str(resolution.get("png_sha256") or "")
+    expected = {_clean_numeral(item) for item in value.get("expected") or []}
+    visible = {_clean_numeral(item) for item in value.get("visible") or []}
+    anchor_numerals = []
+    anchors_valid = True
+    for item in value.get("anchors") or []:
+        if not isinstance(item, dict):
+            anchors_valid = False
+            continue
+        numeral = _clean_numeral(item.get("numeral"))
+        try:
+            x, y = int(item.get("x")), int(item.get("y"))
+        except (TypeError, ValueError, OverflowError):
+            anchors_valid = False
+            continue
+        if (not numeral or item.get("visible") is not True or
+                not str(item.get("evidence") or "").strip() or
+                not (0 <= x <= 1000 and 0 <= y <= 1000)):
+            anchors_valid = False
+        anchor_numerals.append(numeral)
+    return bool(
+        resolution.get("version") == DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION and
+        resolution.get("exact_renderer_match") is True and
+        re.fullmatch(r"[0-9a-f]{64}", png_hash) and
+        png_hash == resolution.get("renderer_png_sha256") and
+        review_count == SEMANTIC_REVIEW_COUNT and
+        resolution.get("semantic_model") == vision_model() and
+        resolution.get("semantic_prompt_version") in SEMANTIC_COMPATIBLE_PROMPT_VERSIONS and
+        resolution.get("cross_provider_model") == cross_provider_model() and
+        resolution.get("cross_provider_prompt_version") ==
+        CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION and
+        cross_review_count == CROSS_PROVIDER_GEOMETRY_REVIEW_COUNT and
+        resolution.get("specification_hash") == value.get("specification_hash") and
+        value.get("reviewer_ok") is False and not value.get("missing") and
+        not value.get("unexpected") and not value.get("duplicates") and
+        not value.get("unexpected_text") and expected and expected == visible and anchors_valid and
+        len(anchor_numerals) == len(expected) and set(anchor_numerals) == expected and
+        current_cross_provider_geometry_audit(
+            cross, specification_hash=str(value.get("specification_hash") or "")))
 
 
 def _current_cross_provider_geometry_result(value, *, specification_hash: str = "") -> bool:
@@ -2387,6 +2454,9 @@ def current_semantic_audit(value) -> bool:
         except json.JSONDecodeError:
             return False
     if not isinstance(value, dict) or not _current_semantic_model_audit(value):
+        return False
+    if (value.get("semantic_consensus_resolution") is not None and
+            not _current_deterministic_semantic_resolution(value)):
         return False
     pixel = value.get("pixel_anchor_audit") or {}
     topology = value.get("topology_audit") or {}
@@ -2841,6 +2911,20 @@ def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict
                 success=True)
             return _apply_cross_provider_geometry_gate(
                 cached, png, label=label, caption=caption, numerals=numerals)
+        if _complete_semantic_model_audit(cached):
+            resolved = _resolve_deterministic_semantic_dissent(
+                cached, png, label=label, caption=caption, numerals=numerals)
+            if resolved.get("ok"):
+                _analysis_cache_put(
+                    key, stage="semantic", provider="vertex", model=model,
+                    prompt_version=SEMANTIC_PROMPT_VERSION, result=resolved)
+                _audit_log(
+                    request_id=str(uuid.uuid4()), provider="internal",
+                    model="deterministic-compositor", stage="semantic_resolution",
+                    prompt_version=DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION,
+                    latency_ms=0, cache_hit=True, success=True,
+                    fallback_reason="independent_deterministic_consensus")
+                return resolved
     base_instruction = (
         "Inspect this unlabeled utility-patent line drawing against the JSON specification below. "
         "Check the requested view, every visible component, and every stated spatial or functional "
@@ -2935,6 +3019,13 @@ def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict
     if result.get("ok"):
         result = _apply_cross_provider_geometry_gate(
             result, png, label=label, caption=caption, numerals=numerals)
+    else:
+        result = _resolve_deterministic_semantic_dissent(
+            result, png, label=label, caption=caption, numerals=numerals)
+        if result.get("ok"):
+            _analysis_cache_put(
+                key, stage="semantic", provider="vertex", model=model,
+                prompt_version=SEMANTIC_PROMPT_VERSION, result=result)
     return result
 
 
@@ -3370,6 +3461,74 @@ def _apply_cross_provider_geometry_gate(semantic: dict, png: bytes, *, label: st
         if item and item not in errors:
             errors.append(item)
     out["errors"] = errors
+    return out
+
+
+def _resolve_deterministic_semantic_dissent(semantic: dict, png: bytes, *, label: str,
+                                            caption: str, numerals) -> dict:
+    """Resolve a same-provider visual false negative only with exact and independent proof."""
+    out = dict(semantic or {})
+    expected = {entry["numeral"] for entry in numeral_entries(numerals)}
+    visible = {_clean_numeral(item) for item in out.get("visible") or []}
+    anchor_numerals = []
+    anchors_complete = True
+    for item in out.get("anchors") or []:
+        if not isinstance(item, dict):
+            anchors_complete = False
+            continue
+        numeral = _clean_numeral(item.get("numeral"))
+        try:
+            x, y = int(item.get("x")), int(item.get("y"))
+        except (TypeError, ValueError, OverflowError):
+            anchors_complete = False
+            continue
+        if (not numeral or item.get("visible") is not True or
+                not str(item.get("evidence") or "").strip() or
+                not (0 <= x <= 1000 and 0 <= y <= 1000)):
+            anchors_complete = False
+        anchor_numerals.append(numeral)
+    spec_hash = specification_hash(label, caption, numerals)
+    certificate = _deterministic_geometry_certificate(png, caption)
+    eligible = bool(
+        expected and certificate.get("ok") and _complete_semantic_model_audit(out) and
+        out.get("specification_hash") == spec_hash and not out.get("missing") and
+        not out.get("unexpected") and not out.get("duplicates") and
+        not out.get("unexpected_text") and visible == expected and anchors_complete and
+        len(anchor_numerals) == len(expected) and set(anchor_numerals) == expected)
+    if not eligible:
+        return out
+
+    audit = inspect_cross_provider_geometry(
+        png, label=label, caption=caption, numerals=numerals)
+    out["cross_provider_geometry_audit"] = audit
+    if not current_cross_provider_geometry_audit(audit, specification_hash=spec_hash):
+        return out
+
+    reviewer_errors = list(out.get("errors") or [])
+    resolution = dict(certificate)
+    resolution.update({
+        "version": DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION,
+        "semantic_review_count": int(out.get("review_count") or 0),
+        "semantic_model": str(out.get("model_name") or ""),
+        "semantic_prompt_version": str(out.get("prompt_version") or ""),
+        "cross_provider_model": str(audit.get("model_name") or ""),
+        "cross_provider_prompt_version": str(audit.get("prompt_version") or ""),
+        "cross_provider_review_count": int(audit.get("review_count") or 0),
+        "specification_hash": spec_hash,
+    })
+    out.update({
+        "ok": True,
+        "reviewer_ok": False,
+        "reviewer_summary": str(out.get("summary") or "")[:2000],
+        "reviewer_errors": reviewer_errors,
+        "errors": [],
+        "semantic_consensus_resolution": resolution,
+        "summary": (
+            "A byte-exact deterministic renderer certificate and an independent provider "
+            "review resolved same-provider semantic dissent. Independent review: " +
+            str(audit.get("summary") or "")
+        )[:2000],
+    })
     return out
 
 
