@@ -2077,6 +2077,10 @@ def _deterministic_pulling_scene_png(caption: str) -> bytes | None:
         re.search(r"\bone plain rectangular body\b", text) and
         re.search(r"\bbody and the band (?:beneath it )?are\b[^.]{0,80}"
                   r"\bwhole of the machine drawn on this sheet\b", text))
+    plain_body_only = plain_body_only or bool(
+        re.search(r"\bthe machine as one plain rectangular body\b[^.]{0,100}"
+                  r"\bstanding on a band\b", text) and
+        re.search(r"\bthe band alone touching the tile\b", text))
     legacy_housings = bool(
         re.search(r"\bplain slab\b[^.]{0,100}\btwo closed housings\b", text))
     requirements = (
@@ -2345,6 +2349,12 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
     explicit_inventory = bool(
         re.search(r"\bshows four hatched bodies\s*:", text) and
         re.search(r"\bone upright column\b[^.]{0,120}\bthree horizontal bands\b", text))
+    complete_lower_area_inventory = bool(
+        explicit_inventory and
+        re.search(r"\bthree bands are stacked\b[^.]{0,100}\blower part of the drawing area\b",
+                  text) and
+        re.search(r"\beach band runs\b[^.]{0,160}\bending just inside\b[^.]{0,100}"
+                  r"\bleft-hand and right-hand limits\b", text))
     requirements = (
         (re.search(r"\bfour hatched bodies\b[^.]{0,80}\bnothing else\b", text) or
          explicit_inventory),
@@ -2353,7 +2363,7 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
         re.search(r"\bbetween\b[^.]{0,100}\bbottom (?:line )?of the column\b[^.]{0,100}"
                   r"\btop line of the uppermost band\b", text),
         re.search(r"\bopen unhatched (?:space|paper)\b", text),
-        re.search(r"\bbeneath the lowest band\b", text),
+        re.search(r"\bbeneath the lowest band\b", text) or complete_lower_area_inventory,
     )
     if not all(requirements):
         return None

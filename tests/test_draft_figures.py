@@ -2895,6 +2895,24 @@ def test_deterministic_pulling_scene_accepts_body_and_band_whole_machine_wording
     assert draft_figures._deterministic_geometry_png(specification) == png
 
 
+def test_deterministic_pulling_scene_accepts_machine_as_complete_body_and_band_wording():
+    specification = """
+    The covering element 36 is one large plain tile seen in perspective, filling the lower part
+    of the drawing area. The machine stands on its right-hand part, leaving a wide open expanse
+    of tile to the left. The machine and the tile are shown schematically, the machine as one
+    plain rectangular body standing on a band that runs round its underside, the band alone
+    touching the tile, these forms being a depiction convention for this sheet only. The
+    flexible pulling element 46 is drawn as one slack curved path, in the manner of a loose cord:
+    a single continuous curved line. It begins where it meets the left-hand side of the machine
+    and runs away to the left, sagging gently over the open expanse of tile.
+    """
+
+    png = draft_figures._deterministic_pulling_scene_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+
+
 def test_deterministic_grip_scene_accepts_closed_block_grip_wording():
     specification = """
     The covering element 36 is one large plain tile seen in perspective. The machine stands on
@@ -3276,6 +3294,24 @@ def test_deterministic_fragmentary_section_accepts_hatching_lines_continuous_wor
     band. The column is the perimeter member. It stands above the uppermost band, with an open
     stretch of that band on each side of it. Between the bottom line of the column and the top
     line of the uppermost band lies open unhatched space.
+    """
+
+    png = draft_figures._deterministic_fragmentary_section_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+
+
+def test_deterministic_fragmentary_section_accepts_complete_lower_area_inventory():
+    specification = """
+    The sheet shows four hatched bodies: one upright column and three horizontal bands lying one
+    above another beneath it, all four shown schematically. The three bands are stacked one on
+    another in the lower part of the drawing area. Each band runs across the drawing area from
+    side to side, ending just inside its left-hand and right-hand limits, and each is filled with
+    regularly spaced straight parallel hatching lines continuous from side to side, including
+    directly beneath the column. The column stands above the uppermost band, with an open stretch
+    of that band on each side of it. Between the bottom line of the column and the top line of the
+    uppermost band lies open unhatched space, shown enlarged for clarity.
     """
 
     png = draft_figures._deterministic_fragmentary_section_png(specification)
