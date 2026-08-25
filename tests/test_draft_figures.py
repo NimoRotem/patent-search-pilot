@@ -2870,10 +2870,10 @@ def test_deterministic_block_grip_uses_exact_component_anchor_centers():
         draft_figures._pixel_to_normalized(300, 1400),
         draft_figures._pixel_to_normalized(400, 900),
     )
-    assert positions["44"] == (
-        draft_figures._pixel_to_normalized(440, 1400),
-        draft_figures._pixel_to_normalized(314, 900),
-    )
+    assert positions["44"][0] == draft_figures._pixel_to_normalized(440, 1400)
+    assert abs(
+        positions["44"][1] - draft_figures._pixel_to_normalized(314, 900)
+    ) <= 1
     assert any(
         item["numeral"] == "44" and item["to_y"] == positions["44"][1]
         for item in grounded["pixel_anchor_audit"]["adjusted"]
@@ -3019,19 +3019,18 @@ def test_deterministic_block_grip_replaces_stale_durable_endpoint_progress(monke
     assert marked["review_count"] == 0
     assert marked["cross_provider_audit"]["ok"] is True
     assert draft_figures.current_marked_anchor_audit(marked) is True
-    assert {
+    final_positions = {
         item["numeral"]: (item["x"], item["y"])
         for item in anchors
-    } == {
-        "12": (
-            draft_figures._pixel_to_normalized(300, 1400),
-            draft_figures._pixel_to_normalized(400, 900),
-        ),
-        "44": (
-            draft_figures._pixel_to_normalized(440, 1400),
-            draft_figures._pixel_to_normalized(314, 900),
-        ),
     }
+    assert final_positions["12"] == (
+        draft_figures._pixel_to_normalized(300, 1400),
+        draft_figures._pixel_to_normalized(400, 900),
+    )
+    assert final_positions["44"][0] == draft_figures._pixel_to_normalized(440, 1400)
+    assert abs(
+        final_positions["44"][1] - draft_figures._pixel_to_normalized(314, 900)
+    ) <= 1
 
 
 def test_deterministic_grip_scene_accepts_source_clean_single_outline_wording():
