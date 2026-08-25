@@ -1715,7 +1715,7 @@ def _has_deterministic_block_grip(text: str) -> bool:
         (re.search(r"\bthree (?:plain )?closed blocks stand side by side on the top face\b",
                    text) and
          re.search(r"\bleft-hand block is the vibration motor\b", text) and
-         re.search(r"\bmiddle block is the grip\b", text) and
+         re.search(r"\bmiddle block is the (?:grip|handle(?:\s+\d+)?)\b", text) and
          re.search(r"\bright-hand block is the air-extraction mechanism\b", text)))
 
 
