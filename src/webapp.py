@@ -6267,18 +6267,32 @@ def _readiness_for(principal, project_id):
     return project, version, report, references
 
 
-def _filing_figure_images(project):
+def _filing_figure_images(project, version):
     """The exact active PNGs that passed both live drawing gates, in filing order."""
     images = []
     figures = _figures_for(project)
+    specs = (version or {}).get("figure_specs") or []
+    if isinstance(specs, str):
+        try:
+            specs = json.loads(specs)
+        except json.JSONDecodeError:
+            specs = []
+    specs_by_key = {
+        draft_figures.figure_key(item.get("label")): item
+        for item in specs if isinstance(item, dict)
+    }
     for sheet_index, figure in enumerate(figures, 1):
+        spec = specs_by_key.get(draft_figures.figure_key(figure.get("figure_label")))
         versions = figure.get("versions") or []
         active = next((row for row in versions
                        if int(row.get("version_no") or 0) ==
                        int(figure.get("active_version") or 0)), None) or {}
         if not (draft_figures.current_ocr_audit(
                     active.get("numeral_audit") or {},
-                    expected_sheet_number=f"{sheet_index}/{len(figures)}") and
+                    expected_sheet_number=f"{sheet_index}/{len(figures)}",
+                    expected_section_designations=(
+                        draft_figures.section_designations(spec.get("caption") or "")
+                        if spec else None)) and
                 draft_figures.current_semantic_audit(active.get("semantic_audit") or {}) and
                 draft_figures.current_leader_audit(active.get("leader_audit") or {})):
             raise drafting.DraftingValidationError(
@@ -6322,7 +6336,7 @@ def draft_filing_download(project_id, fmt):
         return send_file(
             draft_uspto.render_filing_docx(project, version, readiness_report=report,
                                            references=references,
-                                           figure_images=_filing_figure_images(project)),
+                                           figure_images=_filing_figure_images(project, version)),
             as_attachment=True, download_name=name,
             mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     except drafting.DraftingError as exc:

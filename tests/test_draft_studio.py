@@ -653,6 +653,35 @@ def test_an_application_without_a_drawing_plan_cannot_pass_the_filing_gate():
     assert check["status"] == "fail" and check["severity"] == "error"
 
 
+def test_section_view_requires_the_same_cutting_line_designation_on_its_source_view():
+    sections = {
+        **GOOD,
+        "drawing_descriptions": (
+            GOOD["drawing_descriptions"] +
+            "\n\nFIG. 3 is a sectional view through the body of FIG. 1, taken on line 3-3 "
+            "of FIG. 1."),
+        "detailed_description": (
+            GOOD["detailed_description"] +
+            " FIG. 3 is taken on line 3-3 of FIG. 1 and shows the body in section."),
+    }
+    figures = [
+        {**FIGURES[0], "caption": (
+            "Side elevation. A broken cutting-plane line crosses the body. Arrows at both ends "
+            "point right, and each end carries 3 so it reads as line 3-3.")},
+        FIGURES[1],
+        {"label": "FIG. 3", "caption": "Section through the body.", "numerals": ["12 body"]},
+    ]
+
+    passing = checks_for(sections, figures=figures)[
+        "Section views have matching source-view cutting lines"]
+    broken = checks_for(sections, figures=[
+        {**figures[0], "caption": "Side elevation of the body."}, *figures[1:]
+    ])["Section views have matching source-view cutting lines"]
+
+    assert passing["status"] == "pass"
+    assert broken["status"] == "fail" and "FIG. 1" in " ".join(broken["items"])
+
+
 def test_an_orphaned_drawing_remains_in_bidirectional_qa(monkeypatch):
     import draft_figures
     monkeypatch.setattr(draft_figures, "listing", lambda project_id, user_id: [{
@@ -1252,6 +1281,9 @@ def checked_figures(*labels):
                 "expected_sheet_number": f"{sheet_index}/{len(labels)}",
                 "detected_sheet_numbers": [f"{sheet_index}/{len(labels)}"],
                 "correct_sheet_number": True,
+                "expected_section_designations": [],
+                "detected_section_designations": [],
+                "correct_section_designations": True,
             },
             "leader_audit": {
                 "ok": True, "inspected": True, "specification_hash": digest,
@@ -1271,6 +1303,12 @@ def checked_figures(*labels):
                 "topology_audit": {
                     "ok": True, "inspected": False, "required": False,
                     "version": draft_figures.CLOSED_REGION_AUDIT_VERSION,
+                },
+                "section_mark_audit": {
+                    "ok": True, "inspected": False, "required": False,
+                    "expected": [], "marks": [], "errors": [], "review_count": 0,
+                    "model_name": "deterministic-parser",
+                    "prompt_version": draft_figures.SECTION_MARK_PROMPT_VERSION,
                 },
                 "marked_anchor_audit": {
                     "ok": True, "inspected": True, "specification_hash": digest,
@@ -2010,6 +2048,8 @@ def test_independent_reviewer_requires_a_source_supported_automatic_fix():
     assert "Do not recommend asking the inventor" in prompt
     assert "need not depict every claim limitation" in prompt
     assert "generic depiction convention" in prompt
+    assert "cutting-plane line" in prompt
+    assert "section designation" in prompt
 
 
 def test_a_broken_reviewer_is_a_finding_not_an_exception(monkeypatch):
@@ -2043,6 +2083,9 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert "generic negative bans on linework" in system
     assert "shared face edge to be drawn once" in system
     assert "Numeral endpoint instructions identify the part" in system
+    assert "cutting-plane line" in system
+    assert "same repeated designation" in normalized
+    assert "not a reference numeral" in normalized
     assert "broad interior target" in draft_studio.FINALIZE_PROMPT
     assert "generic negative linework controls" in draft_studio.FINALIZE_PROMPT
     assert "generic face-linework controls" in draft_studio.FINALIZE_PROMPT

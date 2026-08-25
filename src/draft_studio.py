@@ -310,10 +310,16 @@ exact depth, or toward-an-end placement unless that location is disclosure-groun
 to distinguish the intended part from another visible part. Name repeated shapes by a stable
 position such as outermost, middle, innermost, left, or right instead of an ordinal whose direction
 could be read more than one way.
+When one figure is a sectional view taken on line N-N of another figure, the source-view brief
+must specify a broken cutting-plane line, both physical endpoints, its alignment, and the viewing
+direction of both arrows. Put the same repeated designation N at both ends so the brief expressly
+says line N-N. A section designation is drawing annotation, not a reference numeral: never add it
+to numerals.md or the figure's reference-numeral list.
 Figure files are Markdown specifications only. Never create SVG, PNG, or other image files. The
 image pipeline generates unlabeled geometry, then adds the listed numerals, FIG. label, callouts,
-and leader lines deterministically. Describe the required geometry and relationships, and list
-the numerals, but never ask the geometry image to draw text or labels itself. Never address or
+leader lines, cutting lines, arrows, and section designations deterministically. Describe the
+required geometry and relationships, and list the numerals, but never ask the geometry image to
+draw text or labels itself. Never address or
 mention a draftsperson, drafter, illustrator, reviewer, attorney, or other person in a figure
 brief. When a part name is only a semantic identifier, say that it does not appear as drawing
 text.
