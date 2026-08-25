@@ -4005,7 +4005,10 @@ def test_render_keeps_an_exact_deterministic_ring_when_vision_anchor_is_near_its
     assert captured["semantic"]["pixel_anchor_audit"]["ok"] is True
     anchor = next(item for item in captured["semantic"]["anchors"]
                   if item["numeral"] == "24")
-    assert 120 <= anchor["y"] <= 180
+    assert (anchor["x"], anchor["y"]) == (
+        draft_figures._pixel_to_normalized(190, 1400),
+        draft_figures._pixel_to_normalized(450, 900),
+    )
 
 
 def test_closed_region_audit_is_not_required_without_an_exact_closed_shape_clause():
