@@ -779,7 +779,12 @@ def _continue_terminal_filing_repair(repository: Any, claimed: Mapping[str, Any]
     # availability problem can only be repaired by rerunning the mandatory review. No user input
     # can resolve it, so preserve and continue any complete checkpoint automatically.
     source_review_unavailable = str(error).startswith("SourceReviewUnavailable:")
-    if not filing_gate_stopped and (interrupted_run or source_review_unavailable):
+    # FigureTransientError is raised only when a provider or inspection transport failed to
+    # return a usable verdict. It is not a visual rejection, and repeating the exact saved
+    # candidate is the repair regardless of the provider's particular error wording.
+    figure_transient = str(error).startswith("FigureTransientError:")
+    if not filing_gate_stopped and (
+            interrupted_run or source_review_unavailable or figure_transient):
         try:
             candidate = repository.retry_candidate(int(result.get("id") or claimed["id"]))
             interrupted_candidate = bool(
