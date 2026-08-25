@@ -1436,7 +1436,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v7-substantive-ledger"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v8-required-findings-output"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1512,7 +1512,11 @@ Read these files in full:
   draft/numerals.md
   every Markdown brief in figures/
 
-Ignore rendered image files. Return the complete structured review."""
+Ignore rendered image files. Return the complete structured review. When finished, call
+StructuredOutput with both required root properties, "summary" and "findings". If the review is
+clean, return exactly an empty findings array, for example
+{"summary": "The complete source ledger is clean.", "findings": []}. Never omit the findings
+property, even when there is nothing to report. Keep the summary below 8,000 characters."""
 
 
 def _source_review_quality_error(summary: str,
@@ -1574,6 +1578,13 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
         total_cost += float(run.cost_usd or 0.0)
         total_duration += int(run.duration_ms or 0)
         last_model = run.model or last_model
+        if not run.ok and quality_attempt == 0 and re.search(
+                r"valid structured output.*attempt", str(run.error or ""), re.IGNORECASE):
+            # Claude Code has already rejected the malformed tool arguments, so no unvalidated
+            # result reaches the caller. A fresh independent session is the only useful repair:
+            # retrying the whole drafting turn wastes its attempt budget and can strand a complete
+            # checkpoint even though the patent content itself was never rejected.
+            continue
         if not run.ok:
             return {"ok": False, "error": run.error, "findings": [], "summary": "",
                     "cost_usd": total_cost, "duration_ms": total_duration,
