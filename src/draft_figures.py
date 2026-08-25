@@ -1847,7 +1847,9 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
         perimeter_target = (
             perimeter_target_match.group(1) if perimeter_target_match else "")
         perimeter_left = "left-hand leg" in perimeter_target
-        perimeter_x = 320 if perimeter_left else 1080
+        flush_legs = _chamber_section_has_flush_legs(text)
+        perimeter_x = ((260 if perimeter_left else 1140) if flush_legs else
+                       (320 if perimeter_left else 1080))
         perimeter_evidence = (
             "well inside the hatching of the left-hand leg"
             if perimeter_left else
@@ -2561,6 +2563,15 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
     return out.getvalue()
 
 
+def _chamber_section_has_flush_legs(text: str) -> bool:
+    return bool(re.search(
+        r"\bouter (?:side|face|edge) of each leg\b[^.]{0,160}"
+        r"\b(?:flush with|aligned with)\b[^.]{0,100}"
+        r"\bcorresponding (?:end|edge) of (?:the )?(?:slab|base)\b",
+        text,
+    ))
+
+
 def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     """Render the exact slab, two cut legs, chamber, band, and one broken line."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
@@ -2594,15 +2605,26 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     leg_angle = _requested_section_hatch_angle(text, r"(?:both\s+)?legs", -45)
     band_angle = _requested_section_hatch_angle(
         text, r"(?:the\s+)?covering element(?:\s+\d+)?", 60)
+    flush_legs = _chamber_section_has_flush_legs(text)
+    left_leg = (200, 360, 320, 620) if flush_legs else (260, 360, 380, 620)
+    right_leg = (1080, 360, 1200, 620) if flush_legs else (1020, 360, 1140, 620)
     _paste_hatched_box(image, (204, 224, 1196, 356), angle=base_angle)
-    _paste_hatched_box(image, (264, 364, 376, 616), angle=leg_angle)
-    _paste_hatched_box(image, (1024, 364, 1136, 616), angle=leg_angle)
+    _paste_hatched_box(
+        image,
+        (left_leg[0] + 4, left_leg[1] + 4, left_leg[2] - 4, left_leg[3] - 4),
+        angle=leg_angle,
+    )
+    _paste_hatched_box(
+        image,
+        (right_leg[0] + 4, right_leg[1] + 4, right_leg[2] - 4, right_leg[3] - 4),
+        angle=leg_angle,
+    )
     _paste_hatched_box(image, (164, 624, 1236, 756), angle=band_angle)
 
     draw = ImageDraw.Draw(image)
     draw.rectangle((200, 220, 1200, 360), outline="black", width=4)
-    draw.rectangle((260, 360, 380, 620), outline="black", width=4)
-    draw.rectangle((1020, 360, 1140, 620), outline="black", width=4)
+    draw.rectangle(left_leg, outline="black", width=4)
+    draw.rectangle(right_leg, outline="black", width=4)
     draw.rectangle((160, 620, 1240, 760), outline="black", width=4)
     draw.rounded_rectangle(
         (740, 90, 990, 220), radius=24, fill="white", outline="black", width=4)
