@@ -175,10 +175,80 @@ claim-element coverage, and validator pass rate. What is deliberately **not** me
 the picture resembles the applicant's picture; two draughtspeople given one specification draw
 different pictures, and scoring against pixels would reward imitation.
 
+### The first run, six granted patents
+
+```
+patent               figs  numerals  per-fig   claims  kind   err   warn   secs
+US10000000B2          7/7     0.961    0.542    0.405  1.00     3     53    287
+US10102449B1        12/50     0.241    0.092    0.593  1.00   108     18    638
+US10195470B2          7/7     0.613    0.287    0.282  1.00    54     66   1244
+US10583560B1          6/6     0.625    0.263    0.673  1.00    53     31    959
+US10717208B1        12/18     0.570    0.347    0.724  1.00    72     26   2040
+US11000000B2          3/3     0.923    0.970    0.375  1.00     3      9    508
+
+numeral agreement 0.655   per-figure 0.417   claim coverage 0.509
+figure labels 0.818       kind agreement 1.000    validator pass rate 0.000
+```
+
+Read it in this order.
+
+**Kind agreement is 1.000.** Every view came out the type the applicant's own brief description
+says it is: block diagram, flow chart, perspective, section. The planner is reading the draft
+rather than guessing.
+
+**Nothing is ever invented.** Across all six cases the count of numerals drawn that the
+description does not mention is zero. 37 CFR 1.84(p)(4) has two directions and this one is clean.
+
+**Every failure is an omission, and it is always reported.** 182 of the 271 errors are
+`registry_numeral_undrawn`: a numeral the description mentions that reached no view. On a draft
+with a moderate numeral count that barely happens (US11000000B2, 13 numerals: one missing;
+US10000000B2, 51 numerals: two). On a draft with 80 to 111 numerals the planner places about two
+thirds of them and the checker says so for each of the rest. It does not quietly draw a smaller
+drawing set and call it done.
+
+**The validator pass rate is 0.000, and that is the honest number.** No granted patent in this
+corpus produced a set with no errors left. The rate is the measure that will move as the planner
+improves, and reporting anything else would mean loosening the checks until they passed.
+
+Two limits are visible in the table. `12/50` and `12/18` are the figure cap binding; this run was
+made with it at 12, it is now 20, and when it binds the report says so first rather than leaving
+dozens of downstream errors to explain themselves. And `US10195470B2` has one figure at exactly
+18 elements, which is the per-figure cap: a view that dense wants splitting, which is what the
+finding says.
+
+What that says about where to work next: not on the geometry, which is clean, and not on the
+checks, which caught all of this. On the planner's recall over drafts with a hundred numerals.
+
 `evalkit/officeactions.py` mines real office actions from the USPTO Open Data Portal for
 paragraphs objecting to the drawings and sorts them into the rules they invoke. That is used for
 **coverage, not accuracy**: of the drawing objections examiners really write, which kinds could
 this checker have caught? A class with no check behind it is named as a gap.
+
+The first run of it, over 140 robotics applications filed 2016 to mid-2019:
+
+```
+287 office actions read, 24 drawing objections found, 28 classifications, 0 unclassified
+
+  15  missing_claimed_feature        claim_element_not_depicted   37 CFR 1.83(a)
+   5  margins_or_sheet               outside_margins              37 CFR 1.84(g)
+   2  character_not_in_drawing       registry_numeral_undrawn     37 CFR 1.84(p)(4)
+   2  character_size_or_legibility   numeral_too_small            37 CFR 1.84(p)(3)
+   1  element_without_a_character    element_unnumbered           37 CFR 1.84(p)(4)
+   1  line_quality                   line_too_thin                37 CFR 1.84(l)
+   1  view_numbering                 figures_not_sequential       37 CFR 1.84(u)(1)
+   1  shading_or_colour              shading_present              37 CFR 1.84(m)
+```
+
+Every class that appeared has a check behind it, and the one that dominates by a factor of three
+is 37 CFR 1.83(a), the drawing showing every feature the claims specify. That is the check this
+pipeline is built around, and it is the reason the registry and the claim split exist at all.
+
+Two things had to be got right before that number meant anything. The Office's own PDF of an
+office action is a scan, and pypdf gets six characters out of a seven-page rejection, so the
+first run reported no objections anywhere; the text is in the XML and MS_WORD options the same
+response already offers. And the classifier originally matched only the wording of the
+regulation, which left every objection saying "reference number ... not labeled" in the
+unclassified pile, all of them instances of a check that already existed.
 
 ---
 
