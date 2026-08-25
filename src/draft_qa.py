@@ -1348,6 +1348,14 @@ WHAT TO CHECK, in this order of importance:
    that the figure's own file does not contain. Open every figures/rendered-*.png image and verify
    the actual visible geometry and printed reference numerals, not only the Markdown drawing brief.
 
+   A patent drawing need not depict every claim limitation or an implementation detail that the
+   inventor did not disclose. Report an omission only when the application says that the figure
+   shows the omitted relationship, or when the visible geometry contradicts the text. A disclosed
+   part whose appearance was not disclosed still needs a simple visible outline. Treat a plain
+   outline, housing, slab, block, closed loop, or page position as a generic depiction convention
+   when the brief expressly calls it schematic, the claims and description stay neutral about its
+   form and placement, and the pixels add no technical function or relationship.
+
 3. THE LANGUAGE AND THE LOGIC HOLD TOGETHER.
    One name per thing, used consistently - not "gripper" here and "grasping unit" there for the
    same element. No statement that contradicts another. No step that depends on a structure the
@@ -1362,13 +1370,22 @@ WHAT TO CHECK, in this order of importance:
    is checked mechanically elsewhere - do not spend turns on it.)
 
 5. THE CLAIMS MATCH WHAT WAS DISCLOSED.
-   Every limitation in every claim must have support in the detailed description and, where the
-   limitation is structural, be visible in the drawings the draft describes. A claim broader than
-   the description supports is a critical finding. So is a claim reciting an element the
-   description never mentions. Check terminology drift between claim and description for the SAME
-   element.
+   Every limitation in every claim must have support in the detailed description. A structural
+   limitation need not be visible in a drawing unless the application identifies that drawing as
+   depicting the limitation. A claim broader than the description supports is a critical finding.
+   So is a claim reciting an element the description never mentions. Check terminology drift
+   between claim and description for the SAME element.
 
 HOW TO REPORT
+   Review defects in the candidate, not whether the inventor could have supplied a more detailed
+   disclosure. Do not report a gap in the inventor's disclosure when the candidate faithfully
+   states only the disclosed relationship and adds no unsupported implementation assertion. For
+   example, do not demand an undisclosed route, passage, shape, or mounting detail merely because
+   it would make the disclosure more specific. Do not recommend asking the inventor, an attorney,
+   or another person to settle a finding. Every finding must have a filing-clean, source-supported
+   automatic fix that can be made in the existing text or figure briefs. If no such fix exists and
+   the candidate neither adds unsupported matter nor contradicts itself, return no finding.
+
    Use the tools to read the workspace. Every finding must name where it is (`where`) and quote
    the text it is about (`evidence`) - a finding without a quote from the document is a guess and
    must not be reported. If you are unsure, say so in the detail and mark it minor.
@@ -1623,6 +1640,22 @@ def normalize_findings(value: Any, *, limit: int = 60) -> list[dict[str, Any]]:
         if not title or not evidence:
             continue
         severity = str(item.get("severity") or "minor").lower()
+        fix = str(item.get("fix") or "").strip()
+        non_actionable_minor = severity == "minor" and (
+            re.search(
+                r"\bno (?:source-supported )?(?:text|claim|figure|draft|filing) "
+                r"change (?:is )?(?:available|required|possible)\b",
+                fix,
+                re.IGNORECASE,
+            ) or re.search(
+                r"\bno (?:filing-clean |source-supported )?(?:automatic )?fix "
+                r"(?:is )?(?:available|exists|possible)\b",
+                fix,
+                re.IGNORECASE,
+            )
+        )
+        if non_actionable_minor:
+            continue
         out.append({
             "severity": severity if severity in ("critical", "major", "minor") else "minor",
             "category": str(item.get("category") or "internal_logic")[:40],
@@ -1630,7 +1663,7 @@ def normalize_findings(value: Any, *, limit: int = 60) -> list[dict[str, Any]]:
             "where": str(item.get("where") or "")[:200],
             "detail": str(item.get("detail") or "")[:4000],
             "evidence": evidence[:2000],
-            "fix": str(item.get("fix") or "")[:2000],
+            "fix": fix[:2000],
         })
     order = {"critical": 0, "major": 1, "minor": 2}
     out.sort(key=lambda f: order.get(f["severity"], 3))

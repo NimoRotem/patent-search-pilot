@@ -1678,6 +1678,24 @@ def test_a_finding_without_evidence_is_dropped():
     assert [f["title"] for f in findings] == ["Numeral 16 drifts"]
 
 
+def test_non_actionable_source_gap_is_not_returned_as_a_repair_finding():
+    findings = draft_qa.normalize_findings([
+        {
+            "severity": "minor", "title": "Undisclosed fluid route", "evidence": "quote",
+            "detail": "The source gives the relationship but does not specify the route.",
+            "where": "claims", "category": "enablement",
+            "fix": "No text change is available. Leave as filed or ask the inventor.",
+        },
+        {
+            "severity": "minor", "title": "Prior-art inference", "evidence": "quote",
+            "detail": "The sentence adds an inference.", "where": "background",
+            "category": "citations", "fix": "Delete the trailing inference.",
+        },
+    ])
+
+    assert [finding["title"] for finding in findings] == ["Prior-art inference"]
+
+
 def test_findings_are_ordered_by_severity():
     findings = draft_qa.normalize_findings([
         {"severity": "minor", "title": "m", "evidence": "e", "detail": "", "where": "",
@@ -1858,6 +1876,15 @@ def test_the_reviewer_is_told_which_checks_already_ran(monkeypatch):
         {"name": "Claims", "status": "pass", "detail": "fine", "items": []}])
     assert "22 undefined" in seen["prompt"] and "Claims" not in seen["prompt"]
     assert "rendered-*.png" in draft_qa.REVIEW_PROMPT
+
+
+def test_independent_reviewer_requires_a_source_supported_automatic_fix():
+    prompt = draft_qa.REVIEW_SYSTEM
+
+    assert "Do not report a gap in the inventor's disclosure" in prompt
+    assert "Do not recommend asking the inventor" in prompt
+    assert "need not depict every claim limitation" in prompt
+    assert "generic depiction convention" in prompt
 
 
 def test_a_broken_reviewer_is_a_finding_not_an_exception(monkeypatch):
