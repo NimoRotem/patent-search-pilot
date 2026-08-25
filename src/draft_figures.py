@@ -1893,7 +1893,8 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
         re.search(r"\brectangular ring\b", text) and
         re.search(r"\bno other body is drawn\b", text) and
         re.search(r"\bone rectangle with a smaller rectangle inside it\b", text) and
-        re.search(r"\binner rectangle standing clear of\b[^.]{0,80}\bfour sides\b", text) and
+        re.search(r"\binner rectangle standing (?:clear of|well in from)\b"
+                  r"[^.]{0,80}\bfour sides\b", text) and
         re.search(r"\bfield enclosed by the inner rectangle\b[^.]{0,80}\bopen paper\b", text) and
         outer_ring_field)
     rectangle_count = {"two": 2, "three": 3}.get(
@@ -1972,6 +1973,10 @@ def _deterministic_pulling_scene_png(caption: str) -> bytes | None:
     plain_body_only = plain_body_only or bool(
         re.search(r"\bone plain rectangular body\b", text) and
         re.search(r"\brectangular body and the band beneath it\b[^.]{0,100}"
+                  r"\bwhole of the machine drawn on this sheet\b", text))
+    plain_body_only = plain_body_only or bool(
+        re.search(r"\bone plain rectangular body\b", text) and
+        re.search(r"\bbody and the band (?:beneath it )?are\b[^.]{0,80}"
                   r"\bwhole of the machine drawn on this sheet\b", text))
     legacy_housings = bool(
         re.search(r"\bplain slab\b[^.]{0,100}\btwo closed housings\b", text))
@@ -2053,14 +2058,17 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
         re.search(r"\bhandle\b[^.]{0,180}\bclosed ring shape\b[^.]{0,60}"
                   r"\bopen area\b", text) and
         re.search(r"\bbar forming that ring\b[^.]{0,40}\bown width\b", text))
+    block_grip = bool(
+        re.search(r"\bgrip stands on the top face\b[^.]{0,80}\bbetween them\b", text) and
+        re.search(r"\bclosed block of the same kind\b", text))
     requirements = (
         re.search(r"\bcovering element\b[^.]{0,100}\b(?:plain\s+)?tile\b", text),
         re.search(r"\bmachine\b[^.]{0,100}\bleft-hand\b", text),
         re.search(r"\bplain rectangular slab\b", text),
         re.search(r"\btwo (?:plain )?closed housings\b", text),
-        re.search(r"\bgrip\b[^.]{0,50}\babove\b", text),
+        (re.search(r"\bgrip\b[^.]{0,50}\babove\b", text) or block_grip),
         re.search(r"\bband\b[^.]{0,80}\bunderside\b", text),
-        single_outline or finite_width_ring,
+        single_outline or finite_width_ring or block_grip,
     )
     if not all(requirements):
         return None
@@ -2100,6 +2108,26 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
     draw.polygon(
         [(435, 405), (685, 325), (685, 405), (435, 485)],
         fill="white", outline="black", width=4)
+
+    if block_grip:
+        def draw_closed_block(box) -> None:
+            left, top, right, bottom = box
+            draw.polygon(
+                [(left, top), (left + 25, top - 15),
+                 (right + 25, top - 15), (right, top)],
+                fill="white", outline="black")
+            draw.polygon(
+                [(right, top), (right + 25, top - 15),
+                 (right + 25, bottom - 15), (right, bottom)],
+                fill="white", outline="black")
+            draw.rectangle(box, fill="white", outline="black", width=4)
+
+        draw_closed_block((235, 275, 325, 350))
+        draw_closed_block((390, 275, 480, 335))
+        draw_closed_block((540, 275, 630, 350))
+        out = io.BytesIO()
+        image.save(out, format="PNG", compress_level=9)
+        return out.getvalue()
 
     if finite_width_ring:
         draw.rounded_rectangle(
@@ -2208,13 +2236,13 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
                   r"\bdirectly beneath the column\b", text) and
         re.search(r"\bno band is interrupted, broken or partly unhatched\b", text))
     positive_open_sides_column = bool(
-        re.search(r"\bcolumn stands above the uppermost band\b", text) and
+        re.search(r"\b(?:the column|it) stands above the uppermost band\b", text) and
         re.search(r"\bopen (?:stretch|paper)\b[^.]{0,100}\bon each side\b", text) and
-        re.search(r"\bhatching continuous from side to side\b[^.]{0,100}"
+        re.search(r"\bhatching(?: lines)? continuous from side to side\b[^.]{0,100}"
                   r"\bdirectly beneath the column\b", text) and
         (re.search(r"\beach band reading as one whole hatched body\b", text) or
          re.search(r"\beach band runs\b[^.]{0,400}\bside to side\b[^.]{0,400}"
-                   r"\bhatching continuous from side to side\b[^.]{0,100}"
+                   r"\bhatching(?: lines)? continuous from side to side\b[^.]{0,100}"
                    r"\bdirectly beneath the column\b", text)))
     centred_column = centred_column or positive_open_sides_column
     explicit_inventory = bool(
