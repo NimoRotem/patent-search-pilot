@@ -3019,6 +3019,10 @@ def test_deterministic_block_grip_uses_exact_component_anchor_centers():
         item["numeral"]: (item["x"], item["y"])
         for item in grounded["anchors"]
     }
+    assert positions["10"] == (
+        draft_figures._pixel_to_normalized(685, 1400),
+        draft_figures._pixel_to_normalized(365, 900),
+    )
     assert positions["12"] == (
         draft_figures._pixel_to_normalized(300, 1400),
         draft_figures._pixel_to_normalized(400, 900),
