@@ -31,7 +31,9 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
   <div class="wrap footergrid">
     <div class="footerbrand">
       <strong>IPtorch</strong>
-      <span>Evidence-backed patent search and drafting. Not legal advice.</span>
+      {#  It said "search and drafting". Drafting is withheld from customers while it is
+          unfinished, so the footer of every page was advertising something they cannot open. #}
+      <span>Prior art search with the evidence attached. Not legal advice.</span>
     </div>
     <nav class="footlinks" aria-label="Footer navigation">
       <a href="{{ request.script_root }}/about">How it works</a>
