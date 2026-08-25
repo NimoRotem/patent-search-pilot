@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>{% block title %}Rotem Patents{% endblock %}</title>
+<title>{% block title %}IPtorch{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23175cd3'/><path d='M9 8h10l4 4v12H9zM19 8v5h5M12 18h8M12 22h6' fill='none' stroke='white' stroke-width='1.8'/></svg>">
 <script>
@@ -27,25 +27,30 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
 <a class="skip" href="#main">Skip to main content</a>
 <header class="top">
   <div class="wrap navshell">
-    <a class="brand" href="{{ request.script_root }}/" aria-label="Rotem Patents home">
+    <a class="brand" href="{{ request.script_root }}/" aria-label="IPtorch home">
       <svg class="brandmark" viewBox="0 0 36 36" aria-hidden="true">
         <rect x="1" y="1" width="34" height="34" rx="8"></rect>
         <path d="M10.5 8.5h10l5 5v14h-15z"></path>
         <path d="M20.5 8.5v5h5M14 19h8M14 23h6"></path>
       </svg>
-      <span class="brandname">Rotem Patents</span>
+      <span class="brandname">IPtorch</span>
     </a>
     {# A visitor needs product context. An authenticated person needs the work areas first. #}
     {% if signed_in or not account_mode %}
       <nav class="primarynav appnav" aria-label="Primary navigation">
         <a href="{{ request.script_root }}/" class="navitem{% if endpoint == 'index' %} active{% endif %}"{% if endpoint == 'index' %} aria-current="page"{% endif %}>Search</a>
         <a href="{{ request.script_root }}/history" class="navitem{% if endpoint == 'history' %} active{% endif %}"{% if endpoint == 'history' %} aria-current="page"{% endif %}>History</a>
-        <a href="{{ request.script_root }}/patentlookup" class="navitem{% if endpoint == 'patent_lookup' %} active{% endif %}"{% if endpoint == 'patent_lookup' %} aria-current="page"{% endif %}>Lookup</a>
-        <a href="{{ request.script_root }}/designs" class="navitem{% if endpoint == 'designs_page' %} active{% endif %}"{% if endpoint == 'designs_page' %} aria-current="page"{% endif %}>Designs</a>
-        <a href="{{ request.script_root }}/corpus" class="navitem{% if endpoint == 'corpus_page' %} active{% endif %}"{% if endpoint == 'corpus_page' %} aria-current="page"{% endif %}>Corpus</a>
+        {#  Designs is not its own destination any more: an EU registered design is one more thing
+            you look up, so it is a tab on Lookup. #}
+        <a href="{{ request.script_root }}/patentlookup/" class="navitem{% if endpoint == 'patent_lookup' %} active{% endif %}"{% if endpoint == 'patent_lookup' %} aria-current="page"{% endif %}>Lookup</a>
         {% if current_user %}
           <a href="{{ request.script_root }}/library" class="navitem{% if endpoint == 'library' %} active{% endif %}"{% if endpoint == 'library' %} aria-current="page"{% endif %}>Library</a>
-          <a href="{{ request.script_root }}/drafts" class="navitem navdraft{% if endpoint.startswith('draft') %} active{% endif %}"{% if endpoint.startswith('draft') %} aria-current="page"{% endif %}>Drafting</a>
+        {% endif %}
+        {#  ADMIN ONLY, both of them. Corpus is an engineering view of what the database holds and
+            Drafting is unfinished; neither is something to hand a customer yet. #}
+        {% if current_is_admin %}
+          <a href="{{ request.script_root }}/corpus" class="navitem navadmin{% if endpoint == 'corpus_page' %} active{% endif %}"{% if endpoint == 'corpus_page' %} aria-current="page"{% endif %}>Coverage</a>
+          <a href="{{ request.script_root }}/drafts" class="navitem navadmin navdraft{% if endpoint.startswith('draft') %} active{% endif %}"{% if endpoint.startswith('draft') %} aria-current="page"{% endif %}>Drafting</a>
         {% endif %}
       </nav>
     {% else %}
@@ -77,7 +82,7 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
 <footer>
   <div class="wrap footergrid">
     <div class="footerbrand">
-      <strong>Rotem Patents</strong>
+      <strong>IPtorch</strong>
       <span>Evidence-backed patent search and drafting. Not legal advice.</span>
     </div>
     <nav class="footlinks" aria-label="Footer navigation">

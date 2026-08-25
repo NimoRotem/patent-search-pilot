@@ -2520,6 +2520,38 @@ def _inject_lookup_base():
     return {"lookup_base": LOOKUP_BASE}
 
 
+#  ---------------------------------------------------------------- areas withheld from customers
+#  Coverage is an engineering view of what the database holds, and Drafting is unfinished. Both
+#  are hidden from the nav for a non-admin, and hiding a link hides it from a reader and not from
+#  a URL, so both refuse at the door as well.
+#
+#  ONE PREFIX GATE rather than a decorator on two dozen routes: a drafting route added tomorrow is
+#  covered without anybody remembering to add it. Listed as prefixes because /drafts, /draft/<id>,
+#  /draft-studio and the API under them are all the same area.
+ADMIN_ONLY_PREFIXES = ("/corpus", "/factory", "/drafts", "/draft/", "/draft-studio", "/draft_",
+                       "/api/factory", "/api/drafts", "/api/draft/")
+
+
+def _is_admin_only(path):
+    p = (path or "").rstrip("/") or "/"
+    return any(p == x.rstrip("/") or p.startswith(x if x.endswith("/") else x + "/")
+               for x in ADMIN_ONLY_PREFIXES)
+
+
+@app.before_request
+def _gate_admin_only_areas():
+    """404, not 403: a customer has no business knowing these exist."""
+    if not _is_admin_only(request.path):
+        return None
+    if not auth.auth_enabled(app):
+        return None                                   # a box with auth off is a development box
+    if auth.is_admin() or auth.is_loopback():
+        return None
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "not found"}), 404
+    abort(404)
+
+
 @app.route("/corpus")
 def corpus_page():
     """What is in our own database, measured.
