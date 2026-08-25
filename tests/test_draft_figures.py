@@ -2991,30 +2991,13 @@ def test_deterministic_block_grip_replaces_stale_durable_endpoint_progress(monke
         "labels": [],
     })
 
-    def inspect_marked(_png, **kwargs):
-        expected = {
-            "12": (
-                draft_figures._pixel_to_normalized(350, 1400),
-                draft_figures._pixel_to_normalized(414, 900),
-            ),
-            "44": (
-                draft_figures._pixel_to_normalized(435, 1400),
-                draft_figures._pixel_to_normalized(305, 900),
-            ),
-        }
-        assert {
-            item["numeral"]: (item["x"], item["y"])
-            for item in kwargs["anchors"]
-        } == expected
-        return {
-            "ok": True, "inspected": True, "errors": [], "incorrect": [],
-            "labels": [{
-                "numeral": numeral, "correct": True, "repairable": True,
-                "evidence": "the exact component center is correct",
-            } for numeral in ("12", "44")],
-        }
+    def reject_unnecessary_same_provider_review(*_args, **_kwargs):
+        raise AssertionError(
+            "byte-exact deterministic component certificates must bypass noisy same-provider "
+            "coordinate voting")
 
-    monkeypatch.setattr(draft_figures, "inspect_marked_anchors", inspect_marked)
+    monkeypatch.setattr(
+        draft_figures, "inspect_marked_anchors", reject_unnecessary_same_provider_review)
     monkeypatch.setattr(
         draft_figures, "inspect_cross_provider_endpoints",
         lambda *a, **k: accepted_cross_provider_audit(labels=[{
@@ -3027,6 +3010,11 @@ def test_deterministic_block_grip_replaces_stale_durable_endpoint_progress(monke
         semantic={"anchors": stale, "pixel_anchor_audit": {"ok": True}})
 
     assert labels["ok"] is True and leaders["ok"] is True and pixel["ok"] is True
+    marked = leaders["marked_anchor_audit"]
+    assert marked["prompt_version"] == draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION
+    assert marked["review_count"] == 0
+    assert marked["cross_provider_audit"]["ok"] is True
+    assert draft_figures.current_marked_anchor_audit(marked) is True
     assert {
         item["numeral"]: (item["x"], item["y"])
         for item in anchors
