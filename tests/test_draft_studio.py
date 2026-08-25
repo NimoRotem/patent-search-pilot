@@ -1703,7 +1703,15 @@ def test_source_preflight_is_independent_read_only_and_ignores_pixels(monkeypatc
     monkeypatch.setattr(draft_agent, "run", lambda **kwargs: seen.update(kwargs) or
                         draft_agent.AgentRun(
                             ok=True, model="review-model",
-                            result={"summary": "clean", "findings": []}))
+                            result={
+                                "summary": (
+                                    "Every claim limitation and numbered part was traced to the "
+                                    "inventor disclosure. Every numeral and figure brief is "
+                                    "consistent with those sources, and no drafting note, "
+                                    "placeholder, question, or instruction remains in the draft."
+                                ),
+                                "findings": [],
+                            }))
 
     outcome = draft_qa.review_sources(Path("/tmp"))
 
@@ -1712,6 +1720,63 @@ def test_source_preflight_is_independent_read_only_and_ignores_pixels(monkeypatc
     assert seen["tools"] == "Read,Glob,Grep"
     assert "Ignore rendered image files" in seen["prompt"]
     assert draft_qa.SOURCE_REVIEW_VERSION in seen["prompt"]
+
+
+def test_source_preflight_retries_a_non_substantive_structured_result(monkeypatch):
+    results = iter([
+        draft_agent.AgentRun(ok=True, model="review-model", result={
+            "summary": "Test",
+            "findings": [{
+                "severity": "minor", "category": "terminology", "title": "t",
+                "where": "w", "detail": "d", "evidence": "e", "fix": "f",
+            }],
+        }),
+        draft_agent.AgentRun(ok=True, model="review-model", result={
+            "summary": (
+                "Every claim limitation and numbered part was traced to affirmative inventor "
+                "disclosure. The numeral table and every figure brief use those supported parts "
+                "consistently, and no drafting note, placeholder, question, or instruction "
+                "remains anywhere in the candidate."
+            ),
+            "findings": [],
+        }),
+    ])
+    sessions = []
+
+    def fake_run(**kwargs):
+        sessions.append(kwargs["session_id"])
+        return next(results)
+
+    monkeypatch.setattr(draft_agent, "run", fake_run)
+
+    outcome = draft_qa.review_sources(Path("/tmp"))
+
+    assert outcome["ok"] is True
+    assert len(sessions) == 2
+    assert sessions[0] != sessions[1]
+
+
+def test_source_preflight_fails_closed_after_repeated_non_substantive_results(monkeypatch):
+    calls = 0
+
+    def fake_run(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return draft_agent.AgentRun(ok=True, model="review-model", result={
+            "summary": "Test",
+            "findings": [{
+                "severity": "minor", "category": "terminology", "title": "t",
+                "where": "w", "detail": "d", "evidence": "e", "fix": "f",
+            }],
+        })
+
+    monkeypatch.setattr(draft_agent, "run", fake_run)
+
+    outcome = draft_qa.review_sources(Path("/tmp"))
+
+    assert outcome["ok"] is False
+    assert "non-substantive" in outcome["error"]
+    assert calls == 2
 
 
 def test_source_preflight_fails_closed_on_a_malformed_finding(monkeypatch):
