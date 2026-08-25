@@ -836,6 +836,16 @@ def test_an_abstract_over_the_word_cap_fails():
     assert check["status"] == "fail" and "200 words" in check["detail"]
 
 
+def test_abstract_word_cap_counts_hyphenated_compounds_conservatively():
+    broken = dict(GOOD)
+    broken["abstract"] = " ".join(["word"] * 148 + ["air-extraction", "low-friction"])
+
+    check = checks_for(broken)["Abstract is in filing form"]
+
+    assert check["status"] == "fail"
+    assert "152 words" in check["detail"]
+
+
 def test_an_abstract_in_two_paragraphs_is_a_warning_not_a_failure():
     broken = dict(GOOD)
     broken["abstract"] = "First paragraph of the abstract.\n\nSecond paragraph."
