@@ -3388,8 +3388,8 @@ def test_deterministic_fragmentary_section_accepts_complete_lower_area_inventory
     specification = """
     The sheet shows four hatched bodies: one upright column and three horizontal bands lying one
     above another beneath it, all four shown schematically. The three bands are stacked one on
-    another in the lower part of the drawing area. Each band runs across the drawing area from
-    side to side, ending just inside its left-hand and right-hand limits, and each is filled with
+    another in the lower part of the drawing area. Each band runs across the drawing area,
+    ending just inside its left-hand and right-hand limits, and each is filled with
     regularly spaced straight parallel hatching lines continuous from side to side, including
     directly beneath the column. The column stands above the uppermost band, with an open stretch
     of that band on each side of it. Between the bottom line of the column and the top line of the
