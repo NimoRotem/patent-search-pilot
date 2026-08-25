@@ -2881,6 +2881,38 @@ def test_deterministic_block_grip_uses_exact_component_anchor_centers():
         "10", "12", "18", "20", "24", "36", "44"}
 
 
+def test_deterministic_block_grip_accepts_source_clean_three_block_wording():
+    specification = """
+    The covering element 36 is one large plain tile in perspective. The machine stands on its
+    left-hand part, leaving a wide open expanse of tile to the right. The machine is one plain
+    rectangular slab, the base 12, standing on a band that runs round its underside. Three
+    closed blocks stand side by side on the top face of the slab, clear of one another: the
+    left-hand block is the vibration motor 18, the middle block is the grip, and the right-hand
+    block is the air-extraction mechanism 20. The perimeter member 24 is the band beneath the
+    slab. The handle 44 is the middle block.
+    """
+    numerals = [
+        "10 = vibration device", "12 = base", "18 = vibration motor",
+        "20 = air-extraction mechanism", "24 = perimeter member",
+        "36 = covering element", "44 = handle",
+    ]
+
+    png = draft_figures._deterministic_grip_scene_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    initial = [{
+        "numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+        "visible": True, "evidence": entry,
+    } for entry in numerals]
+    grounded = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {"ok": True, "anchors": initial})
+    assert grounded["deterministic_anchor_certificate"]["renderer"] == "block_grip_scene"
+    assert {item["numeral"] for item in
+            grounded["deterministic_anchor_certificate"]["anchors"]} == {
+                "10", "12", "18", "20", "24", "36", "44"}
+
+
 def test_deterministic_pulling_scene_uses_exact_band_and_path_anchors():
     specification = """
     The covering element 36 is one large plain tile seen in perspective. The machine stands on

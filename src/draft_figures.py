@@ -1708,6 +1708,17 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
     }
 
 
+def _has_deterministic_block_grip(text: str) -> bool:
+    return bool(
+        (re.search(r"\bgrip stands on the top face\b[^.]{0,80}\bbetween them\b", text) and
+         re.search(r"\bclosed block of the same kind\b", text)) or
+        (re.search(r"\bthree (?:plain )?closed blocks stand side by side on the top face\b",
+                   text) and
+         re.search(r"\bleft-hand block is the vibration motor\b", text) and
+         re.search(r"\bmiddle block is the grip\b", text) and
+         re.search(r"\bright-hand block is the air-extraction mechanism\b", text)))
+
+
 def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
                                     ) -> tuple[list[dict], dict | None]:
     """Use known component centers only when pixels match an exact simple renderer."""
@@ -1715,9 +1726,7 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
     if expected is None or png != expected:
         return [dict(item) for item in anchors or ()], None
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
-    block_grip = bool(
-        re.search(r"\bgrip stands on the top face\b[^.]{0,80}\bbetween them\b", text) and
-        re.search(r"\bclosed block of the same kind\b", text))
+    block_grip = _has_deterministic_block_grip(text)
     pulling_scene = _deterministic_pulling_scene_png(caption)
     if block_grip:
         renderer_name = "block_grip_scene"
@@ -2145,14 +2154,12 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
         re.search(r"\bhandle\b[^.]{0,180}\bclosed ring shape\b[^.]{0,60}"
                   r"\bopen area\b", text) and
         re.search(r"\bbar forming that ring\b[^.]{0,40}\bown width\b", text))
-    block_grip = bool(
-        re.search(r"\bgrip stands on the top face\b[^.]{0,80}\bbetween them\b", text) and
-        re.search(r"\bclosed block of the same kind\b", text))
+    block_grip = _has_deterministic_block_grip(text)
     requirements = (
         re.search(r"\bcovering element\b[^.]{0,100}\b(?:plain\s+)?tile\b", text),
         re.search(r"\bmachine\b[^.]{0,100}\bleft-hand\b", text),
         re.search(r"\bplain rectangular slab\b", text),
-        re.search(r"\btwo (?:plain )?closed housings\b", text),
+        re.search(r"\btwo (?:plain )?closed housings\b", text) or block_grip,
         (re.search(r"\bgrip\b[^.]{0,50}\babove\b", text) or block_grip),
         re.search(r"\bband\b[^.]{0,80}\bunderside\b", text),
         single_outline or finite_width_ring or block_grip,
