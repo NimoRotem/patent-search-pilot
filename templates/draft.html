@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ project.title }} | Rotem Patents draft{% endblock %}
+{% block title %}{{ project.title }} | IPtorch draft{% endblock %}
 {% block body %}
 <div class="wrap draftpage" data-draft-id="{{ project.id }}" data-draft-status="{{ project.status }}">
   <div class="drafthead">
@@ -136,19 +136,14 @@
 
       {#  PATENT FIGURES.
 
-          The specification already says what each drawing shows and numbers every part; those
-          two facts are what the model is given, so the numerals on the figure are the draft's
-          own rather than invented. Every generation is kept as a version because the workflow
-          that actually works is generate -> look -> adjust -> compare, and a drawing that is
-          replaced the moment the next one arrives cannot be compared.
-
-          These are drafting aids. 37 CFR 1.84 governs sheet size, margins, line weight, shading
-          and lettering for a FORMAL drawing and nothing here checks any of it.  #}
+          The specification says what each drawing shows and numbers every part. The geometry is
+          generated from that source, then the filing overlay and sheet numbering are applied
+          deterministically. Only versions that pass the pixel gates can enter an export. #}
       <section class="panel draftpanel" id="figures">
         <h2>Patent figures</h2>
-        <p class="small muted">Generated from this draft's own drawing descriptions and reference
-          numerals. Drafting aids only — not formal drawings under 37&nbsp;CFR&nbsp;1.84. Check
-          every numeral against the specification before filing.</p>
+        <p class="small muted">Generated from this draft's drawing descriptions and reference
+          numerals. Filing export requires exact OCR, semantic geometry, pixel grounding, leader
+          placement, independent endpoint, and consecutive sheet-number checks.</p>
 
         {% if figure_suggestions %}
         <div class="figsuggest">
@@ -156,7 +151,7 @@
           <div class="figchips">
             {% for f in figure_suggestions %}
             <button type="button" class="figchip" data-label="{{ f.label }}" data-caption="{{ f.caption }}"
-                    title="{{ f.caption }}">{{ f.label }} — {{ f.caption[:70] }}{% if f.caption|length > 70 %}…{% endif %}</button>
+                    title="{{ f.caption }}">{{ f.label }}: {{ f.caption[:70] }}{% if f.caption|length > 70 %}…{% endif %}</button>
             {% endfor %}
           </div>
         </div>
@@ -186,11 +181,11 @@
               <span class="grow"></span>
               <span class="small muted">v{{ f.active_version }} of {{ f.n_versions }}</span>
             </div>
-            <img class="figimg" alt="{{ f.figure_label }} — {{ f.caption }}"
+            <img class="figimg" alt="{{ f.figure_label }}: {{ f.caption }}"
                  src="{{ request.script_root }}/drafts/{{ project.id }}/figures/{{ f.id }}.png?version={{ f.active_version }}">
             <div class="figedit">
               <input type="text" class="figinstr" maxlength="1000"
-                     placeholder="Change something — e.g. “make the pump smaller and move it into the handle”">
+                     placeholder="Change something, for example: “make the pump smaller and move it into the handle”">
               <button type="button" class="btn ghost sm figapply">Apply change</button>
             </div>
             {% if f.n_versions > 1 %}
@@ -228,7 +223,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
-/*  Figure generation is synchronous — about five seconds per image — so the button waits rather
+/*  Figure generation is synchronous, about five seconds per image, so the button waits rather
     than handing off to a job queue the user would then have to poll for something they are
     watching happen.                                                                            */
 (function(){
@@ -259,7 +254,7 @@
     const caption = document.getElementById('figCaption').value.trim();
     if(!caption){ status.textContent = 'Say what the figure shows first.'; return; }
     gen.disabled = true; const was = gen.textContent; gen.textContent = 'Drawing…';
-    status.textContent = 'Drawing the figure — about five seconds.';
+    status.textContent = 'Drawing the figure. This takes about five seconds.';
     try{
       await post('/figures', {label, caption});
       location.reload();

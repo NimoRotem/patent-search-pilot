@@ -1,4 +1,4 @@
--- Pilot schema — normalized, provenance-aware (spec §3).
+-- Pilot schema , normalized, provenance-aware (spec §3).
 -- Not a single patents table; claims are rows (not JSONB); kind_code kept separate.
 CREATE EXTENSION IF NOT EXISTS vector;
 
@@ -142,6 +142,29 @@ CREATE TABLE IF NOT EXISTS bench_emb_3072 (
   chunk_id bigint PRIMARY KEY REFERENCES chunks(id) ON DELETE CASCADE,
   embedding vector(3072)
 );
+
+-- Patent-drawing image-similarity index. This is separate from text chunks and stays at the
+-- image model's native 768 dimensions. Store the model per row so changing it is an explicit
+-- data migration rather than a silent mismatch.
+CREATE TABLE IF NOT EXISTS figure_images (
+  id                 bigserial PRIMARY KEY,
+  publication_id     bigint REFERENCES publications(id) ON DELETE CASCADE,
+  publication_number text,
+  fig_index          int,
+  file_name          text,
+  sha256             text,
+  model              text NOT NULL,
+  embedding          vector(768),
+  created_at         timestamptz DEFAULT now(),
+  UNIQUE (publication_number, file_name, model)
+);
+CREATE INDEX IF NOT EXISTS ix_figimg_pub   ON figure_images (publication_id);
+CREATE INDEX IF NOT EXISTS ix_figimg_pubno ON figure_images (publication_number);
+CREATE INDEX IF NOT EXISTS ix_figimg_model ON figure_images (model);
+-- Build HNSW while the table is empty on a fresh install. Existing deployments preserve it.
+CREATE INDEX IF NOT EXISTS ix_figimg_hnsw
+  ON figure_images USING hnsw (embedding vector_cosine_ops)
+  WITH (m = 16, ef_construction = 64);
 
 -- Convenience view: family-level collapse for reporting (spec §3 last line).
 CREATE OR REPLACE VIEW family_of AS

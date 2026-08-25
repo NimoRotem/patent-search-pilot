@@ -72,9 +72,23 @@ def search_type(report_or_doc) -> str:
 # ---------------------------------------------------------------------------
 # splitting a claim into what it actually requires
 # ---------------------------------------------------------------------------
+#  WHICH CLAIM THIS ONE HANGS OFF, in the languages this corpus actually holds. English only was
+#  not a simplification: a German claim set produced NO `depends_on` at all, so every claim looked
+#  independent, `claim_chains` had nothing to walk, and the 112(d) rule withheld anticipation on
+#  the whole document. Two of the four patents in one batch on 2026-08-20 were German.
 _DEP = re.compile(
     r"\b(?:of|in|according to|as claimed in|as set forth in|as recited in)\s+"
-    r"(?:any\s+(?:one\s+)?of\s+)?claims?\s+(\d+)", re.I)
+    r"(?:any\s+(?:one\s+)?of\s+)?claims?\s+(\d+)"
+    r"|\b(?:nach|gem(?:ä|ae)ß)\s+(?:\w+\s+){0,3}?anspr(?:uch|ü?che[nm]?)\s+(\d+)"
+    r"|\bselon\s+(?:l\w+\s+)?revendications?\s+(\d+)", re.I)
+#  "nach dem vorherigen Anspruch" / "according to the preceding claim": a back-reference with no
+#  number, meaning the claim immediately before this one. Extremely common in German drafting.
+_DEP_PREV = re.compile(
+    r"\b(?:nach|gem(?:ä|ae)ß)\s+(?:dem|einem\s+der)\s+(?:vorherig|vorhergehend|"
+    r"vorstehend|vorangehend)\w*\s+anspr"
+    r"|\baccording\s+to\s+(?:the\s+)?(?:any\s+(?:one\s+)?of\s+the\s+)?"
+    r"(?:preceding|previous|foregoing)\s+claims?"
+    r"|\bselon\s+(?:l\w+\s+)?revendications?\s+pr(?:é|e)c(?:é|e)dente", re.I)
 #  Clause boundaries a drafter actually uses. Semicolons separate limitations; "wherein",
 #  "further comprising" and "characterised in that" introduce them.
 _SPLIT = re.compile(
@@ -84,9 +98,26 @@ _SPLIT = re.compile(
 _PREAMBLE = re.compile(r"\bcompris(?:ing|es)\b|\bconsisting of\b|\bincluding\b|:", re.I)
 
 
-def parent_of(text) -> int | None:
-    m = _DEP.search(str(text or ""))
-    return int(m.group(1)) if m else None
+def parent_of(text, claim_no=None) -> int | None:
+    """The claim number this claim depends from, or None.
+
+    `claim_no` lets a numberless back-reference resolve: "nach dem vorherigen Anspruch" means the
+    claim immediately before this one, and without knowing which claim we are reading there is
+    nothing to point at.
+    """
+    t = str(text or "")
+    m = _DEP.search(t)
+    if m:
+        got = next((g for g in m.groups() if g), None)
+        if got:
+            return int(got)
+    if _DEP_PREV.search(t):
+        try:
+            n = int(claim_no)
+        except (TypeError, ValueError):
+            return None
+        return n - 1 if n > 1 else None
+    return None
 
 
 def _clauses(text):
@@ -331,7 +362,7 @@ def split_claims(claim_items, use_llm=True, log=print):
             source = "structural"
         dep = got.get("depends_on")
         if dep is None:
-            dep = parent_of(c["text"])
+            dep = parent_of(c["text"], c.get("claim_no"))
         exact_flags = got.get("_exact") or []
         for j, text in enumerate(lims):
             out.append({
@@ -362,6 +393,76 @@ def split_claims(claim_items, use_llm=True, log=print):
 
 
 # ---------------------------------------------------------------------------
+# 35 U.S.C. 112(d) — what a dependent claim actually requires
+# ---------------------------------------------------------------------------
+def claim_chains(limitations):
+    """label -> {"chain", "parent", "complete"}: every claim a claim carries on its back.
+
+    A DEPENDENT CLAIM INCORPORATES EVERY LIMITATION OF THE CLAIM IT DEPENDS FROM. 35 U.S.C. 112(d)
+    says so in terms ("shall be construed to incorporate by reference all the limitations of the
+    claim to which it refers"), and EPC Rule 43(4) is the same rule in European words. So nothing
+    anticipates claim 3 unless it also discloses all of claim 1 — in which case claim 1 would be
+    anticipated too, and the report would say so.
+
+    Reported by counsel on 2026-08-20 after reading two real reports: the ledger marked the
+    independent claim PARTIAL while stamping ten dependent claims ANTICIPATED in one report and
+    four in the other. That combination is not merely unlikely, it is impossible, and it was
+    produced by computing each claim's anticipation over the limitations that claim ADDS. This
+    function is the missing half — resolve the ancestry once, here, so every consumer asks the
+    same question.
+
+    `complete` is False when the chain runs into a claim the ledger does not hold. A parent whose
+    requirements we cannot see is a parent we cannot confirm a reference meets, so anticipation is
+    withheld rather than guessed.
+    """
+    by_label, by_no = {}, {}
+    for l in (limitations or []):
+        label = l.get("claim_label") or "?"
+        by_label.setdefault(label, []).append(l)
+        no = l.get("claim_no")
+        if no is not None:
+            by_no.setdefault(int(no), label)
+
+    def parent_label(label):
+        #  `depends_on` is a claim NUMBER (the model's answer, or `parent_of`'s regex). Resolve it
+        #  against the numbers this ledger actually holds; fall back to the label spelling the
+        #  pipeline uses, so a ledger built without claim_no still chains.
+        for l in by_label.get(label, ()):
+            dep = l.get("depends_on")
+            if dep in (None, ""):
+                continue
+            try:
+                dep = int(dep)
+            except (TypeError, ValueError):
+                continue
+            got = by_no.get(dep) or ("claim %d" % dep if ("claim %d" % dep) in by_label else None)
+            if got and got != label:
+                return got, True
+            return None, False           # named a parent we do not hold
+        return None, True                # independent: no parent to find
+
+    out = {}
+    for label in by_label:
+        chain, seen, cur, complete = [label], {label}, label, True
+        while True:
+            nxt, ok = parent_label(cur)
+            if not ok:
+                complete = False
+                break
+            if nxt is None or nxt in seen:
+                #  `nxt in seen` is a drafting loop or a mis-parse ("claim 4 of claim 4"). Stop
+                #  rather than spin, and do not call the ancestry confirmed.
+                complete = complete and nxt is None
+                break
+            chain.append(nxt)
+            seen.add(nxt)
+            cur = nxt
+        out[label] = {"chain": chain, "parent": chain[1] if len(chain) > 1 else None,
+                      "complete": complete}
+    return out
+
+
+# ---------------------------------------------------------------------------
 # the ledger
 # ---------------------------------------------------------------------------
 class Ledger:
@@ -376,6 +477,7 @@ class Ledger:
         self.cover_min = max(1, int(cover_min))
         self.by_id = {l["id"]: l for l in self.limitations}
         self.evidence = {l["id"]: [] for l in self.limitations}
+        self.chains = claim_chains(self.limitations)
 
     # -- filling it in -----------------------------------------------------
     def add(self, lim_id, pub, verdict, quote="", location="", date=None, confidence=0.0,
@@ -445,30 +547,63 @@ class Ledger:
                                  l.get("claim_no") or 0, l["index"]))
         return rows
 
-    def claim_status(self, label):
-        """(status, anticipating publications) for a whole claim.
-
-        ANTICIPATED means one single document disclosed every limitation — the §102 kill. It is
-        computed, never asserted, and it is the single most valuable thing this ledger produces.
-        """
-        lims = [l for l in self.limitations if l["claim_label"] == label]
-        if not lims:
-            return "unknown", []
+    def _disclosers(self, lims):
+        """{pub: {lim_id it disclosed}} over `lims`, strong bar only."""
         per_pub = {}
         for l in lims:
             for e in self.evidence.get(l["id"]) or []:
                 if e["verdict"] == "disclosed":
                     per_pub.setdefault(e["pub"], set()).add(l["id"])
-        need = {l["id"] for l in lims}
-        anticipators = sorted(p for p, got in per_pub.items() if got >= need)
-        if anticipators:
-            return "anticipated", anticipators
+        return per_pub
+
+    def claim_detail(self, label):
+        """Everything the report needs about one claim, computed under 112(d).
+
+        ANTICIPATED means one single document disclosed every limitation OF THE WHOLE CLAIM AS
+        CONSTRUED — the claim's own requirements plus every requirement it inherits from the claim
+        it depends from, and from that claim's parent, all the way up. That is the §102 kill, it is
+        computed and never asserted, and it is the single most valuable thing this ledger produces.
+
+        `adds_disclosed_by` is what the old, wrong `anticipated_by` was actually measuring: the
+        documents that disclose everything this claim ADDS to its parent. That is a real and useful
+        finding — it is the second half of a §103 combination, and it is what a reference gets
+        cited for once the parent is met by something else — so it is kept and labelled honestly
+        rather than deleted.
+        """
+        own = [l for l in self.limitations if l["claim_label"] == label]
+        if not own:
+            return {"status": "unknown", "anticipated_by": [], "adds_disclosed_by": [],
+                    "chain": [label], "parent": None, "chain_complete": True}
+        info = self.chains.get(label) or {"chain": [label], "parent": None, "complete": True}
+        chain = info["chain"]
+        lims = [l for l in self.limitations if l["claim_label"] in set(chain)]
+
+        adds = sorted(p for p, got in self._disclosers(own).items()
+                      if got >= {l["id"] for l in own})
+        #  ANTICIPATION IS ASKED OF THE CONSTRUED CLAIM, NOT THE ADDED WORDS. With an incomplete
+        #  ancestry we cannot see what the claim inherits, so we cannot confirm any document meets
+        #  it; the honest answer is no anticipation plus a flag, never a guess in either direction.
+        anticipators = []
+        if info["complete"]:
+            anticipators = sorted(p for p, got in self._disclosers(lims).items()
+                                  if got >= {l["id"] for l in lims})
+
         st = [self.status(l["id"]) for l in lims]
-        if all(s == "covered" for s in st):
-            return "covered", []
-        if any(s != "uncovered" for s in st):
-            return "partial", []
-        return "uncovered", []
+        if anticipators:
+            status = "anticipated"
+        elif all(s == "covered" for s in st):
+            status = "covered"
+        elif any(s != "uncovered" for s in st):
+            status = "partial"
+        else:
+            status = "uncovered"
+        return {"status": status, "anticipated_by": anticipators, "adds_disclosed_by": adds,
+                "chain": chain, "parent": info["parent"], "chain_complete": bool(info["complete"])}
+
+    def claim_status(self, label):
+        """(status, anticipating publications) for a whole claim. See :meth:`claim_detail`."""
+        d = self.claim_detail(label)
+        return d["status"], d["anticipated_by"]
 
     def done(self):
         """The stopping rule. True when nothing is left uncovered."""
@@ -480,8 +615,15 @@ class Ledger:
             counts[self.status(l["id"])] += 1
         claims = {}
         for label in sorted({l["claim_label"] for l in self.limitations}):
-            st, anticipators = self.claim_status(label)
-            claims[label] = {"status": st, "anticipated_by": anticipators[:6]}
+            d = self.claim_detail(label)
+            claims[label] = {
+                "status": d["status"], "anticipated_by": d["anticipated_by"][:6],
+                #  Kept separately so a reader can still see "this one document discloses
+                #  everything claim 3 adds" without that being sold as a §102 anticipation.
+                "adds_disclosed_by": d["adds_disclosed_by"][:6],
+                "chain": d["chain"], "depends_on_label": d["parent"],
+                "chain_complete": d["chain_complete"],
+            }
         return {
             "n_limitations": len(self.limitations),
             "n_claims": len(claims),
@@ -493,6 +635,28 @@ class Ledger:
             "uncovered": [l["id"] for l in self.limitations
                           if self.status(l["id"]) == "uncovered"][:60],
         }
+
+    @classmethod
+    def from_stored(cls, stored):
+        """Rebuild a ledger from what a report has on disk, so an OLD report can be re-read.
+
+        Every report written before 2026-08-20 has the 112(d) defect baked into its stored summary
+        — dependent claims stamped ANTICIPATED under a parent that nothing anticipates. Rather than
+        rewrite 660 files, or leave a warning next to a wrong flag, the view rebuilds the ledger and
+        asks the corrected code the same question. One rule, one definition, both paths.
+
+        The stored evidence is capped per limitation (`EVIDENCE_KEEP`), so a recomputed answer can
+        only ever be the same or more conservative than the run's. For a §102 assertion in a
+        document that gets filed, that is the direction to be wrong in.
+        """
+        led = cls((stored or {}).get("limitations") or [],
+                  cover_min=((stored or {}).get("summary") or {}).get("cover_min") or COVER_MIN)
+        for row in (stored or {}).get("limitations") or []:
+            for e in row.get("evidence") or []:
+                led.add(row.get("id"), e.get("pub"), e.get("verdict") or "absent",
+                        e.get("quote") or "", e.get("location") or "", e.get("date"),
+                        e.get("confidence") or 0.0, bar=e.get("bar") or "")
+        return led
 
     def to_dict(self):
         """The ledger as the report stores it. Carries `n_evidence`, the TRUE count.

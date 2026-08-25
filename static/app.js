@@ -46,8 +46,13 @@ const padPub = raw => {
 const gp  = pub => 'https://patents.google.com/patent/' + (padPub(pub) || (pub || '').replace(/-/g, '')) + '/en';
 const esp = pub => { const p = padPub(pub) || (pub || '').replace(/-/g, '');
   return 'https://worldwide.espacenet.com/patent/search/publication/' + p + '?q=pn%3D' + p; };
-const figUrl = (pub, file) => B + '/figures/' + encodeURIComponent(pub) + '/' + encodeURIComponent(file);
-/* A figure entry is EITHER a locally-recovered file (served from /figures/<pub>/<file>) OR a
+/*  /refdrawing/, not /figures/. The figure compiler is a separate app mounted at /figures/ on this
+    host with an `^~` nginx location, which beats every regex, so reference drawings served from
+    /figures/<pub>/<file> reached the compiler and came back as a 302 to its login. A redirected
+    <img> renders as a broken one, which is why every drawing on every report looked missing while
+    the files were on disk all along. See webapp.REFDRAW_PREFIX. */
+const figUrl = (pub, file) => B + '/refdrawing/' + encodeURIComponent(pub) + '/' + encodeURIComponent(file);
+/* A figure entry is EITHER a locally-recovered file (served from /refdrawing/<pub>/<file>) OR a
    lemad-Mongo remote entry ({file:null, thumbnail, full} Google-CDN URLs). One accessor each for
    the list/thumbnail size and the full-resolution size, so every render site handles both shapes. */
 const figThumb = (pub, im) => (im && im.file) ? figUrl(pub, im.file) : ((im && (im.thumbnail || im.full)) || '');
@@ -1163,6 +1168,37 @@ function showQuote(btn){
   setText('qpopNote', (d.note || '') + (d.second === 'true'
     ? (d.note ? ' ' : '') + 'Found on the second, concept-led reading of this reference.' : ''));
   setText('qpopLoc', [d.pub, d.loc].filter(Boolean).join(' · '));
+  /* A cell whose passage the corpus holds in another language: fetch it with its machine
+     translation the moment somebody actually looks, never at page build (a report carries
+     hundreds of these). The translation is labelled; it never impersonates a verbatim quote. */
+  if (!d.quote && /non-English passage/.test(d.note || '') && d.pub && d.loc){
+    const q = document.getElementById('qpopQuote'), noteEl = document.getElementById('qpopNote');
+    if (q){
+      q.textContent = 'Fetching the passage and its machine translation…';
+      fetch(B + '/api/passage?pub=' + encodeURIComponent(d.pub) +
+            '&loc=' + encodeURIComponent(d.loc), {credentials: 'same-origin'})
+        .then(function (r) { return r.json(); })
+        .then(function (p) {
+          if (!p.found){
+            q.textContent = 'No quotable passage was recorded for this cell.';
+            return;
+          }
+          if (p.translation){
+            q.textContent = '\u201c' + p.translation + '\u201d';
+            if (noteEl){
+              const orig = p.original.length > 700 ? p.original.slice(0, 700) + '\u2026' : p.original;
+              noteEl.textContent = 'Machine translation' + (p.lang ? ' from ' + p.lang : '') +
+                ', not a verbatim quotation. ' + (d.note || '') + ' Original: ' + orig;
+            }
+          } else {
+            q.textContent = '\u201c' + p.original + '\u201d';
+          }
+        })
+        .catch(function () {
+          q.textContent = 'No quotable passage was recorded for this cell.';
+        });
+    }
+  }
   const ref = document.getElementById('qpopRef');
   if (ref){ ref.textContent = 'Go to ' + (d.pub || 'reference'); ref.dataset.pub = d.pub || ''; }
   pop.hidden = false;
@@ -1791,11 +1827,15 @@ function createProgress(mount, opts){
   const stages = STAGES.filter(s => s.key !== 'federate' || wide);
   const DONE_RANK = STAGES[STAGES.length - 1].rank;   // was hardcoded 6; the list is longer now
   const state = { rank: 0, detail: {}, since: Date.now(), started: Date.now(), msg: '',
-                  tokens: 0, elapsed: 0 };
+                  tokens: 0, elapsed: 0, elapsedTotal: 0, attempt: 0 };
   mount.innerHTML = '<ul class="stages">' + stages.map(s =>
     '<li data-rank="' + s.rank + '"><span class="ico" aria-hidden="true">✓</span>' +
     '<span class="txt"><span class="st-name">' + s.name + '</span>' +
-    '<span class="st-note">' + s.note + '</span></span></li>').join('') + '</ul>';
+    '<span class="st-note">' + s.note + '</span></span></li>').join('') + '</ul>' +
+    /* The overall clock lives INSIDE the component: the generating page has its own #elapsed
+       footer, but most of a long run is watched from the report page's refining banner, which
+       had no counter at all — "no overall time and token counter" was reported verbatim. */
+    '<div class="pgclock cc" style="margin-top:6px" aria-live="off"></div>';
 
   function facts(){
     const d = state.detail, out = [];
@@ -1851,6 +1891,23 @@ function createProgress(mount, opts){
           + 'the counter is process-wide, so a second search running at the same time is counted here too.'
         : '';
     }
+    const clock = mount.querySelector('.pgclock');
+    if (clock){
+      const attemptSecs = state.elapsed || Math.round((Date.now() - state.started) / 1000);
+      const totalSecs = Math.max(state.elapsedTotal || 0, attemptSecs);
+      let txt = '⏱ ' + fmtDur(totalSecs * 1000) + ' overall';
+      if (state.attempt > 1 && attemptSecs < totalSecs)
+        txt += ' · this attempt ' + fmtDur(attemptSecs * 1000);
+      if (state.tokens > 0){
+        const t = state.tokens;
+        txt += ' · ~' + (t >= 1e6 ? (t / 1e6).toFixed(1) + 'M' :
+                         t >= 1e3 ? Math.round(t / 1e3) + 'k' : t) + ' tokens this attempt';
+      }
+      if (state.attempt > 1)
+        txt += ' · attempt ' + state.attempt +
+               ' (restarted by a server update — banked reading is reused)';
+      clock.textContent = txt;
+    }
   }
   paint();
   const timer = setInterval(paint, 1000);
@@ -1862,6 +1919,9 @@ function createProgress(mount, opts){
       if (ev.detail) Object.assign(state.detail, ev.detail);
       if (typeof ev.tokens === 'number' && ev.tokens > state.tokens) state.tokens = ev.tokens;
       if (typeof ev.elapsed_sec === 'number' && ev.elapsed_sec > state.elapsed) state.elapsed = ev.elapsed_sec;
+      if (typeof ev.elapsed_total_sec === 'number' && ev.elapsed_total_sec > state.elapsedTotal)
+        state.elapsedTotal = ev.elapsed_total_sec;
+      if (typeof ev.attempt === 'number' && ev.attempt > state.attempt) state.attempt = ev.attempt;
       if (ev.msg) state.msg = ev.msg;
       paint();
     },
@@ -2242,6 +2302,62 @@ async function streamNewCards(){
   setTimeout(tick, 3000);
 }
 
+/* ── rebuild settings ─────────────────────────────────────────────────────────────────────────
+   "Manage / rebuild" used to jump straight to the document picker, so the model, the prompt and
+   the compliance pass were all implicit in a step that spends a model call per document. The
+   dialog shows them, then submits to the same route. Loaded on first open, never on page load. */
+(function buildSettings() {
+  var btn = document.querySelector('[data-buildsettings]');
+  var dlg = document.getElementById('buildDlg');
+  if (!btn || !dlg || !dlg.showModal) return;
+  var loaded = false;
+
+  function esc2(x){ return String(x == null ? '' : x)
+    .replace(/[&<>"]/g, function (c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  function paint(d) {
+    var sel = document.getElementById('buildModel');
+    var opts = ['<option value="">Default for this pass (' + esc2(d.default_tier) + ' tier)</option>'];
+    (d.models || []).forEach(function (m) {
+      /*  An unavailable model is SHOWN and disabled, with the reason. Hiding it makes the list
+          look like the whole world and turns "why can I not pick sonnet" into a support question. */
+      opts.push('<option value="' + esc2(m.name) + '"' + (m.available ? '' : ' disabled') + '>'
+        + esc2(m.name) + ': ' + esc2(m.model) + ' (' + esc2(m.tier) + ' tier)'
+        + (m.available ? '' : ', unavailable: ' + esc2(m.why)) + '</option>');
+    });
+    sel.innerHTML = opts.join('');
+    document.getElementById('buildModelNote').textContent = d.default_note || '';
+    document.getElementById('buildPromptWhere').textContent =
+      (d.prompt && (d.prompt.name + ' · ' + d.prompt.where + ' · max ' + d.prompt.max_tokens + ' tokens')) || '';
+    document.getElementById('buildPrompt').textContent = (d.prompt && d.prompt.text) || '';
+    document.getElementById('buildKnobs').innerHTML = (d.settings || []).map(function (s) {
+      if (s.key === 'skip_compliance')
+        return '<label class="small"><input type="checkbox" name="skip_compliance" value="1"> <b>'
+          + esc2(s.label) + '</b><br><span class="muted">' + esc2(s.help) + '</span></label>';
+      return '<label class="small"><b>' + esc2(s.label) + '</b><br>'
+        + '<input class="input" style="max-width:8rem" type="number" min="1" value="1" name="'
+        + esc2(s.key) + '"><br><span class="muted">' + esc2(s.help) + '</span></label>';
+    }).join('');
+  }
+
+  btn.addEventListener('click', function () {
+    dlg.showModal();
+    if (loaded) return;
+    loaded = true;
+    fetch((window.APP_BASE || '') + '/api/build-settings', {credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(paint)
+      .catch(function () {
+        /*  The dialog must not become a dead end because one fetch failed: the submit button
+            posts to the builder either way, which is exactly what the old link did. */
+        document.getElementById('buildModelNote').textContent =
+          'The model list could not be read, so this rebuild will use the default.';
+      });
+  });
+  var close = document.getElementById('buildClose');
+  if (close) close.addEventListener('click', function () { dlg.close(); });
+})();
+
 /* ── the public link: publish, password, revoke ───────────────────────────────────────────────
    The owner's control. Everything it does is one POST; the dialog exists so a password and a
    revoke are not two more buttons on an already busy toolbar. */
@@ -2402,4 +2518,244 @@ async function streamNewCards(){
   setTimeout(function () { send(false); }, 900);
   setInterval(function () { send(false); }, 15000);
   window.addEventListener('pagehide', function () { send(true); });
+})();
+
+
+/* ---------------------------------------------------------------------------
+   THE WHOLE FILE, on any reference card.
+
+   The search corpus knows what a document SAYS. It does not know what has happened to it: whether
+   it was granted, opposed, abandoned, whether a renewal fee is due, what the examiner posted, or
+   whether a 1.290 window is still open. That lives in the registers, and the lookup engine at
+   window.LOOKUP_BASE already owns the adapters for all four of them (USPTO ODP, EPO OPS, Google
+   Patents, DPMAregister) plus a pacer for OPS's burst detection and a document store.
+
+   So this does not fetch anything itself. On card open it asks the engine ONE cheap question —
+   is this file already held? — and shows the file if so, or a button if not. A deep fetch costs
+   register calls and tens of megabytes, so it never starts unasked.
+
+   The engine authenticates on this app's own session cookie (same domain, cookie path "/"), which
+   is why these are plain same-origin fetches with no token anywhere.
+--------------------------------------------------------------------------- */
+(function () {
+  var LB = window.LOOKUP_BASE || '/patentlookup';
+  var OPEN = {};      // pub -> true while a panel is open, so a re-render does not stack streams
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; });
+  }
+  function pretty(d) {
+    var m = /^(\d{4})(\d{2})(\d{2})$/.exec(String(d || ''));
+    return m ? m[1] + '-' + m[2] + '-' + m[3] : esc(d || '');
+  }
+  function api(path, opts) {
+    opts = opts || {};
+    opts.credentials = 'same-origin';
+    opts.headers = Object.assign({'Accept': 'application/json'}, opts.headers || {});
+    return fetch(LB + path, opts).then(function (r) {
+      if (r.status === 401) throw new Error('Session expired — reload and sign in again.');
+      if (!r.ok) throw new Error('The lookup service answered ' + r.status + '.');
+      return r.json();
+    });
+  }
+
+  function panelFor(btn) {
+    var pub = btn.dataset.pub;
+    var id = 'filepanel-' + pub.replace(/[^A-Za-z0-9]/g, '');
+    var el = document.getElementById(id);
+    if (!el) {
+      el = document.createElement('div');
+      el.id = id;
+      el.className = 'filepanel';
+      /*  Appended to the card, not to the meta line: this is a block of tables and it must not
+          reflow the title row it was launched from. */
+      (btn.closest('.rmain') || btn.parentNode).appendChild(el);
+    }
+    return el;
+  }
+
+  function table(title, cols, rows, raw) {
+    if (!rows || !rows.length) return '';
+    var h = ['<div class="fpsec"><b>' + esc(title) + '</b> <span class="cc">' + rows.length + '</span>',
+             '<div style="overflow-x:auto"><table class="tbl fptbl"><thead><tr>'];
+    cols.forEach(function (c) { h.push('<th>' + esc(c) + '</th>'); });
+    h.push('</tr></thead><tbody>');
+    rows.forEach(function (r) {
+      h.push('<tr>');
+      r.forEach(function (cell) { h.push('<td>' + (raw ? cell : esc(cell)) + '</td>'); });
+      h.push('</tr>');
+    });
+    h.push('</tbody></table></div></div>');
+    return h.join('');
+  }
+
+  function render(el, rec, pub) {
+    var d = (rec && rec.dossier) || {}, c = (rec && rec.confirm) || {};
+    var h = ['<div class="fphead"><b>' + esc(d.title || (rec && rec.title) || pub) + '</b>'];
+    if (rec && rec.headline) h.push(' <span class="stag t-info">' + esc(rec.headline) + '</span>');
+    h.push(' <a class="pn" href="' + window.APP_BASE + '/patentlookup?number='
+           + encodeURIComponent(pub) + '" target="_blank" rel="noopener">open in Lookup ↗</a></div>');
+    if (c.note) h.push('<p class="small">' + esc(c.note) + '</p>');
+    if (d.summary) h.push('<p class="small">' + esc(d.summary) + '</p>');
+    var meta = [];
+    if ((d.applicants || []).length) meta.push('Applicant: ' + esc(d.applicants.join('; ')));
+    if ((d.inventors || []).length) meta.push('Inventors: ' + esc(d.inventors.slice(0, 4).join('; ')));
+    if ((d.classifications || []).length) meta.push('CPC: ' + esc(d.classifications.slice(0, 6).join(' · ')));
+    if ((c.sources || []).length) meta.push('Sources: ' + esc(c.sources.join(', ')));
+    if (meta.length) h.push('<p class="small muted">' + meta.join(' &nbsp;·&nbsp; ') + '</p>');
+    if (c.google && c.google.present === false)
+      h.push('<p class="small muted">Not on Google Patents'
+             + (c.google.reason ? ' (' + esc(c.google.reason) + ')' : '') + '.</p>');
+
+    h.push(table('Legal events', ['Date', 'Code', 'What happened'],
+      (d.events || []).map(function (e) { return [pretty(e.date), e.code || '', e.description || '']; })));
+    h.push(table('Deadlines and open windows', ['Date', 'What', 'Basis'],
+      (d.deadlines || []).map(function (e) { return [pretty(e.date), e.name || '', e.basis || e.law || '']; })));
+    h.push(table('Family', ['Member', 'Country', 'Kind', 'Published'],
+      (d.members || []).map(function (m) {
+        var r = m.ref || {};
+        return [m.id || '', r.country || '', r.kind || '', pretty(m.publication_date || '')];
+      })));
+    var docs = (rec && rec.docs) || [];
+    if (docs.length) {
+      h.push(table('Documents', ['Document', 'Kind', 'Source', 'Date'], docs.map(function (x) {
+        return ['<a href="' + LB + '/api/doc/' + encodeURIComponent(x.id)
+                + '" target="_blank" rel="noopener">' + esc(x.title || x.filename || x.id) + '</a>',
+                esc(x.category || ''), esc(x.source || ''), pretty(x.doc_date || '')];
+      }), true));
+    }
+    if (!(d.events || []).length && !docs.length)
+      h.push('<p class="small muted">The registers returned no events or documents for this '
+             + 'publication.</p>');
+    el.innerHTML = h.join('');
+  }
+
+  function follow(el, lid, pub) {
+    var settled = false;
+    function finish() {
+      if (settled) return;
+      settled = true;
+      api('/api/lookup/' + encodeURIComponent(lid))
+        .then(function (rec) { render(el, rec, pub); })
+        .catch(function (e) { el.innerHTML = '<p class="small warn">' + esc(e.message) + '</p>'; });
+    }
+    var es;
+    try { es = new EventSource(LB + '/api/lookup/' + encodeURIComponent(lid) + '/stream'); }
+    catch (e) { return finish(); }
+    es.onmessage = function (ev) {
+      var j; try { j = JSON.parse(ev.data); } catch (e) { return; }
+      var m = j.message || j.msg || j.phase || '';
+      if (m && !settled) el.innerHTML = '<p class="small muted"><span class="spin" aria-hidden="true"></span> '
+        + esc(m) + '</p>';
+      if (j.done) { try { es.close(); } catch (e) {} finish(); }
+    };
+    es.onerror = function () { try { es.close(); } catch (e) {} finish(); };
+  }
+
+  function start(el, pub, refresh) {
+    el.innerHTML = '<p class="small muted"><span class="spin" aria-hidden="true"></span> '
+      + 'Pulling the file from the registers. This takes a minute or two and is kept, so it is '
+      + 'instant next time.</p>';
+    api('/api/file', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                      body: JSON.stringify({number: pub, refresh: !!refresh})})
+      .then(function (d) {
+        if (d.phase === 'error') {
+          el.innerHTML = '<p class="small warn">'
+            + esc((d.confirm && (d.confirm.error || d.confirm.note))
+                  || 'The registers could not resolve this number.') + '</p>';
+          return;
+        }
+        if (d.reused && !d.running)
+          return api('/api/lookup/' + encodeURIComponent(d.id))
+            .then(function (rec) { render(el, rec, pub); });
+        follow(el, d.id, pub);
+      })
+      .catch(function (e) { el.innerHTML = '<p class="small warn">' + esc(e.message) + '</p>'; });
+  }
+
+  function open(btn) {
+    var pub = btn.dataset.pub, el = panelFor(btn);
+    if (OPEN[pub]) { el.hidden = !el.hidden; btn.setAttribute('aria-expanded', String(!el.hidden)); return; }
+    OPEN[pub] = true;
+    el.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    el.innerHTML = '<p class="small muted">Asking the registers whether this file is already held…</p>';
+    /*  The cheap question first. A deep fetch costs register calls and tens of megabytes; it does
+        not start because somebody opened a panel. */
+    api('/api/file?number=' + encodeURIComponent(pub))
+      .then(function (d) {
+        if (d.found && !d.running)
+          return api('/api/lookup/' + encodeURIComponent(d.id))
+            .then(function (rec) { render(el, rec, pub); });
+        if (d.found && d.running) return follow(el, d.id, pub);
+        el.innerHTML = '<p class="small muted">No file held for this publication yet. '
+          + 'Pulling it reads USPTO ODP, the EPO register and DPMAregister, takes a minute or two, '
+          + 'and is kept afterwards.</p>'
+          + '<button type="button" class="btn sm fpgo">Pull the file</button>';
+        el.querySelector('.fpgo').addEventListener('click', function () { start(el, pub, false); });
+      })
+      .catch(function (e) { el.innerHTML = '<p class="small warn">' + esc(e.message) + '</p>'; });
+  }
+
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target.closest && ev.target.closest('.filelink');
+    if (!btn) return;
+    ev.preventDefault();
+    open(btn);
+  });
+})();
+
+
+/*  ------------------------------------------------------------------ the (?) mark, anywhere
+    A page that explains itself in a paragraph beside every control is a page nobody finishes
+    reading. The explanation is still worth having, so it moves one click away: the control says
+    what it is, and the (?) beside it says how it works and when it matters.
+
+    Usage is one element and no wiring:
+
+        <button type="button" class="qmark" data-title="Concept search"
+                data-help="Breaks the description into…">?</button>
+
+    Two paragraphs: separate with a blank line. `type="button"` matters inside a form, and the
+    markup is a <button> rather than a <span> so it is reachable by keyboard without a tabindex.
+*/
+(function questionMarks() {
+  var dlg = null;
+
+  function ensure() {
+    if (dlg) { return dlg; }
+    dlg = document.createElement('dialog');
+    dlg.className = 'dlg qmarkdlg';
+    dlg.innerHTML =
+      '<form method="dialog" class="stack" style="min-width:min(34rem,92vw)">' +
+      '<h3 class="h3" data-t style="margin-top:0"></h3>' +
+      '<div class="small" data-b style="line-height:1.6"></div>' +
+      '<div style="display:flex;margin-top:.7rem"><span class="grow"></span>' +
+      '<button class="btn ghost sm" value="close">Close</button></div></form>';
+    document.body.appendChild(dlg);
+    return dlg;
+  }
+
+  function open(btn) {
+    var d = ensure();
+    if (!d.showModal) { return; }                 // no <dialog>: leave the title attribute to it
+    d.querySelector('[data-t]').textContent = btn.getAttribute('data-title') || 'About this';
+    var body = btn.getAttribute('data-help') || '';
+    d.querySelector('[data-b]').innerHTML = body.split(/\n\s*\n/).map(function (p) {
+      //  The text is authored in the template, never from a user, but escape it anyway: this is
+      //  one line and it means a future data-help that IS user text cannot inject.
+      var e = document.createElement('div');
+      e.textContent = p.trim();
+      return '<p>' + e.innerHTML + '</p>';
+    }).join('');
+    d.showModal();
+  }
+
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('.qmark');
+    if (!b) { return; }
+    ev.preventDefault();
+    open(b);
+  });
 })();

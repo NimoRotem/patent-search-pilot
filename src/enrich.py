@@ -6,7 +6,7 @@ for a throttled Google page, and finally SerpApi when its monthly allowance is a
 successful path is normalized into the same claims, paragraphs and chunks with provenance.
 """
 from __future__ import annotations
-import os, re, json, sys, threading, time
+import os, re, json, sys, threading, time, traceback
 import requests
 import db, patent_text as pt
 from fulltext_recovery import fetch_google_full_text
@@ -359,6 +359,60 @@ def enrich_publication(pubnum, reembed=False):
     result = _persist_full_text(pubnum, payload, reembed=reembed)
     result.update(_persist_serp_metadata(pubnum, payload.get("_serp_raw")))
     return result
+
+
+def stash_full_text(pubnum, run_id=None, reason=""):
+    """Recover one specification WITHOUT writing the live corpus. -> the same shape as
+    `enrich_publication`, with `stashed` true when text landed in the scratch store.
+
+    WHY THIS EXISTS AND WHERE IT IS USED
+    `enrich_publication` inserts `claims`, `paragraphs` and `chunks` and updates `publications`,
+    which is exactly the write `corpus_guard` refuses in the durable search worker: the search
+    path may not touch the live corpus or its 94 GB vector index (docs/corpus_write_policy.md).
+    Without a replacement the guard would turn every text-less reference into one that is LISTED
+    instead of read, and the reading is the most valuable thing a deep search does.
+
+    So the text goes to the two places the policy names instead:
+
+      * `sources_docstore`, the scratch store, which `deep_analysis.full_text` consults when the
+        corpus holds no body for a publication. The reference is read on THIS run.
+      * `corpus_ingest_queue`, the request that it be in the next PERMANENT release. A repeat
+        request bumps `request_count`, which is the demand signal the release process ranks by.
+
+    Neither is a retrieval table and neither is indexed for vector search, so nothing here waits
+    on index maintenance and nothing competes with a live query.
+    """
+    if not recovery_available():
+        return {"pub": pubnum, "ok": False, "reason": "recovery_disabled"}
+    payload = fetch_best_full_text(pubnum)
+    claims = "\n\n".join(payload.get("claims") or [])
+    description = "\n\n".join(payload.get("description") or [])
+    if not (claims or description):
+        return {"pub": pubnum, "ok": False, "reason": "no_full_text_source"}
+    source = "+".join(payload.get("sources") or []) or "unknown:fulltext"
+    try:
+        from sources import docstore
+        docstore._put_sync(str(pubnum), {
+            "source": source,
+            "claims": claims,
+            "description": description,
+            "abstract": "\n\n".join(payload.get("abstract") or [])})
+    except Exception as exc:                                         # noqa: BLE001
+        traceback.print_exc()
+        return {"pub": pubnum, "ok": False, "reason": f"scratch_store_failed: {str(exc)[:120]}"}
+    try:
+        import runstore
+        runstore.queue_for_ingest(
+            str(pubnum), run_id=run_id,
+            reason=reason or "read set: the corpus holds no claims and no paragraphs",
+            source=source, scratch_ref=f"sources_docstore:{pubnum}",
+            payload={"claims_chars": len(claims), "desc_chars": len(description)})
+    except Exception:                                                # noqa: BLE001
+        #  The demand signal is bookkeeping for a LATER release. Losing it must not cost this run
+        #  the text it just fetched and can read right now.
+        traceback.print_exc()
+    return {"pub": pubnum, "ok": True, "stashed": True, "source": source,
+            "claims_chars": len(claims), "desc_chars": len(description)}
 
 
 def _safe_date(s):

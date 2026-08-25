@@ -134,12 +134,21 @@ def _grounded(candidate, source_words, min_overlap=GROUND_MIN_OVERLAP):
 
 
 def is_independent(text):
-    """A claim is dependent when it refers back to another claim."""
+    """A claim is dependent when it refers back to another claim.
+
+    German drafters put words between the preposition and the noun, and the commonest forms carry
+    no claim number at all: "nach dem vorherigen Anspruch", "nach einem der vorhergehenden
+    Ansprüche". Requiring "anspr" to follow "nach" immediately marked eleven of the fourteen
+    claims of DE 10 2024 133 318 A1 independent, which is both false and load-bearing: the ledger
+    prioritises independent claims and 112(d) hangs off the dependency.
+    """
     t = (text or "")
     return not re.search(
         r"(?i)\b(?:according\s+to|as\s+(?:claimed|recited|set\s+forth)\s+in|of|in|per)?\s*"
-        r"\bclaims?\s+\d|\b(?:nach|gem(?:ä|ae)ß)\s+(?:einem\s+der\s+)?anspr|"
-        r"selon\s+la\s+revendication|如权利要求\s*\d", t)
+        r"\bclaims?\s+\d|"
+        r"\b(?:nach|gem(?:ä|ae)ß)\s+(?:\w+\s+){0,3}anspr(?:uch|ü?che)|"
+        r"selon\s+(?:l\w+\s+)?revendication|如权利要求\s*\d|"
+        r"\b(?:preceding|previous)\s+claims?\b", t)
 
 
 # A claim number is "<digits><.|)|．|、>" followed by whitespace OR — in a CJK document, which

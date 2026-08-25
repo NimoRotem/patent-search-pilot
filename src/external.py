@@ -56,7 +56,9 @@ import threading
 import time
 import traceback
 
+import corpus_guard                # is this process allowed to write the live corpus at all
 import db
+import failclosed
 import llm
 import pubnorm
 
@@ -423,6 +425,48 @@ def best_records(cands) -> dict:
     return by_pub
 
 
+#  How many refused external candidates one search may record as demand. The fan-out reduces to a
+#  few hundred survivors before it ever reaches `materialise`, so this is a ceiling on a pathology
+#  rather than a routine cut, and it is bounded because each row is a write.
+_DEMAND_QUEUE_MAX = int(os.environ.get("EXTERNAL_DEMAND_QUEUE_MAX", "400"))
+
+
+def _queue_external_demand(records, tier="external"):
+    """Record external candidates this process may not insert as demand for the next release.
+
+    `corpus_ingest_queue` (sql/009) is where docs/corpus_write_policy.md sends search-time demand.
+    A repeat request bumps `request_count`, so a publication four searches wanted outranks one
+    that one search wanted when the release is built. Best effort: losing the signal must not
+    cost the search the candidates it CAN still use.
+    """
+    try:
+        import runctx
+        import runstore
+    except Exception:                                                # noqa: BLE001
+        return 0
+    run_id = getattr(runctx.active(), "run_id", None)
+    n = 0
+    for c in records[:_DEMAND_QUEUE_MAX]:
+        pub = _canonical(c.get("pub_number"))
+        if not pub:
+            continue
+        try:
+            runstore.queue_for_ingest(
+                pub, run_id=run_id,
+                reason=f"external candidate ({tier}) found by a search; not in the corpus",
+                source=str(c.get("source") or "external"),
+                payload={"title": (c.get("title") or "")[:200],
+                         "cpc": list(c.get("cpc") or [])[:12]})
+            n += 1
+        except Exception:                                            # noqa: BLE001
+            traceback.print_exc()
+            break
+    if n:
+        print(f"[external] {n} candidate(s) queued for the next corpus release instead of being "
+              f"inserted here", flush=True)
+    return n
+
+
 def materialise(records, tier: str = "external") -> dict:
     """Insert the publications this corpus does not hold, so every later stage can judge them.
 
@@ -449,6 +493,19 @@ def materialise(records, tier: str = "external") -> dict:
         have = _resolve_existing(cur, [c["pub_number"] for c in records.values()])
         out.update(have)
         todo = [c for k, c in records.items() if k not in have]
+        if todo and corpus_guard.armed() and not corpus_guard.writes_allowed():
+            #  THE CORPUS IS READ ONLY IN THIS PROCESS. Every insert below would be refused one
+            #  row at a time by the guard, and the per-row SAVEPOINT handler would swallow each
+            #  refusal, so the channel would come back short with nothing anywhere saying why.
+            #  Decided once, said once, and the demand is recorded where the policy puts it.
+            _queue_external_demand(todo, tier)
+            failclosed.fallback(
+                "external:materialise",
+                f"the corpus is read only in this process, so {len(todo)} external candidate(s) "
+                f"this search found could not be added to it; they are queued for the next "
+                f"corpus release and are not in this run's ranking",
+                kind="corpus_read_only")
+            return out
         for c in todo:
             pub = _canonical(c["pub_number"])
             if not pub:
@@ -848,6 +905,34 @@ def citable(families, subject_obj, mode) -> list:
     return [f for f in families if f[2] in ok]
 
 
+def credit_sources(cands, fam_of, kept):
+    """Which source put which family in front of the reader. -> ({src: n}, {src: n_unique})
+
+    `stats[src]["hits"]` counts what an adapter RETURNED, which is the wrong unit and flatters the
+    noisiest one: measured on a live run, bigquery_gpatents returned 9,979 rows and
+    serpapi_gpatents 400, out of 12,480 candidates that fused down to 393 families. What a reader
+    is entitled to know is how many families a source contributed to the ranking, and how many of
+    those NO OTHER source found, because that second number is the one that says whether a
+    subscription is earning its place.
+
+    Counted over `kept`, the families that survived fusion, so a source is never credited with a
+    document that was cut. A family two sources both found is credited to both and is unique to
+    neither. Its own function so it can be tested without a network fan-out.
+    """
+    by_source: dict = {}
+    for c in cands or ():
+        fam = fam_of.get(_norm((c or {}).get("pub_number") or ""))
+        if fam in kept:
+            by_source.setdefault(str((c or {}).get("source") or "external"), set()).add(fam)
+    finders: dict = {}
+    for src, fams in by_source.items():
+        for fam in fams:
+            finders.setdefault(fam, set()).add(src)
+    return ({s: len(f) for s, f in by_source.items()},
+            {s: sum(1 for fam in fams if len(finders.get(fam) or ()) == 1)
+             for s, fams in by_source.items()})
+
+
 def run(query_specs, brief: str = "", claims=None, on_event=None) -> dict:
     """Plan, fan out, materialise, rank. Never raises.
 
@@ -916,6 +1001,7 @@ def run(query_specs, brief: str = "", claims=None, on_event=None) -> dict:
             if fam in keep_fams and fam not in pid_of and k in placed:
                 pid_of[fam] = placed[k][0]
         fams = [(f, s, pid_of[f]) for f, s in ranked if f in pid_of]
+        families_by_source, unique_by_source = credit_sources(cands, fam_of, pid_of)
     except Exception as e:
         traceback.print_exc()
         return {"ok": False, "families": [], "error": f"ranking failed: {str(e)[:200]}",
@@ -928,6 +1014,8 @@ def run(query_specs, brief: str = "", claims=None, on_event=None) -> dict:
             "stats": res.get("stats") or {}, "errors": res.get("errors") or [],
             "n_candidates": len(cands), "n_records": len(records), "n_in_corpus": len(have),
             "n_new": n_new, "n_channels": len(chans),
+            "families_by_source": families_by_source,
+            "unique_families_by_source": unique_by_source,
             "n_families": len(fams), "elapsed": round(time.time() - t0, 1),
             "error": res.get("error") or ""}
 
@@ -939,6 +1027,10 @@ def summary(ext: dict) -> dict:
     per_source = {k: v.get("hits", 0) for k, v in (ext.get("stats") or {}).items()}
     return {
         "ok": bool(ext.get("ok")),
+        #  Families kept, per source, and how many of them nothing else found. `per_source` below
+        #  is the raw returned-row count and is a different unit: keep both, never conflate them.
+        "families_by_source": ext.get("families_by_source") or {},
+        "unique_families_by_source": ext.get("unique_families_by_source") or {},
         "aspects": [{"name": a.get("name"), "cpc": a.get("cpc"),
                      "keywords": a.get("keywords", [])[:6]}
                     for a in (ext.get("aspects") or [])],

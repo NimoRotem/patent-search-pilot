@@ -1,4 +1,4 @@
-"""Retrieval fusion tests — LOCK IN the M3 weighted-RRF + dense-floor fix as a regression.
+"""Retrieval fusion tests , LOCK IN the M3 weighted-RRF + dense-floor fix as a regression.
 Pure logic (no DB/embed): synthetic per-channel rankings fed straight into Retriever.rrf()."""
 from retrieval import Retriever, CHANNEL_WEIGHTS, RRF_K, DENSE_FLOOR
 
@@ -81,6 +81,7 @@ def test_fork_gets_own_connection_without_reloading_family_map(monkeypatch):
     import retrieval
 
     made = []
+    options = []
 
     class FakeConnection:
         def __init__(self):
@@ -106,9 +107,10 @@ def test_fork_gets_own_connection_without_reloading_family_map(monkeypatch):
         def close(self):
             self.closed = True
 
-    def connect():
+    def connect(**kwargs):
         conn = FakeConnection()
         made.append(conn)
+        options.append(kwargs)
         return conn
 
     monkeypatch.setattr(retrieval.db, "connect", connect)
@@ -117,6 +119,7 @@ def test_fork_gets_own_connection_without_reloading_family_map(monkeypatch):
     child = parent.fork()
 
     assert len(made) == 1
+    assert options == [{"readonly": True}]
     assert child.conn is made[0]
     assert child._fam is parent._fam
     assert not any("SELECT id" in sql for sql in child.conn.statements)

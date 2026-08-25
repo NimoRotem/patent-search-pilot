@@ -4,11 +4,34 @@ No paid APIs are hit: SerpApi (enrich.fetch_details) and the LLM (llm.chat_json)
 Vertex embeddings are replaced with deterministic hash-seeded vectors so dense/match queries run
 fast and reproducibly. The real Postgres is read (fast). The reranker is never triggered (tests
 use cached reports/views, not live agent runs)."""
-import os, sys, hashlib
+import hashlib
+import os
+import sys
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
+
+#  THE SUITE MUST NOT INHERIT A DEPLOYMENT'S COOKIE SCOPE. config.py loads the app's .env, and a
+#  second instance under the same domain sets SESSION_COOKIE_PATH to its own prefix
+#  (/patents-fable). Flask's test client honours that path, requests "/", is therefore never sent
+#  the session cookie back, and EVERY login-dependent web test fails on a checkout whose only sin
+#  is being deployed. 29 of 31 failures on 2026-08-18 were exactly this. python-dotenv does not
+#  override variables that already exist, so setting them here wins over the .env.
+os.environ.setdefault("SESSION_COOKIE_PATH", "/")
+os.environ.setdefault("SESSION_COOKIE_NAME", "session")
+
+#  THE SUITE MAY SEE ITS OWN RUN ROWS; PRODUCTION MAY NOT. The durable tests create real rows in
+#  the real `search_runs`, because that table has foreign keys into the corpus and cannot live in
+#  a separate database. `runstore.ALLOW_TEST_SLUGS` defaults to False so the live workers skip
+#  anything under the `test-` prefix, which is the fix for the live quick worker claiming
+#  `test-durable-*` rows and running real searches on them. Flipped here, once, so the tests can
+#  still claim what they create. Set at import time, before any test module imports runstore.
+try:
+    import runstore as _runstore
+    _runstore.ALLOW_TEST_SLUGS = True
+except Exception:                     # a checkout without the durable store still collects
+    pass
 
 
 def _det_vec(text, dim=768):
@@ -27,7 +50,11 @@ def _det_vec(text, dim=768):
 @pytest.fixture(autouse=True)
 def no_paid_apis(monkeypatch):
     """Mock the paid/external calls for every test."""
-    import embed, enrich, llm
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_REQUIRED", "0")
+    import embed
+    import enrich
+    import llm
     monkeypatch.setattr(embed, "embed_query", lambda text, dim=768, **k: _det_vec(text, dim))
     monkeypatch.setattr(embed, "embed_texts",
                         lambda texts, dim=768, **k: [_det_vec(t, dim) for t in texts])

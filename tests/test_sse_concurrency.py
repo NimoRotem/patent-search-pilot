@@ -7,10 +7,10 @@ These guard the two serving-layer fixes:
     in its own child process instead.
 """
 import json
-import queue
 import threading
 import time
 import pytest
+from flask import has_request_context
 import auth
 import rerank_pool
 import webapp
@@ -19,35 +19,39 @@ GOLD = "grabo_gripper_novelty"
 
 
 # ---- helpers --------------------------------------------------------------------------------
-def _drain(resp, deadline=10.0):
-    """Consume an SSE response in a background thread; return the parsed data frames."""
-    out, q = [], queue.Queue()
-
-    def reader():
-        try:
-            for chunk in resp.response:
-                q.put(chunk)
-        except Exception:
-            pass
-        q.put(None)
-
-    t = threading.Thread(target=reader, daemon=True)
-    t.start()
-    buf, end = b"", time.time() + deadline
-    while time.time() < end:
-        try:
-            chunk = q.get(timeout=0.25)
-        except queue.Empty:
-            continue
-        if chunk is None:
-            break
-        buf += chunk
-        while b"\n\n" in buf:
-            frame, buf = buf.split(b"\n\n", 1)
-            frame = frame.decode("utf-8", "replace").strip()
-            if frame.startswith("data:"):
-                out.append(json.loads(frame[5:].strip()))
+def _drain(resp):
+    """Consume a terminal SSE response on the thread that opened its Flask context."""
+    out, buf = [], b""
+    try:
+        for chunk in resp.response:
+            buf += chunk
+            while b"\n\n" in buf:
+                frame, buf = buf.split(b"\n\n", 1)
+                frame = frame.decode("utf-8", "replace").strip()
+                if frame.startswith("data:"):
+                    out.append(json.loads(frame[5:].strip()))
+    finally:
+        resp.close()
     return out
+
+
+def _first_frame(resp):
+    """Read one immediately available SSE frame and always release its Flask context.
+
+    A live stream has no natural EOF. Sending it through `_drain` leaves that helper's reader
+    thread blocked in the generator after its deadline, which also leaves the request's app
+    context alive. A later anonymous request can then cache `g.patent_user = None` in that leaked
+    context and make an authenticated test appear logged out. The initial SSE state is emitted
+    synchronously, so read just that frame in this thread and close before returning.
+    """
+    try:
+        for chunk in resp.response:
+            frame = chunk.decode("utf-8", "replace").strip()
+            if frame.startswith("data:"):
+                return json.loads(frame[5:].strip())
+        raise AssertionError("the SSE stream ended without an initial data frame")
+    finally:
+        resp.close()
 
 
 # ---- SSE ------------------------------------------------------------------------------------
@@ -66,6 +70,7 @@ def test_sse_emits_current_state_immediately_for_finished_report(app_client):
     frames = _drain(app_client.get(f"/events/{GOLD}"))
     assert frames, "expected at least one frame"
     assert frames[0]["ready"] is True and frames[0]["done"] is True
+    assert not has_request_context(), "the completed stream leaked its Flask request context"
 
 
 def test_sse_streams_progress_then_terminates(app_client, monkeypatch, tmp_path):
@@ -77,20 +82,22 @@ def test_sse_streams_progress_then_terminates(app_client, monkeypatch, tmp_path)
         webapp._JOBS[slug] = {"status": "running", "msg": "Queued…"}
 
     resp = app_client.get(f"/events/{slug}")
-    got = []
-    done = threading.Event()
+    published = threading.Event()
 
-    def reader():
-        got.extend(_drain(resp, deadline=8.0))
-        done.set()
+    def publisher():
+        time.sleep(0.4)                               # let the listener subscribe
+        webapp._set_job(slug, kind="elements", msg="Decomposed into 5 elements…")
+        time.sleep(0.2)
+        (tmp_path / f"{slug}.json").write_text("{}")  # the report now exists on disk
+        webapp._set_job(slug, kind="done", status="done", msg="done")
+        published.set()
 
-    threading.Thread(target=reader, daemon=True).start()
-    time.sleep(0.4)                                   # let the listener subscribe
-    webapp._set_job(slug, kind="elements", msg="Decomposed into 5 elements…")
-    time.sleep(0.2)
-    (tmp_path / f"{slug}.json").write_text("{}")      # the report now exists on disk
-    webapp._set_job(slug, kind="done", status="done", msg="done")
-    done.wait(timeout=9)
+    writer = threading.Thread(target=publisher, daemon=True)
+    writer.start()
+    got = _drain(resp)
+    writer.join(timeout=9)
+    assert published.is_set(), "the progress publisher did not reach its terminal event"
+    assert not has_request_context(), "the progress stream leaked its Flask request context"
 
     msgs = [f["msg"] for f in got]
     assert any("Decomposed into 5 elements" in m for m in msgs), msgs
@@ -106,9 +113,9 @@ def test_sse_and_status_report_the_same_state(app_client, monkeypatch, tmp_path)
     with webapp._JOB_LOCK:
         webapp._JOBS[slug] = {"status": "partial", "msg": "refining…"}
     poll = app_client.get(f"/status/{slug}").get_json()
-    frames = _drain(app_client.get(f"/events/{slug}"))
+    first = _first_frame(app_client.get(f"/events/{slug}", buffered=False))
     for k in ("ready", "done", "status", "msg"):
-        assert frames[0][k] == poll[k]
+        assert first[k] == poll[k]
     webapp._JOBS.pop(slug, None)
 
 

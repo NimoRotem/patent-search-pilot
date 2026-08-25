@@ -62,8 +62,12 @@ import claim_rescue
 import limitations as limmod
 import coverage_rank
 import deep_analysis
+import search_modes
 import llm
 import oracle
+import corpus_guard                # is this process allowed to write the live corpus at all
+import runctx                       # the durable run this search belongs to, if any (else no-op)
+from retrieval.family import family_key_sql
 
 VERSION = 1
 
@@ -108,12 +112,12 @@ SCREEN_WORKERS = int(os.environ.get("DEEP_RANK_SCREEN_WORKERS", "6"))
 #  NOW 150, AND THIS IS A DELIBERATE OVERRIDE OF THE GUARD ABOVE, not an oversight.
 #
 #  What the measurement actually costs us, priced: the last run read 549 references in full to fill
-#  a 60-card page, and reading is 97% of the bill — 72.8M of 112M prompt tokens went on the main
+#  a 60-card page, and reading is 97% of the bill , 72.8M of 112M prompt tokens went on the main
 #  read alone. Depth past the page is the single largest line item in the whole system.
 #
 #  What both frozen expert sets say about whether that depth is buying anything: on the Nguyen set
 #  every reference the attorney filed was in the corpus, retrieved, screened, and four of five were
-#  READ IN FULL — and one reached the page. They were lost at RANKING, at positions 85 to 288. Depth
+#  READ IN FULL , and one reached the page. They were lost at RANKING, at positions 85 to 288. Depth
 #  did not fail to find them; it found them and then could not show them. Reading deeper buys more
 #  of the same.
 #
@@ -139,7 +143,7 @@ CHART_MIN_SCREEN = int(os.environ.get("DEEP_RANK_CHART_MIN_SCREEN", "70"))
 #  THE PASSAGE TAIL. The Aug-17 economy cut CHART_TOP 360 -> 150 and simply stopped reading the
 #  rest of the screen. batch_reader covers exactly that population at ~1/7 the effective token
 #  cost (one-requirement x many-documents calls, 83% measured cache hit), fed by the per-
-#  limitation candidates claim_reach already ranked — so every limitation gets its own tail of
+#  limitation candidates claim_reach already ranked , so every limitation gets its own tail of
 #  documents read against it instead of nothing. DEEP_RANK_BATCH_TAIL=0 restores the cut exactly.
 BATCH_TAIL = os.environ.get("DEEP_RANK_BATCH_TAIL", "1") != "0"
 BATCH_PER_LIM = int(os.environ.get("DEEP_RANK_BATCH_PER_LIM", "12"))
@@ -358,6 +362,100 @@ def abstract_is_trustworthy(abstract, title, claim_text) -> bool:
     return bool(a & ref)
 
 
+def _seed_families(cur, report, families, reps):
+    """Put the file wrapper's references into the candidate list, as themselves.
+
+    -> (families, seed_families). Two things happen here and both matter:
+
+    * a seed whose family is ALREADY ranked has its family representative REPLACED by the seed
+      publication. The representative is chosen on dates and text, which is right for a document
+      nobody has named; it is wrong for one an examiner applied by number, where the whole value is
+      that this specific document was used against these claims.
+    * a seed whose family retrieval never ranked is PREPENDED, so it is screened and read at all.
+
+    Measured on US 2025/0033224 A1: US 11,413,727 sat in a family retrieval ranked 28th of 6,215,
+    and the reading still charted a different member of it. The examiner had used '727 to anticipate
+    thirteen claims.
+    """
+    seeds = [p for p in ((report or {}).get("prosecution_seeds") or []) if p]
+    if not seeds:
+        return list(families), []
+    try:
+        cur.execute(
+            "SELECT p.id, p.publication_number, p.kind_code, p.country, p.title, p.abstract, "
+            "       p.publication_date, p.filing_date, p.earliest_priority_date, "
+            "       p.simple_family_id, p.tier, p.facsimile_path, "
+            f"       {family_key_sql('p')} AS fam, "
+            "       (SELECT count(*) FROM claims c WHERE c.publication_id=p.id) AS n_claims, "
+            "       (SELECT count(*) FROM chunks ch WHERE ch.publication_id=p.id "
+            "        AND ch.embedding IS NOT NULL) AS n_emb "
+            "FROM publications p WHERE p.publication_number = ANY(%s)", (list(seeds),))
+        rows = {r["publication_number"]: r for r in cur.fetchall()}
+    except Exception:
+        traceback.print_exc()
+        return list(families), []
+
+    #  THE WRAPPER SAYS WHAT TO LOOK AT. IT DOES NOT EXEMPT A DOCUMENT FROM BEING PRIOR ART.
+    #  Two gates, both learned from the first validation run:
+    #    * the subject's OWN family, which `_drop_self_family` had already removed. The examiner
+    #      cites it for obviousness-type double patenting, which is not a prior-art ground, and it
+    #      came back in at rank 1 of a prior-art report.
+    #    * anything that is not prior art on the dates, judged by the same engine every other
+    #      candidate is judged by.
+    import webview                      # module-level import would cycle: webview imports db
+    #  `self_family` is set whenever the subject resolves, whether or not anything was dropped;
+    #  `self_family_excluded` is only set when the early filter actually removed something, and
+    #  reading that one made this gate inert on exactly the runs where it was needed.
+    self_fam = str((report or {}).get("self_family")
+                   or ((report or {}).get("self_family_excluded") or {}).get("family") or "")
+    efd = webview.subject_efd_of(report)
+    subj = search_modes.Subject(number="subject", efd=efd) if efd else None
+    skipped = []
+    for pub in list(rows):
+        r = rows[pub]
+        why = ""
+        if self_fam and str(r["fam"]) == self_fam:
+            why = "the subject's own family"
+        elif subj is not None:
+            basis = search_modes.classify_basis(
+                {"publication_date": r["publication_date"],
+                 "earliest_priority_date": r["earliest_priority_date"],
+                 "filing_date": r["filing_date"]}, subj)
+            if basis == search_modes.Basis.NOT_PRIOR_ART:
+                why = "not prior art on the dates"
+        if why:
+            skipped.append("%s (%s)" % (pub, why))
+            rows.pop(pub)
+    if skipped:
+        print(f"[prosecution] {len(skipped)} wrapper reference(s) NOT read as prior art: "
+              f"{', '.join(skipped)}", flush=True)
+
+    have = list(families)
+    known = set(have)
+    seed_fams, extra = [], []
+    for pub in seeds:
+        r = rows.get(pub)
+        if not r:
+            continue
+        fam = r["fam"]
+        #  FIRST SEED PER FAMILY WINS, and `seeds` is ordered applied-first. Overwriting let a
+        #  merely-considered sibling displace the document the examiner actually applied: US
+        #  11,413,727 lost family 66624664 to US 2020/0338695 A1 out of the same 1449 list.
+        #  The alternates are still named, by webview.family_alternates.
+        if fam not in seed_fams:
+            reps[fam] = r               # read the document the Office named, not a sibling
+            seed_fams.append(fam)
+        if fam not in known:
+            known.add(fam)
+            extra.append(fam)
+    if extra:
+        print(f"[prosecution] {len(extra)} wrapper reference(s) were not in the retrieval ranking "
+              f"at all and were added to the candidate list", flush=True)
+    #  Prepended: these are the highest-authority candidates in the run, and the rank they get here
+    #  is also the order the reading budget is spent in.
+    return extra + have, seed_fams
+
+
 def _candidate_rows(cur, families, reps, limit):
     """[{pub, fam, title, text, rank}] for the screen, best retrieval rank first."""
     rows, pids = [], []
@@ -431,12 +529,40 @@ def _candidate_rows(cur, families, reps, limit):
     return rows
 
 
+def _candidate_rows_for_ledger(rows, report):
+    """Resolved fused candidates in the durable ledger's publication-keyed shape.
+
+    ``ranked_families`` itself contains family keys, not dictionaries and not publication
+    numbers. The screen has already resolved those keys to the exact publications it will judge,
+    so this is the first point where a valid ``search_candidates`` row can be written.
+    """
+    channels_by_family = {}
+    for channel, families in ((report or {}).get("channel_families") or {}).items():
+        for family in families or ():
+            channels_by_family.setdefault(str(family), set()).add(str(channel))
+
+    out = []
+    for index, row in enumerate(rows or (), 1):
+        pub = row.get("pub")
+        if not pub:
+            continue
+        family = row.get("fam")
+        out.append({
+            "pub": pub,
+            "family_id": str(family) if family is not None and str(family) else None,
+            "channels": sorted(channels_by_family.get(str(family), ())),
+            "fused_rank": int(row.get("rank") or index),
+            "stage": "fused",
+        })
+    return out
+
+
 def screen(rows, brief, on_progress=None, sys_prompt=None, header="TARGET INVENTION"):
     """{pub: 0-100} over every candidate row, in batches. Fail-soft: an unscored candidate simply
     has no screen score and falls back to its retrieval rank.
 
     `sys_prompt` and `header` exist so a caller can ask a DIFFERENT question of the same machinery
-    — limitation_query screens candidates against one claim requirement rather than against the
+    , limitation_query screens candidates against one claim requirement rather than against the
     whole invention. The batching below is the part that must not be duplicated: it is the fix for
     a measured calibration defect, and a second screener with its own batching would reintroduce
     it silently.
@@ -499,13 +625,138 @@ def screen(rows, brief, on_progress=None, sys_prompt=None, header="TARGET INVENT
     return scores
 
 
-def _enrich_missing_text(chosen, on_progress=None, limit=None):
+#  Which environment variable pins each knob. Needed because the profile budget must NOT outrank
+#  an operator who set one: `DEEP_RANK_CHART_TOP=360 CLAIM_REACH=0` is how this repo restores a
+#  previous pipeline for an A/B, and a budget that quietly overrode it would make that A/B a lie.
+_ENV_KNOB = {
+    "SCREEN_TOP": "DEEP_RANK_SCREEN_TOP",
+    "CHART_TOP": "DEEP_RANK_CHART_TOP",
+    "CHART_TOP_MAX": "DEEP_RANK_CHART_TOP_MAX",
+    "ENRICH_TOP": "DEEP_RANK_ENRICH_TOP",
+    "PRESCREEN_ENRICH_TOP": "DEEP_RANK_PRESCREEN_ENRICH",
+    "ALWAYS_CHART_RETRIEVAL_HEAD": "DEEP_RANK_HEAD",
+    "BLIND_RESCUE": "DEEP_RANK_BLIND_RESCUE",
+    "BLIND_RESCUE_MAX": "DEEP_RANK_BLIND_RESCUE_MAX",
+    "CONCEPT_PASS_TOP": "DEEP_RANK_CONCEPT_PASS_TOP",
+    "BATCH_PER_LIM": "DEEP_RANK_BATCH_PER_LIM",
+    "BATCH_TAIL_MAX": "DEEP_RANK_BATCH_TAIL_MAX",
+    "RESCUE_CLAIMS": "DEEP_RANK_RESCUE_CLAIMS",
+    "CLAIM_REACH_CAP": "DEEP_RANK_CLAIM_REACH_CAP",
+}
+
+
+def _budget(overrides):
+    """Resolve this run's depth knobs: the module constant unless the search profile cut it.
+
+    ONE LOOKUP, NOT A SECOND CONFIG SURFACE. `overrides` arrives only when `search_profile`
+    decided the input was a concept search rather than a claim attack. An explicitly SET
+    environment variable beats it, for the reason in `_ENV_KNOB` above.
+
+    Returned as a plain dict so the caller can put it on the report: a run whose depth was cut
+    has to be able to say by how much, or the next person comparing two reports is comparing two
+    different pipelines without knowing it.
+    """
+    base = {"SCREEN_TOP": SCREEN_TOP, "CHART_TOP": CHART_TOP, "CHART_TOP_MAX": CHART_TOP_MAX,
+            "ENRICH_TOP": ENRICH_TOP, "PRESCREEN_ENRICH_TOP": PRESCREEN_ENRICH_TOP,
+            "ALWAYS_CHART_RETRIEVAL_HEAD": ALWAYS_CHART_RETRIEVAL_HEAD,
+            "BLIND_RESCUE": BLIND_RESCUE, "BLIND_RESCUE_MAX": BLIND_RESCUE_MAX,
+            "CONCEPT_PASS_TOP": CONCEPT_PASS_TOP,
+            #  Zero here means "this depth did not set it": the caller falls back to the
+            #  quick or deep constant, so a budget that omits the tail changes nothing.
+            "BATCH_PER_LIM": 0, "BATCH_TAIL_MAX": 0,
+            "RESCUE_CLAIMS": 1 if RESCUE_CLAIMS else 0,
+            #  0 = unlimited, the historical behaviour. A ten-minute profile sets a cap.
+            "CLAIM_REACH_CAP": 0}
+    applied = set()
+    for k, v in (overrides or {}).items():
+        if k not in base or v is None:
+            continue
+        if os.environ.get(_ENV_KNOB.get(k, "")):     # the operator pinned this one; leave it
+            continue
+        base[k] = int(v)
+        applied.add(k)
+    #  BLIND_RESCUE defaults to the screen depth, so a cut screen has to carry it down or the
+    #  rescue would reach past the candidates the screen actually looked at.
+    if "SCREEN_TOP" in applied and "BLIND_RESCUE" not in applied \
+            and not os.environ.get(_ENV_KNOB["BLIND_RESCUE"]):
+        base["BLIND_RESCUE"] = min(base["BLIND_RESCUE"], base["SCREEN_TOP"])
+    return base
+
+
+def read_wave(chosen, features, claim_items, hints, scores, slug, emit=None, workers=None):
+    """Read every chosen reference in full, checkpointing each one AS IT LANDS. -> the charts.
+
+    THE MOST EXPENSIVE THING THE SYSTEM DOES: 150 to 700 whole documents, each one up to fourteen
+    READ-tier prompts carrying the document itself. A restart used to re-read all of them, because
+    the run recorded that it had read a reference and never consulted the record. Now each chart is
+    written to a digest-checked artifact keyed by (run, publication) the moment it comes back, and
+    a resumed attempt reads only what is missing.
+
+    A banked chart is reloaded only when it answers THIS checklist: `checklist_fp` fingerprints the
+    features and claim labels, so a resumed run built on a different disclosure list re-reads
+    rather than charting an answer to a question nobody asked.
+
+    Its own function, and not a closure, because this is the stage the durability claim is about
+    and it has to be drivable by a test without a corpus, a report and a screen behind it.
+    """
+    emit = emit or (lambda *_a, **_k: None)
+    done, reused = [0], [0]
+    lock = threading.Lock()
+    read_fp = deep_analysis.checklist_fp(features, claim_items)
+    #  Captured on this thread and re-applied inside the wave: the pool's threads are not the
+    #  thread that started the stage, so they cannot see its ambient run.
+    _ctx = runctx.current(slug)
+
+    def one(row):
+        with runctx.adopt(_ctx):
+            pub = row["pub"]
+            #  ALREADY READ, ON AN EARLIER ATTEMPT OF THIS RUN.
+            ref = runctx.reference_payload(slug, pub, fp=read_fp)
+            fresh = ref is None
+            if fresh:
+                try:
+                    ref = deep_analysis.analyse_reference(pub, features, claim_items,
+                                                          row.get("title"), hints=hints)
+                except runctx.RunCancelled:
+                    #  NOT an unreadable reference. A cancelled run must reach the worker as
+                    #  itself; swallowing it here would chart 700 "error" rows and then settle.
+                    raise
+                except Exception as exc:
+                    ref = {"pub": pub, "title": row.get("title"), "found": False, "features": [],
+                           "claims": [], "method": "error", "error": str(exc)[:200], "chars": 0}
+            ref["screen"] = (scores or {}).get(pub)
+            ref["retrieval_rank"] = row.get("rank")
+            ref["family"] = row.get("fam")
+            #  EACH reference analysis, persisted the moment it lands rather than at the end of
+            #  the wave, which is what makes a killed run's progress answerable without re-reading
+            #  anything.
+            if fresh:
+                runctx.reference_done(slug, pub, ref, fp=read_fp)
+            with lock:
+                done[0] += 1
+                if not fresh:
+                    reused[0] += 1
+                if done[0] % 5 == 0 or done[0] == len(chosen):
+                    emit("chart_progress", done=done[0], total=len(chosen), pub=pub)
+            return ref
+
+    n = min(int(workers or CHART_WORKERS), max(1, len(chosen)))
+    with ThreadPoolExecutor(max_workers=n) as ex:
+        charts = list(ex.map(one, chosen))
+    if reused[0]:
+        print(f"[resume {slug}] {reused[0]} of {len(chosen)} references reloaded from this run's "
+              f"own read checkpoints; only {len(chosen) - reused[0]} were read again", flush=True)
+    return charts
+
+
+def _enrich_missing_text(chosen, on_progress=None, limit=None, enrich_top=None):
     """Fetch and persist full text for the chosen references the corpus holds nothing readable for.
 
     Returns the number of references that gained text. Never fatal: a quota-exhausted or
     unreachable source leaves the reference exactly as it was, to be listed rather than read.
     """
-    if ENRICH_TOP <= 0 or not chosen:
+    enrich_top = ENRICH_TOP if enrich_top is None else int(enrich_top)
+    if enrich_top <= 0 or not chosen:
         return 0
     try:
         import enrich
@@ -541,7 +792,7 @@ def _enrich_missing_text(chosen, on_progress=None, limit=None):
         if cl == 0 and pa == 0:
             thin.append(pub)
     thin.sort(key=lambda p: order.get(p, 10 ** 6))
-    thin = thin[:(limit or ENRICH_TOP)]
+    thin = thin[:(limit or enrich_top)]
     if not thin:
         return 0
     if on_progress:
@@ -551,15 +802,44 @@ def _enrich_missing_text(chosen, on_progress=None, limit=None):
             pass
     done = [0]
     lock = threading.Lock()
+    #  Captured here and re-applied in the pool, same as the reading wave: these threads are
+    #  created per call and have no ambient run of their own.
+    _ctx = runctx.active()
+
+    #  WHERE THE FETCHED TEXT IS ALLOWED TO LAND. In the durable worker the live corpus is read
+    #  only (corpus_guard), so `enrich_publication` would be refused per reference and every thin
+    #  reference would be LISTED rather than read. `stash_full_text` fetches exactly the same text
+    #  and puts it in the scratch store plus `corpus_ingest_queue`, which is where
+    #  docs/corpus_write_policy.md says search-time demand goes, and `deep_analysis.full_text`
+    #  reads it from there. Decided ONCE, here, rather than per reference, so the log says which
+    #  route the run took.
+    stash = corpus_guard.armed() and not corpus_guard.writes_allowed()
+    if stash:
+        print(f"[deep_rank] the corpus is read only in this process; full text for "
+              f"{len(thin)} text-less reference(s) goes to the scratch store and the ingest "
+              f"queue, and is read from there", flush=True)
+    _run_id = getattr(runctx.active(), "run_id", None)
 
     def one(pub):
-        try:
-            r = enrich.enrich_publication(pub, reembed=False)
-            ok = bool(r and r.get("ok") and (r.get("added_claims") or
-                                              r.get("added_paragraphs") or
-                                              r.get("added_chunks")))
-        except Exception:
-            ok = False
+        with runctx.adopt(_ctx):
+            try:
+                #  A METERED EXTERNAL FETCH IS A UNIT OF WORK. Each of these is a SerpApi credit
+                #  against a 30,000/month plan, so a run whose lease was reaped must stop here
+                #  rather than after the whole enrichment wave.
+                runctx.check_cancelled(f"enrich:{pub}")
+                if stash:
+                    r = enrich.stash_full_text(pub, run_id=_run_id)
+                    ok = bool(r and r.get("ok") and (r.get("claims_chars") or
+                                                     r.get("desc_chars")))
+                else:
+                    r = enrich.enrich_publication(pub, reembed=False)
+                    ok = bool(r and r.get("ok") and (r.get("added_claims") or
+                                                     r.get("added_paragraphs") or
+                                                     r.get("added_chunks")))
+            except runctx.RunCancelled:
+                raise
+            except Exception:
+                ok = False
         with lock:
             done[0] += 1
             if on_progress and (done[0] % 10 == 0 or done[0] == len(thin)):
@@ -582,7 +862,7 @@ def _grounded_rows(ref, kind):
 
     Two bars count: "verified" (verbatim quote, located) and "teaches-unquoted" (the reader
     asserted a teaching it could not quote; kept at verdict "partial", capped confidence). The
-    weaker bar earns partial-strength score only — it can shape the ordering, never an
+    weaker bar earns partial-strength score only , it can shape the ordering, never an
     anticipation call, which stays verbatim-only in limitations.claim_status.
     """
     return [r for r in (ref.get(kind) or [])
@@ -614,7 +894,7 @@ def rarity(charts, features, claims):
 
 
 def _claim_leaders(charts, rar, depth=LEAD_DEPTH):
-    """{pub: [(claim label, idf)]} — the rare CLAIMS each reference is among the best disclosures of.
+    """{pub: [(claim label, idf)]} , the rare CLAIMS each reference is among the best disclosures of.
 
     The same credit `leaders` gives for a rare feature, for a rare claim. It matters more here: a
     claim disclosed by two references out of five hundred is the claim an attorney builds an
@@ -644,7 +924,7 @@ def _claim_leaders(charts, rar, depth=LEAD_DEPTH):
 
 
 def leaders(charts, rar, depth=LEAD_DEPTH):
-    """{pub: [(feature, idf)]} — the RARE features each reference is among the best disclosures of.
+    """{pub: [(feature, idf)]} , the RARE features each reference is among the best disclosures of.
 
     "Rare" is measured, not declared: a feature whose idf is at or above the median across the
     features of this search. Only `depth` references per feature qualify, so this promotes the
@@ -718,7 +998,7 @@ def score_reference(ref, rar, lead=()):
     coverage = 100.0 * pct
     #  Blend in the reader's holistic verdict, but ONLY for a reference that was actually read AND
     #  grounded at least one quote. An ungrounded or text-less document scores on coverage alone,
-    #  which is 0 — that is the gate that keeps a title-only record out of the head.
+    #  which is 0 , that is the gate that keeps a title-only record out of the head.
     overall = (ref.get("overall") or {}).get("score")
     #  "Read in full" has to mean the corpus HELD more than an abstract. 84% of this corpus is
     #  abstract-only, and charting twelve features against forty words is not a reading: it
@@ -889,7 +1169,7 @@ def _llm_spend(before):
     return out
 
 
-def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
+def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", budget=None):
     """Screen wide, read deep, and return the authoritative ranking. Mutates `report`.
 
     Writes the charts in ``deep_analysis``'s own schema so the "What it discloses" tab and
@@ -897,12 +1177,20 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
 
     depth="quick" is the interactive tier of the public split: screen + per-limitation batch
     tail ONLY. No paid pre-screen enrichment, no full-document reads, no concept passes, no
-    rescue — every skipped stage is exactly what the deep escalation adds back. The scoring,
+    rescue , every skipped stage is exactly what the deep escalation adds back. The scoring,
     the ledger and the page machinery are identical, so a quick report is a subset of a deep
     one, never a different product.
+
+    `budget` is the depth cut a CONCEPT search gets (search_profile.budget_for). A description
+    with no claims owes coverage of an invention, not an answer for every limitation of every
+    claim, and it was being read to the second standard at the second price. Empty or None runs
+    the full budget, which is what a document with claims always gets.
     """
     started = time.time()
-    quick = depth == "quick"
+    #  PHASE 1 and PHASE 2 both read nothing in full. They differ in how wide the evidence
+    #  sweep is, which arrives as a budget knob rather than as a second branch through the stage.
+    quick = depth in ("quick", "ledger")
+    B = _budget(budget)
     #  WHAT THIS STAGE COSTS, measured rather than reconstructed afterwards. See llm.process_usage:
     #  the report's existing `llm_usage` is scoped to the agent and misses essentially all of it.
     usage_before = _spend_snapshot()
@@ -931,14 +1219,14 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
             claim_items.append({"label": f"claim {c.get('claim_no') or len(claim_items) + 1}",
                                 "claim_no": c.get("claim_no") or len(claim_items) + 1,
                                 #  Carried through because an INDEPENDENT claim with no prior art
-                                #  is the most serious hole a search can leave — it is the claim
-                                #  the patent stands on — and both the rescue's priority order and
+                                #  is the most serious hole a search can leave , it is the claim
+                                #  the patent stands on , and both the rescue's priority order and
                                 #  the chart's row labels need to know which ones those are.
                                 "independent": bool(c.get("independent")),
                                 "text": text})
     #  TYPE A vs TYPE B. A disclosure with no claims is a concept search; a patent WITH claims is
     #  an attack, and its unit of work is the limitation, not the claim and not the invention. See
-    #  limitations.py — the two objectives disagree constantly and sharing one was measurably
+    #  limitations.py , the two objectives disagree constantly and sharing one was measurably
     #  wrong: three references an attorney cited were read in full, grounded 0/0/1 of 28 invention
     #  features, and were ranked 253/346/152 because each answers exactly one requirement.
     stype = limmod.search_type(report)
@@ -952,6 +1240,22 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
             #  The reader charts the limitations INSTEAD of the whole claims. Same machinery, same
             #  grounding and refutation gates; a better question. The label is the ledger key.
             claim_items = limmod.as_chart_items(lims)
+            #  EVERY LIMITATION CARRIES ITS WHOLE CLAIM as context, and every consumer downstream
+            #  uses it: claim_reach embeds blurb + whole claim (a preamble limitation like
+            #  "A vacuum handling apparatus comprising" is meaningless alone and was searched
+            #  alone), and the readers construe each limitation within its claim before judging.
+            #  Reported verbatim by the owner: "we must search based on the full claim in context
+            #  (invention blurb + claim[N])".
+            whole = {}
+            for c in (qd.get("claims") or []):
+                t = str((c.get("text") if isinstance(c, dict) else c) or "").strip()
+                no = c.get("claim_no") if isinstance(c, dict) else None
+                if t:
+                    whole[int(no) if no else len(whole) + 1] = t
+            for it in claim_items:
+                ctx = whole.get(it.get("claim_no"))
+                if ctx:
+                    it["context"] = ctx
     report["search_type"] = stype
     ranked = list(report.get("ranked_families") or [])
     #  ORACLE INJECTION, diagnostic only. Hands a stage the gold it never received so the stages
@@ -986,34 +1290,61 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
     conn.autocommit = True
     try:
         cur = conn.cursor()
-        reps = webview.resolve_family_reps(cur, ranked[:SCREEN_TOP])
-        rows = _candidate_rows(cur, ranked[:SCREEN_TOP], reps, SCREEN_TOP)
+        #  The cutoff the whole search already runs against decides WHICH member of each
+        #  family is read, quoted and ultimately cited. See webview.resolve_family_reps.
+        reps = webview.reps_for(cur, report, ranked[:B["SCREEN_TOP"]])
+        #  THE EXAMINER'S OWN REFERENCES GO IN AS THEMSELVES. See _seed_families: the family
+        #  representative is chosen on dates and text, but a document an examiner APPLIED is the
+        #  document to read, not whichever sibling the ordering prefers.
+        families, seed_fams = _seed_families(cur, report, ranked[:B["SCREEN_TOP"]], reps)
+        #  RECORDED AFTER THE SEED OVERRIDE, because the override is part of the choice. From here
+        #  the report page, the ranked list, the reading top-up, the rescue and the filing package
+        #  all read this map instead of asking the ordering again, so the document that was read is
+        #  the document that is quoted and the document that is cited.
+        webview.record_family_reps(report, reps)
+        rows = _candidate_rows(cur, families, reps, B["SCREEN_TOP"] + len(seed_fams))
     finally:
         conn.close()
     rows = [r for r in rows if not deep_analysis._same_pub(subject_pub, r["pub"])]
+    #  AND THE SUBJECT'S WHOLE FAMILY, not just the exact number it was searched under. A DOCDB
+    #  family runs to thirty members across a dozen offices, and the applicant's own sibling
+    #  publication is the single best "prior art" any similarity measure will ever find for their
+    #  own application. Measured: US 2022/0331993 A1, same family and same priority date as
+    #  US 2025/0033224 A1, came back at rank 1 and was the only claim the ledger called
+    #  anticipated. See webapp._drop_self_family, which records the family for this.
+    self_fam = str((report or {}).get("self_family") or "")
+    if self_fam:
+        kept = [r for r in rows if str(r.get("fam")) != self_fam]
+        if len(kept) != len(rows):
+            print(f"[self-family] dropped {len(rows) - len(kept)} candidate(s) from the subject's "
+                  f"own family {self_fam} before reading", flush=True)
+            rows = kept
     if not rows:
         return None
+    runctx.note_candidates(slug, _candidate_rows_for_ledger(rows, report))
 
     #  FETCH FIRST, SCREEN SECOND. See PRESCREEN_ENRICH_TOP. `_enrich_missing_text` decides for
     #  itself which of these hold no claims and no paragraphs, in retrieval order, so the whole
     #  candidate list is offered and the budget picks the head of what is genuinely unreadable.
     prescreen_enriched = 0
-    #  Quick tier: no paid text fetching — the screen judges what the corpus already holds, and
+    #  Quick tier: no paid text fetching , the screen judges what the corpus already holds, and
     #  the escalation's deep run does the recovering.
-    if PRESCREEN_ENRICH_TOP > 0 and not quick:
+    if B["PRESCREEN_ENRICH_TOP"] > 0 and not quick:
         t_pre = time.time()
         emit("prescreen_enrich_start", n=len(rows))
         prescreen_enriched = _enrich_missing_text(rows, on_progress=emit,
-                                                  limit=PRESCREEN_ENRICH_TOP)
+                                                  limit=B["PRESCREEN_ENRICH_TOP"],
+                                                  enrich_top=B["ENRICH_TOP"])
         if prescreen_enriched:
             #  Rebuild the candidate text so the screener sees what was just fetched. One query
-            #  set over the same pids — the alternative is tracking which rows changed, and a row
+            #  set over the same pids , the alternative is tracking which rows changed, and a row
             #  that silently keeps its old empty text is the exact defect being fixed.
             try:
                 conn2 = db.connect()
                 conn2.autocommit = True
                 try:
-                    rebuilt = _candidate_rows(conn2.cursor(), ranked[:SCREEN_TOP], reps, SCREEN_TOP)
+                    rebuilt = _candidate_rows(conn2.cursor(), families, reps,
+                                              B["SCREEN_TOP"] + len(seed_fams))
                 finally:
                     conn2.close()
                 fresh = {r["pub"]: r for r in rebuilt}
@@ -1031,8 +1362,25 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
 
     emit("screen_start", n=len(rows), batches=(len(rows) + SCREEN_BATCH - 1) // SCREEN_BATCH)
     t0 = time.time()
-    scores = screen(rows, brief,
-                    on_progress=lambda d, t: emit("screen_progress", done=d, total=t))
+    #  THE SCREEN IS CHECKPOINTED. It is a whole pass of FAST-tier calls over the head of the
+    #  candidate list, and a worker killed during the reading used to buy it a second time. The
+    #  checkpoint is keyed to the candidate set it scored: if the resumed run built a different
+    #  set (different budget, different corpus), the stored scores are discarded and it screens
+    #  again rather than scoring the wrong documents. No-op with no durable run bound.
+    scores = None
+    _ck = runctx.stage_payload(slug, "screen") or {}
+    if _ck.get("scores") and set(_ck["scores"]) >= {r["pub"] for r in rows}:
+        scores = {k: v for k, v in _ck["scores"].items()}
+        print(f"[resume {slug}] reusing {len(scores)} screening scores from the interrupted "
+              f"attempt; the screen is not re-run", flush=True)
+        emit("screen_progress", done=len(rows), total=len(rows))
+    if scores is None:
+        scores = screen(rows, brief,
+                        on_progress=lambda d, t: emit("screen_progress", done=d, total=t))
+        runctx.checkpoint(slug, "screen", {"scores": scores}, n_in=len(rows),
+                          n_out=len(scores or {}))
+    runctx.note_candidates(slug, [{"pub": p, "screen_score": s, "stage": "screened"}
+                                  for p, s in (scores or {}).items()])
     screen_seconds = time.time() - t0
 
     #  Choose what to read: the head of the screen, plus the head of the RETRIEVAL order no matter
@@ -1055,8 +1403,9 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
                 mode=report.get("mode") or "novelty", retriever=_shared_retriever(), emit=emit)
             by_pub_row = {r["pub"]: r for r in rows}
             #  Quick tier: reach_map still feeds the batch tail, but nothing claims a
-            #  full-document read slot — there is no full-read wave to claim from.
-            for pub in ([] if quick else claim_reach.quota(reach_map)):
+            #  full-document read slot , there is no full-read wave to claim from.
+            for pub in ([] if quick else claim_reach.quota(
+                    reach_map, cap=(B["CLAIM_REACH_CAP"] or None))):
                 r = by_pub_row.get(pub)
                 if r is not None and pub not in seen:
                     chosen.append(r)
@@ -1070,15 +1419,15 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
             traceback.print_exc()
 
     for i, r in enumerate([] if quick else by_screen):
-        if len(chosen) >= CHART_TOP_MAX:
+        if len(chosen) >= B["CHART_TOP_MAX"]:
             break
-        if i >= CHART_TOP and scores.get(r["pub"], -1) < CHART_MIN_SCREEN:
+        if i >= B["CHART_TOP"] and scores.get(r["pub"], -1) < CHART_MIN_SCREEN:
             break
         if r["pub"] in seen:
             continue
         chosen.append(r)
         seen.add(r["pub"])
-    for r in ([] if quick else rows[:ALWAYS_CHART_RETRIEVAL_HEAD]):
+    for r in ([] if quick else rows[:B["ALWAYS_CHART_RETRIEVAL_HEAD"]]):
         if r["pub"] not in seen:
             chosen.append(r)
             seen.add(r["pub"])
@@ -1095,13 +1444,34 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
             added += 1
         report[oracle.REPORT_KEY] = orc.stamp()
         print(f"[oracle] forced {added} gold references into the read set", flush=True)
+    #  THE FILE WRAPPER'S REFERENCES ARE READ WHATEVER THE SCREEN SAID. A reference a USPTO
+    #  examiner applied to reject substantially these claims, or that the applicant disclosed and
+    #  the examiner considered, has already passed a better filter than a similarity score. On the
+    #  measured subject the screen ranked one of them 253rd; the examiner had anticipated thirteen
+    #  claims with it.
+    if seed_fams and not quick:
+        forced = 0
+        by_fam = {}
+        for r in rows:
+            by_fam.setdefault(r.get("fam"), r)
+        for fam in seed_fams:
+            r = by_fam.get(fam)
+            if r is None or r["pub"] in seen:
+                continue
+            chosen.append(r)
+            seen.add(r["pub"])
+            forced += 1
+        if forced:
+            print(f"[prosecution] {forced} reference(s) from the USPTO file wrapper forced into "
+                  f"the read set", flush=True)
+
     #  A low score from a screener that was shown NOTHING is not evidence of irrelevance, it is
     #  the absence of evidence, and it must not be the reason a reference is never read. Any
     #  candidate the screen could not see text for is read anyway if the retrieval ranked it
     #  inside BLIND_RESCUE. Bounded, and it is exactly the set that on-demand text can rescue.
     rescued = 0
-    for r in ([] if quick else rows[:BLIND_RESCUE]):
-        if rescued >= BLIND_RESCUE_MAX:
+    for r in ([] if quick else rows[:B["BLIND_RESCUE"]]):
+        if rescued >= B["BLIND_RESCUE_MAX"]:
             break
         if r["pub"] not in seen and not r.get("has_text"):
             chosen.append(r)
@@ -1133,43 +1503,47 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
         print(f"[deep_rank] concept expansions for {len(hints)}/{len(features)} features",
               flush=True)
     emit("chart_start", n=len(chosen))
-
-    done = [0]
-    lock = threading.Lock()
-
-    def one(row):
-        try:
-            ref = deep_analysis.analyse_reference(row["pub"], features, claim_items, row["title"],
-                                                  hints=hints)
-        except Exception as exc:
-            ref = {"pub": row["pub"], "title": row["title"], "found": False, "features": [],
-                   "claims": [], "method": "error", "error": str(exc)[:200], "chars": 0}
-        ref["screen"] = scores.get(row["pub"])
-        ref["retrieval_rank"] = row["rank"]
-        ref["family"] = row["fam"]
-        with lock:
-            done[0] += 1
-            if done[0] % 5 == 0 or done[0] == len(chosen):
-                emit("chart_progress", done=done[0], total=len(chosen), pub=row["pub"])
-        return ref
-
+    #  Captured on this thread and re-applied inside every pool below: their threads are not the
+    #  thread that started the stage, so they cannot see its ambient run on their own.
+    _ctx = runctx.current(slug)
     t0 = time.time()
-    with ThreadPoolExecutor(max_workers=min(CHART_WORKERS, max(1, len(chosen)))) as ex:
-        charts = list(ex.map(one, chosen))
+    charts = read_wave(chosen, features, claim_items, hints, scores, slug, emit=emit)
     chart_seconds = time.time() - t0
 
-    #  THE PASSAGE TAIL — read the screened-but-uncut population per limitation, in batches.
+    #  THE PASSAGE TAIL , read the screened-but-uncut population per limitation, in batches.
     #  See the BATCH_TAIL knob for why this exists and what it replaces.
-    if BATCH_TAIL and claim_items and reach_map:
+    #  A find run sets BATCH_TAIL_MAX to -1: phase 1 is retrieval evidence only, and the
+    #  sweep this skips is exactly what the ledger phase buys.
+    if BATCH_TAIL and claim_items and reach_map and (B["BATCH_TAIL_MAX"] or 1) > 0:
         try:
+            #  A whole extra reading wave. Nothing here is worth paying for on a run somebody
+            #  else now owns, and the handler below re-raises so the stop is not mistaken for a
+            #  tail that merely failed.
+            runctx.check_cancelled("batch tail")
             t2 = time.time()
             by_pub_row = {r["pub"]: r for r in rows}
-            tail_pubs = [p for p in claim_reach.quota(
-                             reach_map,
-                             per_claim=(BATCH_PER_LIM_QUICK if quick else BATCH_PER_LIM),
-                             exclude=seen,
-                             cap=(BATCH_TAIL_MAX_QUICK if quick else BATCH_TAIL_MAX))
-                         if (by_pub_row.get(p) or {}).get("has_text")]
+            #  ONE COLUMN PER FAMILY. The full-read wave dedupes by family through its rep
+            #  resolver; the first production tail did not, and three sibling DE filings of one
+            #  applicant rendered as three near-identical grid columns. Same rule here: a family
+            #  already read (or already in the tail) does not get a second member.
+            seen_fams = {(by_pub_row.get(p) or {}).get("fam") for p in seen} - {None}
+            tail_pubs, tail_fams = [], set()
+            for p in claim_reach.quota(
+                    reach_map,
+                    per_claim=(B["BATCH_PER_LIM"]
+                               or (BATCH_PER_LIM_QUICK if quick else BATCH_PER_LIM)),
+                    exclude=seen,
+                    cap=(B["BATCH_TAIL_MAX"]
+                         or (BATCH_TAIL_MAX_QUICK if quick else BATCH_TAIL_MAX))):
+                row = by_pub_row.get(p) or {}
+                if not row.get("has_text"):
+                    continue
+                f = row.get("fam")
+                if f is not None and (f in seen_fams or f in tail_fams):
+                    continue
+                if f is not None:
+                    tail_fams.add(f)
+                tail_pubs.append(p)
             if tail_pubs:
                 emit("batch_tail_start", n=len(tail_pubs))
                 titles = {p: (by_pub_row.get(p) or {}).get("title") or "" for p in tail_pubs}
@@ -1188,24 +1562,28 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
                       f"{len(claim_items)} limitations: {cells} evidence cells "
                       f"({time.time() - t2:.0f}s)", flush=True)
                 chart_seconds += time.time() - t2
+        except runctx.RunCancelled:
+            raise
         except Exception:
             traceback.print_exc()
 
     #  SECOND LOOK at the head, feature by feature, on the concepts rather than the wording. Only
     #  the rows a first reading left empty are re-asked, and an upgrade still has to pass the same
-    #  grounding and location gates plus the refuter — a second look widens what the reader
+    #  grounding and location gates plus the refuter , a second look widens what the reader
     #  RECOGNISES, never what it is allowed to assert.
     reread_changed = reread_refs = 0
-    if CONCEPT_PASS_TOP > 0 and hints:
+    if B["CONCEPT_PASS_TOP"] > 0 and hints:
         prelim = sorted(
             [c for c in charts if c.get("method") == "llm"],
             key=lambda c: (-(int((c.get("overall") or {}).get("score") or 0)),
                            -(c.get("screen") if c.get("screen") is not None else -1),
-                           c.get("retrieval_rank") or 10 ** 6))[:CONCEPT_PASS_TOP]
+                           c.get("retrieval_rank") or 10 ** 6))[:B["CONCEPT_PASS_TOP"]]
 
         def second(ref):
             try:
-                n = deep_analysis.reread_absent(ref["pub"], ref.get("features") or [], hints=hints)
+                with runctx.adopt(_ctx):
+                    n = deep_analysis.reread_absent(ref["pub"], ref.get("features") or [],
+                                                    hints=hints)
                 if n:
                     #  Refute ONLY what the second pass changed. The dicts are shared with
                     #  ref["features"], so the downgrade lands on the chart itself.
@@ -1214,6 +1592,10 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
                     ref["counts"] = deep_analysis._counts(
                         (ref.get("features") or []) + (ref.get("claims") or []))
                 return n
+            except runctx.RunCancelled:
+                #  A stop is not "this reference gained nothing". Swallowing it would let the
+                #  whole concept pass run to completion for a run somebody else owns.
+                raise
             except Exception:
                 return 0
 
@@ -1227,8 +1609,8 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
               f"{reread_refs} of {len(prelim)} references ({time.time() - t1:.0f}s)", flush=True)
         chart_seconds += time.time() - t1
 
-    #  THE ORPHAN-CLAIM RESCUE. Runs HERE — after the whole search and reading are finished, before
-    #  anything is scored or ordered — so the references it brings back compete on the same
+    #  THE ORPHAN-CLAIM RESCUE. Runs HERE , after the whole search and reading are finished, before
+    #  anything is scored or ordered , so the references it brings back compete on the same
     #  evidence as the rest of the report rather than being listed beside it. See claim_rescue.
     #  THE LEDGER. One row per limitation, filled only from grounded, located, refuter-survived
     #  cells, and it is the stopping rule for a Type B search: a budget that expires while claim 7
@@ -1244,14 +1626,14 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
             print(f"[ledger] {s['n_limitations']} limitations across {s['n_claims']} claims: "
                   f"{s['counts']['covered']} covered, {s['counts']['partial']} partial, "
                   f"{s['counts']['uncovered']} with nothing ({n} cells)"
-                  + (f" — ANTICIPATED: {', '.join(s['anticipated'])}" if s["anticipated"] else ""),
+                  + (f" , ANTICIPATED: {', '.join(s['anticipated'])}" if s["anticipated"] else ""),
                   flush=True)
         except Exception:
             traceback.print_exc()
             ledger = None
 
     rescue = {"ran": False}
-    if RESCUE_CLAIMS and claim_items and not quick:
+    if RESCUE_CLAIMS and B.get("RESCUE_CLAIMS", 1) and claim_items and not quick:
         t2 = time.time()
         try:
             rescued_refs, rescue = claim_rescue.run(
@@ -1264,11 +1646,19 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
                               {c.get("pub") for c in charts if c.get("pub")}),
                 exclude_families={r["fam"] for r in rows},
                 enrich=lambda chosen: _enrich_missing_text(chosen, on_progress=emit),
-                ledger=ledger, emit=emit)
+                ledger=ledger, emit=emit, report=report)
             if rescued_refs:
                 charts.extend(rescued_refs)
+        except runctx.RunCancelled:
+            raise
         except Exception:
             traceback.print_exc()
+        #  THE ROUNDS THEMSELVES ARE CHECKPOINTED INSIDE claim_rescue, where they happen, because
+        #  a round has to be RESUMABLE and not merely reported: recording them here, after the
+        #  whole rescue returned, could only ever describe work that had already been repeated.
+        #  This row closes the phase off with the summary the operator reads.
+        runctx.rescue_round(slug, "summary", {k: v for k, v in (rescue or {}).items()
+                                              if k != "rounds"})
         chart_seconds += time.time() - t2
         #  Re-ingest so the stored ledger is the FINAL state. Without this the report ships the
         #  coverage the rescue was launched to fix, which is the one number it must not show.
@@ -1280,7 +1670,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
                 print(f"[ledger] after the rescue: {s2['counts']['covered']} covered, "
                       f"{s2['counts']['partial']} partial, {s2['counts']['uncovered']} with "
                       f"nothing; done={s2['done']}"
-                      + (f" — ANTICIPATED: {', '.join(s2['anticipated'])}"
+                      + (f" , ANTICIPATED: {', '.join(s2['anticipated'])}"
                          if s2["anticipated"] else ""), flush=True)
             except Exception:
                 traceback.print_exc()
@@ -1349,7 +1739,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
 
     #  EVERY CLAIM'S BEST DISCLOSER GETS A SLOT. Greedy coverage maximises total mass, so a claim
     #  disclosed once, weakly, by a document that covers nothing else is the very last thing it
-    #  picks — which is exactly the document an attorney needs and exactly the one that was at
+    #  picks , which is exactly the document an attorney needs and exactly the one that was at
     #  rank 253 of 498. This promotes it into the window the page actually renders. It is a
     #  reordering only: nothing is added, nothing is dropped.
     if claim_items and order:
@@ -1379,7 +1769,7 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
             _claims = sorted({coverage_rank.claim_of(c["label"]) for c in claim_items})
             #  PAGE MEMBERSHIP BEFORE PAGE ORDER, and OFF by default. `claim_first` below can only
             #  sort the window it is handed, so a reference at rank 103 with grounded evidence can
-            #  never reach the page however it is sorted — which is exactly what both expert sets
+            #  never reach the page however it is sorted , which is exactly what both expert sets
             #  showed. `claim_quota` reserves slots per claim from the whole order and fixes that
             #  mechanically; it just did not measure well enough to switch on. See
             #  coverage_rank.RESERVE_PER_CLAIM for the sweep.
@@ -1443,6 +1833,10 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
         if f not in seenfam:
             seenfam.add(f)
             fam_order.append(f)
+    #  Last gate on the way out: this list is what the page, the export and every later stage read
+    #  as "the art". Nothing that reached it by any route may be the subject's own family.
+    if self_fam:
+        fam_order = [f for f in fam_order if str(f) != self_fam]
     report["ranked_families"] = fam_order
 
     result = {
@@ -1495,6 +1889,12 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep"):
         "chart_seconds": round(chart_seconds, 1),
         "seconds": round(time.time() - started, 1),
         "depth": depth,
+        #  THE DEPTH THIS RUN ACTUALLY GOT. Two reports of the same subject are only comparable
+        #  if they were read to the same depth, and a concept search is read to a shallower one
+        #  on purpose. Recording the resolved budget is what stops the difference being invisible
+        #  , the same reason `manifest` records the corpus snapshot and the commit.
+        "budget": dict(B),
+        "budget_cut": sorted(k for k in B if k in (budget or {})),
         "llm": _llm_spend(usage_before),
         "claim_reach": {"claims_searched": len(reach_map),
                         "claims_with_candidates": sum(1 for h in reach_map.values() if h),
@@ -1542,7 +1942,7 @@ def _subject_for(report, qd):
 def _subject_description(report, qd):
     """The invention's own description, as context for restating a dependent claim.
 
-    An upload carries its full text on the report. A LINK does not — only the claims are stashed —
+    An upload carries its full text on the report. A LINK does not , only the claims are stashed ,
     so the description is read back out of the corpus, which is where the search found the document
     in the first place.
     """

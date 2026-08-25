@@ -1,16 +1,26 @@
 {% extends "base.html" %}
-{% block title %}Searching {{ title }} | Rotem Patents{% endblock %}
+{% block title %}Searching {{ title }} | IPtorch{% endblock %}
 {% block body %}
 <div class="wrap">
   <div class="panel gen">
     <h2>Searching the prior art</h2>
+    {#  WHICH SEARCH IS RUNNING, and roughly how long it takes. The stage narrative below says
+        what is happening right now; this says what the whole thing is and when it ends, which is
+        the question somebody deciding whether to wait is actually asking. Measured ranges, from
+        search_profile — not a spinner's worth of optimism.  #}
+    {% if profile %}
+    <div class="kindbadge running" data-kind="{{ profile.kind }}">
+      <span class="kindname">{{ profile.label }}</span>
+      <span class="kindeta">{{ profile.eta_text }}</span>
+      <span class="kindwhat small muted">{{ profile.summary }}</span>
+    </div>
+    {% endif %}
     <p class="genq">“{{ query }}” · {{ mode.replace('_',' ') }} mode ·
       {{ 'claims-focused search' if search_focus == 'claims' else 'all patent text' }}</p>
     {% if current_user %}
     <section class="waitchoice" aria-labelledby="wait-choice-title">
       <div class="waitcopy">
         <b id="wait-choice-title">Keep waiting here, or leave safely</b>
-        <span>This search is saved to your history. First results open automatically; full refinement continues on the server if you leave.</span>
       </div>
       <div class="waitactions">
         <button type="button" class="btn ghost sm" id="emailWhenReady"

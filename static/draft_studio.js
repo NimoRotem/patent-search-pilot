@@ -4,8 +4,8 @@
  * there is no server-rendered first paint to drift out of step with the live one, and a reload
  * during a drafting turn shows exactly what a poll would have shown.
  *
- * A turn is minutes long.  Everything that happens during one is reported as it happens — the
- * stage the worker is in, then the agent's own summary, then the review — because the alternative
+ * A turn is minutes long.  Everything that happens during one is reported as it happens - the
+ * stage the worker is in, then the agent's own summary, then the review - because the alternative
  * is a spinner that says nothing for four minutes and a page that changes all at once at the end.
  */
 (function () {
@@ -77,7 +77,7 @@
         ${list(p.changes, 'changelist')}</details>`);
     }
     if (p.reasoning && p.reasoning.length) {
-      parts.push(`<details class="msgmore"><summary>Why — the agent's reasoning this iteration
+      parts.push(`<details class="msgmore"><summary>Why - the agent's reasoning this iteration
         (${p.reasoning.length})</summary>${list(p.reasoning, 'reasonlist')}</details>`);
     }
     if (p.prior_art_strategy) {
@@ -300,15 +300,13 @@
       <blockquote class="fevidence">${esc(finding.evidence)}</blockquote>
       ${finding.fix ? `<div class="ffix"><b>Suggested fix</b> ${esc(finding.fix)}
         <button type="button" class="chip fixchip"
-          data-q="${esc(finding.title + ' — ' + finding.fix)}">Ask for this</button></div>` : ''}
+          data-q="${esc(finding.title + ' - ' + finding.fix)}">Ask for this</button></div>` : ''}
     </article>`;
   }
 
   // ── drawings ───────────────────────────────────────────────────────────────
-  /* The agent writes a SPECIFICATION for each drawing — what view it is, what it shows, which
-     numerals appear on it — and that specification is what the review checks against the text.
-     The image is drawn from it on request, because an image nobody asked for is five seconds and
-     a model call spent on a figure the user was about to reword. */
+  /* The agent writes the final specification for each drawing. The drafting worker generates and
+     inspects every sheet before it publishes the text. Controls here are optional revision tools. */
   function renderFigures() {
     // A state poll must not destroy unsaved canvas work. The pane is rebuilt after the editor
     // closes, when there is no local-only bitmap left to preserve.
@@ -326,11 +324,11 @@
         <span class="small" id="photoSketchMsg" role="status"></span>
       </div>
       <p class="small muted">Each drawing is checked against the reference numerals actually
-        visible in its pixels. These are drafting aids, not formal drawings under 37 CFR 1.84.</p>
+        visible in its pixels and against the structures required by its specification.</p>
       ${figures.length ? figures.map(figureCard).join('') :
-        `<div class="emptypane"><h3>No drawings yet</h3><p>The agent writes one specification per
-         figure as it drafts. Ask it for the figures this invention needs, or upload a product
-         photo above.</p></div>`}
+        `<div class="emptypane"><h3>No checked drawings published yet</h3><p>The active drafting
+         turn creates every described sheet automatically before the version becomes available.
+         </p></div>`}
       <div id="figureEditorHost"></div>`;
     document.querySelectorAll('.figdraw').forEach((button) =>
       button.addEventListener('click', () => drawFigure(button)));
@@ -355,10 +353,25 @@
   function auditHtml(figure) {
     if (!figure.drawn) return '';
     const audit = figure.numeral_audit || {};
+    const semantic = figure.semantic_audit || {};
+    const leaders = figure.leader_audit || {};
+    if (!semantic.inspected || !semantic.ok) {
+      const reasons = (semantic.errors || []).join('; ') ||
+        'The image has not passed the automatic specification review.';
+      return `<div class="fignumaudit bad"><b>Drawing content check failed.</b>
+        ${esc(reasons)}</div>`;
+    }
+    if (!leaders.inspected || !leaders.ok) {
+      const reasons = (leaders.errors || []).join('; ') ||
+        'The printed leaders have not been traced to the named drawing features.';
+      return `<div class="fignumaudit bad"><b>Leader placement check failed.</b>
+        ${esc(reasons)}</div>`;
+    }
     if (!audit.inspected) return `<div class="fignumaudit warn"><b>Numeral check unavailable.</b>
       ${esc(audit.error || 'Run an AI redraw or re-save the drawing to inspect it again.')}</div>`;
-    if (audit.ok) return `<div class="fignumaudit good"><b>Numerals match.</b>
-      The drawing and draft use the same labels, once each.</div>`;
+    if (audit.ok) return `<div class="fignumaudit good"><b>Drawing passed.</b>
+      Its visible structure matches the specification, every leader reaches the named feature,
+      and every label is exact and unique.</div>`;
     const issues = [];
     if (audit.missing && audit.missing.length) issues.push(`missing: ${audit.missing.join(', ')}`);
     if (audit.unexpected && audit.unexpected.length) {
@@ -875,7 +888,7 @@
       const data = await api(`/drafts/${PID}/studio/reference`, {
         method: 'POST', body: JSON.stringify({ publication: value }),
       });
-      message.textContent = `Added ${data.reference.publication_number} — ${
+      message.textContent = `Added ${data.reference.publication_number} - ${
         data.reference.title || 'untitled'}.`;
       input.value = '';
       await refresh();
@@ -1071,7 +1084,7 @@
         approve the model and figure plan, then emits deterministic SVG and PDF sheets.</p>
         <div class="compilerstart"><select id="compilerRules"><option value="uspto-letter-2026.1">USPTO · US Letter</option>
           <option value="pct-a4-2026.1">PCT · A4</option></select>
-          <button class="btn sm" id="compilerStart" type="button" ${S.project.latest_version_no ? '' : 'disabled'}>Build from version ${S.project.latest_version_no || '—'}</button>
+          <button class="btn sm" id="compilerStart" type="button" ${S.project.latest_version_no ? '' : 'disabled'}>Build from version ${S.project.latest_version_no || '-'}</button>
           <span class="small" id="compilerMsg"></span></div></div>`;
       const start = $('compilerStart');
       if (start) start.addEventListener('click', () => compilerPost('start', {
@@ -1153,10 +1166,10 @@
     const fees = report.fees || {};
     body.innerHTML = `
       <div class="rdyhead ${report.ready ? 'good' : 'bad'}">
-        <b>${report.ready ? 'No blockers found in the automated checks'
+        <b>${report.ready ? 'Application text and drawings passed every automated filing check'
                           : report.blockers.length + ' blocker(s) remain'}</b>
         <span class="small">${report.ready ?
-          'That is not the same as ready to file. Everything under “Still required” has to be done by a person.' :
+          'The downloadable package contains the checked specification, claims, abstract, and drawing sheets.' :
           'These would leave the application defective or incomplete as filed.'}</span>
       </div>
       ${block('Blockers', report.blockers, 'bad')}
@@ -1168,9 +1181,9 @@
           (counted as ${fees.billable} for fees)</li>
           ${(fees.surcharges || []).map((s) => `<li>${esc(s)}</li>`).join('')}
           <li><a href="${esc(fees.fee_schedule_url)}" target="_blank" rel="noopener">Current fee
-            schedule ↗</a> — no amounts are printed here because they change.</li></ul>
+            schedule ↗</a> - no amounts are printed here because they change.</li></ul>
       </div>
-      <div class="rdy"><h4>Still required — none of this is done for you</h4>
+      <div class="rdy"><h4>Patent Center submission formalities</h4>
         <ul>${(report.remaining || []).map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div>
       <div class="rdyactions">
         <a class="btn" href="${BASE}/drafts/${PID}/download/filing.docx">Download the filing package</a>
@@ -1187,8 +1200,7 @@
     document.querySelectorAll('.spane').forEach((pane) =>
       pane.classList.toggle('on', pane.id === 'pane-' + name));
     if (name === 'filing') renderFiling();
-    if (name === 'compiler') loadCompiler();
-    const targetHash = name === 'compiler' ? COMPILER_ROUTE : '#/' + name;
+    const targetHash = '#/' + name;
     if (updateHash && location.hash !== targetHash) location.hash = targetHash;
   }
   document.querySelectorAll('.stab').forEach((tab) =>
@@ -1197,7 +1209,7 @@
 
   function routeFromHash() {
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-    const pane = ['draft', 'review', 'figures', 'compiler', 'sources', 'history', 'filing'].includes(parts[0])
+    const pane = ['draft', 'review', 'figures', 'sources', 'history', 'filing'].includes(parts[0])
       ? parts[0] : 'draft';
     showPane(pane, false);
     if (pane === 'figures' && parts[2] === 'edit' && /^\d+$/.test(parts[1] || '')) {
@@ -1218,7 +1230,7 @@
     modeButton.textContent = asking ? 'Ask a question' : 'Revise the draft';
     modeButton.classList.toggle('asking', asking);
     $('chatInput').placeholder = asking
-      ? 'Ask about the draft — the agent answers without changing anything. For example: “Why is the seal in claim 1 at all?”'
+      ? 'Ask about the draft - the agent answers without changing anything. For example: “Why is the seal in claim 1 at all?”'
       : 'Ask for a change, add a fact, or ask a question.';
   });
 
@@ -1311,9 +1323,9 @@
 
   // ── live ───────────────────────────────────────────────────────────────────
   const STAGE_TEXT = {
-    queued: 'queued — the drafting agent will pick this up in a moment',
+    queued: 'queued - the drafting agent will pick this up in a moment',
     preparing: 'gathering your disclosure, the prior art and the current draft',
-    drafting: 'reading the sources and writing — this is the long part',
+    drafting: 'reading the sources and writing - this is the long part',
     'checking the draft': 'checking the draft before storing it',
     reviewing: 'the reviewer is checking numerals, claims and citations',
     'waiting to retry': 'that attempt failed; trying once more',

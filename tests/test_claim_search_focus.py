@@ -12,7 +12,11 @@ def test_claim_dense_and_lexical_channels_restrict_chunk_kind(monkeypatch):
         seen.append(sql)
         return []
 
+    #  The chunk-ranking channels now cap at distinct FAMILIES rather than publications, so they
+    #  go through `_families_from_chunks`. Both seams are captured: what this test is about is the
+    #  chunk-kind restriction in the SQL, which is unchanged by where the cap is applied.
     monkeypatch.setattr(r, "_pubs_from_chunks", capture)
+    monkeypatch.setattr(r, "_families_from_chunks", capture)
     r.channel_claim_dense([0.1, 0.2], None, None)
     r.channel_claim_bm25("swappable RFID base plate", None, None)
     assert len(seen) == 2

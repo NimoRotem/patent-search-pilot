@@ -31,6 +31,15 @@ BENCH_DIMS = [1024, 3072]             # small benchmark subset only (spec §7/§
 # LLM for the coverage-ledger agent (query generation / terminology). OpenAI side of the house.
 AGENT_MODEL = os.environ.get("AGENT_MODEL", "gpt-4o-mini")
 
+# Patent-drafting model roles. Feature modules consume roles from this central configuration so a
+# model release or eval promotion is an environment/config change rather than a code rewrite.
+PATENT_FIGURE_IMAGE_MODEL = os.environ.get(
+    "PATENT_FIGURE_IMAGE_MODEL", "gemini-3-pro-image")
+PATENT_FIGURE_IMAGE_LOCATION = os.environ.get(
+    "PATENT_FIGURE_IMAGE_LOCATION", "global")
+PATENT_FIGURE_VISION_MODEL = os.environ.get(
+    "PATENT_FIGURE_VISION_MODEL", "gemini-2.5-pro")
+
 # Seed CPC classes (spec §0). Stored without the space BigQuery uses (e.g. "B66C1/02").
 SEED_CPC = [
     "B66C1/02",       # suction lifting devices

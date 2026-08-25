@@ -15,6 +15,9 @@ pydantic==2.13.4
 # pre-buffer advisory is not exposed through Python bindings; the fixed 23.x line needs Python 3.10.
 pyarrow==21.0.0
 numpy==2.0.2
+# Deterministic connected-region checks backstop exact topology requirements in patent figures.
+# 1.13 is the last line supporting the deployment's Python 3.9 floor and accepts NumPy 2.0.
+scipy==1.13.1
 # Requests 2.33 drops Python 3.9, which this production worker still runs. 2.32.5 closes the
 # credential-forwarding issue; the remaining 2.33-only advisory is for extract_zipped_paths(),
 # an internal utility this application never calls.
@@ -29,3 +32,10 @@ python-docx==1.2.0
 openpyxl==3.1.5
 gunicorn==23.0.0
 pymongo==4.10.1
+#  Reads a PDF back to check it: `export_pdf` renders one and the acceptance test opens it to
+#  count the pages and confirm it is not a stub. It was hand-installed on the original host and
+#  never declared here, so a clean deploy installed everything, started fine, and failed the first
+#  time anything opened a PDF — which is exactly the failure this file's other comments describe.
+#  Found on 2026-08-21 building the second host: 1,417 of 1,418 tests passed and the one that did
+#  not was ModuleNotFoundError.
+pypdf==6.14.2

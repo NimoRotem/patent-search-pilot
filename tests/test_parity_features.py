@@ -189,19 +189,22 @@ def test_numerals_come_from_the_draft_and_name_the_right_part():
     assert got["40"] == "rechargeable battery"
 
 
-def test_prompt_tells_the_model_to_write_the_numeral_alone():
-    """Given "10 = suction cup", the model wrote that whole string onto the drawing."""
+def test_prompt_keeps_reference_text_out_of_image_generation():
+    """Reference text is added deterministically after the geometry passes review."""
     p = draft_figures.build_prompt("FIG. 1", "a lifter", ["10 = suction cup", "20 = pump"])
     assert "10 = suction cup" not in p
-    assert "place numeral 10 on the suction cup" in p
-    assert "ONLY the numeral" in p
+    assert "the suction cup" in p
+    assert "the pump" in p
+    assert "10" not in p and "20" not in p
+    assert "reference" not in p.lower() and "label" not in p.lower()
 
 
 def test_prompt_forbids_numerals_when_the_draft_establishes_none():
     """An invented numbering has to be renumbered by hand against the specification later, which
     is worse than a drawing with no numerals at all."""
     p = draft_figures.build_prompt("FIG. 1", "a lifter", [])
-    assert "WITHOUT any reference numerals" in p
+    assert "without text or digits" in p
+    assert "label" not in p.lower() and "lead line" not in p.lower()
 
 
 def test_figure_numeral_audit_compares_both_directions_and_duplicates():
@@ -279,8 +282,7 @@ def test_generate_png_surfaces_a_refusal_instead_of_returning_nothing(monkeypatc
         candidates = [type("C", (), {"content": type("X", (), {"parts": [Part()]})()})()]
         usage_metadata = None
 
-    import llm
-    monkeypatch.setattr(llm, "_client", lambda: type("C", (), {
+    monkeypatch.setattr(draft_figures, "_image_client", lambda: type("C", (), {
         "models": type("M", (), {"generate_content": staticmethod(lambda **k: Resp())})()})())
     with pytest.raises(draft_figures.FigureError) as exc:
         draft_figures.generate_png("draw something")

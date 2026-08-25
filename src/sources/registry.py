@@ -11,8 +11,10 @@ Adapters take the httpx client as a parameter and hold no per-request state, so
 sharing one instance across requests is safe.
 
 Ported from patents-app `adapters/__init__.py`. Not ported: Lens (dead trial
-key), KIPRIS and EUIPO (never approved), gpatents_scrape (superseded by
-gpatents_direct).
+key), KIPRIS (no service key was ever issued) and gpatents_scrape (superseded by
+gpatents_direct). EUIPO was in that list until 2026-08-23; its Production
+subscription had in fact been approved on 2026-07-20 and the endpoint we had
+recorded was simply dead. See src/sources/euipo.py.
 """
 from __future__ import annotations
 
@@ -30,6 +32,7 @@ from .ipaustralia import IPAustralia
 from .gpatents_direct import GooglePatentsDirect
 from .himmpat import HimmPat
 from .web_patent_fallback import WebPatentFallback
+from .euipo import EUIPO
 
 _ADAPTER_CLASSES = (
     SerpApiGooglePatents,
@@ -41,6 +44,7 @@ _ADAPTER_CLASSES = (
     IPAustralia,
     GooglePatentsDirect,
     HimmPat,
+    EUIPO,
     WebPatentFallback,
 )
 

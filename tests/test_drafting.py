@@ -37,12 +37,13 @@ def report_cards():
 def generated_sections(citation="US-11223344-B2"):
     return {
         "title": "Configurable Vacuum Lifting Tool",
-        "cross_reference": "[DRAFTING NOTE: Confirm whether related applications exist.]",
+        "cross_reference": "Not applicable.",
+        "government_support": "Not applicable.",
         "field": "The disclosure relates to portable vacuum lifting tools.",
         "background": f"Some tools identify interchangeable accessories [REF:{citation}].",
         "summary": "A handle reads an identifier associated with an attached base plate.",
-        "drawing_descriptions": "[DRAFTING NOTE: Supply figure numbers and drawing details.]",
-        "detailed_description": "The disclosed handle includes a battery-powered vacuum pump.",
+        "drawing_descriptions": "FIG. 1 is a side elevation of the lifting tool.",
+        "detailed_description": "FIG. 1 shows the disclosed handle and battery-powered pump.",
         "claims": "1. A lifting apparatus comprising a handle, a pump, and an RFID reader.",
         "abstract": "A vacuum lifting tool identifies a detachable base plate and selects a profile.",
     }
@@ -76,7 +77,8 @@ def test_prompt_contains_citation_and_non_invention_guardrails():
     guardrails = re.sub(r"\s+", " ", bundle.system_prompt.lower())
     assert "only authority for what the invention includes" in guardrails
     assert "never use them to fill a disclosure gap" in guardrails
-    assert "[drafting note:" in guardrails
+    assert "no placeholder" in guardrails
+    assert "[drafting note:" not in guardrails
     assert "patentability, novelty, non-obviousness" in guardrails
     assert "citation tokens belong only in background" in guardrails
     assert "every affirmative limitation in a claim" in guardrails
@@ -107,11 +109,36 @@ def test_generated_sections_validate_selected_citations_and_render_in_order():
     assert markdown.endswith("\n")
 
 
+def test_government_support_is_a_required_standalone_section():
+    payload = generated_sections()
+    del payload["government_support"]
+
+    with pytest.raises(drafting.DraftingValidationError,
+                       match="missing the government_support section"):
+        drafting.normalize_generated_sections(payload, ["US-11223344-B2"])
+
+    keys = [key for key, _heading in drafting.SECTION_ORDER]
+    assert keys.index("cross_reference") < keys.index("government_support") < keys.index("field")
+
+
+def test_legacy_version_without_government_support_still_renders_for_repair():
+    legacy = generated_sections()
+    del legacy["government_support"]
+
+    rendered = drafting.render_application_markdown(legacy)
+
+    assert "## Statement Regarding Federally Sponsored Research or Development" in rendered
+    assert rendered.index("Cross-Reference") < rendered.index("Statement Regarding")
+    assert rendered.index("Statement Regarding") < rendered.index("Field of the Disclosure")
+
+
 @pytest.mark.parametrize("mutation,message", [
     ({"background": "A cited system [REF:US-99999999-B2]."}, "unselected reference"),
     ({"claims": "1. A tool according to [REF:US-11223344-B2]."}, "only in Background"),
     ({"background": "No citations are used here."}, "must ground"),
     ({"summary": "The disclosed system is patentable."}, "legal conclusion"),
+    ({"cross_reference": "[DRAFTING NOTE: confirm priority.]"}, "unfinished placeholder"),
+    ({"summary": "Part names are for the draftsperson only."}, "unfinished placeholder"),
     ({"abstract": ""}, "missing the abstract"),
 ])
 def test_generated_sections_reject_ungrounded_or_legal_output(mutation, message):

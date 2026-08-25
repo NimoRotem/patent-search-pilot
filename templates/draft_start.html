@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Draft a patent application | Rotem Patents{% endblock %}
+{% block title %}Draft a patent application | IPtorch{% endblock %}
 {% block body %}
 <div class="wrap startpage">
   <h1>Draft a patent application</h1>
@@ -51,14 +51,14 @@
 
     <section class="panel startpanel">
       <h2>2 · Prior art <span class="opt">optional</span></h2>
-      <p class="small muted">The draft is better with it — the agent reads each reference and
+      <p class="small muted">The draft is better with it. The agent reads each reference and
         writes claims that step around what it actually teaches. Without any, the draft is written
         from your description alone and says so.</p>
 
       {% if choices %}
       <label for="slugpick">Use a prior-art search you have already run</label>
       <select id="slugpick" name="pick_slug">
-        <option value="">— none —</option>
+        <option value="">None</option>
         {% for choice in choices %}
         <option value="{{ choice.slug }}"{% if choice.slug == search_slug %} selected{% endif %}>
           {{ choice.title or choice.query[:80] }} · {{ choice.mode }}</option>
@@ -71,7 +71,7 @@
 
       {% if report_view and report_view.cards %}
       <div class="startrefs">
-        <b class="small">References from {{ search_slug }} — tick the ones the draft should work
+        <b class="small">References from {{ search_slug }}. Select the ones the draft should work
           around</b>
         <div class="draftrefs compact">
           {% for card in report_view.cards[:40] %}
@@ -88,7 +88,7 @@
 
       <label for="priorart">Upload prior art</label>
       <input type="file" id="priorart" name="files" accept=".pdf,.docx,.txt" multiple>
-      <span class="small muted">Patents, papers, product manuals — anything the draft must take
+      <span class="small muted">Patents, papers, product manuals: anything the draft must take
         account of. You can add more at any point in the conversation.</span>
     </section>
 
@@ -111,11 +111,8 @@
 
       <fieldset class="startfieldset">
         <legend>Priority claim</legend>
-        <label class="radio"><input type="radio" name="priority_status" value="unknown"
-          {% if (values.priority_status or 'unknown') == 'unknown' %}checked{% endif %}>
-          Not confirmed yet</label>
         <label class="radio"><input type="radio" name="priority_status" value="none"
-          {% if values.priority_status == 'none' %}checked{% endif %}> No priority claim</label>
+          {% if (values.priority_status or 'none') == 'none' %}checked{% endif %}> No priority claim</label>
         <label class="radio"><input type="radio" name="priority_status" value="claim"
           {% if values.priority_status == 'claim' %}checked{% endif %}> Claim priority</label>
         <input type="text" name="priority_details" maxlength="1000"
@@ -125,11 +122,8 @@
 
       <fieldset class="startfieldset">
         <legend>Government support</legend>
-        <label class="radio"><input type="radio" name="government_support" value="unknown"
-          {% if (values.government_support or 'unknown') == 'unknown' %}checked{% endif %}>
-          Not confirmed yet</label>
         <label class="radio"><input type="radio" name="government_support" value="none"
-          {% if values.government_support == 'none' %}checked{% endif %}> None</label>
+          {% if (values.government_support or 'none') == 'none' %}checked{% endif %}> None</label>
         <label class="radio"><input type="radio" name="government_support" value="yes"
           {% if values.government_support == 'yes' %}checked{% endif %}> Yes</label>
         <input type="text" name="government_support_details" maxlength="1000"
@@ -205,7 +199,7 @@
       'A handheld vacuum lifting tool for moving glass panels. A battery-powered pump draws air ' +
       'through a channel in the handle…'],
     existing_draft: ['Paste your draft',
-      'Paste the whole document — title, background, summary, detailed description and claims. ' +
+      'Paste the whole document: title, background, summary, detailed description and claims. ' +
       'It is split on its headings to start with, and the agent fixes anything that lands in the ' +
       'wrong place.',
       'TITLE OF THE INVENTION\n\nVacuum Lifting Tool\n\nBACKGROUND\n…']

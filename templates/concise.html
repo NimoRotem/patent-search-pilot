@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+{% block title %}Concise descriptions of relevance | IPtorch{% endblock %}
+{% block body %}
+{#
+  The picker for 37 CFR 1.290 submissions. Deliberately shows what the evidence actually supports
+  BEFORE anything is generated: how many claims each reference speaks to, and how many of those
+  rest on a verbatim passage rather than a characterisation. A document with no strong rows can
+  still be filed, but the practitioner should know that before it goes in the envelope.
+#}
+<h1 style="margin-bottom:.2em">Concise descriptions of relevance</h1>
+{% if cands and not building|default(false) %}
+<form method="post" action="{{ url_for('concise_descriptions', slug=slug) }}"
+      style="margin:10px 0 14px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="auto" value="{{ items_per_unit }}">
+  {#  ONE CLICK IS ONE FEE UNIT. Ten documents is not a round number picked for the copy: it is
+      exactly what 37 CFR 1.290(f) buys for one 1.17(o) fee, so the button spends the minimum.
+      Flagged candidates are skipped here as they are in the picker. #}
+  <button class="btn primary" type="submit">Build the top-{{ items_per_unit }} package</button>
+  <span class="small muted">The {{ items_per_unit }} strongest citable documents by what the ledger
+    says they kill, office actions first, one per family, covering as many claims as the evidence
+    supports. One fee unit, ${{ fee_choices[0].dollars_pretty }} at the
+    {{ identity.entity_size }}-entity rate. About 5 minutes.</span>
+</form>
+{% endif %}
+<p class="small muted" style="margin-top:0">
+  Third-party preissuance submission under 37 CFR § 1.290: one document per reference, built from
+  this search's per-claim evidence. <a href="{{ url_for('report', slug=slug) }}">back to the report</a>
+</p>
+
+{#  BUILD PROGRESS. A build is minutes of work, a model call and an enrichment fetch per
+    document, then the compliance pass, then two renderings each, and it used to run inside the
+    POST with nothing on screen, which reads exactly like a click that did not register. The bar is
+    driven by real step counts from the server, not a timer. #}
+<div id="cdProg" class="card" style="margin:1em 0;padding:.8em 1em" {% if not building|default(false) %}hidden{% endif %}>
+  <b id="cdProgTitle">Building the submission…</b>
+  <div class="exprogbar" style="margin:.5em 0 .3em"><div class="exprogfill" id="cdProgFill"></div></div>
+  <div class="exprogrow">
+    <span id="cdProgMsg">Starting</span>
+    <span id="cdProgCount" class="small muted"></span>
+    <span id="cdProgClock" class="small muted"></span>
+  </div>
+  <p class="small muted" style="margin:.4em 0 0">
+    You can leave this page; the build keeps going and the documents will be here when you return.
+  </p>
+</div>
+
+{% if error %}<div class="warn" style="margin:1em 0">{{ error }}</div>{% endif %}
+
+{#  THE DEADLINE, COUNTED TODAY. The audit paper in the packet states the date and refuses to count
+    days, because it is written once and read later and the number goes stale overnight. This line
+    is rendered on the morning somebody reads it, so here the count is right. #}
+{% if window and window.open is not none %}
+<div class="{{ 'warn' if not window.open or (window.days_left is not none and window.days_left <= 14) else 'card' }}"
+     style="margin:1em 0;padding:.7em 1em">
+  {% if window.open %}
+    <b>File before {{ window.deadline }}.</b>
+    {% if window.days_left is not none %}
+      <span class="small">{{ window.days_left }} day{{ '' if window.days_left == 1 else 's' }} from today, {{ today }}.</span>
+    {% endif %}
+  {% else %}
+    <b>The 1.290(b) window closed on {{ window.deadline }}.</b>
+    <span class="small">A submission filed now may not be entered.</span>
+  {% endif %}
+  <p class="small muted" style="margin:.3em 0 0">{{ window.basis }}</p>
+</div>
+{% endif %}
+
+{#  WHAT THE SEARCH FOUND ABOUT THE CLAIMS, which is not a filing decision and had nowhere to be
+    said. A limitation exactly one document in the search reaches, and a limitation nothing
+    reaches, are the two most valuable things a read of two hundred references produces. Neither
+    is a document to file: one of them is frequently the applicant's own, and one of them is the
+    reason a claim survives. #}
+{% if sole_reach or unreached %}
+<div class="card" style="margin:1em 0;padding:.8em 1em">
+  <b>What the search found about these claims</b>
+  {% if unreached %}
+  <p class="small" style="margin:.5em 0 0"><b>No reference in this search reaches
+    {{ unreached|map(attribute='limitation')|join(', ') }}.</b></p>
+  <ul class="small muted" style="margin:.2em 0 0 1.1em;line-height:1.5">
+    {% for u in unreached %}<li>{{ u.limitation }}: “{{ u.text|truncate(160) }}”</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% if sole_reach %}
+  <p class="small" style="margin:.6em 0 0"><b>Reached by exactly one document each</b>
+    <span class="muted">out of everything read. Verify these against the document itself before
+    relying on either the reach or the absence.</span></p>
+  <ul class="small" style="margin:.2em 0 0 1.1em;line-height:1.6">
+    {% for s in sole_reach %}
+    <li><b>{{ s.limitation }}</b>: “{{ s.text|truncate(120) }}”<br>
+      only <b>{{ s.pub }}</b> <span class="muted">{{ s.title|truncate(60) }}</span>
+      {% if not s.chartable %}<span class="flag flag-warn">no quotable passage, so it cannot be
+        charted</span>{% endif %}
+      {% if s.note %}<br><span class="muted">{{ s.note }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endif %}
+
+{#  What the compliance pass refused or merged. Shown BEFORE the download list on purpose: a
+    document that was dropped is a decision the practitioner has to agree with, and finding out
+    afterwards that a reference is missing is worse than being told why. #}
+{#  THE VERDICT, where the practitioner lands after the build. The audit paper in the packet says
+    the same thing at length; this is so the answer is on screen without opening a PDF. #}
+{% if verdict %}
+<div class="card" style="margin:1em 0;padding:.7em 1em">
+  <b>{{ verdict }}</b>
+  <p class="small muted" style="margin:.3em 0 0">Every requirement of 37 CFR 1.290 is listed in
+    <b>00_AUDIT.pdf</b> in the archive, with the paragraph it comes from and whether this packet
+    satisfies it.</p>
+</div>
+{% endif %}
+{% if blocked %}
+<div class="warn" style="margin:1em 0">
+  <b>Not filed. These were refused and are not in the packet:</b>
+  <ul style="margin:.4em 0 0 1.1em">
+    {% for b in blocked %}<li><b>{{ b.pub }}</b>: {{ b.why }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% if family_notes %}
+<div class="card" style="margin:1em 0;padding:.7em 1em">
+  <b class="small">Family members merged</b>
+  <ul class="small muted" style="margin:.3em 0 0 1.1em">
+    {% for n in family_notes %}<li>{{ n }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if docs %}
+<div class="card" style="margin:1em 0;padding:1em">
+  <h2 style="margin-top:0">Ready to file</h2>
+  <table class="tbl">
+    <thead><tr><th>#</th><th>Document</th><th>Claims addressed</th><th>Download</th></tr></thead>
+    <tbody>
+    {% for d in docs %}
+      <tr>
+        <td>{{ d.n }}</td>
+        <td>{{ d.label }}<br><span class="small muted">{{ d.pub }}</span></td>
+        <td>{{ d.rows }} row{{ '' if d.rows == 1 else 's' }}</td>
+        <td>
+          <a href="{{ url_for('concise_document', slug=slug, n=d.n) }}"><b>Preview &amp; edit</b></a> ·
+          <a href="{{ url_for('concise_download', slug=slug, name=d.pdf) }}">PDF</a> ·
+          <a href="{{ url_for('concise_download', slug=slug, name=d.docx) }}">DOCX</a>
+          {#  Read these HERE. They are no longer printed into the paper: one of them said, on a
+              document filed at the Office, that quotations had failed verification. #}
+          {% if d.notes %}
+          <details class="small" style="margin-top:.35rem">
+            <summary>{{ d.notes|length }} note{{ '' if d.notes|length == 1 else 's' }} to check before filing</summary>
+            <ul style="margin:.3rem 0 0 1.1rem;line-height:1.5">
+              {% for label, text in d.notes %}<li><b>{{ label }}.</b> {{ text }}</li>{% endfor %}
+            </ul>
+            <p class="muted" style="margin:.35rem 0 0">These are for you, not for the examiner, and
+              are deliberately not printed into the PDF or the DOCX.</p>
+          </details>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p style="margin:.6em 0">
+    <a class="btn sm" href="{{ url_for('concise_zip', slug=slug) }}">Download all as .zip</a>
+    <span class="small muted">PDFs and DOCXs only. The working files stay here.</span>
+  </p>
+  <p class="small muted">
+    PDF is the filing artefact; DOCX is the editable copy. Every coordinate on the page comes from
+    the passage the reader actually read, and nothing is written by a model. Check the biblio block
+    and the application identification before filing.
+  </p>
+</div>
+{% endif %}
+
+{% if cands %}
+<form method="post" id="cdForm"{% if building|default(false) %} hidden{% endif %} action="{{ url_for('concise_descriptions', slug=slug) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <details class="card" style="margin:1em 0;padding:1em">
+    <summary style="cursor:pointer"><b>The application under examination</b>
+      <span class="small muted">{{ subject.app_no or subject.pub_no or 'name it before filing' }}
+        &middot; edit</span></summary>
+    <p class="small muted" style="margin-top:.6em">
+      Named on every page. The search may have been run from a family member or an uploaded draft,
+      so these are editable.
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:.6em">
+      <label>Application No.<br><input name="app_no" value="{{ subject.app_no }}" placeholder="18/915,337" style="width:100%"></label>
+      <label>Publication No.<br><input name="pub_no" value="{{ subject.pub_no }}" placeholder="US 2025/0033224 A1" style="width:100%"></label>
+      <label>Title<br><input name="title" value="{{ subject.title }}" placeholder="Portable vacuum gripper" style="width:100%"></label>
+      <label>First named inventor<br><input name="inventor" value="{{ subject.inventor }}" placeholder="Nhon Hoa Nguyen" style="width:100%"></label>
+    </div>
+    <label class="small" style="display:block;margin-top:.6em">Number the first document as
+      <input name="start_at" value="1" size="3"></label>
+  </details>
+
+  <div class="card" style="margin:1em 0;padding:1em">
+    <h2 style="margin-top:0">Documents</h2>
+    <p class="small muted" style="margin-top:0">
+      Ranked by <b>what each document does to the claims</b>: what the ledger computes it
+      anticipates first, then whether a USPTO examiner applied it against this family, then whole
+      dependent additions, then evidence on the independent claims, and only then breadth. One
+      document per patent family. <b>Strong</b> counts rows backed by a verbatim passage; the rest
+      are characterisations, which are filed without quotation marks.
+    </p>
+    <table class="tbl">
+      <thead><tr><th></th><th>Reference</th><th>What it does</th><th>Claims</th><th>Rows</th><th>Strong</th></tr></thead>
+      <tbody>
+      {#  The page opens on exactly what one fee unit buys, and it counts ELIGIBLE rows, not rows:
+          a flagged document in the first ten must not eat a paid slot it is not going to use.
+          Same arithmetic as fill() below, so the tally is right before anything is clicked. #}
+      {% set taken = namespace(n=0) %}
+      {% for c in cands %}
+        {% set pick = c.default_include and taken.n < items_per_unit %}
+        {% if pick %}{% set taken.n = taken.n + 1 %}{% endif %}
+        <tr data-basis="{{ c.basis or 'unknown' }}" data-coowned="{{ '1' if c.co_owned else '0' }}"
+            data-eligible="{{ '1' if c.default_include else '0' }}">
+          <td><input type="checkbox" name="pubs" value="{{ c.pub }}" class="pickbox"
+                     {% if pick %}checked{% endif %}></td>
+          <td>{% if c.kind == 'office_action' %}<b>Office action</b>{% else %}{{ c.pub }}{% endif %}
+            <br><span class="small muted">{{ c.title[:90] }}</span>
+            {#  THE TWO FACTS THAT DECIDE WHETHER A DOCUMENT BELONGS IN A SUBMISSION AT ALL, shown
+                before a model call is spent on it rather than after. Both used to surface only on
+                the compliance pass, by which point the choice had been made for you. #}
+            {% if c.basis == 'secret' %}
+            <br><span class="flag flag-warn">secret prior art, 102(a)(2) only</span>
+              <span class="qhelp" data-help="secret" role="button" tabindex="0" aria-label="When to include secret prior art">?</span>
+            {% elif c.basis == 'not_art' %}
+            <br><span class="flag flag-bad">not prior art here</span>
+              <span class="qhelp" data-help="basis" role="button" tabindex="0" aria-label="Why this is not prior art">?</span>
+              {#  The reason, on the row. "Not prior art" invites an argument; the sentence that
+                  says a JP national publication is outside 102(a)(2)'s reach ends one. #}
+              {% if c.not_art_why %}<br><span class="small muted">{{ c.not_art_why }}</span>{% endif %}
+            {% endif %}
+            {% if c.co_owned %}
+            <br><span class="flag flag-bad">same owner as the application{% if c.co_owned_with %}: {{ c.co_owned_with|join(', ')|truncate(60) }}{% endif %}</span>
+              <span class="qhelp" data-help="coowned" role="button" tabindex="0" aria-label="When to include a commonly owned document">?</span>
+            {% endif %}
+            {#  NEVER READ IN FULL. The description would rest on an abstract, and an abstract maps
+                generously: these score high on coverage, not low. #}
+            {#  Already in front of the examiner, so a paid slot on it buys nothing. Not refused:
+                a concise description explains a relevance an IDS listing never states. #}
+            {% if c.of_record %}
+            <br><span class="flag flag-warn">already of record{% if c.office == 'applied' %}, applied by the examiner{% else %}, on an IDS{% endif %}</span>
+            {% endif %}
+            {% if c.readable is defined and not c.readable %}
+            <br><span class="flag flag-bad">full text never read</span>
+              <span class="qhelp" data-help="unread" role="button" tabindex="0" aria-label="Why an unread document is not offered">?</span>
+            {% endif %}
+            {#  THE MOST VALUABLE SENTENCE A SEARCH PRODUCES, and it had nowhere to appear. It
+                does not correlate with rank: the one document of 233 that reaches claim 1[e]
+                ranked 142nd, because its single cell carries no quotable passage. #}
+            {% if c.sole_reach %}
+            <br><span class="flag flag-ok">the only reference that reaches {{ c.sole_reach|join(', ') }}</span>
+            {% endif %}
+            {#  KEPT OUT HERE IS NOT WORTHLESS ELSEWHERE. A self-collision the United States
+                discards is often the best document on another track, and losing that was the
+                point of flagging these rather than filtering them. #}
+            {% if c.elsewhere %}
+            <br><span class="flag flag-ok">usable at another office</span>
+              <br><span class="small muted">{{ c.elsewhere }}</span>
+            {% endif %}
+            {% if c.family_siblings %}<br><span class="small muted">also published as {{ c.family_siblings[:3]|join(', ') }}{% if c.family_siblings|length > 3 %} and {{ c.family_siblings|length - 3 }} more{% endif %}. One member is filed; the family is one disclosure</span>{% endif %}</td>
+          <td class="small">
+            {% if c.anticipates %}<b>anticipates {{ c.anticipates|join(', ') }}</b><br>{% endif %}
+            {% if c.office == 'applied' %}<b>applied by the examiner</b><br>
+            {% elif c.office == 'considered' %}considered by the Office<br>{% endif %}
+            {% if c.adds %}discloses what {{ c.adds[:4]|join(', ') }} adds<br>{% endif %}
+            {% if c.strong_indep %}{{ c.strong_indep }} on the independent claims<br>{% endif %}
+            {#  BOTH COVERAGE NUMBERS, because the claim grid shows one of them and the chart is
+                built from the other, and reconciling the two by hand is twenty minutes. #}
+            {% if c.n_limitations is defined %}
+            <span class="muted">charts {{ c.n_limitations }} limitation{{ '' if c.n_limitations == 1 else 's' }}{% if c.reads_on and c.reads_on != c.n_limitations %}, reads on {{ c.reads_on }}{% endif %}{% if c.new_limitations %}, {{ c.new_limitations }} that nothing above it charts{% endif %}</span>
+            {% endif %}
+          </td>
+          <td class="small">{{ c.claims|join(', ') }}</td>
+          <td>{{ c.n_rows }}</td>
+          <td>{{ c.n_strong }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {#  THE FEE IS A STEP FUNCTION, so the budget is the thing to choose and the document count
+        follows from it. 1.290(f) charges one unit per ten items OR FRACTION THEREOF, which means
+        an eleventh document silently doubles the bill. Choosing the unit and letting the app fill
+        the slots puts that the right way round. #}
+    <div class="feebar">
+      <label class="small" for="feeUnits"><b>How much fee are you paying?</b></label>
+      <select id="feeUnits" name="fee_units" class="input" style="max-width:24rem">
+        {% for f in fee_choices %}
+        {#  Opens on the cheapest unit. Paying more is a decision somebody makes on purpose. #}
+        <option value="{{ f.units }}" {% if f.units == 1 %}selected{% endif %}>{{ f.label }}</option>
+        {% endfor %}
+      </select>
+      <p class="small muted" style="margin:.35rem 0 0">
+        37 CFR 1.290(f) charges the 1.17(o) fee per ten items or fraction thereof, at the
+        <b>{{ identity.entity_size }}-entity</b> rate.
+        {% if identity.entity_size == 'small' %}Small entity is assumed; set it in
+        <a href="{{ url_for('auth.account') }}">your profile</a> if that is wrong.{% else %}Set in
+        <a href="{{ url_for('auth.account') }}">your profile</a>.{% endif %}
+        A third party cannot use the micro-entity discount.
+      </p>
+      <p class="small" id="feeTally" style="margin:.3rem 0 0"></p>
+    </div>
+    <button type="submit" style="margin-top:.8em">Build the concise descriptions</button>
+    <span class="small muted">One model call per document to phrase the disclosure column; the
+      citations are attached from the record.</span>
+
+    {#  CONSIDERED AND NOT SELECTED. The claim grid on the report page ranks by what a reference
+        reads on; the chart filed for it is built from what carries a verified passage. When those
+        two disagree the selection looks arbitrary from either page alone, and reconciling it by
+        hand is twenty minutes. So the documents the grid ranks highest that this selection does
+        not take are listed here with the reason, one line each. #}
+    {% if passed_over %}
+    <details class="card" style="margin:1em 0;padding:.8em 1em">
+      <summary style="cursor:pointer"><b>Considered and not selected</b>
+        <span class="small muted">{{ passed_over|length }} document{{ '' if passed_over|length == 1 else 's' }} the claim grid ranks highly that this selection leaves out</span></summary>
+      <table class="tbl small" style="margin-top:.6em">
+        <thead><tr><th>Reference</th><th>Basis</th><th>Reads on</th><th>Charts</th>
+          <th>Why not</th></tr></thead>
+        <tbody>
+        {% for p in passed_over %}
+          <tr><td><b>{{ p.pub }}</b><br><span class="muted">{{ p.title[:70] }}</span></td>
+              {#  The ranking cannot see this and it is often what decides: public art needs no
+                  priority argument and no other office's exception can remove it. #}
+              <td>{% if p.basis == 'public' %}<span class="flag flag-ok">{{ p.basis_label }}</span>{% else %}<span class="muted">{{ p.basis_label }}</span>{% endif %}</td>
+              <td>{{ p.reads_on }}</td><td>{{ p.charts }}</td><td>{{ p.why }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="small muted" style="margin:.5em 0 0">Tick any of them in the table above to
+        include it. Nothing here is refused, only not chosen for you.</p>
+    </details>
+    {% endif %}
+
+    {#  The explanations, once each, opened by any (?) in the table. #}
+    <div id="helpUnread" class="qhelp-body" hidden>{{ unread_help }}</div>
+    <div id="helpSecret" class="qhelp-body" hidden>{{ secret_help }}</div>
+    <div id="helpCoowned" class="qhelp-body" hidden>{{ co_owned_help }}</div>
+    <div id="helpBasis" class="qhelp-body" hidden>{{ basis_help['not_art'] }}</div>
+    <dialog id="qhelpDlg" class="dlg">
+      <form method="dialog" class="stack" style="min-width:min(38rem,92vw)">
+        <h3 class="h3" id="qhelpTitle" style="margin-top:0"></h3>
+        <div id="qhelpText" class="small" style="line-height:1.6"></div>
+        <div style="display:flex;margin-top:.6rem"><span class="grow"></span>
+          <button class="btn ghost sm" value="close">Close</button></div>
+      </form>
+    </dialog>
+  </div>
+</form>
+{% elif not error %}
+<p>No reference in this report carries verified per-claim evidence yet.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+/*  The fee budget drives the selection, and the (?) marks open the two explanations. Plain DOM,
+    no dependencies, and it degrades to a normal checkbox list if the script does not run. */
+(function pickerBudget() {
+  var sel = document.getElementById('feeUnits');
+  var tally = document.getElementById('feeTally');
+  if (!sel || !tally) return;
+  var per = {{ items_per_unit }};
+  var rows = Array.prototype.slice.call(document.querySelectorAll('tr[data-basis]'));
+  var costs = {{ fee_choices|map(attribute='dollars')|list|tojson }};
+  var units = {{ fee_choices|map(attribute='units')|list|tojson }};
+
+  function cost(n) {
+    var u = Math.max(1, Math.ceil(n / per));
+    var i = units.indexOf(u);
+    return i >= 0 ? costs[i] : (costs[costs.length - 1] / units[units.length - 1]) * u;
+  }
+  function count() {
+    return rows.filter(function (r) { return r.querySelector('.pickbox').checked; }).length;
+  }
+  function eligibleLeft() {
+    return rows.filter(function (r) {
+      return r.dataset.eligible === '1' && !r.querySelector('.pickbox').checked;
+    }).length;
+  }
+  function paint() {
+    var n = count(), u = Math.max(1, Math.ceil(n / per)), budget = parseInt(sel.value, 10);
+    var over = u > budget;
+    /*  THE FEE IS A STEP, SO THE UNUSED SLOTS ARE ALREADY PAID FOR. 1.290(f) charges per ten
+        items or fraction thereof: thirteen documents and twenty documents cost the same two
+        units. A package that stopped at thirteen left seven slots bought and empty, and nothing
+        said so. */
+    var slots = budget * per - n, spare = Math.min(slots, eligibleLeft());
+    tally.innerHTML = n + ' selected, ' + u + ' fee unit' + (u === 1 ? '' : 's') + ', $'
+      + cost(n).toFixed(2).replace(/\.00$/, '')
+      + (over ? ' <b class="flag flag-bad">more than the ' + budget
+                + ' unit' + (budget === 1 ? '' : 's') + ' you chose</b>'
+              : (spare > 0
+                 ? ' &middot; <b>' + slots + ' more document' + (slots === 1 ? '' : 's')
+                   + ' cost nothing extra</b> at this fee. '
+                   + '<button type="button" class="btn ghost sm" id="feeFill">Use '
+                   + spare + ' more</button>'
+                 : ''));
+    var b = document.getElementById('feeFill');
+    if (b) { b.addEventListener('click', function () { fill(); }); }
+  }
+  /*  Filling the budget ticks the ELIGIBLE candidates in the order the ranking already put them:
+      public art and secret art, never something that is not prior art on the dates and never a
+      document that looks commonly owned. Those two stay a deliberate click. */
+  function fill() {
+    var budget = parseInt(sel.value, 10) * per, taken = 0;
+    rows.forEach(function (r) {
+      var box = r.querySelector('.pickbox');
+      if (r.dataset.eligible === '1' && taken < budget) { box.checked = true; taken++; }
+      else { box.checked = false; }
+    });
+    paint();
+  }
+  sel.addEventListener('change', fill);
+  rows.forEach(function (r) { r.querySelector('.pickbox').addEventListener('change', paint); });
+  paint();
+
+  var dlg = document.getElementById('qhelpDlg');
+  var titles = {secret: 'Secret prior art, 102(a)(2) and EPC 54(3)',
+                coowned: 'Commonly owned documents',
+                basis: 'Not prior art on the dates',
+                unread: 'Full text never read'};
+  var bodies = {secret: 'helpSecret', coowned: 'helpCoowned', basis: 'helpBasis',
+                unread: 'helpUnread'};
+  function openHelp(kind) {
+    if (!dlg || !dlg.showModal) return;
+    document.getElementById('qhelpTitle').textContent = titles[kind] || 'About this flag';
+    var raw = (document.getElementById(bodies[kind]) || {}).textContent || '';
+    /*  The text is written with blank lines between paragraphs and <b> for the headings, so it is
+        one place to edit in Python and reads as prose here. */
+    document.getElementById('qhelpText').innerHTML = raw.split(/\n\s*\n/).map(function (p) {
+      return '<p>' + p.trim() + '</p>';
+    }).join('');
+    dlg.showModal();
+  }
+  document.addEventListener('click', function (ev) {
+    var q = ev.target.closest && ev.target.closest('.qhelp');
+    if (q) { ev.preventDefault(); openHelp(q.dataset.help); }
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    var q = ev.target.closest && ev.target.closest('.qhelp');
+    if (q) { ev.preventDefault(); openHelp(q.dataset.help); }
+  });
+})();
+(function () {
+  var box = document.getElementById('cdProg');
+  if (!box) return;
+  var fill = document.getElementById('cdProgFill'),
+      msg  = document.getElementById('cdProgMsg'),
+      cnt  = document.getElementById('cdProgCount'),
+      clk  = document.getElementById('cdProgClock'),
+      ttl  = document.getElementById('cdProgTitle'),
+      form = document.getElementById('cdForm'),
+      url  = {{ url_for('concise_progress', slug=slug)|tojson }},
+      running = {{ (building|default(false))|tojson }},
+      timer = null;
+
+  function show(on) {
+    box.hidden = !on;
+    if (form) form.hidden = on;
+  }
+
+  function paint(d) {
+    //  The server counts real steps, so the bar never runs ahead of the work. It only ever moves
+    //  forward: a poll that races a step must not make it jump backwards.
+    var pct = Math.max(0, Math.min(100, d.pct || 0));
+    var now = parseFloat(fill.style.width) || 0;
+    fill.style.width = Math.max(now, pct).toFixed(1) + '%';
+    msg.textContent = d.msg || 'Working';
+    cnt.textContent = d.total ? ('step ' + d.done + ' of ' + d.total) : '';
+    clk.textContent = d.elapsed ? ('· ' + d.elapsed + 's') : '';
+  }
+
+  function poll() {
+    fetch(url, {credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.state === 'running') { paint(d); return; }
+        if (d.state === 'done') {
+          fill.style.width = '100%';
+          msg.textContent = d.msg || 'Ready';
+          ttl.textContent = 'Done';
+          clearInterval(timer);
+          //  Reload rather than patch the DOM: the finished page also carries the compliance
+          //  findings, the family merges and anything that was refused, and those are decisions
+          //  the practitioner has to see.
+          setTimeout(function () { location.reload(); }, 600);
+          return;
+        }
+        if (d.state === 'failed') {
+          clearInterval(timer);
+          ttl.textContent = 'Build failed';
+          msg.textContent = d.error || 'The error is in the server log.';
+          fill.style.background = 'var(--bad, #b00)';
+          if (form) form.hidden = false;
+          return;
+        }
+        clearInterval(timer);           // idle: nothing to watch
+        show(false);
+      })
+      .catch(function () { /* a dropped poll is not a failed build; the next tick retries */ });
+  }
+
+  if (running) { show(true); poll(); timer = setInterval(poll, 1000); }
+})();
+</script>
+{% endblock %}

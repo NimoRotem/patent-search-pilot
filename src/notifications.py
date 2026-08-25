@@ -18,12 +18,16 @@ from email.message import EmailMessage
 from pathlib import Path
 import hashlib
 
+import json
+import urllib.error
+import urllib.request
+
 import accounts
 import db
 
 
 PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or "https://rotem.ai/patents").rstrip("/")
-MAIL_FROM = (os.environ.get("MAIL_FROM") or "Rotem Patents <patents@rotem.ai>").strip()
+MAIL_FROM = (os.environ.get("MAIL_FROM") or "IPtorch <patents@rotem.ai>").strip()
 MAIL_TRANSPORT = (os.environ.get("MAIL_TRANSPORT") or "auto").strip().lower()
 POLL_SECONDS = max(5.0, float(os.environ.get("MAIL_POLL_SECONDS", "20")))
 
@@ -47,10 +51,22 @@ def _sendmail_path():
     return None
 
 
+def _resend_key():
+    return (os.environ.get("RESEND_API_KEY") or "").strip()
+
+
 def transport_status():
     """Non-secret status for the admin page and health checks."""
     if MAIL_TRANSPORT == "capture":
         return {"configured": True, "transport": "capture", "detail": "test capture"}
+    #  RESEND, DIRECTLY. On instance-3 this app handed mail to a host-local per-domain gateway on
+    #  127.0.0.1:2530 which relayed to Resend. That gateway is a whole webmail tenant with its own
+    #  database, inbound forwarding and digest rules — not something to fork onto a second box just
+    #  so an outbound notification can leave. Sending straight to Resend removes the cross-host
+    #  dependency entirely, which is the point of giving the patents stack its own machine.
+    if MAIL_TRANSPORT == "resend" or (MAIL_TRANSPORT == "auto" and _resend_key()):
+        return {"configured": bool(_resend_key()), "transport": "resend",
+                "detail": "Resend API" if _resend_key() else "RESEND_API_KEY is missing"}
     smtp_host = (os.environ.get("SMTP_HOST") or "").strip()
     if MAIL_TRANSPORT == "smtp" or (MAIL_TRANSPORT == "auto" and smtp_host):
         return {"configured": bool(smtp_host), "transport": "smtp",
@@ -75,6 +91,26 @@ def _deliver(row):
     if MAIL_TRANSPORT == "capture":
         _CAPTURED.append({"to": row["to_email"], "subject": row["subject"],
                           "body": row["body_text"]})
+        return
+
+    if MAIL_TRANSPORT == "resend" or (MAIL_TRANSPORT == "auto" and _resend_key()):
+        key = _resend_key()
+        if not key:
+            raise TransportUnavailable("RESEND_API_KEY is not configured")
+        payload = {"from": MAIL_FROM, "to": [str(row["to_email"])],
+                   "subject": str(row["subject"])[:240], "text": row["body_text"]}
+        req = urllib.request.Request(
+            "https://api.resend.com/emails", data=json.dumps(payload).encode(), method="POST",
+            #  Resend 403s the default urllib User-Agent. Learned the hard way; a real one is not
+            #  optional.
+            headers={"Authorization": "Bearer %s" % key, "Content-Type": "application/json",
+                     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) iptorch/1.0"})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as fh:
+                fh.read()
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")[:300]
+            raise RuntimeError("Resend returned %s: %s" % (e.code, detail))
         return
 
     smtp_host = (os.environ.get("SMTP_HOST") or "").strip()
@@ -156,8 +192,33 @@ def _failed(row, exc):
                         (row["user_id"], row.get("search_slug")))
 
 
+_NO_TRANSPORT_LOGGED = False
+
+
 def deliver_pending(limit=20):
-    """Deliver up to ``limit`` messages; returns counts and never raises on a bad message."""
+    """Deliver up to ``limit`` messages; returns counts and never raises on a bad message.
+
+    AN INSTANCE THAT CANNOT SEND MUST NOT CLAIM. The outbox is one table in a Postgres that more
+    than one instance of this app can share, and _claim_one leases the oldest due row to whichever
+    worker asks first. A deployment configured deliberately WITHOUT a transport (the fable fix
+    bench carries no MAIL_* on purpose) still runs this worker, wins that race for every row, and
+    fails it as TransportUnavailable, which is non-terminal by design and so retries for ever.
+    Observed 2026-08-18: outbox row 16 reached 53 attempts and no search notification had been
+    delivered since the second instance came up, while the instance that COULD send sat idle.
+
+    So a working transport is a precondition of CLAIMING, not a step inside delivery. It is
+    re-checked each pass rather than cached at import, because a local MTA can appear underneath
+    a running process.
+    """
+    global _NO_TRANSPORT_LOGGED
+    status = transport_status()
+    if not status.get("configured"):
+        if not _NO_TRANSPORT_LOGGED:
+            print("[mail] no transport on this instance (%s); leaving the outbox to an instance "
+                  "that can send" % status.get("detail"), flush=True)
+            _NO_TRANSPORT_LOGGED = True
+        return {"sent": 0, "failed": 0, "skipped": "no transport"}
+    _NO_TRANSPORT_LOGGED = False
     result = {"sent": 0, "failed": 0}
     for _ in range(max(0, min(int(limit), 100))):
         row = _claim_one()
@@ -213,6 +274,15 @@ def queue_search_completion(slug):
     return rows
 
 
+def queue_search_failure(slug, reason=""):
+    """The message a failed search owes the person who asked to be emailed about it."""
+    report_url = f"{PUBLIC_BASE_URL}/report/{slug}"
+    rows = accounts.queue_failure_notifications(slug, report_url, reason=reason)
+    if rows:
+        kick()
+    return rows
+
+
 def queue_draft_completion(user, project, version):
     """Queue one durable message for a newly published immutable draft version."""
     if not user or not user.get("is_active") or not user.get("email_on_completion", True):
@@ -244,8 +314,8 @@ def queue_invitation(email, full_name, invite_url, inviter_name=""):
     return accounts.enqueue_mail(
         to_email=email, user_id=None, search_slug=None, kind="invitation",
         dedupe_key=f"invite:{email.lower()}:{hashlib.sha256(invite_url.encode()).hexdigest()[:16]}",
-        subject="You have been invited to Rotem Patents",
-        body_text=(f"Hello {name},\n\nYou have been invited{who} to Rotem Patents, a "
+        subject="You have been invited to IPtorch",
+        body_text=(f"Hello {name},\n\nYou have been invited{who} to IPtorch, a "
                    "prior-art search and drafting tool.\n\nChoose a password and open your "
                    f"account here:\n{invite_url}\n\nThe link works once and expires in two "
                    "weeks. If you were not expecting this, ignore it — no account exists until "
@@ -274,7 +344,7 @@ def queue_password_reset(email, reset_url):
         # Hash the opaque token deterministically without storing the reset credential itself.
         dedupe_key=(f"password-reset:{user['id']}:"
                     f"{hashlib.sha256(token.encode()).hexdigest()}"),
-        subject="Reset your Rotem Patents password",
+        subject="Reset your IPtorch password",
         body_text=(f"Hello {user['full_name']},\n\nUse this link within one hour to reset your password:\n"
                    f"{url}\n\nIf you did not request this, you can ignore this message.\n"))
     kick()

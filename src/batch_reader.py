@@ -60,10 +60,21 @@ LOAD_WORKERS = int(os.environ.get("BATCH_READ_LOAD_WORKERS", "8"))
 
 _RANK = {"disclosed": 3, "partial": 2, "uncertain": 1, "absent": 0}
 
+#  ENGLISH TEXT ONLY. The deep read wave enriches a reference (fetches its English full text)
+#  before reading; this tail deliberately reads what the corpus already holds — and for DE/FR
+#  documents that is the ORIGINAL-language claims. The first production tail dutifully quoted
+#  them verbatim, grounded them (they ARE in the text) and put 47 German cells on an English
+#  report. A non-English reference is skipped here and named in the log; the deep tier's
+#  enrichment path is where it gets read properly.
+def _mostly_english(text):
+    return deep_analysis.mostly_english(text)
+
 _SYS = (
     "You are a patent examiner. You are given ONE REQUIREMENT taken verbatim from a subject "
     "patent's claims, and SEVERAL prior-art references, each labelled with its publication "
-    "number.\n"
+    "number. When the payload also carries \"claim_context\" — the WHOLE claim the requirement "
+    "is one limitation of — construe the requirement's words within that claim, but answer ONLY "
+    "about the requirement itself, never about the rest of the claim.\n"
     "\n"
     "For EVERY reference supplied, decide what THAT reference discloses about THAT ONE "
     "requirement:\n"
@@ -105,8 +116,10 @@ _SYS = (
 
 
 def _load(pubs, log=print):
-    """{pub: (ref, shown)} — the same full text and rendering the per-document reader uses."""
+    """{pub: (ref, shown)} — the same full text and rendering the per-document reader uses.
+    Non-English documents are skipped (see _mostly_english) and counted in the log."""
     out, lock = {}, threading.Lock()
+    skipped_lang = [0]
 
     def one(pub):
         try:
@@ -114,6 +127,10 @@ def _load(pubs, log=print):
             if not ref.get("found") or not ref.get("passages"):
                 return
             shown = deep_analysis._rendered(ref)[:DOC_CAP]
+            if not _mostly_english(shown):
+                with lock:
+                    skipped_lang[0] += 1
+                return
             with lock:
                 out[pub] = (ref, shown)
         except Exception:
@@ -121,6 +138,9 @@ def _load(pubs, log=print):
 
     with ThreadPoolExecutor(max_workers=max(1, min(LOAD_WORKERS, len(pubs) or 1))) as ex:
         list(ex.map(one, list(pubs)))
+    if skipped_lang[0]:
+        log(f"[batch_read] skipped {skipped_lang[0]} non-English references — the tail must not "
+            f"quote what the page cannot read; the deep tier's enrichment path covers them")
     return out
 
 
@@ -152,6 +172,8 @@ def read(pubs, items, kind="claim", emit=None, log=print, workers=WORKERS):
     labels = [i["label"] if isinstance(i, dict) else str(i) for i in items]
     texts = {(i["label"] if isinstance(i, dict) else str(i)):
              (i.get("text") if isinstance(i, dict) else "") for i in items}
+    contexts = {(i["label"] if isinstance(i, dict) else str(i)):
+                (i.get("context") or "") for i in items if isinstance(i, dict)}
     loaded = _load(pubs, log=log)
     if not loaded or not labels:
         return {}
@@ -172,8 +194,13 @@ def read(pubs, items, kind="claim", emit=None, log=print, workers=WORKERS):
         #  measured at, exactly as `deep_analysis._ask` used to.
         doc_part = json.dumps({"references": [{"pub": p, "text": loaded[p][1]}
                                               for p in pubs_in]}, ensure_ascii=False)[:-1]
-        tail = ", " + json.dumps({"requirement": texts.get(label) or label},
-                                 ensure_ascii=False)[1:]
+        tail_obj = {"requirement": texts.get(label) or label}
+        ctx = contexts.get(label)
+        if ctx:
+            #  The whole claim the requirement is one limitation of — construe, then answer only
+            #  about the requirement. Volatile per requirement, so it lives in the tail segment.
+            tail_obj["claim_context"] = ctx[:1200]
+        tail = ", " + json.dumps(tail_obj, ensure_ascii=False)[1:]
         try:
             got = llm.chat_json(_SYS, [{"text": doc_part, "cache": True}, {"text": tail}],
                                 tier="read", max_tokens=MAX_TOKENS) or {}

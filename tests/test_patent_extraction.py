@@ -459,7 +459,10 @@ def test_recovery_completes_a_finished_search_and_fails_a_partial(monkeypatch, t
     out = webapp.recover_interrupted_searches()
     assert queued == ["done-search"]                      # finished: email the user, as promised
     assert sorted(failed) == ["gone-search", "half-search"]   # never finished: say so
-    assert out == {"completed": 1, "failed": 2}
+    #  `still_running` was added by the durable cutover: a slug whose durable run is still live
+    #  belongs to the worker and must be left alone. With the flag off it is always zero, which is
+    #  what this test is asserting here, and what keeps the pre-cutover behaviour exact.
+    assert out == {"completed": 1, "failed": 2, "still_running": 0}
 
 
 def test_recovery_survives_an_unavailable_account_store(monkeypatch):
@@ -472,7 +475,8 @@ def test_recovery_survives_an_unavailable_account_store(monkeypatch):
         raise RuntimeError("accounts store down")
 
     monkeypatch.setattr(webapp.db, "cursor", boom)
-    assert webapp.recover_interrupted_searches() == {"completed": 0, "failed": 0}
+    assert webapp.recover_interrupted_searches() == {"completed": 0, "failed": 0,
+                                                     "still_running": 0}
 
 
 def test_extract_jobs_are_bounded(app_client, monkeypatch):

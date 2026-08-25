@@ -124,7 +124,26 @@ def _peer_is_trusted_proxy(peer):
 
 
 def is_loopback():
-    return (request.environ.get("REMOTE_ADDR", "") or "") in _LOOPBACK
+    """Did this request come from a process ON this box, rather than through the front door?
+
+    IT USED TO READ REMOTE_ADDR, and behind nginx REMOTE_ADDR is 127.0.0.1 for every request that
+    has ever arrived. So `is_loopback()` was true for the entire internet, and eleven routes are
+    gated on `current_user() or is_loopback()`. Measured 2026-08-25 against the live site with no
+    session and no credentials: `/api/designs?q=gripper` returned EUIPO rows, `/api/factory/pulse`
+    returned the build status. Both were meant to require a sign-in.
+
+    The distinction that actually holds: nginx sets X-Forwarded-For on everything it proxies, and
+    a local caller connecting straight to the port sets nothing. So loopback means a loopback peer
+    AND no proxy header, which is exactly the draft worker, a cron on this box, and a developer
+    with curl on the machine. A forged X-Forwarded-For can only take this privilege AWAY from its
+    sender, which is the safe direction for a header the caller controls.
+    """
+    peer = request.environ.get("REMOTE_ADDR", "") or ""
+    if peer not in _LOOPBACK:
+        return False
+    return not (request.headers.get("X-Forwarded-For")
+                or request.headers.get("X-Real-IP")
+                or request.headers.get("X-Forwarded-Proto"))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -297,6 +316,27 @@ def reset_limits():
 # ---------------------------------------------------------------------------------------------
 # hard caps: concurrent generations + daily LLM-spending runs
 # ---------------------------------------------------------------------------------------------
+#  THE canonical lane limits, in one place. The web gate and the standalone worker must resolve
+#  the SAME numbers from the SAME environment variables: a worker that invents its own names
+#  silently ignores whatever the operator configured, and admits against defaults nobody chose.
+LANE_LIMIT_ENV = {
+    "deep":  {"max_concurrent": ("MAX_CONCURRENT_RUNS", 2), "daily_cap": ("DAILY_RUN_CAP", 50)},
+    "quick": {"max_concurrent": ("MAX_CONCURRENT_QUICK", 3), "daily_cap": ("QUICK_DAILY_CAP", 200)},
+}
+
+
+def lane_limits(lane):
+    """Configured concurrency and daily cap for a lane, from the canonical variables."""
+    spec = LANE_LIMIT_ENV.get(lane, LANE_LIMIT_ENV["deep"])
+    out = {}
+    for key, (env, default) in spec.items():
+        try:
+            out[key] = int(os.environ.get(env, default))
+        except (TypeError, ValueError):
+            out[key] = int(default)
+    return out
+
+
 class RunGate:
     """Bounds how much money/CPU the app can burn.
 
@@ -401,9 +441,10 @@ run_gate = None
 
 def init_run_gate(state_path):
     global run_gate
-    run_gate = RunGate(_num("MAX_CONCURRENT_RUNS", 2), _num("DAILY_RUN_CAP", 50), state_path,
-                       quick_max=_num("MAX_CONCURRENT_QUICK", 3),
-                       quick_daily_cap=_num("QUICK_DAILY_CAP", 200))
+    run_gate = RunGate(lane_limits("deep")["max_concurrent"],
+                       lane_limits("deep")["daily_cap"], state_path,
+                       quick_max=lane_limits("quick")["max_concurrent"],
+                       quick_daily_cap=lane_limits("quick")["daily_cap"])
     return run_gate
 
 
@@ -525,10 +566,37 @@ def _safe_next(raw):
     return raw
 
 
+# Sibling apps on this domain that send a signed-out visitor HERE to sign in, then expect to be
+# sent back. Their `next` is already a whole site path, so prefixing it with our own SCRIPT_NAME
+# would produce /patents/patentlookup/ and 404. Anything not in this list keeps the old behaviour:
+# it came from inside this app and is relative to our prefix.
+_SIBLING_PREFIXES = tuple(
+    p.strip() for p in (os.environ.get(
+        "SHARED_LOGIN_PREFIXES",
+        "/patentlookup,/patentobservations,/submitpatents,/patents-engine") or "").split(",")
+    if p.strip().startswith("/"))
+
+
+def _is_site_absolute(path, root):
+    """True if `path` already names a full site path rather than one relative to our prefix."""
+    for pref in ((root,) if root else ()) + _SIBLING_PREFIXES:
+        # Segment-exact: /patents must not match /patentsomethingelse.
+        if path == pref or path.startswith(pref + "/") or path.startswith(pref + "?"):
+            return True
+    return False
+
+
+def _after_login_target(nxt):
+    root = request.script_root or ""
+    if not root or _is_site_absolute(nxt, root):
+        return nxt
+    return root + nxt
+
+
 # Shown instead of raw JSON when a BROWSER (not a fetch/XHR caller) trips a rate limit.
 _TOOMANY_HTML = """<!doctype html><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>Slow down | Rotem Patents</title>
+<title>Slow down | IPtorch</title>
 <style>
  body{font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1115;color:#e6e8ee;
       display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
@@ -573,7 +641,7 @@ def login():
                                     "email": user["email"]})
                 nxt = _safe_next(request.form.get("next") or request.args.get("next"))
                 if nxt:
-                    return redirect((request.script_root or "") + nxt)
+                    return redirect(_after_login_target(nxt))
                 return redirect(url_for("index"))
             if not error:
                 error = "Email or password is incorrect."
@@ -697,6 +765,30 @@ def account():
                     preferred_jurisdiction=request.form.get("preferred_jurisdiction", "US"))
                 g.patent_user = user
                 message = "Account preferences saved."
+            elif action == "filing":
+                #  Both of these end up on a paper filed at the USPTO: the entity size sets the
+                #  fee and the signature is applied under 37 CFR 1.4(d)(2). Set once, used every
+                #  time, so nobody retypes them into a filing.
+                user = accounts.set_filing_identity(
+                    user["id"],
+                    entity_size=request.form.get("entity_size", "small"),
+                    signature_name=request.form.get("signature_name", ""),
+                    signature_title=request.form.get("signature_title", ""))
+                g.patent_user = user
+                message = "Filing details saved."
+            elif action == "share":
+                #  ONE password for every link this account publishes. Set once here, copied onto
+                #  each report at publish time, never shown again. Clearing it also stops anything
+                #  new being published automatically, which is the only safe meaning of "no
+                #  password": see public_report.autopublish.
+                user = accounts.set_share_password(
+                    user["id"], request.form.get("share_password", ""))
+                user = accounts.set_autopublish(
+                    user["id"], request.form.get("autopublish") == "1")
+                g.patent_user = user
+                message = ("Share settings saved." if user.get("has_share_password") else
+                           "Share password cleared. New reports will not be published "
+                           "automatically until one is set.")
             elif action == "password":
                 new = request.form.get("new_password", "")
                 if new != request.form.get("new_password_confirm", ""):

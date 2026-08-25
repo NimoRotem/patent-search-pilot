@@ -45,14 +45,15 @@
                 onclick="openDetail('{{ c.pub }}')" aria-label="Open the full document for {{ c.pub }}">
           {% if c.images %}
             {% set im0 = c.images[0] %}
-            {#  A locally-recovered figure has a filename (served from /figures/<pub>/<file>); a
+            {#  A locally-recovered figure has a filename (served from /refdrawing/<pub>/<file>,
+                NOT /figures/, which nginx gives to the figure compiler: see webapp.REFDRAW_PREFIX); a
                 lemad-Mongo figure has file=null and a remote Google-CDN thumbnail URL that renders
                 directly — nothing was downloaded. Both render here at first paint, no click.
                 loading="eager": figures are cheap CDN URLs (no download), so every card's hero
                 shows immediately, iptorch-style, instead of only the ~2 above-fold ones. decoding
                 stays async so decode never blocks first paint. #}
             <img loading="eager" decoding="async"
-                 src="{% if im0.file %}{{ request.script_root }}/figures/{{ c.pub }}/{{ im0.file }}{% else %}{{ im0.thumbnail or im0.full }}{% endif %}"
+                 src="{% if im0.file %}{{ request.script_root }}/refdrawing/{{ c.pub }}/{{ im0.file }}{% else %}{{ im0.thumbnail or im0.full }}{% endif %}"
                  alt="{% if im0.from_pdf %}Page{% else %}Figure{% endif %} 1 of {{ c.pub }}">
             <span class="figbadge">{{ c.n_images }} fig{{ 's' if c.n_images != 1 else '' }}</span>
             <span class="zoomhint" aria-hidden="true">🔍</span>
@@ -87,6 +88,13 @@
                  23 of 34 of these used to 404. #}
               <span class="pdflink" data-pub="{{ c.pub }}" aria-disabled="true"
                     title="Checking for a cached PDF…">PDF</span>
+              {#  THE WHOLE FILE, from the register rather than from our corpus. The lookup engine
+                  owns the adapters for USPTO ODP, EPO OPS, Google Patents and DPMAregister; this
+                  asks it whether the file is already held (one cheap call, no work) and offers to
+                  pull it if not. It is the answer for every document Google Patents does not have,
+                  which is most recent national filings. #}
+              <button type="button" class="filelink" data-pub="{{ c.pub }}"
+                      title="Legal events, deadlines, family and the documents themselves, from the registers">Full file</button>
             </div>
             {% if c.assignees or c.inventors %}
             <div class="rsub">
@@ -97,6 +105,7 @@
               <span class="stag t-{{ c.status.tone }}"{% if c.status.note %} title="{{ c.status.note }}"{% endif %}>{{ c.status.label }}</span>
               {% if c.basis=='public_prior_art' %}<span class="bbadge b-public" title="Published before the subject's effective filing date, so it is citable against both novelty and inventive step — EPC Art. 54(2).">◆ public prior art</span>
               {% elif c.basis=='secret_prior_art' %}<span class="bbadge b-secret" title="Filed before the subject's effective date but published after it. Citable for NOVELTY ONLY under EPC Art. 54(3); it cannot be combined with other art for an inventive-step attack.">🔒 secret prior art</span>
+              {% if c.forum_bar %}<span class="bbadge b-interval" title="{{ c.forum_bar }}">not US prior art</span>{% endif %}
               {% elif c.basis=='priority_interval' %}<span class="bbadge b-interval" title="Published inside the priority interval — between the subject's earliest priority date and its filing date. Whether it is prior art depends on whether the priority claim is valid for this subject matter.">priority interval</span>{% endif %}
               {% for ch in c.channels[:3] %}<span class="chip ch">{{ ch }}</span>{% endfor %}
               {# per-result source provenance: which channel/API found this reference (item 5).

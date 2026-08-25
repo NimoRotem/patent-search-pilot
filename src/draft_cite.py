@@ -212,6 +212,32 @@ def malformed_citations_in(text: str) -> list[str]:
     return out
 
 
+def _filing_citation_label(publication: str) -> str:
+    """Turn an internal citation key into conventional application prose."""
+    parsed = pubnorm.parse(publication)
+    if not parsed:
+        raise ValueError(f"Malformed internal citation token: {publication}")
+    country, digits, kind = parsed
+    if country == "US":
+        if (kind.startswith("A") and 10 <= len(digits) <= 11 and
+                1999 <= int(digits[:4]) <= 2035):
+            return ("U.S. Patent Application Publication No. US "
+                    f"{digits[:4]}/{digits[4:].zfill(7)} {kind}")
+        if 6 <= len(digits) <= 8:
+            return f"U.S. Patent No. {int(digits):,}"
+    suffix = f" {kind}" if kind else ""
+    return f"{country} Patent Publication No. {digits}{suffix}"
+
+
+def filing_citations(text: str) -> str:
+    """Replace drafting-only ``[REF:...]`` keys and reject malformed leftovers."""
+    rendered = CITATION_RE.sub(
+        lambda match: _filing_citation_label(match.group(1).strip()), text or "")
+    if re.search(r"\[\s*REF\s*:", rendered, flags=re.IGNORECASE):
+        raise ValueError("Malformed internal citation token remains in application text.")
+    return rendered
+
+
 def bare_publication_numbers(text: str) -> list[str]:
     """Publication numbers written into prose without a citation token.
 

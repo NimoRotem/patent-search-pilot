@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Search prior art | Rotem Patents{% endblock %}
+{% block title %}Search prior art | IPtorch{% endblock %}
 {% block body %}
 {#  THE SEARCH PAGE IS THE SEARCH FIELD.
 
@@ -131,10 +131,45 @@
     <input type="hidden" name="mode" value="novelty">
     <input type="hidden" name="search_focus" id="search-focus" value="all_text">
 
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    {#  WHICH SEARCH THIS WILL BE, before it is started.
+
+        Two very different searches leave from this one button. A description with no claims is a
+        CONCEPT search: the invention is broken into its distinct technical concepts and each one
+        is searched. A patent that arrives with its claims is a CLAIM ATTACK: every claim is split
+        into its separate requirements and each requirement is searched, read for and rescued.
+        Measured, the second takes an hour to two hours and the first takes minutes — and until
+        now the page described both as "several minutes", so somebody who typed a paragraph had no
+        way to know they had started the expensive one.
+
+        The badge is driven by the same fact the engine uses (does the input carry claims), so it
+        cannot disagree with what actually runs. Server-rendered default, flipped by the extract
+        step the moment a document turns out to have claims.  #}
+    {#  WHICH SEARCH IS ABOUT TO RUN, and how long it takes. Two facts, because a typed paragraph
+        and an uploaded document with claims start genuinely different work at genuinely different
+        cost. The sentence explaining WHY moved behind the (?), which is where an explanation of a
+        thing you can already see belongs.
+
+        Hidden until the extract step decides: `kindWhat` is still written by that script, so the
+        node stays even though it is no longer rendered as prose. #}
+    <div class="kindbadge" id="kindBadge" data-kind="concept" hidden>
+      <span class="kindname" id="kindName">Concept search</span>
+      <span class="kindeta" id="kindEta">about 12-30 minutes</span>
+      <button type="button" class="qmark" id="kindHelp" aria-label="What this kind of search does"
+        data-title="Concept search"
+        data-help="Breaks the description into its distinct technical concepts and searches each one, then reads the strongest references in full. No claims exist yet, so there is no claim-by-claim chart.">?</button>
+      <span class="kindwhat small muted" id="kindWhat" hidden></span>
+    </div>
+
+    {#  ONE BUTTON AND A (?). The paragraph that used to sit beside it said what the search does,
+        how long the first results take and that they are cached: all true, all worth knowing
+        once, none of it worth reading every time somebody starts a search. #}
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button class="btn" type="submit" id="gobtn">Search prior art</button>
-      <span class="small muted">Searches the local corpus and external patent APIs. First matches
-        usually appear within a minute; full refinement can take several minutes. Cached afterwards.</span>
+      <button type="button" class="qmark" data-title="What happens when you press this"
+        aria-label="What happens when you press Search prior art"
+        data-help="Your description is broken into its distinct technical ideas and each one is searched separately, against our own patent database and against the public registers. The strongest references are then read in full, not just their abstracts, and every statement in the report is tied to the passage it came from.
+
+First results usually appear within a minute and the reading continues after that. You can leave the page; the search keeps running and the finished report waits for you.">?</button>
     </div>
 
     {% if current_user %}
@@ -148,11 +183,14 @@
     <p class="small muted notifyopt"><a href="{{ request.script_root }}/login">Sign in</a> to save the search, leave it running, and receive a report-ready email.</p>
     {% endif %}
 
-    {#  The one line that replaces the wall. Every number is live from the DB via
-        corpus_facts.facts() — never hardcoded — so it cannot state a corpus size or a date
-        ceiling the tool no longer has. #}
-    <p class="scope-line small muted">{{ disc.one_line() }} ·
-      <a href="{{ request.script_root }}/about">about this tool and its limits</a></p>
+    {#  WHAT THIS LINE USED TO BE: "Bounded corpus: 4,984,254 pubs · 8 CPC classes · current to
+        2026-08-18 · measured recall 19% @10". Every number was live and correct, and all four
+        are engineering telemetry that means nothing to the person about to type a description
+        and quite a lot to a competitor. The limit that a reader actually has to know is one
+        sentence, and it is here; the measurements are on the admin Coverage page. #}
+    <p class="scope-line small muted">A search here is evidence, not a clearance opinion. Every
+      finding is tied to the passage it came from, and every one of them is worth checking.
+      <a href="{{ request.script_root }}/about">What this covers</a></p>
   </form>
 </div>
 {% endblock %}
@@ -210,6 +248,42 @@ window.addEventListener('pageshow', () => {
 
   const $ = id => document.getElementById(id);
 
+  /*  THE SEARCH-KIND BADGE.
+      Fetched from /api/search-kinds rather than written into this file, so the label, the summary
+      and the quoted time come from the same module that sets the budget. If the fetch fails the
+      server-rendered default stands, which is the honest fallback: a typed description IS a
+      concept search.                                                                            */
+  let KINDS = null;
+  fetch(B + '/api/search-kinds', {credentials:'same-origin'})
+    .then(r => r.json()).then(d => { KINDS = d && d.kinds ? d.kinds : null; setKind(currentKind()); })
+    .catch(() => {});
+
+  //  The same rule the engine uses: claims present -> claim attack, otherwise concept search.
+  //  `currentClaims()` reads the review panel, so correcting or deleting the extracted claims
+  //  changes the badge before the search is started, exactly as it changes the search.
+  function currentKind(){
+    return (doc && currentClaims().length) ? 'claims' : 'concept';
+  }
+  function setKind(kind){
+    const badge = $('kindBadge');
+    if(!badge) return;
+    badge.dataset.kind = kind;
+    const k = (KINDS || []).find(x => x.kind === kind);
+    if(!k) return;
+    $('kindName').textContent = k.label;
+    $('kindEta').textContent = k.eta_text;
+    $('kindWhat').textContent = k.summary;
+    //  The summary is the honest explanation of which search this is and it is not short. It
+    //  goes behind the (?) beside the badge rather than as a third line of prose above the box.
+    const help = $('kindHelp');
+    if(help){
+      help.setAttribute('data-title', k.label);
+      help.setAttribute('data-help', k.summary || '');
+      help.setAttribute('aria-label', 'What ' + k.label.toLowerCase() + ' does');
+    }
+    badge.hidden = false;
+  }
+
   function claimRow(c, i){
     const row = document.createElement('div');
     row.className = 'exclaim' + (c.independent ? ' indep' : '');
@@ -243,6 +317,9 @@ window.addEventListener('pageshow', () => {
     $('exClaimsMeta').textContent = rows.length
       ? `${rows.length} claim${rows.length===1?'':'s'}, ${ind} independent`
       : 'none found — add one if the document has claims';
+    //  Deleting the last claim turns a claim attack back into a concept search, and the badge
+    //  has to say so BEFORE the button is pressed, not an hour later on the report.
+    setKind(currentKind());
   }
 
   function currentClaims(){
@@ -316,6 +393,7 @@ window.addEventListener('pageshow', () => {
     $('exNotesMeta').textContent = notes.length + ' step' + (notes.length===1?'':'s');
 
     pristine = snapshot();
+    setKind(currentKind());
     preview.hidden = false;
     // AFTER unhiding: a hidden textarea reports scrollHeight 0, so sizing it while the panel is
     // still hidden collapses every claim to two lines and hides the text the user is here to check.

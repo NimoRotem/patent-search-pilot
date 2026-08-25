@@ -12,6 +12,7 @@ import hashlib
 import re
 import secrets
 import threading
+import traceback
 from datetime import datetime, timedelta, timezone
 
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -42,6 +43,20 @@ _SCHEMA = (
     "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS default_inventors text NOT NULL DEFAULT ''",
     "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS preferred_jurisdiction text NOT NULL DEFAULT 'US'",
     "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS session_version integer NOT NULL DEFAULT 1",
+    #  THE SHARE PASSWORD, SET ONCE. Every finished report gets its public link automatically, and
+    #  this is the password that guards it. Stored as a HASH, like every other password here: it is
+    #  copied onto each published report and never needs to be read back, so there is no reason to
+    #  hold the plaintext. Empty means no default has been set, and nothing is auto-published until
+    #  one is, because a link with no password is a report anyone who guesses the slug can read.
+    #  FILING IDENTITY. The USPTO fee depends on entity size and small is the common case for the
+    #  people using this, so it is the default: a large-entity user says so once. `signature_name`
+    #  is the S-signature under 37 CFR 1.4(d)(2), stored as the bare name and printed between
+    #  forward slashes on the papers that need signing.
+    "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS entity_size text NOT NULL DEFAULT 'small'",
+    "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS signature_name text NOT NULL DEFAULT ''",
+    "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS signature_title text NOT NULL DEFAULT ''",
+    "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS share_password_hash text NOT NULL DEFAULT ''",
+    "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS autopublish boolean NOT NULL DEFAULT true",
     """CREATE TABLE IF NOT EXISTS app_saved_searches (
          id bigserial PRIMARY KEY,
          user_id bigint NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
@@ -140,7 +155,104 @@ def public_user(row):
         return None
     out = dict(row)
     out.pop("password_hash", None)
+    #  Same rule for the share password: the hash never leaves this module. The page needs to know
+    #  only WHETHER one is set, so that is what it gets.
+    out["has_share_password"] = bool(out.pop("share_password_hash", "") or "")
     return out
+
+
+def set_share_password(user_id, password):
+    """The one password that guards this user's automatically published links.
+
+    Stored hashed and copied onto each report at publish time, so it is set once and never shown
+    again. An empty password CLEARS it, which also stops anything new being auto-published.
+    """
+    from werkzeug.security import generate_password_hash
+    ensure_schema()
+    password = (password or "").strip()
+    if password and len(password) < 6:
+        raise ValueError("A share password needs at least six characters.")
+    with db.cursor() as cur:
+        cur.execute("UPDATE app_users SET share_password_hash=%s, updated_at=now() "
+                    "WHERE id=%s RETURNING *",
+                    (generate_password_hash(password) if password else "", int(user_id)))
+        return public_user(cur.fetchone())
+
+
+ENTITY_SIZES = ("small", "large")
+
+
+def set_filing_identity(user_id, *, entity_size=None, signature_name=None, signature_title=None):
+    """Who signs, and at what entity size. Both go on filed papers, so both are set once here."""
+    ensure_schema()
+    if entity_size is not None and entity_size not in ENTITY_SIZES:
+        raise ValueError("Entity size must be small or large.")
+    name = None if signature_name is None else re.sub(r"\s+", " ", signature_name.strip())[:120]
+    #  The S-signature is letters, numbers and a few name characters between forward slashes. A
+    #  slash INSIDE it would close the signature early, so it is refused rather than trimmed.
+    if name and ("/" in name or "\\" in name):
+        raise ValueError("A signature name cannot contain a slash.")
+    title = None if signature_title is None else re.sub(r"\s+", " ", signature_title.strip())[:120]
+    with db.cursor() as cur:
+        cur.execute("UPDATE app_users SET entity_size=COALESCE(%s,entity_size),"
+                    "signature_name=COALESCE(%s,signature_name),"
+                    "signature_title=COALESCE(%s,signature_title),updated_at=now() "
+                    "WHERE id=%s RETURNING *",
+                    (entity_size, name, title, int(user_id)))
+        return public_user(cur.fetchone())
+
+
+def filing_identity(user_id):
+    """-> {"entity_size", "signature_name", "signature_title"}. Small entity unless told otherwise."""
+    ensure_schema()
+    try:
+        with db.cursor() as cur:
+            cur.execute("SELECT entity_size, signature_name, signature_title FROM app_users "
+                        "WHERE id=%s", (int(user_id),))
+            row = cur.fetchone() or {}
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        row = {}
+    return {"entity_size": str(row.get("entity_size") or "small"),
+            "signature_name": str(row.get("signature_name") or ""),
+            "signature_title": str(row.get("signature_title") or "")}
+
+
+def search_owner(slug):
+    """The account that ran this search, or None. -> user_id
+
+    A report on disk does not record who asked for it; `app_saved_searches` does. Used by the
+    automatic public link, which must be minted for the owner and nobody else.
+    """
+    ensure_schema()
+    try:
+        with db.cursor() as cur:
+            cur.execute("SELECT user_id FROM app_saved_searches WHERE slug=%s "
+                        "ORDER BY created_at LIMIT 1", (slug,))
+            row = cur.fetchone()
+        return int(row["user_id"]) if row and row.get("user_id") else None
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return None
+
+
+def share_defaults(user_id):
+    """-> {"autopublish": bool, "password_hash": str}. The publisher reads this, nothing else."""
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("SELECT autopublish, share_password_hash FROM app_users WHERE id=%s",
+                    (int(user_id),))
+        row = cur.fetchone() or {}
+    return {"autopublish": bool(row.get("autopublish")),
+            "password_hash": str(row.get("share_password_hash") or "")}
+
+
+def set_autopublish(user_id, on):
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("UPDATE app_users SET autopublish=%s, updated_at=now() WHERE id=%s RETURNING *",
+                    (bool(on), int(user_id)))
+        return public_user(cur.fetchone())
 
 
 def create_user(email: str, full_name: str, password: str):
@@ -388,6 +500,20 @@ def can_access_search(user_id, slug) -> bool:
     return get_search(user_id, slug) is not None
 
 
+def mark_search_running(slug):
+    """Put a saved search back into `running`. -> rows touched.
+
+    Only ever moves a row OUT of a settled state and into the state the pipeline is actually in.
+    Startup recovery marks stale rows failed and the dispatcher then restarts them; without this
+    the history keeps saying failed while the search runs to completion.
+    """
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("UPDATE app_saved_searches SET status='running', completed_at=NULL, "
+                    "updated_at=now() WHERE slug=%s AND status <> 'complete'", (slug,))
+        return cur.rowcount
+
+
 def mark_search_complete(slug):
     ensure_schema()
     with db.cursor() as cur:
@@ -455,6 +581,26 @@ def enqueue_mail(*, to_email, kind, subject, body_text, dedupe_key,
         return dict(cur.fetchone())
 
 
+def _search_label(row, limit=64):
+    """A short, human identifier for one search, for the subject line.
+
+    EVERY NOTIFICATION USED THE SAME SUBJECT. Sixteen of them between 1 and 19 August all read
+    "Your patent prior-art search is ready", from the same sender. Gmail threads on subject plus
+    participants, so they were one conversation — and a conversation that has ever been muted or
+    archived swallows every later message: it is not in the inbox and it is not in spam, which is
+    precisely how this was reported. A distinct subject per search is both the fix and the more
+    useful line to read in a mailbox.
+    """
+    subj = re.sub(r"\s+", " ", str(row.get("subject") or "")).strip()
+    title = re.sub(r"\s+", " ", str(row.get("title") or "")).strip()
+    query = re.sub(r"\s+", " ", str(row.get("query") or "")).strip()
+    bits = [b for b in (subj, title or query) if b]
+    label = " — ".join(bits) if len(bits) > 1 else (bits[0] if bits else "")
+    if not label:
+        return str(row.get("slug") or "").replace("adhoc-", "")
+    return label[:limit].rstrip(" ,;.—-") + ("…" if len(label) > limit else "")
+
+
 def queue_completion_notifications(slug, report_url):
     """Durably queue one completion message per opted-in user/search pair."""
     rows = mark_search_complete(slug)
@@ -470,7 +616,7 @@ def queue_completion_notifications(slug, report_url):
         mail = enqueue_mail(
             to_email=user["email"], user_id=user["id"], search_slug=slug,
             kind="search_complete", dedupe_key=f"search-complete:{user['id']}:{slug}",
-            subject="Your patent prior-art search is ready",
+            subject=f"Prior-art search ready: {_search_label(row)}",
             body_text=(f"Hello {user['full_name']},\n\nYour prior-art search is ready.\n\n"
                        f"Search: {preview}\n\nOpen the report:\n{report_url}\n\n"
                        "The report includes ranked references, grounded relevance explanations, "
@@ -481,6 +627,50 @@ def queue_completion_notifications(slug, report_url):
             cur.execute("UPDATE app_saved_searches SET notification_status=%s "
                         "WHERE user_id=%s AND slug=%s",
                         (notification_status, user["id"], slug))
+    return queued
+
+
+def queue_failure_notifications(slug, report_url, reason=""):
+    """Tell the people who asked to be told that the search did NOT finish.
+
+    A search that raises marked itself failed and queued NOTHING, so anyone who ticked "email me"
+    waited for a message that was never going to come — the same silence as a search still running.
+    From the user's side that is indistinguishable from mail being broken, and it is what "emails
+    are still not sent" turned out to mean on 2026-08-19: the searches that succeeded had all been
+    delivered; the one that failed said nothing.
+
+    Deliberately a different dedupe key and kind from the completion message, so a search that
+    fails, is re-run and then succeeds sends both, in that order, and neither suppresses the other.
+    """
+    ensure_schema()
+    with db.cursor() as cur:
+        cur.execute("SELECT * FROM app_saved_searches WHERE slug=%s", (slug,))
+        rows = [dict(r) for r in cur.fetchall()]
+    queued = []
+    for row in rows:
+        if not row.get("notify_email") or row.get("notification_status") == "sent":
+            continue
+        user = get_user(row["user_id"])
+        if not user or not user.get("is_active"):
+            continue
+        query = re.sub(r"\s+", " ", row.get("query") or "").strip()
+        preview = query[:180] + ("…" if len(query) > 180 else "")
+        why = (" (%s)" % re.sub(r"\s+", " ", str(reason))[:160]) if reason else ""
+        mail = enqueue_mail(
+            to_email=user["email"], user_id=user["id"], search_slug=slug,
+            kind="search_failed", dedupe_key=f"search-failed:{user['id']}:{slug}",
+            subject=f"Prior-art search did not finish: {_search_label(row)}",
+            body_text=(f"Hello {user['full_name']},\n\nYour prior-art search stopped before it "
+                       f"finished{why}.\n\nSearch: {preview}\n\n"
+                       f"Open the report and re-run it:\n{report_url}\n\n"
+                       "Whatever the search had already found is on that page. Nothing was "
+                       "charged for the part that did not run.\n"))
+        queued.append(mail)
+        with db.cursor() as cur:
+            cur.execute("UPDATE app_saved_searches SET notification_status=%s "
+                        "WHERE user_id=%s AND slug=%s",
+                        ("sent" if mail.get("status") == "sent" else "queued",
+                         user["id"], slug))
     return queued
 
 

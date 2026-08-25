@@ -1,5 +1,6 @@
 """Authenticated Flask contracts for the versioned drafting workspace."""
 import io
+import re
 import zipfile
 from pathlib import Path
 
@@ -21,12 +22,13 @@ USER = {
 def sections():
     return {
         "title": "Configurable Vacuum Lifting Tool",
-        "cross_reference": "[DRAFTING NOTE: Confirm related applications.]",
+        "cross_reference": "Not applicable.",
+        "government_support": "Not applicable.",
         "field": "The disclosure relates to portable vacuum lifting tools.",
         "background": "Accessory readers are described in selected art [REF:US-11223344-B2].",
         "summary": "A handle identifies an attached base plate.",
-        "drawing_descriptions": "[DRAFTING NOTE: Supply figure descriptions.]",
-        "detailed_description": "A battery-powered pump is disposed in the handle.",
+        "drawing_descriptions": "FIG. 1 is a side elevation of the lifting apparatus.",
+        "detailed_description": "FIG. 1 shows a battery-powered pump disposed in the handle.",
         "claims": "1. A lifting apparatus comprising a handle and an identifier reader.",
         "abstract": "A vacuum lifting tool identifies an attached base plate.",
     }
@@ -107,7 +109,23 @@ def draft_client(monkeypatch):
     monkeypatch.setattr(accounts, "get_search", lambda uid, slug: {
         "slug": slug, "title": "RFID lifter search", "status": "complete",
     })
-    monkeypatch.setattr(webapp, "report_path", lambda slug: type("P", (), {"exists": lambda self: True})())
+    #  The double must answer everything the hot path asks of a report file, not just exists().
+    #  _report_partial now stats the file to key its mtime cache and guards the missing-file case
+    #  with `except OSError`; a stub without .stat() raises AttributeError instead, which escapes
+    #  that guard and 502s the route under test for a reason that has nothing to do with drafting.
+    #  Raising FileNotFoundError is the honest stand-in for "no report on disk yet", which is
+    #  exactly the state this test puts the studio in.
+    class _NoReportFile:
+        def exists(self):
+            return True
+
+        def stat(self):
+            raise FileNotFoundError("no report written yet")
+
+        def read_text(self, *a, **k):
+            raise FileNotFoundError("no report written yet")
+
+    monkeypatch.setattr(webapp, "report_path", lambda slug: _NoReportFile())
     monkeypatch.setattr(webapp, "_drafting_service", lambda: service)
     monkeypatch.setattr(webapp, "_draft_report_loader",
                         lambda principal, slug, owner: {"query": "Detailed RFID lifter disclosure",
@@ -136,14 +154,29 @@ def test_draft_library_and_intake_render(draft_client):
     client, _service = draft_client
     library = client.get("/drafts")
     assert library.status_code == 200
-    assert "US patent drafts" in library.get_data(as_text=True)
+    assert client.get("/drafts/").status_code == 200
+    library_body = library.get_data(as_text=True)
+    assert "US patent drafts" in library_body
+    assert "Classic one-shot draft" not in library_body
     intake = client.get("/drafts/new?search_slug=adhoc-owned")
-    assert intake.status_code == 200
-    body = intake.get_data(as_text=True)
-    assert "inventor disclosure is the source of truth" in body.lower()
-    assert "US-11223344-B2" in body
-    assert "Verbatim full uploaded disclosure with all four claims." in body
-    assert "Full uploaded disclosure loaded" in body
+    assert intake.status_code == 302
+    assert intake.headers["Location"].endswith("/drafts/start?search_slug=adhoc-owned")
+
+
+def test_anonymous_studio_redirects_to_login_instead_of_rendering_not_found(
+        draft_client, monkeypatch):
+    client, _service = draft_client
+    # Production nginx reaches Flask over loopback. The broad read-only loopback bypass must not
+    # turn a missing named session into a misleading drafting 403 page.
+    monkeypatch.setattr(auth, "TRUST_LOOPBACK", True)
+    with client.session_transaction() as session:
+        session.clear()
+
+    response = client.get("/drafts/7/studio")
+
+    assert response.status_code == 302
+    assert "/login" in response.headers["Location"]
+    assert "next=/drafts/7/studio" in response.headers["Location"]
 
 
 def test_conversational_intake_carries_search_text_and_prior_art(draft_client):
@@ -176,6 +209,25 @@ def test_intake_uses_profile_defaults_and_specific_drafting_choices(draft_client
     assert 'name="priority_status"' in body
     assert 'name="claim_strategy"' in body
     assert 'name="government_support"' in body
+    assert chr(0x2014) not in body
+    assert 'value="unknown"' not in body
+    assert re.search(r'name="priority_status" value="none"\s+checked', body)
+    assert re.search(r'name="government_support" value="none"\s+checked', body)
+
+
+def test_unsupplied_filing_facts_never_create_notes_or_follow_up_requests():
+    notes = webapp._structured_drafting_notes({})
+    assert notes.count("Not applicable.") == 2
+    assert not re.search(r"drafting note|ask for|not confirmed|placeholder", notes, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("values", [
+    {"priority_status": "claim"},
+    {"government_support": "yes"},
+])
+def test_selected_priority_or_government_support_requires_filing_details(values):
+    with pytest.raises(drafting.DraftingValidationError):
+        webapp._structured_drafting_notes(values)
 
 
 def test_intake_uses_profile_name_when_no_inventor_default_exists(draft_client, monkeypatch):
@@ -296,6 +348,32 @@ def test_figure_version_actions_cannot_cross_between_the_users_projects(
     assert response.status_code == 404
 
 
+def test_figure_version_activation_is_bound_to_the_current_specification(
+        draft_client, monkeypatch):
+    client, _service = draft_client
+    spec = {"label": "FIG. 1", "caption": "side view", "numerals": ["10 body"]}
+    project = {"id": 7, "user_id": USER["id"], "latest_version_no": 2, "versions": [{
+        "version_no": 2, "figure_specs": [spec],
+        "numerals": [{"numeral": "10", "part": "body"}]}]}
+    monkeypatch.setattr(webapp, "_figure_project", lambda principal, project_id: project)
+    monkeypatch.setattr(webapp, "_figure_in_project", lambda user_id, project_id, figure_id: {
+        "id": figure_id, "project_id": project_id, "figure_label": "FIG. 1"})
+    captured = {}
+
+    def activate(figure_id, user_id, version_no, **values):
+        captured.update(values)
+        return True
+
+    monkeypatch.setattr(webapp.draft_figures, "set_active", activate)
+    response = client.post(
+        "/drafts/7/figures/9/activate", json={"version_no": 1},
+        headers={"X-CSRF-Token": "csrf-draft"})
+    expected = webapp.draft_figures.specification_hash(
+        "FIG. 1", "side view", ["10 = body"])
+    assert response.status_code == 200
+    assert captured["expected_specification_hash"] == expected
+
+
 def test_studio_ui_exposes_sketch_tools_and_reload_safe_navigation():
     root = Path(__file__).resolve().parents[1]
     script = (root / "static" / "draft_studio.js").read_text()
@@ -319,33 +397,44 @@ def test_report_draft_action_is_a_csrf_protected_direct_post():
     assert 'name="csrf_token"' in template
 
 
-def test_create_draft_uses_server_report_and_selected_publications(draft_client):
+def test_legacy_create_redirects_to_the_gated_studio_intake(draft_client):
     client, service = draft_client
     response = client.post("/drafts/new", data={
         "csrf_token": "csrf-draft", "search_slug": "adhoc-owned", "title": "RFID lifter",
         "disclosure_text": "A detailed inventor disclosure with enough technical content to draft.",
         "inventor_notes": "Inventor: Dana", "pubs": ["US-11223344-B2"],
     })
-    assert response.status_code == 302 and response.headers["Location"].endswith("/drafts/7?created=1")
-    assert service.created["search_slug"] == "adhoc-owned"
-    assert service.selected == (7, ["US-11223344-B2"], "atomic")
+    assert response.status_code == 307
+    assert response.headers["Location"].endswith("/drafts/start")
+    assert service.created is None
 
 
 def test_draft_workspace_status_and_queue_are_authenticated_and_csrf_protected(draft_client, monkeypatch):
     client, service = draft_client
     page = client.get("/drafts/7")
-    assert page.status_code == 200
-    body = page.get_data(as_text=True)
-    assert "Application working draft" in body and "Download Word" in body
+    assert page.status_code == 302
+    assert page.headers["Location"].endswith("/drafts/7/studio")
     denied = client.post("/drafts/7/generate", data={"instructions": "Apparatus claims"})
     assert denied.status_code == 400
-    monkeypatch.setattr(webapp.draft_worker, "kick", lambda: None)
+
+    class Studio:
+        started = None
+
+        def start_turn(self, principal, project_id, **values):
+            self.started = (project_id, values)
+            return {"id": 18, "turn_no": 2, "status": "queued"}
+
+    studio = Studio()
+    monkeypatch.setattr(webapp, "_studio", lambda: studio)
     queued = client.post("/drafts/7/generate", data={
         "csrf_token": "csrf-draft", "instructions": "Apparatus claims",
         "idempotency_key": "one-click",
     })
     assert queued.status_code == 302
-    assert service.queued == (7, {"instructions": "Apparatus claims", "idempotency_key": "one-click"})
+    assert queued.headers["Location"].endswith("/drafts/7/studio")
+    assert studio.started == (7, {"message": "Apparatus claims", "kind": "revise",
+                                  "idempotency_key": "one-click"})
+    assert service.queued is None
     status = client.get("/api/drafts/7/status")
     assert status.status_code == 200
     payload = status.get_json()
@@ -363,7 +452,9 @@ def test_draft_markdown_and_docx_exports(draft_client):
     client, _service = draft_client
     markdown = client.get("/drafts/7/download/md?version=1")
     assert markdown.status_code == 200
-    assert b"WORKING DRAFT" in markdown.data and b"US-11223344-B2" in markdown.data
+    assert b"WORKING DRAFT" not in markdown.data
+    assert b"[REF:" not in markdown.data
+    assert b"U.S. Patent No. 11,223,344" in markdown.data
     word = client.get("/drafts/7/download/docx?version=1")
     assert word.status_code == 200 and len(word.data) > 10_000
     with zipfile.ZipFile(io.BytesIO(word.data)) as archive:
@@ -371,10 +462,21 @@ def test_draft_markdown_and_docx_exports(draft_client):
     assert b"CLAIMS" in document_xml and b"ABSTRACT" in document_xml
     pdf = client.get("/drafts/7/download/pdf?version=1")
     assert pdf.status_code == 200 and pdf.data.startswith(b"%PDF") and len(pdf.data) > 3_000
+    printed = client.get("/drafts/7/print?version=1")
+    assert printed.status_code == 200
+    assert b"[REF:" not in printed.data
+    assert b"U.S. Patent No. 11,223,344" in printed.data
 
 
-def test_restore_version_creates_a_new_immutable_version(draft_client):
-    client, _service = draft_client
+def test_legacy_section_edits_and_restore_cannot_publish_unreviewed_versions(draft_client):
+    client, service = draft_client
+    service.save_edited_version = lambda *args, **kwargs: pytest.fail(
+        "legacy route published a version without the filing gate")
+    edited = client.post("/drafts/7/versions", data={
+        "csrf_token": "csrf-draft", "base_version_no": "1", **sections(),
+    })
+    assert edited.status_code == 302
+    assert edited.headers["Location"].endswith("/drafts/7/studio")
     restored = client.post("/drafts/7/versions/1/restore", data={"csrf_token": "csrf-draft"})
     assert restored.status_code == 302
-    assert "version=2" in restored.headers["Location"]
+    assert restored.headers["Location"].endswith("/drafts/7/studio")

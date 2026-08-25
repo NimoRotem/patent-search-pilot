@@ -50,6 +50,7 @@ import claim_chart
 import db
 import grounding
 import llm
+import runctx                       # the durable run this reading belongs to, if any (else no-op)
 
 #  3: caches written by the pre-deep_rank path were built against a PARTIAL, pre-listwise
 #  ordering and were never invalidated, so they charted a list the page no longer showed.
@@ -192,7 +193,84 @@ def full_text(pub, max_chars=MAX_REFERENCE_CHARS):
             coord = ch["coord"] if isinstance(ch["coord"], dict) else {}
             if add(ch["kind"], coord, claim_chart._coord_label(ch["kind"], coord), ch["text"]):
                 out["n_paragraphs"] += 1
+
+    #  THE SCRATCH STORE, only when the corpus holds no readable body for this publication.
+    #  The durable worker may not write `claims`, `paragraphs` or `chunks` (corpus_guard, and
+    #  docs/corpus_write_policy.md), so text fetched during a search lands in `sources_docstore`
+    #  instead. Without this the reader could not see it and the reference would be LISTED rather
+    #  than read, which is the whole cost of arming the guard. Scoped to the empty case on
+    #  purpose: it can only ever add a document that was unreadable, never re-order or replace
+    #  what the corpus already holds.
+    if not out["n_claims"] and not out["n_paragraphs"]:
+        _add_scratch_text(pub, out, add)
     return out
+
+
+def _add_scratch_text(pub, out, add):
+    """Fold `sources_docstore` text for `pub` into a reference that the corpus cannot supply.
+
+    Best effort and silent on failure: an unreachable scratch store must leave the reference
+    exactly as the corpus described it, which is the behaviour that existed before this.
+    """
+    try:
+        from sources import docstore
+        rec = docstore._get_sync(pub, want_text=True) or {}
+    except Exception:                                                # noqa: BLE001
+        return 0
+    claims = str(rec.get("claims") or "").strip()
+    desc = str(rec.get("description") or "").strip()
+    if not claims and not desc:
+        return 0
+    out["found"] = True
+    if not out["title"]:
+        out["title"] = rec.get("title") or ""
+    if not out["passages"] and (rec.get("abstract") or "").strip():
+        add("abstract", {}, "abstract", rec["abstract"])
+    for i, text in enumerate(_split_units(claims)[:MAX_CLAIMS_PER_REF], 1):
+        no = _claim_number(text) or i
+        if add("claim", {"claim_no": no}, f"claim {no}", text):
+            out["n_claims"] += 1
+    for i, text in enumerate(_split_units(desc)[:MAX_PARAGRAPHS_PER_REF], 1):
+        if add("paragraph", {"para_no": i}, f"paragraph {i}", text):
+            out["n_paragraphs"] += 1
+    out["scratch"] = rec.get("fulltext_source") or "sources_docstore"
+    return out["n_claims"] + out["n_paragraphs"]
+
+
+#  "1. A gripper comprising..." / "12) The gripper of claim 1..." -> the claim's REAL number.
+_CLAIM_NO = re.compile(r"^\s*(\d{1,3})\s*[.)]\s")
+
+
+def _claim_number(text):
+    """The number a stored claim states for itself, or None.
+
+    Counting from one is right only when the blob starts at claim 1 and no claim contains a blank
+    line. Both are false often enough to matter, and a quote cited as "claim 4" when the reference
+    calls it claim 6 is a wrong citation in a legal document, so the text's own number wins.
+    """
+    m = _CLAIM_NO.match(str(text or ""))
+    return int(m.group(1)) if m else None
+
+
+def _split_units(text):
+    """One blob of stored text as the units a citation can point at.
+
+    The scratch store keeps claims and description as single strings, because that is what every
+    provider returns. A quote has to be citable as "claim 7" or "paragraph 41", so the blob is
+    split on blank lines, and on single newlines when there are none.
+
+    NOTHING IS DROPPED. An earlier version discarded units below a minimum length as noise and
+    silently lost "1. A gripper comprising a sealing lip.", a 38-character independent claim and
+    the single most important sentence in the document. A short unit costs one passage slot; a
+    missing one costs the chart a disclosure.
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+    parts = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    if len(parts) <= 1:
+        parts = [p.strip() for p in text.split("\n") if p.strip()]
+    return parts
 
 
 def _rendered(ref):
@@ -248,6 +326,12 @@ _SYS = (
     "show something — it is not a failure, and it is much better than a guess. Do not state any "
     "conclusion about patentability, novelty, obviousness, validity or infringement.\n"
     "\n"
+    "CLAIM CONTEXT. A claims item may carry \"claim_context\": the WHOLE claim its text is one "
+    "limitation of. Construe the limitation's words within that claim — the same words mean "
+    "different things in different apparatus — but answer ONLY about the limitation itself: "
+    "whether THIS reference discloses THIS limitation as it is meant in that claim. Never mark "
+    "a limitation disclosed merely because the reference matches the rest of its claim.\n"
+    "\n"
     "THE TWO BARS. A verbatim quote is the strong bar: a cell backed by one exact passage of at "
     "most 40 words. Sometimes a reference GENUINELY TEACHES an item and yet no single verbatim "
     "passage supports it — the teaching sits in a drawing's description, is spread across several "
@@ -272,6 +356,16 @@ _SYS = (
     "field, some overlapping features; 1-39 = same broad area but a different problem or "
     "solution; 0 = unrelated. Judge the document, not the table you just filled in."
 )
+
+
+#  Language guards, shared with batch_reader. Document-level: is this text readable at all.
+#  Quote-level: a verbatim quote in German or French on an English report is technically
+#  grounded (it IS in the reference) and useless to the reader — 47 such cells shipped on the
+#  first rebuilt report via mixed-language documents (English abstract, original-language
+#  claims). A non-English quote demotes the cell to the teaches bar: the finding is kept, the
+#  unreadable quote is not.
+mostly_english = grounding.mostly_english
+quote_is_english = grounding.quote_is_english
 
 
 def _row(item, raw, ref, shown, kind):
@@ -321,6 +415,17 @@ def _row(item, raw, ref, shown, kind):
         if asserts_teaching:
             return _teaches()
         return {**base, "note": note, "grounding": "dropped-unlocatable-quote"}
+    if not quote_is_english(quote):
+        #  Grounded, located — and unreadable on an English report. Keep the finding on the
+        #  weaker bar; the note says where the teaching sits, the quote is not rendered.
+        return {**base, "verdict": "partial", "bar": "teaches",
+                #  The original the reader grounded, kept for the popup's translation flow: the
+                #  corpus row can lag what enrichment put in front of the reader.
+                "quote_src": quote[:600],
+                "note": (f"(non-English passage at {loc['label']}) " + note)[:400],
+                "location": loc["label"], "coord": loc["coord"],
+                "passage_kind": loc["kind"], "confidence": min(conf, 0.6),
+                "grounding": "teaches-unquoted"}
     return {"item": item, "kind": kind, "verdict": verdict, "quote": quote, "note": note,
             "location": loc["label"], "coord": loc["coord"], "passage_kind": loc["kind"],
             "confidence": conf, "grounding": "verified", "refuted": None, "bar": "discloses"}
@@ -396,6 +501,21 @@ def _refute(rows, pub, texts=None):
     return downgraded
 
 
+def checklist_fp(features, input_claims):
+    """What a reference was read AGAINST, in 32 hex characters.
+
+    Two readings with the same fingerprint answered the same question about the same document; two
+    with different ones did not, and a resumed run must not reuse a chart across that line. Same
+    discipline as `evidence.subject_fp`, computed here because the durable checkpoint needs it
+    before it ever calls into the evidence store.
+    """
+    import runartifact
+    payload = {"features": list(features or [])[:MAX_FEATURES],
+               "claims": [(c.get("label") if isinstance(c, dict) else str(c))
+                          for c in (input_claims or [])][:MAX_INPUT_CLAIMS]}
+    return runartifact.digest_bytes(runartifact.serialise(payload))[:32]
+
+
 def analyse_reference(pub, features, input_claims, title="", hints=None):
     """Read ONE reference in full and chart it against the features and the subject claims.
 
@@ -404,6 +524,11 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
     subject's vocabulary looks like in OTHER people's patents before it decides "absent".
     """
     started = time.time()
+    #  BEFORE THE EVIDENCE STORE IS EVEN ASKED. This function is called 150 to 700 times per run
+    #  and each call is up to fourteen READ-tier prompts carrying the whole document, so it is
+    #  where a run whose lease was reaped burns its money. Cooperative and prompt: raised at the
+    #  start of a reference and again before each batch, never mid-write.
+    runctx.check_cancelled(f"read:{pub}")
     #  THE FLYWHEEL: a reference already charted against this EXACT checklist (same features, same
     #  claim texts, same read pool, inside the TTL) is served from the evidence store instead of
     #  being re-read. Benchmark arms and re-runs ask identical checklists; before this, every one
@@ -440,8 +565,14 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
         return result
 
     shown = _rendered(ref)
-    claim_payload = [{"item": c["label"], "text": c["text"]} for c in input_claims
-                     ][:MAX_INPUT_CLAIMS]
+    #  Each limitation travels WITH its whole claim: "a housing which has a grip portion" means
+    #  one thing inside claim 9's vacuum handling apparatus and another in the abstract. The
+    #  reader is told to construe the text within claim_context and still answer only about the
+    #  limitation itself.
+    claim_payload = [
+        {"item": c["label"], "text": c["text"],
+         **({"claim_context": str(c.get("context"))[:1200]} if c.get("context") else {})}
+        for c in input_claims][:MAX_INPUT_CLAIMS]
     hints = hints or {}
     #  The stable prefix every batch of this reference shares: the document, serialized once.
     #  json.dumps of a dict minus its closing brace, so prefix + ", " + rest-of-dict re-forms the
@@ -519,9 +650,18 @@ def analyse_reference(pub, features, input_claims, title="", hints=None):
     jobs = ([("features", b, []) for b in feature_batches]
             + [("claims", [], b) for b in claim_batches])
 
+    #  Captured on THIS thread and re-applied inside the batch pool below: a nested pool's threads
+    #  are not the thread that started the reference, so they cannot see its ambient run.
+    _ctx = runctx.active()
+
     def _run(job):
         kind, fb, cb = job
-        return kind, _ask(fb, cb)
+        with runctx.adopt(_ctx):
+            #  ONE UNIT OF WORK IS ONE BATCH, so this is the granularity cancellation has to
+            #  reach. Checking only between references would leave up to fourteen full-document
+            #  prompts in flight for a run somebody else already owns.
+            runctx.check_cancelled(f"read:{pub}:{kind}")
+            return kind, _ask(fb, cb)
 
     if len(jobs) > 1 and BATCH_WORKERS > 1:
         #  WARM THE CACHE ON ONE CALL BEFORE FANNING OUT THE REST.
@@ -752,6 +892,9 @@ def reread_absent(pub, rows, hints=None, ref=None, max_features=FEATURE_BATCH, k
     against the same text. A row is only ever upgraded on a quote that passes the same grounding
     and location gates as the first pass, so a second look cannot lower the evidential bar.
     """
+    #  The second look is a STRONG-tier call per reference and there are hundreds of them, so it
+    #  is a spending unit of work and gets the same check as the first reading.
+    runctx.check_cancelled(f"reread:{pub}")
     targets = [r for r in rows
                if r.get("verdict") == "absent" and r.get("grounding") in
                ("model-absent", "dropped-ungrounded-quote", "dropped-unlocatable-quote",
@@ -858,7 +1001,10 @@ def _extend_to(cards, report, top_n):
         conn.autocommit = True
         cur = conn.cursor()
         try:
-            reps = webview.resolve_family_reps(cur, tail)
+            reps = webview.reps_for(cur, report, tail)
+            #  These are read in full and charted, so their representatives are part of the record
+            #  for the same reason the screen's are.
+            webview.record_family_reps(report, reps)
         finally:
             conn.close()
     except Exception:

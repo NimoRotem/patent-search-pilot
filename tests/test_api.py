@@ -23,23 +23,31 @@ def test_home_is_just_the_search(app_client):
     assert r.status_code == 200
     html = r.get_data(as_text=True)
     assert "invention" in html.lower()             # free-text box
-    assert "Rotem Patents" in html                 # masthead / title
+    assert "IPtorch" in html                       # masthead / title
     assert "exchip" not in html                    # example chips are gone
     assert GOLD not in html                        # gold grid moved to /history
     assert "Search scope and measured reliability" not in html   # wall moved to /about
     assert 'name="wide"' not in html               # federation is unconditional, no checkbox
     assert "/about" in html                        # one compact line links to the relocated content
-    assert "First matches" in html                 # distinguish useful partials from final refinement
+    #  The paragraph that said this moved behind the (?) beside the button: the same fact, one
+    #  click away, instead of on the page every time somebody starts a search.
+    assert 'class="qmark"' in html
+    assert "First results usually appear" in html
     assert "pageshow" in html                      # BFCache restore re-enables the submit button
 
 
-def test_about_holds_the_relocated_disclosure(app_client):
+def test_about_states_the_limit_without_the_measurements(app_client):
+    """The wall of telemetry that used to live here (a recall figure, a class count, three
+    audited error rates) is on the admin Coverage page now. What a reader has to know is not a
+    number, it is that a short result list is not a clear field."""
     r = app_client.get("/about")
     assert r.status_code == 200
     html = r.get_data(as_text=True)
-    assert "Search scope and measured reliability" in html
-    assert "Absence of results is not evidence of absence" in html
-    assert "What is and is not indexed" in html
+    assert "not a clearance search" in html
+    assert "A short result list is not a clear field" in html
+    assert "Check the citations" in html
+    for telemetry in ("measured recall", "recall@100", "% @100", "CPC classes"):
+        assert telemetry not in html, "the measurements are back on a customer page: %s" % telemetry
 
 
 def test_history_lists_examples_and_past_searches(app_client):
@@ -51,19 +59,38 @@ def test_history_lists_examples_and_past_searches(app_client):
     assert "Your searches" in html
 
 
-def test_results_page_keeps_the_scope_disclosure(app_client):
-    """Clearing the SEARCH page must not clear the RESULTS page. This is the safeguard that stops
-    a thin result set being read as a clear field, and it stays at the point of decision."""
+def test_the_scope_disclosure_is_not_on_the_report(app_client):
+    """REVERSED ON REQUEST, 2026-08-23, and recorded here rather than deleted.
+
+    This used to assert the opposite: the scope-and-reliability block was repeated at the foot of
+    every report so a thin result set could not be read as a clear field. Two things changed. Every
+    search now fans out to ten external databases, so "one indexed field, measured recall well
+    below completeness" had stopped describing what a search does; and the block sat under the
+    reader's OWN result, where a recall figure and three audit bases read as a disclaimer on their
+    findings rather than as the scope of the tool.
+
+    The disclosure itself is unchanged and is still rendered IN FULL where somebody goes to ask
+    what the tool covers, which the next assertions hold shut. Removing it there too would be a
+    different decision and nobody has made it.
+    """
     html = app_client.get(f"/report/{GOLD}").get_data(as_text=True)
-    assert "Search scope and measured reliability" in html
-    assert "Absence of results is not evidence of absence" in html
+    assert "Search scope and measured reliability" not in html
+    assert "Absence of results is not evidence of absence" not in html
+    assert "Outside indexed field" not in html
+
+    body = app_client.get("/about").get_data(as_text=True)
+    assert "not a clearance search" in body
+    assert "A short result list is not a clear field" in body
 
 
 def test_gold_report_renders(app_client):
     r = app_client.get(f"/report/{GOLD}")
     assert r.status_code == 200
     html = r.get_data(as_text=True)
-    assert "claim chart" in html.lower()
+    #  The grid, by its own heading. This used to look for the words "claim chart", which reached
+    #  the page only through the scope block's "rationales and claim charts are drafting aids"
+    #  sentence, so it was passing on the disclaimer rather than on the grid being rendered.
+    assert ("Claim × prior-art grid" in html) or ("Element × reference grid" in html)
     assert html.count('class="refcard"') >= 10
 
 

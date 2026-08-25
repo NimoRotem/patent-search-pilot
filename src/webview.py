@@ -9,10 +9,11 @@ from __future__ import annotations
 import os
 import json, re
 from datetime import date, datetime
-import db, embed, status as status_mod
+import db, embed, grounding, status as status_mod
 import enrich_display                       # office links + cached drawing provenance (local only)
 import ops_family                            # worldwide INPADOC family -> year/jurisdiction timeline
 import pubnorm                               # single link-builder: zero-padded Google/Espacenet URLs
+import search_modes                          # the forum rule: which offices 102(a)(2) reaches
 from search_modes import Subject, Mode, classify_basis, Basis
 from config import DATA
 
@@ -128,13 +129,46 @@ def _source_tags(report, n_local):
 
     fed = report.get("federation")
     if not fed:
-        #  NO FEDERATION BLOCK YET means the external fan-out has not landed, which is the normal
-        #  state for most of a live search — not evidence that nothing else is being searched.
-        #  Returning here used to leave the panel reading "Sources 1 · Local corpus", which is the
-        #  single most misleading thing the page says: a dozen providers are configured and running
-        #  at that moment. List them as PENDING so the panel shows the real scope from the start
-        #  and fills in counts as each one reports.
-        if report.get("wide", True):
+        #  NO FEDERATION BLOCK is no longer the same fact it used to be.
+        #
+        #  It once meant "the external fan-out has not landed yet", which is the normal state for
+        #  most of a live search, so every provider was listed as PENDING to show the real scope
+        #  while counts filled in. Since the rebuild turned App A's /api/search channel off by
+        #  default (FEDERATION_CHANNEL=0), the block is never written at all — and a FINISHED
+        #  report was still rendering "PQAI: searching now", for ever, on a search that completed
+        #  hours earlier and in which PQAI returned 1,919 hits. Reported from the public link on
+        #  2026-08-19.
+        #
+        #  The external fan-out that DID run records its own per-source counts, so prefer those.
+        ext = report.get("external") or {}
+        per = ext.get("per_source") if isinstance(ext.get("per_source"), dict) else {}
+        landed = bool(per) or ext.get("ok") is not None
+        if landed:
+            catalogue = {(x.get("name") or x.get("id")): x
+                         for x in (_engine_sources() or []) if (x.get("name") or x.get("id"))}
+            err = " ".join(str(ext.get("error") or "").split())[:160]
+            for sid in list(per.keys()) + [k for k in catalogue if k not in per]:
+                x = catalogue.get(sid) or {}
+                if not x.get("enabled", True):
+                    tags.append({"id": sid, "label": x.get("label") or _src_label(sid),
+                                 "state": "off", "n": 0,
+                                 "note": "Not configured for this deployment.",
+                                 "why": "Not configured for this deployment."})
+                    continue
+                n = int(per.get(sid) or 0)
+                if n:
+                    st, why = "used", ""
+                elif err:
+                    st, why = "failed", err
+                else:
+                    #  A configured source that returned nothing is "no results", not "searching":
+                    #  the fan-out is over.
+                    st, why = "none", ""
+                tags.append({"id": sid, "label": x.get("label") or _src_label(sid),
+                             "state": st, "n": n, "note": why, "why": why})
+            return _mark_provider_fallbacks(tags)
+        #  Nothing has landed. Only a report that is STILL RUNNING may say a source is searching.
+        if report.get("wide", True) and report.get("partial"):
             for x in (_engine_sources() or []):
                 sid = x.get("name") or x.get("id")
                 if not sid:
@@ -271,11 +305,120 @@ def _join_key(pub):
 
 
 # ---- family -> representative publication --------------------------------------------------
-def resolve_family_reps(cur, family_keys):
-    """Map each family_key to its best representative publication row. Prefer a member with
-    full-text claims, then US, then most-recent. One query for all keys."""
+def subject_efd_of(report):
+    """The subject's effective filing date as a `date`, or None. -> for resolve_family_reps.
+
+    One definition, because three stages resolve family representatives (the screen, the reading
+    top-up and the orphan rescue) and a stage that quietly passes None reads a different document
+    from its neighbours — with a different date, and therefore a different statutory basis.
+    """
+    import datetime
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", str((report or {}).get("date_cutoff") or ""))
+    if not m:
+        return None
+    try:
+        return datetime.date(*[int(x) for x in m.groups()])
+    except ValueError:
+        return None
+
+
+def record_family_reps(report, reps):
+    """Write the representatives this run CHOSE into the report, so nothing re-chooses later.
+
+    The choice is made once, at the screen, and from then on it is a fact about this report rather
+    than a query anyone may re-run. Two things break without it, and both were live:
+
+    * `_seed_families` REPLACES the representative for a document the examiner applied by number.
+      That override exists only in the screen's local `reps` dict, so every later stage that
+      resolved the family again got the ordering's pick back and cited a document the examiner
+      never used.
+    * the corpus keeps growing. A sibling that lands next week can win the ordering and silently
+      change which document an OLD report displays, while the quotes in it were read from the
+      member that won last week.
+
+    Recording is additive: a family already decided is never re-decided, because the whole point is
+    that the document which was read stays the document that is cited.
+    """
+    if report is None or not reps:
+        return report
+    have = report.get("family_reps")
+    if not isinstance(have, dict):
+        have = {}
+    for fam, r in (reps or {}).items():
+        pub = (r or {}).get("publication_number") if isinstance(r, dict) else None
+        if pub and str(fam) not in have:
+            have[str(fam)] = pub
+    report["family_reps"] = have
+    return report
+
+
+def reps_for(cur, report, family_keys):
+    """The ONE way any stage may resolve family representatives for a report.
+
+    Pins to what the report already recorded, and falls back to the date rule for families it has
+    not seen, so the screen, the reading, the rescue, the report page, the ranked list and the
+    filing package all name the same member of each family. A stage that calls
+    `resolve_family_reps` directly, without the report, is how the reading and the display came to
+    disagree in the first place.
+    """
+    pinned = [p for p in ((report or {}).get("family_reps") or {}).values() if p]
+    return resolve_family_reps(cur, family_keys, subject_efd=subject_efd_of(report),
+                               pinned=pinned or None)
+
+
+def resolve_family_reps(cur, family_keys, subject_efd=None, pinned=None):
+    """Map each family_key to its best representative publication row. One query for all keys.
+
+    THE REPRESENTATIVE IS THE DOCUMENT THAT GETS READ, QUOTED AND CITED, so which member wins is a
+    legal question and not only a text-quality one. Without a subject date this cannot be asked, so
+    the original ordering stands: full text, then US, then the most embedded text, then the newest.
+
+    With `subject_efd` — the date the whole search is already cut against — the order changes at
+    one place, and it is the place that matters. A member published BEFORE the subject's effective
+    filing date is prior art under 35 U.S.C. 102(a)(1) / EPC Art. 54(2): unconditional, no
+    exception can reach it, and its date needs no proving. A member published AFTER is available
+    only under 102(a)(2) / Art. 54(3): novelty only, never for obviousness, and disqualified
+    outright in the US by the 102(b)(2)(C) common-ownership exception. Same family, same
+    disclosure, much weaker instrument.
+
+    `publication_date DESC` chose the newest member, which is systematically the weakest one.
+    Measured on adhoc-0a80ecb18aa6 (US-20250033224-A1, EFD 2021-04-20): of 402 references read in
+    full, 101 were citable only as secret prior art, and 44 of those had a sibling in their own
+    family published before the cutoff — 27 of them a US document with claims and full text. The
+    reported case is one of the 44: counsel's US-11,413,727-B2 (published 2022-08-16, 102(a)(2)
+    only) came back as US-11,999,030-B2 (published 2024-06-04, also 102(a)(2)) when the same family
+    holds US-2020/0338695-A1, published 2020-10-29 — five months before the target's priority date,
+    and therefore unconditional 102(a)(1) art.
+
+    `pinned` OUTRANKS EVERY OTHER KEY, including readability. A publication listed there was
+    already chosen for its family by the run that read it, and re-deciding it now would mean the
+    quotes in the report were verified against one document while the report cites another. Prefer
+    `reps_for`, which passes this from the report, over calling this directly.
+    """
     if not family_keys:
         return {}
+    #  Readability is a HARD gate before any of this: a member with no claims and no embedded text
+    #  cannot be read, quoted or charted, and the strongest date in the world is no use on a
+    #  document the pipeline cannot open.
+    order = ("(n_claims > 0) DESC, (n_emb > 0) DESC, "
+             "(country='US') DESC, n_emb DESC, publication_date DESC NULLS LAST")
+    params = [list(family_keys)]
+    if subject_efd:
+        order = ("(n_claims > 0) DESC, (n_emb > 0) DESC, "
+                 #  the whole point: unconditional prior art before conditional
+                 "(publication_date < %s) DESC, "
+                 "(country='US') DESC, "
+                 #  a stub record (abstract only) loses to a real one, but a big text does not buy
+                 #  its way past the date, which is why this is a floor and not `n_emb DESC`
+                 "(n_emb >= 20) DESC, "
+                 #  among equals the earliest publication is the safest citation
+                 "publication_date ASC NULLS LAST")
+        params = [list(family_keys), subject_efd]
+    if pinned:
+        #  FIRST, ahead of readability and ahead of the date. At most one member of a family is
+        #  pinned, so this decides that family and leaves every other one to the rule below.
+        order = "(publication_number = ANY(%s)) DESC, " + order
+        params.insert(1, [str(p) for p in pinned])
     cur.execute(
         """
         WITH cand AS (
@@ -290,15 +433,55 @@ def resolve_family_reps(cur, family_keys):
                publication_date, filing_date, earliest_priority_date, title, abstract,
                simple_family_id, tier, facsimile_path, n_claims, n_emb
         FROM cand
-        ORDER BY fam,
-                 (n_claims > 0) DESC,
-                 (country='US') DESC,
-                 n_emb DESC,
-                 publication_date DESC NULLS LAST
-        """,
-        (list(family_keys),),
+        ORDER BY fam, """ + order,
+        tuple(params),
     )
     return {r["fam"]: r for r in cur.fetchall()}
+
+
+def family_alternates(cur, pubs, subject_efd=None, limit=6):
+    """pub -> the OTHER members of its family, so a reader can see what else it published as.
+
+    A submission cites one member of a family, but which member is a choice with consequences: the
+    date decides the statutory basis, the country decides whether a translation has to go in the
+    box, and at the USPTO a 102(a)(2) reference has to be a US or PCT publication at all. Naming
+    the alternatives lets that choice be made rather than inherited from a ranking.
+    """
+    if not pubs:
+        return {}
+    bare = [str(p or "").replace("-", "").upper() for p in pubs if p]
+    cur.execute(
+        """
+        WITH me AS (
+          SELECT p.publication_number,
+                 COALESCE(NULLIF(p.simple_family_id,''), p.publication_number) AS fam
+          FROM publications p
+          WHERE replace(upper(p.publication_number),'-','') = ANY(%s)
+        )
+        SELECT me.publication_number AS asked, q.publication_number, q.country, q.kind_code,
+               q.publication_date, q.earliest_priority_date, q.filing_date,
+               (SELECT count(*) FROM claims c WHERE c.publication_id=q.id) AS n_claims,
+               (SELECT count(*) FROM chunks ch WHERE ch.publication_id=q.id) AS n_chunks
+        FROM me
+        JOIN publications q
+          ON COALESCE(NULLIF(q.simple_family_id,''), q.publication_number) = me.fam
+        WHERE q.publication_number <> me.publication_number
+        ORDER BY me.publication_number, q.publication_date ASC NULLS LAST
+        """, (bare,))
+    out = {}
+    for r in cur.fetchall():
+        row = {"pub": r["publication_number"], "country": r["country"], "kind": r["kind_code"],
+               "publication_date": str(r["publication_date"] or "") or None,
+               "priority_date": str(r["earliest_priority_date"] or "") or None,
+               "n_claims": r["n_claims"], "n_chunks": r["n_chunks"]}
+        if subject_efd and r["publication_date"]:
+            row["public_prior_art"] = r["publication_date"] < subject_efd
+        out.setdefault(r["asked"], []).append(row)
+    #  Earliest first, and the ones that are unconditional prior art ahead of the ones that are not.
+    for k, v in out.items():
+        v.sort(key=lambda x: (not x.get("public_prior_art", False), x["publication_date"] or "9999"))
+        out[k] = v[:limit]
+    return out
 
 
 def biblio(cur, pid):
@@ -389,6 +572,20 @@ def _row_item(row):
     return ""
 
 
+CLAIM_WHOLE_CHARS = int(os.environ.get("CLAIM_WHOLE_DISPLAY_CHARS", "1200"))
+
+
+def _clip(text, limit=None):
+    """Cut long claim text for display, and SAY it was cut.
+
+    A silent slice is indistinguishable from a short claim, which is exactly the
+    complaint this row exists to answer.
+    """
+    t = str(text or "")
+    n = int(limit or CLAIM_WHOLE_CHARS)
+    return t if len(t) <= n else t[:n].rstrip() + " … [claim truncated for display]"
+
+
 def build_reading_chart(report, deep, max_cols=None, axis="features"):
     """The element x reference grid built from WHAT WAS READ, not from what was retrieved.
 
@@ -443,32 +640,51 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
     #  Every reference that was actually READ, and what each of them grounded. Built
     #  before the columns are chosen, because the columns are now chosen to cover it.
     read_pubs = [r["pub"] for r in refs if r.get("method") == "llm"]
-    grounded = {}                      # pub -> {feature: row}
+    grounded = {}                      # pub -> {feature: row}   (both bars — what a cell RENDERS)
+    strong = {}                        # pub -> {feature}        (verified bar — what gets COUNTED)
     for ref in refs:
         if ref.get("method") != "llm":
             continue
-        got = {}
+        got, hard = {}, set()
         for row in (ref.get(row_key) or []):
             #  Both bars render; a teaches cell carries no quote and is marked by its `bar`
-            #  field so the grid can style it as the weaker standard.
+            #  field so the grid can style it as the weaker standard. But the COUNTS — df,
+            #  "disclosed by N", the also-list — are the strong bar only: counting asserted
+            #  teachings alongside verbatim disclosures produced "disclosed by 280 of 367",
+            #  a number no reader can argue from and the first thing reported as broken.
             if (row.get("grounding") in ("verified", "teaches-unquoted")
                     and row.get("verdict") in _VERDICT_GLYPH):
                 got[_row_item(row)] = row
+                #  Strong = verified AND its quote is renderable English. Old deep.json files
+                #  carry German verified rows from before the read-time guard; they must not
+                #  count as verbatim coverage the page then refuses to show.
+                if (row.get("grounding") == "verified"
+                        and grounding.quote_is_english(row.get("quote") or "")):
+                    hard.add(_row_item(row))
         grounded[ref["pub"]] = got
-    disclosers = {}                    # feature -> [pub, ...] in ranked order
+        strong[ref["pub"]] = hard
+    disclosers = {}                    # feature -> [pub, ...] in ranked order, STRONG bar only
     rank_of = {p: i for i, p in enumerate(order)}
-    for pub, got in grounded.items():
-        for feat in got:
+    for pub, hard in strong.items():
+        for feat in hard:
             disclosers.setdefault(feat, []).append(pub)
     for feat in disclosers:
         disclosers[feat].sort(key=lambda p: rank_of.get(p, 10 ** 6))
 
     cols = []
+    #  Strong-bar references first: a column whose every cell is an unquotable teaches assertion
+    #  crowds out one carrying verbatim evidence. Teaches-only references still qualify, behind.
     for pub in order:
-        if pub in grounded:
+        if strong.get(pub):
             cols.append(pub)
         if len(cols) >= max_cols:
             break
+    if len(cols) < max_cols:
+        for pub in order:
+            if pub in grounded and pub not in cols:
+                cols.append(pub)
+            if len(cols) >= max_cols:
+                break
     #  Now guarantee the grid can SHOW what its own counts claim: for any feature
     #  with evidence but no discloser among the columns, pull in its best discloser.
     #  Without this a row reads "disclosed by 2" beside ten empty cells, which is
@@ -504,6 +720,21 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
                 asked.add(it)
     cells = {pub: grounded.get(pub, {}) for pub in cols}
 
+    #  The WHOLE claim each one-sentence limitation row belongs to, keyed by claim number, so a
+    #  row can say where its sentence comes from instead of reading as a truncated claim — the
+    #  second thing reported as broken on the first rebuilt reports.
+    whole_claims = {}
+    for i, c in enumerate((report or {}).get("query_document", {}).get("claims") or []):
+        #  Claims arrive as dicts ({claim_no, text}) from the extractor and as bare numbered
+        #  strings from older reports; both shapes carry a whole claim.
+        if isinstance(c, dict):
+            s = str(c.get("text") or "").strip()
+            no = c.get("claim_no")
+        else:
+            s, no = str(c or "").strip(), None
+        m = re.match(r"\s*(\d+)\s*[.)]", s)
+        whole_claims[int(no) if no else (int(m.group(1)) if m else i + 1)] = s
+
     rows = []
     #  Rarest first, because that is the order a novelty argument is made in — but anything the
     #  reading never put to a reference goes last, not first. Ranking an unanswered feature as the
@@ -513,21 +744,43 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
     #  in, but this table is for exploring what the art teaches, and a reader opening
     #  it wants the heavily-taught features at the top. Features nobody was asked
     #  about still sort last: an unanswered feature is not a rare one.
-    for feat in sorted(features,
-                       key=lambda f: (f not in asked,
-                                      -len(disclosers.get(f, [])),
-                                      -float(idf.get(f, 0.0)), f)):
+    if row_key == "claims":
+        #  DOCUMENT ORDER for the claim chart: claim 1 first, its limitations in sequence. The
+        #  most-disclosed-first order put claim 9's PREAMBLE ("A vacuum handling apparatus
+        #  comprising", disclosed by nearly everything) at the very top of the page, which read
+        #  as the chart starting at claim 9. Most-disclosed-first stays for the feature axis,
+        #  where rows are not a numbered legal document.
+        def _row_order(f):
+            meta = claim_meta.get(f) or {}
+            return (f not in asked, meta.get("claim_no") or 10 ** 6, f)
+    else:
+        def _row_order(f):
+            return (f not in asked, -len(disclosers.get(f, [])), -float(idf.get(f, 0.0)), f)
+    for feat in sorted(features, key=_row_order):
         out = []
         for pub in cols:
             r = cells[pub].get(feat)
             if not r:
                 out.append({"pub": pub, "covered": False})
                 continue
+            #  VIEW-LEVEL BELT for the quote-language guard: reports read before the guard
+            #  existed carry non-English verified quotes in their saved deep.json, and a saved
+            #  report must render clean without being re-read. Same rule as read time: the
+            #  finding stays on the weaker bar, the unreadable quote does not render.
+            quote = r.get("quote") or ""
+            bar = r.get("bar") or "discloses"
+            verdict = r["verdict"]
+            note = r.get("note") or ""
+            if quote and not grounding.quote_is_english(quote):
+                bar, verdict, note = "teaches", "partial", (
+                    f"(non-English passage at {r.get('location') or '?'}) " + note)[:400]
+                quote = ""
             out.append({
-                "pub": pub, "covered": True, "verdict": r["verdict"],
-                "verify": _VERDICT_GLYPH[r["verdict"]],
-                "quote": r.get("quote") or "", "location": r.get("location") or "",
-                "coord": r.get("location") or "", "note": r.get("note") or "",
+                "pub": pub, "covered": True, "verdict": verdict,
+                "bar": bar,
+                "verify": _VERDICT_GLYPH[verdict],
+                "quote": quote, "location": r.get("location") or "",
+                "coord": r.get("location") or "", "note": note,
                 "confidence": round(float(r.get("confidence") or 0.0), 2),
                 "score": round(float(r.get("confidence") or 0.0), 3),
                 "basis": "", "second_pass": bool(r.get("second_pass")),
@@ -539,8 +792,19 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
         #  count can always be followed to the documents behind it.
         also = [p for p in all_disc if p not in set(cols)]
         meta = claim_meta.get(feat) or {}
+        _lt = (claim_text.get(feat, "") or "").rstrip(" :,").lower()
         rows.append({"element": feat, "cells": out,
                      "claim_text": claim_text.get(feat, ""),
+                     #  A preamble row ("...apparatus comprising") is disclosed by nearly every
+                     #  reference in the field; labelling it stops "disclosed by 281 of 355"
+                     #  from reading as a broken chart.
+                     "preamble": _lt.endswith(("comprising", "consisting of", "comprises",
+                                               "consisting essentially of", "including")),
+                     #  The claim the reader was actually given, not a shorter one. The cap
+                     #  matches claim_reach/deep_analysis (1200 chars) so the page can never
+                     #  show less of a claim than the model was asked about, and a cut is
+                     #  MARKED: a claim that just stops reads as a claim that is that short.
+                     "claim_whole": _clip(whole_claims.get(meta.get("claim_no")) or ""),
                      "claim_no": meta.get("claim_no"),
                      "independent": bool(meta.get("independent")),
                      "idf": round(float(idf.get(feat, 0.0)), 3),
@@ -588,6 +852,100 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
     }
 
 
+#  ODP's own `downloadUrl` carries the document id as the last path segment and needs an
+#  `X-API-KEY` HEADER, which a browser link cannot send. Linking it directly made every PDF under
+#  "Documents read" a 403. Rewritten to our proxy, which holds the key: see webapp.odp_document.
+_ODP_DL_RE = re.compile(r"/download/applications/([A-Za-z0-9._-]{1,64})/([A-Za-z0-9._-]{1,64})\.pdf",
+                        re.I)
+
+
+def _odp_pdf_href(doc):
+    """A link a reader can actually open, or "" when we cannot build one."""
+    m = _ODP_DL_RE.search(str((doc or {}).get("pdf") or ""))
+    if not m:
+        return ""
+    return "/odp-document/%s/%s.pdf" % (m.group(1), m.group(2))
+
+
+def build_prosecution_view(report):
+    """What the USPTO file wrapper already says about this family, or None.
+
+    This is not a retrieval result and it does not rank anything. It answers the question no search
+    can: has an examiner already rejected substantially these claims, and over what. On the subject
+    counsel benchmarked, the answer named every reference they had independently filed.
+    """
+    p = (report or {}).get("prosecution") or {}
+    dossier = p.get("dossier") or {}
+    mined = p.get("mined") or {}
+    if not dossier and not mined:
+        return None
+    docs = [dict(d, pdf_href=_odp_pdf_href(d)) for d in (mined.get("documents") or [])]
+    applied = [a for a in (mined.get("applied") or []) if a.get("pub")]
+    if not (dossier.get("family") or docs or applied):
+        return None
+    #  Collapse the same reference applied in several actions to one row per (pub, statute), with
+    #  the claim strings joined — the same document applied twice is one finding, not two.
+    merged = {}
+    for a in applied:
+        k = (a["pub"], a.get("statute") or "")
+        m = merged.setdefault(k, {"pub": a["pub"], "statute": a.get("statute") or "",
+                                  "claims": [], "sources": []})
+        if a.get("claims"):
+            m["claims"].append(a["claims"])
+        if a.get("source"):
+            m["sources"].append(a["source"])
+    return {
+        "available": True,
+        "subject_app": (dossier.get("subject") or {}).get("app") or "",
+        "subject_status": (dossier.get("subject") or {}).get("status") or "",
+        "family": dossier.get("family") or [],
+        "abandoned": [f for f in (dossier.get("family") or [])
+                      if "abandon" in str(f.get("status") or "").lower()],
+        "siblings_granted": dossier.get("siblings_granted") or [],
+        "documents": docs,
+        "applied": sorted(merged.values(), key=lambda m: (m["statute"], m["pub"])),
+        "considered": mined.get("considered") or [],
+        "n_seeds": len(mined.get("seeds") or []),
+        "error": dossier.get("error") or mined.get("error") or "",
+    }
+
+
+def _reledger(led, stored_claims):
+    """Re-derive per-claim status from the stored rows under 112(d). -> (claims, n_corrected).
+
+    Never ADDS an anticipator: the stored evidence is capped per limitation, so a recomputation
+    sees at most what the run saw. It only withdraws the ones the construed claim does not support,
+    which is the whole point.
+    """
+    try:
+        import limitations as _lim
+        fresh = _lim.Ledger.from_stored(led).summary().get("claims") or {}
+    except Exception:
+        return stored_claims, 0
+    out, corrected = {}, 0
+    for label, was in (stored_claims or {}).items():
+        now = fresh.get(label)
+        if not now:
+            out[label] = was
+            continue
+        keep = [p for p in (now.get("anticipated_by") or [])
+                if p in set(was.get("anticipated_by") or [])]
+        merged = dict(was, **now)
+        merged["anticipated_by"] = keep
+        if not keep and now["status"] == "anticipated":
+            merged["status"] = "partial"
+        if (was.get("status") == "anticipated") and not keep:
+            corrected += 1
+            #  The old flag was measuring something real — one document disclosing everything the
+            #  claim ADDS — so it is carried across rather than dropped, under the name that
+            #  describes it. See limitations.Ledger.claim_detail.
+            merged.setdefault("adds_disclosed_by", was.get("anticipated_by") or [])
+        out[label] = merged
+    for label, now in fresh.items():
+        out.setdefault(label, now)
+    return out, corrected
+
+
 def build_ledger_view(report):
     """The limitation ledger, as the report's primary answer for a Type B search.
 
@@ -599,7 +957,14 @@ def build_ledger_view(report):
     So this renders down the claims rather than across the references: every limitation, its
     status, and the two or three documents that carry it with their quote, location and date. A
     claim marked ANTICIPATED is the §102 kill and is computed by the ledger from one document
-    covering every one of its limitations, never asserted.
+    covering every one of its limitations AND every limitation it inherits under 35 U.S.C. 112(d),
+    never asserted.
+
+    THE STORED SUMMARY IS RE-DERIVED, not trusted. Every report written before 2026-08-20 carries
+    the pre-112(d) answer, which stamped dependent claims ANTICIPATED under a parent that nothing
+    anticipated. `limitations.Ledger.from_stored` asks the corrected code the same question over
+    the same rows, so an old report reads correctly the next time it is opened instead of needing a
+    rewrite it will never get.
 
     Returns None when the search has no ledger, and the page falls back to the grid.
     """
@@ -612,6 +977,7 @@ def build_ledger_view(report):
     for l in lims:
         by_claim.setdefault(l.get("claim_label") or "?", []).append(l)
     claim_meta = summary.get("claims") or {}
+    claim_meta, repaired = _reledger(led, claim_meta)
 
     def claim_key(label):
         #  Anticipated first — that is the finding a reader opens this for — then the claims with
@@ -630,6 +996,12 @@ def build_ledger_view(report):
             "label": label,
             "status": meta.get("status") or "unknown",
             "anticipated_by": meta.get("anticipated_by") or [],
+            #  One document disclosing everything this claim ADDS. Not anticipation — the parent's
+            #  requirements are carried in under 112(d) and something else has to meet those — but
+            #  it is the second half of a §103 combination and the reason to read the reference.
+            "adds_disclosed_by": meta.get("adds_disclosed_by") or [],
+            "chain": meta.get("chain") or [label],
+            "chain_complete": meta.get("chain_complete", True),
             "independent": any(r.get("independent") for r in rows),
             "depends_on": next((r.get("depends_on") for r in rows if r.get("depends_on")), None),
             "n_uncovered": sum(1 for r in rows if r.get("status") == "uncovered"),
@@ -652,7 +1024,14 @@ def build_ledger_view(report):
         "cover_min": summary.get("cover_min") or 2,
         "counts": counts,
         "done": bool(summary.get("done")),
-        "anticipated": summary.get("anticipated") or [],
+        #  Recomputed, not read off the stored summary, so an old report cannot keep publishing a
+        #  claim as anticipated after the 112(d) rule has withdrawn it.
+        "anticipated": sorted((c["label"] for c in claims if c["status"] == "anticipated"),
+                              key=_claim_no),
+        "adds_only": sorted((c["label"] for c in claims
+                             if c["status"] != "anticipated" and c["adds_disclosed_by"]),
+                            key=_claim_no),
+        "n_corrected_112d": repaired,
         "claims": claims,
     }
 
@@ -1396,7 +1775,10 @@ def build_view(report, top_n=25, deep=None):
     # demote title-only) and trim to top_n — so a demoted title-only hit is replaced by the next
     # substantive family rather than leaving a hole. report["ranked_families"] itself is untouched.
     window = report.get("ranked_families", [])[:max(top_n * 3, 60)]
-    reps = resolve_family_reps(cur, window)
+    #  The report's own choice, not a fresh one: the cards built from this are what deep_analysis
+    #  charts, so a member chosen here that the screen did not read is a card whose quotes were
+    #  verified against a different document.
+    reps = reps_for(cur, report, window)
     #  A reference deep_rank read in full and grounded is substantive by evidence; the text-shape
     #  demotion heuristic must not sink it.
     _dr = report.get("deep_rank") or {}
@@ -1456,6 +1838,14 @@ def build_view(report, top_n=25, deep=None):
             "rank": rank, "family": fam, **b,
             "match_score": round(m["score"], 3), "match_coord": _coord_str(m["coord"]),
             "match_kind": m["kind"], "basis": basis,
+            #  A card can be right on the dates and still unavailable in the office the search is
+            #  being run for. 35 U.S.C. 102(a)(2) reaches US patents, US pre-grant publications
+            #  and PCT applications designating the United States; a JP, CN, DE or EP national
+            #  publication that published AFTER the subject's effective filing date is not US
+            #  prior art however early it was filed. Said on the card, not only at filing time,
+            #  because that is where a practitioner decides what to rely on.
+            "forum_bar": (search_modes.secret_art_note(b.get("country"), "US")
+                          if basis == "secret_prior_art" else ""),
             "relevancy": _relevancy(m["score"]),         # 0-100 best-passage semantic match
             "status": st,
             "sfid": rep.get("simple_family_id") or None,
@@ -1530,6 +1920,7 @@ def build_view(report, top_n=25, deep=None):
         #  The ledger is the answer for a Type B search; the grid stays for exploring the art and
         #  as the only view a Type A search has.
         "ledger": build_ledger_view(report),
+        "prosecution": build_prosecution_view(report),
         "cards": cards,
         "n_local": n_local,
         "substance_filter": {k: v for k, v in subs_stats.items() if k != "titleonly_ids"},

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Document {{ n }} | IPtorch{% endblock %}
+{% block body %}
+{#  Edit the paper, not the model. The markdown is the editable form and the PDF is re-rendered
+    from it on save, so what gets filed is what was reviewed here. A file that no longer matches
+    the grammar is refused rather than parsed loosely: a loose parse silently drops claim rows. #}
+<h1 style="margin-bottom:.2em">Document {{ n }}</h1>
+<p class="small muted" style="margin-top:0">
+  <a href="{{ url_for('concise_descriptions', slug=slug) }}">&larr; all documents</a> ·
+  <a href="{{ url_for('concise_download', slug=slug, name=stem + '.pdf') }}">PDF</a> ·
+  <a href="{{ url_for('concise_download', slug=slug, name=stem + '.docx') }}">DOCX</a>
+</p>
+
+{% if error %}<div class="warn" style="margin:1em 0"><b>Nothing was saved.</b> {{ error }}</div>{% endif %}
+{% if saved %}<div class="card" style="margin:1em 0;padding:.6em 1em"><b>Saved.</b>
+  The PDF and DOCX were re-rendered from this text.</div>{% endif %}
+
+<form method="post" action="{{ url_for('concise_document', slug=slug, n=n) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <p class="small muted" style="margin:.4em 0">
+    <code>### Claim 1: "…"</code> quotes a limitation verbatim; <code>### Claim 2 (…)</code> is a
+    paraphrase. <code>&gt;</code> is the quoted passage, <code>-</code> lines are its citations.
+    Keep the <code>## Claim chart</code> heading.
+  </p>
+  <textarea name="markdown" rows="34" spellcheck="false"
+            style="width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.45">{{ markdown }}</textarea>
+  <div style="margin-top:.7em">
+    <button type="submit">Save and re-render</button>
+    <span class="small muted">Re-renders the PDF and DOCX from this text.</span>
+  </div>
+</form>
+{% endblock %}

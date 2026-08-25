@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Account | Rotem Patents{% endblock %}
+{% block title %}Account | IPtorch{% endblock %}
 {% block body %}
 <div class="wrap accountpage">
   <div class="pagehead"><div><h1>Profile</h1><p class="muted">{{ user.email }}{% if user.is_admin %} · administrator{% endif %}</p></div></div>
@@ -32,6 +32,67 @@
         <label class="checkrow"><input type="checkbox" name="email_on_completion" value="1"
           {% if user.email_on_completion %}checked{% endif %}> Email me when search reports and patent drafts are ready</label>
         <button class="btn" type="submit">Save preferences</button>
+      </form>
+    </section>
+    {#  FILING DETAILS. Both of these are printed on papers filed at the USPTO, so they are set
+        once here rather than retyped into a submission. Small entity is the default because it is
+        the common case; a third party can never claim micro entity. #}
+    <section class="panel accountpanel">
+      <h2>Filing details</h2>
+      <p class="small muted">Used on third-party submissions under 37 CFR 1.290: the entity size
+        prices the fee and the signature is applied to the statements you file.</p>
+      <form method="post" class="authform">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="filing">
+        <label for="entity-size">Entity size</label>
+        <select id="entity-size" name="entity_size">
+          <option value="small" {{ 'selected' if (user.entity_size or 'small') == 'small' }}>Small entity</option>
+          <option value="large" {{ 'selected' if user.entity_size == 'large' }}>Large entity, undiscounted</option>
+        </select>
+        <p class="fieldhint">The 37 CFR 1.17(o) fee is charged per ten documents or fraction
+          thereof. A third party is not eligible for the micro-entity discount.</p>
+        <label for="signature-name">Signature name</label>
+        <input id="signature-name" type="text" name="signature_name" maxlength="120"
+               autocomplete="off" value="{{ user.signature_name or '' }}"
+               placeholder="e.g. Nimo Rotem">
+        <p class="fieldhint">Applied as an S-signature under 37 CFR 1.4(d)(2), printed between
+          forward slashes: <code>/Nimo Rotem/</code>. Inserting it is your act; leave it blank to
+          get a blank line to sign by hand. No slashes in the name.</p>
+        <label for="signature-title">Title or capacity <span class="muted">(optional)</span></label>
+        <input id="signature-title" type="text" name="signature_title" maxlength="120"
+               autocomplete="off" value="{{ user.signature_title or '' }}"
+               placeholder="e.g. Director">
+        <button class="btn ghost" type="submit">Save filing details</button>
+      </form>
+    </section>
+    {#  SHARING, SET ONCE. Every finished report gets its public link automatically and this is the
+        password that guards it, so it is typed here rather than on each report. Stored hashed and
+        copied onto each link, which is why it cannot be shown back: it can be replaced, not read.
+        No password means nothing is published automatically, and the copy says so plainly rather
+        than leaving somebody to discover their reports were readable. #}
+    <section class="panel accountpanel">
+      <h2>Sharing</h2>
+      <p class="small muted">A finished report is published to a private link automatically, and
+        this one password opens every one of them. Set it once here; you will not be asked again.
+        {% if user.has_share_password %}A password is set. Type a new one to replace it, or leave
+        the field blank and save to clear it.{% else %}<b>No password is set, so nothing is being
+        published automatically.</b> Reports stay private until you set one.{% endif %}</p>
+      <form method="post" class="authform">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="share">
+        <label for="share-password">Share password</label>
+        <input id="share-password" type="text" name="share_password" minlength="6" maxlength="256"
+               autocomplete="off"
+               placeholder="{{ 'set, type a new one to replace it' if user.has_share_password else 'at least 6 characters' }}">
+        <label class="small" style="display:flex;gap:.5rem;align-items:flex-start;margin-top:.6rem">
+          <input type="checkbox" name="autopublish" value="1"
+                 {{ 'checked' if user.autopublish is not defined or user.autopublish }}>
+          <span>Publish each finished report to its link automatically.
+            <span class="muted">Turn this off to keep publishing a per-report decision. Either way
+            a report is only ever reachable by its own link, and the password above opens it.</span>
+          </span>
+        </label>
+        <button class="btn ghost" type="submit">Save sharing settings</button>
       </form>
     </section>
     <section class="panel accountpanel">

@@ -46,6 +46,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import deep_analysis
 import llm
+import runctx                       # the durable run this rescue belongs to, if any (else no-op)
 
 #  A claim is an ORPHAN when this many or fewer references ground it. 1, not 0: a single match is
 #  one document away from being no match at all, and a claim standing on one reference is exactly
@@ -271,7 +272,7 @@ def plan(claims, brief="", title="", independents=(), description=""):
 # the search itself
 # ---------------------------------------------------------------------------
 def find_candidates(plans, subject, mode, exclude_pubs, exclude_families, retriever,
-                    per_claim=PER_CLAIM, cap=MAX_NEW, emit=None, texts=None):
+                    per_claim=PER_CLAIM, cap=MAX_NEW, emit=None, texts=None, report=None):
     """Run the orphan queries and return new candidates, round-robin by claim.
 
     ROUND-ROBIN, NOT BEST-FIRST. Fusing every orphan claim's results into one list and taking the
@@ -404,7 +405,12 @@ def find_candidates(plans, subject, mode, exclude_pubs, exclude_families, retrie
         conn.autocommit = True
         try:
             with conn.cursor() as cur:
-                reps = webview.resolve_family_reps(cur, order)
+                #  Through the report when there is one, so a family the reading already decided
+                #  keeps the member it read. Without a report there is nothing to agree with, and
+                #  the subject's own date is the best rule left.
+                reps = (webview.reps_for(cur, report, order) if report is not None
+                        else webview.resolve_family_reps(
+                            cur, order, subject_efd=getattr(subject, 'efd', None)))
         finally:
             conn.close()
     except Exception:
@@ -427,14 +433,73 @@ def find_candidates(plans, subject, mode, exclude_pubs, exclude_families, retrie
 # ---------------------------------------------------------------------------
 # the whole pass
 # ---------------------------------------------------------------------------
+#  THE ROUNDS, in order. Each one is a bounded, independently repeatable phase whose output is a
+#  checkpoint, so a resumed run re-enters the rescue at the first round it has not finished. They
+#  are named rather than numbered because the numbers would move the moment a round is added, and a
+#  checkpoint that changes meaning between deploys is worse than none.
+ROUNDS = ("reread", "search", "enrich", "read", "narrow")
+
+#  What the search round wrote onto the summary. Restored with the checkpoint, because a resumed
+#  run that reloads the candidates and not the receipt would report an acquisition that "did not
+#  run" while spending nothing to prove it.
+_SEARCH_SUMMARY_KEYS = ("local_candidates", "skipped_acquisition", "limitation_portfolio",
+                        "limitation_pool", "limitation_classes", "worldset", "worldset_classes",
+                        "worldset_terms", "acquire", "acquire_classes", "acquire_citations")
+
+
+def _round_fp(summary, claim_items):
+    """What THIS rescue is about. A resumed run whose ledger produced different orphans is
+    rescuing a different thing, and must not reload rounds that answered the old question."""
+    import runartifact
+    return runartifact.digest_bytes(runartifact.serialise(
+        {"orphans": list(summary.get("orphans") or []),
+         "claims": [c.get("label") for c in (claim_items or [])]}))[:32]
+
+
+def _cands_fp(cands):
+    """Which candidates an enrichment was performed for. Order matters as little as it can, so it
+    is sorted: the same set found in a different order is the same work."""
+    import runartifact
+    return runartifact.digest_bytes(runartifact.serialise(
+        sorted(str((c or {}).get("pub") or "") for c in (cands or []))))[:32]
+
+
+def _apply_charts(charts, stored):
+    """Put a reloaded round's charts back onto the caller's list, in place.
+
+    The rounds that re-read mutate the chart dicts the caller already holds, so a resume has to
+    land on those same objects: replacing the list would leave `deep_rank` scoring the versions
+    from before the round ran.
+    """
+    by_pub = {c.get("pub"): c for c in charts if c.get("pub")}
+    landed = 0
+    for row in stored or []:
+        target = by_pub.get(row.get("pub"))
+        if target is None:
+            continue
+        target.clear()
+        target.update(row)
+        landed += 1
+    return landed
+
+
 def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief="", title="",
         description="", exclude_pubs=(), exclude_families=(), enrich=None, ledger=None,
-        emit=None):
-    """Rescue the orphaned claims. Returns (new_charts, summary). Never raises.
+        emit=None, report=None):
+    """Rescue the orphaned claims. Returns (new_charts, summary).
+
+    Raises nothing but `runctx.RunCancelled`, which is not a failure of the rescue: it means this
+    worker no longer owns the run and every round below it would be spending somebody else's
+    money. Every other failure is caught and costs its own round's candidates, nothing more.
 
     `charts` is mutated in place by the re-read of already-read references; `new_charts` are extra
     references for the caller to merge before it scores and orders anything, so a rescued document
     competes on the same evidence as everything else.
+
+    UNDER A DURABLE RUN each of ROUNDS is checkpointed as it completes, so a worker killed during
+    the acquisition does not repeat the re-read, and one killed during the rescue reading does not
+    repeat the acquisition. The measured rescue took 1h51m; repeating a finished round of it is the
+    single most expensive thing a restart used to do after the reading itself.
     """
     started = time.time()
     summary = {"ran": False, "orphans": [], "n_orphans": 0, "queries": 0, "candidates": 0,
@@ -480,6 +545,9 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
     summary["ran"] = True
     summary["orphans"] = [c["label"] for c in short]
     summary["n_orphans"] = len(short)
+    #  The rescue's own resume key, fixed the moment the orphan set is known.
+    _fp = _round_fp(summary, claim_items)
+    summary["rounds"] = []
     if emit:
         emit("rescue_start", n=len(short), claims=[c["label"] for c in short])
     if summary["driver"] == "ledger":
@@ -505,19 +573,39 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
     #  five claims, with the concept in hand, is one call and no retrieval at all.
     read_head = [r for r in charts if r.get("method") == "llm"][:REREAD_TOP]
     if read_head and claim_hints:
-        if emit:
-            emit("rescue_reread_start", n=len(read_head))
-        orphan_labels = set(summary["orphans"])
+        banked = runctx.round_payload("rescue", "reread", fp=_fp)
+        if banked is not None:
+            landed = _apply_charts(charts, banked.get("charts"))
+            summary["reread_cells"] = int(banked.get("cells") or 0)
+            summary["reread_refs"] = int(banked.get("refs") or 0)
+            summary["rounds"].append({"round": "reread", "resumed": True, "refs": landed})
+            print(f"[resume] the rescue re-read round was already complete: {landed} charts "
+                  f"reloaded, {summary['reread_cells']} cells, not re-asked", flush=True)
+        else:
+            if emit:
+                emit("rescue_reread_start", n=len(read_head))
+            orphan_labels = set(summary["orphans"])
+            _ctx = runctx.active()
 
-        def second(ref):
-            return second_look(ref, orphan_labels, claim_hints, claim_texts)
+            def second(ref):
+                with runctx.adopt(_ctx):
+                    runctx.check_cancelled(f"rescue reread:{ref.get('pub')}")
+                    return second_look(ref, orphan_labels, claim_hints, claim_texts)
 
-        with ThreadPoolExecutor(max_workers=min(READ_WORKERS, max(1, len(read_head)))) as ex:
-            gained = list(ex.map(second, read_head))
-        summary["reread_cells"] = sum(gained)
-        summary["reread_refs"] = sum(1 for g in gained if g)
-        print(f"[rescue] claim re-read: {summary['reread_cells']} cells recovered across "
-              f"{summary['reread_refs']} of {len(read_head)} references already read", flush=True)
+            with ThreadPoolExecutor(max_workers=min(READ_WORKERS, max(1, len(read_head)))) as ex:
+                gained = list(ex.map(second, read_head))
+            summary["reread_cells"] = sum(gained)
+            summary["reread_refs"] = sum(1 for g in gained if g)
+            runctx.round_done("rescue", "reread",
+                              {"charts": read_head, "cells": summary["reread_cells"],
+                               "refs": summary["reread_refs"]},
+                              fp=_fp, n_out=len(read_head))
+            summary["rounds"].append({"round": "reread", "resumed": False,
+                                      "refs": len(read_head),
+                                      "cells": summary["reread_cells"]})
+            print(f"[rescue] claim re-read: {summary['reread_cells']} cells recovered across "
+                  f"{summary['reread_refs']} of {len(read_head)} references already read",
+                  flush=True)
 
     # ---- 2. search for what is still uncovered ----------------------------------------------
     labels = [c["label"] for c in claim_items]
@@ -550,115 +638,143 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
               f"{len(summary['orphans'])} orphaned claims; no extra search needed", flush=True)
         return [], summary
 
-    cands = []
-    try:
-        cands = find_candidates(plans, subject, mode, exclude_pubs, exclude_families, retriever,
-                                emit=emit,
-                                texts={c["label"]: c.get("text") or "" for c in claim_items})
-    except Exception:
-        traceback.print_exc()
-    summary["local_candidates"] = len(cands)
-
-    #  LOCAL FIRST — see LOCAL_ENOUGH. The block below costs ~$10.50 and ~18 minutes of BigQuery
-    #  per search; it is worth that only when the corpus we already own came up short.
-    if LOCAL_ENOUGH and len(cands) >= LOCAL_ENOUGH:
-        summary["skipped_acquisition"] = f"{len(cands)} local candidates >= {LOCAL_ENOUGH}"
-        print(f"[rescue] the local corpus returned {len(cands)} candidates for {len(plans)} "
-              f"uncovered limitations; skipping the BigQuery acquisition "
-              f"(saves ~$10.50 and ~18 min)", flush=True)
-    else:
-        # ---- 2b. GO AND GET WHAT THIS CORPUS DOES NOT HOLD --------------------------------------
-        #  Searching harder cannot find a document that was never indexed, and the corpus is seeded
-        #  from one field's CPC branches. Measured on US 2026/0109053: of ten references an attorney
-        #  filed, three are absent from this corpus entirely and three more are text-less stubs, and
-        #  every one of those six is classified OUTSIDE the seeded branches — mufflers, sound
-        #  absorption, portable power tools, blowers. See claim_acquire.
-        still_short = [c for c in claim_items if c["label"] in set(plans)]
+    #  ---- ROUND 2: SEARCH AND ACQUIRE -------------------------------------------------------
+    #  The most expensive round in the rescue: a local claim-directed search, then, only when the
+    #  corpus we already own came up short, a BigQuery acquisition measured at ~$10.50 and ~18
+    #  minutes. Repeating it after an interruption is the largest avoidable cost in a resumed run
+    #  after the reading itself, so its whole output is one checkpoint.
+    def _search_round():
+        cands = []
         try:
-            import claim_acquire
-            #  THE WORLD FIRST. All 170M patents, in the classes that own these claims, ingested WITH
-            #  THEIR TEXT — which is the difference between finding a document and being able to read
-            #  it. Measured: of ten references an attorney filed, three were absent from this corpus
-            #  and three more were text-less stubs; nine of the ten are in a BigQuery working set with
-            #  full text. Seeded from the references the reading already trusts, so Google's own
-            #  similarity graph expands from evidence rather than from a guess.
-            #
-            #  ONE PORTFOLIO PER LIMITATION when the ledger gave us limitations, because a limitation
-            #  is a thing in a place in a kind of apparatus and an OR of keywords cannot say that.
-            #  Measured on the same working set: the keyword shape returns 111,545 hits with no usable
-            #  rank; the faceted shape returns 14,373 holding nine of the ten, and asking per
-            #  requirement moved one reference from rank 8,810 to 135. by_worldset stays as the
-            #  fallback for a run with no ledger, and for the case where no facets come back.
-            seeds = [r["pub"] for r in read_head[:40]]
-            ws = {}
-            lims_to_search = [lim_rows[c["label"]] for c in still_short if c["label"] in lim_rows]
-            if lims_to_search:
-                #  Its own try. This whole block runs at the end of a search that already has an
-                #  answer, so a new route failing must cost its own candidates and nothing else —
-                #  sharing the outer handler would take the keyword worldset, the concept fan-out and
-                #  the citation neighbourhood down with it.
-                try:
-                    ws = claim_acquire.by_limitation(
-                        lims_to_search, brief=brief, title=title, subject=subject, seeds=seeds,
-                        emit=emit)
-                except Exception:
-                    traceback.print_exc()
-                    ws = {"error": "limitation portfolio raised"}
-                summary["limitation_portfolio"] = {
-                    k: ws.get(k) for k in ("rows", "queries", "screened", "n_new", "with_text",
-                                           "error")}
-                summary["limitation_pool"] = ws.get("pool") or {}
-                summary["limitation_classes"] = ws.get("classes") or []
-            if not (ws.get("candidates") if ws else None):
-                if lims_to_search:
-                    print(f"[rescue] the limitation portfolio returned nothing "
-                          f"({(ws or {}).get('error') or 'no reason given'}); "
-                          f"falling back to the keyword worldset", flush=True)
-                ws = claim_acquire.by_worldset(
-                    still_short, hints=claim_hints, brief=brief, title=title, subject=subject,
-                    seeds=seeds, emit=emit)
-                summary["worldset"] = {k: ws.get(k) for k in
-                                       ("rows", "queries", "n_new", "with_text", "error")}
-                summary["worldset_classes"] = ws.get("classes") or []
-                summary["worldset_terms"] = (ws.get("terms") or [])[:40]
-            seen0 = {c["pub"] for c in cands} | set(exclude_pubs or ())
-            for c in ws.get("candidates") or []:
-                if c["pub"] not in seen0:
-                    seen0.add(c["pub"])
-                    cands.append(c)
+            cands = find_candidates(plans, subject, mode, exclude_pubs, exclude_families, retriever,
+                                    emit=emit, report=report,
+                                    texts={c["label"]: c.get("text") or "" for c in claim_items})
+        except Exception:
+            traceback.print_exc()
+        summary["local_candidates"] = len(cands)
 
-            #  by_concept ONLY WHEN THE WORLD ROUTES CAME BACK EMPTY-HANDED. It reaches App A's
-            #  fan-out, which returns bibliographic records, and `external.materialise` writes them
-            #  with no text at all. Measured on the run that prompted this: 300 publications acquired,
-            #  0 of 40 readable, and those 40 unreadable candidates were 40 of the 46 the rescue then
-            #  "read" — the whole rescue read six documents. A candidate the reader cannot read is not
-            #  a cheap candidate, it is a slot taken from one that could have been read. It stays as a
-            #  fallback because it is the only route that does not need BigQuery.
-            seen = {c["pub"] for c in cands} | set(exclude_pubs or ())
-            if len(cands) < CONCEPT_FALLBACK_BELOW:
-                got = claim_acquire.by_concept(still_short, hints=claim_hints, brief=brief,
-                                               title=title, emit=emit)
-                summary["acquire"] = {k: got.get(k) for k in
-                                      ("queries", "n_candidates", "n_new", "error")}
-                summary["acquire_classes"] = sorted({c for p in (got.get("plan") or {}).values()
-                                                     for c in (p.get("cpc") or [])})
-                for c in got.get("candidates") or []:
+        #  LOCAL FIRST — see LOCAL_ENOUGH. The block below costs ~$10.50 and ~18 minutes of BigQuery
+        #  per search; it is worth that only when the corpus we already own came up short.
+        if LOCAL_ENOUGH and len(cands) >= LOCAL_ENOUGH:
+            summary["skipped_acquisition"] = f"{len(cands)} local candidates >= {LOCAL_ENOUGH}"
+            print(f"[rescue] the local corpus returned {len(cands)} candidates for {len(plans)} "
+                  f"uncovered limitations; skipping the BigQuery acquisition "
+                  f"(saves ~$10.50 and ~18 min)", flush=True)
+        else:
+            # ---- 2b. GO AND GET WHAT THIS CORPUS DOES NOT HOLD --------------------------------------
+            #  Searching harder cannot find a document that was never indexed, and the corpus is seeded
+            #  from one field's CPC branches. Measured on US 2026/0109053: of ten references an attorney
+            #  filed, three are absent from this corpus entirely and three more are text-less stubs, and
+            #  every one of those six is classified OUTSIDE the seeded branches — mufflers, sound
+            #  absorption, portable power tools, blowers. See claim_acquire.
+            still_short = [c for c in claim_items if c["label"] in set(plans)]
+            try:
+                import claim_acquire
+                #  THE WORLD FIRST. All 170M patents, in the classes that own these claims, ingested WITH
+                #  THEIR TEXT — which is the difference between finding a document and being able to read
+                #  it. Measured: of ten references an attorney filed, three were absent from this corpus
+                #  and three more were text-less stubs; nine of the ten are in a BigQuery working set with
+                #  full text. Seeded from the references the reading already trusts, so Google's own
+                #  similarity graph expands from evidence rather than from a guess.
+                #
+                #  ONE PORTFOLIO PER LIMITATION when the ledger gave us limitations, because a limitation
+                #  is a thing in a place in a kind of apparatus and an OR of keywords cannot say that.
+                #  Measured on the same working set: the keyword shape returns 111,545 hits with no usable
+                #  rank; the faceted shape returns 14,373 holding nine of the ten, and asking per
+                #  requirement moved one reference from rank 8,810 to 135. by_worldset stays as the
+                #  fallback for a run with no ledger, and for the case where no facets come back.
+                seeds = [r["pub"] for r in read_head[:40]]
+                ws = {}
+                lims_to_search = [lim_rows[c["label"]] for c in still_short if c["label"] in lim_rows]
+                if lims_to_search:
+                    #  Its own try. This whole block runs at the end of a search that already has an
+                    #  answer, so a new route failing must cost its own candidates and nothing else —
+                    #  sharing the outer handler would take the keyword worldset, the concept fan-out and
+                    #  the citation neighbourhood down with it.
+                    try:
+                        ws = claim_acquire.by_limitation(
+                            lims_to_search, brief=brief, title=title, subject=subject, seeds=seeds,
+                            emit=emit)
+                    except Exception:
+                        traceback.print_exc()
+                        ws = {"error": "limitation portfolio raised"}
+                    summary["limitation_portfolio"] = {
+                        k: ws.get(k) for k in ("rows", "queries", "screened", "n_new", "with_text",
+                                               "error")}
+                    summary["limitation_pool"] = ws.get("pool") or {}
+                    summary["limitation_classes"] = ws.get("classes") or []
+                if not (ws.get("candidates") if ws else None):
+                    if lims_to_search:
+                        print(f"[rescue] the limitation portfolio returned nothing "
+                              f"({(ws or {}).get('error') or 'no reason given'}); "
+                              f"falling back to the keyword worldset", flush=True)
+                    ws = claim_acquire.by_worldset(
+                        still_short, hints=claim_hints, brief=brief, title=title, subject=subject,
+                        seeds=seeds, emit=emit)
+                    summary["worldset"] = {k: ws.get(k) for k in
+                                           ("rows", "queries", "n_new", "with_text", "error")}
+                    summary["worldset_classes"] = ws.get("classes") or []
+                    summary["worldset_terms"] = (ws.get("terms") or [])[:40]
+                seen0 = {c["pub"] for c in cands} | set(exclude_pubs or ())
+                for c in ws.get("candidates") or []:
+                    if c["pub"] not in seen0:
+                        seen0.add(c["pub"])
+                        cands.append(c)
+
+                #  by_concept ONLY WHEN THE WORLD ROUTES CAME BACK EMPTY-HANDED. It reaches App A's
+                #  fan-out, which returns bibliographic records, and `external.materialise` writes them
+                #  with no text at all. Measured on the run that prompted this: 300 publications acquired,
+                #  0 of 40 readable, and those 40 unreadable candidates were 40 of the 46 the rescue then
+                #  "read" — the whole rescue read six documents. A candidate the reader cannot read is not
+                #  a cheap candidate, it is a slot taken from one that could have been read. It stays as a
+                #  fallback because it is the only route that does not need BigQuery.
+                seen = {c["pub"] for c in cands} | set(exclude_pubs or ())
+                if len(cands) < CONCEPT_FALLBACK_BELOW:
+                    got = claim_acquire.by_concept(still_short, hints=claim_hints, brief=brief,
+                                                   title=title, emit=emit)
+                    summary["acquire"] = {k: got.get(k) for k in
+                                          ("queries", "n_candidates", "n_new", "error")}
+                    summary["acquire_classes"] = sorted({c for p in (got.get("plan") or {}).values()
+                                                         for c in (p.get("cpc") or [])})
+                    for c in got.get("candidates") or []:
+                        if c["pub"] not in seen:
+                            seen.add(c["pub"])
+                            cands.append(c)
+                else:
+                    summary["acquire"] = {"skipped": f"{len(cands)} candidates already acquired with text"}
+                #  And the art our own best references point at, which crosses classification boundaries
+                #  in the one direction a CPC-seeded corpus cannot.
+                cited = claim_acquire.by_citation([r["pub"] for r in read_head], exclude_pubs=seen,
+                                                  emit=emit)
+                summary["acquire_citations"] = {k: cited.get(k) for k in ("n_edges", "n_new", "error")}
+                for c in cited.get("candidates") or []:
                     if c["pub"] not in seen:
                         seen.add(c["pub"])
                         cands.append(c)
-            else:
-                summary["acquire"] = {"skipped": f"{len(cands)} candidates already acquired with text"}
-            #  And the art our own best references point at, which crosses classification boundaries
-            #  in the one direction a CPC-seeded corpus cannot.
-            cited = claim_acquire.by_citation([r["pub"] for r in read_head], exclude_pubs=seen,
-                                              emit=emit)
-            summary["acquire_citations"] = {k: cited.get(k) for k in ("n_edges", "n_new", "error")}
-            for c in cited.get("candidates") or []:
-                if c["pub"] not in seen:
-                    seen.add(c["pub"])
-                    cands.append(c)
-        except Exception:
-            traceback.print_exc()
+            except Exception:
+                traceback.print_exc()
+
+        return cands
+
+    cands = []
+    _banked = runctx.round_payload("rescue", "search", fp=_fp)
+    if _banked is not None:
+        cands = _banked.get("cands") or []
+        for _k, _v in (_banked.get("summary") or {}).items():
+            summary[_k] = _v
+        summary["rounds"].append({"round": "search", "resumed": True, "candidates": len(cands)})
+        print(f"[resume] the rescue search round was already complete: {len(cands)} candidates "
+              f"reloaded, no query and no acquisition re-run", flush=True)
+    else:
+        runctx.check_cancelled("rescue search")
+        cands = _search_round()
+        runctx.round_done("rescue", "search",
+                          {"cands": cands,
+                           "summary": {k: summary[k] for k in _SEARCH_SUMMARY_KEYS
+                                       if k in summary}},
+                          fp=_fp, n_out=len(cands))
+        summary["rounds"].append({"round": "search", "resumed": False,
+                                  "candidates": len(cands)})
 
     summary["candidates"] = len(cands)
     if not cands:
@@ -667,45 +783,96 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
     print(f"[rescue] {len(cands)} candidates for {len(plans)} claims that no reference covers, "
           f"from queries with no classification filter", flush=True)
 
+    #  A ROUND OF ITS OWN, because it SPENDS. `enrich` is `deep_rank._enrich_missing_text`: it
+    #  fetches full text for the rescued candidates the corpus holds nothing readable for, one
+    #  paid provider fetch per candidate. It used to sit outside every checkpoint, between the
+    #  search round and the reading round, so a run resumed after the search had banked its
+    #  candidates paid for the whole enrichment a second time and a run resumed twice paid three
+    #  times. Keyed on the candidate set rather than on `_fp` alone: enriching a different set of
+    #  candidates is different work, and reloading the receipt for the old one would leave the new
+    #  candidates unenriched and silently unreadable.
     if enrich:
-        try:
-            enrich(cands)
-        except Exception:
-            traceback.print_exc()
+        _enrich_fp = f"{_fp}:{_cands_fp(cands)}"
+        if runctx.round_payload("rescue", "enrich", fp=_enrich_fp) is not None:
+            summary["rounds"].append({"round": "enrich", "resumed": True,
+                                      "candidates": len(cands)})
+            print(f"[resume] the rescue enrichment round was already complete for these "
+                  f"{len(cands)} candidates; no text was fetched again", flush=True)
+        else:
+            runctx.check_cancelled("rescue enrich")
+            try:
+                enrich(cands)
+            except runctx.RunCancelled:
+                raise
+            except Exception:
+                traceback.print_exc()
+            #  Recorded even when the fetch raised. The round is "we went and asked for this
+            #  candidate set", and a source that was down is not a reason to pay for the whole
+            #  set again on the next attempt: the references it left thin are listed rather than
+            #  read, exactly as they are in an uninterrupted run.
+            runctx.round_done("rescue", "enrich", {"candidates": len(cands)},
+                              fp=_enrich_fp, n_out=len(cands))
+            summary["rounds"].append({"round": "enrich", "resumed": False,
+                                      "candidates": len(cands)})
 
     # ---- 3. read them, against the SAME checklist as everything else -------------------------
     #  Not against the orphaned claims alone. A rescued reference has to be comparable to the rest
     #  of the report or it cannot be ranked with it, and a document found for claim 7 routinely
     #  turns out to disclose three features nobody was looking for it to.
-    if emit:
-        emit("rescue_read_start", n=len(cands))
     done = [0]
     lock = threading.Lock()
+    _ctx = runctx.active()
+    #  The rescue reads against the SAME checklist as the main wave, so a rescued reference that
+    #  the main wave already read is banked under the same fingerprint and is not read twice.
+    _read_fp = deep_analysis.checklist_fp(features, claim_items)
 
     def one(c):
-        try:
-            ref = deep_analysis.analyse_reference(c["pub"], features, claim_items,
-                                                  c.get("title") or "", hints=hints)
-        except Exception as exc:
-            ref = {"pub": c["pub"], "title": c.get("title") or "", "found": False,
-                   "features": [], "claims": [], "method": "error", "error": str(exc)[:200],
-                   "chars": 0}
-        ref["screen"] = None
-        ref["retrieval_rank"] = None
-        ref["family"] = c["fam"]
-        #  Stamped so the page can say WHY this document is in the report: it was not retrieved by
-        #  the search, it was gone back for on behalf of one claim.
-        ref["rescue"] = True
-        ref["rescue_for"] = c["for_claim"]
-        with lock:
-            done[0] += 1
-            if emit and (done[0] % 5 == 0 or done[0] == len(cands)):
-                emit("rescue_read_progress", done=done[0], total=len(cands), pub=c["pub"])
-        return ref
+        with runctx.adopt(_ctx):
+            pub = c["pub"]
+            ref = None if _ctx is None else _ctx.reference_payload(pub, fp=_read_fp)
+            fresh_read = ref is None
+            if fresh_read:
+                try:
+                    ref = deep_analysis.analyse_reference(pub, features, claim_items,
+                                                          c.get("title") or "", hints=hints)
+                except runctx.RunCancelled:
+                    raise
+                except Exception as exc:
+                    ref = {"pub": pub, "title": c.get("title") or "", "found": False,
+                           "features": [], "claims": [], "method": "error",
+                           "error": str(exc)[:200], "chars": 0}
+            ref["screen"] = None
+            ref["retrieval_rank"] = None
+            ref["family"] = c["fam"]
+            #  Stamped so the page can say WHY this document is in the report: it was not
+            #  retrieved by the search, it was gone back for on behalf of one claim.
+            ref["rescue"] = True
+            ref["rescue_for"] = c["for_claim"]
+            if fresh_read and _ctx is not None:
+                _ctx.reference_done(pub, ref, fp=_read_fp)
+            with lock:
+                done[0] += 1
+                if emit and (done[0] % 5 == 0 or done[0] == len(cands)):
+                    emit("rescue_read_progress", done=done[0], total=len(cands), pub=pub)
+            return ref
 
-    with ThreadPoolExecutor(max_workers=min(READ_WORKERS, max(1, len(cands)))) as ex:
-        new_charts = list(ex.map(one, cands))
-    summary["read"] = sum(1 for r in new_charts if r.get("method") == "llm")
+    _banked = runctx.round_payload("rescue", "read", fp=_fp)
+    if _banked is not None:
+        new_charts = list(_banked.get("charts") or [])
+        summary["read"] = int(_banked.get("read") or 0)
+        summary["rounds"].append({"round": "read", "resumed": True, "refs": len(new_charts)})
+        print(f"[resume] the rescue reading round was already complete: {len(new_charts)} "
+              f"rescued references reloaded, none read again", flush=True)
+    else:
+        runctx.check_cancelled("rescue read")
+        if emit:
+            emit("rescue_read_start", n=len(cands))
+        with ThreadPoolExecutor(max_workers=min(READ_WORKERS, max(1, len(cands)))) as ex:
+            new_charts = list(ex.map(one, cands))
+        summary["read"] = sum(1 for r in new_charts if r.get("method") == "llm")
+        runctx.round_done("rescue", "read", {"charts": new_charts, "read": summary["read"]},
+                          fp=_fp, n_out=len(new_charts))
+        summary["rounds"].append({"round": "read", "resumed": False, "refs": len(new_charts)})
 
     # ---- 4. and ask THEM the narrow question too ---------------------------------------------
     #  Not optional, and not redundant with the read above. See second_look: a full read of a
@@ -715,15 +882,35 @@ def run(charts, claim_items, features, hints, *, subject, mode, retriever, brief
     #  that it discloses nothing.
     fresh = [r for r in new_charts if r.get("method") == "llm"]
     if fresh and claim_hints:
-        labels_now = set(plans)
-        with ThreadPoolExecutor(max_workers=min(READ_WORKERS, len(fresh))) as ex:
-            gained = list(ex.map(
-                lambda r: second_look(r, labels_now, claim_hints, claim_texts), fresh))
-        summary["rescue_reread_cells"] = sum(gained)
-        summary["rescue_reread_refs"] = sum(1 for g in gained if g)
-        print(f"[rescue] narrow re-ask of the {len(fresh)} rescued references: "
-              f"{summary['rescue_reread_cells']} claim cells grounded across "
-              f"{summary['rescue_reread_refs']} of them", flush=True)
+        banked = runctx.round_payload("rescue", "narrow", fp=_fp)
+        if banked is not None:
+            landed = _apply_charts(new_charts, banked.get("charts"))
+            summary["rescue_reread_cells"] = int(banked.get("cells") or 0)
+            summary["rescue_reread_refs"] = int(banked.get("refs") or 0)
+            summary["rounds"].append({"round": "narrow", "resumed": True, "refs": landed})
+            print(f"[resume] the rescue narrow re-ask was already complete: {landed} charts "
+                  f"reloaded, {summary['rescue_reread_cells']} cells, not re-asked", flush=True)
+        else:
+            runctx.check_cancelled("rescue narrow re-ask")
+            labels_now = set(plans)
+
+            def narrow(r):
+                with runctx.adopt(_ctx):
+                    runctx.check_cancelled(f"rescue narrow:{r.get('pub')}")
+                    return second_look(r, labels_now, claim_hints, claim_texts)
+
+            with ThreadPoolExecutor(max_workers=min(READ_WORKERS, len(fresh))) as ex:
+                gained = list(ex.map(narrow, fresh))
+            summary["rescue_reread_cells"] = sum(gained)
+            summary["rescue_reread_refs"] = sum(1 for g in gained if g)
+            runctx.round_done("rescue", "narrow",
+                              {"charts": fresh, "cells": summary["rescue_reread_cells"],
+                               "refs": summary["rescue_reread_refs"]},
+                              fp=_fp, n_out=len(fresh))
+            summary["rounds"].append({"round": "narrow", "resumed": False, "refs": len(fresh)})
+            print(f"[rescue] narrow re-ask of the {len(fresh)} rescued references: "
+                  f"{summary['rescue_reread_cells']} claim cells grounded across "
+                  f"{summary['rescue_reread_refs']} of them", flush=True)
 
     summary["claim_matches_after"], summary["covered"] = _covered(charts + new_charts)
     summary["seconds"] = round(time.time() - started, 1)
