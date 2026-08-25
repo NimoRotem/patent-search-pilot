@@ -2685,6 +2685,25 @@ def test_deterministic_nested_plan_accepts_inset_ring_without_bare_paper_instruc
     assert audit["ok"] is True and audit["observed"] == 2
 
 
+def test_deterministic_nested_plan_accepts_well_inset_ring_wording():
+    specification = (
+        "The sheet shows the perimeter member 24 as one rectangular ring, and within it the "
+        "second side 16 as a plain open field; no other body is drawn. The ring is drawn as one "
+        "rectangle with a smaller rectangle inside it, the inner rectangle standing well in "
+        "from each of the four sides of the outer rectangle. The band of paper lying between "
+        "the outer rectangle and the inner rectangle is the drawn body. It runs continuously "
+        "all the way round. The field enclosed by the inner rectangle is left entirely open "
+        "paper. The ring stands well in from every side of the drawing area."
+    )
+
+    png = draft_figures._deterministic_nested_plan_png(specification)
+
+    assert draft_figures._expected_closed_region_count(specification) == 2
+    assert png is not None
+    audit = draft_figures.closed_region_audit(png, specification)
+    assert audit["ok"] is True and audit["observed"] == 2
+
+
 def test_deterministic_pulling_scene_accepts_source_clean_single_path_wording():
     specification = """
     The covering element 36 is one large plain tile filling the lower part of the drawing
@@ -2748,6 +2767,43 @@ def test_deterministic_pulling_scene_accepts_positive_whole_machine_wording():
     image = Image.open(io.BytesIO(png)).convert("L")
     for point in ((825, 314), (920, 314), (1000, 336), (1095, 336)):
         assert image.getpixel(point) == 255
+
+
+def test_deterministic_pulling_scene_accepts_body_and_band_whole_machine_wording():
+    specification = """
+    The covering element 36 is one large plain tile seen in perspective. The machine stands on
+    its right-hand part, leaving a wide open expanse of tile to the left. The machine and the
+    tile are shown schematically, the machine as one plain rectangular body standing on a band
+    that runs round its underside, the band alone touching the tile. The body and the band are
+    the whole of the machine drawn on this sheet. The flexible pulling element 46 is drawn as
+    one slack curved path, in the manner of a loose cord. It begins where it meets the left-hand
+    side of the machine and runs away to the left, sagging gently over the open expanse of tile.
+    """
+
+    png = draft_figures._deterministic_pulling_scene_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+
+
+def test_deterministic_grip_scene_accepts_closed_block_grip_wording():
+    specification = """
+    The covering element 36 is one large plain tile seen in perspective. The machine stands on
+    the left-hand part of the tile, leaving a wide open expanse of tile to the right. The machine
+    is one plain rectangular slab standing on a band that runs round its underside, with two
+    closed housings and a grip on the top face of the slab. The two housings stand on the top
+    face of the slab, one at the left and one at the right. The grip stands on the top face
+    between them and is a closed block of the same kind. The band meets the underside of the
+    slab and follows the same rectangular run.
+    """
+
+    png = draft_figures._deterministic_grip_scene_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    image = Image.open(io.BytesIO(png)).convert("L")
+    for x, y in ((285, 315), (435, 300), (585, 315)):
+        assert image.getpixel((x, y)) == 255
 
 
 def test_deterministic_grip_scene_accepts_source_clean_single_outline_wording():
@@ -2897,6 +2953,23 @@ def test_deterministic_fragmentary_section_accepts_explicit_filing_inventory(mon
 
     assert draft_figures._deterministic_fragmentary_section_png(specification) is not None
     assert observed == [45, -20, 20, -45]
+
+
+def test_deterministic_fragmentary_section_accepts_hatching_lines_continuous_wording():
+    specification = """
+    The sheet shows four hatched bodies: one upright column and three horizontal bands lying
+    one above another beneath it. Each band runs across the drawing area from side to side and
+    is filled with regularly spaced straight parallel hatching lines continuous from side to
+    side, including directly beneath the column. Open unhatched paper lies beneath the lowest
+    band. The column is the perimeter member. It stands above the uppermost band, with an open
+    stretch of that band on each side of it. Between the bottom line of the column and the top
+    line of the uppermost band lies open unhatched space.
+    """
+
+    png = draft_figures._deterministic_fragmentary_section_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
 
 
 def test_deterministic_chamber_section_accepts_explicit_filing_inventory(monkeypatch):
