@@ -164,3 +164,37 @@ def test_the_browser_carries_the_session_and_nothing_else():
 def test_the_card_still_links_into_the_lookup_by_number():
     js = open("static/app.js", encoding="utf-8").read()
     assert "/patentlookup?number='" in js
+
+
+def test_the_two_palettes_do_not_repaint_each_other():
+    """Both apps declare a light palette on :root and ten of the variable names are the same.
+
+    Whichever stylesheet is parsed last wins, so injecting ours into that page would have turned
+    its green accent our blue and moved every line colour. The fix is two-sided and both halves
+    have to hold: the engine inserts our stylesheet FIRST so its own :root still wins for its own
+    UI, and the masthead carries the palette it needs on #appchrome so it looks like itself
+    wherever it is dropped.
+    """
+    import re
+
+    css = open("static/style.css", encoding="utf-8").read()
+    engine = _engine()
+
+    ours = set(re.findall(r"(--[a-z0-9-]+)\s*:",
+                          re.search(r":root\s*\{(.*?)\}", css, re.S).group(1)))
+    theirs = set(re.findall(r"(--[a-z0-9-]+)\s*:",
+                            re.search(r":root\{(.*?)\}", engine, re.S).group(1)))
+    clash = ours & theirs
+    assert clash, "the premise changed: if nothing collides, say so and delete this test"
+
+    #  Half one: it goes in first, so their :root is parsed after ours and wins for their page.
+    assert "insertBefore(l, document.head.firstChild)" in engine, (
+        "our stylesheet is being appended again, which repaints the whole lookup")
+    assert "appendChild(l)" not in engine
+
+    #  Half two: every colliding name is re-declared on the masthead itself.
+    block = re.search(r"#appchrome\{(.*?)\}", css, re.S)
+    assert block, "the masthead declares no palette of its own"
+    declared = set(re.findall(r"(--[a-z0-9-]+)\s*:", block.group(1)))
+    missing = sorted(clash - declared)
+    assert not missing, "the masthead would take the lookup's colours for: %s" % missing

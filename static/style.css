@@ -2064,3 +2064,19 @@ tr.rowuncovered > th.elh{box-shadow:inset 3px 0 0 var(--warn,#c98a00)}
 .qmark:hover,.qmark:focus-visible{border-color:var(--accent);color:var(--fg,#222)}
 .qmarkdlg p{margin:.6rem 0}
 .qmarkdlg p:first-child{margin-top:0}
+
+/*  ------------------------------------------------------- the masthead inside a foreign page
+    The register lookup is a different app with its own inline palette on :root, and it happens
+    to use ten of the same variable names we do. Loading this stylesheet into that page would
+    otherwise repaint the whole lookup: its green accent turns our blue, its lines change colour.
+
+    Two halves to the fix and both are needed. That page inserts this stylesheet as the FIRST
+    thing in its <head>, so its own :root still wins for its own UI. And the masthead declares the
+    palette it needs on itself, here, so it keeps ours wherever it is dropped. Values duplicated
+    from :root above deliberately: this block exists precisely so the two can differ. */
+#appchrome{
+  --line:#deddd6; --line2:#c9c9c2; --ink:#17212b; --muted:#5e6875;
+  --accent:#175cd3; --accent-soft:#e9f0fd;
+  --warn:#9a5b13; --warn-soft:#fbf0df; --bad:#b42318; --bad-soft:#fcebea;
+  color:var(--ink);
+}
