@@ -2239,6 +2239,8 @@ def test_pixel_grounding_uses_the_brief_target_over_stale_semantic_line_evidence
 
     assert audit["ok"] is True and audit["ungrounded"] == []
     assert anchors[0]["evidence"] == (
+        "the horizontal line defining the top of the front face")
+    assert anchors[0]["target_evidence"] == (
         "Identified well inside the front surface of the band.")
     assert 512 < anchors[0]["y"] < 538
 
