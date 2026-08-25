@@ -306,7 +306,8 @@ _VERTICAL_LINE_TARGET_RE = re.compile(
     r"\bvertical\s+(?:edge|line|boundary)\b",
     re.IGNORECASE)
 _VISIBLE_SURFACE_TARGET_RE = re.compile(
-    r"\b(?:top|bottom|front(?:-facing)?|rear(?:-facing)?|flat|planar)\s+surface\b",
+    r"\b(?:top|bottom|front(?:-facing)?|rear(?:-facing)?|flat|planar)\s+"
+    r"(?:face|surface)\b|\b(?:front|rear)(?:-facing)?\s+(?:band|strip)\b",
     re.IGNORECASE)
 _BROAD_INTERIOR_TARGET_RE = re.compile(
     r"\bwell\s+inside\b|\bwhite\s+(?:space|margin|region)\b|"
@@ -314,6 +315,11 @@ _BROAD_INTERIOR_TARGET_RE = re.compile(
     r"\b(?:top|bottom|front(?:-facing)?|rear(?:-facing)?|flat|planar)\s+surface\b|"
     r"\b(?:area|band|corridor|field|interior|margin|region|space|surface)\s+"
     r"(?:inside|within|between)\b",
+    re.IGNORECASE)
+_BOUNDED_INTERIOR_TARGET_RE = re.compile(
+    r"\b(?:band|face|strip)\b|"
+    r"\bbetween\b[^.;|]{0,160}\b(?:boundar(?:y|ies)|edges?|lines?)\b|"
+    r"\bclear\s+of\s+both\b[^.;|]{0,160}\b(?:boundar(?:y|ies)|edges?|lines?)\b",
     re.IGNORECASE)
 _HATCHED_TARGET_RE = re.compile(r"\bhatch\w*\b", re.IGNORECASE)
 _LOWER_SURFACE_TARGET_RE = re.compile(
@@ -1411,6 +1417,7 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
 
     def deeper_in_same_white_region(pixel_x: int, pixel_y: int, x: int, y: int, *,
                                     allow_nearby_component: bool = False,
+                                    prefer_enclosed_component: bool = False,
                                     evidence: str = ""):
         """Move a surface target to clear white pixels, preserving its component when possible."""
         nonlocal white_component_labels, white_clearance
@@ -1452,7 +1459,8 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
                 )
             component = int(white_component_labels[pixel_y, pixel_x])
             if allow_nearby_component:
-                component_mask = ~ink
+                component_mask = (
+                    (~ink) & (~exterior) if prefer_enclosed_component else ~ink)
                 repair_snap = min(max_snap, 120)
                 same_component = False
             else:
@@ -1502,7 +1510,8 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         # reachable neighborhood keeps the vectorized fallback bounded.
         component_image = binary.copy()
         if allow_nearby_component:
-            component_mask = ~ink
+            component_mask = (
+                (~ink) & (~exterior) if prefer_enclosed_component else ~ink)
             repair_snap = min(max_snap, 120)
             same_component = False
         elif component_image.getpixel((pixel_x, pixel_y)) == 255:
@@ -1590,6 +1599,8 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         targets_visible_surface = bool(_VISIBLE_SURFACE_TARGET_RE.search(evidence))
         targets_broad_interior = bool(
             targets_visible_surface or _BROAD_INTERIOR_TARGET_RE.search(evidence))
+        targets_bounded_interior = bool(
+            _BOUNDED_INTERIOR_TARGET_RE.search(evidence))
         requires_ink = bool(
             _LINE_ANCHOR_PART_RE.search(part) or (
                 _has_explicit_line_target(evidence) and not targets_broad_interior)
@@ -1603,11 +1614,16 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
             if len(ink_x):
                 distance_sq = ((ink_norm_x - x) ** 2) + ((ink_norm_y - y) ** 2)
                 clearance = sqrt(float(distance_sq.min()))
-                if clearance < _MIN_BROAD_INTERIOR_CLEARANCE:
+                exterior_bounded_target = bool(
+                    is_exterior and targets_bounded_interior)
+                if (clearance < _MIN_BROAD_INTERIOR_CLEARANCE or
+                        exterior_bounded_target):
                     moved = deeper_in_same_white_region(
                         pixel_x, pixel_y, x, y,
                         allow_nearby_component=(
-                            targets_visible_surface and bool(ink[pixel_y, pixel_x])),
+                            (targets_visible_surface and bool(ink[pixel_y, pixel_x])) or
+                            exterior_bounded_target),
+                        prefer_enclosed_component=targets_bounded_interior,
                         evidence=evidence)
                     if moved is not None:
                         new_x, new_y = int(moved["x"]), int(moved["y"])
@@ -2166,6 +2182,20 @@ def _paste_hatched_box(image, box, *, angle: int) -> None:
     image.paste(hatch_layer, (0, 0), mask)
 
 
+def _requested_section_hatch_angle(text: str, subject_pattern: str, default: int) -> int:
+    """Resolve an explicit section-hatching direction while retaining a safe default."""
+    match = re.search(
+        rf"\b(?:{subject_pattern})\b[^.;]{{0,120}}?\bhatched\s+"
+        r"(rising|falling)\s+to\s+the\s+right([^,.;]{0,100})",
+        text,
+    )
+    if not match:
+        return default
+    qualifier = match.group(2)
+    magnitude = 20 if "shallow" in qualifier else 45
+    return -magnitude if match.group(1) == "rising" else magnitude
+
+
 def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
     """Render the exact four-body fragmentary section with an open clearance."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
@@ -2182,10 +2212,17 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
         re.search(r"\bopen (?:stretch|paper)\b[^.]{0,100}\bon each side\b", text) and
         re.search(r"\bhatching continuous from side to side\b[^.]{0,100}"
                   r"\bdirectly beneath the column\b", text) and
-        re.search(r"\beach band reading as one whole hatched body\b", text))
+        (re.search(r"\beach band reading as one whole hatched body\b", text) or
+         re.search(r"\beach band runs\b[^.]{0,400}\bside to side\b[^.]{0,400}"
+                   r"\bhatching continuous from side to side\b[^.]{0,100}"
+                   r"\bdirectly beneath the column\b", text)))
     centred_column = centred_column or positive_open_sides_column
+    explicit_inventory = bool(
+        re.search(r"\bshows four hatched bodies\s*:", text) and
+        re.search(r"\bone upright column\b[^.]{0,120}\bthree horizontal bands\b", text))
     requirements = (
-        re.search(r"\bfour hatched bodies\b[^.]{0,80}\bnothing else\b", text),
+        (re.search(r"\bfour hatched bodies\b[^.]{0,80}\bnothing else\b", text) or
+         explicit_inventory),
         re.search(r"\bone upright column\b[^.]{0,80}\bthree horizontal bands\b", text),
         legacy_left_column or centred_column,
         re.search(r"\bbetween\b[^.]{0,100}\bbottom (?:line )?of the column\b[^.]{0,100}"
@@ -2200,10 +2237,15 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
 
     image = Image.new("RGB", (1400, 900), "white")
     column_left, column_right = ((575, 825) if centred_column else (250, 500))
-    _paste_hatched_box(image, (column_left + 4, 0, column_right - 4, 316), angle=45)
-    _paste_hatched_box(image, (0, 414, 1399, 546), angle=-45)
-    _paste_hatched_box(image, (0, 554, 1399, 676), angle=60)
-    _paste_hatched_box(image, (0, 684, 1399, 796), angle=-60)
+    column_angle = _requested_section_hatch_angle(text, r"(?:the\s+)?column", 45)
+    upper_angle = _requested_section_hatch_angle(text, r"(?:the\s+)?uppermost band", -45)
+    middle_angle = _requested_section_hatch_angle(text, r"(?:the\s+)?middle band", 60)
+    lower_angle = _requested_section_hatch_angle(text, r"(?:the\s+)?lowest band", -60)
+    _paste_hatched_box(
+        image, (column_left + 4, 0, column_right - 4, 316), angle=column_angle)
+    _paste_hatched_box(image, (0, 414, 1399, 546), angle=upper_angle)
+    _paste_hatched_box(image, (0, 554, 1399, 676), angle=middle_angle)
+    _paste_hatched_box(image, (0, 684, 1399, 796), angle=lower_angle)
 
     draw = ImageDraw.Draw(image)
     draw.line((column_left, 0, column_left, 320), fill="black", width=4)
@@ -2225,6 +2267,8 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
         r"[^.]{0,60}\bnothing else\b",
         text,
     )
+    exact_inventory = exact_inventory or re.search(
+        r"\bshows four bodies\b[^:]{0,100}\band one broken line\s*:", text)
     single_line_only = bool(
         re.search(r"\bno passage, duct, opening or other structure is depicted\b", text) or
         re.search(r"\bthat broken line being all that is drawn for it\b", text) or
@@ -2244,10 +2288,14 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     from PIL import Image, ImageDraw
 
     image = Image.new("RGB", (1400, 900), "white")
-    _paste_hatched_box(image, (204, 224, 1196, 356), angle=45)
-    _paste_hatched_box(image, (264, 364, 376, 616), angle=-45)
-    _paste_hatched_box(image, (1024, 364, 1136, 616), angle=-45)
-    _paste_hatched_box(image, (164, 624, 1236, 756), angle=60)
+    base_angle = _requested_section_hatch_angle(text, r"(?:the\s+)?base(?:\s+\d+)?", 45)
+    leg_angle = _requested_section_hatch_angle(text, r"(?:both\s+)?legs", -45)
+    band_angle = _requested_section_hatch_angle(
+        text, r"(?:the\s+)?covering element(?:\s+\d+)?", 60)
+    _paste_hatched_box(image, (204, 224, 1196, 356), angle=base_angle)
+    _paste_hatched_box(image, (264, 364, 376, 616), angle=leg_angle)
+    _paste_hatched_box(image, (1024, 364, 1136, 616), angle=leg_angle)
+    _paste_hatched_box(image, (164, 624, 1236, 756), angle=band_angle)
 
     draw = ImageDraw.Draw(image)
     draw.rectangle((200, 220, 1200, 360), outline="black", width=4)

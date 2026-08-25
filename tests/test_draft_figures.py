@@ -2263,6 +2263,53 @@ def test_pixel_grounding_does_not_leave_a_bounded_surface_for_more_clearance():
     assert (anchors[0]["x"], anchors[0]["y"]) == (525, 495)
 
 
+@pytest.mark.parametrize("evidence", [
+    "Identified well inside its front face.",
+    (
+        "Identified well inside the broad front strip of the band, below the underside "
+        "of the slab and above the tile, clear of both of those boundaries."
+    ),
+])
+def test_pixel_grounding_uses_surface_clearance_for_a_narrow_front_face(evidence):
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((400, 480, 650, 536), outline="black", width=6)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["24 = perimeter member"], [{
+            "numeral": "24", "x": 525, "y": 508, "visible": True,
+            "evidence": evidence,
+        }], preserve_reviewed_line_target=True)
+
+    assert audit["ok"] is True and audit["ungrounded"] == []
+    assert 500 <= anchors[0]["y"] <= 516
+
+
+def test_pixel_grounding_moves_a_bounded_band_target_out_of_exterior_paper():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((100, 100, 900, 900), outline="black", width=8)
+    draw.rectangle((200, 200, 800, 800), outline="black", width=8)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["24 = perimeter member"], [{
+            "numeral": "24", "x": 70, "y": 500, "visible": True,
+            "evidence": (
+                "Identified well inside that band on its straight left-hand side, clear of "
+                "both its outer edge and its inner edge, and not in the open field."
+            ),
+        }], preserve_reviewed_line_target=True)
+
+    assert audit["ok"] is True and audit["ungrounded"] == []
+    assert audit["adjusted"][0]["reason"] == (
+        "moved to a nearby clear point on the reviewed surface")
+    assert 125 <= anchors[0]["x"] <= 175
+
+
 def test_pixel_grounding_moves_a_boundary_near_anchor_deeper_into_the_same_wide_region():
     specification = (
         "The sheet shows one rectangular ring and nothing else. The ring is drawn with two "
@@ -2824,6 +2871,56 @@ def test_deterministic_section_renderers_differentiate_touching_body_hatching(mo
     observed.clear()
     assert draft_figures._deterministic_chamber_section_png(chamber) is not None
     assert observed == [45, -45, -45, 60]
+
+
+def test_deterministic_fragmentary_section_accepts_explicit_filing_inventory(monkeypatch):
+    original = draft_figures._paste_hatched_box
+    observed = []
+
+    def record(image, box, *, angle):
+        observed.append(angle)
+        return original(image, box, angle=angle)
+
+    monkeypatch.setattr(draft_figures, "_paste_hatched_box", record)
+    specification = """
+    The sheet shows four hatched bodies: one upright column and three horizontal bands lying
+    one above another beneath it, all four shown schematically. Each band runs across the
+    drawing area from side to side, with regularly spaced oblique parallel hatching continuous
+    from side to side, including directly beneath the column. The uppermost band is hatched
+    rising to the right at a shallow slope; the middle band is hatched falling to the right at
+    a shallow slope; the lowest band is hatched rising to the right at about 45 degrees; and the
+    column is hatched falling to the right at about 45 degrees. Open unhatched paper lies beneath
+    the lowest band. The column stands above the uppermost band, with an open stretch of that
+    band on each side of it. Between the bottom line of the column and the top line of the
+    uppermost band lies open unhatched space.
+    """
+
+    assert draft_figures._deterministic_fragmentary_section_png(specification) is not None
+    assert observed == [45, -20, 20, -45]
+
+
+def test_deterministic_chamber_section_accepts_explicit_filing_inventory(monkeypatch):
+    original = draft_figures._paste_hatched_box
+    observed = []
+
+    def record(image, box, *, angle):
+        observed.append(angle)
+        return original(image, box, angle=angle)
+
+    monkeypatch.setattr(draft_figures, "_paste_hatched_box", record)
+    specification = """
+    The sheet shows four bodies, all shown schematically, and one broken line: one horizontal
+    hatched slab, the base; one closed loop cut twice, appearing as two short hatched legs
+    hanging from the underside of the slab, one at each end; one hatched band across the bottom
+    on which both legs stand; and one closed housing standing on the upper face of the slab.
+    The base is hatched rising to the right at about 45 degrees, both legs are hatched falling to
+    the right at about 45 degrees, and the covering element is hatched rising to the right at a
+    shallow slope. One broken line runs from inside the housing to the chamber. The housing lies
+    outside the cut and is drawn in plain outline without hatching.
+    """
+
+    assert draft_figures._deterministic_chamber_section_png(specification) is not None
+    assert observed == [-45, 45, 45, -20]
 
 
 def test_deterministic_fragmentary_section_preserves_open_clearance_and_four_bodies():
