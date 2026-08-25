@@ -61,9 +61,9 @@ DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
 DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
     "deterministic-semantic-consensus-v1-byte-exact-two-semantic-one-independent")
 MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((MARKED_ANCHOR_PROMPT_VERSION,))
-PIXEL_ANCHOR_VERSION = "pixel-anchor-v11-directional-surface-fidelity"
+PIXEL_ANCHOR_VERSION = "pixel-anchor-v12-brief-target-surface-fidelity"
 MARKED_PROGRESS_VERSION = (
-    "marked-progress-v6-native-pixel-directional-repairs-bound-" + PIXEL_ANCHOR_VERSION)
+    "marked-progress-v7-brief-target-native-pixel-bound-" + PIXEL_ANCHOR_VERSION)
 OCR_PROMPT_VERSION = "google-vision-document-text-v2-sheet-number"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
