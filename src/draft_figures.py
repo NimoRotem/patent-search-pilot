@@ -1765,7 +1765,8 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
             "covering element": (900, 600, "well inside the open tile surface to the right"),
             "handle": (440, 320, "well inside the front face of the closed block grip"),
         }
-    elif nested_plan is not None and png == nested_plan:
+    elif (nested_plan is not None and png == nested_plan and
+          _expected_closed_region_count(text) == 2):
         renderer_name = "nested_plan"
         perimeter_target_match = re.search(
             r"\b(?:the )?perimeter member(?:\s+\d+)?\b[^.]*\.\s*"
