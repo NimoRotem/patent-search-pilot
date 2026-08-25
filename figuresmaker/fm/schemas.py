@@ -182,6 +182,9 @@ class Plan(BaseModel):
     figures: list[FigurePlan] = Field(default_factory=list)
     proposed_brief_description: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    # How many views the draft actually asked for, when that was more than this run would draw.
+    # A cap that binds and says nothing reads as "we drew everything" to whoever gets the report.
+    truncated_from: int = 0
 
 
 # -------------------------------------------------------------------------------------- scenes

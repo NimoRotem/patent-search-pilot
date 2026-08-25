@@ -17,7 +17,6 @@ import os
 import time
 import traceback
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable, Optional, Sequence
 
 from . import appearance as appearance_mod

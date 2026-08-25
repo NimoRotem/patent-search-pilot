@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import io
 import zipfile
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, Sequence
 
 
 class ExportUnavailable(RuntimeError):

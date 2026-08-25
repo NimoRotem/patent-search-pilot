@@ -13,10 +13,10 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from typing import Iterable, Optional, Sequence
+from typing import Optional, Sequence
 
 from ..drawing import Figure
-from ..schemas import Claim, Finding, FigurePlan, Plan, Registry, Sections
+from ..schemas import Claim, Finding, Plan, Registry, Sections
 from ..sections import figure_sort_key
 from . import rules
 
@@ -31,6 +31,7 @@ def _finding(code: str, message: str, *, severity: str = "error", stage: str = "
 def check(figures: Sequence[Figure], plan: Plan, registry: Registry, claims: list[Claim],
           sections: Sections) -> list[Finding]:
     out: list[Finding] = []
+    out += check_cap(plan)
     out += check_numerals(figures, registry)
     out += check_reuse(plan, registry)
     out += check_labels(figures)
@@ -117,6 +118,25 @@ def check_reuse(plan: Plan, registry: Registry) -> list[Finding]:
 # ----------------------------------------------------------------------------------- labels
 
 _LABEL = re.compile(r"^FIG\.\s(\d+)([A-Z]*)$")
+
+
+def check_cap(plan: Plan) -> list[Finding]:
+    """Say when the run drew fewer views than the draft asked for.
+
+    Without this the only sign is dozens of "this numeral is in no figure" errors, which look
+    like a planning failure rather than a limit that was hit. A cap that binds silently is a
+    truncation reported as success.
+    """
+    if not plan.truncated_from:
+        return []
+    from ..plan import MAX_FIGURES
+
+    return [_finding(
+        "figure_set_truncated",
+        f"the draft calls for {plan.truncated_from} views and this run drew the first "
+        f"{MAX_FIGURES}. Everything reported below about the views that were not drawn follows "
+        f"from that. Raise FM_MAX_FIGURES to draw them all, and expect about a minute per view.",
+        stage="planner", detail={"asked": plan.truncated_from, "drawn": MAX_FIGURES})]
 
 
 def check_labels(figures: Sequence[Figure]) -> list[Finding]:

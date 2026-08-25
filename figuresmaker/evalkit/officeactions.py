@@ -61,9 +61,28 @@ def _get(url: str, params: Optional[dict] = None) -> requests.Response:
     return response
 
 
+_CANONICAL = re.compile(r"^([A-Z]{2})([A-Z]*)(\d+)([A-Z]\d?)?$")
+
+
+def patent_digits(patent_number: str) -> str:
+    """The grant number alone.
+
+    Stripping every non-digit is wrong: "US11000000B2" becomes "110000002", because the kind
+    code's own digit comes along. The Open Data Portal then answers 404 for a number that does
+    not exist, which reads as "no file wrapper" rather than as a parsing mistake.
+    """
+    from fm import ingest
+
+    canonical = (ingest.normalise_patent_number(patent_number) or patent_number).upper()
+    match = _CANONICAL.match(canonical.replace(" ", ""))
+    if match:
+        return match.group(3)
+    return re.sub(r"[^0-9]", "", patent_number)
+
+
 def application_for(patent_number: str) -> Optional[str]:
     """The application number a granted patent issued from."""
-    digits = re.sub(r"[^0-9]", "", patent_number)
+    digits = patent_digits(patent_number)
     if not digits:
         return None
     try:
@@ -85,26 +104,78 @@ def documents(application: str) -> list[dict[str, Any]]:
     return payload.get("documentBag") or []
 
 
-def _pdf_url(document: dict[str, Any]) -> str:
+def _download_url(document: dict[str, Any], kind: str) -> str:
     for option in document.get("downloadOptionBag") or []:
-        if str(option.get("mimeTypeIdentifier", "")).upper() == "PDF":
+        if str(option.get("mimeTypeIdentifier", "")).upper() == kind:
             return str(option.get("downloadUrl") or "")
     return ""
 
 
-def document_text(document: dict[str, Any]) -> str:
-    url = _pdf_url(document)
-    if not url:
-        return ""
+def _fetch(url: str) -> bytes:
     try:
         response = requests.get(url, timeout=TIMEOUT, headers={"X-API-KEY": _key()})
         response.raise_for_status()
+        return response.content
     except requests.RequestException:
-        return ""
+        return b""
+
+
+def _strip_tags(markup: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", markup)
+    text = (text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+            .replace("&quot;", '"').replace("&#160;", " ").replace("&nbsp;", " "))
+    return re.sub(r"[ \t\xa0]+", " ", text)
+
+
+def document_text(document: dict[str, Any]) -> str:
+    """The words of an office action.
+
+    The PDF is useless here and it is the obvious thing to reach for: the Office's own copy is a
+    scan, and pypdf gets six characters out of a seven-page rejection. The text lives in the other
+    two download options, which the same response already offers: XML, which arrives as a tar of
+    one document, and MS_WORD, which is a docx. Trying the PDF first and stopping there is how
+    this returned "no drawing objections" for every application in the corpus.
+    """
+    archive = _fetch(_download_url(document, "XML"))
+    if archive:
+        body = _from_tar(archive)
+        if body:
+            return body
+    docx = _fetch(_download_url(document, "MS_WORD"))
+    if docx and docx[:2] == b"PK":
+        try:
+            import zipfile
+            with zipfile.ZipFile(io.BytesIO(docx)) as bundle:
+                return _strip_tags(bundle.read("word/document.xml").decode("utf-8", "replace"))
+        except Exception:
+            pass
+    pdf = _fetch(_download_url(document, "PDF"))
+    if pdf:
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(pdf))
+            return "\n".join(page.extract_text() or "" for page in reader.pages)
+        except Exception:
+            return ""
+    return ""
+
+
+def _from_tar(blob: bytes) -> str:
+    import tarfile
+
     try:
-        from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(response.content))
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
+        with tarfile.open(fileobj=io.BytesIO(blob)) as bundle:
+            best = ""
+            for member in bundle.getmembers():
+                if not member.isfile() or not member.name.lower().endswith((".xml", ".txt")):
+                    continue
+                handle = bundle.extractfile(member)
+                if handle is None:
+                    continue
+                body = _strip_tags(handle.read().decode("utf-8", "replace"))
+                if len(body) > len(best):
+                    best = body
+            return best
     except Exception:
         return ""
 
@@ -127,14 +198,27 @@ CLASSES: tuple[tuple[str, str, str], ...] = (
      r"must\s+show\s+every\s+feature|not\s+shown\s+in\s+the\s+drawings?|"
      r"fails?\s+to\s+(?:show|illustrate)|1\.83\(a\)",
      "claim_element_not_depicted"),
+    # Examiners write "reference number" at least as often as "reference character", and
+    # "not labeled" as often as "not shown". Matching only the wording of the regulation put
+    # three of the first twenty-four objections in the unclassified pile, all of them instances
+    # of a check that already exists.
     ("character_not_in_description",
-     r"reference\s+char\w+[^\n]{0,80}not\s+(?:mentioned|found|described)|"
-     r"not\s+mentioned\s+in\s+the\s+description",
+     r"reference\s+(?:char\w+|numbers?|numerals?)[^\n]{0,90}"
+     r"not\s+(?:mentioned|found|described|recited)|"
+     r"not\s+mentioned\s+in\s+the\s+(?:description|specification)",
      "numeral_not_in_registry"),
     ("character_not_in_drawing",
-     r"reference\s+char\w+[^\n]{0,80}not\s+(?:shown|appear)|"
-     r"mentioned\s+in\s+the\s+description[^\n]{0,60}not\s+(?:shown|appear)",
+     r"reference\s+(?:char\w+|numbers?|numerals?)[^\n]{0,90}"
+     r"not\s+(?:shown|appear|labell?ed|illustrated|indicated|included)|"
+     r"(?:mentioned|described|recited)\s+in\s+the\s+(?:description|specification)"
+     r"[^\n]{0,70}not\s+(?:shown|appear|labell?ed)|"
+     r"not\s+labell?ed\s+in\s+(?:FIG|Fig)|"
+     r"should\s+be\s+reference\s+(?:number|numeral|character)",
      "registry_numeral_undrawn"),
+    ("element_without_a_character",
+     r"(?:elements?|parts?|features?)\s+without\s+reference\s+(?:numbers?|numerals?|char\w+)|"
+     r"arrows?\s+pointing\s+to[^\n]{0,60}without\s+reference",
+     "element_unnumbered"),
     ("character_reused",
      r"same\s+reference\s+char\w+[^\n]{0,90}different\s+parts?|"
      r"used\s+to\s+designate\s+different",
@@ -209,7 +293,62 @@ def find_objections(text: str) -> list[str]:
     return out
 
 
-def mine(patent_numbers: Iterable[str], out_dir: Path, *, pause: float = 1.0,
+def sample_applications(query: str, limit: int, *, page: int = 100) -> list[str]:
+    """Application numbers matching an Open Data Portal query.
+
+    Used to widen the sample. A corpus chosen for having a good brief description of the drawings
+    is a corpus of well-prepared applications, and those are exactly the ones an examiner does
+    not object to, so it says nothing about which objections this checker covers.
+    """
+    import urllib.parse
+
+    out: list[str] = []
+    offset = 0
+    while len(out) < limit:
+        url = (f"{ODP_BASE}/search?q={urllib.parse.quote(query)}"
+               f"&limit={min(page, limit - len(out))}&offset={offset}")
+        try:
+            payload = _get(url).json()
+        except requests.RequestException as exc:
+            raise ODPUnavailable(f"search failed: {exc}") from exc
+        bag = payload.get("patentFileWrapperDataBag") or []
+        if not bag:
+            break
+        for item in bag:
+            number = str(item.get("applicationNumberText") or "")
+            if number and number.isdigit() and number not in out:
+                out.append(number)
+        offset += len(bag)
+    return out[:limit]
+
+
+def mine_application(application: str, *, patent: str = "", pause: float = 0.3,
+                     max_actions: int = 4) -> tuple[list[Objection], int, int]:
+    """Objections in one file wrapper, with how many actions were read and how many had text."""
+    try:
+        docs = documents(application)
+    except ODPUnavailable:
+        return ([], 0, 0)
+    actions = [d for d in docs if str(d.get("documentCode", "")).upper() in REJECTION_CODES]
+    found: list[Objection] = []
+    with_text = 0
+    for document in actions[:max_actions]:
+        text = document_text(document)
+        if not text or len(text) < 500:
+            continue
+        with_text += 1
+        for passage in find_objections(text):
+            found.append(Objection(
+                patent=patent, application=application,
+                document=str(document.get("documentIdentifier") or ""),
+                code=str(document.get("documentCode") or ""),
+                date=str(document.get("officialDate") or "")[:10],
+                passage=passage, classes=classify(passage)))
+        time.sleep(pause)
+    return (found, len(actions), with_text)
+
+
+def mine(patent_numbers: Iterable[str], out_dir: Path, *, pause: float = 0.3,
          verbose: bool = True) -> list[Objection]:
     out_dir.mkdir(parents=True, exist_ok=True)
     found: list[Objection] = []
@@ -224,34 +363,44 @@ def mine(patent_numbers: Iterable[str], out_dir: Path, *, pause: float = 1.0,
             if verbose:
                 print(f"  {number:16s} no application found")
             continue
-        try:
-            docs = documents(application)
-        except ODPUnavailable as exc:
-            if verbose:
-                print(f"  {number:16s} {exc}")
-            continue
-        actions = [d for d in docs
-                   if str(d.get("documentCode", "")).upper() in REJECTION_CODES]
-        hits = 0
-        for document in actions[:6]:
-            text = document_text(document)
-            if not text:
-                continue
-            for passage in find_objections(text):
-                found.append(Objection(
-                    patent=number, application=application,
-                    document=str(document.get("documentIdentifier") or ""),
-                    code=str(document.get("documentCode") or ""),
-                    date=str(document.get("officialDate") or "")[:10],
-                    passage=passage, classes=classify(passage)))
-                hits += 1
-            time.sleep(pause)
+        hits, actions, with_text = mine_application(application, patent=number, pause=pause)
+        found.extend(hits)
         if verbose:
-            print(f"  {number:16s} app {application}  {len(actions)} action(s)  "
-                  f"{hits} drawing objection(s)")
+            print(f"  {number:16s} app {application}  {actions} action(s), {with_text} with "
+                  f"text  {len(hits)} drawing objection(s)")
+    _write(out_dir, found)
+    return found
+
+
+def mine_sample(query: str, count: int, out_dir: Path, *, pause: float = 0.3,
+                verbose: bool = True) -> list[Objection]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    applications = sample_applications(query, count)
+    if verbose:
+        print(f"  {len(applications)} application(s) matched")
+    found: list[Objection] = []
+    read = 0
+    empty = 0
+    for index, application in enumerate(applications, start=1):
+        hits, actions, with_text = mine_application(application, pause=pause)
+        read += with_text
+        if actions and not with_text:
+            empty += 1
+        found.extend(hits)
+        if verbose and (hits or index % 10 == 0):
+            print(f"  [{index}/{len(applications)}] {application}  {actions} action(s), "
+                  f"{with_text} with text, {len(hits)} objection(s), {len(found)} so far",
+                  flush=True)
+    if verbose:
+        print(f"  read {read} action(s) with text; {empty} application(s) had actions but no "
+              "readable text")
+    _write(out_dir, found)
+    return found
+
+
+def _write(out_dir: Path, found: list[Objection]) -> None:
     (out_dir / "objections.json").write_text(
         json.dumps([o.as_dict() for o in found], indent=1), encoding="utf-8")
-    return found
 
 
 # ---------------------------------------------------------------------------------- coverage
@@ -264,10 +413,13 @@ def coverage(objections: Iterable[Objection]) -> dict[str, Any]:
     counts: dict[str, int] = {}
     unclassified = 0
     for objection in objections:
-        if not objection.classes:
+        # Classified afresh from the passage rather than trusting what was stored, so widening a
+        # pattern re-scores the whole corpus without re-downloading it.
+        classes = classify(objection.passage)
+        if not classes:
             unclassified += 1
             continue
-        for name in objection.classes:
+        for name in classes:
             counts[name] = counts.get(name, 0) + 1
 
     covered: dict[str, dict[str, Any]] = {}
@@ -306,16 +458,36 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="mine drawing objections from office actions")
     parser.add_argument("--dir", default="~/figuresmaker-eval/objections")
     parser.add_argument("--numbers", nargs="*", default=None)
+    parser.add_argument("--sample", type=int, default=0,
+                        help="mine this many applications matching --query instead")
+    parser.add_argument("--query", default="applicationMetaData.filingDate:[2017-01-01 TO "
+                                           "2019-12-31]",
+                        help="an Open Data Portal search expression")
+    parser.add_argument("--reclassify", action="store_true",
+                        help="re-score the objections already on disk, downloading nothing")
     args = parser.parse_args(argv)
 
     out_dir = Path(args.dir).expanduser()
-    numbers = args.numbers or list(corpus.DEFAULT_NUMBERS)
-    print(f"mining {len(numbers)} application file(s)")
+    if args.reclassify:
+        found = load(out_dir / "objections.json")
+        print(f"re-scoring {len(found)} objection(s) already on disk")
+        return _report(found, out_dir)
+
     try:
-        found = mine(numbers, out_dir)
+        if args.sample:
+            print(f"sampling {args.sample} application(s) for {args.query}")
+            found = mine_sample(args.query, args.sample, out_dir)
+        else:
+            numbers = args.numbers or list(corpus.DEFAULT_NUMBERS)
+            print(f"mining {len(numbers)} application file(s)")
+            found = mine(numbers, out_dir)
     except ODPUnavailable as exc:
         print(f"\n{exc}")
         return 3
+    return _report(found, out_dir)
+
+
+def _report(found: list[Objection], out_dir: Path) -> int:
     report = coverage(found)
     print(f"\n{report['objections']} classified objection(s), "
           f"{report['unclassified']} unclassified")

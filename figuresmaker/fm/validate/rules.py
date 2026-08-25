@@ -112,6 +112,8 @@ RULES: dict[str, Rule] = {r.code: r for r in (
     Rule("section_line_missing", "37 CFR 1.84(h)(3)", "rule",
          "The plane of a sectional view must be indicated on the view from which it is taken by "
          "a broken line whose ends are designated by the same letter as the section."),
+    Rule("figure_set_truncated", "", "practice",
+         "This run drew fewer views than the draft asked for."),
     Rule("no_figures", "37 CFR 1.81(a)", "rule",
          "A drawing is required where it is necessary for the understanding of the subject "
          "matter."),
@@ -130,6 +132,22 @@ RULES: dict[str, Rule] = {r.code: r for r in (
          "drawings."),
     Rule("element_not_drawn", "37 CFR 1.84(p)(4)", "rule",
          "Reference characters mentioned in the description must appear in the drawings."),
+
+    # -------------------------------------------------- what the registry finds in the draft
+    Rule("element_unnumbered", "37 CFR 1.84(p)(4)", "rule",
+         "A part the description names must carry a reference character if a drawing is to show "
+         "it, because a character in a drawing must be mentioned in the description."),
+    Rule("numeral_two_terms", "37 CFR 1.84(p)(5)", "rule",
+         "The same reference character must never be used to designate different parts."),
+    Rule("term_two_numerals", "37 CFR 1.84(p)(5)", "rule",
+         "The same part appearing in more than one view must always carry the same reference "
+         "character."),
+    Rule("numeral_no_figure", "37 CFR 1.84(p)(4)", "practice",
+         "A reference character the description never ties to a view leaves the drawing set to "
+         "guess where it belongs."),
+    Rule("figure_never_discussed", "37 CFR 1.84(p)(4)", "practice",
+         "A view the brief description promises and no paragraph discusses has no stated "
+         "contents."),
 
     # ------------------------------------------------------------------ the renderer's own
     Rule("element_not_legible", "37 CFR 1.84(l)", "practice",

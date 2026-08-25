@@ -22,10 +22,9 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 from fm import claims as claims_mod, ingest, registry as registry_mod, sections as sections_mod
-from fm.sections import figure_sort_key
 from fm.schemas import Sections
 
 

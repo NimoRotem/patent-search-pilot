@@ -11,12 +11,11 @@ import copy
 import pytest
 
 from fm import validate
-from fm.drawing import (Anchor, Figure, MIN_CHAR_MM, NUMERAL_SIZE, NumeralLabel, Leader, Prim,
-                        polygon, polyline, text as text_prim)
+from fm.drawing import Anchor, Figure, MIN_CHAR_MM, Prim, polygon, polyline
 from fm.geom import rect_poly
 from fm.render import leaders as leaders_mod, sheet as sheetmod
-from fm.schemas import (Claim, ClaimElement, Conventions, FigurePlan, Plan, PlanElement,
-                        RefEntry, Registry, Sections, BriefItem)
+from fm.schemas import (BriefItem, Claim, ClaimElement, FigurePlan, Plan, PlanElement,
+                        RefEntry, Registry, Sections)
 from fm.validate import data as data_checks, raster as raster_checks, rules
 
 
@@ -390,3 +389,42 @@ def test_practice_thresholds_are_not_presented_as_rules():
 
 def test_the_minimum_character_height_is_the_one_the_rule_states():
     assert rules.MIN_CHARACTER_MM == pytest.approx(3.2)
+
+
+# ------------------------------------------------------------------- anchors on real geometry
+
+
+@pytest.mark.parametrize("shape", ["box", "rounded", "diamond", "ellipse", "parallelogram",
+                                   "stadium", "hexagon", "cylinder"])
+def test_every_node_shape_puts_its_anchors_on_its_own_outline(shape):
+    """A lead line must reach the feature, not the corner of its bounding box.
+
+    A diamond's bounding-box corner is millimetres clear of the diamond, so anchors taken from
+    the box leave the lead line stopping in mid-air, which is what 37 CFR 1.84(q) forbids.
+    """
+    from fm import geom
+    from fm.render import graphfig
+
+    outline = graphfig.node_outline(shape, 50.0, 40.0, 34.0, 18.0)
+    anchors = graphfig._box_anchors("102", outline)
+    assert anchors, shape
+    ring = list(outline) + [outline[0]]
+    for anchor in anchors:
+        assert geom.dist_point_polyline(anchor.point, ring) < 0.05, \
+            f"{shape}: anchor {anchor.point} is off the outline"
+
+
+@pytest.mark.parametrize("shape", ["diamond", "ellipse", "hexagon"])
+def test_the_solver_reaches_a_non_rectangular_shape(shape):
+    from fm import geom
+    from fm.render import graphfig
+
+    figure = Figure(label="FIG. 1", kind="block_diagram")
+    outline = graphfig.node_outline(shape, 40.0, 30.0, 36.0, 22.0)
+    figure.prims.append(polygon(outline, role="outline", owner="102"))
+    figure.anchors["102"] = graphfig._box_anchors("102", outline)
+    leaders_mod.solve(figure)
+    leader = figure.leader_for("102")
+    assert leader is not None
+    ring = list(outline) + [outline[0]]
+    assert geom.dist_point_polyline(leader.tip(), ring) < rules.LEADER_TOUCH_MM

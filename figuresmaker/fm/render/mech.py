@@ -25,8 +25,8 @@ from dataclasses import dataclass
 from typing import Iterable, Optional, Sequence
 
 from .. import geom
-from ..drawing import (Anchor, DASH_CENTRE, DASH_HIDDEN, DASH_PROJECTION, Figure, W_HATCH,
-                       W_HIDDEN, W_OUTLINE, polyline)
+from ..drawing import (Anchor, DASH_CENTRE, DASH_HIDDEN, Figure, W_HATCH, W_HIDDEN,
+                       W_OUTLINE, polyline)
 from ..geom import Point
 from ..schemas import FigurePlan, MechScene
 from . import solid as solidlib

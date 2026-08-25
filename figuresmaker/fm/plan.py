@@ -26,7 +26,7 @@ from .schemas import (Claim, Conventions, FigurePlan, GraphScene, MechScene, PAR
                       PlanElement, Registry, Sections, SeqScene, UIScene, UI_TYPES)
 from .sections import figure_sort_key
 
-MAX_FIGURES = int(__import__("os").environ.get("FM_MAX_FIGURES", "12"))
+MAX_FIGURES = int(__import__("os").environ.get("FM_MAX_FIGURES", "20"))
 MAX_ELEMENTS_PER_FIGURE = 18
 
 PLAN_SYSTEM = """You plan the drawings for a patent application. You decide which views exist \
@@ -130,6 +130,8 @@ def tidy_plan(plan: Plan, sections: Sections, registry: Registry) -> Plan:
     known = registry.by_numeral()
     figures: list[FigurePlan] = []
     seen_labels: set[str] = set()
+    if len(plan.figures) > MAX_FIGURES:
+        plan.truncated_from = len(plan.figures)
 
     for figure in plan.figures[:MAX_FIGURES]:
         label = _tidy_label(figure.label, len(figures) + 1)

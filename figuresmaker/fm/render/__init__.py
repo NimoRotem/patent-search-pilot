@@ -7,7 +7,7 @@ into the realm of looking at it.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from ..drawing import Figure, normalise
 from ..schemas import Finding, FigurePlan, GraphScene, MechScene, SeqScene, UIScene

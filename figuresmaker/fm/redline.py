@@ -14,7 +14,7 @@ from __future__ import annotations
 import difflib
 import html
 import re
-from typing import Any, Optional, Sequence
+from typing import Sequence
 
 from .schemas import Registry, Sections, UnnumberedElement
 

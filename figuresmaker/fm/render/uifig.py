@@ -9,11 +9,10 @@ deserves; the arithmetic is this module's.
 from __future__ import annotations
 
 import math
-from typing import Optional
 
 from .. import geom
-from ..drawing import (Anchor, Figure, LEGEND_SIZE, W_OUTLINE, W_THIN, circle, ellipse, line,
-                       polygon, polyline, text as text_prim)
+from ..drawing import (Anchor, Figure, LEGEND_SIZE, W_OUTLINE, W_THIN, circle, line, polygon,
+                       polyline, text as text_prim)
 from ..geom import BBox, Point
 from ..schemas import FigurePlan, UINode, UIScene
 from .graphfig import LINE_HEIGHT, wrap_label

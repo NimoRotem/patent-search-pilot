@@ -208,8 +208,6 @@ def render_graph(plan: FigurePlan, scene: GraphScene) -> Figure:
     if not nodes:
         raise LayoutUnavailable(f"{plan.label}: the scene has no nodes to lay out")
     known = {n.numeral for n in nodes}
-    lines = {n.numeral: wrap_label(n.label or n.numeral) for n in nodes}
-    sizes = {n.numeral: _size_for(n.shape, lines[n.numeral]) for n in nodes}
     parents = {n.numeral: (n.parent if n.parent in known and n.parent != n.numeral else "")
                for n in nodes}
     # A cycle in the containment would make Graphviz recurse for ever.
@@ -226,7 +224,7 @@ def render_graph(plan: FigurePlan, scene: GraphScene) -> Figure:
     # A block that contains other blocks is drawn as the cluster that holds them, not as a box of
     # its own. Drawing both would put the same numeral on two rectangles in different places.
     containers = {p for p in parents.values() if p}
-    layout = _best_layout(scene, nodes, sizes, parents, lines, containers)
+    layout, lines, sizes = _best_layout(scene, nodes, parents, containers)
     height = _bb(layout.get("bb", "0,0,100,100"))[3]
 
     figure = Figure(label=plan.label, kind=plan.kind, title=plan.title,
@@ -302,33 +300,41 @@ SIGHT_W = 170.0 - 24.0
 SIGHT_H = 262.0 - 30.0
 
 
-def _best_layout(scene: GraphScene, nodes, sizes, parents, lines, containers) -> dict:
-    """Lay the graph out both ways round and keep whichever fits the sheet better.
+def _best_layout(scene: GraphScene, nodes, parents, containers):
+    """Lay the graph out several ways and keep whichever fits the sheet best.
 
     A block diagram is sized by the words in its boxes, and those words may not be lettered below
-    0.32 cm, so a graph that comes out too wide cannot simply be reduced. The one free choice left
-    is which way the ranks run, and it is often the whole difference between a figure that fits a
-    sheet and one that does not.
+    0.32 cm, so a graph that comes out too big cannot simply be reduced: shrinking it leaves the
+    text sticking out of the boxes. What is free is which way the ranks run and how narrowly the
+    labels wrap, and between them they are often the whole difference between a view that fits a
+    sheet and one the author has to split.
+
+    Returns the layout together with the wrapping it was produced from, because the caller draws
+    the boxes at sizes that have to match what Graphviz was told.
     """
-    tried: list[tuple[float, dict]] = []
+    tried: list[tuple[float, dict, dict, dict]] = []
     directions = [scene.direction] + [d for d in ("TB", "LR") if d != scene.direction]
-    for direction in directions:
-        candidate = GraphScene(direction=direction, nodes=scene.nodes, edges=scene.edges)
-        try:
-            layout = run_dot(_dot_source(candidate, nodes, sizes, parents, lines, containers))
-        except LayoutUnavailable:
-            if direction == directions[-1] and not tried:
-                raise
-            continue
-        box = _bb(layout.get("bb", "0,0,100,100"))
-        width, height = box[2] - box[0], box[3] - box[1]
-        overflow = max(0.0, width - SIGHT_W) + max(0.0, height - SIGHT_H)
-        if overflow <= 0.0:
-            return layout
-        tried.append((overflow, layout))
+    failure: Optional[Exception] = None
+    for width in (MAX_LABEL_CHARS, 14, 10):
+        lines = {n.numeral: wrap_label(n.label or n.numeral, width) for n in nodes}
+        sizes = {n.numeral: _size_for(n.shape, lines[n.numeral]) for n in nodes}
+        for direction in directions:
+            candidate = GraphScene(direction=direction, nodes=scene.nodes, edges=scene.edges)
+            try:
+                layout = run_dot(_dot_source(candidate, nodes, sizes, parents, lines, containers))
+            except LayoutUnavailable as exc:
+                failure = exc
+                continue
+            box = _bb(layout.get("bb", "0,0,100,100"))
+            overflow = (max(0.0, (box[2] - box[0]) - SIGHT_W)
+                        + max(0.0, (box[3] - box[1]) - SIGHT_H))
+            if overflow <= 0.0:
+                return layout, lines, sizes
+            tried.append((overflow, layout, lines, sizes))
     if not tried:
-        raise LayoutUnavailable("graphviz produced no usable layout in either direction")
-    return min(tried, key=lambda item: item[0])[1]
+        raise failure or LayoutUnavailable("graphviz produced no usable layout")
+    best = min(tried, key=lambda item: item[0])
+    return best[1], best[2], best[3]
 
 
 def _edge_spec(scene: GraphScene, tail: str, head: str):
@@ -409,29 +415,54 @@ def _dot_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
 
 
-def _box_anchors(numeral: str, outline: list[Point]) -> list[Anchor]:
-    """Where a lead line may land on a box: the middle of each side, then each corner."""
-    box = geom.poly_bbox(outline)
-    cx = (box[0] + box[2]) / 2.0
-    cy = (box[1] + box[3]) / 2.0
-    out = [
-        Anchor(numeral, (cx, box[1]), (0.0, -1.0), 1.0),
-        Anchor(numeral, (box[2], cy), (1.0, 0.0), 1.0),
-        Anchor(numeral, (cx, box[3]), (0.0, 1.0), 1.0),
-        Anchor(numeral, (box[0], cy), (-1.0, 0.0), 1.0),
-        Anchor(numeral, (box[2], box[1]), geom.unit(1.0, -1.0), 0.85),
-        Anchor(numeral, (box[0], box[1]), geom.unit(-1.0, -1.0), 0.85),
-        Anchor(numeral, (box[2], box[3]), geom.unit(1.0, 1.0), 0.85),
-        Anchor(numeral, (box[0], box[3]), geom.unit(-1.0, 1.0), 0.85),
-    ]
-    # A quarter of the way along each side too, so two neighbouring boxes do not fight for the
-    # one point between them.
-    for t in (0.25, 0.75):
-        out.append(Anchor(numeral, (box[0] + (box[2] - box[0]) * t, box[1]), (0.0, -1.0), 0.9))
-        out.append(Anchor(numeral, (box[0] + (box[2] - box[0]) * t, box[3]), (0.0, 1.0), 0.9))
-        out.append(Anchor(numeral, (box[0], box[1] + (box[3] - box[1]) * t), (-1.0, 0.0), 0.9))
-        out.append(Anchor(numeral, (box[2], box[1] + (box[3] - box[1]) * t), (1.0, 0.0), 0.9))
-    return out
+MIN_ANCHOR_SPACING = 4.0
+
+
+def _box_anchors(numeral: str, outline: list[Point], want: int = 16) -> list[Anchor]:
+    """Where a lead line may land: points on the outline itself, never on its bounding box.
+
+    37 CFR 1.84(q) requires a lead line to extend to the feature it indicates. Taking anchors
+    from the bounding box satisfies that for a rectangle and quietly breaks it for everything
+    else: the corner of a diamond's bounding box is several millimetres clear of the diamond, and
+    the lead line stops in mid-air. So the anchors are sampled along the real edges, with the
+    outward direction taken from each edge rather than assumed.
+    """
+    if len(outline) < 3:
+        return []
+    n = len(outline)
+    cx = sum(p[0] for p in outline) / n
+    cy = sum(p[1] for p in outline) / n
+
+    def outward(point: Point, along: Point) -> Point:
+        normal = geom.unit(along[1], -along[0])
+        if (point[0] - cx) * normal[0] + (point[1] - cy) * normal[1] < 0:
+            normal = (-normal[0], -normal[1])
+        return normal
+
+    candidates: list[tuple[float, Anchor]] = []
+    for i in range(n):
+        a, b = outline[i], outline[(i + 1) % n]
+        edge = (b[0] - a[0], b[1] - a[1])
+        length = math.hypot(*edge)
+        if length < 1e-9:
+            continue
+        steps = max(1, min(5, int(length // 9) + 1))
+        for k in range(steps):
+            t = (k + 0.5) / steps
+            point = (a[0] + edge[0] * t, a[1] + edge[1] * t)
+            # The middle of a side is the best place to land; the ends of it are next best.
+            weight = 1.0 - abs(t - 0.5) * 0.3
+            candidates.append((weight, Anchor(numeral, point, outward(point, edge), weight)))
+        candidates.append((0.85, Anchor(numeral, a, geom.unit(a[0] - cx, a[1] - cy), 0.85)))
+
+    candidates.sort(key=lambda item: -item[0])
+    chosen: list[Anchor] = []
+    for _weight, anchor in candidates:
+        if all(math.dist(anchor.point, other.point) > MIN_ANCHOR_SPACING for other in chosen):
+            chosen.append(anchor)
+        if len(chosen) >= want:
+            break
+    return chosen or [candidates[0][1]] if candidates else []
 
 
 # ---------------------------------------------------------------------------------- sequence

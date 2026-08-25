@@ -16,12 +16,11 @@ shrink a figure past the point where its reference characters would fall below 0
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
-from typing import Any, Optional, Sequence
+from typing import Any, Sequence
 
 from .. import geom
-from ..drawing import CAPTION_SIZE, Figure, MIN_CHAR_MM, Prim, normalise
+from ..drawing import CAPTION_SIZE, Figure, normalise
 from ..geom import BBox
 
 # Paper, in millimetres.
@@ -245,7 +244,7 @@ def sheet_svg(sheet: Sheet, figures: Sequence[Figure], *, show_margins: bool = F
         dy = placed.y - placed.origin[1]
         parts.append(f'<g data-figure="{figure.label}" data-scale="{scale:.5f}">')
         for prim in figure.decorated_prims():
-            svg = prim.svg(scale, dx, dy, text_scale=1.0)
+            svg = prim.svg(scale, dx, dy, text_scale=1.0, stroke_scale=1.0)
             if svg:
                 parts.append(svg)
         parts.append(_text_svg(placed.x + placed.width / 2.0,
@@ -351,7 +350,7 @@ def sheet_geometry(sheet: Sheet, figures: Sequence[Figure]) -> dict[str, Any]:
             for poly in prim.polys():
                 lines.append({"points": [to_sheet(p) for p in poly], "role": prim.role,
                               "owner": prim.owner, "figure": figure.label,
-                              "width": prim.width * scale})
+                              "width": prim.width})
         for leader in figure.leaders:
             leaders.append({"numeral": leader.numeral, "figure": figure.label,
                             "points": [to_sheet(p) for p in leader.points]})

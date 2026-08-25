@@ -125,22 +125,28 @@ class Prim:
     # ------------------------------------------------------------------------------------ svg
 
     def svg(self, scale: float = 1.0, dx: float = 0.0, dy: float = 0.0,
-            text_scale: Optional[float] = None) -> str:
+            text_scale: Optional[float] = None, stroke_scale: Optional[float] = None) -> str:
         """SVG for this primitive.
 
-        ``text_scale`` exists because a character does not shrink with the drawing. 37 CFR
+        ``text_scale`` exists because a character does not shrink with the drawing: 37 CFR
         1.84(p)(3) sets a floor on the height of a character on the sheet, and a draughtsman
-        letters a reduced view at the same size as a full one. Positions scale; glyphs do not.
+        letters a reduced view at the same size as a full one.
+
+        ``stroke_scale`` exists for the same reason one step removed. The pen is a property of
+        the sheet, not of the view: scaling it makes a reduced figure's lines thinner than a
+        full-size figure's beside it, which is exactly what 1.84(l) means by lines that are not
+        uniformly thick. Positions scale; glyphs and pen widths do not.
         """
         text_scale = scale if text_scale is None else text_scale
+        stroke_scale = scale if stroke_scale is None else stroke_scale
 
         def sx(p: Point) -> str:
             return f"{p[0] * scale + dx:.3f},{p[1] * scale + dy:.3f}"
 
-        stroke = self.width * scale
+        stroke = self.width * stroke_scale
         style = f'stroke="#000" stroke-width="{stroke:.3f}" fill="none"'
         if self.dash:
-            pattern = " ".join(f"{v * scale:.2f}" for v in self.dash)
+            pattern = " ".join(f"{v * stroke_scale:.2f}" for v in self.dash)
             style += f' stroke-dasharray="{pattern}"'
         style += ' stroke-linecap="round" stroke-linejoin="round"'
         attrs = f' data-role="{self.role}"' + (f' data-owner="{self.owner}"' if self.owner else "")

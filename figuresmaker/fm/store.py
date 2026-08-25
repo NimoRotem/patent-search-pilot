@@ -18,7 +18,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Optional
 
 DATA_DIR = Path(os.environ.get("FM_DATA_DIR", os.path.expanduser("~/figuresmaker-data")))
 JOBS_DIR = DATA_DIR / "jobs"
