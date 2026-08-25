@@ -2607,8 +2607,16 @@ def api_chrome():
     Rendered against THIS request's session, so the nav a reader sees on the lookup page is the
     nav their account actually has: a customer gets no Coverage and no Drafting link.
     """
+    #  WHICH NAV ITEM IS LIT. The partial decides that from `endpoint`, and the endpoint of THIS
+    #  request is api_chrome, so without being told the masthead renders on the lookup page with
+    #  nothing marked as current: it reads as a header borrowed from somewhere else, which is the
+    #  complaint it exists to answer. Only a known endpoint name is honoured, because it is a
+    #  query parameter and it ends up in a class attribute.
+    known = {"index", "history", "patent_lookup", "library", "corpus_page", "about"}
+    active = (request.args.get("active") or "").strip()
     resp = jsonify({
-        "html": render_template("_chrome.html"),
+        "html": render_template("_chrome.html",
+                                endpoint=active if active in known else ""),
         "css": url_for("static", filename="style.css", v=ASSET_VERSION),
         "signed_in": bool(auth.current_user()),
     })
