@@ -239,6 +239,44 @@ def test_intake_uses_profile_name_when_no_inventor_default_exists(draft_client, 
     assert '>Dana Drafter</textarea>' in body
 
 
+def test_intake_uses_profile_name_when_no_applicant_default_exists(draft_client, monkeypatch):
+    client, _service = draft_client
+    user = {**USER, "default_applicant": "", "organization": ""}
+    monkeypatch.setattr(accounts, "get_user", lambda uid: dict(user))
+    body = client.get("/drafts/start").get_data(as_text=True)
+    assert 'name="applicant"' in body
+    assert 'value="Dana Drafter"' in body
+
+
+def test_submission_uses_profile_party_defaults_when_form_fields_are_blank(
+        draft_client, monkeypatch):
+    client, _service = draft_client
+    user = {**USER, "default_applicant": "", "default_inventors": "", "organization": ""}
+    monkeypatch.setattr(accounts, "get_user", lambda uid: dict(user))
+
+    class Studio:
+        created = None
+
+        def create(self, principal, **values):
+            self.created = values
+            return {"id": 45}
+
+    studio = Studio()
+    monkeypatch.setattr(webapp, "_studio", lambda: studio)
+    response = client.post("/drafts/start", data={
+        "csrf_token": "csrf-draft",
+        "title": "Self-centering clamp",
+        "disclosure_text": "A clamp has synchronized jaws that move radially toward a pipe.",
+        "input_kind": "description",
+        "applicant": "",
+        "inventors": "",
+    })
+
+    assert response.status_code == 302
+    assert studio.created["applicant"] == "Dana Drafter"
+    assert studio.created["inventors"] == "Dana Drafter"
+
+
 def test_completed_search_can_start_drafting_without_repeating_intake(draft_client, monkeypatch):
     client, _service = draft_client
 
