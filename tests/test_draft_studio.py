@@ -1876,6 +1876,10 @@ def test_the_reviewer_is_told_which_checks_already_ran(monkeypatch):
         {"name": "Claims", "status": "pass", "detail": "fine", "items": []}])
     assert "22 undefined" in seen["prompt"] and "Claims" not in seen["prompt"]
     assert "rendered-*.png" in draft_qa.REVIEW_PROMPT
+    assert "review/figure-audit-evidence.json" in draft_qa.REVIEW_PROMPT
+    normalized = " ".join(draft_qa.REVIEW_SYSTEM.split())
+    assert "reconcile that disagreement" in normalized
+    assert "raw image coordinates" in normalized
 
 
 def test_independent_reviewer_requires_a_source_supported_automatic_fix():

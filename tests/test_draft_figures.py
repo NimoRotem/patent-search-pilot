@@ -1,5 +1,6 @@
 """Autonomous patent-drawing generation and pixel-level filing gates."""
 import io
+import hashlib
 import json
 import re
 
@@ -5320,6 +5321,84 @@ def test_checked_images_are_materialized_for_the_independent_reviewer(monkeypatc
     assert count == 1
     assert not (figures_dir / "rendered-old.png").exists()
     assert (figures_dir / "rendered-FIG-1.png").read_bytes() == b"checked"
+
+
+def test_checked_images_include_exact_audit_evidence_for_the_independent_reviewer(
+        monkeypatch, tmp_path):
+    digest = "b" * 64
+    geometry = accepted_cross_provider_geometry_audit(
+        specification_hash=digest,
+        summary="The sectional hatches and every solid boundary match the brief.",
+    )
+    endpoints = accepted_cross_provider_audit(
+        specification_hash=digest,
+        summary="The numeral 10 terminal dot lands inside the body.",
+        coordinate_space="raw_pixels",
+        coordinate_width=1400,
+        coordinate_height=900,
+        labels=[{
+            "numeral": "10", "correct": True,
+            "evidence": "Dot at raw (700, 400) is inside the body.",
+        }],
+    )
+    marked = accepted_marked_anchor_audit(
+        specification_hash=digest,
+        cross_provider_audit=endpoints,
+    )
+    active = {
+        "version_no": 2,
+        "numeral_audit": accepted_ocr_audit(
+            sheet_number="1/1", expected=("10",), detected=["10"],
+            detected_sheet_number="1/1", detected_figure_label="FIG. 1"),
+        "semantic_audit": accepted_semantic_audit(
+            specification_hash=digest,
+            cross_provider_geometry_audit=geometry),
+        "leader_audit": accepted_leader_audit(
+            specification_hash=digest,
+            marked_anchor_audit=marked),
+    }
+    monkeypatch.setattr(draft_figures, "listing", lambda *a: [{
+        "id": 8, "figure_label": "FIG. 1: sectional view", "active_version": 2,
+        "versions": [active],
+    }])
+    monkeypatch.setattr(draft_figures, "png_bytes", lambda *a, **k: ("image/png", b"checked"))
+
+    assert draft_figures.materialize_review_images(7, 91, tmp_path) == 1
+
+    evidence = json.loads((tmp_path / "review" / "figure-audit-evidence.json").read_text())
+    assert evidence["schema_version"] == 1
+    assert evidence["figures"] == [{
+        "figure_label": "FIG. 1", "rendered_file": "rendered-FIG-1.png",
+        "rendered_sha256": hashlib.sha256(b"checked").hexdigest(),
+        "specification_hash": digest,
+        "ocr": {
+            "ok": True, "expected_numerals": ["10"], "detected_numerals": ["10"],
+            "expected_sheet_number": "1/1", "detected_sheet_number": "1/1",
+            "detected_figure_label": "FIG. 1",
+        },
+        "geometry": {
+            "ok": True, "reviewer": draft_figures.cross_provider_model(),
+            "prompt_version": draft_figures.CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
+            "summary": "The sectional hatches and every solid boundary match the brief.",
+            "missing": [], "unexpected": [], "errors": [],
+        },
+        "leaders": {
+            "ok": True,
+            "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
+            "marked_prompt_version": draft_figures.MARKED_ANCHOR_PROMPT_VERSION,
+        },
+        "endpoints": {
+            "ok": True, "reviewer": draft_figures.cross_provider_model(),
+            "prompt_version": draft_figures.CROSS_PROVIDER_PROMPT_VERSION,
+            "summary": "The numeral 10 terminal dot lands inside the body.",
+            "coordinate_space": "raw_pixels", "coordinate_width": 1400,
+            "coordinate_height": 900,
+            "labels": [{
+                "numeral": "10", "correct": True,
+                "evidence": "Dot at raw (700, 400) is inside the body.",
+            }],
+        },
+    }]
 
 
 def test_old_leader_reviews_are_not_materialized_for_independent_review(monkeypatch, tmp_path):

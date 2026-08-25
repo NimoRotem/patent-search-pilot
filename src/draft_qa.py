@@ -1356,6 +1356,19 @@ WHAT TO CHECK, in this order of importance:
    when the brief expressly calls it schematic, the claims and description stay neutral about its
    form and placement, and the pixels add no technical function or relationship.
 
+   Read review/figure-audit-evidence.json before reporting a visual defect. It binds the exact
+   rendered image hash to prior OCR, independent geometry, deterministic pixel-map, leader, and
+   native-pixel endpoint checks. It is audit evidence only, never inventor support. If your visual
+   interpretation conflicts with passed evidence, re-open the image and reconcile that
+   disagreement explicitly. Follow a leader continuously from numeral text to its terminal dot,
+   rather than inferring its target from a crossing. Report the defect only if you can identify the
+   concrete pixel relationship and explain why the recorded evidence is wrong.
+
+   Describe hatch direction in raw image coordinates, whose origin is at the upper left and whose
+   y coordinate increases downward. A line falls to the right when y increases as x increases; it
+   rises to the right when y decreases as x increases. A diagonal line has no arrow, so apply this
+   coordinate rule before reporting a hatch-direction mismatch.
+
 3. THE LANGUAGE AND THE LOGIC HOLD TOGETHER.
    One name per thing, used consistently - not "gripper" here and "grasping unit" there for the
    same element. No statement that contradicts another. No step that depends on a structure the
@@ -1398,13 +1411,16 @@ REVIEW_PROMPT = """Review the draft in this workspace.
 
   draft/            the application, one file per section, plus numerals.md
   figures/          one Markdown brief and one rendered-*.png image per drawing
+  review/figure-audit-evidence.json
+                    exact-image OCR, geometry, leader and endpoint evidence
   prior_art/        the references the draft is allowed to cite, with their actual text
   input/            the inventor's disclosure and the conversation with the drafter
 
 Read input/disclosure.md and input/conversation.md first. Then read draft/ in full - every section,
 not a sample. Read numerals.md, every figure brief, and every rendered-*.png image in figures/.
-Compare the pixels with the brief, the patent text, and the inventor's source. Then read the
-prior_art/ files for every reference the draft cites.
+Read review/figure-audit-evidence.json and compare the exact pixels and prior audit evidence with
+the brief, the patent text, and the inventor's source. Then read the prior_art/ files for every
+reference the draft cites.
 
 The mechanical checks below have ALREADY been run in code. Do not repeat them; use them as
 context for where to look.

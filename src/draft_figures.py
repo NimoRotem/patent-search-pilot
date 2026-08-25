@@ -5757,25 +5757,99 @@ def materialize_review_images(project_id: int, user_id: int, workspace: Path) ->
     directory.mkdir(parents=True, exist_ok=True)
     for stale in directory.glob("rendered-*.png"):
         stale.unlink()
+    evidence_path = Path(workspace) / "review" / "figure-audit-evidence.json"
+    evidence_path.unlink(missing_ok=True)
     written = 0
+    evidence = []
     figures = listing(project_id, user_id)
     for index, figure in enumerate(figures, 1):
         active_version = int(figure.get("active_version") or 0)
         active = next((row for row in figure.get("versions") or ()
                        if int(row.get("version_no") or 0) == active_version), None) or {}
+        numeral = active.get("numeral_audit") or {}
+        semantic = active.get("semantic_audit") or {}
+        leader = active.get("leader_audit") or {}
         if not (current_ocr_audit(
-                    active.get("numeral_audit") or {},
+                    numeral,
                     expected_sheet_number=f"{index}/{len(figures)}") and
-                current_semantic_audit(active.get("semantic_audit") or {}) and
-                current_leader_audit(active.get("leader_audit") or {})):
+                current_semantic_audit(semantic) and
+                current_leader_audit(leader)):
             continue
         _mime, png = png_bytes(figure["id"], user_id, active_version)
         if not png:
             continue
         label = re.sub(r"[^A-Za-z0-9]+", "-", canonical_figure_label(
             figure.get("figure_label"))).strip("-") or str(figure["id"])
-        (directory / f"rendered-{label}.png").write_bytes(png)
+        rendered_file = f"rendered-{label}.png"
+        (directory / rendered_file).write_bytes(png)
+        geometry = semantic.get("cross_provider_geometry_audit") or {}
+        marked = leader.get("marked_anchor_audit") or {}
+        endpoints = marked.get("cross_provider_audit") or {}
+        detected_sheets = numeral.get("detected_sheet_numbers") or []
+        detected_sheet = (numeral.get("detected_sheet_number") or
+                          (detected_sheets[0] if detected_sheets else None))
+        endpoint_labels = []
+        for item in endpoints.get("labels") or ():
+            row = {
+                "numeral": item.get("numeral"),
+                "correct": item.get("correct"),
+                "evidence": item.get("evidence"),
+            }
+            for key in ("suggested_x", "suggested_y"):
+                if item.get(key) is not None:
+                    row[key] = item.get(key)
+            endpoint_labels.append(row)
+        evidence.append({
+            "figure_label": canonical_figure_label(figure.get("figure_label")),
+            "rendered_file": rendered_file,
+            "rendered_sha256": hashlib.sha256(png).hexdigest(),
+            "specification_hash": (semantic.get("specification_hash") or
+                                   leader.get("specification_hash")),
+            "ocr": {
+                "ok": numeral.get("ok") is True,
+                "expected_numerals": numeral.get("expected") or [],
+                "detected_numerals": numeral.get("detected") or [],
+                "expected_sheet_number": f"{index}/{len(figures)}",
+                "detected_sheet_number": detected_sheet,
+                "detected_figure_label": numeral.get("detected_figure_label"),
+            },
+            "geometry": {
+                "ok": geometry.get("ok") is True,
+                "reviewer": (geometry.get("provider") or geometry.get("model_name") or
+                             geometry.get("model")),
+                "prompt_version": geometry.get("prompt_version"),
+                "summary": geometry.get("summary"),
+                "missing": geometry.get("missing") or [],
+                "unexpected": geometry.get("unexpected") or [],
+                "errors": geometry.get("errors") or [],
+            },
+            "leaders": {
+                "ok": leader.get("ok") is True,
+                "prompt_version": leader.get("prompt_version"),
+                "marked_prompt_version": marked.get("prompt_version"),
+            },
+            "endpoints": {
+                "ok": endpoints.get("ok") is True,
+                "reviewer": (endpoints.get("provider") or endpoints.get("model_name") or
+                             endpoints.get("model")),
+                "prompt_version": endpoints.get("prompt_version"),
+                "summary": endpoints.get("summary"),
+                "coordinate_space": endpoints.get("coordinate_space"),
+                "coordinate_width": endpoints.get("coordinate_width"),
+                "coordinate_height": endpoints.get("coordinate_height"),
+                "labels": endpoint_labels,
+            },
+        })
         written += 1
+    if evidence:
+        evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        evidence_path.write_text(json.dumps({
+            "schema_version": 1,
+            "purpose": (
+                "Exact-image OCR, geometry, leader, and native-pixel endpoint evidence for "
+                "independent review. This is audit evidence, not inventor source material."),
+            "figures": evidence,
+        }, indent=2, ensure_ascii=False), encoding="utf-8")
     return written
 
 
