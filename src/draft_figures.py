@@ -2439,8 +2439,13 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     draw.rectangle((160, 620, 1240, 760), outline="black", width=4)
     draw.rounded_rectangle(
         (740, 90, 990, 220), radius=24, fill="white", outline="black", width=4)
-    for top in range(145, 521, 36):
-        draw.line((865, top, 865, min(top + 20, 520)), fill="black", width=4)
+    split_at_base = bool(re.search(
+        r"\bbroken line stop(?:s|ping)\b[^.]{0,100}\bupper face of the base(?:\s+\d+)?\b"
+        r"[^.]{0,100}\bresum(?:es|ing)\b[^.]{0,80}\blower face\b", text))
+    line_ranges = ((145, 211), (369, 521)) if split_at_base else ((145, 521),)
+    for start, stop in line_ranges:
+        for top in range(start, stop, 36):
+            draw.line((865, top, 865, min(top + 20, stop - 1)), fill="black", width=4)
 
     out = io.BytesIO()
     image.save(out, format="PNG", compress_level=9)

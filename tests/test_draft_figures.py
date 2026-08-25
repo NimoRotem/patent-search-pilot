@@ -3344,6 +3344,35 @@ def test_deterministic_chamber_section_accepts_explicit_filing_inventory(monkeyp
     assert observed == [-45, 45, 45, -20]
 
 
+def test_deterministic_chamber_section_splits_schematic_line_around_solid_base():
+    inventory = """
+    The sheet shows four bodies, all shown schematically, and one broken line: one horizontal
+    hatched slab, the base 12; one closed loop cut twice, appearing as two short hatched legs
+    hanging from the underside of the slab, one at each end; one hatched band across the bottom
+    on which both legs stand; and one closed housing standing on the upper face of the slab.
+    """
+    continuous = inventory + """
+    One broken line runs from inside the housing to the chamber 22. That broken line is all that
+    is drawn for the fluid communication.
+    """
+    split = inventory + """
+    One broken line runs from inside the housing to the chamber 22, the broken line stopping at
+    the upper face of the base 12 and resuming below its lower face, so that no form of passage
+    through the base 12 is drawn and none is asserted.
+    """
+
+    continuous_image = Image.open(io.BytesIO(
+        draft_figures._deterministic_chamber_section_png(continuous))).convert("L")
+    split_image = Image.open(io.BytesIO(
+        draft_figures._deterministic_chamber_section_png(split))).convert("L")
+    continuous_ink = sum(continuous_image.getpixel((865, y)) < 32 for y in range(225, 356))
+    split_ink = sum(split_image.getpixel((865, y)) < 32 for y in range(225, 356))
+
+    assert split_ink + 40 < continuous_ink
+    assert any(split_image.getpixel((865, y)) < 32 for y in range(145, 211))
+    assert any(split_image.getpixel((865, y)) < 32 for y in range(365, 521))
+
+
 def test_deterministic_fragmentary_section_preserves_open_clearance_and_four_bodies():
     specification = """
     The sheet shows four hatched bodies and nothing else: one upright column and three
