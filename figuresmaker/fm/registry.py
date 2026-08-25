@@ -300,7 +300,7 @@ def canonicalise(candidates: dict[str, Candidate], sections: Sections,
         return ExtractionResult()
 
 
-def _budget(sections: Sections, limit: int = 90000) -> str:
+def _budget(sections: Sections, limit: int = 45000) -> str:
     """The parts of the draft that carry numerals, trimmed to fit a prompt."""
     parts = [sections.brief, sections.detailed, sections.claims_text]
     text = "\n\n".join(p for p in parts if p)

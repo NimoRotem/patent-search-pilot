@@ -108,11 +108,11 @@ def build_plan(sections: Sections, registry: Registry, claims: list[Claim],
                     f"these problems:\n{feedback}")
     if reasoner is None:
         reasoner = llm.deep()
-    plan = reasoner.structured("figure_plan", Plan, PLAN_SYSTEM, context, max_tokens=24000)
+    plan = reasoner.structured("figure_plan", Plan, PLAN_SYSTEM, context, max_tokens=16000)
     return tidy_plan(plan, sections, registry)
 
 
-def _description_budget(sections: Sections, limit: int = 70000) -> str:
+def _description_budget(sections: Sections, limit: int = 40000) -> str:
     text = sections.detailed or sections.raw
     if len(text) <= limit:
         return text
@@ -368,10 +368,11 @@ def build_scene(figure: FigurePlan, sections: Sections, registry: Registry,
                     f"problems:\n{feedback}")
     if reasoner is None:
         reasoner = llm.deep()
-    return reasoner.structured(f"scene_{figure.kind}", schema, system, context, max_tokens=24000)
+    return reasoner.structured(f"scene_{figure.kind}", schema, system, context,
+                               max_tokens=12000)
 
 
-def _evidence(figure: FigurePlan, registry: Registry, limit: int = 26000) -> str:
+def _evidence(figure: FigurePlan, registry: Registry, limit: int = 9000) -> str:
     by_numeral = registry.by_numeral()
     chunks: list[str] = []
     used = 0

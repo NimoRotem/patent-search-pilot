@@ -349,53 +349,71 @@ def check_raster(sheet_number: int, svg: str, paper_mm: tuple[float, float],
             message=(f"the pixel checks did not run on sheet {sheet_number}: {reason}. Colour, "
                      "line density and stray ink in the margin were NOT verified."))]
 
+    try:
+        from PIL import ImageChops
+    except Exception:                            # pragma: no cover
+        return [_finding("raster_check_skipped", severity="warning", stage="layout",
+                         message=f"Pillow is incomplete, so sheet {sheet_number} was not checked "
+                                 "for colour or stray ink.")]
+
     out: list[Finding] = []
-    width, height = image.size
-    pixels = image.load()
+    width, _height = image.size
     px_per_mm = width / max(paper_mm[0], 1e-6)
 
-    coloured = 0
-    ink = 0
-    first_colour: Optional[tuple[int, int]] = None
-    margin_ink = 0
-    first_margin: Optional[tuple[float, float]] = None
-
-    # A whole-sheet scan at 300 dpi is nine million pixels; stepping by two costs nothing in
-    # sensitivity for a check about colour and stray ink, and turns seconds into fractions.
-    step = 2
-    for y in range(0, height, step):
-        for x in range(0, width, step):
-            r, g, b = pixels[x, y]
-            if r > 246 and g > 246 and b > 246:
-                continue
-            ink += 1
-            if abs(r - g) > 12 or abs(g - b) > 12 or abs(r - b) > 12:
-                coloured += 1
-                if first_colour is None:
-                    first_colour = (x, y)
-            mx, my = x / px_per_mm, y / px_per_mm
-            if _outside_by((mx, my), sight) > 0.3:
-                margin_ink += 1
-                if first_margin is None:
-                    first_margin = (round(mx, 1), round(my, 1))
-
+    # Every one of these is a whole-image operation in C. Walking nine million pixels in Python
+    # took nine seconds a sheet, and on a thirteen-sheet set the compliance check cost more than
+    # the drawing did.
+    red, green, blue = image.split()
+    spread = ImageChops.lighter(
+        ImageChops.lighter(ImageChops.difference(red, green),
+                           ImageChops.difference(green, blue)),
+        ImageChops.difference(red, blue))
+    colour_mask = spread.point(lambda v: 255 if v > 12 else 0, mode="L")
+    coloured = _count(colour_mask)
     if coloured:
+        spot = colour_mask.getbbox()
         out.append(_finding(
             "not_black_and_white",
-            f"sheet {sheet_number} has {coloured * step * step} coloured pixels; the drawing must "
-            "be black on white.",
-            detail={"first_at_px": list(first_colour or ())}))
+            f"sheet {sheet_number} has {coloured} coloured pixels; the drawing must be black on "
+            "white.",
+            detail={"first_at_mm": [round(spot[0] / px_per_mm, 1),
+                                    round(spot[1] / px_per_mm, 1)] if spot else []}))
+
+    ink_mask = image.convert("L").point(lambda v: 255 if v < 247 else 0, mode="L")
+    margin_ink, first_margin = _margin_ink(ink_mask, sight, px_per_mm)
     if margin_ink:
         out.append(_finding(
             "outside_margins",
             f"sheet {sheet_number} has ink in the margin, first seen at "
             f"{first_margin[0]} mm, {first_margin[1]} mm from the top left corner."
             if first_margin else f"sheet {sheet_number} has ink in the margin.",
-            detail={"pixels": margin_ink * step * step}))
+            detail={"pixels": margin_ink}))
 
     out += _check_grey(image, sheet_number)
-    out += _check_hairlines(image, sheet_number, px_per_mm)
+    out += _check_hairlines(ink_mask, sheet_number, px_per_mm)
     return out
+
+
+def _margin_ink(ink_mask, sight: BBox, px_per_mm: float) -> tuple[int, Optional[tuple]]:
+    """Ink outside the sight, by blanking the sight and counting what is left.
+
+    The 0.3 mm the sight is grown by is the antialiased skirt of a line drawn along the boundary:
+    the rule is about where the drawing is, not about where a rasteriser put the soft edge of its
+    last pixel.
+    """
+    outside = ink_mask.copy()
+    pad = 0.3 * px_per_mm
+    box = (max(0, int(sight[0] * px_per_mm - pad)), max(0, int(sight[1] * px_per_mm - pad)),
+           min(outside.size[0], int(sight[2] * px_per_mm + pad) + 1),
+           min(outside.size[1], int(sight[3] * px_per_mm + pad) + 1))
+    if box[2] > box[0] and box[3] > box[1]:
+        outside.paste(0, box)
+    count = _count(outside)
+    if not count:
+        return (0, None)
+    spot = outside.getbbox()
+    return (count, (round(spot[0] / px_per_mm, 1), round(spot[1] / px_per_mm, 1))
+            if spot else None)
 
 
 def _check_grey(image, sheet_number: int) -> list[Finding]:
@@ -410,7 +428,11 @@ def _check_grey(image, sheet_number: int) -> list[Finding]:
         from PIL import ImageChops, ImageFilter
     except Exception:                            # pragma: no cover
         return []
+    # Tone is a large-area phenomenon, so it is looked for on a quarter-size copy. That is four
+    # times less work and does not change the answer: a wash of grey survives downsampling and
+    # the one-pixel skirt of a line does not.
     grey = image.convert("L")
+    grey = grey.resize((max(1, grey.size[0] // 2), max(1, grey.size[1] // 2)))
     solid = grey.point(lambda v: 255 if v < 70 else 0, mode="L")
     midtone = grey.point(lambda v: 255 if 70 <= v < 215 else 0, mode="L")
     # Spreading the solid mask by two pixels covers the antialiased skirt of any real line.
@@ -430,30 +452,28 @@ def _check_grey(image, sheet_number: int) -> list[Finding]:
         detail={"orphan_grey_fraction": round(fraction, 3)})]
 
 
-def _check_hairlines(image, sheet_number: int, px_per_mm: float) -> list[Finding]:
+def _check_hairlines(ink_mask, sheet_number: int, px_per_mm: float) -> list[Finding]:
     """Ink that survives no erosion at all is a hairline, however thick the vector said it was."""
     try:
         from PIL import ImageFilter
     except Exception:                            # pragma: no cover
         return []
-    binary = image.convert("L").point(lambda v: 0 if v < 200 else 255, mode="L")
-    before = _ink_count(binary)
+    before = _count(ink_mask)
     if not before:
         return [_finding("no_figures", f"sheet {sheet_number} rasterised to a blank page.",
                          stage="renderer")]
-    # MaxFilter on a white-on-black-ink image erodes the ink by one pixel each way.
-    eroded = binary.filter(ImageFilter.MaxFilter(3))
-    after = _ink_count(eroded)
+    # MinFilter on a mask where ink is white erodes the ink by one pixel each way.
+    after = _count(ink_mask.filter(ImageFilter.MinFilter(3)))
     minimum = rules.MIN_STROKE_MM * px_per_mm
-    if before and after / before < 0.25 and minimum > 1.2:
+    if after / before < 0.25 and minimum > 1.2:
         return [_finding(
             "line_too_thin", severity="warning",
             message=(f"on sheet {sheet_number}, {100 - after * 100 // before}% of the ink is one "
-                     "pixel wide at 300 dpi and would not survive the Office's reduction."),
+                     f"pixel wide at {DPI:.0f} dpi and would not survive the Office's reduction."),
             detail={"kept_fraction": round(after / before, 3)})]
     return []
 
 
-def _ink_count(image) -> int:
-    histogram = image.histogram()
-    return sum(histogram[:128])
+def _count(mask) -> int:
+    """How many pixels of an 8-bit mask are set."""
+    return sum(mask.histogram()[128:])

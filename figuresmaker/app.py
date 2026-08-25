@@ -10,6 +10,7 @@ is on disk, written atomically, so a browser never reads half a job.
 from __future__ import annotations
 
 import os
+import re
 import threading
 import traceback
 from typing import Any, Optional
@@ -332,6 +333,26 @@ def revalidate(job_id: str):
 
 
 # ------------------------------------------------------------------------------------ files
+
+
+@app.get("/api/job/<job_id>/fig/<slug>.svg")
+def figure_svg(job_id: str, slug: str):
+    """One figure on its own, served as soon as it exists.
+
+    The page asks for these while the job is still running, which is the whole point: a figure
+    set is a handful of calls that finish out of order and there is no reason to hold the first
+    one back until the last one lands.
+    """
+    job = store.load(job_id)
+    if job is None:
+        return jsonify({"error": "no such job"}), 404
+    if not re.fullmatch(r"[a-z0-9]{1,24}", slug):
+        return jsonify({"error": "bad figure name"}), 400
+    body = store.read_text(job.path / f"figure-{slug}.svg")
+    if not body:
+        return jsonify({"error": "that figure is not drawn yet"}), 404
+    return Response(body, mimetype="image/svg+xml",
+                    headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/job/<job_id>/sheet/<int:number>.svg")

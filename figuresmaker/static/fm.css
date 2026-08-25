@@ -204,3 +204,35 @@ pre.log { font: 12px/1.45 var(--mono); background: #fbfbfa; border: 1px solid va
 .notice.bad { background: var(--bad-soft); color: var(--bad); }
 .notice.ok { background: var(--good-soft); color: var(--good); }
 .hidden { display: none !important; }
+
+/* ------------------------------------------------------- the figure set arriving, live */
+
+.livegrid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  gap: .7rem; margin-top: 1.1rem;
+}
+.livecard {
+  border: 1px solid var(--line); border-radius: 6px; background: var(--paper);
+  overflow: hidden; display: flex; flex-direction: column; min-height: 8.5rem;
+}
+.livecard .thumb {
+  flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
+  background: #fff; min-height: 6rem; padding: .3rem;
+}
+.livecard .thumb img { max-width: 100%; max-height: 8rem; display: block; }
+.livecard .thumb .waiting {
+  font-size: .74rem; color: var(--ink-3); text-align: center; line-height: 1.4;
+}
+.livecard .bar { height: 2px; background: var(--line-2); overflow: hidden; }
+.livecard .bar i { display: block; height: 100%; width: 40%; background: var(--accent);
+                   animation: slide 1.25s ease-in-out infinite; }
+@keyframes slide { 0% { margin-left: -40% } 100% { margin-left: 100% } }
+.livecard .foot {
+  border-top: 1px solid var(--line-2); padding: .3rem .5rem; font-size: .76rem;
+  display: flex; gap: .4rem; align-items: baseline;
+}
+.livecard .foot b { font-weight: 620; font-size: .8rem; }
+.livecard .foot .k { color: var(--ink-3); margin-left: auto; font-variant-numeric: tabular-nums; }
+.livecard[data-state=done] { border-color: #cfe3d6; }
+.livecard[data-state=failed] { border-color: #efcccc; }
+.livecard[data-state=failed] .thumb .waiting { color: var(--bad); }

@@ -6,12 +6,16 @@ the placement solver for a crossed lead line instead of regenerating everything 
 """
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Iterable, Optional, Sequence
 
 from ..drawing import Figure
 from ..render import sheet as sheetmod
 from ..schemas import Claim, Finding, Plan, Registry, Sections, ValidationReport
 from . import data, raster, rules
+
+SHEET_WORKERS = int(os.environ.get("FM_SHEET_WORKERS", "4"))
 
 CHECKS = (
     "numerals in the drawings against the registry",
@@ -43,12 +47,23 @@ def validate(figures: Sequence[Figure], plan: Plan, registry: Registry, claims: 
     allowed = {entry.numeral for entry in registry.entries}
     paper_mm = sheetmod.PAPERS.get(paper, sheetmod.PAPERS["a4"])
 
-    for sheet in sheets:
+    def one_sheet(sheet) -> list[Finding]:
         geometry = sheetmod.sheet_geometry(sheet, figures)
-        findings += raster.check_geometry(sheet.number, geometry, allowed)
+        out = raster.check_geometry(sheet.number, geometry, allowed)
         if raster_checks:
             svg = sheetmod.sheet_svg(sheet, figures)
-            findings += raster.check_raster(sheet.number, svg, paper_mm, geometry["sight"])
+            out += raster.check_raster(sheet.number, svg, paper_mm, geometry["sight"])
+        return out
+
+    # Sheets are independent, and rasterising one is mostly time spent inside cairo and Pillow
+    # with the interpreter lock released. A thirteen-sheet set is worth spreading out.
+    if len(sheets) > 1 and raster_checks:
+        with ThreadPoolExecutor(max_workers=min(SHEET_WORKERS, len(sheets))) as pool:
+            for batch in pool.map(one_sheet, sheets):
+                findings += batch
+    else:
+        for sheet in sheets:
+            findings += one_sheet(sheet)
 
     findings = _dedupe(findings)
     report = ValidationReport(findings=findings, checked=list(CHECKS))

@@ -47,6 +47,29 @@ STEP_NAMES = ("ingest", "sections", "registry", "claims", "plan", "figures", "la
 
 
 @dataclass
+class FigureState:
+    """One figure's own progress, so the page can show the set filling in rather than a bar.
+
+    A figure set is a handful of independent model calls that finish out of order, and a single
+    "figures: running" line hides all of that. This is what the browser polls for.
+    """
+    label: str
+    kind: str = ""
+    title: str = ""
+    state: str = "pending"      # pending | generating | drawing | done | failed
+    detail: str = ""
+    started: float = 0.0
+    finished: float = 0.0
+    ready: bool = False         # its SVG is on disk and can be shown
+
+    def as_dict(self) -> dict[str, Any]:
+        out = asdict(self)
+        out["seconds"] = round((self.finished or time.time()) - self.started, 1) \
+            if self.started else 0.0
+        return out
+
+
+@dataclass
 class Job:
     id: str
     created: float
@@ -57,6 +80,7 @@ class Job:
     source: str = ""
     pid: int = 0
     steps: list[Step] = field(default_factory=lambda: [Step(name) for name in STEP_NAMES])
+    figures: list[FigureState] = field(default_factory=list)
     summary: dict[str, Any] = field(default_factory=dict)
     options: dict[str, Any] = field(default_factory=dict)
 
@@ -72,12 +96,21 @@ class Job:
         self.steps.append(step)
         return step
 
+    def figure(self, label: str) -> FigureState:
+        for item in self.figures:
+            if item.label == label:
+                return item
+        item = FigureState(label=label)
+        self.figures.append(item)
+        return item
+
     def as_dict(self) -> dict[str, Any]:
         return {"id": self.id, "created": self.created, "status": self.status,
                 "error": self.error, "owner": self.owner, "title": self.title,
                 "source": self.source, "pid": self.pid,
-                "steps": [s.as_dict() for s in self.steps], "summary": self.summary,
-                "options": self.options}
+                "steps": [s.as_dict() for s in self.steps],
+                "figures": [f.as_dict() for f in self.figures],
+                "summary": self.summary, "options": self.options}
 
 
 def _ensure() -> None:
@@ -111,6 +144,11 @@ def load(job_id: str) -> Optional[Job]:
     job.steps = [Step(name=s.get("name", ""), state=s.get("state", "pending"),
                       detail=s.get("detail", ""), started=s.get("started", 0.0),
                       finished=s.get("finished", 0.0)) for s in raw.get("steps") or []]
+    job.figures = [FigureState(
+        label=f.get("label", ""), kind=f.get("kind", ""), title=f.get("title", ""),
+        state=f.get("state", "pending"), detail=f.get("detail", ""),
+        started=f.get("started", 0.0), finished=f.get("finished", 0.0),
+        ready=bool(f.get("ready"))) for f in raw.get("figures") or []]
     if job.status == "running" and job.pid and not _alive(job.pid):
         # The process that was running this is gone. Say so rather than poll for ever.
         job.status = "failed"

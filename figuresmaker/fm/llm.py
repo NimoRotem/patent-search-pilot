@@ -30,6 +30,11 @@ LOCATION = os.environ.get("VERTEX_LOCATION", "us-central1")
 FAST_MODEL = os.environ.get("FM_FAST_MODEL", "gemini-2.5-flash")
 DEEP_MODEL = os.environ.get("FM_DEEP_MODEL", "gemini-2.5-pro")
 MAX_ATTEMPTS = int(os.environ.get("FM_MAX_ATTEMPTS", "3"))
+SCENE_MODEL = os.environ.get("FM_SCENE_MODEL", DEEP_MODEL)
+# Thinking budgets in tokens. 0 means unbounded, which is what these were and why a figure set
+# took ten minutes.
+PLAN_THINKING = int(os.environ.get("FM_PLAN_THINKING", "6144"))
+SCENE_THINKING = int(os.environ.get("FM_SCENE_THINKING", "3072"))
 
 _local = threading.local()
 
@@ -152,11 +157,18 @@ def _client():
     return _local.client
 
 
-def _thinking(model: str, allow: bool):
+def _thinking(model: str, allow: bool, budget: int = 0):
+    """The thinking configuration for one call.
+
+    Left unbounded, a thinking model will spend as long as it likes, and on a scene call that was
+    ninety seconds where twenty would have done. A budget is not a quality setting so much as a
+    latency one: the work these prompts ask for is filling in a schema from a passage of text,
+    and it converges long before the model stops looking for a better answer.
+    """
     from google.genai.types import ThinkingConfig
 
     if allow:
-        return None
+        return ThinkingConfig(thinking_budget=budget) if budget > 0 else None
     with _MUST_THINK_LOCK:
         if model in _MUST_THINK:
             return None
@@ -328,11 +340,12 @@ class Reasoner:
     """One model role."""
 
     def __init__(self, model: str, log: Optional[CallLog] = None, *, think: bool = False,
-                 temperature: float = 0.0):
+                 temperature: float = 0.0, thinking_budget: int = 0):
         self.model = model
         self.log = log
         self.think = think
         self.temperature = temperature
+        self.thinking_budget = thinking_budget
 
     def structured(self, task: str, schema: type[T], system: str, context: str, *,
                    max_tokens: int = 16000) -> T:
@@ -349,7 +362,7 @@ class Reasoner:
             config = GenerateContentConfig(
                 system_instruction=instruction, temperature=self.temperature,
                 max_output_tokens=max_tokens, response_mime_type="application/json",
-                thinking_config=_thinking(self.model, self.think))
+                thinking_config=_thinking(self.model, self.think, self.thinking_budget))
             if response_schema is not None:
                 config.response_schema = response_schema
             try:
@@ -409,9 +422,20 @@ def fast(log: Optional[CallLog] = None) -> Reasoner:
     return Reasoner(FAST_MODEL, log, think=False)
 
 
-def deep(log: Optional[CallLog] = None) -> Reasoner:
-    """The role that decides what a figure contains. Left free to think on purpose."""
-    return Reasoner(DEEP_MODEL, log, think=True)
+def deep(log: Optional[CallLog] = None, *, budget: int = PLAN_THINKING) -> Reasoner:
+    """The role that decides what a figure contains. It thinks, but not without limit."""
+    return Reasoner(DEEP_MODEL, log, think=True, thinking_budget=budget)
+
+
+def scene(log: Optional[CallLog] = None) -> Reasoner:
+    """The role that fills in one figure's scene. The same model, on a shorter leash.
+
+    A scene call is a schema-filling task over a passage that is already selected for it, and it
+    converges early. Unbounded, the same call took ninety seconds where twenty was enough, and
+    with one call per figure that is the whole difference between a job you wait for and a job
+    you come back to.
+    """
+    return Reasoner(SCENE_MODEL, log, think=True, thinking_budget=SCENE_THINKING)
 
 
 def available() -> tuple[bool, str]:

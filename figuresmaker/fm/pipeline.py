@@ -14,8 +14,10 @@ fix, and the report says what.
 from __future__ import annotations
 
 import os
+import threading
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Sequence
 
@@ -31,12 +33,20 @@ from .schemas import (Claim, Finding, FigurePlan, Plan, Registry, Sections, Vali
 MAX_PLAN_ATTEMPTS = int(os.environ.get("FM_PLAN_ATTEMPTS", "2"))
 MAX_SCENE_ATTEMPTS = int(os.environ.get("FM_SCENE_ATTEMPTS", "2"))
 MAX_PLACEMENT_ATTEMPTS = int(os.environ.get("FM_PLACEMENT_ATTEMPTS", "2"))
+# How many scene calls are in flight at once. Each is an independent model call; the ceiling is
+# the provider's patience and this host's memory, not anything about the drawings.
+SCENE_WORKERS = int(os.environ.get("FM_SCENE_WORKERS", "8"))
 
 
-Progress = Callable[[str, str, str], None]      # step, state, detail
+Progress = Callable[[str, str, str], None]           # step, state, detail
+FigureProgress = Callable[[str, str, str], None]     # figure label, state, detail
 
 
 def _noop(step: str, state: str, detail: str = "") -> None:
+    return None
+
+
+def _noop_figure(label: str, state: str, detail: str = "") -> None:
     return None
 
 
@@ -96,59 +106,125 @@ def scene_key(figure_plan: FigurePlan) -> tuple:
             tuple(sorted((r.kind, r.source, r.target) for r in figure_plan.relations)))
 
 
-def render_figure(figure_plan: FigurePlan, sections: Sections, registry: Registry,
-                  appearance: appearance_mod.Appearance, log: Optional[llm.CallLog] = None,
-                  *, scene: Any = None, cache: Optional[dict] = None,
-                  progress: Progress = _noop) -> tuple[Figure, list[Finding], int]:
-    """One figure, with its own bounded retry on the scene call."""
-    feedback = ""
-    last_error = ""
-    reasoner = llm.deep(log)
-    key = scene_key(figure_plan)
-    if scene is None and cache is not None:
-        scene = cache.get(key)
-    for attempt in range(MAX_SCENE_ATTEMPTS):
+def generate_scene(figure_plan: FigurePlan, sections: Sections, registry: Registry,
+                   log: Optional[llm.CallLog] = None, *, feedback: str = "") -> Any:
+    """One model call: the scene for one figure. The slow part, and the only slow part."""
+    built = plan_mod.build_scene(figure_plan, sections, registry, llm.scene(log), feedback)
+    return plan_mod.clamp_scene(figure_plan.kind, built)
+
+
+def generate_scenes(plans: Sequence[FigurePlan], sections: Sections, registry: Registry,
+                    log: Optional[llm.CallLog] = None, *, cache: Optional[dict] = None,
+                    feedback: Optional[dict[str, str]] = None,
+                    on_figure: FigureProgress = _noop_figure) -> dict[str, Any]:
+    """Every figure's scene, at once.
+
+    This is where the ten minutes went. Each scene is an independent model call over a passage
+    that has already been selected for it, and they were being made one after another because the
+    appearance store made figure N depend on figure N-1. It does not have to: consistency between
+    views is imposed afterwards, deterministically, by letting the first figure in label order
+    decide what a part looks like and constraining the rest to it. So the calls go out together
+    and the wall clock becomes the slowest single call rather than the sum of all of them.
+    """
+    feedback = feedback or {}
+    out: dict[str, Any] = {}
+    todo: list[FigurePlan] = []
+    for figure_plan in plans:
+        cached = cache.get(scene_key(figure_plan)) if cache is not None else None
+        if cached is not None and not feedback.get(figure_plan.label):
+            out[figure_plan.label] = cached
+            on_figure(figure_plan.label, "done", "reused")
+        else:
+            todo.append(figure_plan)
+            on_figure(figure_plan.label, "pending", "")
+
+    if not todo:
+        return out
+
+    workers = max(1, min(SCENE_WORKERS, len(todo)))
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="fm-scene") as pool:
+        futures = {
+            pool.submit(generate_scene, figure_plan, sections, registry, log,
+                        feedback=feedback.get(figure_plan.label, "")): figure_plan
+            for figure_plan in todo}
+        for figure_plan in todo:
+            on_figure(figure_plan.label, "generating", figure_plan.kind.replace("_", " "))
+        for future in as_completed(futures):
+            figure_plan = futures[future]
+            try:
+                out[figure_plan.label] = future.result()
+                on_figure(figure_plan.label, "drawing", "")
+            except Exception as exc:
+                out[figure_plan.label] = exc
+                on_figure(figure_plan.label, "failed", f"{type(exc).__name__}: {exc}"[:160])
+    return out
+
+
+def assemble(plan: Plan, scenes: dict[str, Any],
+             on_drawn: Callable[[Figure], None] = lambda _figure: None
+             ) -> tuple[list[Figure], list[Finding], dict[str, str],
+                        appearance_mod.Appearance]:
+    """Draw every figure from its scene, in label order, and say which need another go.
+
+    Order matters and cost does not: drawing is a tenth of a second and it is what makes a part
+    look like itself in every view, because the first figure to use a numeral decides its shape
+    and the rest are constrained to that. Rebuilding the whole set from scratch after a retry is
+    therefore cheap and keeps the result identical whichever figures were regenerated.
+    """
+    appearance = appearance_mod.Appearance()
+    figures: list[Figure] = []
+    findings: list[Finding] = []
+    retry: dict[str, str] = {}
+
+    for figure_plan in plan.figures:
+        scene = scenes.get(figure_plan.label)
+        if scene is None or isinstance(scene, Exception):
+            reason = str(scene) if scene is not None else "no scene was produced"
+            findings.append(Finding(
+                code="figure_not_drawn", severity="error", stage="renderer",
+                figure=figure_plan.label, basis="practice",
+                message=f"{figure_plan.label} has no drawable scene: {reason}"))
+            retry[figure_plan.label] = (
+                f"The previous attempt could not be used: {reason}. Return a scene that fixes "
+                "exactly this.")
+            continue
         try:
-            if scene is None or attempt > 0:
-                built = plan_mod.build_scene(figure_plan, sections, registry, reasoner,
-                                             feedback + appearance.mech_hint(
-                                                 [e.numeral for e in figure_plan.elements]))
-            else:
-                built = scene
-            built = plan_mod.clamp_scene(figure_plan.kind, built)
-            _constrain(figure_plan.kind, built, appearance)
-            drawn, findings = render(figure_plan, built, appearance)
+            _constrain(figure_plan.kind, scene, appearance)
+            drawn, figure_findings = render(figure_plan, scene, appearance)
         except RenderError as exc:
-            last_error = str(exc)
-            feedback = (f"The previous scene could not be drawn: {exc}. Return a scene that "
-                        "fixes exactly this.")
-            progress("figures", "running", f"{figure_plan.label}: retrying, {exc}")
+            findings.append(Finding(
+                code="figure_not_drawn", severity="error", stage=exc.stage,
+                figure=figure_plan.label, message=str(exc), basis="practice"))
+            retry[figure_plan.label] = (
+                f"The previous scene could not be drawn: {exc}. Return a scene that fixes "
+                "exactly this.")
             continue
         except Exception as exc:
-            last_error = f"{type(exc).__name__}: {exc}"
-            feedback = (f"The previous scene was rejected: {last_error}. Return a corrected "
-                        "scene.")
-            progress("figures", "running", f"{figure_plan.label}: retrying, {last_error}")
+            findings.append(Finding(
+                code="figure_not_drawn", severity="error", stage="renderer",
+                figure=figure_plan.label, basis="practice",
+                message=f"{figure_plan.label}: {type(exc).__name__}: {exc}"))
+            retry[figure_plan.label] = (
+                f"The previous scene was rejected: {type(exc).__name__}: {exc}. Return a "
+                "corrected scene.")
             continue
+
+        _learn(figure_plan.kind, scene, appearance)
+        figures.append(drawn)
+        findings.extend(figure_findings)
+        on_drawn(drawn)
+
         # A scene can be drawable and still wrong: a part the size of a speck, or an assembled
-        # view whose parts do not meet. Those are the renderer's own findings, and they are worth
-        # one more attempt with the defect quoted, because they are exactly the kind of mistake a
-        # model corrects when told what it was.
-        fixable = [f for f in findings if f.severity == "error" and f.stage == "renderer"]
-        if fixable and attempt + 1 < MAX_SCENE_ATTEMPTS:
-            feedback = ("The previous scene was drawn but rejected. Fix exactly these problems "
-                        "and return a corrected scene:\n"
-                        + "\n".join(f"- {f.message}" for f in fixable[:8]))
-            last_error = fixable[0].message
-            progress("figures", "running", f"{figure_plan.label}: {last_error[:90]}")
-            scene = None
-            continue
-        _learn(figure_plan.kind, built, appearance)
-        if cache is not None:
-            cache[key] = built
-        return drawn, findings, attempt + 1
-    raise RenderError(f"{figure_plan.label}: no drawable scene after {MAX_SCENE_ATTEMPTS} "
-                      f"attempts ({last_error})", stage="renderer", figure=figure_plan.label)
+        # view whose parts do not meet. Those are worth one more call with the defect quoted,
+        # because they are exactly the kind of mistake a model corrects when told what it was.
+        fixable = [f for f in figure_findings
+                   if f.severity == "error" and f.stage == "renderer"]
+        if fixable:
+            retry[figure_plan.label] = (
+                "The previous scene was drawn but rejected. Fix exactly these problems and "
+                "return a corrected scene:\n"
+                + "\n".join(f"- {f.message}" for f in fixable[:8]))
+    return figures, findings, retry, appearance
 
 
 def _constrain(kind: str, scene: Any, appearance: appearance_mod.Appearance) -> None:
@@ -170,7 +246,10 @@ def _learn(kind: str, scene: Any, appearance: appearance_mod.Appearance) -> None
 
 def run(*, text: str = "", url: str = "", upload: Optional[tuple[str, bytes]] = None,
         paper: str = "a4", progress: Progress = _noop, log: Optional[llm.CallLog] = None,
-        use_model: bool = True, raster_checks: bool = True) -> Result:
+        use_model: bool = True, raster_checks: bool = True,
+        on_figure: FigureProgress = _noop_figure,
+        on_plan: Callable[[Plan], None] = lambda _plan: None,
+        on_drawn: Callable[[Figure], None] = lambda _figure: None) -> Result:
     progress("ingest", "running")
     draft = read_draft(text=text, url=url, upload=upload)
     progress("ingest", "done", f"{len(draft.text):,} characters from {draft.source}")
@@ -181,8 +260,16 @@ def run(*, text: str = "", url: str = "", upload: Optional[tuple[str, bytes]] = 
     progress("sections", "done",
              f"{len(sections.claims)} claims, {len(sections.brief_items)} figures promised")
 
+    # The registry and the claim split are both fast-model calls over the same sections and
+    # neither needs the other, so they go out together.
     progress("registry", "running")
-    registry = build_registry(sections, log, use_model)
+    progress("claims", "running")
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="fm-read") as pool:
+        registry_future = pool.submit(build_registry, sections, log, use_model)
+        claims_future = pool.submit(claims_mod.analyse, sections.claims,
+                                    llm.fast(log) if use_model else None, use_model=use_model)
+        registry = registry_future.result()
+        raw_claims = claims_future.result()
     if not registry.entries:
         raise ValueError("no reference numerals were found in this draft. A figure set is built "
                          "from the numerals the description gives its parts; add them, or paste "
@@ -191,8 +278,7 @@ def run(*, text: str = "", url: str = "", upload: Optional[tuple[str, bytes]] = 
     progress("registry", "done",
              f"{len(registry.entries)} numerals, {len(errors)} conflict(s)")
 
-    progress("claims", "running")
-    claim_list = build_claims(sections, registry, log, use_model)
+    claim_list = claims_mod.match_to_registry(raw_claims, registry)
     independent = [c for c in claim_list if c.independent]
     progress("claims", "done",
              f"{len(independent)} independent claim(s), "
@@ -215,30 +301,44 @@ def run(*, text: str = "", url: str = "", upload: Optional[tuple[str, bytes]] = 
             raise ValueError("the planner produced no figures for this draft.")
         progress("plan", "done", f"{len(plan.figures)} figure(s)")
 
-        progress("figures", "running", f"0/{len(plan.figures)}")
-        appearance = appearance_mod.Appearance()
+        on_plan(plan)
+        progress("figures", "running",
+                 f"{len(plan.figures)} scene(s), up to {SCENE_WORKERS} at a time")
+        scenes: dict[str, Any] = {}
         figures: list[Figure] = []
         stage_findings: list[Finding] = []
-        for index, figure_plan in enumerate(plan.figures, start=1):
-            reused = scene_key(figure_plan) in scene_cache
-            try:
-                drawn, findings, used = render_figure(figure_plan, sections, registry,
-                                                      appearance, log, cache=scene_cache,
-                                                      progress=progress)
-            except RenderError as exc:
-                stage_findings.append(Finding(
-                    code="figure_not_drawn", severity="error", stage=exc.stage,
-                    figure=figure_plan.label,
-                    message=str(exc), cite="", basis="practice"))
-                progress("figures", "running", f"{index}/{len(plan.figures)}: {exc}")
-                continue
-            attempts["scenes"] += used
-            attempts["scenes_reused"] += 1 if reused else 0
-            figures.append(drawn)
-            stage_findings.extend(findings)
-            progress("figures", "running",
-                     f"{index}/{len(plan.figures)} {figure_plan.label} ({figure_plan.kind})"
-                     + (" [reused]" if reused else ""))
+        appearance = appearance_mod.Appearance()
+        retry: dict[str, str] = {}
+
+        for scene_attempt in range(MAX_SCENE_ATTEMPTS):
+            targets = plan.figures if scene_attempt == 0 else \
+                [f for f in plan.figures if f.label in retry]
+            if not targets:
+                break
+            attempts["scenes"] += len(targets)
+            if scene_attempt == 0:
+                attempts["scenes_reused"] += sum(
+                    1 for f in targets if scene_key(f) in scene_cache)
+            else:
+                progress("figures", "running",
+                         f"revising {len(targets)} figure(s) the renderer rejected")
+            scenes.update(generate_scenes(
+                targets, sections, registry, log, cache=scene_cache,
+                feedback=retry if scene_attempt else None, on_figure=on_figure))
+            for figure_plan in targets:
+                value = scenes.get(figure_plan.label)
+                if value is not None and not isinstance(value, Exception):
+                    scene_cache[scene_key(figure_plan)] = value
+
+            figures, stage_findings, retry, appearance = assemble(plan, scenes, on_drawn)
+            for figure in figures:
+                on_figure(figure.label, "done", f"{len(figure.prims)} lines")
+            last_round = scene_attempt + 1 >= MAX_SCENE_ATTEMPTS
+            for label in retry:
+                on_figure(label, "failed" if last_round else "generating", "")
+            if not retry:
+                break
+
         if not figures:
             raise ValueError("no figure could be drawn from this plan. " +
                              "; ".join(f.message for f in stage_findings[:3]))
@@ -369,20 +469,61 @@ def execute(job: store.Job, *, text: str = "", url: str = "",
     job.pid = os.getpid()
     store.save(job)
 
+    # Scene calls finish on their own threads, so the job file is written from several of them.
+    # A lock around the state, and a floor on how often it is written, keeps a page that polls
+    # twice a second from costing more than the work it is watching.
+    lock = threading.Lock()
+    last_written = [0.0]
+
+    def flush(force: bool = False) -> None:
+        now = time.time()
+        if force or now - last_written[0] > 0.35:
+            last_written[0] = now
+            store.save(job)
+
     def progress(step: str, state: str, detail: str = "") -> None:
-        entry = job.step(step)
-        if state == "running" and not entry.started:
-            entry.started = time.time()
-        entry.state = state
-        if detail:
-            entry.detail = detail
-        if state in ("done", "failed"):
-            entry.finished = time.time()
-        store.save(job)
+        with lock:
+            entry = job.step(step)
+            if state == "running" and not entry.started:
+                entry.started = time.time()
+            entry.state = state
+            if detail:
+                entry.detail = detail
+            if state in ("done", "failed"):
+                entry.finished = time.time()
+            flush(force=True)
+
+    def on_plan(plan: Plan) -> None:
+        with lock:
+            job.figures = [store.FigureState(label=f.label, kind=f.kind, title=f.title)
+                           for f in plan.figures]
+            flush(force=True)
+
+    def on_figure(label: str, state: str, detail: str = "") -> None:
+        with lock:
+            entry = job.figure(label)
+            if state in ("generating", "drawing") and not entry.started:
+                entry.started = time.time()
+            entry.state = state
+            if detail:
+                entry.detail = detail
+            if state in ("done", "failed"):
+                entry.finished = time.time()
+            flush(force=state in ("done", "failed"))
+
+    def on_drawn(figure: Figure) -> None:
+        # Written the moment it exists, so the page can show the set filling in rather than
+        # nothing at all until the last figure lands.
+        store.write_text(job.path / f"figure-{_slug(figure.label)}.svg",
+                         sheetmod.figure_svg(figure))
+        with lock:
+            job.figure(figure.label).ready = True
+            flush(force=True)
 
     try:
         result = run(text=text, url=url, upload=upload, paper=paper, progress=progress,
-                     log=log, raster_checks=raster_checks)
+                     log=log, raster_checks=raster_checks, on_figure=on_figure,
+                     on_plan=on_plan, on_drawn=on_drawn)
         progress("export", "running")
         persist(job, result)
         progress("export", "done", f"{len(result.sheets)} sheet(s)")

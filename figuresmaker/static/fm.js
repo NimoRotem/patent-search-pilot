@@ -28,6 +28,7 @@ async function poll() {
   const job = await res.json();
   $('statusline').textContent = job.status;
   renderSteps(job.steps || []);
+  renderLive(job.figures || []);
   if (job.title) $('title').textContent = job.title;
 
   if (job.status === 'failed') {
@@ -40,6 +41,61 @@ async function poll() {
   }
   if (job.status === 'done') { await load(); return; }
   setTimeout(poll, 1500);
+}
+
+/* The figure set arriving.
+ *
+ * Scene calls go out together and come back out of order, so this is not a progress bar: it is
+ * one card per planned figure that fills in when its own call lands. The SVG is fetched the
+ * moment the server says it is on disk, which is well before the run has finished.
+ */
+const WAITING = {
+  pending: 'queued',
+  generating: 'working out the scene',
+  drawing: 'scene ready',
+  failed: 'could not be drawn',
+};
+
+function renderLive(figures) {
+  const box = $('live');
+  if (!figures.length) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+
+  const wanted = figures.map(f => f.label).join('|');
+  if (box.dataset.shape !== wanted) {
+    box.dataset.shape = wanted;
+    box.innerHTML = figures.map(f => `
+      <div class="livecard" data-label="${escapeHtml(f.label)}" data-state="${escapeHtml(f.state)}">
+        <div class="thumb"><span class="waiting"></span></div>
+        <div class="bar"><i></i></div>
+        <div class="foot"><b>${escapeHtml(f.label)}</b>
+          <span class="muted">${escapeHtml((f.kind || '').replace(/_/g, ' '))}</span>
+          <span class="k"></span></div>
+      </div>`).join('');
+  }
+
+  for (const f of figures) {
+    const card = box.querySelector(`.livecard[data-label="${cssEscape(f.label)}"]`);
+    if (!card) continue;
+    card.dataset.state = f.state;
+    card.querySelector('.bar').style.visibility =
+      (f.state === 'done' || f.state === 'failed') ? 'hidden' : 'visible';
+    card.querySelector('.k').textContent = f.seconds ? f.seconds.toFixed(0) + 's' : '';
+    const thumb = card.querySelector('.thumb');
+    if (f.ready) {
+      const src = `${PREFIX}/api/job/${JOB_ID}/fig/${slugOf(f.label)}.svg`;
+      if (!thumb.querySelector('img')) {
+        thumb.innerHTML = `<img alt="${escapeHtml(f.label)}" src="${src}">`;
+      }
+    } else {
+      const note = thumb.querySelector('.waiting');
+      if (note) note.textContent = f.detail || WAITING[f.state] || f.state;
+    }
+  }
+}
+
+function slugOf(label) {
+  return String(label).replace(/\./g, '').replace(/\s+/g, '').toLowerCase();
 }
 
 function renderSteps(steps) {
