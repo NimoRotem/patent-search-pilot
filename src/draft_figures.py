@@ -2480,7 +2480,8 @@ def _paste_hatched_box(image, box, *, angle: int) -> None:
 def _requested_section_hatch_angle(text: str, subject_pattern: str, default: int) -> int:
     """Resolve an explicit section-hatching direction while retaining a safe default."""
     match = re.search(
-        rf"\b(?:{subject_pattern})\b[^.;]{{0,120}}?\bhatched\s+"
+        rf"\b(?:{subject_pattern})\b[^.;]{{0,120}}?\b(?:hatched|filled\s+with"
+        r"(?:\s+[a-z-]+){0,6}\s+hatching)\s+"
         r"(rising|falling)\s+to\s+the\s+right([^,.;]{0,100})",
         text,
     )
@@ -2605,10 +2606,11 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     from PIL import Image, ImageDraw
 
     image = Image.new("RGB", (1400, 900), "white")
-    base_angle = _requested_section_hatch_angle(text, r"(?:the\s+)?base(?:\s+\d+)?", 45)
+    base_angle = _requested_section_hatch_angle(
+        text, r"(?:the\s+)?(?:base(?:\s+\d+)?|slab)", 45)
     leg_angle = _requested_section_hatch_angle(text, r"(?:both\s+)?legs", -45)
     band_angle = _requested_section_hatch_angle(
-        text, r"(?:the\s+)?covering element(?:\s+\d+)?", 60)
+        text, r"(?:the\s+)?(?:covering element(?:\s+\d+)?|band)", 60)
     flush_legs = _chamber_section_has_flush_legs(text)
     left_leg = (200, 360, 320, 620) if flush_legs else (260, 360, 380, 620)
     right_leg = (1080, 360, 1200, 620) if flush_legs else (1020, 360, 1140, 620)

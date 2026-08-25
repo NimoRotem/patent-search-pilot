@@ -3694,10 +3694,12 @@ def test_deterministic_chamber_section_accepts_explicit_filing_inventory(monkeyp
     hatched slab, the base; one closed loop cut twice, appearing as two short hatched legs
     hanging from the underside of the slab, one at each end; one hatched band across the bottom
     on which both legs stand; and one closed housing standing on the upper face of the slab.
-    The base is hatched rising to the right at about 45 degrees, both legs are hatched falling to
-    the right at about 45 degrees, and the covering element is hatched rising to the right at
-    about 75 degrees. One broken line runs from inside the housing to the chamber. The housing lies
-    outside the cut and is drawn in plain outline without hatching.
+    The slab, the two legs and the band are the cut bodies. The slab is filled with regularly
+    spaced parallel hatching rising to the right at about 45 degrees, both legs are filled with
+    such hatching falling to the right at about 45 degrees, and the band is filled with such
+    hatching rising to the right at about 75 degrees. One broken line runs from inside the housing
+    to the chamber. The housing lies outside the cut and is drawn in plain outline without
+    hatching.
     """
 
     assert draft_figures._deterministic_chamber_section_png(specification) is not None
