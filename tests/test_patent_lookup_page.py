@@ -95,10 +95,26 @@ def test_the_masthead_is_one_partial_that_both_apps_use(client):
 
 def test_the_engine_fetches_it_and_does_not_wait_on_it():
     js = _engine()
-    assert "'/api/chrome'" in js
+    assert "'/api/chrome" in js
     assert "credentials: 'same-origin'" in js
     assert ".catch(" in js, "a failed fetch must leave the lookup usable"
     assert "appchrome" in js
+    #  It has to say which page it is, or the masthead arrives with nothing marked current and
+    #  reads as a header borrowed from somewhere else.
+    assert "active=patent_lookup" in js
+
+
+def test_the_masthead_lights_the_item_the_caller_names(client):
+    """Only a known endpoint name is honoured: the value is a query parameter and it ends up in a
+    class attribute."""
+    good = client.get("/api/chrome?active=patent_lookup").get_json()["html"]
+    assert 'aria-current="page"' in good
+    assert re.search(r'class="navitem active"[^>]*aria-current="page"[^>]*>\s*Lookup', good)
+
+    for junk in ("nonsense", 'x" onmouseover="alert(1)', "auth.account"):
+        html = client.get("/api/chrome", query_string={"active": junk}).get_json()["html"]
+        assert "aria-current" not in html, "an unknown value lit something: %r" % junk
+        assert "onmouseover" not in html
 
 
 def test_the_partial_renders_without_a_page_around_it():
