@@ -24,7 +24,7 @@ from typing import Optional
 from . import llm
 from .schemas import (CadScene, Claim, Conventions, FigurePlan, FigureSource, GraphScene,
                       MechScene, PART_NAMES, Plan, PlanElement, Registry, Sections, SeqScene,
-                      UIScene, UI_TYPES)
+                      SketchScene, UIScene, UI_TYPES)
 from .sections import figure_sort_key
 
 MAX_FIGURES = int(__import__("os").environ.get("FM_MAX_FIGURES", "20"))
@@ -360,6 +360,26 @@ along and gap is how far apart, in millimetres.
 Return JSON only."""
 
 
+SKETCH_SYSTEM = """You say which piece of a drawing the applicant made carries which reference \
+numeral.
+
+You are NOT describing the drawing. It has been traced from their sketch and you cannot change \
+it. You are given the pieces that are actually in it: how many strokes each has, how big it is in \
+millimetres, where its centre is, and where it sits on the sheet. Match those to the parts the \
+description names.
+
+RULES
+* parts: one entry per piece you can identify, giving the numeral from the plan that names it. \
+Use each numeral at most once.
+* Leave a piece out if you cannot tell which part it is. An unnamed piece is reported to the \
+attorney, which is a better outcome than a numeral pointing at the wrong thing.
+* Match on size and position, and on what the description says. A large piece enclosing others is \
+usually the body or the housing. A small piece at one end is usually what the description says is \
+at that end.
+
+Return JSON only."""
+
+
 _SCENE_FOR = {
     "block_diagram": (GraphScene, GRAPH_SYSTEM, "graph"),
     "flowchart": (GraphScene, GRAPH_SYSTEM, "graph"),
@@ -378,6 +398,8 @@ def scene_schema(kind: str, source_kind: str = ""):
     camera and a component-to-numeral mapping; one blocked out from prose needs a list of solids.
     They are different questions and they get different schemas.
     """
+    if source_kind == "sketch":
+        return (SketchScene, SKETCH_SYSTEM, "sketch")
     if source_kind == "cad" and kind in ("perspective", "exploded", "cross_section"):
         return (CadScene, CAD_SYSTEM, "cad")
     return _SCENE_FOR.get(kind, _SCENE_FOR["block_diagram"])
@@ -395,17 +417,25 @@ def assign_sources(plan: Plan, sources, keep: Optional[Plan] = None) -> Plan:
 
     previous = {f.label: f.source for f in (keep.figures if keep else [])}
     meshes = [s for s in (sources.items if sources else []) if s.kind == "cad"]
+    sketches = [s for s in (sources.items if sources else []) if s.kind == "sketch"]
     only_mesh = meshes[0].id if len(meshes) == 1 else ""
+    only_sketch = sketches[0].id if len(sketches) == 1 else ""
+    sources_has_mesh = bool(meshes)
 
     for figure in plan.figures:
         held = previous.get(figure.label)
         if held is not None and held.kind != "blockout":
             figure.source = held
             continue
-        if figure.kind in DERIVABLE_FROM_TEXT:
+        if only_sketch and not sources_has_mesh:
+            # One sketch and nothing else: it is what they uploaded it for, whatever the view is.
+            figure.source = FigureSource(kind="sketch", source_id=only_sketch)
+        elif figure.kind in DERIVABLE_FROM_TEXT:
             figure.source = FigureSource(kind="schema")
         elif only_mesh:
             figure.source = FigureSource(kind="cad", source_id=only_mesh)
+        elif only_sketch:
+            figure.source = FigureSource(kind="sketch", source_id=only_sketch)
         else:
             figure.source = FigureSource(kind="blockout")
     return plan
@@ -430,8 +460,8 @@ def build_scene(figure: FigurePlan, sections: Sections, registry: Registry,
         f"ELEMENTS (numeral, term, role, note)\n{elements}\n\n"
         f"RELATIONS\n{relations}\n\n"
         f"WHAT THE DESCRIPTION SAYS ABOUT THESE PARTS\n{_evidence(figure, registry)}")
-    if mode == "cad":
-        context += "\n\n" + _components_block(figure, resolve_source)
+    if mode in ("cad", "sketch"):
+        context += "\n\n" + _components_block(figure, resolve_source, mode)
     if feedback:
         context += ("\n\nThe previous attempt at this figure was rejected. Fix exactly these "
                     f"problems:\n{feedback}")
@@ -441,23 +471,28 @@ def build_scene(figure: FigurePlan, sections: Sections, registry: Registry,
                                max_tokens=12000)
 
 
-def _components_block(figure: FigurePlan, resolve_source) -> str:
-    """The components that are genuinely in the applicant's file, as facts about geometry."""
+def _components_block(figure: FigurePlan, resolve_source, mode: str) -> str:
+    """The pieces that are genuinely in the applicant's file, as facts about geometry."""
+    noun = "SKETCH" if mode == "sketch" else "MESH"
     if resolve_source is None:
-        return "COMPONENTS IN THE SUPPLIED MESH\n(the mesh could not be read here)"
-    from .render import cad as cad_mod
-
+        return f"PIECES IN THE SUPPLIED {noun}\n(it could not be read here)"
     try:
         record, blob = resolve_source(figure.source.source_id)
-        described = cad_mod.describe(record, blob)
+        if mode == "sketch":
+            from .render import sketch as sketch_mod
+            described = sketch_mod.describe(record, blob)
+            header = "component\tstrokes\tsize mm\tcentre mm\twhere it sits"
+            template = "{component}\t{strokes}\t{size_mm}\t{centre_mm}\t{position}"
+        else:
+            from .render import cad as cad_mod
+            described = cad_mod.describe(record, blob)
+            header = "component\ttriangles\tsize mm (x,y,z)\tcentre mm\tshare\twhere it sits"
+            template = ("{component}\t{triangles}\t{size_mm}\t{centre_mm}\t"
+                        "{extent_fraction}\t{position}")
     except Exception as exc:
-        return f"COMPONENTS IN THE SUPPLIED MESH\n(the mesh could not be read: {exc})"
-    rows = ["component\ttriangles\tsize mm (x,y,z)\tcentre mm\tshare\twhere it sits"]
-    for item in described:
-        rows.append("{component}\t{triangles}\t{size_mm}\t{centre_mm}\t"
-                    "{extent_fraction}\t{position}".format(**item))
-    return ("COMPONENTS IN THE SUPPLIED MESH, from " + record.filename + "\n"
-            + "\n".join(rows))
+        return f"PIECES IN THE SUPPLIED {noun}\n(it could not be read: {exc})"
+    rows = [header] + [template.format(**item) for item in described]
+    return f"PIECES IN THE SUPPLIED {noun}, from " + record.filename + "\n" + "\n".join(rows)
 
 
 def _evidence(figure: FigurePlan, registry: Registry, limit: int = 9000) -> str:
@@ -478,6 +513,16 @@ def _evidence(figure: FigurePlan, registry: Registry, limit: int = 9000) -> str:
 
 
 def clamp_scene(kind: str, scene):
+    if isinstance(scene, SketchScene):
+        seen: set[str] = set()
+        kept = []
+        for part in scene.parts:
+            if part.numeral and part.numeral in seen:
+                continue
+            seen.add(part.numeral)
+            kept.append(part)
+        scene.parts = kept
+        return scene
     if isinstance(scene, CadScene):
         # The one thing a model can get wrong here: naming the same part twice.
         seen: set[str] = set()

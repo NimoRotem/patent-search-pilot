@@ -298,6 +298,16 @@ class CadPart(BaseModel):
     label: str = ""
 
 
+class SketchScene(BaseModel):
+    """A figure compiled from a sketch the applicant drew.
+
+    There is no camera and no section: the applicant already chose the view when they drew it.
+    All a model does here is say which piece of the drawing carries which reference numeral.
+    """
+    source_id: str = ""
+    parts: list["CadPart"] = Field(default_factory=list)
+
+
 class CadScene(BaseModel):
     """A view compiled from a mesh the applicant supplied.
 

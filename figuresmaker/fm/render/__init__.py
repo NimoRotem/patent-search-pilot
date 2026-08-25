@@ -10,10 +10,12 @@ from __future__ import annotations
 from typing import Any, Callable, Optional
 
 from ..drawing import Figure, normalise
-from ..schemas import (CadScene, Finding, FigurePlan, GraphScene, MechScene, SeqScene, UIScene)
+from ..schemas import (CadScene, Finding, FigurePlan, GraphScene, MechScene, SeqScene,
+                       SketchScene, UIScene)
 from .. import sources as sources_mod
-from . import cad, graphfig, leaders, mech, uifig
+from . import cad, graphfig, leaders, mech, sketch, uifig
 from .cad import CadError
+from .sketch import SketchError
 from .graphfig import LayoutUnavailable
 from .mech import MechError
 from .uifig import UIError
@@ -43,8 +45,18 @@ def render(plan: FigurePlan, scene: Any, appearance=None,
     """
     source_kind = (plan.source.kind if plan.source else "blockout") or "blockout"
     from_cad = source_kind == "cad" and plan.kind in ("perspective", "exploded", "cross_section")
+    # A traced sketch backs any kind of figure, because the applicant already chose the view when
+    # they drew it. There is nothing left to project.
+    from_sketch = source_kind == "sketch"
     try:
-        if from_cad:
+        if from_sketch:
+            if resolve_source is None:
+                raise RenderError(f"{plan.label}: this figure is compiled from a sketch but no "
+                                  "source store was supplied", stage="renderer",
+                                  figure=plan.label)
+            record, blob = resolve_source(plan.source.source_id)
+            figure = sketch.render_sketch(plan, _as(scene, SketchScene), record, blob, appearance)
+        elif from_cad:
             if resolve_source is None:
                 raise RenderError(f"{plan.label}: this figure is compiled from CAD but no source "
                                   "store was supplied", stage="renderer", figure=plan.label)
@@ -61,7 +73,7 @@ def render(plan: FigurePlan, scene: Any, appearance=None,
         else:
             raise RenderError(f"{plan.label}: unknown figure kind {plan.kind!r}",
                               stage="planner", figure=plan.label)
-    except (LayoutUnavailable, MechError, UIError, CadError) as exc:
+    except (LayoutUnavailable, MechError, UIError, CadError, SketchError) as exc:
         raise RenderError(f"{plan.label}: {exc}", stage="renderer", figure=plan.label) from exc
     except sources_mod.SourceError as exc:
         raise RenderError(f"{plan.label}: {exc}", stage="draft", figure=plan.label) from exc
@@ -73,7 +85,7 @@ def render(plan: FigurePlan, scene: Any, appearance=None,
     findings.extend(_provenance(plan))
     findings.extend(_missing_numerals(plan, figure))
     findings.extend(_illegible_elements(plan, figure))
-    if not from_cad and plan.kind in ("perspective", "cross_section"):
+    if not from_cad and not from_sketch and plan.kind in ("perspective", "cross_section"):
         findings.extend(_disconnected(plan, _as(scene, MechScene)))
     return figure, findings
 
@@ -118,7 +130,7 @@ def _missing_numerals(plan: FigurePlan, figure: Figure) -> list[Finding]:
     part, split the mesh, or accept that this view does not show it.
     """
     drawn = set(figure.anchors)
-    from_cad = (plan.source.kind if plan.source else "") == "cad"
+    from_cad = (plan.source.kind if plan.source else "") in ("cad", "sketch")
     out: list[Finding] = []
     for element in plan.elements:
         if element.numeral in drawn:
@@ -128,9 +140,11 @@ def _missing_numerals(plan: FigurePlan, figure: Figure) -> list[Finding]:
                 code="part_not_in_supplied_geometry", severity="error", stage="draft",
                 figure=plan.label, numeral=element.numeral, basis="practice",
                 message=(f"{element.numeral} (\"{element.term}\") was to be shown in "
-                         f"{plan.label}, and the supplied mesh has no component that could be "
-                         "identified as it. Model the part, split it out of the mesh, or take it "
-                         "out of this view in the coverage matrix."),
+                         f"{plan.label}, and the supplied "
+                         + ("sketch" if (plan.source.kind if plan.source else "") == "sketch"
+                            else "mesh")
+                         + " has no piece that could be identified as it. Draw it, separate it "
+                           "in the source, or take it out of this view in the coverage matrix."),
                 cite="37 CFR 1.84(p)(4)"))
         else:
             out.append(Finding(

@@ -135,9 +135,19 @@ def inspect(kind: str, filename: str, blob: bytes) -> dict[str, Any]:
             from PIL import Image
 
             with Image.open(io.BytesIO(blob)) as image:
-                return {"width": image.size[0], "height": image.size[1], "mode": image.mode}
+                info = {"width": image.size[0], "height": image.size[1], "mode": image.mode}
         except Exception as exc:
             raise SourceError(f"{filename}: this is not an image that can be opened ({exc}).")
+        if kind == "sketch":
+            # Traced at upload rather than at render time, so "this is a photograph, not line
+            # work" is said while the person who chose the file is still looking at it.
+            from .importers import trace as trace_import
+
+            try:
+                info.update(trace_import.probe(filename, blob))
+            except trace_import.TraceError as exc:
+                raise SourceError(str(exc))
+        return info
     if kind == "existing_figure":
         if blob[:5] == b"%PDF-":
             try:
