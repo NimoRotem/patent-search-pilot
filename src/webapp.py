@@ -2589,6 +2589,28 @@ def factory_pulse_api():
     return jsonify(factory_pulse.view())
 
 
+@app.route("/api/chrome")
+def api_chrome():
+    """The shared masthead, for the sibling app that renders its own pages.
+
+    The register lookup runs in a different process behind the same domain, and it was serving a
+    page with no product header at all: clicking Lookup felt like leaving. Copying the nav into
+    that codebase would put it out of date the first time a link moved, and there are three
+    changes to it in this commit alone, so it fetches the real one instead.
+
+    Rendered against THIS request's session, so the nav a reader sees on the lookup page is the
+    nav their account actually has: a customer gets no Coverage and no Drafting link.
+    """
+    resp = jsonify({
+        "html": render_template("_chrome.html"),
+        "css": url_for("static", filename="style.css", v=ASSET_VERSION),
+        "signed_in": bool(auth.current_user()),
+    })
+    #  Same-origin only. It carries the reader's name and e-mail.
+    resp.headers["Cache-Control"] = "private, no-store"
+    return resp
+
+
 @app.route("/patentlookup")
 def patent_lookup():
     """The register lookup, inside the search app.
@@ -2597,9 +2619,16 @@ def patent_lookup():
     directly at LOOKUP_BASE. It signs in with this app's own session cookie, so a signed-in reader
     needs nothing further, and a signed-out one is redirected to this app's login by the engine.
     """
+    #  THE PAGE IS THE ENGINE'S. nginx gives `/patentlookup/` to it wholly, so this app has not
+    #  rendered a lookup page since that rule was added and its template has been deleted rather
+    #  than left as a second UI for somebody to fix a bug in by mistake. The route survives for
+    #  the reader who bookmarked it and for the login `next=`.
+    target = LOOKUP_BASE.rstrip("/") + "/"
+    if request.query_string:
+        target += "?" + request.query_string.decode("latin-1")
     if not auth.auth_enabled(app) or auth.current_user() or auth.is_loopback():
-        return render_template("patentlookup.html", title="Patent lookup")
-    return redirect(url_for("auth.login", next=request.script_root + "/patentlookup"))
+        return redirect(target)
+    return redirect(url_for("auth.login", next=target))
 
 
 # --------------------------------------------------------------------------- EU designs
@@ -2623,10 +2652,16 @@ def _design_number_or_404(design_number):
 
 @app.route("/designs")
 def designs_page():
-    """Search EU registered designs by what the product IS."""
+    """Gone as a destination: an EU design is one more thing you look up, so it is a tab there.
+
+    The URL is kept and redirected rather than deleted, because it is in the nav history of
+    anyone who used it and in at least one report page's links. The API underneath it has not
+    moved: the lookup page calls the same `/api/designs`, and the drawings are still proxied
+    through this app because the EUIPO image endpoints need this app's OAuth token.
+    """
     if not auth.auth_enabled(app) or auth.current_user() or auth.is_loopback():
-        return render_template("designs.html", title="EU registered designs")
-    return redirect(url_for("auth.login", next=request.script_root + "/designs"))
+        return redirect(LOOKUP_BASE.rstrip("/") + "/#designs")
+    return redirect(url_for("auth.login", next=LOOKUP_BASE.rstrip("/") + "/#designs"))
 
 
 @app.route("/api/designs")

@@ -25,59 +25,7 @@ window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
 {% set endpoint = request.endpoint or '' %}
 {% set signed_in = current_user or current_is_admin %}
 <a class="skip" href="#main">Skip to main content</a>
-<header class="top">
-  <div class="wrap navshell">
-    <a class="brand" href="{{ request.script_root }}/" aria-label="IPtorch home">
-      <svg class="brandmark" viewBox="0 0 36 36" aria-hidden="true">
-        <rect x="1" y="1" width="34" height="34" rx="8"></rect>
-        <path d="M10.5 8.5h10l5 5v14h-15z"></path>
-        <path d="M20.5 8.5v5h5M14 19h8M14 23h6"></path>
-      </svg>
-      <span class="brandname">IPtorch</span>
-    </a>
-    {# A visitor needs product context. An authenticated person needs the work areas first. #}
-    {% if signed_in or not account_mode %}
-      <nav class="primarynav appnav" aria-label="Primary navigation">
-        <a href="{{ request.script_root }}/" class="navitem{% if endpoint == 'index' %} active{% endif %}"{% if endpoint == 'index' %} aria-current="page"{% endif %}>Search</a>
-        <a href="{{ request.script_root }}/history" class="navitem{% if endpoint == 'history' %} active{% endif %}"{% if endpoint == 'history' %} aria-current="page"{% endif %}>History</a>
-        {#  Designs is not its own destination any more: an EU registered design is one more thing
-            you look up, so it is a tab on Lookup. #}
-        <a href="{{ request.script_root }}/patentlookup/" class="navitem{% if endpoint == 'patent_lookup' %} active{% endif %}"{% if endpoint == 'patent_lookup' %} aria-current="page"{% endif %}>Lookup</a>
-        {% if current_user %}
-          <a href="{{ request.script_root }}/library" class="navitem{% if endpoint == 'library' %} active{% endif %}"{% if endpoint == 'library' %} aria-current="page"{% endif %}>Library</a>
-        {% endif %}
-        {#  ADMIN ONLY, both of them. Corpus is an engineering view of what the database holds and
-            Drafting is unfinished; neither is something to hand a customer yet. #}
-        {% if current_is_admin %}
-          <a href="{{ request.script_root }}/corpus" class="navitem navadmin{% if endpoint == 'corpus_page' %} active{% endif %}"{% if endpoint == 'corpus_page' %} aria-current="page"{% endif %}>Coverage</a>
-          <a href="{{ request.script_root }}/drafts" class="navitem navadmin navdraft{% if endpoint.startswith('draft') %} active{% endif %}"{% if endpoint.startswith('draft') %} aria-current="page"{% endif %}>Drafting</a>
-        {% endif %}
-      </nav>
-    {% else %}
-      <nav class="primarynav publicnav" aria-label="Primary navigation">
-        <a href="{{ request.script_root }}/how-it-works" class="navitem{% if endpoint == 'how_it_works' %} active{% endif %}"{% if endpoint == 'how_it_works' %} aria-current="page"{% endif %}>How it works</a>
-        <a href="{{ request.script_root }}/about" class="navitem{% if endpoint == 'about' %} active{% endif %}"{% if endpoint == 'about' %} aria-current="page"{% endif %}>About</a>
-      </nav>
-    {% endif %}
-
-    <nav class="utilitynav" aria-label="Account and help">
-      {% if signed_in or not account_mode %}
-        <a class="helpnav{% if endpoint == 'how_it_works' %} active{% endif %}" href="{{ request.script_root }}/how-it-works"{% if endpoint == 'how_it_works' %} aria-current="page"{% endif %}>How it works</a>
-      {% endif %}
-      {% if current_is_admin %}<a href="{{ request.script_root }}/admin/users"{% if endpoint.startswith('auth.admin_') %} class="active" aria-current="page"{% endif %}>Admin</a>{% endif %}
-      {% if current_user %}
-        <a href="{{ request.script_root }}/account" class="accountnav{% if endpoint == 'auth.account' %} active{% endif %}" aria-label="Signed in as {{ current_user.full_name }}, {{ current_user.email }}"{% if endpoint == 'auth.account' %} aria-current="page"{% endif %}>
-          <span class="accountname">{{ current_user.full_name }}</span>
-          <span class="accountemail">{{ current_user.email }}</span>
-        </a>
-        <a class="signout" href="{{ request.script_root }}/logout">Sign out</a>
-      {% elif account_mode %}
-        <a href="{{ request.script_root }}/login">Sign in</a>
-        <a class="navcta" href="{{ request.script_root }}/register">Create account</a>
-      {% endif %}
-    </nav>
-  </div>
-</header>
+{% include "_chrome.html" %}
 <main id="main">{% block body %}{% endblock %}</main>
 <footer>
   <div class="wrap footergrid">
