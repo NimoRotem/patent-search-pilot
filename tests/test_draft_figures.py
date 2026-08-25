@@ -2881,6 +2881,52 @@ def test_deterministic_block_grip_uses_exact_component_anchor_centers():
         "10", "12", "18", "20", "24", "36", "44"}
 
 
+def test_deterministic_pulling_scene_uses_exact_band_and_path_anchors():
+    specification = """
+    The covering element 36 is one large plain tile seen in perspective. The machine stands on
+    its right-hand part, leaving a wide open expanse of tile to the left. The machine is one
+    plain rectangular body standing on a band that runs round its underside. The body and the
+    band are the whole of the machine drawn on this sheet. The flexible pulling element 46 is
+    drawn as one slack curved path, a single continuous curved line. It runs away to the left,
+    sagging gently over the open expanse of tile.
+    - The vibration device 10 is the whole machine. Identified on its outer boundary.
+    - The perimeter member 24 is the band. Identified well inside its broad front strip.
+    - The covering element 36 is the tile. Identified well inside the open tile in front.
+    - The flexible pulling element 46 is the path. Identified on that path clear of the machine.
+    """
+    numerals = [
+        "10 = vibration device", "24 = perimeter member",
+        "36 = covering element", "46 = flexible pulling element",
+    ]
+    png = draft_figures._deterministic_pulling_scene_png(specification)
+    initial = [{
+        "numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+        "visible": True, "evidence": entry,
+    } for entry in numerals]
+
+    grounded = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {"ok": True, "anchors": initial})
+    grounded = draft_figures._apply_pixel_grounding(png, numerals, grounded)
+
+    positions = {
+        item["numeral"]: (item["x"], item["y"])
+        for item in grounded["anchors"]
+    }
+    assert positions["24"] == (
+        draft_figures._pixel_to_normalized(850, 1400),
+        draft_figures._pixel_to_normalized(468, 900),
+    )
+    assert positions["46"] == (
+        draft_figures._pixel_to_normalized(445, 1400),
+        draft_figures._pixel_to_normalized(489, 900),
+    )
+    assert grounded["pixel_anchor_audit"]["ok"] is True
+    certificate = grounded["deterministic_anchor_certificate"]
+    assert certificate["renderer"] == "pulling_scene"
+    assert {item["numeral"] for item in certificate["anchors"]} == {
+        "10", "24", "36", "46"}
+
+
 def test_deterministic_block_grip_replaces_stale_durable_endpoint_progress(monkeypatch):
     specification = """
     The covering element 36 is one large plain tile seen in perspective. The machine stands on
