@@ -2359,6 +2359,9 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
         (re.search(r"\beach band reading as one whole hatched body\b", text) or
          re.search(r"\beach band runs\b[^.]{0,400}\bside to side\b[^.]{0,400}"
                    r"\bhatching(?: lines)? continuous from side to side\b[^.]{0,100}"
+                   r"\bdirectly beneath the column\b", text) or
+         re.search(r"\beach band runs\b[^.]{0,400}\bhatching(?: lines)? "
+                   r"continuous from side to side\b[^.]{0,100}"
                    r"\bdirectly beneath the column\b", text)))
     centred_column = centred_column or positive_open_sides_column
     explicit_inventory = bool(
