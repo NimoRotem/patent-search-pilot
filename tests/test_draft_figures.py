@@ -1176,6 +1176,131 @@ def test_exact_deterministic_geometry_can_resolve_extra_geometry_dissent(monkeyp
         cross, specification_hash=spec_hash) is True
 
 
+def test_exact_deterministic_geometry_resolves_same_provider_hatching_dissent(monkeypatch):
+    caption = (
+        "The sheet shows four bodies, one broken line, and nothing else: one horizontal "
+        "hatched slab; one closed loop cut twice, appearing as two short hatched legs; one "
+        "hatched band across the bottom; and one closed housing. One broken line runs from "
+        "inside the housing to the chamber."
+    )
+    numerals = [
+        "12 = base", "14 = first side", "20 = air-extraction mechanism",
+        "22 = chamber", "24 = perimeter member", "36 = covering element",
+    ]
+    png = draft_figures._deterministic_geometry_png(caption)
+    assert png is not None
+    spec_hash = draft_figures.specification_hash("FIG. 2", caption, numerals)
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k:
+        accepted_cross_provider_geometry_audit(specification_hash=spec_hash))
+    semantic = {
+        "ok": False, "inspected": True,
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "expected": ["12", "14", "20", "22", "24", "36"],
+        "visible": ["12", "14", "20", "22", "24", "36"],
+        "missing": [], "unexpected": [], "duplicates": [], "unexpected_text": [],
+        "errors": ["All section hatching appears to use the same angle."],
+        "anchors": [
+            {"numeral": value, "x": 500, "y": 500, "visible": True,
+             "evidence": "The requested component is visible."}
+            for value in ("12", "14", "20", "22", "24", "36")
+        ],
+        "specification_hash": spec_hash,
+    }
+
+    audited = draft_figures._resolve_deterministic_semantic_dissent(
+        semantic, png, label="FIG. 2", caption=caption, numerals=numerals)
+
+    assert audited["ok"] is True and audited["errors"] == []
+    assert audited["reviewer_ok"] is False
+    assert audited["reviewer_errors"] == semantic["errors"]
+    assert audited["semantic_consensus_resolution"]["exact_renderer_match"] is True
+    assert draft_figures._current_deterministic_semantic_resolution(audited) is True
+    tampered = json.loads(json.dumps(audited))
+    tampered["anchors"][0]["evidence"] = ""
+    assert draft_figures._current_deterministic_semantic_resolution(tampered) is False
+
+
+def test_deterministic_semantic_dissent_fails_closed_without_complete_anchor_inventory(
+        monkeypatch):
+    caption = (
+        "The sheet shows four bodies, one broken line, and nothing else: one horizontal "
+        "hatched slab; one closed loop cut twice, appearing as two short hatched legs; one "
+        "hatched band across the bottom; and one closed housing. One broken line runs from "
+        "inside the housing to the chamber."
+    )
+    numerals = ["12 = base", "20 = air-extraction mechanism"]
+    png = draft_figures._deterministic_geometry_png(caption)
+    assert png is not None
+    spec_hash = draft_figures.specification_hash("FIG. 2", caption, numerals)
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k:
+        accepted_cross_provider_geometry_audit(specification_hash=spec_hash))
+    semantic = {
+        "ok": False, "inspected": True,
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "expected": ["12", "20"], "visible": ["12", "20"],
+        "missing": [], "unexpected": [], "duplicates": [], "unexpected_text": [],
+        "errors": ["Hatching appears ambiguous."],
+        "anchors": [{"numeral": "12", "x": 500, "y": 500, "visible": True,
+                     "evidence": "The slab is visible."}],
+        "specification_hash": spec_hash,
+    }
+
+    audited = draft_figures._resolve_deterministic_semantic_dissent(
+        semantic, png, label="FIG. 2", caption=caption, numerals=numerals)
+
+    assert audited["ok"] is False
+    assert "semantic_consensus_resolution" not in audited
+
+
+def test_cached_complete_semantic_dissent_uses_independent_deterministic_resolution(monkeypatch):
+    caption = (
+        "The sheet shows four bodies, one broken line, and nothing else: one horizontal "
+        "hatched slab; one closed loop cut twice, appearing as two short hatched legs; one "
+        "hatched band across the bottom; and one closed housing. One broken line runs from "
+        "inside the housing to the chamber."
+    )
+    numerals = ["12 = base", "20 = air-extraction mechanism"]
+    png = draft_figures._deterministic_geometry_png(caption)
+    assert png is not None
+    spec_hash = draft_figures.specification_hash("FIG. 2", caption, numerals)
+    cached = {
+        "ok": False, "inspected": True,
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "expected": ["12", "20"], "visible": ["12", "20"],
+        "missing": [], "unexpected": [], "duplicates": [], "unexpected_text": [],
+        "errors": ["Hatching appears ambiguous."],
+        "anchors": [
+            {"numeral": value, "x": 500, "y": 500, "visible": True,
+             "evidence": "The requested component is visible."}
+            for value in ("12", "20")
+        ],
+        "specification_hash": spec_hash,
+    }
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: dict(cached))
+    writes = []
+    monkeypatch.setattr(
+        draft_figures, "_analysis_cache_put", lambda *args, **kwargs: writes.append((args, kwargs)))
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k:
+        accepted_cross_provider_geometry_audit(specification_hash=spec_hash))
+
+    audited = draft_figures.inspect_semantics(
+        png, label="FIG. 2", caption=caption, numerals=numerals)
+
+    assert audited["ok"] is True
+    assert audited["semantic_consensus_resolution"]["exact_renderer_match"] is True
+    assert writes and writes[-1][1]["stage"] == "semantic"
+
+
 def test_deterministic_resolution_fails_closed_for_missing_geometry(monkeypatch):
     caption = """
     The covering element 36 is one large plain tile seen in perspective. The machine stands on
@@ -2090,6 +2215,32 @@ def test_pixel_grounding_moves_a_shared_boundary_into_the_requested_lower_surfac
     assert audit["ok"] is True and audit["ungrounded"] == []
     assert audit["adjusted"][0]["numeral"] == "24"
     assert 508 < anchors[0]["y"] < 540
+
+
+def test_pixel_grounding_uses_the_brief_target_over_stale_semantic_line_evidence():
+    image = Image.new("RGB", (1000, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((200, 500, 800, 550), outline="black", width=4)
+    raw = io.BytesIO()
+    image.save(raw, format="PNG")
+    caption = (
+        "- The perimeter member 24 is the band under the rectangular body. "
+        "Identified well inside the front surface of the band."
+    )
+    anchors = draft_figures._bind_anchor_target_evidence(
+        [{
+            "numeral": "24", "x": 500, "y": 546, "visible": True,
+            "evidence": "the horizontal line defining the top of the front face",
+        }], label="FIG. 5", caption=caption, numerals=["24 = perimeter member"])
+
+    anchors, audit = draft_figures._ground_anchors_to_pixels(
+        raw.getvalue(), ["24 = perimeter member"], anchors,
+        preserve_reviewed_line_target=True)
+
+    assert audit["ok"] is True and audit["ungrounded"] == []
+    assert anchors[0]["evidence"] == (
+        "Identified well inside the front surface of the band.")
+    assert 512 < anchors[0]["y"] < 538
 
 
 def test_pixel_grounding_does_not_leave_a_bounded_surface_for_more_clearance():
