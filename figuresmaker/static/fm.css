@@ -236,3 +236,38 @@ pre.log { font: 12px/1.45 var(--mono); background: #fbfbfa; border: 1px solid va
 .livecard[data-state=done] { border-color: #cfe3d6; }
 .livecard[data-state=failed] { border-color: #efcccc; }
 .livecard[data-state=failed] .thumb .waiting { color: var(--bad); }
+
+
+/* --------------------------------------------------- the coverage matrix, before rendering */
+
+.matrixwrap { overflow: auto; max-height: 64vh; border: 1px solid var(--line); border-radius: 6px; }
+table.matrix { border-collapse: separate; border-spacing: 0; font-size: .84rem; width: 100%; }
+table.matrix th, table.matrix td { padding: .32rem .5rem; border-bottom: 1px solid var(--line-2); }
+table.matrix thead th {
+  position: sticky; top: 0; z-index: 2; background: var(--paper);
+  border-bottom: 1px solid var(--line); text-align: center; font-weight: 600; font-size: .78rem;
+  vertical-align: bottom; min-width: 5.4rem;
+}
+table.matrix thead th.rowhead { text-align: left; z-index: 3; left: 0; min-width: 15rem; }
+table.matrix td.rowhead {
+  position: sticky; left: 0; background: var(--paper); z-index: 1; border-right: 1px solid var(--line-2);
+}
+table.matrix tbody tr:hover td { background: var(--line-2); }
+table.matrix tbody tr:hover td.rowhead { background: var(--line-2); }
+table.matrix td.cell { text-align: center; cursor: pointer; user-select: none; }
+table.matrix td.cell:hover { background: var(--accent-soft) !important; }
+table.matrix .num { font-family: var(--mono); font-weight: 620; }
+table.matrix .term { color: var(--ink-2); }
+table.matrix tr.gap td.rowhead { box-shadow: inset 3px 0 0 var(--bad); }
+table.matrix tr.claim td.rowhead { font-style: italic; color: var(--ink-2); }
+table.matrix .tick { color: var(--accent); font-weight: 700; }
+table.matrix .dot { color: var(--line); }
+table.matrix th .kind { display: block; font-weight: 400; color: var(--ink-3); font-size: .7rem; }
+table.matrix th select { font-size: .7rem; padding: .1rem .2rem; margin-top: .2rem; width: 100%; }
+table.matrix th.draft { background: var(--warn-soft); }
+table.matrix th.ready { background: var(--good-soft); }
+.gapnote { font-size: .84rem; padding: .4rem .6rem; border-radius: 4px; margin-bottom: .4rem; }
+.gapnote.bad { background: var(--bad-soft); color: var(--bad); }
+.gapnote.warn { background: var(--warn-soft); color: var(--warn); }
+.srcchips { display: flex; gap: .35rem; flex-wrap: wrap; margin: .5rem 0 .9rem; }
+.srcchips span { font-size: .76rem; background: var(--line-2); border-radius: 4px; padding: .12rem .45rem; }

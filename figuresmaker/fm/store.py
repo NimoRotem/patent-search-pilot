@@ -42,8 +42,8 @@ class Step:
         return out
 
 
-STEP_NAMES = ("ingest", "sections", "registry", "claims", "plan", "figures", "layout",
-              "validate", "export")
+STEP_NAMES = ("ingest", "sections", "registry", "claims", "plan", "coverage", "figures",
+              "layout", "validate", "export")
 
 
 @dataclass

@@ -321,6 +321,9 @@ class Figure:
     leaders: list[Leader] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     scene: dict[str, Any] = field(default_factory=dict)
+    # Where this figure's geometry came from, and whether that makes it filing-ready. Stamped by
+    # the renderer, carried to the sheet, the editor and the export.
+    provenance: dict[str, Any] = field(default_factory=dict)
 
     # -------------------------------------------------------------------------------- queries
 
@@ -387,6 +390,7 @@ class Figure:
             "labels": [lab.to_dict() for lab in self.labels],
             "leaders": [ld.to_dict() for ld in self.leaders],
             "notes": list(self.notes), "scene": self.scene,
+            "provenance": self.provenance,
         }
 
     @classmethod
@@ -399,6 +403,7 @@ class Figure:
             labels=[NumeralLabel.from_dict(x) for x in raw.get("labels", [])],
             leaders=[Leader.from_dict(x) for x in raw.get("leaders", [])],
             notes=list(raw.get("notes") or []), scene=raw.get("scene") or {},
+            provenance=raw.get("provenance") or {},
         )
 
 

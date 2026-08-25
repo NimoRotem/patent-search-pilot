@@ -18,7 +18,8 @@ from typing import Any, Optional
 from flask import Flask, Response, jsonify, render_template, request
 
 import authgate
-from fm import export, llm, pipeline, store
+from fm import coverage as coverage_mod
+from fm import export, llm, pipeline, sources as sources_mod, store
 from fm.drawing import Figure
 from fm.render import leaders as leaders_mod, sheet as sheetmod
 from fm.schemas import Registry
@@ -113,13 +114,33 @@ def start():
     label = url or (upload[0] if upload else "pasted draft")
     job = store.new_job(owner=_owner(), title=label[:120], source=label[:200],
                         options={"paper": paper})
+
+    # Sources come in with the draft. They decide which figures can be filing-ready, so they have
+    # to be held before the plan is made rather than bolted on after it.
+    held = sources_mod.SourceSet()
+    problems: list[str] = []
+    for handle in request.files.getlist("sources"):
+        if not handle.filename:
+            continue
+        try:
+            held.items.append(sources_mod.add(job.path, handle.filename, handle.read(),
+                                              kind=request.form.get(f"kind:{handle.filename}", "")))
+        except sources_mod.SourceError as exc:
+            problems.append(str(exc))
+    sources_mod.save(job.path, held)
+    if problems:
+        job.summary = {"source_problems": problems}
+        store.save(job)
+
     thread = threading.Thread(target=_worker, name=f"fm-{job.id}", daemon=True,
                              args=(job.id, text, url, upload, paper))
     thread.start()
-    return jsonify({"id": job.id, "url": f"{_prefix()}/job/{job.id}"})
+    return jsonify({"id": job.id, "url": f"{_prefix()}/job/{job.id}",
+                    "sources": len(held.items), "source_problems": problems})
 
 
 def _worker(job_id: str, text: str, url: str, upload, paper: str) -> None:
+    """Phase one only. The expensive half waits for the matrix to be approved."""
     with _running_lock:
         _running.add(job_id)
     acquired = _slots.acquire(timeout=1800)
@@ -132,7 +153,7 @@ def _worker(job_id: str, text: str, url: str, upload, paper: str) -> None:
             job.error = "timed out waiting for a free worker slot"
             store.save(job)
             return
-        pipeline.execute(job, text=text, url=url, upload=upload, paper=paper)
+        pipeline.execute_reading(job, text=text, url=url, upload=upload)
     except Exception:
         job = store.load(job_id)
         if job is not None:
@@ -145,6 +166,155 @@ def _worker(job_id: str, text: str, url: str, upload, paper: str) -> None:
             _slots.release()
         with _running_lock:
             _running.discard(job_id)
+
+
+def _render_worker(job_id: str, paper: str) -> None:
+    with _running_lock:
+        _running.add(job_id)
+    acquired = _slots.acquire(timeout=1800)
+    try:
+        job = store.load(job_id)
+        if job is None:
+            return
+        if not acquired:
+            job.status = "failed"
+            job.error = "timed out waiting for a free worker slot"
+            store.save(job)
+            return
+        pipeline.execute(job, paper=paper, reading=pipeline.load_reading(job))
+    except Exception:
+        job = store.load(job_id)
+        if job is not None:
+            job.status = "failed"
+            job.error = "the worker crashed; see traceback.txt"
+            store.write_text(job.path / "traceback.txt", traceback.format_exc())
+            store.save(job)
+    finally:
+        if acquired:
+            _slots.release()
+        with _running_lock:
+            _running.discard(job_id)
+
+
+# ------------------------------------------------------------------------- the coverage gate
+
+
+@app.get("/api/job/<job_id>/coverage")
+def get_coverage(job_id: str):
+    job = store.load(job_id)
+    if job is None:
+        return jsonify({"error": "no such job"}), 404
+    matrix = store.read_json(job.path / "coverage.json") or {}
+    return jsonify({"coverage": matrix,
+                    "sources": sources_mod.load(job.path).as_dict(),
+                    "status": job.status})
+
+
+def _edit_coverage(job_id: str, mutate):
+    job = store.load(job_id)
+    if job is None:
+        return None, (jsonify({"error": "no such job"}), 404)
+    if job.owner and job.owner != _owner():
+        return None, (jsonify({"error": "this job belongs to another account"}), 403)
+    raw = store.read_json(job.path / "coverage.json")
+    if not raw:
+        return None, (jsonify({"error": "this job has no coverage matrix yet"}), 400)
+    matrix = coverage_mod.Coverage.model_validate(raw)
+    try:
+        matrix = mutate(matrix)
+    except (KeyError, ValueError) as exc:
+        return None, (jsonify({"error": str(exc)}), 400)
+    store.write_json(job.path / "coverage.json", matrix.model_dump())
+    job.summary = {"stage": "coverage", **matrix.summary()}
+    store.save(job)
+    return (job, matrix), None
+
+
+@app.post("/api/job/<job_id>/coverage/cell")
+def set_coverage_cell(job_id: str):
+    body = request.get_json(silent=True) or {}
+    key, figure = str(body.get("key") or ""), str(body.get("figure") or "")
+    present = bool(body.get("present"))
+    got, error = _edit_coverage(job_id, lambda m: coverage_mod.set_cell(m, key, figure, present))
+    if error:
+        return error
+    return jsonify({"ok": True, "coverage": got[1].model_dump()})
+
+
+@app.post("/api/job/<job_id>/coverage/source")
+def set_coverage_source(job_id: str):
+    body = request.get_json(silent=True) or {}
+    figure = str(body.get("figure") or "")
+    kind = str(body.get("source_kind") or "")
+    source_id = str(body.get("source_id") or "")
+    got, error = _edit_coverage(
+        job_id, lambda m: coverage_mod.set_source(m, figure, kind, source_id))
+    if error:
+        return error
+    return jsonify({"ok": True, "coverage": got[1].model_dump()})
+
+
+@app.post("/api/job/<job_id>/approve")
+def approve_coverage(job_id: str):
+    """The gate. Everything expensive is on the far side of this."""
+    got, error = _edit_coverage(job_id, coverage_mod.approve)
+    if error:
+        return error
+    job, matrix = got
+
+    reading = pipeline.load_reading(job)
+    before = reading.plan.model_copy(deep=True)
+    reading.plan = coverage_mod.apply_to_plan(reading.plan, matrix, reading.registry)
+    changed = coverage_mod.changed_figures(before, reading.plan)
+    pipeline.save_reading(job, reading)
+
+    with _running_lock:
+        if len(_running) >= MAX_CONCURRENT:
+            return jsonify({"error": f"{MAX_CONCURRENT} figure sets are already being built."}), 429
+    for step in job.steps:
+        if step.name in ("figures", "layout", "validate", "export"):
+            step.state, step.started, step.finished, step.detail = "pending", 0.0, 0.0, ""
+    job.status = "running"
+    store.save(job)
+    threading.Thread(target=_render_worker, name=f"fm-render-{job.id}", daemon=True,
+                     args=(job.id, (job.options or {}).get("paper", "a4"))).start()
+    return jsonify({"ok": True, "changed_figures": changed,
+                    "url": f"{_prefix()}/job/{job.id}"})
+
+
+# ------------------------------------------------------------------------------- sources
+
+
+@app.post("/api/job/<job_id>/sources")
+def add_sources(job_id: str):
+    job = store.load(job_id)
+    if job is None:
+        return jsonify({"error": "no such job"}), 404
+    if job.owner and job.owner != _owner():
+        return jsonify({"error": "this job belongs to another account"}), 403
+    held = sources_mod.load(job.path)
+    added, problems = [], []
+    for handle in request.files.getlist("sources"):
+        if not handle.filename:
+            continue
+        try:
+            record = sources_mod.add(job.path, handle.filename, handle.read(),
+                                     kind=request.form.get("kind", ""))
+            held.items = [s for s in held.items if s.id != record.id] + [record]
+            added.append(record.as_dict())
+        except sources_mod.SourceError as exc:
+            problems.append(str(exc))
+    sources_mod.save(job.path, held)
+    return jsonify({"ok": not problems, "added": added, "problems": problems,
+                    "sources": held.as_dict()})
+
+
+@app.get("/api/job/<job_id>/sources")
+def list_sources(job_id: str):
+    job = store.load(job_id)
+    if job is None:
+        return jsonify({"error": "no such job"}), 404
+    return jsonify(sources_mod.load(job.path).as_dict())
 
 
 @app.get("/api/job/<job_id>")
@@ -178,7 +348,7 @@ def job_data(job_id: str):
         "sheets": store.read_json(job.path / "sheets.json") or [],
         "sections": _sections_lite(job),
         "figures": [{"label": f.label, "kind": f.kind, "title": f.title,
-                     "numerals": f.numerals(),
+                     "numerals": f.numerals(), "provenance": f.provenance,
                      "svg": sheetmod.figure_svg(f)} for f in figures],
         "rules": {code: {"cite": r.cite, "basis": r.basis, "title": r.title}
                   for code, r in rules.RULES.items()},

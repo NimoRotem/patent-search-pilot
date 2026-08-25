@@ -24,6 +24,26 @@
     <div id="failure" class="notice bad hidden"></div>
   </div>
 
+  <div id="gate" class="hidden">
+    <div class="card">
+      <h2>What goes in which figure</h2>
+      <p class="hint">This is the decision the compiler is worst at and you are best at, so it
+        asks before it spends anything. Tick a part into a view or out of it, say where each
+        mechanical view's geometry comes from, then approve. Nothing is rendered until you do,
+        and afterwards only the figures you changed are drawn again.</p>
+      <div class="tally" id="gatetally"></div>
+      <div class="row" style="margin-bottom:.9rem">
+        <button class="primary" id="approve">Approve and build the figures</button>
+        <label class="ghost" style="cursor:pointer">Add sources
+          <input type="file" id="addsrc" multiple hidden
+                 accept=".stl,.obj,.ply,.off,.png,.jpg,.jpeg,.pdf,.svg"></label>
+        <span class="status" id="gatestatus"></span>
+      </div>
+      <div id="gategaps"></div>
+      <div class="matrixwrap"><table class="matrix" id="matrix"></table></div>
+    </div>
+  </div>
+
   <div id="result" class="hidden">
     <div class="toolbar">
       <a class="ghost" id="pdf" href="#">Drawing sheets, PDF</a>

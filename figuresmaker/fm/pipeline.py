@@ -24,11 +24,13 @@ from typing import Any, Callable, Optional, Sequence
 from . import appearance as appearance_mod
 from . import claims as claims_mod
 from . import ingest as ingest_mod
+from . import coverage as coverage_mod
 from . import llm, plan as plan_mod, redline, registry as registry_mod, sections as sections_mod
 from . import store, validate
 from .drawing import Figure
 from .render import RenderError, render, sheet as sheetmod
-from .schemas import (Claim, Finding, FigurePlan, Plan, Registry, Sections, ValidationReport)
+from .schemas import (Claim, Finding, FigurePlan, GraphScene, MechScene, Plan,
+                      Registry, Sections, ValidationReport)
 
 MAX_PLAN_ATTEMPTS = int(os.environ.get("FM_PLAN_ATTEMPTS", "2"))
 MAX_SCENE_ATTEMPTS = int(os.environ.get("FM_SCENE_ATTEMPTS", "2"))
@@ -107,16 +109,19 @@ def scene_key(figure_plan: FigurePlan) -> tuple:
 
 
 def generate_scene(figure_plan: FigurePlan, sections: Sections, registry: Registry,
-                   log: Optional[llm.CallLog] = None, *, feedback: str = "") -> Any:
+                   log: Optional[llm.CallLog] = None, *, feedback: str = "",
+                   resolve_source: Optional[Any] = None) -> Any:
     """One model call: the scene for one figure. The slow part, and the only slow part."""
-    built = plan_mod.build_scene(figure_plan, sections, registry, llm.scene(log), feedback)
+    built = plan_mod.build_scene(figure_plan, sections, registry, llm.scene(log), feedback,
+                                 resolve_source=resolve_source)
     return plan_mod.clamp_scene(figure_plan.kind, built)
 
 
 def generate_scenes(plans: Sequence[FigurePlan], sections: Sections, registry: Registry,
                     log: Optional[llm.CallLog] = None, *, cache: Optional[dict] = None,
                     feedback: Optional[dict[str, str]] = None,
-                    on_figure: FigureProgress = _noop_figure) -> dict[str, Any]:
+                    on_figure: FigureProgress = _noop_figure,
+                    resolve_source: Optional[Any] = None) -> dict[str, Any]:
     """Every figure's scene, at once.
 
     This is where the ten minutes went. Each scene is an independent model call over a passage
@@ -145,7 +150,8 @@ def generate_scenes(plans: Sequence[FigurePlan], sections: Sections, registry: R
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="fm-scene") as pool:
         futures = {
             pool.submit(generate_scene, figure_plan, sections, registry, log,
-                        feedback=feedback.get(figure_plan.label, "")): figure_plan
+                        feedback=feedback.get(figure_plan.label, ""),
+                        resolve_source=resolve_source): figure_plan
             for figure_plan in todo}
         for figure_plan in todo:
             on_figure(figure_plan.label, "generating", figure_plan.kind.replace("_", " "))
@@ -161,7 +167,8 @@ def generate_scenes(plans: Sequence[FigurePlan], sections: Sections, registry: R
 
 
 def assemble(plan: Plan, scenes: dict[str, Any],
-             on_drawn: Callable[[Figure], None] = lambda _figure: None
+             on_drawn: Callable[[Figure], None] = lambda _figure: None,
+             resolve_source: Optional[Any] = None
              ) -> tuple[list[Figure], list[Finding], dict[str, str],
                         appearance_mod.Appearance]:
     """Draw every figure from its scene, in label order, and say which need another go.
@@ -190,7 +197,8 @@ def assemble(plan: Plan, scenes: dict[str, Any],
             continue
         try:
             _constrain(figure_plan.kind, scene, appearance)
-            drawn, figure_findings = render(figure_plan, scene, appearance)
+            drawn, figure_findings = render(figure_plan, scene, appearance,
+                                            resolve_source=resolve_source)
         except RenderError as exc:
             findings.append(Finding(
                 code="figure_not_drawn", severity="error", stage=exc.stage,
@@ -228,28 +236,50 @@ def assemble(plan: Plan, scenes: dict[str, Any],
 
 
 def _constrain(kind: str, scene: Any, appearance: appearance_mod.Appearance) -> None:
-    if kind in ("perspective", "exploded", "cross_section"):
+    """Make a part look the same in every view.
+
+    Dispatch is on the scene, not the figure kind, because the two mechanical scenes are not the
+    same shape. A blockout is a list of primitives a model chose, and those have to be pinned so
+    the housing in FIG. 4 is the housing from FIG. 1. A CAD scene has nothing to pin: every view
+    is a projection of one file, so the parts are already identical by construction.
+    """
+    if isinstance(scene, MechScene):
         appearance.constrain_mech(scene)
-    elif kind in ("block_diagram", "flowchart"):
+    elif isinstance(scene, GraphScene):
         appearance.constrain_graph(scene)
 
 
 def _learn(kind: str, scene: Any, appearance: appearance_mod.Appearance) -> None:
-    if kind in ("perspective", "exploded", "cross_section"):
+    if isinstance(scene, MechScene):
         appearance.learn_mech(scene)
-    elif kind in ("block_diagram", "flowchart"):
+    elif isinstance(scene, GraphScene):
         appearance.learn_graph(scene)
 
 
 # ------------------------------------------------------------------------------------- run
 
 
-def run(*, text: str = "", url: str = "", upload: Optional[tuple[str, bytes]] = None,
-        paper: str = "a4", progress: Progress = _noop, log: Optional[llm.CallLog] = None,
-        use_model: bool = True, raster_checks: bool = True,
-        on_figure: FigureProgress = _noop_figure,
-        on_plan: Callable[[Plan], None] = lambda _plan: None,
-        on_drawn: Callable[[Figure], None] = lambda _figure: None) -> Result:
+@dataclass
+class Reading:
+    """Everything the cheap stages produce: seconds of work, and the whole basis for the matrix."""
+    sections: Sections
+    registry: Registry
+    claims: list[Claim]
+    plan: Plan
+    coverage: "coverage_mod.Coverage"
+
+
+def read_and_plan(*, text: str = "", url: str = "",
+                  upload: Optional[tuple[str, bytes]] = None,
+                  sources: Optional[Any] = None,
+                  progress: Progress = _noop, log: Optional[llm.CallLog] = None,
+                  use_model: bool = True) -> Reading:
+    """The phase before the gate.
+
+    Ingest, registry, claims, plan and the coverage matrix. All of it is seconds, and none of it
+    commits to any geometry. What comes out is a proposal an attorney can correct in a couple of
+    minutes, which is the cheapest possible place to fix the judgement the pipeline is worst at.
+    """
     progress("ingest", "running")
     draft = read_draft(text=text, url=url, upload=upload)
     progress("ingest", "done", f"{len(draft.text):,} characters from {draft.source}")
@@ -260,8 +290,6 @@ def run(*, text: str = "", url: str = "", upload: Optional[tuple[str, bytes]] = 
     progress("sections", "done",
              f"{len(sections.claims)} claims, {len(sections.brief_items)} figures promised")
 
-    # The registry and the claim split are both fast-model calls over the same sections and
-    # neither needs the other, so they go out together.
     progress("registry", "running")
     progress("claims", "running")
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="fm-read") as pool:
@@ -274,15 +302,46 @@ def run(*, text: str = "", url: str = "", upload: Optional[tuple[str, bytes]] = 
         raise ValueError("no reference numerals were found in this draft. A figure set is built "
                          "from the numerals the description gives its parts; add them, or paste "
                          "a draft that has them.")
-    errors = [c for c in registry.conflicts if c.severity == "error"]
     progress("registry", "done",
-             f"{len(registry.entries)} numerals, {len(errors)} conflict(s)")
+             f"{len(registry.entries)} numerals, "
+             f"{len([c for c in registry.conflicts if c.severity == 'error'])} conflict(s)")
 
     claim_list = claims_mod.match_to_registry(raw_claims, registry)
     independent = [c for c in claim_list if c.independent]
     progress("claims", "done",
              f"{len(independent)} independent claim(s), "
              f"{sum(len(c.elements) for c in independent)} elements")
+
+    progress("plan", "running")
+    plan = plan_mod.build_plan(sections, registry, claim_list, llm.deep(log))
+    if not plan.figures:
+        raise ValueError("the planner produced no figures for this draft.")
+    plan = plan_mod.assign_sources(plan, sources)
+    progress("plan", "done", f"{len(plan.figures)} figure(s)")
+
+    progress("coverage", "running")
+    matrix = coverage_mod.propose(plan, registry, claim_list)
+    gaps = matrix.gaps()
+    progress("coverage", "done",
+             f"{matrix.summary()['numerals_covered']}/{len(registry.entries)} numerals placed, "
+             f"{len(gaps['figures_needing_a_source'])} view(s) still need a source")
+    return Reading(sections=sections, registry=registry, claims=claim_list, plan=plan,
+                   coverage=matrix)
+
+
+def run(*, text: str = "", url: str = "", upload: Optional[tuple[str, bytes]] = None,
+        paper: str = "a4", progress: Progress = _noop, log: Optional[llm.CallLog] = None,
+        use_model: bool = True, raster_checks: bool = True,
+        on_figure: FigureProgress = _noop_figure,
+        on_plan: Callable[[Plan], None] = lambda _plan: None,
+        on_drawn: Callable[[Figure], None] = lambda _figure: None,
+        reading: Optional[Reading] = None,
+        resolve_source: Optional[Any] = None) -> Result:
+    if reading is None:
+        reading = read_and_plan(text=text, url=url, upload=upload, progress=progress, log=log,
+                               use_model=use_model)
+    sections, registry, claim_list = reading.sections, reading.registry, reading.claims
+    approved_plan = reading.plan
 
     attempts = {"plan": 0, "scenes": 0, "placement": 0, "scenes_reused": 0}
     # A second planning pass usually changes one or two figures and leaves the rest alone.
@@ -295,15 +354,21 @@ def run(*, text: str = "", url: str = "", upload: Optional[tuple[str, bytes]] = 
 
     for plan_attempt in range(MAX_PLAN_ATTEMPTS):
         attempts["plan"] = plan_attempt + 1
-        progress("plan", "running", "" if not feedback else "revising after the compliance check")
-        # The first plan is a design problem and is worth thinking about. A revision is not: it
-        # arrives with the compliance errors quoted and has to correct them, so it gets a shorter
-        # leash, which is most of a minute back on any job that needs one.
-        reasoner = llm.deep(log) if not feedback else llm.deep(log, budget=llm.REVISE_THINKING)
-        plan = plan_mod.build_plan(sections, registry, claim_list, reasoner, feedback)
-        if not plan.figures:
-            raise ValueError("the planner produced no figures for this draft.")
-        progress("plan", "done", f"{len(plan.figures)} figure(s)")
+        if plan_attempt == 0:
+            # The approved matrix decides the first pass. Re-asking the planner here would throw
+            # away the one judgement a human made.
+            plan = approved_plan
+            progress("plan", "done", f"{len(plan.figures)} figure(s), as approved")
+        else:
+            progress("plan", "running", "revising after the compliance check")
+            # A revision arrives with the compliance errors quoted and has to correct them, which
+            # is not the same job as designing the set, so it gets the shortest budget.
+            plan = plan_mod.build_plan(sections, registry, claim_list,
+                                       llm.deep(log, budget=llm.REVISE_THINKING), feedback)
+            plan = plan_mod.assign_sources(plan, None, keep=approved_plan)
+            if not plan.figures:
+                raise ValueError("the planner produced no figures for this draft.")
+            progress("plan", "done", f"{len(plan.figures)} figure(s)")
 
         on_plan(plan)
         progress("figures", "running",
@@ -328,13 +393,15 @@ def run(*, text: str = "", url: str = "", upload: Optional[tuple[str, bytes]] = 
                          f"revising {len(targets)} figure(s) the renderer rejected")
             scenes.update(generate_scenes(
                 targets, sections, registry, log, cache=scene_cache,
-                feedback=retry if scene_attempt else None, on_figure=on_figure))
+                feedback=retry if scene_attempt else None, on_figure=on_figure,
+                resolve_source=resolve_source))
             for figure_plan in targets:
                 value = scenes.get(figure_plan.label)
                 if value is not None and not isinstance(value, Exception):
                     scene_cache[scene_key(figure_plan)] = value
 
-            figures, stage_findings, retry, appearance = assemble(plan, scenes, on_drawn)
+            figures, stage_findings, retry, appearance = assemble(
+                plan, scenes, on_drawn, resolve_source=resolve_source)
             for figure in figures:
                 on_figure(figure.label, "done", f"{len(figure.prims)} lines")
             last_round = scene_attempt + 1 >= MAX_SCENE_ATTEMPTS
@@ -464,9 +531,90 @@ def revalidate(job: store.Job, figures: Sequence[Figure], *, paper: str = "a4",
 # ------------------------------------------------------------------------------ job runner
 
 
+def source_resolver(job: store.Job):
+    """Give the renderer a way to fetch this job's sources without knowing where they live."""
+    from . import sources as sources_mod
+
+    def resolve(source_id: str):
+        record = sources_mod.load(job.path).by_id().get(source_id)
+        if record is None:
+            raise sources_mod.SourceError(
+                f"this figure is compiled from source {source_id!r} and no such source is held "
+                "for this job. Upload it, or change the figure's source in the coverage matrix.")
+        return record, sources_mod.read(job.path, source_id)
+
+    return resolve
+
+
+def load_reading(job: store.Job) -> Reading:
+    """The reading phase's output, back off disk."""
+    from .schemas import Claim as ClaimModel
+
+    return Reading(
+        sections=Sections.model_validate(store.read_json(job.path / "sections.json") or {}),
+        registry=Registry.model_validate(store.read_json(job.path / "registry.json") or {}),
+        claims=[ClaimModel.model_validate(c)
+                for c in (store.read_json(job.path / "claims.json") or [])],
+        plan=Plan.model_validate(store.read_json(job.path / "plan.json") or {}),
+        coverage=coverage_mod.Coverage.model_validate(
+            store.read_json(job.path / "coverage.json") or {}))
+
+
+def save_reading(job: store.Job, reading: Reading) -> None:
+    store.write_json(job.path / "sections.json", reading.sections.model_dump())
+    store.write_json(job.path / "registry.json", reading.registry.model_dump())
+    store.write_json(job.path / "claims.json", [c.model_dump() for c in reading.claims])
+    store.write_json(job.path / "plan.json", reading.plan.model_dump())
+    store.write_json(job.path / "coverage.json", reading.coverage.model_dump())
+
+
+def execute_reading(job: store.Job, *, text: str = "", url: str = "",
+                    upload: Optional[tuple[str, bytes]] = None) -> None:
+    """Phase one: read the draft and propose the matrix. Stops at the gate.
+
+    Everything here is seconds of fast-model work. Nothing after it is, which is exactly why the
+    gate is here and not somewhere later.
+    """
+    from . import sources as sources_mod
+
+    log = llm.CallLog(path=job.path / "calls.jsonl")
+    job.status = "running"
+    job.pid = os.getpid()
+    store.save(job)
+
+    def progress(step: str, state: str, detail: str = "") -> None:
+        entry = job.step(step)
+        if state == "running" and not entry.started:
+            entry.started = time.time()
+        entry.state = state
+        if detail:
+            entry.detail = detail
+        if state in ("done", "failed"):
+            entry.finished = time.time()
+        store.save(job)
+
+    try:
+        reading = read_and_plan(text=text, url=url, upload=upload,
+                                sources=sources_mod.load(job.path), progress=progress, log=log)
+        save_reading(job, reading)
+        job.title = reading.sections.title or job.title
+        job.summary = {"stage": "coverage", **reading.coverage.summary()}
+        job.status = "awaiting_approval"
+    except Exception as exc:
+        job.status = "failed"
+        job.error = f"{type(exc).__name__}: {exc}"
+        store.write_text(job.path / "traceback.txt", traceback.format_exc())
+        for step in job.steps:
+            if step.state == "running":
+                step.state = "failed"
+                step.finished = time.time()
+    finally:
+        store.save(job)
+
+
 def execute(job: store.Job, *, text: str = "", url: str = "",
             upload: Optional[tuple[str, bytes]] = None, paper: str = "a4",
-            raster_checks: bool = True) -> None:
+            raster_checks: bool = True, reading: Optional[Reading] = None) -> None:
     """Run a job to completion, recording every step. Never raises; failures land on the job."""
     log = llm.CallLog(path=job.path / "calls.jsonl")
     job.status = "running"
@@ -527,7 +675,8 @@ def execute(job: store.Job, *, text: str = "", url: str = "",
     try:
         result = run(text=text, url=url, upload=upload, paper=paper, progress=progress,
                      log=log, raster_checks=raster_checks, on_figure=on_figure,
-                     on_plan=on_plan, on_drawn=on_drawn)
+                     on_plan=on_plan, on_drawn=on_drawn, reading=reading,
+                     resolve_source=source_resolver(job))
         progress("export", "running")
         persist(job, result)
         progress("export", "done", f"{len(result.sheets)} sheet(s)")

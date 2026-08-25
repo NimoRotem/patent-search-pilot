@@ -7,14 +7,20 @@ into the realm of looking at it.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable, Optional
 
 from ..drawing import Figure, normalise
-from ..schemas import Finding, FigurePlan, GraphScene, MechScene, SeqScene, UIScene
-from . import graphfig, leaders, mech, uifig
+from ..schemas import (CadScene, Finding, FigurePlan, GraphScene, MechScene, SeqScene, UIScene)
+from .. import sources as sources_mod
+from . import cad, graphfig, leaders, mech, uifig
+from .cad import CadError
 from .graphfig import LayoutUnavailable
 from .mech import MechError
 from .uifig import UIError
+
+# Given a source id, return the record and its bytes. The renderer is handed one of these rather
+# than a path, so it never has to know where a job keeps its files.
+SourceResolver = Callable[[str], tuple[Any, bytes]]
 
 
 class RenderError(RuntimeError):
@@ -26,10 +32,25 @@ class RenderError(RuntimeError):
         self.figure = figure
 
 
-def render(plan: FigurePlan, scene: Any, appearance=None) -> tuple[Figure, list[Finding]]:
-    """Draw one figure and place its numerals."""
+def render(plan: FigurePlan, scene: Any, appearance=None,
+           resolve_source: Optional[SourceResolver] = None) -> tuple[Figure, list[Finding]]:
+    """Draw one figure and place its numerals.
+
+    Which renderer runs is decided by the figure's SOURCE first and its kind second. A
+    perspective view compiled from the applicant's mesh and one blocked out from prose are the
+    same kind of figure and not remotely the same claim about the invention, and the dispatcher
+    is where that distinction has to be made or it will not be made anywhere.
+    """
+    source_kind = (plan.source.kind if plan.source else "blockout") or "blockout"
+    from_cad = source_kind == "cad" and plan.kind in ("perspective", "exploded", "cross_section")
     try:
-        if plan.kind in ("block_diagram", "flowchart"):
+        if from_cad:
+            if resolve_source is None:
+                raise RenderError(f"{plan.label}: this figure is compiled from CAD but no source "
+                                  "store was supplied", stage="renderer", figure=plan.label)
+            record, blob = resolve_source(plan.source.source_id)
+            figure = cad.render_cad(plan, _as(scene, CadScene), record, blob, appearance)
+        elif plan.kind in ("block_diagram", "flowchart"):
             figure = graphfig.render_graph(plan, _as(scene, GraphScene))
         elif plan.kind == "sequence":
             figure = graphfig.render_sequence(plan, _as(scene, SeqScene))
@@ -40,16 +61,38 @@ def render(plan: FigurePlan, scene: Any, appearance=None) -> tuple[Figure, list[
         else:
             raise RenderError(f"{plan.label}: unknown figure kind {plan.kind!r}",
                               stage="planner", figure=plan.label)
-    except (LayoutUnavailable, MechError, UIError) as exc:
+    except (LayoutUnavailable, MechError, UIError, CadError) as exc:
         raise RenderError(f"{plan.label}: {exc}", stage="renderer", figure=plan.label) from exc
+    except sources_mod.SourceError as exc:
+        raise RenderError(f"{plan.label}: {exc}", stage="draft", figure=plan.label) from exc
 
+    figure.provenance = {"source_kind": source_kind, "source_id": plan.source.source_id,
+                         "filing_ready": sources_mod.is_authoritative(plan.kind, source_kind)}
     normalise(figure, margin=1.0)
     findings = leaders.solve(figure)
+    findings.extend(_provenance(plan))
     findings.extend(_missing_numerals(plan, figure))
     findings.extend(_illegible_elements(plan, figure))
-    if plan.kind in ("perspective", "cross_section"):
+    if not from_cad and plan.kind in ("perspective", "cross_section"):
         findings.extend(_disconnected(plan, _as(scene, MechScene)))
     return figure, findings
+
+
+def _provenance(plan: FigurePlan) -> list[Finding]:
+    """Say, once per figure, whether it is a drawing of the invention or a blockout of it.
+
+    This is the finding the product turns on. It is an error rather than a warning because a
+    blockout that reaches a filing is worse than no drawing at all: it is a statement about the
+    invention that nobody made.
+    """
+    source_kind = (plan.source.kind if plan.source else "blockout") or "blockout"
+    if sources_mod.is_authoritative(plan.kind, source_kind):
+        return []
+    return [Finding(
+        code="geometry_not_authoritative", severity="error", stage="draft", figure=plan.label,
+        message=f"{plan.label} is a draft: " + sources_mod.draft_reason(plan.kind, source_kind),
+        cite="", basis="practice",
+        detail={"source_kind": source_kind, "figure_kind": plan.kind})]
 
 
 def _as(scene: Any, schema):
@@ -62,16 +105,34 @@ def _as(scene: Any, schema):
 
 
 def _missing_numerals(plan: FigurePlan, figure: Figure) -> list[Finding]:
-    """A numeral the plan promised and the scene never drew.
+    """A numeral the plan promised and the drawing does not carry.
 
     This is the failure that matters most, because it is silent: the figure looks fine, and the
-    only sign is that a part the description talks about is not in any view. It is reported
-    against the planner, which is the stage that can put it back.
+    only sign is that a part the description talks about is not in any view.
+
+    Who it is reported against depends on where the geometry came from. In a blockout or a
+    diagram the planner could have included the part and did not, so the planner is asked again.
+    In a view compiled from the applicant's CAD there is nothing to ask: the part is not in the
+    file. Sending that to the planner would be asking a model to invent the very thing this
+    product refuses to invent, so it goes to the draft instead, where a person can model the
+    part, split the mesh, or accept that this view does not show it.
     """
     drawn = set(figure.anchors)
+    from_cad = (plan.source.kind if plan.source else "") == "cad"
     out: list[Finding] = []
     for element in plan.elements:
-        if element.numeral not in drawn:
+        if element.numeral in drawn:
+            continue
+        if from_cad:
+            out.append(Finding(
+                code="part_not_in_supplied_geometry", severity="error", stage="draft",
+                figure=plan.label, numeral=element.numeral, basis="practice",
+                message=(f"{element.numeral} (\"{element.term}\") was to be shown in "
+                         f"{plan.label}, and the supplied mesh has no component that could be "
+                         "identified as it. Model the part, split it out of the mesh, or take it "
+                         "out of this view in the coverage matrix."),
+                cite="37 CFR 1.84(p)(4)"))
+        else:
             out.append(Finding(
                 code="element_not_drawn", severity="error", stage="planner",
                 figure=plan.label, numeral=element.numeral,

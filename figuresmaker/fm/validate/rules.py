@@ -150,6 +150,16 @@ RULES: dict[str, Rule] = {r.code: r for r in (
          "contents."),
 
     # ------------------------------------------------------------------ the renderer's own
+    Rule("geometry_not_authoritative", "", "practice",
+         "A mechanical view must be compiled from geometry the applicant supplied. A view "
+         "blocked out from the description alone is a draft, not a drawing of the invention."),
+    Rule("source_unusable", "", "practice",
+         "A supplied source could not be read."),
+    Rule("part_not_in_supplied_geometry", "37 CFR 1.84(p)(4)", "practice",
+         "A part the description names that the supplied geometry does not contain. It cannot "
+         "be drawn without being modelled, and it will not be invented."),
+    Rule("components_unassigned", "37 CFR 1.84(p)(4)", "practice",
+         "A part present in the supplied geometry that no reference character names."),
     Rule("element_not_legible", "37 CFR 1.84(l)", "practice",
          "A part must be drawn large enough to be seen; a reference character pointing at a "
          "speck depicts nothing."),

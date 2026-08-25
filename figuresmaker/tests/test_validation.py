@@ -428,3 +428,61 @@ def test_the_solver_reaches_a_non_rectangular_shape(shape):
     assert leader is not None
     ring = list(outline) + [outline[0]]
     assert geom.dist_point_polyline(leader.tip(), ring) < rules.LEADER_TOUCH_MM
+
+
+# --------------------------------------------------------------- where the geometry came from
+
+
+def test_a_mechanical_view_from_prose_alone_is_not_filing_ready():
+    """The product rule. A blockout is a layout to agree with an attorney, not a drawing."""
+    from fm import sources
+    from fm.render import _provenance
+    from fm.schemas import FigureSource
+
+    plan = FigurePlan(label="FIG. 1", kind="perspective",
+                      source=FigureSource(kind="blockout"))
+    found = _provenance(plan)
+    assert len(found) == 1
+    assert found[0].code == "geometry_not_authoritative"
+    assert found[0].severity == "error"
+    assert "blockout" in found[0].message
+    assert not sources.is_authoritative("perspective", "blockout")
+
+
+@pytest.mark.parametrize("kind,source", [
+    ("perspective", "cad"), ("exploded", "cad"), ("cross_section", "cad"),
+    ("perspective", "sketch"), ("ui_screen", "screenshot"),
+    ("block_diagram", "schema"), ("flowchart", "schema"), ("sequence", "schema"),
+])
+def test_an_authoritative_source_is_filing_ready(kind, source):
+    from fm.render import _provenance
+    from fm.schemas import FigureSource
+
+    plan = FigurePlan(label="FIG. 1", kind=kind, source=FigureSource(kind=source))
+    assert not _provenance(plan)
+
+
+@pytest.mark.parametrize("kind", ["perspective", "exploded", "cross_section"])
+def test_a_mechanical_view_cannot_be_derived_from_text(kind):
+    from fm import sources
+    assert sources.needs_a_source(kind)
+
+
+@pytest.mark.parametrize("kind", ["block_diagram", "flowchart", "sequence", "ui_screen"])
+def test_a_diagram_can_be_derived_from_text(kind):
+    """Its content really is in the prose: the boxes are the parts, the arrows are the sentences."""
+    from fm import sources
+    assert not sources.needs_a_source(kind)
+
+
+def test_a_screenshot_cannot_stand_behind_a_perspective_view():
+    from fm import sources
+    assert not sources.is_authoritative("perspective", "screenshot")
+    reason = sources.draft_reason("perspective", "screenshot")
+    assert "cad" in reason
+
+
+def test_the_reason_names_what_would_fix_it():
+    from fm import sources
+    reason = sources.draft_reason("cross_section", "blockout")
+    assert "cad" in reason and "sketch" in reason

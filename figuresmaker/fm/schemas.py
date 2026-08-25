@@ -167,12 +167,26 @@ class Conventions(BaseModel):
     exploded_axis: str = "y"
 
 
+class FigureSource(BaseModel):
+    """Where this figure's geometry comes from.
+
+    ``kind`` is one of cad, sketch, screenshot, existing_figure, schema, blockout. A mechanical
+    view backed by a blockout is a draft, not a drawing of the invention, and every surface that
+    shows it says so. See ``fm.sources``.
+    """
+    kind: str = "blockout"
+    source_id: str = ""               # an uploaded source, when the kind needs one
+    view: str = ""                    # which view of it: isometric, front, section A-A, exploded
+    note: str = ""
+
+
 class FigurePlan(BaseModel):
     label: str
     kind: FigureKind
     title: str = ""
     view: str = ""
     parent: str = ""                  # the figure a section or detail is taken from
+    source: FigureSource = Field(default_factory=FigureSource)
     elements: list[PlanElement] = Field(default_factory=list)
     relations: list[PlanRelation] = Field(default_factory=list)
     conventions: Conventions = Field(default_factory=Conventions)
@@ -272,6 +286,29 @@ class ExplodeSpec(BaseModel):
 class MechScene(BaseModel):
     camera: Literal["isometric", "front", "top", "right", "dimetric", "trimetric"] = "isometric"
     solids: list[Solid] = Field(default_factory=list)
+    section: Optional[SectionSpec] = None
+    explode: Optional[ExplodeSpec] = None
+    hidden_lines: bool = False
+
+
+class CadPart(BaseModel):
+    """One connected component of a supplied mesh, and the numeral that points at it."""
+    component: int                    # index into the components of the source, largest first
+    numeral: str = ""
+    label: str = ""
+
+
+class CadScene(BaseModel):
+    """A view compiled from a mesh the applicant supplied.
+
+    The model chooses a camera and says which numeral belongs to which component. It cannot
+    invent a shape, a size or a position, because it never sees any: the geometry is read from
+    the file and the model is only ever labelling it.
+    """
+    source_id: str = ""
+    camera: Literal["isometric", "front", "top", "right", "rear", "left", "bottom",
+                    "dimetric", "trimetric"] = "isometric"
+    parts: list[CadPart] = Field(default_factory=list)
     section: Optional[SectionSpec] = None
     explode: Optional[ExplodeSpec] = None
     hidden_lines: bool = False

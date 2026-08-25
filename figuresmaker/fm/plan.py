@@ -22,8 +22,9 @@ import re
 from typing import Optional
 
 from . import llm
-from .schemas import (Claim, Conventions, FigurePlan, GraphScene, MechScene, PART_NAMES, Plan,
-                      PlanElement, Registry, Sections, SeqScene, UIScene, UI_TYPES)
+from .schemas import (CadScene, Claim, Conventions, FigurePlan, FigureSource, GraphScene,
+                      MechScene, PART_NAMES, Plan, PlanElement, Registry, Sections, SeqScene,
+                      UIScene, UI_TYPES)
 from .sections import figure_sort_key
 
 MAX_FIGURES = int(__import__("os").environ.get("FM_MAX_FIGURES", "20"))
@@ -331,6 +332,34 @@ numeral empty on structural boxes that no numeral names. label is the text print
 control, kept short."""
 
 
+CAD_SYSTEM = """You choose how to look at an assembly the applicant supplied, and say which \
+component carries which reference numeral.
+
+You are NOT describing the geometry. It has been read from the applicant's file and you cannot \
+change it. You are given the components that are actually in that file: how many triangles each \
+has, how big it is in millimetres, where its centre is, and where it sits in the whole. Your job \
+is to match those facts to the parts the description names.
+
+RULES
+* parts: one entry per component you can identify, giving the numeral from the plan that names \
+it. Use each numeral at most once. Leave a component out if you genuinely cannot tell which part \
+it is; an unnamed component is reported to the attorney, and that is a better outcome than a \
+numeral pointing at the wrong thing.
+* Match on size and position. The largest component enclosing the others is usually the housing \
+or the body. A small component at the top of a large one is usually what the description says is \
+mounted on top. Read the description passages you are given.
+* camera: which way to look. isometric shows an assembly; front, top, right, rear, left and \
+bottom are orthographic elevations. For a cross_section choose the elevation that the cutting \
+plane is perpendicular to.
+* section: fill this in ONLY for a cross_section figure. axis and offset place the cutting plane \
+in the same millimetre coordinates the components are given in; keep says which half survives.
+* explode: fill this in ONLY for an exploded figure. axis is the direction the parts separate \
+along and gap is how far apart, in millimetres.
+* hidden_lines: true when the figure has to show something inside that the section does not cut.
+
+Return JSON only."""
+
+
 _SCENE_FOR = {
     "block_diagram": (GraphScene, GRAPH_SYSTEM, "graph"),
     "flowchart": (GraphScene, GRAPH_SYSTEM, "graph"),
@@ -342,14 +371,52 @@ _SCENE_FOR = {
 }
 
 
-def scene_schema(kind: str):
+def scene_schema(kind: str, source_kind: str = ""):
+    """Which schema a figure's scene uses.
+
+    The SOURCE decides first. A perspective view compiled from the applicant's mesh needs a
+    camera and a component-to-numeral mapping; one blocked out from prose needs a list of solids.
+    They are different questions and they get different schemas.
+    """
+    if source_kind == "cad" and kind in ("perspective", "exploded", "cross_section"):
+        return (CadScene, CAD_SYSTEM, "cad")
     return _SCENE_FOR.get(kind, _SCENE_FOR["block_diagram"])
 
 
+def assign_sources(plan: Plan, sources, keep: Optional[Plan] = None) -> Plan:
+    """Give every figure a source, defaulting honestly.
+
+    A mechanical view gets the applicant's mesh if exactly one was supplied, because that is
+    unambiguous and it is what they uploaded it for. Otherwise it is a blockout and says so.
+    A diagram, a flow chart, a sequence and a screen are marked as schemas, because their content
+    really is in the prose.
+    """
+    from .sources import DERIVABLE_FROM_TEXT
+
+    previous = {f.label: f.source for f in (keep.figures if keep else [])}
+    meshes = [s for s in (sources.items if sources else []) if s.kind == "cad"]
+    only_mesh = meshes[0].id if len(meshes) == 1 else ""
+
+    for figure in plan.figures:
+        held = previous.get(figure.label)
+        if held is not None and held.kind != "blockout":
+            figure.source = held
+            continue
+        if figure.kind in DERIVABLE_FROM_TEXT:
+            figure.source = FigureSource(kind="schema")
+        elif only_mesh:
+            figure.source = FigureSource(kind="cad", source_id=only_mesh)
+        else:
+            figure.source = FigureSource(kind="blockout")
+    return plan
+
+
 def build_scene(figure: FigurePlan, sections: Sections, registry: Registry,
-                reasoner: Optional[llm.Reasoner] = None, feedback: str = ""):
+                reasoner: Optional[llm.Reasoner] = None, feedback: str = "",
+                resolve_source=None):
     """The renderer-specific payload for one figure."""
-    schema, system, _ = scene_schema(figure.kind)
+    source_kind = (figure.source.kind if figure.source else "blockout") or "blockout"
+    schema, system, mode = scene_schema(figure.kind, source_kind)
     elements = "\n".join(
         f"{e.numeral}\t{e.term}\t{e.role}\t{e.note}".rstrip() for e in figure.elements)
     relations = "\n".join(f"{r.kind}\t{r.source} -> {r.target}\t{r.label}".rstrip()
@@ -363,6 +430,8 @@ def build_scene(figure: FigurePlan, sections: Sections, registry: Registry,
         f"ELEMENTS (numeral, term, role, note)\n{elements}\n\n"
         f"RELATIONS\n{relations}\n\n"
         f"WHAT THE DESCRIPTION SAYS ABOUT THESE PARTS\n{_evidence(figure, registry)}")
+    if mode == "cad":
+        context += "\n\n" + _components_block(figure, resolve_source)
     if feedback:
         context += ("\n\nThe previous attempt at this figure was rejected. Fix exactly these "
                     f"problems:\n{feedback}")
@@ -370,6 +439,25 @@ def build_scene(figure: FigurePlan, sections: Sections, registry: Registry,
         reasoner = llm.deep()
     return reasoner.structured(f"scene_{figure.kind}", schema, system, context,
                                max_tokens=12000)
+
+
+def _components_block(figure: FigurePlan, resolve_source) -> str:
+    """The components that are genuinely in the applicant's file, as facts about geometry."""
+    if resolve_source is None:
+        return "COMPONENTS IN THE SUPPLIED MESH\n(the mesh could not be read here)"
+    from .render import cad as cad_mod
+
+    try:
+        record, blob = resolve_source(figure.source.source_id)
+        described = cad_mod.describe(record, blob)
+    except Exception as exc:
+        return f"COMPONENTS IN THE SUPPLIED MESH\n(the mesh could not be read: {exc})"
+    rows = ["component\ttriangles\tsize mm (x,y,z)\tcentre mm\tshare\twhere it sits"]
+    for item in described:
+        rows.append("{component}\t{triangles}\t{size_mm}\t{centre_mm}\t"
+                    "{extent_fraction}\t{position}".format(**item))
+    return ("COMPONENTS IN THE SUPPLIED MESH, from " + record.filename + "\n"
+            + "\n".join(rows))
 
 
 def _evidence(figure: FigurePlan, registry: Registry, limit: int = 9000) -> str:
@@ -390,6 +478,21 @@ def _evidence(figure: FigurePlan, registry: Registry, limit: int = 9000) -> str:
 
 
 def clamp_scene(kind: str, scene):
+    if isinstance(scene, CadScene):
+        # The one thing a model can get wrong here: naming the same part twice.
+        seen: set[str] = set()
+        kept = []
+        for part in scene.parts:
+            if part.numeral and part.numeral in seen:
+                continue
+            seen.add(part.numeral)
+            kept.append(part)
+        scene.parts = kept
+        return scene
+    return _clamp_mech(kind, scene)
+
+
+def _clamp_mech(kind: str, scene):
     """Keep a model's numbers inside what the renderer can draw.
 
     A model that asks for a 4 000 mm shaft or a gear with 900 teeth is not wrong about the

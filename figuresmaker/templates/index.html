@@ -41,6 +41,15 @@
         <p class="hint">A scanned PDF with no text layer cannot be read; it needs OCR first.</p>
       </div>
 
+      <label class="field" for="sources">Sources, if you have them</label>
+      <input type="file" name="sources" id="sources" multiple
+             accept=".stl,.obj,.ply,.off,.png,.jpg,.jpeg,.gif,.bmp,.webp,.pdf,.svg">
+      <p class="hint">CAD (STL, OBJ, PLY), sketches, screenshots, or an existing drawing set.
+        A mechanical view is only filing-ready when it is compiled from geometry you supplied;
+        without one it comes out as a blockout, clearly marked, useful for agreeing the layout
+        and not for filing. Block diagrams, flow charts and screens are fine from the text alone.
+        You can add sources later, before you approve.</p>
+
       <div class="row" style="margin-top:1rem">
         <label class="field" for="paper" style="margin:0">Sheet size</label>
         <select name="paper" id="paper" style="width:auto">

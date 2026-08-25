@@ -119,10 +119,30 @@ def assemble(scene: MechScene, kind: str) -> Scene3D:
     solids = list(scene.solids or [])[:MAX_SOLIDS]
     if not solids:
         raise MechError("the scene has no solids")
-
     meshes = [solidlib.build_solid(s) for s in solids]
     if scene.explode or kind == "exploded":
-        meshes = _explode(scene, solids, meshes)
+        meshes = _explode_by_rank(
+            [s.id for s in solids], meshes,
+            {"x": 0, "y": 1, "z": 2}[scene.explode.axis if scene.explode else "y"],
+            scene.explode.gap if scene.explode else 30.0,
+            list(scene.explode.order) if scene.explode and scene.explode.order else
+            [s.id for s in sorted(solids,
+                                  key=lambda s: (s.at or [0, 0, 0])[
+                                      {"x": 0, "y": 1, "z": 2}[
+                                          scene.explode.axis if scene.explode else "y"]])])
+    return compose(meshes, kind, section=scene.section)
+
+
+def compose(meshes: Sequence[Mesh], kind: str, *, section=None) -> Scene3D:
+    """Everything a set of placed meshes goes through, whoever built them.
+
+    A mesh imported from the applicant's CAD is sectioned, capped, hatched and projected by
+    exactly the code that does it for a primitive. That is the point of importing into this type
+    rather than around it.
+    """
+    meshes = [m for m in meshes if m.tris]
+    if not meshes:
+        raise MechError("there is no geometry to draw")
 
     total = sum(len(m.tris) for m in meshes)
     if total > MAX_TRIANGLES:
@@ -130,19 +150,18 @@ def assemble(scene: MechScene, kind: str) -> Scene3D:
                         "renderer will project. Split the view into two figures")
 
     caps: list[tuple[list[V3], str]] = []
-    if scene.section or kind == "cross_section":
-        spec = scene.section
-        if spec is None:
-            raise MechError("a cross-sectional figure needs a cutting plane; the scene gave none")
+    if section is not None or kind == "cross_section":
+        if section is None:
+            raise MechError("a cross-sectional figure needs a cutting plane; none was given")
         cut: list[Mesh] = []
         for mesh in meshes:
-            clipped, loops = _cut_mesh(mesh, spec)
+            clipped, loops = _cut_mesh(mesh, section)
             if clipped.tris:
                 cut.append(clipped)
             for loop in loops:
                 caps.append((loop, mesh.owner))
         if not cut:
-            raise MechError("the cutting plane misses every solid, so the section is empty")
+            raise MechError("the cutting plane misses every part, so the section is empty")
         meshes = cut
 
     verts: list[V3] = []
@@ -164,24 +183,29 @@ def assemble(scene: MechScene, kind: str) -> Scene3D:
                    caps=caps)
 
 
-def _explode(scene: MechScene, solids, meshes: list[Mesh]) -> list[Mesh]:
-    spec = scene.explode
-    axis = (spec.axis if spec else "y")
-    gap = (spec.gap if spec else 30.0)
-    index = {"x": 0, "y": 1, "z": 2}[axis]
-    order = list(spec.order) if spec and spec.order else []
-    if not order:
-        # No stated order: separate along the axis in the order the parts already sit on it.
-        order = [s.id for s in sorted(solids, key=lambda s: (s.at or [0, 0, 0])[index])]
+def _explode_by_rank(ids: Sequence[str], meshes: Sequence[Mesh], index: int, gap: float,
+                     order: Sequence[str]) -> list[Mesh]:
+    """Separate parts along one axis in a stated order, about the middle of the set."""
     rank = {sid: i for i, sid in enumerate(order)}
     middle = (len(order) - 1) / 2.0
     out: list[Mesh] = []
-    for mesh, spec_solid in zip(meshes, solids):
-        shift = (rank.get(spec_solid.id, middle) - middle) * gap
+    for sid, mesh in zip(ids, meshes):
         delta = [0.0, 0.0, 0.0]
-        delta[index] = shift
+        delta[index] = (rank.get(sid, middle) - middle) * gap
         out.append(mesh.translated(*delta))
     return out
+
+
+def explode_meshes(meshes: Sequence[Mesh], axis: str, gap: float,
+                   order: Optional[Sequence[str]] = None) -> list[Mesh]:
+    """Explode a set of imported parts. Their own position along the axis sets the order."""
+    index = {"x": 0, "y": 1, "z": 2}.get(axis, 1)
+    ids = [m.sid or str(i) for i, m in enumerate(meshes)]
+    if not order:
+        centres = {ids[i]: (m.bounds()[0][index] + m.bounds()[1][index]) / 2.0
+                   for i, m in enumerate(meshes)}
+        order = sorted(ids, key=lambda sid: centres[sid])
+    return _explode_by_rank(ids, meshes, index, gap, order)
 
 
 # ------------------------------------------------------------------------------ plane cutting
@@ -596,11 +620,27 @@ def assembly_components(scene: MechScene, meshes: Sequence[Mesh]) -> list[list[s
 def render_mech(plan: FigurePlan, scene: MechScene, appearance=None) -> Figure:
     scene3d = assemble(scene, plan.kind)
     camera = Camera.named(scene.camera or _default_camera(plan))
+    figure = draw_projection(
+        plan, scene3d, camera, appearance=appearance,
+        draw_hidden=bool(scene.hidden_lines or plan.conventions.hidden_lines),
+        exploded=(plan.kind == "exploded"),
+        explode_axis=(scene.explode.axis if scene.explode else "y"))
+    figure.scene = scene.model_dump()
+    return figure
+
+
+def draw_projection(plan: FigurePlan, scene3d: Scene3D, camera: Camera, *, appearance=None,
+                    draw_hidden: bool = False, exploded: bool = False,
+                    explode_axis: str = "y") -> Figure:
+    """Project, remove the hidden lines, hatch the cuts, and find the anchors.
+
+    Shared by every three-dimensional path. A mesh the applicant supplied and a set of primitives
+    a model proposed are the same thing by the time they reach here, which is what lets the CAD
+    route inherit the sectioning and the silhouette work rather than reimplement it.
+    """
     projected = project(scene3d, camera)
     index = TriangleIndex(projected)
-
-    figure = Figure(label=plan.label, kind=plan.kind, title=plan.title, scene=scene.model_dump())
-    draw_hidden = bool(scene.hidden_lines or plan.conventions.hidden_lines)
+    figure = Figure(label=plan.label, kind=plan.kind, title=plan.title)
 
     edges = list(scene3d.edges) + silhouette_edges(scene3d, projected)
     seen: set[tuple[int, int]] = set()
@@ -628,8 +668,8 @@ def render_mech(plan: FigurePlan, scene: MechScene, appearance=None) -> Figure:
                                              dash=DASH_HIDDEN))
 
     _draw_hatching(figure, scene3d, camera, index, appearance)
-    if plan.kind == "exploded":
-        _draw_explode_lines(figure, scene, scene3d, camera)
+    if exploded:
+        _draw_explode_lines(figure, explode_axis, camera)
 
     if not figure.prims:
         raise MechError(f"{plan.label}: the projection produced no visible lines")
@@ -713,13 +753,11 @@ def _ring_area(ring: Sequence[Point]) -> float:
     return total / 2.0
 
 
-def _draw_explode_lines(figure: Figure, scene: MechScene, scene3d: Scene3D,
-                        camera: Camera) -> None:
+def _draw_explode_lines(figure: Figure, axis: str, camera: Camera) -> None:
     """The dash-dot line that says which exploded part came from where."""
     box = figure.content_bbox(include_labels=False)
-    axis = (scene.explode.axis if scene.explode else "y")
     vector = camera.project({"x": (1.0, 0.0, 0.0), "y": (0.0, 1.0, 0.0),
-                             "z": (0.0, 0.0, 1.0)}[axis])
+                             "z": (0.0, 0.0, 1.0)}.get(axis, (0.0, 1.0, 0.0)))
     direction = geom.unit(vector[0], vector[1])
     centre = ((box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0)
     reach = math.hypot(box[2] - box[0], box[3] - box[1]) * 0.6
