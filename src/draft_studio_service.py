@@ -774,7 +774,12 @@ def _continue_terminal_filing_repair(repository: Any, claimed: Mapping[str, Any]
     interrupted_run = bool(
         draft_agent._transient_provider_error(error) or
         re.search(r"\bexit code (?:130|143)\b", str(error), re.IGNORECASE))
-    if not filing_gate_stopped and interrupted_run:
+    # The independent reviewer is fail-closed: this exception means no source verdict was
+    # accepted, not that the candidate failed source fidelity. Its formatting, timeout, or
+    # availability problem can only be repaired by rerunning the mandatory review. No user input
+    # can resolve it, so preserve and continue any complete checkpoint automatically.
+    source_review_unavailable = str(error).startswith("SourceReviewUnavailable:")
+    if not filing_gate_stopped and (interrupted_run or source_review_unavailable):
         try:
             candidate = repository.retry_candidate(int(result.get("id") or claimed["id"]))
             interrupted_candidate = bool(

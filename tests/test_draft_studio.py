@@ -1749,6 +1749,57 @@ def test_source_preflight_is_independent_read_only_and_ignores_pixels(monkeypatc
     assert seen["tools"] == "Read,Glob,Grep"
     assert "Ignore rendered image files" in seen["prompt"]
     assert draft_qa.SOURCE_REVIEW_VERSION in seen["prompt"]
+    assert "both required root properties" in seen["prompt"]
+    assert '"findings": []' in seen["prompt"]
+
+
+def test_source_preflight_retries_structured_output_exhaustion_in_a_fresh_session(monkeypatch):
+    results = iter([
+        draft_agent.AgentRun(
+            ok=False, model="review-model",
+            error="Failed to provide valid structured output after 5 attempts"),
+        draft_agent.AgentRun(ok=True, model="review-model", result={
+            "summary": (
+                "Every claim limitation and numbered part was traced to affirmative inventor "
+                "disclosure. The numeral table and every figure brief use those supported parts "
+                "consistently, and no drafting note, placeholder, question, or instruction "
+                "remains anywhere in the candidate."
+            ),
+            "findings": [],
+        }),
+    ])
+    sessions = []
+
+    def fake_run(**kwargs):
+        sessions.append(kwargs["session_id"])
+        return next(results)
+
+    monkeypatch.setattr(draft_agent, "run", fake_run)
+
+    outcome = draft_qa.review_sources(Path("/tmp"))
+
+    assert outcome["ok"] is True
+    assert len(sessions) == 2
+    assert sessions[0] != sessions[1]
+
+
+def test_source_preflight_remains_fail_closed_after_two_schema_exhaustions(monkeypatch):
+    calls = 0
+
+    def fake_run(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return draft_agent.AgentRun(
+            ok=False, model="review-model",
+            error="Failed to provide valid structured output after 5 attempts")
+
+    monkeypatch.setattr(draft_agent, "run", fake_run)
+
+    outcome = draft_qa.review_sources(Path("/tmp"))
+
+    assert outcome["ok"] is False
+    assert "structured output" in outcome["error"]
+    assert calls == 2
 
 
 def test_source_preflight_retries_a_non_substantive_structured_result(monkeypatch):
@@ -3487,6 +3538,7 @@ def test_terminal_filing_gate_failure_continues_from_saved_candidate_without_use
 @pytest.mark.parametrize("error", [
     "StudioError: API Error: Connection lost mid-response. The response may be incomplete.",
     "SourceReviewUnavailable: The drafting agent produced no result (exit code 143).",
+    "SourceReviewUnavailable: Failed to provide valid structured output after 5 attempts",
     ("FigureTransientError: the image model could not draw this figure: the image model "
      "returned no response parts (IMAGE_RECITATION)"),
 ])
