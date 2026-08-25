@@ -61,7 +61,7 @@ DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
 DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
     "deterministic-semantic-consensus-v1-byte-exact-two-semantic-one-independent")
 DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION = (
-    "deterministic-anchor-v5-byte-exact-clear-interior-and-designated-boundary-points")
+    "deterministic-anchor-v6-byte-exact-clear-interior-and-designated-boundary-points")
 DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION = (
     "deterministic-endpoint-resolution-v3-sub-dot-component-or-certified-interior")
 DETERMINISTIC_SUB_DOT_TOLERANCE_PIXELS = 6
@@ -1731,6 +1731,7 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
         return [dict(item) for item in anchors or ()], None
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
     block_grip = _has_deterministic_block_grip(text)
+    nested_plan = _deterministic_nested_plan_png(caption)
     pulling_scene = _deterministic_pulling_scene_png(caption)
     fragmentary_section = _deterministic_fragmentary_section_png(caption)
     chamber_section = _deterministic_chamber_section_png(caption)
@@ -1763,6 +1764,32 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
             "perimeter member": (350, 480, "well inside the front strip of the lower band"),
             "covering element": (900, 600, "well inside the open tile surface to the right"),
             "handle": (440, 320, "well inside the front face of the closed block grip"),
+        }
+    elif nested_plan is not None and png == nested_plan:
+        renderer_name = "nested_plan"
+        perimeter_target_match = re.search(
+            r"\b(?:the )?perimeter member(?:\s+\d+)?\b[^.]*\.\s*"
+            r"identified\s+([^.]*)",
+            text,
+        )
+        perimeter_target = (
+            perimeter_target_match.group(1) if perimeter_target_match else "")
+        if "right-hand side" in perimeter_target:
+            ring_x, ring_y = 1210, 450
+            ring_evidence = "well inside the band along the right-hand side of the ring"
+        elif re.search(r"\b(?:bottom|lower)\b", perimeter_target):
+            ring_x, ring_y = 700, 760
+            ring_evidence = "well inside the band along the lower side of the ring"
+        elif re.search(r"\b(?:top|upper)\b", perimeter_target):
+            ring_x, ring_y = 700, 140
+            ring_evidence = "well inside the band along the upper side of the ring"
+        else:
+            ring_x, ring_y = 190, 450
+            ring_evidence = "well inside the band along the left-hand side of the ring"
+        component_centers = {
+            "second side": (
+                700, 450, "well inside the plain field enclosed by the inner edge"),
+            "perimeter member": (ring_x, ring_y, ring_evidence),
         }
     elif pulling_scene is not None and png == pulling_scene:
         renderer_name = "pulling_scene"

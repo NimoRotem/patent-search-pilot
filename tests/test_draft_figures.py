@@ -3315,6 +3315,47 @@ def test_deterministic_fragmentary_section_uses_exact_component_anchors():
         "24", "26", "34", "36", "38", "40", "42"}
 
 
+def test_deterministic_nested_plan_uses_exact_ring_and_field_anchors():
+    specification = """
+    The sheet shows the perimeter member 24 as one rectangular ring, and within it the second
+    side 16 as a plain open field; no other body is drawn. The ring is drawn as one rectangle
+    with a smaller rectangle inside it, the inner rectangle standing well in from each of the
+    four sides of the outer rectangle. The field enclosed by the inner rectangle is left entirely
+    open paper. The ring stands well in from every side of the drawing area.
+    - The perimeter member 24 is the band between the outer edge and inner edge. Identified well
+      inside that band along the left-hand side of the ring.
+    - The second side 16 is the plain field inside the inner edge. Identified well inside it.
+    """
+    numerals = ["16 = second side", "24 = perimeter member"]
+    png = draft_figures._deterministic_nested_plan_png(specification)
+    assert png is not None
+    initial = [{
+        "numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+        "visible": True, "evidence": entry,
+    } for entry in numerals]
+
+    grounded = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {"ok": True, "anchors": initial})
+    grounded = draft_figures._apply_pixel_grounding(png, numerals, grounded)
+
+    positions = {
+        item["numeral"]: (item["x"], item["y"])
+        for item in grounded["anchors"]
+    }
+    assert positions["16"] == (
+        draft_figures._pixel_to_normalized(700, 1400),
+        draft_figures._pixel_to_normalized(450, 900),
+    )
+    assert positions["24"] == (
+        draft_figures._pixel_to_normalized(190, 1400),
+        draft_figures._pixel_to_normalized(450, 900),
+    )
+    assert grounded["pixel_anchor_audit"]["ok"] is True
+    certificate = grounded["deterministic_anchor_certificate"]
+    assert certificate["renderer"] == "nested_plan"
+    assert {item["numeral"] for item in certificate["anchors"]} == {"16", "24"}
+
+
 def test_deterministic_block_grip_replaces_stale_durable_endpoint_progress(monkeypatch):
     specification = """
     The covering element 36 is one large plain tile seen in perspective. The machine stands on
