@@ -1718,22 +1718,32 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
     block_grip = bool(
         re.search(r"\bgrip stands on the top face\b[^.]{0,80}\bbetween them\b", text) and
         re.search(r"\bclosed block of the same kind\b", text))
-    if not block_grip:
+    pulling_scene = _deterministic_pulling_scene_png(caption)
+    if block_grip:
+        renderer_name = "block_grip_scene"
+        # Raw-pixel centers come directly from _deterministic_grip_scene_png. Each white-area
+        # coordinate is deliberately clear of every enclosing edge; the assembly coordinate is
+        # on its left silhouette because that target is explicitly a line.
+        component_centers = {
+            "vibration device": (185, 365, "on the outer boundary of the whole machine"),
+            "base": (350, 414, "well inside the broad front face of the slab"),
+            "vibration motor": (280, 312, "well inside the front face of the left housing"),
+            "air-extraction mechanism": (
+                585, 312, "well inside the front face of the right housing"),
+            "perimeter member": (350, 480, "well inside the front strip of the lower band"),
+            "covering element": (900, 600, "well inside the open tile surface to the right"),
+            "handle": (435, 305, "well inside the front face of the closed block grip"),
+        }
+    elif pulling_scene is not None and png == pulling_scene:
+        renderer_name = "pulling_scene"
+        component_centers = {
+            "vibration device": (1215, 365, "on the outer right boundary of the machine"),
+            "perimeter member": (850, 468, "well inside the broad front strip of the band"),
+            "covering element": (1000, 650, "well inside the open tile in front of the machine"),
+            "flexible pulling element": (445, 489, "on the single curved pulling path"),
+        }
+    else:
         return [dict(item) for item in anchors or ()], None
-
-    # Raw-pixel centers come directly from _deterministic_grip_scene_png. Each white-area
-    # coordinate is deliberately clear of every enclosing edge; the assembly coordinate is on
-    # its left silhouette because that target is explicitly a line.
-    component_centers = {
-        "vibration device": (185, 365, "on the outer boundary of the whole machine"),
-        "base": (350, 414, "well inside the broad front face of the slab"),
-        "vibration motor": (280, 312, "well inside the front face of the left housing"),
-        "air-extraction mechanism": (
-            585, 312, "well inside the front face of the right housing"),
-        "perimeter member": (350, 480, "well inside the front strip of the lower band"),
-        "covering element": (900, 600, "well inside the open tile surface to the right"),
-        "handle": (435, 305, "well inside the front face of the closed block grip"),
-    }
     part_by_numeral = {
         item["numeral"]: re.sub(r"\s+", " ", item["part"]).strip().lower()
         for item in numeral_entries(numerals)
@@ -1765,6 +1775,7 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
         "ok": True,
         "version": DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
         "exact_renderer_match": True,
+        "renderer": renderer_name,
         "png_sha256": hashlib.sha256(png).hexdigest(),
         "anchors": certificate_anchors,
     }
