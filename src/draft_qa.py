@@ -274,7 +274,14 @@ def _title_form(title: str) -> dict[str, Any]:
 
 def _abstract_form(abstract: str) -> dict[str, Any]:
     abstract = abstract.strip()
-    words = len(re.findall(r"\S+", abstract))
+    # Use the safer count for a filing gate: an office-side counter may split a hyphenated
+    # compound even when a word processor reports it as one token. Rejecting the edge case here
+    # lets the automatic repair trim a few words instead of risking a formalities notice.
+    words = sum(
+        bool(part)
+        for token in re.findall(r"\S+", abstract)
+        for part in re.split(r"[-\u2010\u2011]", token)
+    )
     problems = []
     if words > ABSTRACT_WORD_LIMIT:
         problems.append(f"{words} words; 37 CFR 1.72(b) allows {ABSTRACT_WORD_LIMIT}.")
