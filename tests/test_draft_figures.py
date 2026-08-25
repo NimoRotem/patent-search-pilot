@@ -830,6 +830,7 @@ def test_byte_exact_certificate_resolves_only_a_sub_dot_endpoint_correction(monk
     anchors = [{"numeral": "44", "x": 315, "y": 350, "visible": True}]
     monkeypatch.setattr(draft_figures, "inspect_cross_provider_endpoints", lambda *a, **k: {
         "ok": False, "inspected": True, "incorrect": ["44"],
+        "summary": "Numeral 44 is not clear of the component boundary.",
         "reported_matches_spec": False,
         "expected": ["44"], "observed": ["44"],
         "missing": [], "unexpected": [], "duplicates": [],
@@ -868,6 +869,50 @@ def test_byte_exact_certificate_resolves_only_a_sub_dot_endpoint_correction(monk
     assert audit["deterministic_resolution"]["provider_incorrect"] == ["44"]
     assert audit["labels"][0]["correct"] is True
     assert audit["labels"][0]["provider_correct"] is False
+    assert "not clear" not in audit["summary"]
+    assert audit["provider_summary"] == (
+        "Numeral 44 is not clear of the component boundary.")
+    assert "byte-exact component certificate" in audit["labels"][0]["evidence"]
+    assert "Current (441, 315)" in audit["labels"][0]["provider_evidence"]
+
+
+def test_review_evidence_reconciles_a_stored_deterministic_endpoint_resolution():
+    endpoints = accepted_cross_provider_audit(
+        summary=(
+            "Numeral 24 is not clear of both edges. The proposed correction was resolved by "
+            "the complete byte-exact component certificate."),
+        provider_incorrect=["24"],
+        provider_errors=["Numeral 24 is not clear of both edges."],
+        deterministic_resolution={
+            "version": draft_figures.DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION,
+            "provider_incorrect": ["24"],
+            "coordinates": [{
+                "numeral": "24", "current_x": 190, "current_y": 450,
+                "suggested_x": 190, "suggested_y": 450,
+                "delta_x": 0, "delta_y": 0, "basis": "sub_dot",
+            }],
+        },
+        labels=[{
+            "numeral": "24", "correct": True, "provider_correct": False,
+            "evidence": "The endpoint is not clear of both edges.",
+            "suggested_x": 190, "suggested_y": 450,
+        }],
+    )
+
+    review = draft_figures._review_endpoint_evidence(endpoints)
+
+    assert review["summary"] == (
+        "The byte-exact component certificate resolves the endpoint provider concern for "
+        "numeral 24. The final endpoint is certified on its designated rendered component.")
+    assert review["labels"] == [{
+        "numeral": "24", "correct": True,
+        "evidence": (
+            "The byte-exact component certificate verifies numeral 24 at raw pixel "
+            "(190, 450); the provider correction is smaller than the rendered endpoint dot."),
+        "resolution_version": draft_figures.DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION,
+        "resolution_basis": "sub_dot",
+        "certified_x": 190, "certified_y": 450,
+    }]
 
 
 def test_byte_exact_certificate_keeps_a_material_endpoint_correction_as_a_veto(monkeypatch):
@@ -5432,6 +5477,10 @@ def test_checked_images_include_exact_audit_evidence_for_the_independent_reviewe
             specification_hash=digest,
             marked_anchor_audit=marked),
     }
+    assert draft_figures.current_ocr_audit(
+        active["numeral_audit"], expected_sheet_number="1/1")
+    assert draft_figures.current_semantic_audit(active["semantic_audit"])
+    assert draft_figures.current_leader_audit(active["leader_audit"])
     monkeypatch.setattr(draft_figures, "listing", lambda *a: [{
         "id": 8, "figure_label": "FIG. 1: sectional view", "active_version": 2,
         "versions": [active],

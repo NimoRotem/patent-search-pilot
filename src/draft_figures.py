@@ -5029,6 +5029,95 @@ def _clear_enclosed_white_point(raw_png: bytes, point: tuple[int, int], *,
         return False
 
 
+def _deterministic_endpoint_resolution_evidence(record: dict) -> str:
+    numeral = _clean_numeral(record.get("numeral"))
+    current_x = int(record.get("current_x"))
+    current_y = int(record.get("current_y"))
+    basis = str(record.get("basis") or "")
+    prefix = (
+        f"The byte-exact component certificate verifies numeral {numeral} at raw pixel "
+        f"({current_x}, {current_y}); ")
+    if basis == "sub_dot":
+        return prefix + "the provider correction is smaller than the rendered endpoint dot."
+    if basis == "same_enclosed_component":
+        return prefix + (
+            "the certified point and provider suggestion are inside the same enclosed "
+            "rendered component.")
+    return prefix + (
+        "the certified point is clear inside the exact component designated by the renderer.")
+
+
+def _review_endpoint_evidence(audit: dict) -> dict:
+    """Remove stale provider prose after a complete deterministic endpoint resolution."""
+    labels = []
+    for value in audit.get("labels") or ():
+        item = {
+            "numeral": value.get("numeral"),
+            "correct": value.get("correct"),
+            "evidence": value.get("evidence"),
+        }
+        for key in ("suggested_x", "suggested_y"):
+            if value.get(key) is not None:
+                item[key] = value.get(key)
+        labels.append(item)
+    fallback = {"summary": audit.get("summary"), "labels": labels}
+    resolution = audit.get("deterministic_resolution") or {}
+    if (audit.get("ok") is not True or
+            resolution.get("version") != DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION):
+        return fallback
+    provider_incorrect = {
+        _clean_numeral(value) for value in resolution.get("provider_incorrect") or ()
+        if _clean_numeral(value)
+    }
+    records = {
+        _clean_numeral(value.get("numeral")): value
+        for value in resolution.get("coordinates") or () if isinstance(value, dict)
+    }
+    if not provider_incorrect or set(records) != provider_incorrect:
+        return fallback
+    allowed_bases = {"sub_dot", "same_enclosed_component", "certified_clear_interior"}
+    try:
+        if any(
+                str(records[numeral].get("basis")) not in allowed_bases or
+                int(records[numeral].get("current_x")) < 0 or
+                int(records[numeral].get("current_y")) < 0
+                for numeral in provider_incorrect):
+            return fallback
+    except (TypeError, ValueError, OverflowError):
+        return fallback
+    label_numerals = {_clean_numeral(item.get("numeral")) for item in labels}
+    if not provider_incorrect.issubset(label_numerals):
+        return fallback
+    reconciled_labels = []
+    for item in labels:
+        numeral = _clean_numeral(item.get("numeral"))
+        if numeral not in provider_incorrect:
+            reconciled_labels.append(item)
+            continue
+        record = records[numeral]
+        reconciled_labels.append({
+            "numeral": item.get("numeral"),
+            "correct": True,
+            "evidence": _deterministic_endpoint_resolution_evidence(record),
+            "resolution_version": DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION,
+            "resolution_basis": record.get("basis"),
+            "certified_x": int(record.get("current_x")),
+            "certified_y": int(record.get("current_y")),
+        })
+    numerals = sorted(provider_incorrect, key=_numeral_order)
+    if len(numerals) == 1:
+        summary = (
+            "The byte-exact component certificate resolves the endpoint provider concern for "
+            f"numeral {numerals[0]}. The final endpoint is certified on its designated "
+            "rendered component.")
+    else:
+        summary = (
+            "The byte-exact component certificate resolves the endpoint provider concerns for "
+            f"numerals {', '.join(numerals)}. The final endpoints are certified on their "
+            "designated rendered components.")
+    return {"summary": summary, "labels": reconciled_labels}
+
+
 def _resolve_deterministic_endpoint_veto(certified: dict, audit: dict, raw_png: bytes,
                                          anchors) -> dict:
     """Resolve only non-substantive provider vetoes against exact component certificates."""
@@ -5127,15 +5216,19 @@ def _resolve_deterministic_endpoint_veto(certified: dict, audit: dict, raw_png: 
 
     resolved = dict(audit)
     resolved_labels = []
+    resolutions_by_numeral = {item["numeral"]: item for item in resolutions}
     for value in audit.get("labels") or []:
         item = dict(value)
         numeral = _clean_numeral(item.get("numeral"))
         if numeral in incorrect:
             item.update({
                 "provider_correct": item.get("correct") is True,
+                "provider_evidence": item.get("evidence"),
                 "correct": True,
                 "repairable": False,
                 "resolution_version": DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION,
+                "evidence": _deterministic_endpoint_resolution_evidence(
+                    resolutions_by_numeral[numeral]),
             })
         resolved_labels.append(item)
     resolution_bases = {item["basis"] for item in resolutions}
@@ -5160,16 +5253,14 @@ def _resolve_deterministic_endpoint_veto(certified: dict, audit: dict, raw_png: 
         "labels": resolved_labels,
         "provider_incorrect": sorted(incorrect, key=_numeral_order),
         "provider_errors": list(audit.get("errors") or []),
+        "provider_summary": audit.get("summary"),
         "deterministic_resolution": {
             "version": DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION,
             "tolerance_pixels": DETERMINISTIC_SUB_DOT_TOLERANCE_PIXELS,
             "provider_incorrect": sorted(incorrect, key=_numeral_order),
             "coordinates": resolutions,
         },
-        "summary": (
-            str(audit.get("summary") or "").strip() + " " +
-            resolution_summary
-        ).strip()[:2000],
+        "summary": resolution_summary,
     })
     return resolved
 
@@ -5871,17 +5962,7 @@ def materialize_review_images(project_id: int, user_id: int, workspace: Path) ->
         detected_sheets = numeral.get("detected_sheet_numbers") or []
         detected_sheet = (numeral.get("detected_sheet_number") or
                           (detected_sheets[0] if detected_sheets else None))
-        endpoint_labels = []
-        for item in endpoints.get("labels") or ():
-            row = {
-                "numeral": item.get("numeral"),
-                "correct": item.get("correct"),
-                "evidence": item.get("evidence"),
-            }
-            for key in ("suggested_x", "suggested_y"):
-                if item.get(key) is not None:
-                    row[key] = item.get(key)
-            endpoint_labels.append(row)
+        review_endpoints = _review_endpoint_evidence(endpoints)
         evidence.append({
             "figure_label": canonical_figure_label(figure.get("figure_label")),
             "rendered_file": rendered_file,
@@ -5917,11 +5998,11 @@ def materialize_review_images(project_id: int, user_id: int, workspace: Path) ->
                 "reviewer": (endpoints.get("provider") or endpoints.get("model_name") or
                              endpoints.get("model")),
                 "prompt_version": endpoints.get("prompt_version"),
-                "summary": endpoints.get("summary"),
+                "summary": review_endpoints.get("summary"),
                 "coordinate_space": endpoints.get("coordinate_space"),
                 "coordinate_width": endpoints.get("coordinate_width"),
                 "coordinate_height": endpoints.get("coordinate_height"),
-                "labels": endpoint_labels,
+                "labels": review_endpoints.get("labels") or [],
             },
         })
         written += 1
