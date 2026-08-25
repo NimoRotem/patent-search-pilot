@@ -3539,6 +3539,8 @@ def test_terminal_filing_gate_failure_continues_from_saved_candidate_without_use
     "StudioError: API Error: Connection lost mid-response. The response may be incomplete.",
     "SourceReviewUnavailable: The drafting agent produced no result (exit code 143).",
     "SourceReviewUnavailable: Failed to provide valid structured output after 5 attempts",
+    ("FigureTransientError: Cross-provider geometry inspection failed: Anthropic geometry "
+     "audit did not return complete JSON."),
     ("FigureTransientError: the image model could not draw this figure: the image model "
      "returned no response parts (IMAGE_RECITATION)"),
 ])
