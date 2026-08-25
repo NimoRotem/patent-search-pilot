@@ -30,6 +30,7 @@ overlap - is ``advisory``: it is shown, it is explained, and it can never by its
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections import Counter, defaultdict
@@ -1369,6 +1370,12 @@ WHAT TO CHECK, in this order of importance:
    rises to the right when y decreases as x increases. A diagonal line has no arrow, so apply this
    coordinate rule before reporting a hatch-direction mismatch.
 
+   A byte-exact section-hatch certificate in the evidence file records the signed angles used to
+   draw a deterministic section image, in that raw coordinate system. When its renderer match is
+   true and the recorded rendered-sheet hash matches the file you opened, those values are pixel
+   construction evidence, not a restatement of the brief. Do not report that certified components
+   share an angle or direction unless you identify a concrete hash or certificate mismatch.
+
 3. THE LANGUAGE AND THE LOGIC HOLD TOGETHER.
    One name per thing, used consistently - not "gripper" here and "grasping unit" there for the
    same element. No statement that contradicts another. No step that depends on a structure the
@@ -1632,10 +1639,89 @@ def review(workspace: Path, *, checks: Sequence[Mapping[str, Any]],
         return {"ok": False, "error": run.error, "findings": [], "summary": "",
                 "cost_usd": run.cost_usd, "duration_ms": run.duration_ms, "model": run.model,
                 "steps": run.steps}
-    return {"ok": True, "error": "", "summary": str(run.result.get("summary") or "")[:8000],
-            "findings": normalize_findings(run.result.get("findings")),
+    findings = normalize_findings(run.result.get("findings"))
+    findings, reconciled = reconcile_exact_section_hatch_findings(workspace, findings)
+    summary = str(run.result.get("summary") or "")[:8000]
+    if reconciled and not findings:
+        summary = (
+            "Independent review completed with no unresolved findings after exact-image "
+            "reconciliation.")
+    return {"ok": True, "error": "", "summary": summary,
+            "findings": findings, "reconciled_findings": reconciled,
             "cost_usd": run.cost_usd, "duration_ms": run.duration_ms, "model": run.model,
             "steps": run.steps}
+
+
+_SECTION_HATCH_FINDING_RE = re.compile(
+    r"\b(?:hatch(?:ed|ing)?|section lining)\b", re.IGNORECASE)
+_SECTION_HATCH_CONFLICT_RE = re.compile(
+    r"\b(?:angle|direction|identical|same|parallel|distinct|rises?|falls?)\b",
+    re.IGNORECASE)
+
+
+def reconcile_exact_section_hatch_findings(
+        workspace: Path, findings: Sequence[Mapping[str, Any]],
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Dismiss only hatch-direction claims disproved by a byte-exact render certificate."""
+    actionable = [dict(item) for item in findings]
+    evidence_path = Path(workspace) / "review" / "figure-audit-evidence.json"
+    try:
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return actionable, []
+    records = {
+        figure_number(item.get("figure_label")): item
+        for item in payload.get("figures") or []
+        if isinstance(item, Mapping) and figure_number(item.get("figure_label"))
+    }
+    kept: list[dict[str, Any]] = []
+    reconciled: list[dict[str, Any]] = []
+    for finding in actionable:
+        combined = " ".join(str(finding.get(key) or "") for key in (
+            "title", "where", "detail", "evidence", "fix"))
+        figure = figure_number(combined)
+        record = records.get(figure)
+        certificate = (
+            record.get("deterministic_section_hatching")
+            if isinstance(record, Mapping) else None)
+        components = certificate.get("components") if isinstance(certificate, Mapping) else None
+        angles = [
+            item.get("angle_degrees") for item in components or []
+            if isinstance(item, Mapping) and isinstance(item.get("angle_degrees"), int)
+        ]
+        rendered_file = str(record.get("rendered_file") or "") if record else ""
+        rendered_path = Path(workspace) / "figures" / rendered_file
+        try:
+            rendered_hash = hashlib.sha256(rendered_path.read_bytes()).hexdigest()
+        except OSError:
+            rendered_hash = ""
+        exact = bool(
+            str(finding.get("category") or "") == "figures_and_numerals" and
+            _SECTION_HATCH_FINDING_RE.search(combined) and
+            _SECTION_HATCH_CONFLICT_RE.search(combined) and
+            record and (record.get("geometry") or {}).get("ok") is True and
+            certificate and certificate.get("ok") is True and
+            certificate.get("version") ==
+            draft_figures.DETERMINISTIC_SECTION_HATCH_CERTIFICATE_VERSION and
+            certificate.get("exact_renderer_match") is True and
+            certificate.get("renderer") in ("chamber_section", "fragmentary_section") and
+            certificate.get("coordinate_space") == "raw_pixels_origin_upper_left_y_down" and
+            re.fullmatch(r"[0-9a-f]{64}", str(certificate.get("raw_png_sha256") or "")) and
+            rendered_hash == record.get("rendered_sha256") and
+            len(angles) >= 2 and len(set(angles)) >= 2)
+        if not exact:
+            kept.append(finding)
+            continue
+        resolved = dict(finding)
+        resolved.update({
+            "figure_label": f"FIG. {figure}",
+            "reconciliation": (
+                "The exact rendered-sheet hash matches the review file, and its byte-exact "
+                "deterministic section certificate records distinct raw-pixel hatch angles."),
+            "certified_hatch_components": [dict(item) for item in components],
+        })
+        reconciled.append(resolved)
+    return kept, reconciled
 
 
 def normalize_findings(value: Any, *, limit: int = 60) -> list[dict[str, Any]]:

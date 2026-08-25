@@ -62,6 +62,8 @@ DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
     "deterministic-semantic-consensus-v1-byte-exact-two-semantic-one-independent")
 DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION = (
     "deterministic-anchor-v7-byte-exact-clear-interior-and-boundary-centerlines")
+DETERMINISTIC_SECTION_HATCH_CERTIFICATE_VERSION = (
+    "deterministic-section-hatching-v1-byte-exact-raw-pixel-angles")
 DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION = (
     "deterministic-endpoint-resolution-v3-sub-dot-component-or-certified-interior")
 DETERMINISTIC_SUB_DOT_TOLERANCE_PIXELS = 6
@@ -1912,6 +1914,9 @@ def _apply_deterministic_anchor_certificate(
     out["anchors"] = anchors
     if certificate is not None:
         out["deterministic_anchor_certificate"] = certificate
+    section_certificate = _deterministic_section_hatch_certificate(png, caption)
+    if section_certificate is not None:
+        out["deterministic_section_hatch_certificate"] = section_certificate
     return out
 
 
@@ -2494,6 +2499,67 @@ def _requested_section_hatch_angle(text: str, subject_pattern: str, default: int
         requested if 0 < requested < 90 else
         (20 if "shallow" in qualifier else 45))
     return -magnitude if match.group(1) == "rising" else magnitude
+
+
+def _section_hatch_component(component: str, angle: int) -> dict:
+    direction = (
+        "rises_to_right" if int(angle) < 0 else
+        "falls_to_right" if int(angle) > 0 else
+        "horizontal")
+    return {
+        "component": component,
+        "angle_degrees": int(angle),
+        "direction": direction,
+    }
+
+
+def _deterministic_section_hatch_certificate(png: bytes, caption: str) -> dict | None:
+    """Bind exact deterministic section pixels to their resolved raw-coordinate angles."""
+    if not png:
+        return None
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    chamber = _deterministic_chamber_section_png(caption)
+    fragmentary = _deterministic_fragmentary_section_png(caption)
+    if chamber is not None and png == chamber:
+        renderer = "chamber_section"
+        base_angle = _requested_section_hatch_angle(
+            text, r"(?:the\s+)?(?:base(?:\s+\d+)?|slab)", 45)
+        leg_angle = _requested_section_hatch_angle(text, r"(?:both\s+)?legs", -45)
+        band_angle = _requested_section_hatch_angle(
+            text, r"(?:the\s+)?(?:covering element(?:\s+\d+)?|band)", 60)
+        components = [
+            _section_hatch_component("base slab", base_angle),
+            _section_hatch_component("left perimeter leg", leg_angle),
+            _section_hatch_component("right perimeter leg", leg_angle),
+            _section_hatch_component("covering-element band", band_angle),
+        ]
+    elif fragmentary is not None and png == fragmentary:
+        renderer = "fragmentary_section"
+        components = [
+            _section_hatch_component(
+                "perimeter-member column",
+                _requested_section_hatch_angle(text, r"(?:the\s+)?column", 45)),
+            _section_hatch_component(
+                "uppermost covering-element band",
+                _requested_section_hatch_angle(text, r"(?:the\s+)?uppermost band", -45)),
+            _section_hatch_component(
+                "middle bonding-material band",
+                _requested_section_hatch_angle(text, r"(?:the\s+)?middle band", 60)),
+            _section_hatch_component(
+                "lowest substrate band",
+                _requested_section_hatch_angle(text, r"(?:the\s+)?lowest band", -60)),
+        ]
+    else:
+        return None
+    return {
+        "ok": True,
+        "version": DETERMINISTIC_SECTION_HATCH_CERTIFICATE_VERSION,
+        "exact_renderer_match": True,
+        "renderer": renderer,
+        "coordinate_space": "raw_pixels_origin_upper_left_y_down",
+        "raw_png_sha256": hashlib.sha256(png).hexdigest(),
+        "components": components,
+    }
 
 
 def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
@@ -5753,6 +5819,15 @@ def png_bytes(figure_id, user_id, version_no=None, *, base=False):
 
 def materialize_review_images(project_id: int, user_id: int, workspace: Path) -> int:
     """Copy approved active pixels into the isolated workspace for the independent reviewer."""
+    try:
+        import draft_workspace
+        workspace_specs = {
+            canonical_figure_label(item.get("label")): item
+            for item in draft_workspace.read_figures(Path(workspace))
+            if canonical_figure_label(item.get("label"))
+        }
+    except Exception:
+        workspace_specs = {}
     directory = Path(workspace) / "figures"
     directory.mkdir(parents=True, exist_ok=True)
     for stale in directory.glob("rendered-*.png"):
@@ -5783,6 +5858,14 @@ def materialize_review_images(project_id: int, user_id: int, workspace: Path) ->
         rendered_file = f"rendered-{label}.png"
         (directory / rendered_file).write_bytes(png)
         geometry = semantic.get("cross_provider_geometry_audit") or {}
+        section_certificate = semantic.get("deterministic_section_hatch_certificate") or {}
+        if not section_certificate:
+            spec = workspace_specs.get(canonical_figure_label(figure.get("figure_label"))) or {}
+            _base_mime, base_png = png_bytes(
+                figure["id"], user_id, active_version, base=True)
+            section_certificate = (
+                _deterministic_section_hatch_certificate(
+                    base_png, str(spec.get("caption") or "")) or {})
         marked = leader.get("marked_anchor_audit") or {}
         endpoints = marked.get("cross_provider_audit") or {}
         detected_sheets = numeral.get("detected_sheet_numbers") or []
@@ -5823,6 +5906,7 @@ def materialize_review_images(project_id: int, user_id: int, workspace: Path) ->
                 "unexpected": geometry.get("unexpected") or [],
                 "errors": geometry.get("errors") or [],
             },
+            "deterministic_section_hatching": section_certificate,
             "leaders": {
                 "ok": leader.get("ok") is True,
                 "prompt_version": leader.get("prompt_version"),

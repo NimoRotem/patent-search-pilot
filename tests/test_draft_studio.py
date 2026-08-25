@@ -7,6 +7,7 @@ that has never been shown to bite on a real failure is a check nobody should tru
 defect-injected: the good draft passes, and the same draft with one thing broken fails on exactly
 that thing and nothing else.
 """
+import hashlib
 import json
 import re
 from contextlib import contextmanager
@@ -1880,6 +1881,75 @@ def test_the_reviewer_is_told_which_checks_already_ran(monkeypatch):
     normalized = " ".join(draft_qa.REVIEW_SYSTEM.split())
     assert "reconcile that disagreement" in normalized
     assert "raw image coordinates" in normalized
+    assert "byte-exact section-hatch certificate" in normalized
+
+
+def test_review_reconciles_only_a_hatch_claim_disproved_by_an_exact_render_certificate(
+        monkeypatch, tmp_path):
+    review_dir = tmp_path / "review"
+    review_dir.mkdir()
+    figures_dir = tmp_path / "figures"
+    figures_dir.mkdir()
+    rendered = b"exact checked sheet"
+    (figures_dir / "rendered-FIG-2.png").write_bytes(rendered)
+    (review_dir / "figure-audit-evidence.json").write_text(json.dumps({
+        "schema_version": 1,
+        "figures": [{
+            "figure_label": "FIG. 2",
+            "rendered_file": "rendered-FIG-2.png",
+            "rendered_sha256": hashlib.sha256(rendered).hexdigest(),
+            "geometry": {"ok": True},
+            "deterministic_section_hatching": {
+                "ok": True,
+                "version": draft_figures.DETERMINISTIC_SECTION_HATCH_CERTIFICATE_VERSION,
+                "exact_renderer_match": True,
+                "renderer": "chamber_section",
+                "coordinate_space": "raw_pixels_origin_upper_left_y_down",
+                "raw_png_sha256": "a" * 64,
+                "components": [
+                    {"component": "base slab", "angle_degrees": -45,
+                     "direction": "rises_to_right"},
+                    {"component": "left perimeter leg", "angle_degrees": 45,
+                     "direction": "falls_to_right"},
+                    {"component": "covering-element band", "angle_degrees": -75,
+                     "direction": "rises_to_right"},
+                ],
+            },
+        }],
+    }), encoding="utf-8")
+    monkeypatch.setattr(draft_agent, "run", lambda **_kwargs: draft_agent.AgentRun(
+        ok=True, model="review-model", result={
+            "summary": "FIG. 2 appears to use identical hatching.",
+            "findings": [{
+                "severity": "major", "category": "figures_and_numerals",
+                "title": "Rendered FIG. 2 uses the same hatch angle for three bodies",
+                "where": "figures/rendered-FIG-2.png",
+                "detail": "The visible hatch directions appear parallel rather than distinct.",
+                "evidence": "The base, legs and bottom band appear to rise to the right.",
+                "fix": "Render the three bodies again with distinct hatch angles.",
+            }],
+        }))
+
+    outcome = draft_qa.review(tmp_path, checks=[])
+
+    assert outcome["ok"] is True
+    assert outcome["findings"] == []
+    assert len(outcome["reconciled_findings"]) == 1
+    assert outcome["reconciled_findings"][0]["figure_label"] == "FIG. 2"
+    assert "exact-image reconciliation" in outcome["summary"]
+
+    (figures_dir / "rendered-FIG-2.png").write_bytes(b"changed after review")
+    kept, reconciled = draft_qa.reconcile_exact_section_hatch_findings(
+        tmp_path, outcome["reconciled_findings"])
+    assert len(kept) == 1
+    assert reconciled == []
+
+    (figures_dir / "rendered-FIG-2.png").write_bytes(rendered)
+    text_finding = dict(outcome["reconciled_findings"][0], category="internal_logic")
+    kept, reconciled = draft_qa.reconcile_exact_section_hatch_findings(
+        tmp_path, [text_finding])
+    assert len(kept) == 1
+    assert reconciled == []
 
 
 def test_independent_reviewer_requires_a_source_supported_automatic_fix():

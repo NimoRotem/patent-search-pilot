@@ -8,6 +8,7 @@ import pytest
 from PIL import Image, ImageDraw
 
 import draft_figures
+import draft_workspace
 
 
 def blank_png(width=640, height=420):
@@ -3707,6 +3708,63 @@ def test_deterministic_chamber_section_accepts_explicit_filing_inventory(monkeyp
     assert observed == [-45, 45, 45, -75]
 
 
+def test_deterministic_section_certificate_records_exact_raw_pixel_hatch_angles():
+    specification = """
+    The sheet shows four bodies, all shown schematically, and one broken line: one horizontal
+    hatched slab, the base 12; one closed loop cut twice, appearing as two short hatched legs
+    hanging from the underside of the slab, one at each end; one hatched band across the bottom
+    on which both legs stand, the covering element 36; and one closed housing standing on the
+    upper face of the slab. The slab is filled with regularly spaced parallel hatching rising to
+    the right at about 45 degrees, both legs are filled with such hatching falling to the right
+    at about 45 degrees, and the band is filled with such hatching rising to the right at about
+    75 degrees. One broken line runs from inside the housing to the chamber 22, and no passage,
+    duct, opening or other structure is depicted.
+    """
+    png = draft_figures._deterministic_chamber_section_png(specification)
+
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, [], {"ok": True, "anchors": []})
+
+    certificate = semantic["deterministic_section_hatch_certificate"]
+    assert certificate["ok"] is True
+    assert certificate["exact_renderer_match"] is True
+    assert certificate["renderer"] == "chamber_section"
+    assert certificate["coordinate_space"] == "raw_pixels_origin_upper_left_y_down"
+    assert certificate["raw_png_sha256"] == hashlib.sha256(png).hexdigest()
+    assert certificate["components"] == [
+        {"component": "base slab", "angle_degrees": -45, "direction": "rises_to_right"},
+        {"component": "left perimeter leg", "angle_degrees": 45,
+         "direction": "falls_to_right"},
+        {"component": "right perimeter leg", "angle_degrees": 45,
+         "direction": "falls_to_right"},
+        {"component": "covering-element band", "angle_degrees": -75,
+         "direction": "rises_to_right"},
+    ]
+
+
+def test_fragmentary_section_certificate_distinguishes_column_and_all_three_bands():
+    specification = """
+    The sheet shows four hatched bodies: one upright column and three horizontal bands lying one
+    above another beneath it, all four shown schematically. Each band runs across the drawing
+    area from side to side, with hatching continuous from side to side, including directly
+    beneath the column. The column is hatched falling to the right at about 45 degrees, the
+    uppermost band is hatched rising to the right at about 45 degrees, the middle band is hatched
+    falling to the right at about 60 degrees, and the lowest band is hatched rising to the right
+    at about 60 degrees. Open unhatched paper lies beneath the lowest band. The column stands
+    above the uppermost band, with an open stretch of that band on each side of it. Between the
+    bottom line of the column and the top line of the uppermost band lies open unhatched space.
+    """
+    png = draft_figures._deterministic_fragmentary_section_png(specification)
+
+    certificate = draft_figures._deterministic_section_hatch_certificate(png, specification)
+
+    assert certificate["renderer"] == "fragmentary_section"
+    assert [item["angle_degrees"] for item in certificate["components"]] == [45, -45, 60, -60]
+    assert [item["direction"] for item in certificate["components"]] == [
+        "falls_to_right", "rises_to_right", "falls_to_right", "rises_to_right",
+    ]
+
+
 def test_deterministic_chamber_section_splits_schematic_line_around_solid_base():
     inventory = """
     The sheet shows four bodies, all shown schematically, and one broken line: one horizontal
@@ -5345,14 +5403,31 @@ def test_checked_images_include_exact_audit_evidence_for_the_independent_reviewe
         specification_hash=digest,
         cross_provider_audit=endpoints,
     )
+    semantic = accepted_semantic_audit(
+        specification_hash=digest,
+        cross_provider_geometry_audit=geometry)
+    specification = """
+    The sheet shows four bodies, all shown schematically, and one broken line: one horizontal
+    hatched slab, the base; one closed loop cut twice, appearing as two short hatched legs
+    hanging from the underside of the slab, one at each end; one hatched band across the bottom
+    on which both legs stand; and one closed housing standing on the upper face of the slab. The
+    slab is filled with hatching rising to the right at about 45 degrees, both legs are filled
+    with hatching falling to the right at about 45 degrees, and the band is filled with hatching
+    rising to the right at about 75 degrees. One broken line runs from inside the housing to the
+    chamber, and no passage, duct, opening or other structure is depicted.
+    """
+    raw = draft_figures._deterministic_chamber_section_png(specification)
+    section_certificate = draft_figures._deterministic_section_hatch_certificate(
+        raw, specification)
+    draft_workspace.write_figures(tmp_path, [{
+        "label": "FIG. 1: sectional view", "caption": specification, "numerals": ["10"],
+    }])
     active = {
         "version_no": 2,
         "numeral_audit": accepted_ocr_audit(
             sheet_number="1/1", expected=("10",), detected=["10"],
             detected_sheet_number="1/1", detected_figure_label="FIG. 1"),
-        "semantic_audit": accepted_semantic_audit(
-            specification_hash=digest,
-            cross_provider_geometry_audit=geometry),
+        "semantic_audit": semantic,
         "leader_audit": accepted_leader_audit(
             specification_hash=digest,
             marked_anchor_audit=marked),
@@ -5361,7 +5436,9 @@ def test_checked_images_include_exact_audit_evidence_for_the_independent_reviewe
         "id": 8, "figure_label": "FIG. 1: sectional view", "active_version": 2,
         "versions": [active],
     }])
-    monkeypatch.setattr(draft_figures, "png_bytes", lambda *a, **k: ("image/png", b"checked"))
+    monkeypatch.setattr(
+        draft_figures, "png_bytes",
+        lambda *a, **k: ("image/png", raw if k.get("base") else b"checked"))
 
     assert draft_figures.materialize_review_images(7, 91, tmp_path) == 1
 
@@ -5382,6 +5459,7 @@ def test_checked_images_include_exact_audit_evidence_for_the_independent_reviewe
             "summary": "The sectional hatches and every solid boundary match the brief.",
             "missing": [], "unexpected": [], "errors": [],
         },
+        "deterministic_section_hatching": section_certificate,
         "leaders": {
             "ok": True,
             "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
