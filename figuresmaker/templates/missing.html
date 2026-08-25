@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>No such job</title><link rel="stylesheet" href="{{ prefix }}/static/fm.css"></head>
+<body>
+<div class="topbar"><a class="back" href="{{ prefix }}/">&larr; New draft</a><h1>No such job</h1></div>
+<div class="wrap narrow"><div class="card">
+  <h2>{{ job_id }}</h2>
+  <p class="hint">Nothing is held under that identifier. Jobs are kept on this host and the
+    oldest are dropped once there are too many, so an old link will eventually stop working.</p>
+  <a class="primary" href="{{ prefix }}/">Start a new one</a>
+</div></div></body></html>

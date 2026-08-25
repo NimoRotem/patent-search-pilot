@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Figures: {{ job.title or job.id }}</title>
+<link rel="stylesheet" href="{{ prefix }}/static/fm.css">
+</head>
+<body>
+<div class="topbar">
+  <a class="back" href="{{ prefix }}/">&larr; New draft</a>
+  <h1 id="title">{{ job.title or 'Figure set' }}</h1>
+  <span class="sub" id="statusline">{{ job.status }}</span>
+  <span class="who">{{ who }}</span>
+</div>
+
+<div class="wrap">
+  <div id="progress" class="card">
+    <h2>Building</h2>
+    <p class="hint">This takes a few minutes. The page updates itself; you can close it and come
+      back.</p>
+    <ul class="steps" id="steps"></ul>
+    <div id="failure" class="notice bad hidden"></div>
+  </div>
+
+  <div id="result" class="hidden">
+    <div class="toolbar">
+      <a class="ghost" id="pdf" href="#">Drawing sheets, PDF</a>
+      <a class="ghost" id="zip" href="#">Everything, zip</a>
+      <a class="ghost" id="redline" href="#" target="_blank" rel="noopener">Specification redline</a>
+      <button class="ghost" id="resolve">Re-place the numerals in this view</button>
+      <span class="status" id="editstatus"></span>
+    </div>
+
+    <div class="editor">
+      <div>
+        <div class="figbar" id="figbar"></div>
+        <div class="canvas" id="canvas"></div>
+        <p class="small muted" style="margin-top:.6rem">Drag a numeral to move it. Drag the end of
+          a lead line to point it somewhere else on the same part. Every change re-runs the whole
+          compliance check.</p>
+
+        <div class="card" style="margin-top:1.1rem">
+          <h3>Sheets</h3>
+          <div class="sheetgrid" id="sheets"></div>
+        </div>
+      </div>
+
+      <div class="side">
+        <div class="card">
+          <div class="tabs" role="tablist">
+            <button role="tab" aria-selected="true" data-pane="compliance">Compliance</button>
+            <button role="tab" aria-selected="false" data-pane="registry">Registry</button>
+            <button role="tab" aria-selected="false" data-pane="plan">Plan</button>
+          </div>
+
+          <div data-pane="compliance">
+            <div class="tally" id="tally"></div>
+            <div id="findings"></div>
+            <p class="small muted" id="checked"></p>
+          </div>
+
+          <div data-pane="registry" class="hidden">
+            <p class="hint">The single source of truth. Edit a term and every check runs again.
+              Rows in the current view are highlighted.</p>
+            <table class="reg"><tbody id="registry"></tbody></table>
+          </div>
+
+          <div data-pane="plan" class="hidden">
+            <div id="plan"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PREFIX = {{ prefix|tojson }};
+const JOB_ID = {{ job.id|tojson }};
+</script>
+<script src="{{ prefix }}/static/fm.js"></script>
+</body>
+</html>
