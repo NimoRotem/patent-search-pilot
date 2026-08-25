@@ -2882,7 +2882,7 @@ def current_cross_provider_endpoint_audit(value, *, specification_hash: str = ""
 
 
 def current_marked_anchor_audit(value, *, specification_hash: str = "") -> bool:
-    """Accept only the current three-trace marked-endpoint gate for the same sheet spec."""
+    """Accept a current coordinate certificate plus the independent final-pixel veto."""
     if isinstance(value, str):
         try:
             value = json.loads(value)
@@ -2900,7 +2900,13 @@ def current_marked_anchor_audit(value, *, specification_hash: str = "") -> bool:
         value.get("model_name") == vision_model() and
         value.get("prompt_version") in MARKED_COMPATIBLE_PROMPT_VERSIONS and
         review_count == MARKED_ANCHOR_REVIEW_COUNT)
-    if not marked_current:
+    deterministic_current = bool(
+        value.get("ok") and value.get("inspected") and same_spec and
+        value.get("model_name") == "deterministic-compositor" and
+        value.get("prompt_version") == DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION and
+        value.get("certificate_version") == DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION and
+        review_count == 0)
+    if not (marked_current or deterministic_current):
         return False
     if not cross_provider_required():
         return True
@@ -4581,6 +4587,54 @@ def _record_marked_coordinate_certificates(certificates: dict, audit: dict, anch
         }
 
 
+def _record_deterministic_coordinate_certificates(
+        certificates: dict, certificate: dict | None, anchors, numerals,
+        pixel_audit: dict, raw_png: bytes) -> None:
+    """Certify a complete byte-exact component map after deterministic pixel grounding."""
+    certificate = dict(certificate or {})
+    if not (
+            certificate.get("ok") and certificate.get("exact_renderer_match") and
+            certificate.get("version") == DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION and
+            certificate.get("png_sha256") == hashlib.sha256(raw_png).hexdigest() and
+            (pixel_audit or {}).get("ok")):
+        return
+    expected = {item["numeral"] for item in numeral_entries(numerals)}
+    certified_parts = {
+        _clean_numeral(item.get("numeral")): str(item.get("part") or "")
+        for item in certificate.get("anchors") or []
+        if _clean_numeral(item.get("numeral"))
+    }
+    positions = _anchor_positions(anchors)
+    anchors_by_numeral = {
+        _clean_numeral(item.get("numeral")): item for item in anchors or []
+        if _clean_numeral(item.get("numeral"))
+    }
+    if not expected or set(certified_parts) != expected or set(positions) != expected:
+        return
+    if any(
+            anchors_by_numeral[numeral].get("anchor_source") !=
+            DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION
+            for numeral in expected):
+        return
+    _prune_marked_coordinate_certificates(certificates, anchors)
+    renderer = str(certificate.get("renderer") or "deterministic renderer")
+    for numeral in sorted(expected, key=_numeral_order):
+        x, y = positions[numeral]
+        certificates[numeral] = {
+            "x": x, "y": y, "attempt": 0,
+            "certificate_source": DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+            "label": {
+                "numeral": numeral, "correct": True, "repairable": True,
+                "evidence": (
+                    f"The byte-exact {renderer} component map identifies "
+                    f"{certified_parts[numeral] or 'the named component'} at this endpoint, "
+                    "and deterministic pixel-region grounding passed."),
+                "correct_votes": 0, "incorrect_votes": 0,
+                "certificate_source": DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+            },
+        }
+
+
 def _certified_marked_anchor_audit(audit: dict, certificates: dict, anchors, numerals, *,
                                    attempts: int) -> dict | None:
     """Combine per-coordinate majority verdicts without accepting a moved endpoint."""
@@ -4591,6 +4645,10 @@ def _certified_marked_anchor_audit(audit: dict, certificates: dict, anchors, num
            positions.get(numeral) != (certificates[numeral]["x"], certificates[numeral]["y"])
            for numeral in expected):
         return None
+    deterministic = all(
+        certificates[numeral].get("certificate_source") ==
+        DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION
+        for numeral in expected)
     labels, coordinate_certificates = [], []
     for numeral in expected:
         certificate = certificates[numeral]
@@ -4598,30 +4656,38 @@ def _certified_marked_anchor_audit(audit: dict, certificates: dict, anchors, num
         record.update({
             "numeral": numeral, "correct": True, "repairable": True,
             "suggested_x": 500, "suggested_y": 500,
-            "correct_votes": max(
+            "correct_votes": (0 if deterministic else max(
                 (MARKED_ANCHOR_REVIEW_COUNT // 2) + 1,
-                int(record.get("correct_votes") or 0)),
+                int(record.get("correct_votes") or 0))),
             "incorrect_votes": int(record.get("incorrect_votes") or 0),
         })
         labels.append(record)
         coordinate_certificates.append({
             "numeral": numeral, "x": certificate["x"], "y": certificate["y"],
             "attempt": certificate["attempt"],
-            "review_count": MARKED_ANCHOR_REVIEW_COUNT,
+            "review_count": 0 if deterministic else MARKED_ANCHOR_REVIEW_COUNT,
+            "certificate_source": certificate.get("certificate_source"),
         })
     result = dict(audit or {})
     result.update({
         "ok": True, "inspected": True,
-        "summary": (
+        "summary": ((
+            "Every endpoint matches the byte-exact deterministic component map and passed "
+            "pixel-region grounding; an independent final-pixel endpoint veto follows."
+        ) if deterministic else (
             "Every endpoint at its final coordinate passed an independent three-review "
-            "majority inspection."),
+            "majority inspection.")),
         "errors": [], "expected": expected, "observed": expected,
         "missing": [], "unexpected": [], "duplicates": [], "incorrect": [],
-        "labels": labels, "review_count": MARKED_ANCHOR_REVIEW_COUNT,
-        "model_name": vision_model(),
-        "prompt_version": MARKED_ANCHOR_PROMPT_VERSION,
+        "labels": labels,
+        "review_count": 0 if deterministic else MARKED_ANCHOR_REVIEW_COUNT,
+        "model_name": "deterministic-compositor" if deterministic else vision_model(),
+        "prompt_version": (DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION if deterministic else
+                           MARKED_ANCHOR_PROMPT_VERSION),
+        "certificate_version": (DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION
+                                if deterministic else None),
         "inspection_rounds": int(attempts),
-        "certified_across_attempts": int(attempts) > 1,
+        "certified_across_attempts": not deterministic and int(attempts) > 1,
         "coordinate_certificates": coordinate_certificates,
     })
     return result
@@ -4703,6 +4769,22 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
         anchors = _bind_anchor_target_evidence(
             anchors, label=label, caption=caption, numerals=numerals)
         _record_anchor_coordinate_history(coordinate_history, anchors)
+
+    exact_anchors, deterministic_certificate = _deterministic_anchor_overrides(
+        raw_png, caption, numerals, anchors)
+    if deterministic_certificate is not None:
+        anchors, pixel_audit = _ground_anchors_to_pixels(
+            raw_png, numerals, exact_anchors,
+            preserve_reviewed_line_target=True)
+        _record_anchor_coordinate_history(coordinate_history, anchors)
+        _record_deterministic_coordinate_certificates(
+            marked_certificates, deterministic_certificate, anchors, numerals,
+            pixel_audit, raw_png)
+        _marked_progress_put(
+            raw_png, label=label, caption=caption, numerals=numerals,
+            anchors=anchors, certificates=marked_certificates,
+            attempts=completed_marked_attempts,
+            coordinate_history=coordinate_history, sheet_number=sheet_number)
 
     def repair_cross_provider_veto(value: dict, *, attempts: int) -> bool:
         """Map Opus final-sheet coordinates back to geometry, then recheck every gate."""
