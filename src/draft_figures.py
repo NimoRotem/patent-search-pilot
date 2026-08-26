@@ -3002,7 +3002,8 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     draw.rounded_rectangle(
         (740, 90, 990, 220), radius=24, fill="white", outline="black", width=4)
     split_at_base = bool(re.search(
-        r"\bbroken line stop(?:s|ping)\b[^.]{0,100}\bupper face of the base(?:\s+\d+)?\b"
+        r"\b(?:broken line|that line|the line) stop(?:s|ping)\b[^.]{0,100}"
+        r"\bupper face of the base(?:\s+\d+)?\b"
         r"[^.]{0,100}\bresum(?:es|ing)\b[^.]{0,80}\blower face\b", text))
     line_ranges = ((145, 211), (369, 521)) if split_at_base else ((145, 521),)
     for start, stop in line_ranges:
