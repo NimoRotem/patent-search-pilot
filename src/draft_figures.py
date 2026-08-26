@@ -2790,15 +2790,31 @@ def _requested_section_hatch_angle(text: str, subject_pattern: str, default: int
         r"(rising|falling)\s+to\s+the\s+right([^,.;]{0,100})",
         text,
     )
-    if not match:
-        return default
-    qualifier = match.group(2)
-    degree_match = re.search(r"\b(?:about\s+)?(\d{1,2})\s*degrees?\b", qualifier)
-    requested = int(degree_match.group(1)) if degree_match else 0
-    magnitude = (
-        requested if 0 < requested < 90 else
-        (20 if "shallow" in qualifier else 45))
-    return -magnitude if match.group(1) == "rising" else magnitude
+    if match:
+        qualifier = match.group(2)
+        degree_match = re.search(r"\b(?:about\s+)?(\d{1,2})\s*degrees?\b", qualifier)
+        requested = int(degree_match.group(1)) if degree_match else 0
+        magnitude = (
+            requested if 0 < requested < 90 else
+            (20 if "shallow" in qualifier else 45))
+        return -magnitude if match.group(1) == "rising" else magnitude
+    for subject in re.finditer(
+            rf"\b(?:{subject_pattern})\b(?P<qualifier>[^.]{{0,220}})", text):
+        qualifier = subject.group("qualifier")
+        steep = bool(re.search(
+            r"\b(?:steep|close to upright|nearer to vertical|nearly vertical)\b", qualifier))
+        magnitude = 75 if steep else 45
+        if (re.search(r"\bstarts? low on the left\b[^.]{0,100}"
+                      r"\bends? high on the right\b", qualifier) or
+                "forward slash" in qualifier or
+                ("close to upright" in qualifier and
+                 "leaning slightly to the right" in qualifier)):
+            return -magnitude
+        if (re.search(r"\bstarts? high on the left\b[^.]{0,100}"
+                      r"\bends? low on the right\b", qualifier) or
+                "backslash" in qualifier):
+            return magnitude
+    return default
 
 
 def _section_hatch_component(component: str, angle: int) -> dict:
@@ -2953,14 +2969,15 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
         text,
     )
     exact_inventory = exact_inventory or re.search(
-        r"\bshows four bodies\b[^:]{0,100}\band one broken line\s*:", text)
+        r"\bshows four (?:schematic )?bodies\b[^:]{0,100}"
+        r"\band one broken line\s*:", text)
     single_line_only = bool(
         re.search(r"\bno passage, duct, opening or other structure is depicted\b", text) or
         re.search(r"\bthat broken line being all that is drawn for it\b", text) or
         exact_inventory)
     requirements = (
         exact_inventory,
-        re.search(r"\bhorizontal hatched slab\b", text),
+        re.search(r"\b(?:horizontal hatched|hatched horizontal) slab\b", text),
         re.search(r"\bclosed loop cut twice\b[^.]{0,100}\btwo short hatched legs\b", text),
         re.search(r"\bhatched band across the bottom\b", text),
         re.search(r"\bone closed housing\b", text),
