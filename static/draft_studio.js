@@ -1342,8 +1342,10 @@
           ${turn.last_error ? `<div class="small bad">${esc(turn.last_error)}</div>` : ''}</div>
         <span class="grow"></span>
         <span class="small muted turnspend">${turn.version_no ? 'v' + turn.version_no + ' · ' : ''}${
-          [turn.agent_runs ? turn.agent_runs + ' runs' : '',
-           turn.model_ms ? Math.round(turn.model_ms / 60000) + 'm in models' : '',
+          [turn.agent_runs ? turn.agent_runs + (turn.agent_runs === 1 ? ' run' : ' runs') : '',
+           turn.model_ms ? (turn.model_ms < 60000
+             ? Math.round(turn.model_ms / 1000) + 's in models'
+             : Math.round(turn.model_ms / 60000) + 'm in models') : '',
            turn.tokens_input != null ? tokens(
              (turn.tokens_input || 0) + (turn.tokens_output || 0) +
              (turn.tokens_cache_read || 0) + (turn.tokens_cache_write || 0)) + ' tokens' : '',
