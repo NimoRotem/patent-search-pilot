@@ -5251,6 +5251,56 @@ def test_text_contaminated_geometry_retries_from_a_clean_canvas(monkeypatch):
     assert all(not re.search(r"\d", prompt) for prompt in prompts)
 
 
+def test_uninspected_semantic_review_is_transient_and_preserves_the_generation(monkeypatch):
+    generated = []
+    discarded = []
+
+    def generate(prompt, previous=None):
+        generated.append((prompt, previous))
+        return blank_png()
+
+    monkeypatch.setattr(draft_figures, "_cached_generate", generate)
+    monkeypatch.setattr(
+        draft_figures, "_discard_cached_generation",
+        lambda prompt, previous=None: discarded.append((prompt, previous)))
+    monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
+        "ok": False, "inspected": False, "missing": ["10"],
+        "errors": ["Semantic inspection failed: upstream reset"], "anchors": [],
+    })
+
+    with pytest.raises(draft_figures.FigureTransientError, match="temporarily unavailable"):
+        draft_figures.render_figure(
+            7, 91, label="FIG. 1", caption="side view of body",
+            numerals=["10 = body"])
+
+    assert len(generated) == 1
+    assert discarded == []
+
+
+def test_structural_surplus_retries_from_a_clean_canvas(monkeypatch):
+    previous_images = []
+
+    def generate(_prompt, previous=None):
+        previous_images.append(previous)
+        return blank_png(width=640 + len(previous_images))
+
+    monkeypatch.setattr(draft_figures, "_cached_generate", generate)
+    monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
+        "ok": False, "inspected": True, "missing": [],
+        "errors": [
+            "Unexpected extra concentric ring and a doubled pipe boundary are visible."
+        ],
+        "unexpected": ["unsupported internal slot"], "anchors": [],
+    })
+
+    with pytest.raises(draft_figures.FigureError, match="semantic"):
+        draft_figures.render_figure(
+            7, 91, label="FIG. 1", caption="plan view of a split clamp",
+            numerals=["10 = body"])
+
+    assert previous_images == [None] * draft_figures.MAX_SEMANTIC_ATTEMPTS
+
+
 def test_third_semantic_attempt_resets_repeatedly_rejected_geometry(monkeypatch):
     generated = []
 
@@ -5262,7 +5312,7 @@ def test_third_semantic_attempt_resets_repeatedly_rejected_geometry(monkeypatch)
     monkeypatch.setattr(draft_figures, "_cached_generate", generate)
     monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
         "ok": False, "missing": [],
-        "errors": ["unexpected dashed line remains inside the slab"], "anchors": [],
+        "errors": ["the required support is disconnected from the slab"], "anchors": [],
     })
 
     with pytest.raises(draft_figures.FigureError, match="semantic"):
