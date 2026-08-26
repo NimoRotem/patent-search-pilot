@@ -5277,7 +5277,7 @@ def test_uninspected_semantic_review_is_transient_and_preserves_the_generation(m
     assert discarded == []
 
 
-def test_structural_surplus_alternates_clean_canvas_and_targeted_edit(monkeypatch):
+def test_structural_surplus_resets_once_then_uses_targeted_edits(monkeypatch):
     generated = []
 
     def generate(_prompt, previous=None):
@@ -5303,9 +5303,9 @@ def test_structural_surplus_alternates_clean_canvas_and_targeted_edit(monkeypatc
         None,
         None,
         generated[1][1],
-        None,
+        generated[2][1],
         generated[3][1],
-        None,
+        generated[4][1],
     ]
 
 

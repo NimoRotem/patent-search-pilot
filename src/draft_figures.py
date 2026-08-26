@@ -41,7 +41,7 @@ MAX_PNG_BYTES = 8 * 1024 * 1024
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
-FIGURE_PROMPT_VERSION = "figure-v7-adaptive-structural-correction"
+FIGURE_PROMPT_VERSION = "figure-v8-progressive-structural-correction"
 SEMANTIC_PROMPT_VERSION = (
     "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology")
 SEMANTIC_COMPATIBLE_PROMPT_VERSIONS = frozenset((
@@ -6818,7 +6818,7 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
     semantic = {}
     correction = ""
     active_generation = None
-    structural_failure_streak = 0
+    structural_failure_count = 0
     retry_on_fresh_canvas = False
     automatic_instruction = (
         not str(instruction or "").strip() or
@@ -6869,22 +6869,32 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
         structural_surplus = _semantic_has_structural_surplus(semantic)
         text_contamination = _semantic_has_text_contamination(semantic)
         if structural_surplus:
-            structural_failure_streak += 1
-        else:
-            structural_failure_streak = 0
+            structural_failure_count += 1
         retry_on_fresh_canvas = bool(
             text_contamination or
-            (structural_surplus and structural_failure_streak % 2 == 1) or
-            (not structural_surplus and attempt + 1 == 2)
+            (structural_surplus and structural_failure_count == 1) or
+            (not structural_surplus and structural_failure_count == 0 and attempt + 1 == 2)
         )
+        if retry_on_fresh_canvas:
+            retry_instruction = (
+                "Start again on a blank white canvas from the disclosed geometry. Do not "
+                "preserve or trace any rejected pixels. "
+            )
+        elif structural_surplus:
+            retry_instruction = (
+                "Use the supplied drawing as a correction target. Remove the rejected surplus "
+                "geometry while keeping every geometry feature that already matches. "
+            )
+        else:
+            retry_instruction = (
+                "Use the supplied drawing as a correction target. Correct the rejected geometry "
+                "while keeping every geometry feature that already matches. "
+            )
         correction = (
             "SEMANTIC REVIEW FAILED. Produce a corrected geometry-only drawing. " +
             ("; ".join(clean_problems) or
              "make every requested component and relationship visible") + ". " +
-            ("Start again on a blank white canvas from the disclosed geometry. Do not preserve "
-             "or trace any rejected pixels. " if retry_on_fresh_canvas else
-             "Use the supplied drawing as a correction target. Remove the rejected surplus "
-             "geometry while keeping every geometry feature that already matches. ") +
+            retry_instruction +
             "Include no text or digits.")
     if not semantic.get("ok") and not region:
         deterministic = _deterministic_geometry_png(caption)
