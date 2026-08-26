@@ -69,7 +69,11 @@ def accepted_cross_provider_geometry_audit(**values):
         "model_name": draft_figures.cross_provider_model(),
         "prompt_version": draft_figures.CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
         "review_count": draft_figures.CROSS_PROVIDER_GEOMETRY_REVIEW_COUNT,
-        "missing": [], "unexpected": [], "duplicates": [],
+        "missing": [],
+        "unexpected": [
+            "Slab edge fragments extend outboard because the legs are not flush with its ends.",
+        ],
+        "duplicates": [],
         "errors": [], "visible_elements": [],
         **values,
     }
@@ -1770,7 +1774,7 @@ def test_exact_section_pixels_resolve_reviewers_dissent_on_certified_constraints
     assert certificate["certified_constraints"]["flush_legs"]["ok"] is True
     assert draft_figures._certified_geometry_dissent_categories(
         errors=dissent["errors"], missing_geometry=dissent["missing_geometry"],
-        missing=[], unexpected=[], duplicates=[], certificate=certificate,
+        missing=[], unexpected=dissent["unexpected"], duplicates=[], certificate=certificate,
     ) == ["flush_legs", "section_hatching"]
     monkeypatch.setattr(
         draft_figures, "inspect_cross_provider_geometry", lambda *a, **k: dissent)
