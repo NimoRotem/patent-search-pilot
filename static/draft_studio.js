@@ -121,6 +121,16 @@
     return `<div class="stepr say">${esc(step.text)}</div>`;
   }
 
+  /* Drawing names, so a drawing defect can be kept out of the places that are about the text. */
+  const DRAWING_CHECKS = [
+    'passes geometry, leader, and OCR inspection', 'drawing numeral', 'drawing sheet',
+    'Drawing briefs', 'drawing plan', 'Figure brief', 'Figure-sheet', 'figure used',
+    'described figure', 'numerals on one sheet', 'Numerals on the drawings',
+    'specification numeral appears in a drawing', 'Section views',
+  ];
+  const isDrawingCheck = (name) =>
+    DRAWING_CHECKS.some((needle) => String(name || '').toLowerCase().includes(needle.toLowerCase()));
+
   function qaCard(message) {
     const p = message.payload || {};
     const [tone, label] = VERDICT[p.verdict] || VERDICT.unknown;
@@ -135,7 +145,16 @@
       <div class="qaline"><span class="verdict ${tone}">${label}</span>
         <span class="small muted">${esc(bits.join(' · '))}</span></div>
       <div class="msgbody">${para(message.body)}</div>
-      ${p.failed && p.failed.length ? list(p.failed, 'failedlist') : ''}
+      ${(() => {
+        //  A drawing defect belongs under Drawings and Filing, not in a conversation about the
+        //  text. Owner's instruction: do not show the figures on the drafting tab.
+        const failed = (p.failed || []).filter((name) => !isDrawingCheck(name));
+        const drawings = (p.failed || []).length - failed.length;
+        return (failed.length ? list(failed, 'failedlist') : '') +
+          (drawings ? `<div class="small muted">${drawings} drawing check(s) also failed. The
+            text is not waiting on them; they are under Drawings and they still hold up
+            filing.</div>` : '');
+      })()}
       <button type="button" class="chip openreview">Open the review</button>`;
   }
 
@@ -437,31 +456,12 @@
 
   /* Dictation, for the same reason a phone keyboard has a microphone: describing a change to a
      claim out loud is faster than typing it, and the text lands in the box rather than being sent,
-     so it can be corrected before it goes. */
+     so it can be corrected before it goes. Same implementation as the composer's. */
   function dictate(button) {
     const key = button.dataset.key;
-    if (!SPEECH) return;
-    if (dictate.active) { dictate.active.stop(); return; }
-    const recognition = new SPEECH();
-    recognition.lang = document.documentElement.lang || 'en-US';
-    recognition.interimResults = true;
-    recognition.continuous = true;
-    const before = String(sectionUI.ask[key] || '');
-    button.classList.add('on');
-    recognition.onresult = (event) => {
-      let heard = '';
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        heard += event.results[i][0].transcript;
-      }
-      const area = $('draftBody').querySelector(`.dsecaskinput[data-key="${key}"]`);
-      const joined = (before ? before.replace(/\s*$/, ' ') : '') + heard;
-      sectionUI.ask[key] = joined;
-      if (area) { area.value = joined; grow(area); }
-    };
-    recognition.onerror = () => { button.classList.remove('on'); dictate.active = null; };
-    recognition.onend = () => { button.classList.remove('on'); dictate.active = null; };
-    dictate.active = recognition;
-    recognition.start();
+    const area = $('draftBody').querySelector(`.dsecaskinput[data-key="${key}"]`);
+    if (!area) return;
+    dictateInto(area, button, () => { sectionUI.ask[key] = area.value; grow(area); });
   }
 
   /* Citation tokens are rendered as chips linking to the source, so a reader can check a
@@ -1612,6 +1612,97 @@
       </div>`;
   }
 
+  // ── settings ───────────────────────────────────────────────────────────────
+  /* EVERY CONTROL HERE DOES SOMETHING. The list is short for that reason: a switch that changes
+     nothing is worse than no switch, because it teaches you not to trust the rest of them. Each
+     field carries its own explanation rather than a tooltip, because these are decisions with
+     costs attached and the cost is the part worth reading. */
+  let SETTINGS = null;
+
+  async function loadSettings(force) {
+    const box = $('settingsBody');
+    if (!box) return;
+    if (SETTINGS !== null && !force) { renderSettings(); return; }
+    box.innerHTML = '<p class="small muted">Reading this project\u2019s settings…</p>';
+    try {
+      SETTINGS = await api(`/api/drafts/${PID}/settings`);
+    } catch (error) {
+      box.innerHTML = `<div class="emptypane"><h3>Settings unavailable</h3>
+        <p>${esc(error.message)}</p></div>`;
+      return;
+    }
+    renderSettings();
+  }
+
+  function settingsField(field) {
+    const id = 'set-' + field.key;
+    let control;
+    if (field.kind === 'model' || field.kind === 'choice') {
+      control = `<select id="${id}" data-key="${field.key}">${
+        (field.choices || []).map((choice) => `<option value="${esc(choice.id)}"${
+          String(choice.id) === String(field.value) ? ' selected' : ''}>${
+          esc(choice.label)}</option>`).join('')}</select>`;
+    } else if (field.kind === 'int') {
+      control = `<input type="number" id="${id}" data-key="${field.key}"
+        min="${field.min}" max="${field.max}" value="${esc(field.value)}">`;
+    } else {
+      control = `<textarea id="${id}" data-key="${field.key}" rows="4"
+        maxlength="${field.max_chars || 4000}"
+        placeholder="Nothing extra">${esc(field.value || '')}</textarea>`;
+    }
+    return `<div class="setfield setfield-${field.kind}">
+      <label for="${id}"><b>${esc(field.label)}</b></label>
+      <p class="small muted">${esc(field.help)}</p>
+      ${control}</div>`;
+  }
+
+  function renderSettings() {
+    const box = $('settingsBody');
+    if (!box || !SETTINGS) return;
+    box.innerHTML = `<div class="setintro">
+        <h3>Advanced settings</h3>
+        <p class="small muted">These apply to this project only, and take effect on its next turn.
+          A turn already running keeps the settings it started with.</p>
+      </div>
+      <div class="setgrid">${(SETTINGS.fields || []).map(settingsField).join('')}</div>
+      <div class="setactions">
+        <button type="button" class="btn sm" id="setSave">Save settings</button>
+        <span class="small" id="setMsg" role="status"></span>
+      </div>`;
+    $('setSave').addEventListener('click', saveSettings);
+  }
+
+  async function saveSettings() {
+    const button = $('setSave');
+    const message = $('setMsg');
+    const body = {};
+    $('settingsBody').querySelectorAll('[data-key]').forEach((node) => {
+      body[node.dataset.key] = node.value;
+    });
+    button.disabled = true;
+    message.className = 'small muted';
+    message.textContent = 'Saving…';
+    try {
+      SETTINGS = await api(`/drafts/${PID}/studio/settings`, {
+        method: 'POST', body: JSON.stringify(body),
+      });
+      renderSettings();
+      const saved = $('setMsg');
+      saved.className = 'small good';
+      saved.textContent = 'Saved. The next turn uses these.';
+      //  The model lives in two places on this page; keep them agreed.
+      const select = $('stModel');
+      if (select) select.value = (SETTINGS.values || {}).draft_model || '';
+      S.project.draft_model = (SETTINGS.values || {}).draft_model || '';
+    } catch (error) {
+      message.className = 'small bad';
+      message.textContent = error.message;
+    } finally {
+      const again = $('setSave');
+      if (again) again.disabled = false;
+    }
+  }
+
   // ── panes ──────────────────────────────────────────────────────────────────
   function showPane(name, updateHash = true) {
     document.querySelectorAll('.stab').forEach((tab) =>
@@ -1619,11 +1710,68 @@
     document.querySelectorAll('.spane').forEach((pane) =>
       pane.classList.toggle('on', pane.id === 'pane-' + name));
     if (name === 'filing') renderFiling();
+    if (name === 'settings') loadSettings(false);
+    setTimeout(renderJump, 0);
+    //  Landing on a folded pane opens the fold, or the page would show a pane with nothing on
+    //  screen explaining how you got there. Landing on the draft closes it again: collapsed is
+    //  the resting state, which is the whole point of folding it.
+    openMore(name !== 'draft');
     const targetHash = '#/' + name;
     if (updateHash && location.hash !== targetHash) location.hash = targetHash;
   }
   document.querySelectorAll('.stab').forEach((tab) =>
     tab.addEventListener('click', () => showPane(tab.dataset.pane)));
+
+  function openMore(open) {
+    const more = $('studioMore');
+    const button = $('stabMore');
+    if (!more || !button) return;
+    more.hidden = !open;
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    button.classList.toggle('on', !!open);
+  }
+  const moreButton = $('stabMore');
+  if (moreButton) {
+    moreButton.addEventListener('click', () => openMore($('studioMore').hidden));
+  }
+
+  /* THE ROW ABOVE THE APPLICATION IS FOR GETTING AROUND THE APPLICATION. A patent is long and the
+     part you want is almost never at the top; the tabs that used to sit here were about the draft
+     rather than in it, so they fold away and this takes their place. */
+  function renderJump() {
+    const bar = $('secJump');
+    if (!bar) return;
+    const sections = S.sections || [];
+    const onDraft = document.querySelector('.stab[data-pane="draft"]').classList.contains('on');
+    bar.hidden = !onDraft || !sections.length || !S.version;
+    if (bar.hidden) return;
+    bar.innerHTML = sections.map((section) =>
+      `<button type="button" class="jumpto" data-key="${section.key}">${
+        esc(shortHeading(section.heading))}</button>`).join('');
+    bar.querySelectorAll('.jumpto').forEach((button) => button.addEventListener('click', () => {
+      const node = document.getElementById('sec-' + button.dataset.key);
+      if (!node) return;
+      //  A folded boilerplate section has to be opened before it can be scrolled to, or the click
+      //  silently does nothing.
+      const fold = node.closest('.dboiler');
+      if (fold && !fold.open) { fold.open = true; sectionUI.boilerOpen = true; }
+      node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      bar.querySelectorAll('.jumpto').forEach((item) => item.classList.remove('on'));
+      button.classList.add('on');
+    }));
+  }
+
+  //  The filing headings are the right words in the document and far too long for a chip.
+  const SHORT = {
+    'Cross-Reference to Related Applications': 'Cross-reference',
+    'Statement Regarding Federally Sponsored Research or Development': 'Federally sponsored',
+    'Field of the Disclosure': 'Field',
+    'Brief Description of the Drawings': 'Drawing descriptions',
+    'Detailed Description': 'Detailed description',
+  };
+  function shortHeading(heading) {
+    return SHORT[heading] || heading;
+  }
   $('stFileBtn').addEventListener('click', () => showPane('filing'));
 
   // ── the model ───────────────────────────────────────────────────────────────
@@ -1650,8 +1798,8 @@
 
   function routeFromHash() {
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-    const pane = ['draft', 'review', 'figures', 'sources', 'history', 'filing'].includes(parts[0])
-      ? parts[0] : 'draft';
+    const pane = ['draft', 'review', 'figures', 'sources', 'history', 'filing',
+                  'settings'].includes(parts[0]) ? parts[0] : 'draft';
     showPane(pane, false);
     if (pane === 'figures' && parts[2] === 'edit' && /^\d+$/.test(parts[1] || '')) {
       const figureId = Number(parts[1]);
@@ -1715,6 +1863,50 @@
     if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); }
   });
 
+  /* A message box, not a form. It grows with what you type, it offers the microphone while it is
+     empty and the send button once it is not, and Enter sends. */
+  const chatInput = $('chatInput');
+  const chatMic = $('chatMic');
+  const chatSendButton = $('chatSend');
+
+  function sizeComposer() {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(220, Math.max(38, chatInput.scrollHeight)) + 'px';
+    const typed = chatInput.value.trim().length > 0;
+    if (chatSendButton) chatSendButton.hidden = !typed;
+    if (chatMic) chatMic.hidden = typed || !SPEECH;
+  }
+  chatInput.addEventListener('input', sizeComposer);
+  if (chatMic) {
+    if (!SPEECH) chatMic.hidden = true;
+    chatMic.addEventListener('click', () => dictateInto(chatInput, chatMic, sizeComposer));
+  }
+
+  /* One dictation implementation for the composer and for every per-section ask box. */
+  function dictateInto(area, button, after) {
+    if (!SPEECH) return;
+    if (dictateInto.active) { dictateInto.active.stop(); return; }
+    const recognition = new SPEECH();
+    recognition.lang = document.documentElement.lang || 'en-US';
+    recognition.interimResults = true;
+    recognition.continuous = true;
+    const before = area.value;
+    button.classList.add('on');
+    recognition.onresult = (event) => {
+      let heard = '';
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        heard += event.results[i][0].transcript;
+      }
+      area.value = (before ? before.replace(/\s*$/, ' ') : '') + heard;
+      if (after) after();
+    };
+    const done = () => { button.classList.remove('on'); dictateInto.active = null; if (after) after(); };
+    recognition.onerror = done;
+    recognition.onend = done;
+    dictateInto.active = recognition;
+    recognition.start();
+  }
+
   async function send() {
     const input = $('chatInput');
     const text = input.value.trim();
@@ -1727,6 +1919,7 @@
         body: JSON.stringify({ message: text, kind: modeButton.dataset.kind }),
       });
       input.value = '';
+      sizeComposer();
       await refresh();
       startPolling();
     } catch (error) {
@@ -1849,10 +2042,9 @@
     }
     const verdictBox = $('stVerdict');
     const pixelFailures = drawingAuditChecks().filter((check) => check.status === 'fail').length;
-    if (pixelFailures) {
-      const [tone, label] = VERDICT.fail;
-      verdictBox.innerHTML = `<span class="verdict ${tone} tiny">${label}: drawing mismatch</span>`;
-    } else if (S.qa) {
+    //  A drawing mismatch no longer speaks for the whole draft in the masthead: it is reported
+    //  where the drawings are, and it still refuses a filing package.
+    if (S.qa) {
       const [tone, label] = VERDICT[S.qa.verdict] || VERDICT.unknown;
       verdictBox.innerHTML = `<span class="verdict ${tone} tiny">${label}</span>`;
     } else verdictBox.innerHTML = '';
@@ -1870,10 +2062,17 @@
     const undrawn = (S.figures || []).filter((f) => !f.drawn).length;
     $('tabFigures').textContent = (S.figures || []).length || '';
     $('tabFigures').title = undrawn ? `${undrawn} figure(s) described but not drawn` : '';
+    //  One number on the fold, so nothing important disappears just because it is folded.
+    const badge = $('tabMoreBadge');
+    if (badge) {
+      badge.textContent = bad ? bad : '';
+      badge.className = 'tabbadge' + (bad ? ' bad' : '');
+    }
   }
 
   function renderAll() {
     renderChrome();
+    renderJump();
     renderFeed();
     renderDraft();
     renderReview();

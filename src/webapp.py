@@ -7150,6 +7150,7 @@ def draft_studio_research(project_id):
         material = studio.search_material(principal, project_id)
         query = material["query"]
         mode, focus, wide = "novelty", "all_text", True
+        chosen = _studio().settings(principal, project_id)["values"]
         slug = search_slug(query, mode, wide=wide, search_focus=focus)
         state, detail = ensure_report(
             slug, query=query, mode=mode, wide=wide, search_focus=focus,
@@ -7180,7 +7181,8 @@ def draft_studio_research(project_id):
             return _draft_report_loader(principal, item_slug, principal.user_id)
 
         def attach(item_slug, pubs):
-            return studio.import_search(principal, project_id, item_slug, list(pubs))
+            keep = max(1, min(int(chosen.get("research_references") or 5), 10))
+            return studio.import_search(principal, project_id, item_slug, list(pubs)[:keep])
 
         def enqueue(message):
             turn = studio.repository.enqueue_turn_safely(
@@ -7223,6 +7225,27 @@ def api_draft_research(project_id):
                         "delta": data.get("delta"),
                         "improvement": data.get("improvement"),
                         "rounds": [_research_payload(item) for item in data["rounds"]]})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/api/drafts/<int:project_id>/settings")
+def api_draft_settings(project_id):
+    try:
+        _user, principal = _draft_identity()
+        return jsonify({"ok": True, **_studio().settings(principal, project_id)})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/settings", methods=["POST"])
+def draft_studio_settings(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        body = request.get_json(silent=True) or {}
+        return jsonify({"ok": True, **_studio().save_settings(
+            principal, project_id, body if isinstance(body, dict) else {})})
     except drafting.DraftingError as exc:
         return _studio_error(exc)
 
