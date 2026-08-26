@@ -3212,6 +3212,49 @@ def test_terminal_failure_retains_candidate_until_a_project_completes(monkeypatc
     assert not any("DELETE FROM app_draft_turn_candidates" in query for query, _ in queries)
 
 
+def test_cancelling_an_automatic_drawing_continuation_cannot_claim_filing_readiness():
+    queries = []
+
+    class Cursor:
+        def execute(self, query, params=()):
+            queries.append((query, params))
+
+        def fetchone(self):
+            return {"kind": "gate_resume"}
+
+    @contextmanager
+    def cursor_factory(**_kwargs):
+        yield Cursor()
+
+    repository = draft_studio.StudioRepository(cursor_factory, migrate=False)
+    repository.cancel_turn(7, 33)
+
+    assert any("SET status='active'" in query for query, _params in queries)
+    assert not any("THEN 'ready'" in query for query, _params in queries)
+    assert not any("DELETE FROM app_draft_turn_candidates" in query for query, _params in queries)
+
+
+def test_cancelling_an_ordinary_turn_restores_the_published_version_state():
+    queries = []
+
+    class Cursor:
+        def execute(self, query, params=()):
+            queries.append((query, params))
+
+        def fetchone(self):
+            return {"kind": "revise"}
+
+    @contextmanager
+    def cursor_factory(**_kwargs):
+        yield Cursor()
+
+    repository = draft_studio.StudioRepository(cursor_factory, migrate=False)
+    repository.cancel_turn(7, 33)
+
+    assert any("THEN 'ready'" in query for query, _params in queries)
+    assert any("DELETE FROM app_draft_turn_candidates" in query for query, _params in queries)
+
+
 def test_complete_turn_atomically_queues_its_drawing_continuation(monkeypatch):
     queries = []
     rows = iter([

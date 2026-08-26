@@ -1504,11 +1504,26 @@ class StudioRepository:
                 "UPDATE app_draft_turns SET status='cancelled',stage='cancelled',"
                 "completed_at=now(),updated_at=now(),lease_token_hash=NULL,lease_expires_at=NULL,"
                 "last_error='Cancelled by the user' WHERE project_id=%s AND id=%s "
-                "AND status IN ('queued','running')", (int(project_id), int(turn_id)))
-            cur.execute("UPDATE app_drafting_projects SET status=CASE WHEN latest_version_no>0 "
-                        "THEN 'ready' ELSE 'active' END,updated_at=now() WHERE id=%s",
-                        (int(project_id),))
-            cur.execute("DELETE FROM app_draft_turn_candidates WHERE turn_id=%s", (int(turn_id),))
+                "AND status IN ('queued','running') RETURNING kind,idempotency_key",
+                (int(project_id), int(turn_id)))
+            cancelled = cur.fetchone()
+            if not cancelled:
+                return
+            automatic_filing = bool(
+                cancelled.get("kind") == "gate_resume" or
+                _AUTOMATIC_GATE_RESUME_TURN_KEY.match(
+                    str(cancelled.get("idempotency_key") or "")))
+            if automatic_filing:
+                # A published text version is not filing-ready while its mandatory drawing
+                # continuation is incomplete. Keep the candidate so the exact package can resume.
+                cur.execute("UPDATE app_drafting_projects SET status='active',updated_at=now() "
+                            "WHERE id=%s", (int(project_id),))
+            else:
+                cur.execute("UPDATE app_drafting_projects SET status=CASE "
+                            "WHEN latest_version_no>0 THEN 'ready' ELSE 'active' END,"
+                            "updated_at=now() WHERE id=%s", (int(project_id),))
+                cur.execute("DELETE FROM app_draft_turn_candidates WHERE turn_id=%s",
+                            (int(turn_id),))
 
     @staticmethod
     def _turn(row: Mapping[str, Any]) -> dict[str, Any]:
