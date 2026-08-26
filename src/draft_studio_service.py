@@ -27,6 +27,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 import draft_agent
 import draft_cite
+import draft_settings
 import draft_studio
 import draft_workspace
 import drafting
@@ -318,11 +319,43 @@ class StudioService:
         kick()
         return turn
 
+    # -- advanced settings -------------------------------------------------------------------------
+    def settings(self, principal: drafting.Principal, project_id: int) -> dict[str, Any]:
+        project = self._project(principal, project_id)
+        stored = project.get("settings")
+        if isinstance(stored, str):
+            stored = draft_studio._json(stored, {})
+        resolved = dict(stored or {})
+        #  The model picker predates this panel and writes its own column, so a project that only
+        #  ever used the picker still shows the right model here.
+        resolved.setdefault("draft_model", project.get("draft_model") or "")
+        return draft_settings.public(resolved)
+
+    def save_settings(self, principal: drafting.Principal, project_id: int,
+                      supplied: Mapping[str, Any]) -> dict[str, Any]:
+        project = self._project(principal, project_id)
+        stored = project.get("settings")
+        if isinstance(stored, str):
+            stored = draft_studio._json(stored, {})
+        try:
+            values = draft_settings.clean(supplied, stored)
+        except ValueError as exc:
+            raise drafting.DraftingValidationError(str(exc)) from exc
+        self.repository.save_settings(project_id, values)
+        return draft_settings.public(values)
+
     def set_model(self, principal: drafting.Principal, project_id: int, model: str
                   ) -> dict[str, Any]:
         """Choose which model tier drafts this project, from the next turn onward."""
         self._project(principal, project_id)
         chosen = self.repository.set_draft_model(project_id, model)
+        #  Keep the panel and the picker showing the same thing.
+        project = self._project(principal, project_id)
+        stored = project.get("settings")
+        if isinstance(stored, str):
+            stored = draft_studio._json(stored, {})
+        self.repository.save_settings(
+            project_id, {**draft_settings.resolve(stored), "draft_model": chosen})
         return {"draft_model": chosen,
                 "label": draft_agent.model_label(chosen) or "the server default"}
 
@@ -901,10 +934,13 @@ def process_one() -> dict[str, Any] | None:
 def _fail(runner: draft_studio.TurnRunner, claimed: Mapping[str, Any], error: str, *,
           retryable: bool) -> dict[str, Any] | None:
     error = str(draft_studio.human_text(str(error)))
-    try:
-        runner.restore_figures(int(claimed["id"]))
-    except Exception:
-        traceback.print_exc()
+    preserve_partial_drawings = error.startswith((
+        "DrawingBudgetSpent:", "FigureTransientError:"))
+    if not preserve_partial_drawings:
+        try:
+            runner.restore_figures(int(claimed["id"]))
+        except Exception:
+            traceback.print_exc()
     try:
         result = runner.repository.fail_turn(claimed["id"], claimed["lease_token"], error,
                                              retryable=retryable)

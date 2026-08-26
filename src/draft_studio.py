@@ -38,6 +38,7 @@ from typing import Any, Callable, Mapping, Sequence
 import draft_agent
 import draft_cite
 import draft_qa
+import draft_settings
 import draft_workspace
 import drafting
 
@@ -51,6 +52,9 @@ MAX_TURNS_LISTED = 200
 LEASE_SECONDS = 2400                           # a full drafting turn plus its review
 MAX_FINALIZATION_ROUNDS = max(
     2, min(int(os.environ.get("DRAFT_FINALIZATION_ROUNDS", "6")), 6))
+#  How long the explicit drawing pass may run before it reports what it did not reach. Unbounded,
+#  it re-inspects every sheet whenever an audit constant moves, which measured 53 minutes.
+DRAWING_BUDGET_SECONDS = max(60, int(os.environ.get("DRAFT_DRAWING_SECONDS", "900")))
 _GATE_RESUME_KEY = "_gate_resume"
 _AUTOMATIC_GATE_RESUME_TURN_KEY = re.compile(r"^auto-filing-repair-\d+-\d+$")
 _SCHEMA_LOCK = threading.Lock()
@@ -62,7 +66,8 @@ _MIGRATION = _SQL_DIR / "006_draft_agent.sql"
 #  worker must never start against a database that is missing a column it writes on its first turn.
 _MIGRATIONS = (_MIGRATION, _SQL_DIR / "018_draft_studio_editing.sql",
                _SQL_DIR / "019_draft_turn_kinds.sql",
-               _SQL_DIR / "020_draft_research_rounds.sql")
+               _SQL_DIR / "020_draft_research_rounds.sql",
+               _SQL_DIR / "021_draft_project_settings.sql")
 
 
 class StudioError(drafting.DraftingError):
@@ -1465,6 +1470,13 @@ class StudioRepository:
             row = cur.fetchone()
         return int((row or {}).get("n") or 0)
 
+    def save_settings(self, project_id: int, values: Mapping[str, Any]) -> None:
+        """Store this project's advanced settings whole."""
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute("UPDATE app_drafting_projects SET settings=%s::jsonb,updated_at=now() "
+                        "WHERE id=%s", (_dumps(dict(values)), int(project_id)))
+
     def set_draft_model(self, project_id: int, model: str) -> str:
         """Choose the model tier this project drafts on. '' means the host default."""
         self._ready()
@@ -1706,7 +1718,8 @@ class StudioRepository:
 
     def complete_turn(self, turn_id: int, lease_token: str, *, result: Mapping[str, Any],
                       session_id: str, cost_usd: float, duration_ms: int, model_name: str,
-                      transcript_path: str = "", discard_candidates: bool = True
+                      transcript_path: str = "", discard_candidates: bool = True,
+                      continuation: Mapping[str, Any] | None = None
                       ) -> dict[str, Any]:
         self._ready()
         with self._cursor() as cur:
@@ -1730,10 +1743,37 @@ class StudioRepository:
                 cur.execute(
                     "DELETE FROM app_draft_turn_candidates c USING app_draft_turns t "
                     "WHERE c.turn_id=t.id AND t.project_id=%s", (int(turn["project_id"]),))
-            cur.execute(
-                "UPDATE app_drafting_projects SET status='ready',agent_session_id=%s,"
-                "agent_turn_no=%s,updated_at=now() WHERE id=%s",
-                (str(session_id)[:80], turn["turn_no"], turn["project_id"]))
+            if continuation:
+                kind = str(continuation.get("kind") or "gate_resume")
+                if kind not in {"gate_resume", "qa_fix"}:
+                    raise drafting.DraftingValidationError(
+                        "Automatic continuation kind is invalid.")
+                idempotency_key = str(continuation.get("idempotency_key") or "")[:180]
+                if not idempotency_key:
+                    raise drafting.DraftingValidationError(
+                        "Automatic continuation requires an idempotency key.")
+                cur.execute(
+                    "SELECT coalesce(max(turn_no),0)+1 AS n FROM app_draft_turns "
+                    "WHERE project_id=%s", (int(turn["project_id"]),))
+                continuation_turn_no = int(cur.fetchone()["n"])
+                cur.execute(
+                    "INSERT INTO app_draft_turns (project_id,turn_no,requested_by_user_id,"
+                    "project_revision,kind,user_message,idempotency_key,stage) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,'queued') RETURNING id",
+                    (int(turn["project_id"]), continuation_turn_no,
+                     int(turn["requested_by_user_id"]), int(turn["project_revision"]), kind,
+                     str(continuation.get("user_message") or "")[:MAX_MESSAGE_CHARS],
+                     idempotency_key))
+                out["continuation_turn_id"] = int(cur.fetchone()["id"])
+                cur.execute(
+                    "UPDATE app_drafting_projects SET status='queued',agent_session_id=%s,"
+                    "agent_turn_no=%s,updated_at=now() WHERE id=%s",
+                    (str(session_id)[:80], turn["turn_no"], turn["project_id"]))
+            else:
+                cur.execute(
+                    "UPDATE app_drafting_projects SET status='ready',agent_session_id=%s,"
+                    "agent_turn_no=%s,updated_at=now() WHERE id=%s",
+                    (str(session_id)[:80], turn["turn_no"], turn["project_id"]))
             return out
 
     def fail_turn(self, turn_id: int, lease_token: str, error: str, *,
@@ -1911,14 +1951,15 @@ class TurnRunner:
                    session_id: str, resume: bool, transcript: Path,
                    stage: str, model: str = "", system_prompt: str = DRAFT_SYSTEM,
                    schema: Mapping[str, Any] = TURN_SCHEMA,
-                   tools: str = "") -> draft_agent.AgentRun:
+                   tools: str = "", house: str = "") -> draft_agent.AgentRun:
         self.repository.heartbeat(turn_id, lease, stage=stage)
         beat = _Heartbeat(self.repository, turn_id, lease, stage)
         beat.start()
         try:
             extra = {"tools": tools} if tools else {}
             run = self.agent.run(
-                workspace=workspace, prompt=prompt, system_prompt=system_prompt,
+                workspace=workspace, prompt=prompt,
+                system_prompt=system_prompt + str(house or ""),
                 schema=schema, session_id=session_id, resume=resume,
                 model=model or self.agent.DRAFT_MODEL, timeout=self.agent.DRAFT_TIMEOUT,
                 transcript=transcript, cancel=beat.cancelled, **extra)
@@ -1995,22 +2036,89 @@ class TurnRunner:
                             sections: Mapping[str, str],
                             numerals: Sequence[Mapping[str, str]],
                             figures: Sequence[Mapping[str, Any]], disclosure: str,
-                            workspace: Path) -> list[str]:
-        """Bring every sheet into line with the text or stop publication with exact defects."""
-        generated = self._ensure_figures(
-            turn_id=turn_id, lease=lease, project_id=project_id, user_id=user_id,
-            sections=sections, numerals=numerals, figures=figures,
-            disclosure=disclosure, workspace=workspace)
-        if not generated.get("ok"):
-            errors = [str(item) for item in generated.get("errors") or ()]
-            raise DrawingInspectionError(errors or [
-                "One or more sheets did not pass geometry, leader, and OCR inspection."])
-        return []
+                            workspace: Path, deadline: float = 0.0) -> list[str]:
+        """The drawing pass, run on its own and never inside a drafting turn.
+
+        Returns ordinary visual defects for repair. Capacity, deadline, source-review, and lease
+        failures raise so the durable worker retries the same saved candidate without rewriting
+        accepted sheets. `filing_blockers` refuses a package while any defect is outstanding.
+        """
+        import draft_figures
+
+        if self._drawings_already_match(project_id, user_id, numerals, figures):
+            return []
+        try:
+            generated = self._ensure_figures(
+                turn_id=turn_id, lease=lease, project_id=project_id, user_id=user_id,
+                sections=sections, numerals=numerals, figures=figures,
+                disclosure=disclosure, workspace=workspace,
+                deadline=deadline or (time.time() + DRAWING_BUDGET_SECONDS))
+        except (drafting.DraftingConflict, SourceFidelityInspectionError,
+                SourceReviewUnavailable, DrawingBudgetSpent):
+            raise
+        except draft_figures.FigureTransientError:
+            raise
+        except Exception as exc:                               # noqa: BLE001 - never fatal here
+            traceback.print_exc()
+            return [f"The drawing pass did not finish: {type(exc).__name__}: {str(exc)[:400]}"]
+        if generated.get("ok"):
+            return []
+        errors = [str(item) for item in generated.get("errors") or ()]
+        return errors or ["One or more sheets did not pass geometry, leader, and OCR inspection."]
+
+    @staticmethod
+    def _drawings_already_match(project_id: int, user_id: int,
+                                numerals: Sequence[Mapping[str, str]],
+                                figures: Sequence[Mapping[str, Any]]) -> bool:
+        """Has every sheet already been inspected, and passed, against exactly this brief?
+
+        Deliberately asks the current gates. A changed OCR, semantic, leader, endpoint, or section
+        rule invalidates an older approval and the automatic drawing continuation refreshes it.
+
+        Fails closed. Anything unreadable, missing or failing returns False and the pass runs.
+        """
+        try:
+            import draft_figures
+            specs = list(figures or ())
+            if not specs:
+                return False
+            stored = {draft_figures.figure_key(item.get("figure_label")): item
+                      for item in draft_figures.listing(project_id, user_id)}
+            if len(stored) != len(specs):
+                return False                       # an orphan or a missing sheet is a real fault
+            for sheet_index, spec in enumerate(specs, 1):
+                figure = stored.get(draft_figures.figure_key(spec.get("label")))
+                if not figure:
+                    return False
+                active = next((item for item in figure.get("versions") or ()
+                               if int(item.get("version_no") or 0) ==
+                               int(figure.get("active_version") or 0)), None)
+                if not active:
+                    return False
+                want = draft_figures.specification_hash(
+                    str(spec.get("label") or ""), str(spec.get("caption") or ""),
+                    draft_figures.expected_entries(spec, numerals))
+                semantic = active.get("semantic_audit") or {}
+                leader = active.get("leader_audit") or {}
+                ocr = active.get("numeral_audit") or {}
+                if (semantic.get("specification_hash") != want or
+                        leader.get("specification_hash") != want or
+                        not draft_figures.current_semantic_audit(semantic) or
+                        not draft_figures.current_leader_audit(leader) or
+                        not draft_figures.current_ocr_audit(
+                            ocr, expected_sheet_number=f"{sheet_index}/{len(specs)}",
+                            expected_section_designations=draft_figures.section_designations(
+                                str(spec.get("caption") or "")))):
+                    return False
+            return True
+        except Exception:                                      # noqa: BLE001 - never skip on doubt
+            traceback.print_exc()
+            return False
 
     def _ensure_figures(self, *, turn_id: int, lease: str, project_id: int, user_id: int,
                         sections: Mapping[str, str], numerals: Sequence[Mapping[str, str]],
                         figures: Sequence[Mapping[str, Any]], disclosure: str,
-                        workspace: Path) -> dict[str, Any]:
+                        workspace: Path, deadline: float = 0.0) -> dict[str, Any]:
         import draft_figures
 
         self.repository.heartbeat(turn_id, lease, stage="checking source fidelity")
@@ -2080,6 +2188,9 @@ class TurnRunner:
         draft_figures.checkpoint_project_figures(turn_id, project_id, user_id)
 
         def check_cancel() -> None:
+            if deadline and time.time() > deadline:
+                raise DrawingBudgetSpent(
+                    "The drawing pass reached its time budget.")
             self.repository.heartbeat(
                 turn_id, lease, stage="drawing and inspecting figures")
 
@@ -2139,6 +2250,7 @@ class TurnRunner:
             prompt=build_section_edit_prompt(section_key, sections),
             session_id=self.agent.new_session_id(), resume=False, transcript=transcript,
             stage=f"editing {heading}"[:60], model=self._model_for(project),
+            house=draft_settings.prompt_additions(self._settings_for(project)),
             system_prompt=SECTION_EDIT_SYSTEM, schema=SECTION_EDIT_SCHEMA,
             #  No Write and no Edit. The tool set is what makes this a patch rather than a rewrite:
             #  the agent cannot change the workspace, so its structured answer is the only output
@@ -2222,11 +2334,16 @@ class TurnRunner:
             transcript_path=str(transcript), discard_candidates=False)
         return {"turn": completed, "version": version}
 
+    @staticmethod
+    def _settings_for(project: Mapping[str, Any]) -> dict[str, Any]:
+        return draft_settings.resolve(_json(project.get("settings"), {}))
+
     def _model_for(self, project: Mapping[str, Any]) -> str:
         #  Deliberately the module function rather than ``self.agent``: normalising a tier name is
         #  a fact about which models this host will run, not a capability of an injected agent, and
         #  a test double that only needs to answer ``run`` must not have to know about it.
-        return draft_agent.normalize_model(project.get("draft_model"))
+        chosen = self._settings_for(project).get("draft_model")
+        return draft_agent.normalize_model(chosen or project.get("draft_model"))
 
     def mechanical_report(self, project_id: int, *, sections: Mapping[str, str],
                           numerals: Sequence[Mapping[str, Any]],
@@ -2287,6 +2404,8 @@ class TurnRunner:
         kind = str(turn.get("kind") or "revise")
         if kind == "section_edit" and context["had_version"]:
             return self._run_section_edit(turn, context)
+        drawing_continuation = bool(
+            kind == "gate_resume" and context.get("resuming_candidate"))
         first = not context["had_version"] and not context.get("resuming_candidate")
         prompt_kind = "initial" if first else ("revise" if kind == "initial" else kind)
         prompt = build_prompt(prompt_kind, seeded=context["seeded"])
@@ -2304,7 +2423,8 @@ class TurnRunner:
                     turn_id=turn_id, lease=lease, workspace=workspace, prompt=prompt,
                     session_id=prior_session or self.agent.new_session_id(),
                     resume=bool(prior_session), transcript=transcript, stage="drafting",
-                    model=self._model_for(project))
+                    model=self._model_for(project),
+                    house=draft_settings.prompt_additions(self._settings_for(project)))
             except StudioError as exc:
                 self._checkpoint_interrupted_agent(
                     turn_id=turn_id, lease=lease, workspace=workspace, allowed=allowed, error=exc)
@@ -2350,7 +2470,9 @@ class TurnRunner:
         report: dict[str, Any] | None = None
         snapshot: dict[str, Any] = {}
         sections: dict[str, str] = {}
-        for review_index in range(MAX_FINALIZATION_ROUNDS):
+        rounds_allowed = max(2, min(int(self._settings_for(project).get(
+            "finalization_rounds") or MAX_FINALIZATION_ROUNDS), MAX_FINALIZATION_ROUNDS))
+        for review_index in range(rounds_allowed):
             if review_index:
                 prior_snapshot, prior_report = snapshot, report or {}
                 try:
@@ -2358,7 +2480,9 @@ class TurnRunner:
                         turn_id=turn_id, lease=lease, workspace=workspace,
                         prompt=FINALIZE_PROMPT, session_id=runs[-1].session_id,
                         resume=True, transcript=transcript, stage="repairing the draft",
-                        model=self._model_for(project))
+                        model=self._model_for(project),
+                        house=draft_settings.prompt_additions(
+                            self._settings_for(project)))
                 except StudioError as exc:
                     self._checkpoint_interrupted_agent(
                         turn_id=turn_id, lease=lease, workspace=workspace,
@@ -2403,27 +2527,44 @@ class TurnRunner:
                     repair_snapshot = candidate_snapshot_for_repair(raw_snapshot)
                     if repair_snapshot is not None:
                         snapshot = repair_snapshot
-                    snapshot = validate_snapshot(raw_snapshot, allowed)
+                    #  Figure-plan defects are collected, not raised: they are about the sheets,
+                    #  and the text publishes on the text's merits.
+                    drawing_faults: list[str] = []
+                    snapshot = validate_snapshot(raw_snapshot, allowed, drawing_faults)
                     sections = snapshot["sections"]
                     self.repository.save_retry_candidate(
                         turn_id, lease, snapshot=snapshot,
                         report=_gate_resume_report(runs, result))
-                    # Drawings are filing artifacts. A turn stays unpublished until every sheet
-                    # passes geometry, leader, OCR, semantic, and cross-provider inspection.
-                    self.repository.heartbeat(
-                        turn_id, lease, stage="drawing and inspecting figures")
-                    self._reconcile_drawings(
-                        turn_id=turn_id, lease=lease, project_id=project_id,
-                        user_id=int(project["user_id"]), sections=sections,
-                        numerals=snapshot["numerals"], figures=snapshot["figures"],
-                        disclosure=str(project.get("disclosure_text") or ""),
-                        workspace=workspace)
+                    # Text drafting and image work stay separate. Once text passes, a durable
+                    # gate-resume turn runs the bounded drawing phase automatically. It can resume
+                    # after a restart and cannot mark the project ready until every current image
+                    # audit and the final independent review pass.
+                    if drawing_continuation:
+                        self.repository.heartbeat(
+                            turn_id, lease, stage="drawing and inspecting figures")
+                        drawing_faults.extend(self._reconcile_drawings(
+                            turn_id=turn_id, lease=lease, project_id=project_id,
+                            user_id=int(project["user_id"]), sections=sections,
+                            numerals=snapshot["numerals"], figures=snapshot["figures"],
+                            disclosure=str(project.get("disclosure_text") or ""),
+                            workspace=workspace))
                     self.repository.heartbeat(turn_id, lease, stage="independent review")
                     report = self.evaluate(
                         project_id, version_no=int(project.get("latest_version_no") or 0) + 1,
                         workspace=workspace, allowed=allowed, sections=sections,
                         numerals=snapshot["numerals"], figures=snapshot["figures"],
-                        review_index=review_index)
+                        review_index=review_index,
+                        review_model=self._settings_for(project).get("review_model") or "")
+                    if drawing_faults:
+                        report = dict(report)
+                        report["checks"] = list(report.get("checks") or []) + [{
+                            "name": _DRAWING_INSPECTION_CHECK, "status": "fail",
+                            "severity": "error", "category": "figures_and_numerals",
+                            "detail": "The text was published on its own merits. These drawing "
+                                      "defects do not block drafting and do block filing.",
+                            "items": [str(item)[:600] for item in drawing_faults][:12]}]
+                        report["counts"] = draft_qa.counts_for(
+                            report["checks"], report.get("findings") or [])
                 except SourceFidelityInspectionError as exc:
                     report = exc.report
                 except DrawingInspectionError as exc:
@@ -2460,20 +2601,29 @@ class TurnRunner:
                         "duration_ms": 0, "model_name": "", "last_error": str(exc)[:1200],
                     }
 
-            blockers = filing_blockers(report)
+            # The first phase publishes text on text merits and atomically queues a drawing turn.
+            # The drawing continuation is the complete filing gate and cannot publish around any
+            # drawing, OCR, endpoint, or independent-review defect.
+            blockers = (filing_blockers(report) if drawing_continuation else
+                        text_blockers(report))
             if not blockers:
                 break
             if snapshot.get("sections"):
                 self.repository.save_retry_candidate(
                     turn_id, lease, snapshot=snapshot, report=report)
             self.workspace._write_review(workspace, report)
-            if review_index + 1 >= MAX_FINALIZATION_ROUNDS:
+            if review_index + 1 >= rounds_allowed:
                 raise drafting.DraftingValidationError(
                     "The automatic filing gate could not clear: " + "; ".join(blockers[:8]))
 
         version = None
         final_run = runs[-1]
-        if sections != context["previous_sections"]:
+        prepared = context.get("prepared_snapshot") or {}
+        candidate_changed = bool(
+            sections != context["previous_sections"] or
+            snapshot.get("numerals") != prepared.get("numerals") or
+            snapshot.get("figures") != prepared.get("figures"))
+        if candidate_changed:
             version = self.repository.save_version(
                 turn_id, lease, sections=sections, citations=citations_of(sections),
                 change_note=str(result.get("summary") or "")[:4000],
@@ -2502,10 +2652,24 @@ class TurnRunner:
             project_id, turn_id=turn_id, version_no=version_no,
             workspace=workspace, report=report or {})
 
+        needs_drawing_continuation = bool(
+            not drawing_continuation and drawing_blockers(report or {}))
+        continuation = None
+        if needs_drawing_continuation:
+            continuation = {
+                "kind": "gate_resume",
+                "idempotency_key": f"auto-filing-repair-{turn_id}-1",
+                "user_message": (
+                    "Finish every drawing sheet automatically from the saved filing candidate. "
+                    "Run current geometry, semantic, OCR, sheet-number, leader, endpoint, and "
+                    "independent-review checks. Publish filing readiness only after all pass."),
+            }
         completed = self.repository.complete_turn(
             turn_id, lease, result=result, session_id=final_run.session_id, cost_usd=total_cost,
             duration_ms=total_duration, model_name=final_run.model,
-            transcript_path=str(transcript))
+            transcript_path=str(transcript),
+            discard_candidates=not needs_drawing_continuation,
+            continuation=continuation)
         try:
             import draft_figures
             draft_figures.discard_project_figure_checkpoint(turn_id)
@@ -2517,7 +2681,7 @@ class TurnRunner:
     def evaluate(self, project_id: int, *, version_no: int | None, workspace: Path,
                  allowed: Sequence[str], sections: Mapping[str, str],
                  numerals: Sequence[Mapping[str, str]], figures: Sequence[Mapping[str, Any]],
-                 review_index: int = 0) -> dict[str, Any]:
+                 review_index: int = 0, review_model: str = "") -> dict[str, Any]:
         """Evaluate a workspace without publishing either the version or the report."""
         started = time.time()
         qa_figures = list(figures)
@@ -2536,7 +2700,8 @@ class TurnRunner:
                        "detail": f"The checks could not run ({type(exc).__name__}).", "items": []}]
         transcript = workspace / ".agent" / (
             f"review-{version_no or 0:04d}-{int(review_index) + 1:02d}.jsonl")
-        outcome = self.qa.review(workspace, checks=checks, transcript=transcript)
+        outcome = self.qa.review(workspace, checks=checks, transcript=transcript,
+                                 model=review_model)
         findings = outcome.get("findings") or []
         verdict = self.qa.verdict_for(checks, findings)
         report = {
