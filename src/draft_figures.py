@@ -118,7 +118,9 @@ MARKED_ANCHOR_CORRECTION_GAIN = 1.0
 MIN_OCR_CONFIDENCE = float(os.environ.get("PATENT_FIGURE_OCR_CONFIDENCE", "0.85"))
 MAX_REVIEW_COORDINATE = 50_000
 SECTION_MARK_COORDINATE_TOLERANCE = 180
-SECTION_MARK_ANCHOR_CLEARANCE = 28
+# Twenty normalized units still leave at least 28 raw pixels on a 1400-pixel sheet while
+# permitting an interior target inside a narrow member that the required cutting plane bisects.
+SECTION_MARK_ANCHOR_CLEARANCE = 20
 
 
 class _NumeralInspection(BaseModel):
@@ -2175,8 +2177,9 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
             "second frame half": (700, 760, "well inside the lower annular frame half"),
             "hinge": (395, 450, "well inside the small hinge circle at the left joint"),
             "latch": (1110, 455, "well inside the latch block bridging the right joint"),
-            "jaw carriage": (700, 230, "well inside the topmost jaw carriage"),
-            "jaw pad": (679, 302, "well inside the topmost jaw pad"),
+            "jaw carriage": (
+                664, 200, "on the left outline of the topmost jaw carriage"),
+            "jaw pad": (625, 282, "on the outer left arc of the topmost jaw pad"),
             "pipe": (700, 450, "well inside the central pipe circle"),
         }
     elif segmented_cam_ring_plan is not None and png == segmented_cam_ring_plan:
@@ -2869,13 +2872,30 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
 
     # The latch body bridges the right joint, and its attached lever reaches outward and up.
     draw.rectangle((1060, 405, 1165, 495), fill="white", outline="black", width=4)
-    lever = [(1110, 420), (1132, 431), (1265, 235), (1241, 221)]
-    draw.polygon(lever, fill="white", outline="black")
-    draw.line(lever + [lever[0]], fill="black", width=4, joint="curve")
+    draw.line((1165, 450, 1280, 265), fill="black", width=4)
 
     out = io.BytesIO()
     image.save(out, format="PNG", compress_level=9)
     return out.getvalue()
+
+
+def _segmented_cam_ring_omits_drive_face(caption: str) -> bool:
+    """Recognize the source-repaired ring inventory containing only joints and slots."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    return bool(
+        not re.search(r"\bring drive face\b", text) and
+        re.search(
+            r"\btwo joints\b[^.]{0,140}\bdivide the annulus into two arcuate segments\b",
+            text,
+        ) and
+        re.search(r"\bthree elongated openings\b", text) and
+        re.search(r"\beach is an oblique slot\b", text) and
+        re.search(
+            r"\bfeatures(?: of the ring)? other than the two joints and (?:the )?three slots\b"
+            r"[^.]{0,120}\bnot designated\b",
+            text,
+        )
+    )
 
 
 def _segmented_cam_ring_has_internal_drive_face(caption: str) -> bool:
@@ -2895,6 +2915,7 @@ def _segmented_cam_ring_has_internal_drive_face(caption: str) -> bool:
 def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
     """Render a coupled two-segment cam ring with one true outer-boundary flat."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    omitted_drive_face = _segmented_cam_ring_omits_drive_face(text)
     straight_drive_face = re.search(
         r"\bring drive face(?:\s+\d+)?\b[^.]{0,180}\b(?:one|a)(?: short)?(?: plain)?"
         r" straight (?:flat|face)\b",
@@ -2933,8 +2954,8 @@ def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
         (re.search(r"\bthree (?:alike )?oblique slots\b", text) or
          (re.search(r"\bthree elongated openings\b", text) and
           re.search(r"\beach is an oblique slot\b", text))),
-        straight_drive_face,
-        detailed_drive_face or generic_drive_face,
+        straight_drive_face or omitted_drive_face,
+        detailed_drive_face or generic_drive_face or omitted_drive_face,
     )
     if not all(requirements):
         return None
@@ -2962,7 +2983,7 @@ def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
             round(center_y + radius * sin(angle)),
         )
 
-    if internal_drive_face:
+    if internal_drive_face or omitted_drive_face:
         draw.ellipse(outer_box, outline="black", width=4)
     else:
         # The short circular run from the joint meets one straight chordal flat. No retained arc
@@ -3769,8 +3790,13 @@ def _deterministic_segmented_cam_ring_constraint_certificate(
         )
 
     internal_drive_face = _segmented_cam_ring_has_internal_drive_face(caption)
+    omitted_drive_face = _segmented_cam_ring_omits_drive_face(caption)
     lower_endpoint = point(outer_radius, 50)
-    arc_sample_degrees = ((20, 35, 50, 65) if internal_drive_face else (52, 56, 60, 65))
+    arc_sample_degrees = (
+        (20, 35, 50, 65)
+        if internal_drive_face or omitted_drive_face else
+        (52, 56, 60, 65)
+    )
     arc_samples = [
         {
             "degrees": degrees,
@@ -3780,7 +3806,16 @@ def _deterministic_segmented_cam_ring_constraint_certificate(
         for degrees in arc_sample_degrees
     ]
     endpoint_on_circle = has_ink_near(lower_endpoint)
-    if internal_drive_face:
+    if omitted_drive_face:
+        drive_face_constraint = {
+            "ok": bool(all(item["ink"] for item in arc_samples)),
+            "required": False,
+            "mode": "absent",
+            "flat_count": 0,
+            "outer_boundary_unbroken": all(item["ink"] for item in arc_samples),
+            "outer_boundary_samples": arc_samples,
+        }
+    elif internal_drive_face:
         drive_face_samples = [
             {"point": list(sample), "ink": has_ink_near(sample)}
             for sample in ((940, 395), (970, 415), (1000, 435))
@@ -6185,6 +6220,25 @@ def _optimize_leader_rows(routes, clearance: int):
     return optimized
 
 
+def _section_mark_designation_position(*, tip, view, line, outward: int, font_size: int,
+                                       text_size, canvas_size) -> tuple[int, int]:
+    """Place a section designation beyond its arrowhead with an OCR-readable gap."""
+    tip_x, tip_y = tip
+    view_x, view_y = view
+    line_x, line_y = line
+    width, height = text_size
+    canvas_width, canvas_height = canvas_size
+    separation = max(18, round(font_size * 1.1))
+    text_x = round(
+        tip_x + view_x * separation + line_x * outward * font_size - width / 2)
+    text_y = round(
+        tip_y + view_y * separation + line_y * outward * font_size - height / 2)
+    return (
+        max(3, min(canvas_width - width - 3, text_x)),
+        max(3, min(canvas_height - height - 3, text_y)),
+    )
+
+
 def _draw_section_marks(draw, layout: dict, marks, font) -> None:
     """Draw cutting lines, viewing arrows, and exact duplicate designations from audited points."""
     from math import hypot
@@ -6249,14 +6303,10 @@ def _draw_section_marks(draw, layout: dict, marks, font) -> None:
             ], fill="black")
             box = draw.textbbox((0, 0), designation, font=font)
             width, height = box[2] - box[0], box[3] - box[1]
-            text_x = round(
-                tip[0] + view_x * (font_size * 0.35) + line_x * outward * font_size -
-                width / 2)
-            text_y = round(
-                tip[1] + view_y * (font_size * 0.35) + line_y * outward * font_size -
-                height / 2)
-            text_x = max(3, min(layout["canvas_width"] - width - 3, text_x))
-            text_y = max(3, min(layout["canvas_height"] - height - 3, text_y))
+            text_x, text_y = _section_mark_designation_position(
+                tip=tip, view=(view_x, view_y), line=(line_x, line_y),
+                outward=outward, font_size=font_size, text_size=(width, height),
+                canvas_size=(layout["canvas_width"], layout["canvas_height"]))
             draw.text((text_x, text_y), designation, fill="black", font=font)
 
 
