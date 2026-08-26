@@ -175,7 +175,29 @@ def _gate_resume_run(context: Mapping[str, Any], turn: Mapping[str, Any]
     prepared = context.get("prepared_qa")
     marker = prepared.get(_GATE_RESUME_KEY) if isinstance(prepared, Mapping) else None
     if not isinstance(marker, Mapping) or not isinstance(marker.get("result"), Mapping):
-        return None
+        if str(turn.get("kind") or "") != "gate_resume":
+            return None
+        project = context.get("project")
+        session_id = (str(project.get("agent_session_id") or "")
+                      if isinstance(project, Mapping) else "")
+        return draft_agent.AgentRun(
+            ok=True,
+            result={
+                "action": "revised",
+                "summary": "Restored the saved filing candidate for automatic review.",
+                "reasoning": [],
+                "changes": [],
+                "questions": [],
+                "prior_art_strategy": "",
+                "answer": "",
+            },
+            session_id=session_id,
+            model="saved-candidate",
+            cost_usd=0.0,
+            duration_ms=0,
+            num_turns=0,
+            steps=[],
+        )
     session_id = str(marker.get("session_id") or "")
     if not session_id:
         return None
