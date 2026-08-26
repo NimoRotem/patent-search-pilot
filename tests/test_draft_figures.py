@@ -4139,6 +4139,34 @@ def test_chamber_renderer_accepts_current_two_hatched_legs_wording():
     assert len(angles) == 3
 
 
+def test_chamber_renderer_accepts_two_explicit_fluid_line_segments():
+    specification = """
+    The sheet shows four schematic bodies and two broken lines: one hatched horizontal slab,
+    the base 12; one closed loop cut twice, appearing as two hatched legs hanging from the
+    underside of the slab, one at each end and flush with it; one hatched band across the
+    bottom, the covering element 36, on which the legs stand; and one closed housing standing
+    on the slab, the air-extraction mechanism 20.
+
+    Two separate short broken lines together indicate schematically the fluid communication
+    between the air-extraction mechanism 20 and the chamber 22. The upper one lies wholly
+    within the housing, running down to the upper face of the base 12 and ending there. The
+    lower one lies wholly within the chamber 22, beginning just below the lower face of the
+    base 12. The hatched slab between them carries no broken line, so no passage through the
+    base 12 is asserted.
+    """
+
+    png = draft_figures._deterministic_chamber_section_png(specification)
+
+    assert png is not None
+    certificate = draft_figures._deterministic_chamber_constraint_certificate(
+        png, specification)
+    assert certificate["split_line"]["required"] is True
+    assert certificate["split_line"]["ok"] is True
+    with Image.open(io.BytesIO(png)).convert("L") as image:
+        assert sum(image.getpixel((865, y)) < 32 for y in range(225, 356)) < 40
+        assert sum(image.getpixel((865, y)) < 32 for y in range(369, 521)) >= 110
+
+
 def test_deterministic_block_grip_uses_designated_left_device_boundary():
     specification = """
     The covering element 36 is one large plain tile seen in perspective. The machine stands on

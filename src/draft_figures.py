@@ -3534,16 +3534,31 @@ def _chamber_section_has_flush_legs(text: str) -> bool:
 
 
 def _chamber_section_splits_line(text: str) -> bool:
-    return bool(re.search(
+    stop_and_resume = re.search(
         r"\b(?:broken line|that line|the line) stop(?:s|ping)\b[^.]{0,100}"
         r"\bupper face of the base(?:\s+\d+)?\b"
         r"[^.]{0,100}\bresum(?:es|ing)\b[^.]{0,80}\blower face\b",
         text,
+    )
+    explicit_segments = all((
+        re.search(r"\btwo separate short broken lines\b", text),
+        re.search(
+            r"\bupper one\b[^.]{0,160}\bupper face of the base(?:\s+\d+)?\b"
+            r"[^.]{0,80}\bending there\b",
+            text,
+        ),
+        re.search(
+            r"\blower one\b[^.]{0,160}\bbeginning just below\b[^.]{0,80}"
+            r"\blower face of the base(?:\s+\d+)?\b",
+            text,
+        ),
+        re.search(r"\bslab between them carries no broken line\b", text),
     ))
+    return bool(stop_and_resume or explicit_segments)
 
 
 def _deterministic_chamber_section_png(caption: str) -> bytes | None:
-    """Render the exact slab, two cut legs, chamber, band, and one broken line."""
+    """Render the exact slab, two cut legs, chamber, band, and constrained fluid line."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
     exact_inventory = re.search(
         r"\bshows four bodies\b[^.]{0,80}\bone broken line\b"
@@ -3553,18 +3568,28 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     exact_inventory = exact_inventory or re.search(
         r"\bshows four (?:schematic )?bodies\b[^:]{0,100}"
         r"\band one broken line\s*:", text)
-    single_line_only = bool(
+    exact_inventory = exact_inventory or re.search(
+        r"\bshows four (?:schematic )?bodies and two broken lines\s*:", text)
+    line_inventory_only = bool(
         re.search(r"\bno passage, duct, opening or other structure is depicted\b", text) or
         re.search(r"\bthat broken line being all that is drawn for it\b", text) or
         exact_inventory)
+    fluid_communication = bool(
+        re.search(r"\bbroken line runs from inside the housing to the chamber\b", text) or
+        re.search(
+            r"\btwo separate short broken lines\b[^.]{0,120}\bfluid communication\b"
+            r"[^.]{0,120}\bair-extraction mechanism(?:\s+\d+)?\b"
+            r"[^.]{0,120}\bchamber(?:\s+\d+)?\b",
+            text,
+        ))
     requirements = (
         exact_inventory,
         re.search(r"\b(?:horizontal hatched|hatched horizontal) slab\b", text),
         re.search(r"\bclosed loop cut twice\b[^.]{0,100}\btwo (?:short )?hatched legs\b", text),
         re.search(r"\bhatched band across the bottom\b", text),
         re.search(r"\bone closed housing\b", text),
-        re.search(r"\bbroken line runs from inside the housing to the chamber\b", text),
-        single_line_only,
+        fluid_communication,
+        line_inventory_only,
     )
     if not all(requirements):
         return None
