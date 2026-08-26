@@ -1299,6 +1299,8 @@ def checked_figures(*labels):
                 "model_name": draft_figures.vision_model(),
                 "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
                 "review_count": draft_figures.LEADER_REVIEW_COUNT,
+                "section_mark_anchor_audit":
+                    draft_figures._section_mark_anchor_audit([], []),
             },
             "semantic_audit": {
                 "ok": True, "inspected": True, "specification_hash": digest,
