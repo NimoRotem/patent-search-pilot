@@ -3484,6 +3484,203 @@ def test_deterministic_block_grip_has_one_plain_front_face_and_unbroken_band():
     assert image.getpixel((635, 245)) == 255, "the tile edge must not form a peak above the slab"
 
 
+def _split_clamp_plan_specification():
+    return """
+    Plan view of the split pipe clamp closed around a pipe, viewed along the pipe axis.
+    The pipe 90 is seen end on at the centre as one circle. An annular frame body surrounds it,
+    bounded by one inner circle and one outer circle. Two radial joint lines, at the left and at
+    the right, divide the body into the first frame half 10 and the second frame half 12. At the
+    left joint the hinge 14 is a small circle between the inner and outer circles, with the whole
+    hinge lying within the width of the frame body. At the right joint the latch 16 is a
+    rectangular block outside the frame body bridging both frame ends, with a lever reaching
+    radially outward from it and inclined toward the first frame half 10.
+
+    Three jaw carriages 30 are spaced around the annular frame body, at the top, the lower left
+    and the lower right. Each has an outer portion within the frame body and an inner end inside
+    the inner circle. Each carriage carries a separate jaw pad 40 at its inner end. Each jaw
+    pad has a concave inner face meeting the pipe 90.
+    """
+
+
+def test_deterministic_split_clamp_plan_keeps_hinge_inside_and_pads_on_pipe():
+    specification = _split_clamp_plan_specification()
+
+    png = draft_figures._deterministic_split_clamp_plan_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    image = Image.open(io.BytesIO(png)).convert("L")
+    assert image.size == (1400, 900)
+    assert min(image.crop((250, 400, 315, 500)).getextrema()) == 255
+    assert image.getpixel((320, 450)) < 32
+    assert image.getpixel((350, 425)) == 255
+    assert image.getpixel((350, 475)) == 255
+    assert image.getpixel((395, 450)) == 255
+    assert image.getpixel((740, 270)) < 32
+    assert image.getpixel((700, 326)) < 32
+    assert image.getpixel((700, 330)) < 32
+    assert min(image.crop((1070, 405, 1140, 495)).getextrema()) == 0
+
+
+def test_deterministic_split_clamp_plan_has_single_joints_and_separate_curved_pads():
+    png = draft_figures._deterministic_split_clamp_plan_png(
+        _split_clamp_plan_specification())
+
+    image = Image.open(io.BytesIO(png)).convert("L")
+    assert image.getpixel((350, 450)) < 32
+    assert image.getpixel((350, 425)) == 255
+    assert image.getpixel((350, 475)) == 255
+    assert image.getpixel((1040, 450)) < 32
+    assert image.getpixel((1040, 425)) == 255
+    assert image.getpixel((1040, 475)) == 255
+    assert image.getpixel((700, 326)) < 32, "the pad needs its own concave inner arc"
+    assert image.getpixel((700, 330)) < 32, "the pad must meet the pipe's outer circle"
+    assert image.getpixel((750, 337)) < 32, "the pad inner face must visibly curve"
+    assert image.getpixel((750, 341)) < 32, "the pipe circle must remain independently visible"
+
+
+def test_deterministic_split_clamp_plan_uses_exact_component_anchor_centers():
+    specification = _split_clamp_plan_specification()
+    numerals = [
+        "100 = split pipe clamp", "10 = first frame half", "12 = second frame half",
+        "14 = hinge", "16 = latch", "30 = jaw carriage", "40 = jaw pad", "90 = pipe",
+    ]
+    png = draft_figures._deterministic_split_clamp_plan_png(specification)
+    initial = [{
+        "numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+        "visible": True, "evidence": entry,
+    } for entry in numerals]
+
+    grounded = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {"ok": True, "anchors": initial})
+    grounded = draft_figures._apply_pixel_grounding(png, numerals, grounded)
+
+    positions = {
+        item["numeral"]: (item["x"], item["y"])
+        for item in grounded["anchors"]
+    }
+    assert positions["14"] == (
+        draft_figures._pixel_to_normalized(395, 1400),
+        draft_figures._pixel_to_normalized(450, 900),
+    )
+    assert positions["30"] == (
+        draft_figures._pixel_to_normalized(700, 1400),
+        draft_figures._pixel_to_normalized(230, 900),
+    )
+    assert positions["40"] == (
+        draft_figures._pixel_to_normalized(684, 1400),
+        draft_figures._pixel_to_normalized(298, 900),
+    )
+    assert positions["90"] == (
+        draft_figures._pixel_to_normalized(700, 1400),
+        draft_figures._pixel_to_normalized(450, 900),
+    )
+    assert grounded["pixel_anchor_audit"]["ok"] is True
+    certificate = grounded["deterministic_anchor_certificate"]
+    assert certificate["renderer"] == "split_clamp_plan"
+    assert {item["numeral"] for item in certificate["anchors"]} == {
+        "100", "10", "12", "14", "16", "30", "40", "90",
+    }
+
+
+def _segmented_cam_ring_specification():
+    return """
+    Plan view of the segmented cam ring removed from the frame, its two segments coupled, viewed
+    along the ring axis so the hinge end is at the left and the latch end at the right. A flat
+    annulus is bounded by one inner circular boundary and one outer circular boundary. Two
+    joints, one at the left and one at the right, divide the annulus into the first cam ring
+    segment 22 above and the second cam ring segment 24 below. At the joints the segment ends
+    meet along complementary coupling faces 26 and 28.
+
+    Three elongated openings are formed in the annulus, near the top, lower left and lower right.
+    Each is an oblique slot 34. The ring drive face 36 is a short straight flat cut into the outer
+    boundary of the second cam ring segment 24 near the right joint. Its upper end, the end nearer
+    that joint, lies radially inside the outer boundary and stops below the joint, with a short
+    piece of circular outer boundary continuing to the joint. Its lower end, further from the
+    joint, meets the circular outer boundary. The material cut away is deepest at the upper end
+    and runs out to nothing at the lower end.
+    """
+
+
+def test_deterministic_segmented_cam_ring_cuts_away_outer_arc_without_a_lens():
+    specification = _segmented_cam_ring_specification()
+
+    png = draft_figures._deterministic_segmented_cam_ring_plan_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    image = Image.open(io.BytesIO(png)).convert("L")
+    assert image.getpixel((1025, 507)) < 32
+    assert image.getpixel((961, 633)) < 32
+    assert image.getpixel((970, 639)) == 255
+    assert image.getpixel((733, 130)) == 255
+
+
+def test_deterministic_segmented_cam_ring_certifies_one_flat_and_circular_return():
+    specification = _segmented_cam_ring_specification()
+    png = draft_figures._deterministic_segmented_cam_ring_plan_png(specification)
+
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    drive_face = certificate["certified_constraints"]["single_drive_face"]
+    assert drive_face["ok"] is True
+    assert drive_face["flat_count"] == 1
+    assert drive_face["lower_endpoint_on_outer_circle"] is True
+    assert drive_face["post_face_arc_degrees"] == [52, 65]
+    assert draft_figures._certified_geometry_dissent_categories(
+        errors=[
+            "An additional short straight facet adjoins the lower end of the ring drive face."
+        ],
+        missing_geometry=[
+            "A ring drive face whose lower end does not merge into the circular outer boundary."
+        ],
+        missing=[],
+        unexpected=[
+            "Extra short straight stroke after the drive face, forming a second chamfer facet."
+        ],
+        duplicates=[],
+        certificate=certificate,
+    ) == ["single_drive_face"]
+
+
+def test_deterministic_segmented_cam_ring_uses_exact_component_anchor_centers():
+    specification = _segmented_cam_ring_specification()
+    numerals = [
+        "20 = segmented cam ring", "22 = first cam ring segment",
+        "24 = second cam ring segment", "26 = complementary coupling faces at the hinge end",
+        "28 = complementary coupling faces at the latch end", "34 = oblique slot",
+        "36 = ring drive face",
+    ]
+    png = draft_figures._deterministic_segmented_cam_ring_plan_png(specification)
+    initial = [{
+        "numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+        "visible": True, "evidence": entry,
+    } for entry in numerals]
+
+    grounded = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {"ok": True, "anchors": initial})
+    grounded = draft_figures._apply_pixel_grounding(png, numerals, grounded)
+
+    positions = {
+        item["numeral"]: (item["x"], item["y"])
+        for item in grounded["anchors"]
+    }
+    assert positions["34"] == (
+        draft_figures._pixel_to_normalized(700, 1400),
+        draft_figures._pixel_to_normalized(180, 900),
+    )
+    assert positions["36"] == (
+        draft_figures._pixel_to_normalized(961, 1400),
+        draft_figures._pixel_to_normalized(633, 900),
+    )
+    assert grounded["pixel_anchor_audit"]["ok"] is True
+    certificate = grounded["deterministic_anchor_certificate"]
+    assert certificate["renderer"] == "segmented_cam_ring_plan"
+    assert {item["numeral"] for item in certificate["anchors"]} == {
+        "20", "22", "24", "26", "28", "34", "36",
+    }
+
+
 def test_deterministic_block_grip_uses_exact_component_anchor_centers():
     specification = """
     The covering element 36 is one large plain tile seen in perspective. The machine stands on
