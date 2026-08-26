@@ -39,6 +39,15 @@ FIELDS: tuple[dict[str, Any], ...] = (
      "label": "References attached per round",
      "help": "How many of the nearest references each re-search round adds to the project. Every "
              "one of them must then be addressed in the Background."},
+    {"key": "max_agent_runs", "kind": "int", "default": 14, "min": 3, "max": 60,
+     "label": "Agent runs a turn may make",
+     "help": "The ceiling on one turn. Each repair round is a drafting run plus two reviews, so a "
+             "turn that keeps failing its checks multiplies quickly. A turn on this server once "
+             "made 76 runs over eight hours before anybody noticed."},
+    {"key": "max_spend_usd", "kind": "int", "default": 40, "min": 2, "max": 500,
+     "label": "Dollars a turn may spend",
+     "help": "The other half of the same ceiling, whichever is reached first. A turn that stops "
+             "here keeps its draft; it publishes nothing and says what it spent."},
     {"key": "style_notes", "kind": "text", "default": "", "max_chars": 4000,
      "label": "Drafting style",
      "help": "Added to the drafting agent's instructions on every turn. House conventions, "

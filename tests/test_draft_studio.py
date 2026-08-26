@@ -73,6 +73,25 @@ ALLOWED = ["US-11223344-B2"]
 
 
 @pytest.fixture(autouse=True)
+def clean_source_review(monkeypatch, request):
+    """The source-fidelity gate is its own text gate now.
+
+    It used to be reached through ``_ensure_figures``, so every test that stubbed the drawing pass
+    stubbed this along with it. Now that a drafting turn does not draw, it has to be stubbed on its
+    own or these tests would try to run a real reviewing agent. A test that is ABOUT the gate
+    overrides this after the runner is built.
+    """
+    if request.node.get_closest_marker("real_source_review"):
+        return
+    monkeypatch.setattr(
+        draft_studio.TurnRunner, "_review_sources",
+        lambda self, **_kwargs: {
+            "status": "complete", "verdict": "pass", "summary": "clean",
+            "checks": [], "findings": [], "counts": {}, "cost_usd": 0.0,
+            "duration_ms": 0, "model_name": "", "last_error": ""})
+
+
+@pytest.fixture(autouse=True)
 def no_corpus(monkeypatch):
     """Citations resolve against a stub, so these tests never touch Postgres or a paid API."""
     known = {"US-11223344-B2": {"found": True, "publication_number": "US-11223344-B2",
@@ -1772,9 +1791,11 @@ def test_the_reviewer_never_resumes_the_drafting_session(monkeypatch):
         return draft_agent.AgentRun(ok=True, result={"summary": "s", "findings": []})
 
     monkeypatch.setattr(draft_agent, "run", fake_run)
-    draft_qa.review(Path("/tmp"), checks=[])
+    cancel = threading.Event()
+    draft_qa.review(Path("/tmp"), checks=[], cancel=cancel)
     assert seen["resume"] is False
     assert "Bash" in seen["tools"] and "Write" not in seen["tools"]
+    assert seen["cancel"] is cancel
 
 
 def test_source_preflight_is_independent_read_only_and_ignores_pixels(monkeypatch):
@@ -1792,7 +1813,8 @@ def test_source_preflight_is_independent_read_only_and_ignores_pixels(monkeypatc
                                 "findings": [],
                             }))
 
-    outcome = draft_qa.review_sources(Path("/tmp"))
+    cancel = threading.Event()
+    outcome = draft_qa.review_sources(Path("/tmp"), cancel=cancel)
 
     assert outcome["ok"] is True
     assert seen["resume"] is False
@@ -1801,6 +1823,55 @@ def test_source_preflight_is_independent_read_only_and_ignores_pixels(monkeypatc
     assert draft_qa.SOURCE_REVIEW_VERSION in seen["prompt"]
     assert "both required root properties" in seen["prompt"]
     assert '"findings": []' in seen["prompt"]
+    assert seen["cancel"] is cancel
+
+
+@pytest.mark.real_source_review
+def test_cancelled_source_review_is_a_turn_interruption_not_a_filing_finding(
+        tmp_path, monkeypatch):
+    stop = threading.Event()
+    stop.set()
+    qa = Mock()
+    qa.SOURCE_REVIEW_VERSION = draft_qa.SOURCE_REVIEW_VERSION
+    qa.review_sources.return_value = {
+        "ok": False, "cancelled": True, "error": "Stopped at your request.",
+        "summary": "", "findings": [], "cost_usd": 0.0,
+        "duration_ms": 1, "model": "review-model",
+    }
+    runner = draft_studio.TurnRunner(Mock(), Mock(), qa=qa, stop_event=stop)
+    render = Mock(return_value={"ok": True})
+    monkeypatch.setattr(draft_figures, "ensure_project_figures", render)
+
+    with pytest.raises(drafting.DraftingConflict):
+        runner._ensure_figures(
+            turn_id=3, lease="lease", project_id=7, user_id=91,
+            sections=GOOD, numerals=NUMERALS, figures=FIGURES,
+            disclosure="inventor source", workspace=tmp_path)
+
+    render.assert_not_called()
+    assert qa.review_sources.call_args.kwargs["cancel"].is_set() is True
+
+
+def test_cancelled_independent_review_is_a_turn_interruption(tmp_path, monkeypatch):
+    stop = threading.Event()
+    stop.set()
+    qa = Mock()
+    qa.run_checks.return_value = []
+    qa.review.return_value = {
+        "ok": False, "cancelled": True, "error": "Stopped at your request.",
+        "summary": "", "findings": [], "cost_usd": 0.0,
+        "duration_ms": 1, "model": "review-model",
+    }
+    runner = draft_studio.TurnRunner(Mock(), Mock(), qa=qa, stop_event=stop)
+    monkeypatch.setattr(
+        runner, "_load", lambda _project_id: {"project": {"user_id": 91}})
+
+    with pytest.raises(drafting.DraftingConflict):
+        runner.evaluate(
+            7, version_no=1, workspace=tmp_path, allowed=[], sections=GOOD,
+            numerals=NUMERALS, figures=FIGURES, turn_id=3, lease="lease")
+
+    assert qa.review.call_args.kwargs["cancel"].is_set() is True
 
 
 def test_source_preflight_retries_structured_output_exhaustion_in_a_fresh_session(monkeypatch):
@@ -2164,6 +2235,7 @@ def test_the_independent_reviewer_checks_source_fidelity_before_internal_consist
     assert "Do not inspect or rely on rendered images" in preflight
 
 
+@pytest.mark.real_source_review
 def test_source_fidelity_preflight_blocks_rendering_unsupported_geometry(
         monkeypatch, tmp_path):
     qa = Mock()
@@ -2194,6 +2266,7 @@ def test_source_fidelity_preflight_blocks_rendering_unsupported_geometry(
     assert caught.value.report["verdict"] == "fail"
 
 
+@pytest.mark.real_source_review
 def test_source_reviewer_outage_retries_saved_candidate_without_draft_repair(
         monkeypatch, tmp_path):
     qa = Mock()
@@ -2219,6 +2292,7 @@ def test_source_reviewer_outage_retries_saved_candidate_without_draft_repair(
     assert "529 Overloaded" in str(caught.value)
 
 
+@pytest.mark.real_source_review
 def test_clean_source_preflight_is_cached_before_repeated_rendering(monkeypatch, tmp_path):
     qa = Mock()
     qa.review_sources.return_value = {
@@ -2243,6 +2317,7 @@ def test_clean_source_preflight_is_cached_before_repeated_rendering(monkeypatch,
     assert render.call_count == 2
 
 
+@pytest.mark.real_source_review
 def test_source_preflight_cache_changes_when_filing_brief_changes(monkeypatch, tmp_path):
     qa = Mock()
     qa.review_sources.return_value = {

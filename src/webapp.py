@@ -6938,7 +6938,9 @@ def _studio_payload(state):
                      for m in state["messages"]],
         "turns": [{key: t.get(key) for key in
                    ("id", "turn_no", "kind", "status", "stage", "summary", "version_no",
-                    "cost_usd", "duration_ms", "model_name", "last_error", "section_key")}
+                    "cost_usd", "duration_ms", "model_name", "last_error", "section_key",
+                    "agent_runs", "model_ms", "spend_usd", "tokens_input", "tokens_output",
+                    "tokens_cache_read", "tokens_cache_write", "started_at", "completed_at")}
                   for t in state["turns"][:40]],
         "active_turn": state.get("active_turn"),
         "version": {"version_no": version.get("version_no"), "sections": version.get("sections"),

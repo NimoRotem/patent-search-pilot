@@ -67,7 +67,8 @@ _MIGRATION = _SQL_DIR / "006_draft_agent.sql"
 _MIGRATIONS = (_MIGRATION, _SQL_DIR / "018_draft_studio_editing.sql",
                _SQL_DIR / "019_draft_turn_kinds.sql",
                _SQL_DIR / "020_draft_research_rounds.sql",
-               _SQL_DIR / "021_draft_project_settings.sql")
+               _SQL_DIR / "021_draft_project_settings.sql",
+               _SQL_DIR / "022_draft_turn_spend.sql")
 
 
 class StudioError(drafting.DraftingError):
@@ -90,6 +91,16 @@ class SourceReviewUnavailable(StudioError):
     """The independent reviewer failed, so retry the saved candidate unchanged."""
 
     retry_without_repair = True
+
+
+class TurnBudgetSpent(StudioError):
+    """One turn reached the ceiling on what it may spend, and stopped.
+
+    Not retryable. A turn that has already spent its budget will spend it again on the next
+    attempt, so retrying is the one response guaranteed to make it worse.
+    """
+
+    retry_without_repair = False
 
 
 class DrawingBudgetSpent(StudioError):
@@ -1569,6 +1580,40 @@ class StudioRepository:
             raise drafting.DraftingConflict("This worker no longer owns the drafting turn.")
         return dict(row)
 
+    def record_spend(self, turn_id: int, *, runs: int = 1, cost_usd: float = 0.0,
+                     duration_ms: int = 0,
+                     tokens: Mapping[str, int] | None = None) -> dict[str, Any]:
+        """Add one agent run to the turn's running total, and return the total.
+
+        Written as it happens rather than at completion, because the number nobody could see was
+        the whole problem: a turn that had spent hundreds of dollars over eight hours still read
+        cost 0.00 in the database and "independent review" on the page. No lease is required and
+        none is checked: this is bookkeeping, not ownership, and losing the record because a lease
+        turned over mid-turn would defeat the point.
+        """
+        self._ready()
+        counts = dict(tokens or {})
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE app_draft_turns SET agent_runs=agent_runs+%s,"
+                "spend_usd=spend_usd+%s,model_ms=model_ms+%s,"
+                "tokens_input=tokens_input+%s,tokens_output=tokens_output+%s,"
+                "tokens_cache_read=tokens_cache_read+%s,"
+                "tokens_cache_write=tokens_cache_write+%s,updated_at=now() "
+                "WHERE id=%s RETURNING agent_runs,spend_usd,model_ms,tokens_input,"
+                "tokens_output,tokens_cache_read,tokens_cache_write",
+                (int(runs), round(float(cost_usd or 0), 4), int(duration_ms or 0),
+                 int(counts.get("input") or 0), int(counts.get("output") or 0),
+                 int(counts.get("cache_read") or 0), int(counts.get("cache_write") or 0),
+                 int(turn_id)))
+            row = cur.fetchone()
+        out = dict(row or {})
+        out["spend_usd"] = float(out.get("spend_usd") or 0)
+        out["tokens_total"] = sum(int(out.get(key) or 0) for key in
+                                  ("tokens_input", "tokens_output",
+                                   "tokens_cache_read", "tokens_cache_write"))
+        return out
+
     def heartbeat(self, turn_id: int, lease_token: str, *, stage: str = "",
                   lease_seconds: int = LEASE_SECONDS) -> None:
         self._ready()
@@ -1969,6 +2014,14 @@ class TurnRunner:
                 transcript=transcript, cancel=cancel, **extra)
         finally:
             beat.stop()
+        try:
+            spent = self.repository.record_spend(
+                turn_id, cost_usd=run.cost_usd, duration_ms=run.duration_ms, tokens=run.tokens)
+            self._check_budget(turn_id, spent)
+        except TurnBudgetSpent:
+            raise
+        except Exception:                                      # noqa: BLE001 - never lose a run
+            traceback.print_exc()
         if not run.ok:
             raise (drafting.DraftingConflict("Stopped at your request.") if run.cancelled
                    else StudioError(run.error or "The drafting agent did not finish."))
@@ -2119,12 +2172,30 @@ class TurnRunner:
             traceback.print_exc()
             return False
 
-    def _ensure_figures(self, *, turn_id: int, lease: str, project_id: int, user_id: int,
-                        sections: Mapping[str, str], numerals: Sequence[Mapping[str, str]],
-                        figures: Sequence[Mapping[str, Any]], disclosure: str,
-                        workspace: Path, deadline: float = 0.0) -> dict[str, Any]:
-        import draft_figures
+    def _record_review_spend(self, turn_id: int, outcome: Mapping[str, Any]) -> None:
+        """A reviewer's spend counts too. It was two thirds of the runs on the worst turn seen."""
+        try:
+            spent = self.repository.record_spend(
+                turn_id, cost_usd=float(outcome.get("cost_usd") or 0),
+                duration_ms=int(outcome.get("duration_ms") or 0),
+                tokens=dict(outcome.get("tokens") or {}))
+            self._check_budget(turn_id, spent)
+        except TurnBudgetSpent:
+            raise
+        except Exception:                                      # noqa: BLE001 - never lose a run
+            traceback.print_exc()
 
+    def _review_sources(self, *, turn_id: int, lease: str, sections: Mapping[str, str],
+                        numerals: Sequence[Mapping[str, str]],
+                        figures: Sequence[Mapping[str, Any]], disclosure: str,
+                        workspace: Path, model: str = "") -> dict[str, Any]:
+        """Does every claim limitation and numbered part trace to what the inventor disclosed?
+
+        A TEXT gate, and the most valuable one in the system: it is what catches the agent inventing
+        a structure or a definition to make a claim work. It used to live inside the drawing pass,
+        which meant that taking drawings out of a drafting turn silently took this out with them.
+        It belongs here, on its own, and it still blocks.
+        """
         self.repository.heartbeat(turn_id, lease, stage="checking source fidelity")
         conversation_path = workspace / "input" / "conversation.md"
         conversation = (conversation_path.read_text(encoding="utf-8")
@@ -2152,7 +2223,18 @@ class TurnRunner:
             transcript = workspace / ".agent" / (
                 f"source-review-{turn_id:04d}-{source_hash[:12]}.jsonl")
             transcript.parent.mkdir(parents=True, exist_ok=True)
-            outcome = self.qa.review_sources(workspace, transcript=transcript)
+            beat = _Heartbeat(self.repository, turn_id, lease, "checking source fidelity")
+            beat.start()
+            try:
+                cancel = (_AnyEvent(beat.cancelled, self.stop_event)
+                          if self.stop_event is not None else beat.cancelled)
+                outcome = self.qa.review_sources(
+                    workspace, transcript=transcript, model=model, cancel=cancel)
+            finally:
+                beat.stop()
+            self._record_review_spend(turn_id, outcome)
+            if outcome.get("cancelled"):
+                raise drafting.DraftingConflict("Stopped at your request.")
             findings = list(outcome.get("findings") or [])
             completed = bool(outcome.get("ok"))
             if not completed:
@@ -2186,6 +2268,17 @@ class TurnRunner:
                 "last_error": outcome.get("error") or "",
             })
             self._source_review_cache[source_hash] = report
+        return report
+
+    def _ensure_figures(self, *, turn_id: int, lease: str, project_id: int, user_id: int,
+                        sections: Mapping[str, str], numerals: Sequence[Mapping[str, str]],
+                        figures: Sequence[Mapping[str, Any]], disclosure: str,
+                        workspace: Path, deadline: float = 0.0) -> dict[str, Any]:
+        import draft_figures
+
+        report = self._review_sources(
+            turn_id=turn_id, lease=lease, sections=sections, numerals=numerals,
+            figures=figures, disclosure=disclosure, workspace=workspace)
         if filing_blockers(report):
             raise SourceFidelityInspectionError(report)
 
@@ -2338,6 +2431,33 @@ class TurnRunner:
             transcript_path=str(transcript), discard_candidates=False)
         return {"turn": completed, "version": version}
 
+    def _check_budget(self, turn_id: int, spent: Mapping[str, Any]) -> None:
+        """Stop a turn that is running away, and say exactly what it spent.
+
+        THE CEILING EXISTS BECAUSE THERE WAS NONE. A turn on this database made 76 agent runs over
+        eight hours and twenty minutes, put about 196 million tokens through the models and cost
+        roughly $343, and no part of the system was in a position to notice. Attempts multiply by
+        repair rounds, and every worker restart begins the whole thing again, so the real bound on
+        one turn's spend was the patience of whoever was watching it.
+        """
+        limits = getattr(self, "_budget", None) or {}
+        runs = int(spent.get("agent_runs") or 0)
+        usd = float(spent.get("spend_usd") or 0)
+        max_runs = int(limits.get("max_agent_runs") or 0)
+        max_usd = float(limits.get("max_spend_usd") or 0)
+        if max_runs and runs >= max_runs:
+            raise TurnBudgetSpent(
+                f"This turn reached its ceiling of {max_runs} agent runs "
+                f"(${usd:.2f} spent, {int(spent.get('tokens_total') or 0):,} tokens). The draft it "
+                "had reached is saved; nothing was published. Raise the ceiling in Settings, or "
+                "ask for a smaller change.")
+        if max_usd and usd >= max_usd:
+            raise TurnBudgetSpent(
+                f"This turn reached its ceiling of ${max_usd:.2f} "
+                f"({runs} agent runs, {int(spent.get('tokens_total') or 0):,} tokens). The draft "
+                "it had reached is saved; nothing was published. Raise the ceiling in Settings, or "
+                "ask for a smaller change.")
+
     @staticmethod
     def _settings_for(project: Mapping[str, Any]) -> dict[str, Any]:
         return draft_settings.resolve(_json(project.get("settings"), {}))
@@ -2405,6 +2525,7 @@ class TurnRunner:
         project = context["project"]
         allowed = allowed_reference_keys(context["references"], context["documents"])
 
+        self._budget = self._settings_for(project)
         kind = str(turn.get("kind") or "revise")
         if kind == "section_edit" and context["had_version"]:
             return self._run_section_edit(turn, context)
@@ -2539,6 +2660,18 @@ class TurnRunner:
                     self.repository.save_retry_candidate(
                         turn_id, lease, snapshot=snapshot,
                         report=_gate_resume_report(runs, result))
+                    # Source fidelity is a text gate. It runs before any drawing work so an
+                    # unsupported claim or numbered component is repaired before image generation.
+                    self.repository.heartbeat(
+                        turn_id, lease, stage="checking source fidelity")
+                    source_report = self._review_sources(
+                        turn_id=turn_id, lease=lease, sections=sections,
+                        numerals=snapshot["numerals"], figures=snapshot["figures"],
+                        disclosure=str(project.get("disclosure_text") or ""),
+                        workspace=workspace,
+                        model=self._settings_for(project).get("review_model") or "")
+                    if filing_blockers(source_report):
+                        raise SourceFidelityInspectionError(source_report)
                     # Text drafting and image work stay separate. Once text passes, a durable
                     # gate-resume turn runs the bounded drawing phase automatically. It can resume
                     # after a restart and cannot mark the project ready until every current image
@@ -2558,7 +2691,8 @@ class TurnRunner:
                         workspace=workspace, allowed=allowed, sections=sections,
                         numerals=snapshot["numerals"], figures=snapshot["figures"],
                         review_index=review_index,
-                        review_model=self._settings_for(project).get("review_model") or "")
+                        review_model=self._settings_for(project).get("review_model") or "",
+                        turn_id=turn_id, lease=lease)
                     if drawing_faults:
                         report = dict(report)
                         report["checks"] = list(report.get("checks") or []) + [{
@@ -2685,7 +2819,8 @@ class TurnRunner:
     def evaluate(self, project_id: int, *, version_no: int | None, workspace: Path,
                  allowed: Sequence[str], sections: Mapping[str, str],
                  numerals: Sequence[Mapping[str, str]], figures: Sequence[Mapping[str, Any]],
-                 review_index: int = 0, review_model: str = "") -> dict[str, Any]:
+                 review_index: int = 0, review_model: str = "",
+                 turn_id: int = 0, lease: str = "") -> dict[str, Any]:
         """Evaluate a workspace without publishing either the version or the report."""
         started = time.time()
         qa_figures = list(figures)
@@ -2704,8 +2839,24 @@ class TurnRunner:
                        "detail": f"The checks could not run ({type(exc).__name__}).", "items": []}]
         transcript = workspace / ".agent" / (
             f"review-{version_no or 0:04d}-{int(review_index) + 1:02d}.jsonl")
-        outcome = self.qa.review(workspace, checks=checks, transcript=transcript,
-                                 model=review_model)
+        beat = (_Heartbeat(self.repository, turn_id, lease, "independent review")
+                if turn_id and lease else None)
+        if beat:
+            beat.start()
+        try:
+            cancel = (None if beat is None and self.stop_event is None else
+                      _AnyEvent(*([beat.cancelled] if beat else []),
+                                *([self.stop_event] if self.stop_event is not None else [])))
+            outcome = self.qa.review(
+                workspace, checks=checks, transcript=transcript,
+                model=review_model, cancel=cancel)
+        finally:
+            if beat:
+                beat.stop()
+        if turn_id:
+            self._record_review_spend(turn_id, outcome)
+        if outcome.get("cancelled"):
+            raise drafting.DraftingConflict("Stopped at your request.")
         findings = outcome.get("findings") or []
         verdict = self.qa.verdict_for(checks, findings)
         report = {

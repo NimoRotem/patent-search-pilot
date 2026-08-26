@@ -85,3 +85,10 @@ def app_client():
     import webapp
     webapp.app.config["TESTING"] = True
     return webapp.app.test_client()
+
+
+def pytest_configure(config):
+    #  Tests that are ABOUT the source-fidelity gate opt out of the fixture that stubs it.
+    config.addinivalue_line(
+        "markers",
+        "real_source_review: run against the real _review_sources rather than the stub")
