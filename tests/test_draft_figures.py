@@ -3423,6 +3423,29 @@ def test_deterministic_nested_plan_accepts_current_sectioned_ring_wording():
     assert audit["ok"] is True and audit["observed"] == 2
 
 
+def test_deterministic_nested_plan_accepts_repaired_sectioned_ring_wording():
+    specification = """
+    Plan view looking straight up at the underside of the machine. The sheet shows the
+    underside of the machine as one rectangular ring in the manner of a picture frame. The
+    whole of its line work is: the outer edge of the ring, the inner edge of the ring held
+    within it, and the two section lines described below. The surface between the outer edge
+    and the inner edge runs unbroken from one straight to the other along every side, so the
+    view reads as a single frame of one width. The perimeter member 24 is the ring surface.
+    The second side 16 is the face at which this view looks straight, appearing as the area held
+    within the inner edge. Beyond the outer edge lies background.
+
+    Two broken section lines cross the view, one horizontal across its lower part and one
+    vertical across its right-hand part. The section lines are drawing conventions.
+    """
+
+    png = draft_figures._deterministic_nested_plan_png(specification)
+
+    assert draft_figures._expected_closed_region_count(specification) == 2
+    assert png is not None
+    audit = draft_figures.closed_region_audit(png, specification)
+    assert audit["ok"] is True and audit["observed"] == 2
+
+
 def test_deterministic_pulling_scene_accepts_source_clean_single_path_wording():
     specification = """
     The covering element 36 is one large plain tile filling the lower part of the drawing

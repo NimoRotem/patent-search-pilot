@@ -2468,7 +2468,27 @@ def _is_two_boundary_rectangular_plan(text: str) -> bool:
         re.search(r"\bbeyond the outer edge lies background\b", text),
         re.search(r"\bsection lines are drawing conventions\b", text),
     ))
-    return boundary_body or outline_ring or sectioned_outline_ring
+    repaired_sectioned_outline_ring = all((
+        re.search(r"\bplan view\b", text),
+        re.search(r"\brectangular ring\b", text),
+        re.search(
+            r"\bwhole of its line work is\b[^.]{0,220}\bouter edge of the ring\b"
+            r"[^.]{0,220}\binner edge of the ring held within it\b"
+            r"[^.]{0,220}\btwo section lines described below\b",
+            text,
+        ),
+        re.search(r"\bsurface between the outer edge and the inner edge runs unbroken\b", text),
+        re.search(r"\bperimeter member\s+\d+ is the ring surface\b", text),
+        re.search(
+            r"\bsecond side\s+\d+\b[^.]{0,180}\b(?:face|area)\b"
+            r"[^.]{0,180}\bwithin the inner edge\b",
+            text,
+        ),
+        re.search(r"\bbeyond the outer edge lies background\b", text),
+        re.search(r"\bsection lines are drawing conventions\b", text),
+    ))
+    return (boundary_body or outline_ring or sectioned_outline_ring or
+            repaired_sectioned_outline_ring)
 
 
 def _expected_closed_region_count(caption: str) -> int | None:
