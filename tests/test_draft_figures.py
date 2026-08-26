@@ -70,9 +70,7 @@ def accepted_cross_provider_geometry_audit(**values):
         "prompt_version": draft_figures.CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
         "review_count": draft_figures.CROSS_PROVIDER_GEOMETRY_REVIEW_COUNT,
         "missing": [],
-        "unexpected": [
-            "Slab edge fragments extend outboard because the legs are not flush with its ends.",
-        ],
+        "unexpected": [],
         "duplicates": [],
         "errors": [], "visible_elements": [],
         **values,
@@ -3459,6 +3457,33 @@ def test_deterministic_grip_scene_accepts_closed_block_grip_wording():
         assert image.getpixel((x, y)) == 255
 
 
+def test_deterministic_block_grip_has_one_plain_front_face_and_unbroken_band():
+    specification = """
+    The covering element 36 is one large plain tile in perspective. The machine stands on its
+    left-hand part with open tile to the right. The machine is one plain rectangular slab
+    standing on a band that runs round its underside. Three closed blocks stand side by side on
+    the top face of the slab. The left-hand block is the vibration motor, the middle block is the
+    handle, and the right-hand block is the air-extraction mechanism. The slab has one large
+    plain front face and a visible left-hand end. The band has one unbroken front strip across
+    the whole width.
+    """
+
+    png = draft_figures._deterministic_grip_scene_png(specification)
+
+    assert png is not None
+    image = Image.open(io.BytesIO(png)).convert("L")
+    center_column = [image.getpixel((435, y)) < 32 for y in range(340, 471)]
+    longest_run = 0
+    current_run = 0
+    for dark in center_column:
+        current_run = current_run + 1 if dark else 0
+        longest_run = max(longest_run, current_run)
+    assert longest_run <= 8, "no center ridge may divide the slab face or band strip"
+    assert image.getpixel((435, 365)) == 255
+    assert image.getpixel((435, 435)) == 255
+    assert image.getpixel((635, 245)) == 255, "the tile edge must not form a peak above the slab"
+
+
 def test_deterministic_block_grip_uses_exact_component_anchor_centers():
     specification = """
     The covering element 36 is one large plain tile seen in perspective. The machine stands on
@@ -3501,16 +3526,12 @@ def test_deterministic_block_grip_uses_exact_component_anchor_centers():
         draft_figures._pixel_to_normalized(365, 900),
     )
     assert positions["12"] == (
-        draft_figures._pixel_to_normalized(300, 1400),
-        draft_figures._pixel_to_normalized(400, 900),
+        draft_figures._pixel_to_normalized(435, 1400),
+        draft_figures._pixel_to_normalized(365, 900),
     )
-    assert positions["44"][0] == draft_figures._pixel_to_normalized(440, 1400)
-    assert abs(
-        positions["44"][1] - draft_figures._pixel_to_normalized(314, 900)
-    ) <= 1
-    assert any(
-        item["numeral"] == "44" and item["to_y"] == positions["44"][1]
-        for item in grounded["pixel_anchor_audit"]["adjusted"]
+    assert positions["44"] == (
+        draft_figures._pixel_to_normalized(435, 1400),
+        draft_figures._pixel_to_normalized(305, 900),
     )
     assert grounded["pixel_anchor_audit"]["ok"] is True
     certificate = grounded["deterministic_anchor_certificate"]
@@ -3871,13 +3892,13 @@ def test_deterministic_block_grip_replaces_stale_durable_endpoint_progress(monke
         for item in anchors
     }
     assert final_positions["12"] == (
-        draft_figures._pixel_to_normalized(300, 1400),
-        draft_figures._pixel_to_normalized(400, 900),
+        draft_figures._pixel_to_normalized(435, 1400),
+        draft_figures._pixel_to_normalized(365, 900),
     )
-    assert final_positions["44"][0] == draft_figures._pixel_to_normalized(440, 1400)
-    assert abs(
-        final_positions["44"][1] - draft_figures._pixel_to_normalized(314, 900)
-    ) <= 1
+    assert final_positions["44"] == (
+        draft_figures._pixel_to_normalized(435, 1400),
+        draft_figures._pixel_to_normalized(305, 900),
+    )
 
 
 def test_deterministic_grip_scene_accepts_source_clean_single_outline_wording():

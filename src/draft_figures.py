@@ -2059,13 +2059,13 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
         component_centers = {
             "vibration device": (
                 device_boundary_x, 365, device_boundary_target),
-            "base": (300, 400, "well inside the broad front face of the slab"),
+            "base": (435, 365, "well inside the broad front face of the slab"),
             "vibration motor": (280, 312, "well inside the front face of the left housing"),
             "air-extraction mechanism": (
                 585, 312, "well inside the front face of the right housing"),
-            "perimeter member": (350, 480, "well inside the front strip of the lower band"),
+            "perimeter member": (435, 435, "well inside the front strip of the lower band"),
             "covering element": (900, 600, "well inside the open tile surface to the right"),
-            "handle": (440, 320, "well inside the front face of the closed block grip"),
+            "handle": (435, 305, "well inside the front face of the closed block grip"),
         }
     elif (nested_plan is not None and png == nested_plan and
           _expected_closed_region_count(text) == 2):
@@ -2652,11 +2652,48 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
     line = {"fill": "black", "width": 4}
 
     tile_outline = (
+        [(90, 520), (635, 455), (1325, 500), (780, 820), (90, 520)]
+        if block_grip else
         [(90, 520), (635, 360), (1325, 480), (780, 820), (90, 520)]
         if finite_width_ring else
         [(90, 455), (635, 245), (1325, 430), (780, 820), (90, 455)]
     )
     draw.line(tile_outline, joint="curve", **line)
+
+    if block_grip:
+        # Present the slab from above and the front left with one viewer-facing front plane.
+        # The earlier corner-on projection put a long ridge through both the front face and the
+        # lower band, contradicting briefs that require each to be one plain unbroken surface.
+        draw.polygon(
+            [(185, 405), (250, 335), (250, 395), (185, 465)],
+            fill="white", outline="black")
+        draw.rectangle((185, 405, 685, 465), fill="white", outline="black", width=4)
+        draw.polygon(
+            [(185, 325), (250, 255), (250, 335), (185, 405)],
+            fill="white", outline="black")
+        draw.rectangle((185, 325, 685, 405), fill="white", outline="black", width=4)
+        draw.polygon(
+            [(185, 325), (250, 255), (750, 255), (685, 325)],
+            fill="white", outline="black", width=4)
+
+        def draw_closed_block(box) -> None:
+            left, top, right, bottom = box
+            draw.polygon(
+                [(left, top), (left + 25, top - 15),
+                 (right + 25, top - 15), (right, top)],
+                fill="white", outline="black")
+            draw.polygon(
+                [(right, top), (right + 25, top - 15),
+                 (right + 25, bottom - 15), (right, bottom)],
+                fill="white", outline="black")
+            draw.rectangle(box, fill="white", outline="black", width=4)
+
+        draw_closed_block((235, 275, 325, 350))
+        draw_closed_block((390, 275, 480, 335))
+        draw_closed_block((540, 275, 630, 350))
+        out = io.BytesIO()
+        image.save(out, format="PNG", compress_level=9)
+        return out.getvalue()
 
     if finite_width_ring:
         draw.polygon(
@@ -2680,26 +2717,6 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
     draw.polygon(
         [(435, 405), (685, 325), (685, 405), (435, 485)],
         fill="white", outline="black", width=4)
-
-    if block_grip:
-        def draw_closed_block(box) -> None:
-            left, top, right, bottom = box
-            draw.polygon(
-                [(left, top), (left + 25, top - 15),
-                 (right + 25, top - 15), (right, top)],
-                fill="white", outline="black")
-            draw.polygon(
-                [(right, top), (right + 25, top - 15),
-                 (right + 25, bottom - 15), (right, bottom)],
-                fill="white", outline="black")
-            draw.rectangle(box, fill="white", outline="black", width=4)
-
-        draw_closed_block((235, 275, 325, 350))
-        draw_closed_block((390, 275, 480, 335))
-        draw_closed_block((540, 275, 630, 350))
-        out = io.BytesIO()
-        image.save(out, format="PNG", compress_level=9)
-        return out.getvalue()
 
     if finite_width_ring:
         draw.rounded_rectangle(
