@@ -24,6 +24,7 @@ def accepted_leader_audit(**values):
         "model_name": draft_figures.vision_model(),
         "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
         "review_count": draft_figures.LEADER_REVIEW_COUNT,
+        "section_mark_anchor_audit": draft_figures._section_mark_anchor_audit([], []),
         **values,
     }
 
@@ -565,6 +566,66 @@ def test_current_section_mark_audit_rejects_invalid_stored_coordinates():
     }
 
     assert draft_figures.current_section_mark_audit(current) is False
+
+
+def test_section_mark_anchor_audit_rejects_reference_dots_on_cutting_lines():
+    anchors = [
+        {"numeral": "16", "x": 500, "y": 500, "visible": True},
+        {"numeral": "24", "x": 136, "y": 500, "visible": True},
+    ]
+    marks = [
+        {"designation": "2", "start_x": 80, "start_y": 500,
+         "end_x": 920, "end_y": 500, "view_dx": 0, "view_dy": 1},
+        {"designation": "4", "start_x": 500, "start_y": 80,
+         "end_x": 500, "end_y": 920, "view_dx": -1, "view_dy": 0},
+    ]
+
+    audit = draft_figures._section_mark_anchor_audit(anchors, marks)
+
+    assert audit["ok"] is False
+    assert audit["colliding_numerals"] == ["16", "24"]
+    assert draft_figures.current_section_mark_anchor_audit(audit) is False
+
+
+def test_section_mark_collision_repair_moves_interior_targets_off_both_lines():
+    specification = """
+    The sheet shows the perimeter member 24 as one rectangular ring, and within it the second
+    side 16 as a plain open field; no other body is drawn. The ring is drawn as one rectangle
+    with a smaller rectangle inside it, the inner rectangle standing well in from all four sides.
+    The field enclosed by the inner rectangle is open paper. The ring stands well in from every
+    side of the drawing area.
+    - The perimeter member 24 is the band between the edges. Identified well inside that band
+      along the left-hand side of the ring.
+    - The second side 16 is the plain field inside the inner edge. Identified well inside it.
+    """
+    raw = draft_figures._deterministic_nested_plan_png(specification)
+    numerals = ["16 = second side", "24 = perimeter member"]
+    semantic = {
+        "ok": True,
+        "anchors": [
+            {"numeral": "16", "x": 500, "y": 500, "visible": True,
+             "evidence": "well inside the plain field"},
+            {"numeral": "24", "x": 136, "y": 500, "visible": True,
+             "evidence": "well inside the left ring band"},
+        ],
+    }
+    marks = [
+        {"designation": "2", "start_x": 80, "start_y": 500,
+         "end_x": 920, "end_y": 500, "view_dx": 0, "view_dy": 1},
+        {"designation": "4", "start_x": 500, "start_y": 80,
+         "end_x": 500, "end_y": 920, "view_dx": -1, "view_dy": 0},
+    ]
+
+    repaired, audit = draft_figures._repair_section_mark_anchor_collisions(
+        raw, semantic["anchors"], marks, numerals=numerals)
+
+    assert audit["ok"] is True
+    assert audit["adjusted_numerals"] == ["16", "24"]
+    assert draft_figures.current_section_mark_anchor_audit(audit) is True
+    positions = {item["numeral"]: (item["x"], item["y"]) for item in repaired}
+    assert positions["16"] != (500, 500)
+    assert positions["24"] != (136, 500)
+    assert draft_figures._section_mark_anchor_audit(repaired, marks)["ok"] is True
 
 
 def test_ocr_audit_rejects_an_extra_invalid_sheet_marking():
@@ -5054,8 +5115,13 @@ def test_only_the_current_two_trace_leader_review_is_accepted():
         "model_name": draft_figures.vision_model(),
         "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
         "review_count": 2,
+        "section_mark_anchor_audit": draft_figures._section_mark_anchor_audit([], []),
     }
     assert draft_figures.current_leader_audit(current) is True
+    assert draft_figures.current_leader_audit({
+        key: value for key, value in current.items()
+        if key != "section_mark_anchor_audit"
+    }) is False
     assert draft_figures.current_leader_audit({**current, "review_count": 1}) is False
     assert draft_figures.current_leader_audit({**current, "prompt_version": "old"}) is False
     assert draft_figures.current_leader_audit({"ok": True}) is False
@@ -6427,6 +6493,8 @@ def test_checked_images_include_exact_audit_evidence_for_the_independent_reviewe
             "ok": True,
             "prompt_version": draft_figures.LEADER_PROMPT_VERSION,
             "marked_prompt_version": draft_figures.MARKED_ANCHOR_PROMPT_VERSION,
+            "section_mark_anchor_clearance":
+                draft_figures._section_mark_anchor_audit([], []),
         },
         "endpoints": {
             "ok": True, "reviewer": draft_figures.cross_provider_model(),

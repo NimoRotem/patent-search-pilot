@@ -49,9 +49,11 @@ SEMANTIC_COMPATIBLE_PROMPT_VERSIONS = frozenset((
     "figure-semantic-v12-high-accuracy-geometry-only-consensus-pixel-grounded-marked-topology",
 ))
 LEADER_PROMPT_VERSION = (
-    "figure-leader-v8-section-designations-routing-only-independent-consensus")
+    "figure-leader-v9-section-line-endpoint-clearance-independent-consensus")
 SECTION_MARK_PROMPT_VERSION = (
     "figure-section-mark-v1-native-coordinate-independent-consensus")
+SECTION_MARK_ANCHOR_AUDIT_VERSION = (
+    "section-mark-anchor-clearance-v1-final-composite")
 MARKED_ANCHOR_PROMPT_VERSION = (
     "figure-anchor-v15-native-pixel-actionable-coordinate-certificate-majority")
 CROSS_PROVIDER_PROMPT_VERSION = (
@@ -116,6 +118,7 @@ MARKED_ANCHOR_CORRECTION_GAIN = 1.0
 MIN_OCR_CONFIDENCE = float(os.environ.get("PATENT_FIGURE_OCR_CONFIDENCE", "0.85"))
 MAX_REVIEW_COORDINATE = 50_000
 SECTION_MARK_COORDINATE_TOLERANCE = 180
+SECTION_MARK_ANCHOR_CLEARANCE = 28
 
 
 class _NumeralInspection(BaseModel):
@@ -1440,6 +1443,23 @@ def current_section_mark_audit(value) -> bool:
         review_count == SECTION_MARK_REVIEW_COUNT and
         value.get("model_name") == vision_model() and
         value.get("prompt_version") == SECTION_MARK_PROMPT_VERSION)
+
+
+def current_section_mark_anchor_audit(value) -> bool:
+    """Accept only a current proof that numeral dots clear every cutting-plane line."""
+    if not isinstance(value, dict) or value.get("version") != SECTION_MARK_ANCHOR_AUDIT_VERSION:
+        return False
+    required = value.get("required") is True
+    if not required:
+        return bool(
+            value.get("ok") is True and value.get("inspected") is False and
+            not value.get("collisions") and not value.get("colliding_numerals") and
+            int(value.get("mark_count") or 0) == 0)
+    return bool(
+        value.get("ok") is True and value.get("inspected") is True and
+        not value.get("collisions") and not value.get("colliding_numerals") and
+        int(value.get("mark_count") or 0) > 0 and
+        int(value.get("clearance") or 0) == SECTION_MARK_ANCHOR_CLEARANCE)
 
 
 def semantic_audit(expected, result) -> dict:
@@ -3978,7 +3998,9 @@ def current_leader_audit(value) -> bool:
         value.get("ok") and value.get("inspected") and
         value.get("model_name") == vision_model() and
         value.get("prompt_version") == LEADER_PROMPT_VERSION and
-        review_count == LEADER_REVIEW_COUNT)
+        review_count == LEADER_REVIEW_COUNT and
+        current_section_mark_anchor_audit(
+            value.get("section_mark_anchor_audit") or {}))
 
 
 def _human_text(value):
@@ -5457,6 +5479,7 @@ def inspect_leaders(png: bytes, *, label: str, caption: str, numerals) -> dict:
         cached["specification_hash"] = spec_hash
         cached["prompt_version"] = LEADER_PROMPT_VERSION
         cached["model_name"] = model
+        cached["section_mark_anchor_audit"] = _section_mark_anchor_audit([], [])
         if current_leader_audit(cached):
             _audit_log(
                 request_id=str(uuid.uuid4()), provider="vertex", model=model, stage="leaders",
@@ -5476,7 +5499,9 @@ def inspect_leaders(png: bytes, *, label: str, caption: str, numerals) -> dict:
         "annotations as forbidden text. If the routing specification lists section "
         "designations, each one appears exactly twice beside its broken cutting line and view "
         "arrows. Those repeated marks are not reference numerals and have no leader lines. Do "
-        "not inspect or reject them as numeral routes. "
+        "not inspect or reject them as numeral routes. A reference-numeral terminal dot must "
+        "remain visibly separate from every cutting line, view arrow, and repeated section "
+        "designation; reject a route whose terminal dot touches or overlaps one of those marks. "
         "Each numeral must "
         "have one distinct, unambiguous endpoint. Return exactly one labels record for every "
         "printed expected numeral. For each record, suggested_x and suggested_y must report the "
@@ -5558,6 +5583,7 @@ def inspect_leaders(png: bytes, *, label: str, caption: str, numerals) -> dict:
     result["specification_hash"] = spec_hash
     result["prompt_version"] = LEADER_PROMPT_VERSION
     result["model_name"] = model
+    result["section_mark_anchor_audit"] = _section_mark_anchor_audit([], [])
     _analysis_cache_put(key, stage="leaders", provider="vertex", model=model,
                         prompt_version=LEADER_PROMPT_VERSION, result=result)
     return result
@@ -5628,6 +5654,128 @@ def _point_to_segment_distance(point, start, end) -> float:
         ((px - start_x) * delta_x) + ((py - start_y) * delta_y)) / length_sq))
     nearest = (start_x + (position * delta_x), start_y + (position * delta_y))
     return hypot(px - nearest[0], py - nearest[1])
+
+
+def _section_mark_anchor_audit(anchors, marks) -> dict:
+    """Mechanically prove that no reference-numeral dot lands on a cutting-plane line."""
+    valid_marks = []
+    for value in marks or ():
+        if not isinstance(value, dict):
+            continue
+        try:
+            valid_marks.append({
+                "designation": str(value.get("designation") or "").strip().upper(),
+                "start": (int(value.get("start_x")), int(value.get("start_y"))),
+                "end": (int(value.get("end_x")), int(value.get("end_y"))),
+            })
+        except (TypeError, ValueError, OverflowError):
+            continue
+    collisions = []
+    for value in anchors or ():
+        if not isinstance(value, dict) or value.get("visible") is not True:
+            continue
+        numeral = _clean_numeral(value.get("numeral"))
+        if not numeral:
+            continue
+        try:
+            point = (int(value.get("x")), int(value.get("y")))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        for mark in valid_marks:
+            distance = _point_to_segment_distance(point, mark["start"], mark["end"])
+            if distance < SECTION_MARK_ANCHOR_CLEARANCE:
+                collisions.append({
+                    "numeral": numeral,
+                    "designation": mark["designation"],
+                    "distance": round(distance, 3),
+                    "x": point[0], "y": point[1],
+                })
+    colliding_numerals = sorted(
+        {item["numeral"] for item in collisions}, key=_numeral_order)
+    required = bool(valid_marks)
+    return {
+        "ok": not collisions,
+        "inspected": required,
+        "required": required,
+        "version": SECTION_MARK_ANCHOR_AUDIT_VERSION,
+        "clearance": SECTION_MARK_ANCHOR_CLEARANCE,
+        "mark_count": len(valid_marks),
+        "colliding_numerals": colliding_numerals,
+        "collisions": collisions,
+        "adjusted_numerals": [],
+    }
+
+
+def _repair_section_mark_anchor_collisions(raw_png: bytes, anchors, marks, *, numerals
+                                           ) -> tuple[list[dict], dict]:
+    """Move clear interior dots within the same component until every cutting line is clear."""
+    repaired = [dict(item) for item in anchors or ()]
+    first_audit = _section_mark_anchor_audit(repaired, marks)
+    pending = set(first_audit.get("colliding_numerals") or [])
+    if not pending:
+        return repaired, first_audit
+    try:
+        from PIL import Image
+        with Image.open(io.BytesIO(raw_png)) as source:
+            width, height = source.size
+    except (OSError, TypeError, ValueError):
+        return repaired, first_audit
+    part_by_numeral = {
+        item["numeral"]: item["part"] for item in numeral_entries(numerals)}
+    offsets = (
+        (0, -90), (90, -90), (-90, -90), (90, 90), (-90, 90),
+        (130, 0), (-130, 0), (0, 130), (160, -130), (-160, -130),
+        (160, 130), (-160, 130),
+    )
+    adjusted = []
+    for item in repaired:
+        numeral = _clean_numeral(item.get("numeral"))
+        if numeral not in pending:
+            continue
+        target = " ".join(str(item.get(key) or "") for key in (
+            "target_evidence", "evidence"))
+        if not re.search(r"\b(?:well inside|inside (?:the|its|that)|interior)\b", target,
+                         re.IGNORECASE):
+            continue
+        try:
+            current = (int(item.get("x")), int(item.get("y")))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        current_pixel = (
+            _normalized_to_pixel(current[0], width),
+            _normalized_to_pixel(current[1], height),
+        )
+        for offset_x, offset_y in offsets:
+            candidate = (current[0] + offset_x, current[1] + offset_y)
+            if min(candidate[0], candidate[1], 1000 - candidate[0], 1000 - candidate[1]) < \
+                    _MIN_ANCHOR_SHEET_MARGIN:
+                continue
+            candidate_item = {**item, "x": candidate[0], "y": candidate[1]}
+            other_anchors = [candidate_item if other is item else other for other in repaired]
+            if not _section_mark_anchor_audit(other_anchors, marks).get("ok"):
+                candidate_collision = _section_mark_anchor_audit([candidate_item], marks)
+                if not candidate_collision.get("ok"):
+                    continue
+            candidate_pixel = (
+                _normalized_to_pixel(candidate[0], width),
+                _normalized_to_pixel(candidate[1], height),
+            )
+            if (not _same_enclosed_white_component(raw_png, current_pixel, candidate_pixel) or
+                    not _clear_enclosed_white_point(raw_png, candidate_pixel)):
+                continue
+            item.update({
+                "x": candidate[0], "y": candidate[1],
+                "section_mark_adjustment": SECTION_MARK_ANCHOR_AUDIT_VERSION,
+                "target_evidence": (
+                    str(item.get("target_evidence") or item.get("evidence") or
+                        part_by_numeral.get(numeral) or "interior target") +
+                    "; moved within the same enclosed component to clear the cutting line"),
+            })
+            adjusted.append(numeral)
+            break
+    audit = _section_mark_anchor_audit(repaired, marks)
+    audit["adjusted_numerals"] = sorted(set(adjusted), key=_numeral_order)
+    return repaired, audit
 
 
 def _leader_segments_cross(first, second) -> bool:
@@ -6464,16 +6612,27 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
     marked_certificates = {}
     coordinate_history = {}
     completed_marked_attempts = 0
+    section_anchor_audit = _section_mark_anchor_audit([], section_marks)
 
     def ground(values, *, preserve_reviewed_line_target: bool = False):
         # Durable progress can predate a newly available exact-renderer anchor certificate.
         # Rebind those known component centers after every model-suggested repair so a stale or
         # noisy coordinate cannot displace a byte-exact target.
+        nonlocal section_anchor_audit
         exact_values, _certificate = _deterministic_anchor_overrides(
             raw_png, caption, numerals, values)
-        return _ground_anchors_to_pixels(
+        grounded, audit = _ground_anchors_to_pixels(
             raw_png, numerals, exact_values,
             preserve_reviewed_line_target=preserve_reviewed_line_target)
+        grounded, section_anchor_audit = _repair_section_mark_anchor_collisions(
+            raw_png, grounded, section_marks, numerals=numerals)
+        if section_anchor_audit.get("adjusted_numerals"):
+            grounded, audit = _ground_anchors_to_pixels(
+                raw_png, numerals, grounded, preserve_reviewed_line_target=True)
+            adjusted = list(section_anchor_audit.get("adjusted_numerals") or [])
+            section_anchor_audit = _section_mark_anchor_audit(grounded, section_marks)
+            section_anchor_audit["adjusted_numerals"] = adjusted
+        return grounded, audit
 
     progress = _marked_progress_get(
         raw_png, label=label, caption=caption, numerals=numerals,
@@ -6503,12 +6662,14 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             anchors, label=label, caption=caption, numerals=numerals)
         _record_anchor_coordinate_history(coordinate_history, anchors)
 
+    anchors, pixel_audit = ground(
+        anchors, preserve_reviewed_line_target=True)
+
     exact_anchors, deterministic_certificate = _deterministic_anchor_overrides(
         raw_png, caption, numerals, anchors)
     if deterministic_certificate is not None:
-        anchors, pixel_audit = _ground_anchors_to_pixels(
-            raw_png, numerals, exact_anchors,
-            preserve_reviewed_line_target=True)
+        anchors, pixel_audit = ground(
+            exact_anchors, preserve_reviewed_line_target=True)
         _record_anchor_coordinate_history(coordinate_history, anchors)
         _record_deterministic_coordinate_certificates(
             marked_certificates, deterministic_certificate, anchors, numerals,
@@ -6570,6 +6731,19 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
                 break
             leaders = inspect_leaders(
                 png, label=label, caption=caption, numerals=numerals)
+            leaders = dict(leaders)
+            leaders["section_mark_anchor_audit"] = section_anchor_audit
+            if not section_anchor_audit.get("ok"):
+                leaders["ok"] = False
+                errors = list(leaders.get("errors") or [])
+                errors.append(
+                    "Reference-numeral endpoints collide with cutting-plane annotations: " +
+                    ", ".join(section_anchor_audit.get("colliding_numerals") or []))
+                leaders["errors"] = errors
+                leaders["incorrect"] = sorted(set(
+                    list(leaders.get("incorrect") or []) +
+                    list(section_anchor_audit.get("colliding_numerals") or [])),
+                    key=_numeral_order)
             if leaders.get("ok"):
                 break
             # The leader review owns routing legibility, not geometry. Endpoint coordinates
@@ -6744,6 +6918,17 @@ def _compose_checked_sheet(raw_png: bytes, *, label: str, caption: str, numerals
             leaders["incorrect"] = sorted(
                 set(leaders.get("incorrect") or []) | set(marked.get("incorrect") or []),
                 key=_numeral_order)
+    leaders = dict(leaders)
+    leaders["section_mark_anchor_audit"] = section_anchor_audit
+    if not section_anchor_audit.get("ok"):
+        leaders["ok"] = False
+        errors = list(leaders.get("errors") or [])
+        collision_error = (
+            "Reference-numeral endpoints collide with cutting-plane annotations: " +
+            ", ".join(section_anchor_audit.get("colliding_numerals") or []))
+        if collision_error not in errors:
+            errors.append(collision_error)
+        leaders["errors"] = errors
     return png, labels, leaders, anchors, pixel_audit
 
 
@@ -7212,11 +7397,13 @@ def materialize_review_images(project_id: int, user_id: int, workspace: Path) ->
                 "summary": section_marks.get("summary"),
                 "marks": section_marks.get("marks") or [],
             },
-            "leaders": {
-                "ok": leader.get("ok") is True,
-                "prompt_version": leader.get("prompt_version"),
-                "marked_prompt_version": marked.get("prompt_version"),
-            },
+        "leaders": {
+            "ok": leader.get("ok") is True,
+            "prompt_version": leader.get("prompt_version"),
+            "marked_prompt_version": marked.get("prompt_version"),
+            "section_mark_anchor_clearance": (
+                leader.get("section_mark_anchor_audit") or {}),
+        },
             "endpoints": {
                 "ok": endpoints.get("ok") is True,
                 "reviewer": (endpoints.get("provider") or endpoints.get("model_name") or
