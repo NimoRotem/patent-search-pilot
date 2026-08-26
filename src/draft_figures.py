@@ -8140,6 +8140,22 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
                        int((current or {}).get("active_version") or 0)), None) or {}
         expected_set = {item["numeral"] for item in numeral_entries(expected)}
         expected_sections = section_designations(caption)
+        deterministic_png = _deterministic_geometry_png(caption)
+        deterministic_match_cache = {}
+
+        def matches_current_deterministic_renderer(version) -> bool:
+            if deterministic_png is None:
+                return True
+            version_no = int(version.get("version_no") or 0)
+            if (not current or version_no <= 0 or
+                    str(version.get("source_kind") or "") != "deterministic"):
+                return False
+            if version_no not in deterministic_match_cache:
+                _mime, stored_base_png = png_bytes(
+                    current["id"], user_id, version_no, base=True)
+                deterministic_match_cache[version_no] = bool(
+                    stored_base_png and stored_base_png == deterministic_png)
+            return deterministic_match_cache[version_no]
 
         def accepted_for_current_spec(version) -> bool:
             stored_set = {_clean_numeral(value) for value in
@@ -8154,7 +8170,8 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
                         (version.get("semantic_audit") or {}).get(
                             "specification_hash") == expected_hash and
                         (version.get("leader_audit") or {}).get(
-                            "specification_hash") == expected_hash)
+                            "specification_hash") == expected_hash and
+                        matches_current_deterministic_renderer(version))
 
         if current and not accepted_for_current_spec(active):
             historical = next((item for item in current.get("versions") or []

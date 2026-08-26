@@ -6452,6 +6452,43 @@ def test_wrong_sheet_total_is_recomposed_even_when_geometry_is_current(monkeypat
     assert calls[0]["sheet_number"] == "1/1"
 
 
+def test_new_deterministic_renderer_replaces_a_previously_checked_generated_sheet(monkeypatch):
+    spec = {"label": "FIG. 1", "caption": "current chamber section", "numerals": ["10"]}
+    digest = draft_figures.specification_hash(
+        "FIG. 1", "current chamber section", ["10 = chamber"])
+    active = {
+        "version_no": 3,
+        "source_kind": "generated",
+        "numeral_audit": accepted_ocr_audit(),
+        "semantic_audit": accepted_semantic_audit(specification_hash=digest),
+        "leader_audit": accepted_leader_audit(specification_hash=digest),
+    }
+    monkeypatch.setattr(draft_figures, "listing", lambda *a: [{
+        "id": 8, "figure_label": "FIG. 1", "caption": "current chamber section",
+        "sort_order": 1, "active_version": 3, "versions": [active],
+    }])
+    monkeypatch.setattr(
+        draft_figures, "_deterministic_geometry_png",
+        lambda caption: b"current deterministic renderer pixels")
+    monkeypatch.setattr(
+        draft_figures, "png_bytes", lambda *a, **k: ("image/png", b"older generated pixels"))
+    calls = []
+    monkeypatch.setattr(draft_figures, "render_figure", lambda *a, **values: (
+        calls.append(values) or {
+            "figure_id": 8, "numeral_audit": {"ok": True},
+            "semantic_audit": accepted_semantic_audit(),
+            "leader_audit": accepted_leader_audit(),
+        }))
+    monkeypatch.setattr(draft_figures, "archive_figure", lambda *a: True)
+
+    out = draft_figures.ensure_project_figures(
+        7, 91, sections={}, disclosure="chamber",
+        numeral_table=[{"numeral": "10", "part": "chamber"}], figure_specs=[spec])
+
+    assert out["generated"] == 1 and out["reused"] == 0
+    assert len(calls) == 1
+
+
 def test_obsolete_and_duplicate_sheets_are_archived_without_losing_history(monkeypatch):
     spec = {"label": "FIG. 1", "caption": "side view", "numerals": ["10"]}
     digest = draft_figures.specification_hash("FIG. 1", "side view", ["10 = body"])
