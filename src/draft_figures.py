@@ -2120,8 +2120,8 @@ def _deterministic_control_diagram_anchors(
                 150, 800, "on the isolated-local-bus line below and left of the station"),
             "first contactor": (450, 210, "well inside the first-contactor rectangle"),
             "first connector current sensor": (680, 210, "well inside the current-sensor rectangle"),
-            "first electric-vehicle connector": (1000, 250, "well inside the connector rectangle"),
-            "first control-pilot interface": (1000, 535, "well inside the control-pilot rectangle"),
+            "first electric-vehicle connector": (930, 250, "well inside the connector rectangle"),
+            "first control-pilot interface": (810, 535, "well inside the control-pilot rectangle"),
         }
     if kind == "edge_controller":
         return kind, {
@@ -2181,6 +2181,7 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
         }
     elif segmented_cam_ring_plan is not None and png == segmented_cam_ring_plan:
         renderer_name = "segmented_cam_ring_plan"
+        internal_drive_face = _segmented_cam_ring_has_internal_drive_face(text)
         component_centers = {
             "segmented cam ring": (
                 933, 217, "on the outer circular boundary at the upper right"),
@@ -2191,7 +2192,10 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
             "complementary coupling faces at the latch end": (
                 970, 450, "on the meeting faces at the right joint"),
             "oblique slot": (700, 180, "well inside the upper oblique slot"),
-            "ring drive face": (961, 633, "on the straight drive face near the right joint"),
+            "ring drive face": (
+                (970, 415, "on the internal straight drive face near the right joint")
+                if internal_drive_face else
+                (961, 633, "on the outer-boundary drive face near the right joint")),
         }
     elif stirring_scene:
         renderer_name = "stirring_element_scene"
@@ -2652,17 +2656,17 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
         box((200, 140, 1200, 720))
         box((380, 180, 520, 320))
         box((610, 180, 750, 320))
-        box((920, 190, 1080, 310))
-        box((920, 480, 1080, 590))
-        draw.line((70, 250, 920, 250), **line)
-        draw.line((1080, 250, 1150, 250), **line)
-        draw.line((1000, 480, 1000, 310), **line)
-        draw.line((120, 800, 1100, 800), **line)
+        box((850, 190, 1010, 310))
+        box((720, 480, 900, 590))
+        draw.line((70, 250, 850, 250), **line)
+        draw.line((1010, 250, 1150, 250), **line)
+        draw.line((880, 480, 880, 310), **line)
+        draw.line((120, 800, 300, 800), **line)
         draw.line((300, 800, 300, 650), **line)
-        draw.line((300, 650, 1000, 650), **line)
+        draw.line((300, 650, 810, 650), **line)
         draw.line((450, 650, 450, 320), **line)
         draw.line((680, 650, 680, 320), **line)
-        draw.line((1000, 650, 1000, 590), **line)
+        draw.line((810, 650, 810, 590), **line)
     elif kind == "edge_controller":
         box((330, 180, 1050, 720))
         box((570, 270, 810, 360))
@@ -2720,6 +2724,13 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
 def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
     """Render the exact simple split-clamp plan without model-added concentric geometry."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    hinge_within_frame = bool(
+        re.search(r"\bwhole hinge\b[^.]{0,80}\bwithin the width of the frame body\b", text) or
+        re.search(
+            r"\bhinge\b[^.]{0,100}\bsmall circle\b[^.]{0,100}\bjoint line\b"
+            r"[^.]{0,100}\bbetween the inner circle and the outer circle\b",
+            text,
+        ))
     requirements = (
         re.search(r"\bplan view of the split pipe clamp closed around a pipe\b", text),
         re.search(r"\bviewed along the pipe axis\b", text),
@@ -2727,9 +2738,9 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
         re.search(r"\bbounded by (?:one|an) inner circle\b[^.]{0,80}"
                   r"\b(?:one|an) outer circle\b", text),
         re.search(r"\bthree jaw carriages\b", text),
-        re.search(r"\bwhole hinge\b[^.]{0,80}\bwithin the width of the frame body\b", text),
+        hinge_within_frame,
         re.search(r"\blatch\b[^.]{0,100}\boutside the frame body\b", text),
-        re.search(r"\bjaw pad\b[^.]{0,100}\bmeeting the pipe\b", text),
+        re.search(r"\bjaw pad\b[^.]{0,180}\bmeeting the pipe\b", text),
     )
     if not all(requirements):
         return None
@@ -2778,13 +2789,13 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
 
         inner_center = radial_point(inner_radius, angle)
         draw.line((
-            round(inner_center[0] - tangent_x * 58),
-            round(inner_center[1] - tangent_y * 58),
-            round(inner_center[0] + tangent_x * 58),
-            round(inner_center[1] + tangent_y * 58),
-        ), fill="white", width=14)
+            round(inner_center[0] - tangent_x * 42),
+            round(inner_center[1] - tangent_y * 42),
+            round(inner_center[0] + tangent_x * 42),
+            round(inner_center[1] + tangent_y * 42),
+        ), fill="white", width=10)
         carriage = [
-            offset(335, 40), offset(335, -40),
+            offset(315, 36), offset(315, -36),
             offset(184, -36), offset(184, 36),
         ]
         draw.polygon(carriage, fill="white", outline="black")
@@ -2793,7 +2804,7 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
         # The pad is a separate crescent member. Its inner arc follows, but does not overwrite,
         # the pipe circle, while the pivot overlaps the carriage and the pad outer arc.
         delta = 0.42
-        pad_outer_radius, pad_inner_radius = 184, 124
+        pad_outer_radius, pad_inner_radius = 184, 120
         pad = [
             radial_point(
                 pad_outer_radius,
@@ -2818,8 +2829,6 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
             fill="white", outline="black", width=4)
 
     # The hinge stays entirely within the annular band at the left joint.
-    draw.rectangle((386, 388, 404, 416), fill="white", outline="black", width=4)
-    draw.rectangle((386, 484, 404, 512), fill="white", outline="black", width=4)
     draw.ellipse((353, 408, 437, 492), fill="white", outline="black", width=4)
 
     # The latch body bridges the right joint, and its attached lever reaches outward and up.
@@ -2833,9 +2842,29 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
     return out.getvalue()
 
 
+def _segmented_cam_ring_has_internal_drive_face(caption: str) -> bool:
+    """Recognize a drive face confined to a joint while both ring boundaries stay circular."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    return bool(
+        re.search(
+            r"\bring drive face(?:\s+\d+)?\b[^.]{0,180}\bshort(?: plain)? straight face\b"
+            r"[^.]{0,140}\bright joint\b",
+            text,
+        ) and
+        re.search(r"\bwithin the width of the annulus\b", text) and
+        re.search(r"\bboth circular boundaries of the annulus\b[^.]{0,80}\bunbroken\b", text)
+    )
+
+
 def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
     """Render a coupled two-segment cam ring with one true outer-boundary flat."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    straight_drive_face = re.search(
+        r"\bring drive face(?:\s+\d+)?\b[^.]{0,180}\b(?:one|a)(?: short)?(?: plain)?"
+        r" straight (?:flat|face)\b",
+        text,
+    )
+    internal_drive_face = _segmented_cam_ring_has_internal_drive_face(text)
     detailed_drive_face = bool(
         re.search(
             r"\bupper end\b[^.]{0,100}\blies radially inside the outer boundary\b",
@@ -2855,19 +2884,20 @@ def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
             r"\bring drive face\b[^.]{0,100}\b(?:one|a) short straight (?:flat|face)\b"
             r"[^.]{0,160}\bshown schematically\b",
             text,
-        ))
+        ) or
+        (straight_drive_face and
+         re.search(r"\b(?:drawn )?interrupting the outer boundary of the annulus\b", text) and
+         re.search(r"\bapart from that face\b[^.]{0,100}\bboundaries\b[^.]{0,60}"
+                   r"\bcircular\b", text)) or
+        internal_drive_face)
     requirements = (
         re.search(r"\bplan view of the segmented cam ring removed from the frame\b", text),
-        re.search(r"\btwo segments coupled\b|\btwo segments\b[^.]{0,50}\bcoupled\b", text),
+        re.search(r"\btwo segments coupled\b|\btwo segments\b[^.]{0,100}\bcoupled\b", text),
         re.search(r"\bflat annulus\b", text),
         (re.search(r"\bthree (?:alike )?oblique slots\b", text) or
          (re.search(r"\bthree elongated openings\b", text) and
           re.search(r"\beach is an oblique slot\b", text))),
-        re.search(
-            r"\bring drive face\b[^.]{0,180}\b(?:one|a)(?: short)? straight "
-            r"(?:flat|face)\b",
-            text,
-        ),
+        straight_drive_face,
         detailed_drive_face or generic_drive_face,
     )
     if not all(requirements):
@@ -2896,18 +2926,23 @@ def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
             round(center_y + radius * sin(angle)),
         )
 
-    # The short circular run from the joint meets one straight chordal flat. No retained arc is
-    # left outside that chord, so the boundary cannot form a lens or a stepped second face.
-    draw.arc(outer_box, start=0, end=20, fill="black", width=4)
-    draw.arc(outer_box, start=50, end=360, fill="black", width=4)
-    drive_upper = point(outer_radius, 20)
-    drive_lower = point(outer_radius, 50)
-    draw.line((drive_upper, drive_lower), fill="black", width=4)
+    if internal_drive_face:
+        draw.ellipse(outer_box, outline="black", width=4)
+    else:
+        # The short circular run from the joint meets one straight chordal flat. No retained arc
+        # is left outside that chord, so the boundary cannot form a lens or a stepped second face.
+        draw.arc(outer_box, start=0, end=20, fill="black", width=4)
+        draw.arc(outer_box, start=50, end=360, fill="black", width=4)
+        drive_upper = point(outer_radius, 20)
+        drive_lower = point(outer_radius, 50)
+        draw.line((drive_upper, drive_lower), fill="black", width=4)
     draw.ellipse(inner_box, outline="black", width=4)
 
     # Complementary end faces divide the annulus without adding another circular boundary.
     draw.line((370, 450, 490, 450), fill="black", width=4)
     draw.line((910, 450, 1030, 450), fill="black", width=4)
+    if internal_drive_face:
+        draw.line((940, 395, 1000, 435), fill="black", width=4)
 
     def rotated_slot(radial_degrees: float) -> None:
         radial_angle = radians(radial_degrees)
@@ -3525,7 +3560,7 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     requirements = (
         exact_inventory,
         re.search(r"\b(?:horizontal hatched|hatched horizontal) slab\b", text),
-        re.search(r"\bclosed loop cut twice\b[^.]{0,100}\btwo short hatched legs\b", text),
+        re.search(r"\bclosed loop cut twice\b[^.]{0,100}\btwo (?:short )?hatched legs\b", text),
         re.search(r"\bhatched band across the bottom\b", text),
         re.search(r"\bone closed housing\b", text),
         re.search(r"\bbroken line runs from inside the housing to the chamber\b", text),
@@ -3635,7 +3670,7 @@ def _deterministic_chamber_constraint_certificate(png: bytes, caption: str) -> d
 
 def _deterministic_segmented_cam_ring_constraint_certificate(
         png: bytes, caption: str) -> dict:
-    """Certify the exact drive-flat construction and its circular return."""
+    """Certify the selected drive-face construction and its required ring boundaries."""
     from math import cos, radians, sin
     from PIL import Image
 
@@ -3660,8 +3695,9 @@ def _deterministic_segmented_cam_ring_constraint_certificate(
             for sample_y in range(y - radius, y + radius + 1)
         )
 
+    internal_drive_face = _segmented_cam_ring_has_internal_drive_face(caption)
     lower_endpoint = point(outer_radius, 50)
-    arc_sample_degrees = (52, 56, 60, 65)
+    arc_sample_degrees = ((20, 35, 50, 65) if internal_drive_face else (52, 56, 60, 65))
     arc_samples = [
         {
             "degrees": degrees,
@@ -3671,6 +3707,29 @@ def _deterministic_segmented_cam_ring_constraint_certificate(
         for degrees in arc_sample_degrees
     ]
     endpoint_on_circle = has_ink_near(lower_endpoint)
+    if internal_drive_face:
+        drive_face_samples = [
+            {"point": list(sample), "ink": has_ink_near(sample)}
+            for sample in ((940, 395), (970, 415), (1000, 435))
+        ]
+        drive_face_constraint = {
+            "ok": bool(all(item["ink"] for item in arc_samples + drive_face_samples)),
+            "mode": "internal_joint_face",
+            "flat_count": 1,
+            "outer_boundary_unbroken": all(item["ink"] for item in arc_samples),
+            "outer_boundary_samples": arc_samples,
+            "drive_face_samples": drive_face_samples,
+        }
+    else:
+        drive_face_constraint = {
+            "ok": bool(endpoint_on_circle and all(item["ink"] for item in arc_samples)),
+            "mode": "outer_boundary_face",
+            "flat_count": 1,
+            "lower_endpoint": list(lower_endpoint),
+            "lower_endpoint_on_outer_circle": endpoint_on_circle,
+            "post_face_arc_degrees": [52, 65],
+            "post_face_arc_samples": arc_samples,
+        }
     return {
         "cam_ring_segments_and_joints": {
             "ok": True,
@@ -3684,14 +3743,7 @@ def _deterministic_segmented_cam_ring_constraint_certificate(
             "radial_positions_degrees": [-90, 140, 70],
             "uniform_tangent_relative_tilt_degrees": 70,
         },
-        "single_drive_face": {
-            "ok": bool(endpoint_on_circle and all(item["ink"] for item in arc_samples)),
-            "flat_count": 1,
-            "lower_endpoint": list(lower_endpoint),
-            "lower_endpoint_on_outer_circle": endpoint_on_circle,
-            "post_face_arc_degrees": [52, 65],
-            "post_face_arc_samples": arc_samples,
-        },
+        "single_drive_face": drive_face_constraint,
     }
 
 

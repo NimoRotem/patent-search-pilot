@@ -3578,7 +3578,8 @@ def test_deterministic_split_clamp_plan_keeps_hinge_inside_and_pads_on_pipe():
     assert image.getpixel((350, 475)) == 255
     assert image.getpixel((395, 450)) == 255
     assert image.getpixel((740, 270)) < 32
-    assert image.getpixel((700, 326)) < 32
+    assert image.getpixel((700, 330)) < 32
+    assert image.getpixel((700, 326)) == 255
     assert image.getpixel((700, 330)) < 32
     assert min(image.crop((1070, 405, 1140, 495)).getextrema()) == 0
 
@@ -3594,7 +3595,8 @@ def test_deterministic_split_clamp_plan_has_single_joints_and_separate_curved_pa
     assert image.getpixel((1040, 450)) < 32
     assert image.getpixel((1040, 425)) == 255
     assert image.getpixel((1040, 475)) == 255
-    assert image.getpixel((700, 326)) < 32, "the pad needs its own concave inner arc"
+    assert image.getpixel((700, 330)) < 32, "the pad inner arc must meet the pipe boundary"
+    assert image.getpixel((700, 326)) == 255, "there must be no separate arc outside the pipe"
     assert image.getpixel((700, 330)) < 32, "the pad must meet the pipe's outer circle"
     assert image.getpixel((750, 337)) < 32, "the pad inner face must visibly curve"
     assert image.getpixel((750, 341)) < 32, "the pipe circle must remain independently visible"
@@ -3636,7 +3638,8 @@ def test_deterministic_split_clamp_plan_uses_exact_component_anchor_centers():
         draft_figures._pixel_to_normalized(700, 1400),
         draft_figures._pixel_to_normalized(450, 900),
     )
-    assert grounded["pixel_anchor_audit"]["ok"] is True
+    assert grounded["pixel_anchor_audit"]["ok"] is True, json.dumps(
+        grounded["pixel_anchor_audit"], indent=2)
     certificate = grounded["deterministic_anchor_certificate"]
     assert certificate["renderer"] == "split_clamp_plan"
     assert {item["numeral"] for item in certificate["anchors"]} == {
@@ -4050,6 +4053,90 @@ def test_connector_station_bus_anchor_is_below_and_left_of_enclosure():
     assert x < 200
     assert y > 720
     assert "below and left of the station" in evidence
+
+
+def test_connector_station_bus_is_one_continuous_path_and_interface_is_lower_middle():
+    specification = """
+    View: enlarged schematic block diagram of the first connector station. The first
+    connector station 110 encloses a first contactor 120, a first connector current sensor
+    122, a first control-pilot interface 124, and a first electric-vehicle connector 126.
+    A branch conductor 102 forms the power path. A horizontal isolated local bus 106 lies
+    below the enclosing rectangle, extends to its left, rises through its lower side, and
+    branches inside to the contactor, current sensor, and control-pilot interface.
+    """
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    assert png is not None
+    with Image.open(io.BytesIO(png)).convert("L") as image:
+        assert image.getpixel((150, 800)) < 64
+        assert image.getpixel((1000, 800)) > 240
+        assert image.getpixel((720, 535)) < 64
+        assert image.getpixel((900, 535)) < 64
+        assert image.getpixel((810, 620)) < 64
+        assert image.getpixel((880, 400)) < 64
+
+
+def test_split_clamp_renderer_accepts_current_filing_brief_wording():
+    specification = """
+    Plan view of the split pipe clamp closed around a pipe, viewed along the pipe axis.
+    An annular frame body surrounds the pipe, bounded by an inner circle and by an outer
+    circle. Two radial joint lines divide it into two semicircular bodies. At the left joint
+    the hinge is shown schematically as a small circle on that joint line between the inner
+    circle and the outer circle. At the right joint the latch is a rectangular block outside
+    the frame body bridging both frame ends. Three jaw carriages are spaced around the body.
+    Each jaw carriage carries a separate member, the jaw pad, whose inner face is a concave
+    arc meeting the pipe.
+    """
+
+    png = draft_figures._deterministic_split_clamp_plan_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_certificate(
+        png, specification)["ok"] is True
+
+
+def test_segmented_cam_ring_renderer_accepts_current_filing_brief_wording():
+    specification = """
+    Plan view of the segmented cam ring removed from the frame, its two segments drawn in the
+    relative positions they occupy when coupled. A flat annulus has one inner circular boundary
+    and one outer circular boundary. Three elongated openings are formed in the annulus. Each is
+    an oblique slot, and all three tilt the same way. The ring drive face is a short plain straight
+    face on the end region of one segment at the right joint. It is drawn within the width of the
+    annulus, and both circular boundaries of the annulus run unbroken. The face is shown
+    schematically.
+    """
+
+    png = draft_figures._deterministic_segmented_cam_ring_plan_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_certificate(
+        png, specification)["ok"] is True
+    with Image.open(io.BytesIO(png)).convert("L") as image:
+        assert image.getpixel((1030, 450)) < 64
+        assert image.getpixel((970, 415)) < 64
+
+
+def test_chamber_renderer_accepts_current_two_hatched_legs_wording():
+    specification = """
+    The sheet shows four schematic bodies and one broken line: one hatched horizontal slab,
+    the base 12; one closed loop cut twice, appearing as two hatched legs hanging from the
+    underside of the slab; one hatched band across the bottom, the covering element 36; and
+    one closed housing standing on the slab. One broken line runs from inside the housing to
+    the chamber 22. The slab, the legs and the band each have hatching at different slopes.
+    """
+
+    png = draft_figures._deterministic_chamber_section_png(specification)
+
+    assert png is not None
+    certificate = draft_figures._deterministic_section_hatch_certificate(png, specification)
+    assert certificate is not None
+    angles = {
+        item["angle_degrees"]
+        for item in certificate["components"]
+        if item["component"] in {
+            "base slab", "left perimeter leg", "covering-element band"}
+    }
+    assert len(angles) == 3
 
 
 def test_deterministic_block_grip_uses_designated_left_device_boundary():
