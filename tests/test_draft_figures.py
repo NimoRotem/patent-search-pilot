@@ -6650,6 +6650,36 @@ def test_ensure_project_figures_rechecks_cancellation_before_each_sheet(monkeypa
     assert rendered == ["FIG. 1"]
 
 
+def test_ensure_project_figures_returns_collected_faults_when_time_expires(monkeypatch):
+    """A bounded pass must not discard a real sheet defect before automatic repair sees it."""
+    monkeypatch.setattr(draft_figures, "listing", lambda *a: [])
+    rendered = []
+
+    def render(*_args, **values):
+        rendered.append(values["label"])
+        raise draft_figures.FigureError("the disclosed linkage is missing")
+
+    checks = []
+
+    def check_budget():
+        checks.append(len(checks) + 1)
+        return len(checks) < 2
+
+    monkeypatch.setattr(draft_figures, "render_figure", render)
+    out = draft_figures.ensure_project_figures(
+        7, 91, sections={}, disclosure="body and linkage",
+        numeral_table=[{"numeral": "10", "part": "body"}],
+        figure_specs=[
+            {"label": "FIG. 1", "caption": "side view", "numerals": ["10"]},
+            {"label": "FIG. 2", "caption": "bottom view", "numerals": ["10"]},
+        ], check_cancel=check_budget)
+
+    assert checks == [1, 2]
+    assert rendered == ["FIG. 1"]
+    assert out["budget_spent"] is True
+    assert out["errors"] == ["FIG. 1: the disclosed linkage is missing"]
+
+
 def test_ensure_project_figures_collects_every_failed_sheet_before_repair(monkeypatch):
     monkeypatch.setattr(draft_figures, "listing", lambda *a: [])
     attempted = []
