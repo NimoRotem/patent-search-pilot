@@ -2318,6 +2318,71 @@ def test_clean_source_preflight_is_cached_before_repeated_rendering(monkeypatch,
 
 
 @pytest.mark.real_source_review
+def test_clean_source_preflight_cache_survives_a_new_worker_runner(monkeypatch, tmp_path):
+    qa = Mock()
+    qa.review_sources.return_value = {
+        "ok": True, "summary": "Every candidate detail has affirmative support.",
+        "findings": [], "cost_usd": 0.1, "duration_ms": 100,
+        "model": "review-model",
+    }
+    durable = {}
+    repository = Mock()
+    repository.source_review_cache.side_effect = durable.get
+    repository.save_source_review_cache.side_effect = (
+        lambda source_hash, report: durable.__setitem__(source_hash, dict(report)))
+    render = Mock(return_value={"ok": True})
+    monkeypatch.setattr(draft_figures, "ensure_project_figures", render)
+    monkeypatch.setattr(draft_figures, "checkpoint_project_figures", Mock())
+    monkeypatch.setattr(draft_figures, "materialize_review_images", Mock(return_value=[]))
+    values = dict(
+        turn_id=3, lease="lease", project_id=7, user_id=91,
+        sections=GOOD, numerals=NUMERALS, figures=FIGURES,
+        disclosure="the inventor disclosed a body and pump", workspace=tmp_path)
+
+    draft_studio.TurnRunner(repository, Mock(), qa=qa)._ensure_figures(**values)
+    draft_studio.TurnRunner(repository, Mock(), qa=qa)._ensure_figures(**values)
+
+    qa.review_sources.assert_called_once()
+    assert render.call_count == 2
+    assert len(durable) == 1
+
+
+@pytest.mark.real_source_review
+def test_durable_source_preflight_cache_changes_with_the_review_model(monkeypatch, tmp_path):
+    qa = Mock()
+    qa.review_sources.return_value = {
+        "ok": True, "summary": "Every candidate detail has affirmative support.",
+        "findings": [], "cost_usd": 0.1, "duration_ms": 100,
+        "model": "review-model",
+    }
+    durable = {}
+    repository = Mock()
+    repository.source_review_cache.side_effect = durable.get
+    repository.save_source_review_cache.side_effect = (
+        lambda source_hash, report: durable.__setitem__(source_hash, dict(report)))
+    monkeypatch.setattr(
+        draft_figures, "ensure_project_figures", Mock(return_value={"ok": True}))
+    monkeypatch.setattr(draft_figures, "checkpoint_project_figures", Mock())
+    monkeypatch.setattr(draft_figures, "materialize_review_images", Mock(return_value=[]))
+    values = dict(
+        turn_id=3, lease="lease", project_id=7, user_id=91,
+        sections=GOOD, numerals=NUMERALS, figures=FIGURES,
+        disclosure="the inventor disclosed a body and pump", workspace=tmp_path)
+
+    first = draft_studio.TurnRunner(repository, Mock(), qa=qa)
+    first._review_sources(**{key: values[key] for key in (
+        "turn_id", "lease", "sections", "numerals", "figures", "disclosure", "workspace")},
+        model="review-model-a")
+    second = draft_studio.TurnRunner(repository, Mock(), qa=qa)
+    second._review_sources(**{key: values[key] for key in (
+        "turn_id", "lease", "sections", "numerals", "figures", "disclosure", "workspace")},
+        model="review-model-b")
+
+    assert qa.review_sources.call_count == 2
+    assert len(durable) == 2
+
+
+@pytest.mark.real_source_review
 def test_source_preflight_cache_changes_when_filing_brief_changes(monkeypatch, tmp_path):
     qa = Mock()
     qa.review_sources.return_value = {
@@ -2648,6 +2713,53 @@ def test_transient_drawing_capacity_retries_the_durable_drawing_turn(
             turn_id=3, lease="lease", project_id=7, user_id=91,
             sections=GOOD, numerals=NUMERALS, figures=FIGURES,
             disclosure="disclosure", workspace=tmp_path)
+
+
+def test_paid_image_generation_is_serialized_across_worker_slots(monkeypatch):
+    active = 0
+    maximum_active = 0
+    lock = threading.Lock()
+    rendezvous = threading.Barrier(2)
+    outputs = []
+
+    def unavailable_cursor(*_args, **_kwargs):
+        raise RuntimeError("cache database intentionally unavailable")
+
+    def generated(prompt, previous_png=None):
+        nonlocal active, maximum_active
+        with lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+        try:
+            try:
+                rendezvous.wait(timeout=0.2)
+            except threading.BrokenBarrierError:
+                pass
+            return (prompt + str(bool(previous_png))).encode()
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(draft_figures.db, "cursor", unavailable_cursor)
+    monkeypatch.setattr(draft_figures, "generate_png", generated)
+    threads = [threading.Thread(
+        target=lambda value=value: outputs.append(draft_figures._cached_generate(value)))
+        for value in ("first", "second")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert len(outputs) == 2
+    assert maximum_active == 1
+
+
+@pytest.mark.parametrize(("configured", "expected"), [
+    (None, 1), ("", 1), ("garbage", 1), ("0", 1), ("2", 2), ("99", 4),
+])
+def test_image_generation_slot_limit_is_bounded_and_invalid_values_fail_safe(
+        configured, expected):
+    assert draft_figures._image_generation_slot_limit(configured) == expected
 
 
 def test_drawing_budget_exhaustion_never_becomes_a_publishable_fault_list(

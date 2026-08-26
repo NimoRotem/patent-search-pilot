@@ -68,7 +68,8 @@ _MIGRATIONS = (_MIGRATION, _SQL_DIR / "018_draft_studio_editing.sql",
                _SQL_DIR / "019_draft_turn_kinds.sql",
                _SQL_DIR / "020_draft_research_rounds.sql",
                _SQL_DIR / "021_draft_project_settings.sql",
-               _SQL_DIR / "022_draft_turn_spend.sql")
+               _SQL_DIR / "022_draft_turn_spend.sql",
+               _SQL_DIR / "023_draft_source_review_cache.sql")
 
 
 class StudioError(drafting.DraftingError):
@@ -1452,6 +1453,32 @@ class StudioRepository:
                 "snapshot": _json(row.get("snapshot"), {}),
                 "qa_report": _json(row.get("qa_report"), {})}
 
+    def source_review_cache(self, source_hash: str) -> dict[str, Any] | None:
+        """Return a completed review for the exact content hash, never for similar text."""
+        self._ready()
+        source_hash = str(source_hash or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", source_hash):
+            raise drafting.DraftingValidationError("Source-review cache key is invalid.")
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT report FROM app_draft_source_review_cache WHERE source_hash=%s",
+                (source_hash,))
+            row = cur.fetchone()
+        report = _json((row or {}).get("report"), {})
+        return dict(report) if isinstance(report, Mapping) and report else None
+
+    def save_source_review_cache(self, source_hash: str, report: Mapping[str, Any]) -> None:
+        """Persist one completed independent review for safe reuse after worker retries."""
+        self._ready()
+        source_hash = str(source_hash or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", source_hash):
+            raise drafting.DraftingValidationError("Source-review cache key is invalid.")
+        with self._cursor() as cur:
+            cur.execute(
+                "INSERT INTO app_draft_source_review_cache (source_hash,report) "
+                "VALUES (%s,%s::jsonb) ON CONFLICT (source_hash) DO NOTHING",
+                (source_hash, _dumps(dict(report))))
+
     def latest_retry_candidate(self, project_id: int, *, before_turn_id: int
                                ) -> dict[str, Any] | None:
         """Return the newest unpublished candidate from an earlier turn in this project."""
@@ -2243,6 +2270,7 @@ class TurnRunner:
                                  and configured_version else draft_qa.SOURCE_REVIEW_VERSION)
         source_material = {
             "version": source_review_version,
+            "model": model or draft_agent.QA_MODEL,
             "disclosure": disclosure,
             "conversation": conversation,
             "brief": brief,
@@ -2254,6 +2282,18 @@ class TurnRunner:
             source_material, ensure_ascii=False, sort_keys=True,
             separators=(",", ":")).encode("utf-8")).hexdigest()
         report = self._source_review_cache.get(source_hash)
+        if report is None:
+            try:
+                durable_report = self.repository.source_review_cache(source_hash)
+            except Exception:                                  # cache failure never skips review
+                durable_report = None
+            if (isinstance(durable_report, Mapping) and
+                    durable_report.get("status") == "complete" and
+                    durable_report.get("verdict") in ("pass", "fail") and
+                    isinstance(durable_report.get("checks"), list) and
+                    isinstance(durable_report.get("findings"), list)):
+                report = human_text(dict(durable_report))
+                self._source_review_cache[source_hash] = report
         if report is None:
             transcript = workspace / ".agent" / (
                 f"source-review-{turn_id:04d}-{source_hash[:12]}.jsonl")
@@ -2303,6 +2343,10 @@ class TurnRunner:
                 "last_error": outcome.get("error") or "",
             })
             self._source_review_cache[source_hash] = report
+            try:
+                self.repository.save_source_review_cache(source_hash, report)
+            except Exception:                                  # a cache write is only an optimization
+                traceback.print_exc()
         return report
 
     def _ensure_figures(self, *, turn_id: int, lease: str, project_id: int, user_id: int,
