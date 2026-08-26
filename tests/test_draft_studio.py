@@ -2807,6 +2807,22 @@ def test_internal_gate_resume_never_redrafts_when_its_retry_key_was_rewritten():
     assert run.session_id == "draft-session"
 
 
+def test_internal_gate_resume_uses_a_legacy_candidate_without_a_result_marker():
+    run = draft_studio._gate_resume_run({
+        "resuming_candidate_turn_id": 60,
+        "prepared_qa": {"verdict": "fail", "summary": "legacy checkpoint"},
+        "project": {"agent_session_id": ""},
+    }, {
+        "id": 61, "kind": "gate_resume",
+        "idempotency_key": "auto-filing-repair-60-1",
+    })
+
+    assert run is not None
+    assert run.ok
+    assert run.session_id == ""
+    assert run.result["action"] == "revised"
+
+
 def test_client_qa_fix_cannot_reuse_a_prior_turn_gate_checkpoint():
     context = {
         "resuming_candidate_turn_id": 60,
