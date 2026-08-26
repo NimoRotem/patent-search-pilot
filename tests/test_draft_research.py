@@ -41,7 +41,10 @@ def test_studio_schema_bootstrap_includes_research_rounds():
     names = [path.name for path in draft_studio._MIGRATIONS]
     assert "020_draft_research_rounds.sql" in names
     assert "021_draft_project_settings.sql" in names
-    assert names[-1] == "022_draft_turn_spend.sql"
+    assert names[-2:] == [
+        "022_draft_turn_spend.sql",
+        "023_draft_source_review_cache.sql",
+    ]
 
 
 # =============================================================================================
