@@ -41,7 +41,7 @@ MAX_PNG_BYTES = 8 * 1024 * 1024
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
-FIGURE_PROMPT_VERSION = "figure-v8-progressive-structural-correction"
+FIGURE_PROMPT_VERSION = "figure-v9-progress-aware-correction"
 SEMANTIC_PROMPT_VERSION = (
     "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology")
 SEMANTIC_COMPATIBLE_PROMPT_VERSIONS = frozenset((
@@ -6819,6 +6819,9 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
     correction = ""
     active_generation = None
     structural_failure_count = 0
+    nonstructural_failure_signature = ()
+    nonstructural_failure_streak = 0
+    nonstructural_reset_done = False
     retry_on_fresh_canvas = False
     automatic_instruction = (
         not str(instruction or "").strip() or
@@ -6870,11 +6873,27 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
         text_contamination = _semantic_has_text_contamination(semantic)
         if structural_surplus:
             structural_failure_count += 1
+            nonstructural_failure_signature = ()
+            nonstructural_failure_streak = 0
+        else:
+            failure_signature = tuple(sorted(clean_problems)) or ("semantic failure",)
+            if failure_signature == nonstructural_failure_signature:
+                nonstructural_failure_streak += 1
+            else:
+                nonstructural_failure_signature = failure_signature
+                nonstructural_failure_streak = 1
+        repeated_nonstructural_failure = bool(
+            not structural_surplus and
+            nonstructural_failure_streak >= 2 and
+            not nonstructural_reset_done
+        )
         retry_on_fresh_canvas = bool(
             text_contamination or
             (structural_surplus and structural_failure_count == 1) or
-            (not structural_surplus and structural_failure_count == 0 and attempt + 1 == 2)
+            repeated_nonstructural_failure
         )
+        if repeated_nonstructural_failure:
+            nonstructural_reset_done = True
         if retry_on_fresh_canvas:
             retry_instruction = (
                 "Start again on a blank white canvas from the disclosed geometry. Do not "
