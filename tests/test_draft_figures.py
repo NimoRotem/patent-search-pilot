@@ -1731,6 +1731,89 @@ def test_exact_deterministic_geometry_resolves_same_provider_hatching_dissent(mo
     assert draft_figures._current_deterministic_semantic_resolution(tampered) is False
 
 
+def test_exact_section_pixels_resolve_reviewers_dissent_on_certified_constraints(monkeypatch):
+    caption = """
+    The sheet shows four schematic bodies and one broken line: one hatched horizontal slab, the
+    base 12; one closed loop cut twice, appearing as two short hatched legs hanging from the
+    underside of the slab, one at each end and flush with it; one hatched band across the bottom,
+    the covering element 36, on which the legs stand; and one closed housing standing on the slab,
+    the air-extraction mechanism 20. In the slab each stroke starts low on the left and ends high
+    on the right, like a forward slash. In both legs each stroke starts high on the left and ends
+    low on the right, like a backslash. In the band each stroke is steep, close to upright and
+    leaning slightly to the right. One broken line runs from inside the housing to the chamber 22.
+    That line stops at the upper face of the base 12 and resumes below its lower face, no passage
+    through the base being drawn.
+    """
+    numerals = [
+        "12 = base", "14 = first side", "20 = air-extraction mechanism",
+        "22 = chamber", "24 = perimeter member", "36 = covering element",
+    ]
+    png = draft_figures._deterministic_geometry_png(caption)
+    assert png is not None
+    spec_hash = draft_figures.specification_hash("FIG. 2", caption, numerals)
+    dissent = {
+        "ok": False, "inspected": True, "matches_spec": False,
+        "model_name": draft_figures.cross_provider_model(),
+        "prompt_version": draft_figures.CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
+        "review_count": draft_figures.CROSS_PROVIDER_GEOMETRY_REVIEW_COUNT,
+        "specification_hash": spec_hash,
+        "missing": [], "unexpected": [], "duplicates": [],
+        "errors": [
+            "Covering element hatching leans left rather than right.",
+            "The perimeter legs are not flush with the ends of the slab.",
+        ],
+        "missing_geometry": ["Legs flush with the ends of the base slab."],
+        "summary": "The required parts are visible, but certified relationships appear wrong.",
+    }
+    certificate = draft_figures._deterministic_geometry_certificate(png, caption)
+    assert certificate["certified_constraints"]["section_hatching"]["ok"] is True
+    assert certificate["certified_constraints"]["flush_legs"]["ok"] is True
+    assert draft_figures._certified_geometry_dissent_categories(
+        errors=dissent["errors"], missing_geometry=dissent["missing_geometry"],
+        missing=[], unexpected=[], duplicates=[], certificate=certificate,
+    ) == ["flush_legs", "section_hatching"]
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k: dissent)
+    semantic = {
+        "ok": False, "inspected": True,
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "expected": ["12", "14", "20", "22", "24", "36"],
+        "visible": ["12", "14", "20", "22", "24", "36"],
+        "missing": [], "unexpected": [], "duplicates": [], "unexpected_text": [],
+        "errors": ["The perimeter and covering-element hatch angles appear wrong."],
+        "anchors": [
+            {"numeral": value, "x": 500, "y": 500, "visible": True,
+             "evidence": "The requested component is visible."}
+            for value in ("12", "14", "20", "22", "24", "36")
+        ],
+        "specification_hash": spec_hash,
+    }
+
+    audited = draft_figures._resolve_deterministic_semantic_dissent(
+        semantic, png, label="FIG. 2", caption=caption, numerals=numerals)
+
+    assert audited["ok"] is True
+    cross = audited["cross_provider_geometry_audit"]
+    assert cross["ok"] is True and cross["reviewer_ok"] is False
+    assert set(cross["consensus_resolution"]["certified_dissent_categories"]) == {
+        "flush_legs", "section_hatching",
+    }
+    assert draft_figures.current_cross_provider_geometry_audit(
+        cross, specification_hash=spec_hash) is True
+    assert draft_figures._current_deterministic_semantic_resolution(audited) is True
+    tampered = json.loads(json.dumps(cross))
+    tampered["reviewer_missing_geometry"] = ["The air-extraction housing is absent."]
+    assert draft_figures.current_cross_provider_geometry_audit(
+        tampered, specification_hash=spec_hash) is False
+    tampered = json.loads(json.dumps(cross))
+    tampered["consensus_resolution"]["certified_dissent_categories"] = [
+        "section_hatching"]
+    assert draft_figures.current_cross_provider_geometry_audit(
+        tampered, specification_hash=spec_hash) is False
+
+
 def test_deterministic_semantic_dissent_fails_closed_without_complete_anchor_inventory(
         monkeypatch):
     caption = (
