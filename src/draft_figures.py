@@ -41,7 +41,7 @@ MAX_PNG_BYTES = 8 * 1024 * 1024
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
-FIGURE_PROMPT_VERSION = "figure-v9-progress-aware-correction"
+FIGURE_PROMPT_VERSION = "figure-v10-extended-progress-aware-correction"
 SEMANTIC_PROMPT_VERSION = (
     "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology")
 SEMANTIC_COMPATIBLE_PROMPT_VERSIONS = frozenset((
@@ -76,7 +76,22 @@ MARKED_PROGRESS_VERSION = (
     "marked-progress-v7-brief-target-native-pixel-bound-" + PIXEL_ANCHOR_VERSION)
 OCR_PROMPT_VERSION = "google-vision-document-text-v3-section-designations"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
-MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "6")), 8))
+DEFAULT_SEMANTIC_ATTEMPTS = 8
+
+
+def _semantic_attempt_limit(raw_value) -> int:
+    """Return the bounded retry budget, using the filing-safe default on bad config."""
+    if raw_value is None or not str(raw_value).strip():
+        return DEFAULT_SEMANTIC_ATTEMPTS
+    try:
+        configured = int(str(raw_value).strip())
+    except (TypeError, ValueError):
+        return DEFAULT_SEMANTIC_ATTEMPTS
+    return max(1, min(configured, DEFAULT_SEMANTIC_ATTEMPTS))
+
+
+MAX_SEMANTIC_ATTEMPTS = _semantic_attempt_limit(
+    os.environ.get("PATENT_FIGURE_ATTEMPTS"))
 MAX_LEADER_REPAIR_ATTEMPTS = 4
 MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS = 12
 MARKED_ANCHOR_STALL_WINDOW = 6

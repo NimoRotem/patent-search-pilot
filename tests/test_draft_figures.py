@@ -5299,14 +5299,20 @@ def test_structural_surplus_resets_once_then_uses_targeted_edits(monkeypatch):
             7, 91, label="FIG. 1", caption="plan view of a split clamp",
             numerals=["10 = body"])
 
-    assert [previous for previous, _png in generated] == [
-        None,
-        None,
-        generated[1][1],
-        generated[2][1],
-        generated[3][1],
-        generated[4][1],
+    previous_images = [previous for previous, _png in generated]
+    assert len(previous_images) == draft_figures.DEFAULT_SEMANTIC_ATTEMPTS
+    assert previous_images[:2] == [None, None]
+    assert previous_images[2:] == [
+        generated[index][1] for index in range(1, len(generated) - 1)
     ]
+
+
+def test_default_semantic_attempt_budget_allows_two_more_progressive_repairs():
+    assert draft_figures._semantic_attempt_limit(None) == 8
+    assert draft_figures._semantic_attempt_limit("") == 8
+    assert draft_figures._semantic_attempt_limit("6") == 6
+    assert draft_figures._semantic_attempt_limit("99") == 8
+    assert draft_figures._semantic_attempt_limit("invalid") == 8
 
 
 def test_changed_nonstructural_failure_keeps_corrected_canvas(monkeypatch):
