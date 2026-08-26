@@ -2778,6 +2778,38 @@ def test_drawing_budget_exhaustion_never_becomes_a_publishable_fault_list(
             disclosure="disclosure", workspace=tmp_path)
 
 
+def test_drawing_budget_returns_collected_sheet_faults_before_retrying(
+        monkeypatch, tmp_path):
+    runner = draft_studio.TurnRunner(Mock(), object(), qa=Mock(), workspace=Mock())
+    monkeypatch.setattr(runner, "_drawings_already_match", lambda *_a, **_k: False)
+    monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {
+        "ok": False,
+        "budget_spent": True,
+        "errors": ["FIG. 1: the disclosed linkage is missing"],
+    })
+
+    assert runner._reconcile_drawings(
+        turn_id=3, lease="lease", project_id=7, user_id=91,
+        sections=GOOD, numerals=NUMERALS, figures=FIGURES,
+        disclosure="disclosure", workspace=tmp_path,
+    ) == ["FIG. 1: the disclosed linkage is missing"]
+
+
+def test_drawing_budget_without_a_sheet_fault_retries_the_saved_candidate(
+        monkeypatch, tmp_path):
+    runner = draft_studio.TurnRunner(Mock(), object(), qa=Mock(), workspace=Mock())
+    monkeypatch.setattr(runner, "_drawings_already_match", lambda *_a, **_k: False)
+    monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {
+        "ok": False, "budget_spent": True, "errors": [],
+    })
+
+    with pytest.raises(draft_studio.DrawingBudgetSpent, match="time budget"):
+        runner._reconcile_drawings(
+            turn_id=3, lease="lease", project_id=7, user_id=91,
+            sections=GOOD, numerals=NUMERALS, figures=FIGURES,
+            disclosure="disclosure", workspace=tmp_path)
+
+
 def test_drawing_continuation_retry_preserves_completed_sheets():
     import draft_studio_service
 

@@ -8443,9 +8443,11 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
             archived += int(archive_figure(duplicate["id"], user_id))
         by_key[key] = candidates[-1]
     generated, reused, results, errors = 0, 0, [], []
+    budget_spent = False
     for index, spec in enumerate(specs, 1):
-        if check_cancel:
-            check_cancel()
+        if check_cancel and check_cancel() is False:
+            budget_spent = True
+            break
         label = str(spec.get("label") or f"FIG. {index}")
         caption = str(spec.get("caption") or "")
         expected = expected_entries(spec, numeral_table)
@@ -8536,7 +8538,7 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
         generated += 1
         results.append(result)
     return {"generated": generated, "reused": reused, "archived": archived,
-            "errors": errors,
+            "budget_spent": budget_spent, "errors": errors,
             "figures": results, "ok": len(results) == len(specs) and
                   all((item.get("numeral_audit") or {}).get("ok") and
                       current_semantic_audit(item.get("semantic_audit") or {}) and

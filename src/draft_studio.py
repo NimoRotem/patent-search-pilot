@@ -2183,7 +2183,11 @@ class TurnRunner:
         if generated.get("ok"):
             return []
         errors = [str(item) for item in generated.get("errors") or ()]
-        return errors or ["One or more sheets did not pass geometry, leader, and OCR inspection."]
+        if errors:
+            return errors
+        if generated.get("budget_spent"):
+            raise DrawingBudgetSpent("The drawing pass reached its time budget.")
+        return ["One or more sheets did not pass geometry, leader, and OCR inspection."]
 
     @staticmethod
     def _drawings_already_match(project_id: int, user_id: int,
@@ -2363,12 +2367,10 @@ class TurnRunner:
 
         draft_figures.checkpoint_project_figures(turn_id, project_id, user_id)
 
-        def check_cancel() -> None:
-            if deadline and time.time() > deadline:
-                raise DrawingBudgetSpent(
-                    "The drawing pass reached its time budget.")
+        def check_cancel() -> bool:
             self.repository.heartbeat(
                 turn_id, lease, stage="drawing and inspecting figures")
+            return not deadline or time.time() <= deadline
 
         result = draft_figures.ensure_project_figures(
             project_id, user_id, sections=sections, disclosure=disclosure,
