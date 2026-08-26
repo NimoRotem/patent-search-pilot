@@ -2049,7 +2049,11 @@ def _has_deterministic_stirring_scene(text: str) -> bool:
     """Recognize the exact simple front-mounted stirring-element embodiment."""
     return bool(
         re.search(r"\btwo small closed blocks\b[^.]{0,80}\beach a stirring element\b", text) and
-        re.search(r"\bcarried by the machine against the upper part of the front face\b", text) and
+        re.search(
+            r"\b(?:drawn )?carried by the machine "
+            r"(?:against the upper part of|on) the front face\b",
+            text,
+        ) and
         re.search(r"\bplain rectangular body standing on a band\b[^.]{0,80}\bunderside\b", text))
 
 

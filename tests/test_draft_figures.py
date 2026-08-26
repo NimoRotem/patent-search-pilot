@@ -3919,6 +3919,24 @@ def test_deterministic_stirring_scene_grounds_the_stirring_element_inside_its_bl
     assert {item["numeral"] for item in certificate["anchors"]} == {"10", "36", "48"}
 
 
+def test_deterministic_stirring_scene_accepts_current_filing_brief_wording():
+    specification = """
+    The covering element 36 is one large plain tile seen in perspective. The machine stands on
+    its left-hand part, with open tile to the right. The machine and the tile are shown
+    schematically, the machine as one plain rectangular body standing on a band that runs round
+    its underside, the band alone touching the tile. Two small closed blocks, each a stirring
+    element 48, are drawn carried by the machine on the front face of the rectangular body, each
+    drawn broad enough for a point to stand well inside its front face. Their number, form and
+    drawn position on this sheet are a depiction convention for this sheet only.
+    """
+
+    png = draft_figures._deterministic_grip_scene_png(specification)
+
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    assert certificate["ok"] is True
+
+
 def test_deterministic_block_grip_uses_designated_left_device_boundary():
     specification = """
     The covering element 36 is one large plain tile seen in perspective. The machine stands on
