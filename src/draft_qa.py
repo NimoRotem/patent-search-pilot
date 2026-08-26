@@ -33,6 +33,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -1673,7 +1674,8 @@ def _source_review_quality_error(summary: str,
 
 
 def review_sources(workspace: Path, *, transcript: Path | None = None, model: str = "",
-                   timeout: int = draft_agent.QA_TIMEOUT) -> dict[str, Any]:
+                   timeout: int = draft_agent.QA_TIMEOUT,
+                   cancel: threading.Event | None = None) -> dict[str, Any]:
     """Run a fail-closed text and source-ledger review before spending on drawings."""
     total_cost = 0.0
     total_duration = 0
@@ -1691,6 +1693,7 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
                 tools="Read,Glob,Grep",
                 timeout=timeout,
                 transcript=transcript,
+                cancel=cancel,
             )
         except draft_agent.AgentError as exc:
             return {"ok": False, "error": str(exc), "findings": [], "summary": "",
@@ -1709,7 +1712,7 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
         if not run.ok:
             return {"ok": False, "error": run.error, "findings": [], "summary": "",
                     "cost_usd": total_cost, "duration_ms": total_duration,
-                    "model": last_model}
+                    "model": last_model, "cancelled": bool(run.cancelled)}
         summary = str(run.result.get("summary") or "").strip()[:8000]
         raw_findings = run.result.get("findings")
         findings = normalize_findings(raw_findings)
@@ -1740,7 +1743,8 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
 
 def review(workspace: Path, *, checks: Sequence[Mapping[str, Any]],
            transcript: Path | None = None, model: str = "",
-           timeout: int = draft_agent.QA_TIMEOUT) -> dict[str, Any]:
+           timeout: int = draft_agent.QA_TIMEOUT,
+           cancel: threading.Event | None = None) -> dict[str, Any]:
     """Run the independent reviewer over a workspace. Never raises."""
     lines = []
     for check in checks:
@@ -1763,6 +1767,7 @@ def review(workspace: Path, *, checks: Sequence[Mapping[str, Any]],
             tools="Read,Glob,Grep,Bash",
             timeout=timeout,
             transcript=transcript,
+            cancel=cancel,
         )
     except draft_agent.AgentError as exc:
         return {"ok": False, "error": str(exc), "findings": [], "summary": "", "cost_usd": 0.0,
@@ -1770,7 +1775,7 @@ def review(workspace: Path, *, checks: Sequence[Mapping[str, Any]],
     if not run.ok:
         return {"ok": False, "error": run.error, "findings": [], "summary": "",
                 "cost_usd": run.cost_usd, "duration_ms": run.duration_ms, "model": run.model,
-                "steps": run.steps}
+                "steps": run.steps, "cancelled": bool(run.cancelled)}
     findings = normalize_findings(run.result.get("findings"))
     findings, reconciled = reconcile_exact_section_hatch_findings(workspace, findings)
     summary = str(run.result.get("summary") or "")[:8000]

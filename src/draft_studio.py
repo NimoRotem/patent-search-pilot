@@ -2152,7 +2152,17 @@ class TurnRunner:
             transcript = workspace / ".agent" / (
                 f"source-review-{turn_id:04d}-{source_hash[:12]}.jsonl")
             transcript.parent.mkdir(parents=True, exist_ok=True)
-            outcome = self.qa.review_sources(workspace, transcript=transcript)
+            beat = _Heartbeat(self.repository, turn_id, lease, "checking source fidelity")
+            beat.start()
+            try:
+                cancel = (_AnyEvent(beat.cancelled, self.stop_event)
+                          if self.stop_event is not None else beat.cancelled)
+                outcome = self.qa.review_sources(
+                    workspace, transcript=transcript, cancel=cancel)
+            finally:
+                beat.stop()
+            if outcome.get("cancelled"):
+                raise drafting.DraftingConflict("Stopped at your request.")
             findings = list(outcome.get("findings") or [])
             completed = bool(outcome.get("ok"))
             if not completed:
@@ -2558,7 +2568,8 @@ class TurnRunner:
                         workspace=workspace, allowed=allowed, sections=sections,
                         numerals=snapshot["numerals"], figures=snapshot["figures"],
                         review_index=review_index,
-                        review_model=self._settings_for(project).get("review_model") or "")
+                        review_model=self._settings_for(project).get("review_model") or "",
+                        turn_id=turn_id, lease=lease)
                     if drawing_faults:
                         report = dict(report)
                         report["checks"] = list(report.get("checks") or []) + [{
@@ -2685,7 +2696,8 @@ class TurnRunner:
     def evaluate(self, project_id: int, *, version_no: int | None, workspace: Path,
                  allowed: Sequence[str], sections: Mapping[str, str],
                  numerals: Sequence[Mapping[str, str]], figures: Sequence[Mapping[str, Any]],
-                 review_index: int = 0, review_model: str = "") -> dict[str, Any]:
+                 review_index: int = 0, review_model: str = "",
+                 turn_id: int = 0, lease: str = "") -> dict[str, Any]:
         """Evaluate a workspace without publishing either the version or the report."""
         started = time.time()
         qa_figures = list(figures)
@@ -2704,8 +2716,22 @@ class TurnRunner:
                        "detail": f"The checks could not run ({type(exc).__name__}).", "items": []}]
         transcript = workspace / ".agent" / (
             f"review-{version_no or 0:04d}-{int(review_index) + 1:02d}.jsonl")
-        outcome = self.qa.review(workspace, checks=checks, transcript=transcript,
-                                 model=review_model)
+        beat = (_Heartbeat(self.repository, turn_id, lease, "independent review")
+                if turn_id and lease else None)
+        if beat:
+            beat.start()
+        try:
+            cancel = (None if beat is None and self.stop_event is None else
+                      _AnyEvent(*([beat.cancelled] if beat else []),
+                                *([self.stop_event] if self.stop_event is not None else [])))
+            outcome = self.qa.review(
+                workspace, checks=checks, transcript=transcript,
+                model=review_model, cancel=cancel)
+        finally:
+            if beat:
+                beat.stop()
+        if outcome.get("cancelled"):
+            raise drafting.DraftingConflict("Stopped at your request.")
         findings = outcome.get("findings") or []
         verdict = self.qa.verdict_for(checks, findings)
         report = {
