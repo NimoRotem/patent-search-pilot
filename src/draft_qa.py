@@ -323,8 +323,11 @@ def numerals_used(text: str) -> Counter:
     Getting this wrong in the generous direction is the expensive mistake - it would report every
     measurement as an undefined part - so the exclusions are aggressive.
     """
-    cleaned = re.sub(r"\bFIGS?\.?\s*[0-9]+[A-Za-z]?(\s*(?:-|–|\u2014|to|through|and)\s*[0-9]+[A-Za-z]?)?",
-                     " ", text or "", flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"\bFIGS?\.?\s*[0-9]+[A-Za-z]?"
+        r"(?:\s*(?:(?:-|–|\u2014|to|through|and|or)\s*|"
+        r",\s*(?:(?:and|or)\s*)?)[0-9]+[A-Za-z]?)*",
+        " ", text or "", flags=re.IGNORECASE)
     cleaned = re.sub(r"\bclaims?\s+[0-9,\s\-–and or]+", " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\[REF:[^\]]*\]", " ", cleaned)
     #  A publication number written into the prose beside its citation token - "US 9,108,319 B2" -

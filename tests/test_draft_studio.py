@@ -704,6 +704,15 @@ def test_measurements_and_years_are_not_read_as_reference_numerals():
     assert set(draft_qa.numerals_used(text)) == {"12"}
 
 
+def test_figure_series_are_not_read_as_reference_numerals():
+    text = (
+        "The body 12 includes regions enlarged in FIGS. 3, 4 and 5. "
+        "Other regions appear in FIGS. 6, 7, and 8 and FIG. 9."
+    )
+
+    assert set(draft_qa.numerals_used(text)) == {"12"}
+
+
 # =============================================================================================
 # Figures
 # =============================================================================================
