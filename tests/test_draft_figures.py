@@ -3937,6 +3937,102 @@ def test_deterministic_stirring_scene_accepts_current_filing_brief_wording():
     assert certificate["ok"] is True
 
 
+@pytest.mark.parametrize(("specification", "numerals", "renderer"), [
+    (
+        """
+        View: schematic block diagram of the charging control system. A branch conductor 102
+        passes through a branch current sensor 104 and supplies a first connector station 110,
+        a second connector station 112, and a non-charging load 114. An edge controller 100 is
+        joined to the sensor and to a network interface 108. An isolated local bus 106 joins the
+        edge controller to the first and second connector stations.
+        """,
+        [
+            "100 = edge controller", "102 = branch conductor",
+            "104 = branch current sensor", "106 = isolated local bus",
+            "108 = network interface", "110 = first connector station",
+            "112 = second connector station", "114 = non-charging load",
+        ],
+        "charging_control_overview",
+    ),
+    (
+        """
+        View: enlarged schematic block diagram of the first connector station. The first
+        connector station 110 encloses a first contactor 120, a first connector current sensor
+        122, a first control-pilot interface 124, and a first electric-vehicle connector 126.
+        A branch conductor 102 forms the power path and an isolated local bus 106 branches to
+        the enclosed components.
+        """,
+        [
+            "102 = branch conductor", "106 = isolated local bus",
+            "110 = first connector station", "120 = first contactor",
+            "122 = first connector current sensor",
+            "124 = first control-pilot interface",
+            "126 = first electric-vehicle connector",
+        ],
+        "connector_station",
+    ),
+    (
+        """
+        View: enlarged schematic block diagram of the edge controller. The edge controller 100
+        contains nonvolatile memory 132 and joins a branch conductor 102 through a branch current
+        sensor 104. A network interface 108, local fault indicator 134, service input 136, and
+        isolated local bus 106 join the edge controller.
+        """,
+        [
+            "100 = edge controller", "102 = branch conductor",
+            "104 = branch current sensor", "106 = isolated local bus",
+            "108 = network interface", "132 = nonvolatile memory",
+            "134 = local fault indicator", "136 = service input",
+        ],
+        "edge_controller",
+    ),
+    (
+        """
+        View: process flow diagram of the allocation interval. The available-charging-current
+        determination step 200 leads through the minimum sustaining current assignment step 202,
+        deficit-based distribution step 204, and limit transmission and connector current
+        verification step 206 to the pilot reduction step 208, ordered contactor shedding step
+        210, and reclose permissive step 212. A welded-contactor isolation step 214 branches from
+        the shedding step.
+        """,
+        [
+            "200 = available-charging-current determination step",
+            "202 = minimum sustaining current assignment step",
+            "204 = deficit-based distribution step",
+            "206 = limit transmission and connector current verification step",
+            "208 = pilot reduction step", "210 = ordered contactor shedding step",
+            "212 = reclose permissive step", "214 = welded-contactor isolation step",
+        ],
+        "allocation_flow",
+    ),
+])
+def test_deterministic_control_diagrams_are_text_free_and_anchor_every_part(
+        specification, numerals, renderer):
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    initial = [
+        {"numeral": value.split(" = ", 1)[0], "x": 500, "y": 500, "visible": True}
+        for value in numerals
+    ]
+
+    grounded = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {"ok": True, "anchors": initial})
+    grounded = draft_figures._apply_pixel_grounding(png, numerals, grounded)
+
+    assert png is not None
+    with Image.open(io.BytesIO(png)) as image:
+        assert image.size == (1400, 900)
+    certificate = grounded["deterministic_anchor_certificate"]
+    assert certificate["renderer"] == renderer
+    assert {item["numeral"] for item in certificate["anchors"]} == {
+        value.split(" = ", 1)[0] for value in numerals
+    }
+    positions = {(item["x"], item["y"]) for item in grounded["anchors"]}
+    assert len(positions) == len(numerals)
+    assert grounded["pixel_anchor_audit"]["ok"] is True, grounded["pixel_anchor_audit"]
+    assert draft_figures._deterministic_geometry_certificate(
+        png, specification)["ok"] is True
+
+
 def test_deterministic_block_grip_uses_designated_left_device_boundary():
     specification = """
     The covering element 36 is one large plain tile seen in perspective. The machine stands on

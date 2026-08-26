@@ -2057,6 +2057,96 @@ def _has_deterministic_stirring_scene(text: str) -> bool:
         re.search(r"\bplain rectangular body standing on a band\b[^.]{0,80}\bunderside\b", text))
 
 
+def _control_diagram_kind(caption: str) -> str:
+    """Recognize controlled block and flow diagrams that must never contain model text."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    cases = {
+        "charging_control_overview": (
+            "schematic block diagram of the charging control system",
+            "first connector station",
+            "second connector station",
+            "non-charging load",
+            "branch current sensor",
+            "isolated local bus",
+        ),
+        "connector_station": (
+            "enlarged schematic block diagram of the first connector station",
+            "first contactor",
+            "first connector current sensor",
+            "first control-pilot interface",
+            "first electric-vehicle connector",
+        ),
+        "edge_controller": (
+            "enlarged schematic block diagram of the edge controller",
+            "nonvolatile memory",
+            "local fault indicator",
+            "service input",
+            "network interface",
+        ),
+        "allocation_flow": (
+            "process flow diagram of the allocation interval",
+            "available-charging-current determination step",
+            "ordered contactor shedding step",
+            "welded-contactor isolation step",
+            "reclose permissive step",
+        ),
+    }
+    for kind, required in cases.items():
+        if all(value in text for value in required):
+            return kind
+    return ""
+
+
+def _deterministic_control_diagram_anchors(
+        caption: str) -> tuple[str, dict[str, tuple[int, int, str]]]:
+    """Return exact raw-pixel targets for each supported control-diagram template."""
+    kind = _control_diagram_kind(caption)
+    if kind == "charging_control_overview":
+        return kind, {
+            "edge controller": (390, 675, "well inside the edge-controller rectangle"),
+            "branch conductor": (1100, 200, "on the branch-conductor line away from a junction"),
+            "branch current sensor": (335, 170, "well inside the sensor rectangle"),
+            "isolated local bus": (900, 700, "on the isolated-local-bus line away from a junction"),
+            "network interface": (150, 670, "well inside the network-interface rectangle"),
+            "first connector station": (690, 405, "well inside the left station rectangle"),
+            "second connector station": (900, 405, "well inside the middle station rectangle"),
+            "non-charging load": (1120, 405, "well inside the right load rectangle"),
+        }
+    if kind == "connector_station":
+        return kind, {
+            "first connector station": (200, 430, "on the left outline of the enclosing station"),
+            "branch conductor": (120, 250, "on the branch-conductor line outside the station"),
+            "isolated local bus": (1000, 800, "on the isolated-local-bus line outside the station"),
+            "first contactor": (450, 210, "well inside the first-contactor rectangle"),
+            "first connector current sensor": (680, 210, "well inside the current-sensor rectangle"),
+            "first electric-vehicle connector": (1000, 250, "well inside the connector rectangle"),
+            "first control-pilot interface": (1000, 535, "well inside the control-pilot rectangle"),
+        }
+    if kind == "edge_controller":
+        return kind, {
+            "edge controller": (330, 520, "on the left outline of the enclosing controller"),
+            "branch conductor": (1030, 100, "on the branch-conductor line away from the sensor"),
+            "branch current sensor": (810, 70, "well inside the sensor rectangle"),
+            "isolated local bus": (1240, 480, "on the isolated-local-bus line beyond the isolation mark"),
+            "network interface": (165, 380, "well inside the network-interface rectangle"),
+            "nonvolatile memory": (690, 315, "well inside the memory rectangle"),
+            "local fault indicator": (185, 645, "well inside the fault-indicator rectangle"),
+            "service input": (1205, 645, "well inside the service-input rectangle"),
+        }
+    if kind == "allocation_flow":
+        return kind, {
+            "available-charging-current determination step": (335, 98, "well inside the first process rectangle"),
+            "minimum sustaining current assignment step": (335, 218, "well inside the second process rectangle"),
+            "deficit-based distribution step": (335, 338, "well inside the third process rectangle"),
+            "limit transmission and connector current verification step": (335, 458, "well inside the fourth process rectangle"),
+            "pilot reduction step": (960, 458, "well inside the pilot-reduction rectangle"),
+            "ordered contactor shedding step": (960, 578, "well inside the contactor-shedding rectangle"),
+            "reclose permissive step": (960, 698, "well inside the reclose-permissive rectangle"),
+            "welded-contactor isolation step": (1235, 748, "well inside the welded-contactor rectangle"),
+        }
+    return "", {}
+
+
 def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
                                     ) -> tuple[list[dict], dict | None]:
     """Use known component centers only when pixels match an exact simple renderer."""
@@ -2072,7 +2162,10 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
     pulling_scene = _deterministic_pulling_scene_png(caption)
     fragmentary_section = _deterministic_fragmentary_section_png(caption)
     chamber_section = _deterministic_chamber_section_png(caption)
-    if split_clamp_plan is not None and png == split_clamp_plan:
+    control_diagram_kind = _control_diagram_kind(caption)
+    if control_diagram_kind:
+        renderer_name, component_centers = _deterministic_control_diagram_anchors(caption)
+    elif split_clamp_plan is not None and png == split_clamp_plan:
         renderer_name = "split_clamp_plan"
         component_centers = {
             "split pipe clamp": (
@@ -2508,6 +2601,119 @@ def closed_region_audit(png: bytes, caption: str) -> dict:
         **base, "ok": ok, "inspected": True, "observed": observed,
         "areas": areas[:40], "minimum_area": minimum_area, "errors": errors,
     }
+
+
+def _deterministic_control_diagram_png(caption: str) -> bytes | None:
+    """Render supported control block and process diagrams without generated text."""
+    kind = _control_diagram_kind(caption)
+    if not kind:
+        return None
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1400, 900), "white")
+    draw = ImageDraw.Draw(image)
+    line = {"fill": "black", "width": 4}
+
+    def box(bounds: tuple[int, int, int, int]) -> None:
+        draw.rectangle(bounds, fill="white", outline="black", width=4)
+
+    def arrow(point: tuple[int, int], direction: str) -> None:
+        x, y = point
+        if direction == "down":
+            points = [(x, y), (x - 13, y - 21), (x + 13, y - 21)]
+        elif direction == "right":
+            points = [(x, y), (x - 21, y - 13), (x - 21, y + 13)]
+        else:
+            raise ValueError(f"unsupported arrow direction: {direction}")
+        draw.polygon(points, fill="black")
+
+    if kind == "charging_control_overview":
+        draw.line((220, 200, 1200, 200), **line)
+        box((295, 140, 375, 260))
+        draw.line((220, 200, 1200, 200), **line)
+        for center in (690, 900, 1120):
+            draw.line((center, 200, center, 330), **line)
+        for bounds in ((610, 330, 770, 480), (820, 330, 980, 480),
+                       (1040, 330, 1200, 480)):
+            box(bounds)
+        box((260, 590, 520, 760))
+        draw.line((520, 700, 1120, 700), **line)
+        draw.line((690, 700, 690, 480), **line)
+        draw.line((900, 700, 900, 480), **line)
+        draw.line((560, 680, 560, 720), fill="black", width=3)
+        draw.line((600, 680, 600, 720), fill="black", width=3)
+        draw.line((335, 235, 390, 590), **line)
+        box((90, 625, 210, 715))
+        draw.line((210, 670, 260, 670), **line)
+        draw.line((40, 670, 90, 670), **line)
+    elif kind == "connector_station":
+        box((200, 140, 1200, 720))
+        box((380, 180, 520, 320))
+        box((610, 180, 750, 320))
+        box((920, 190, 1080, 310))
+        box((920, 480, 1080, 590))
+        draw.line((70, 250, 920, 250), **line)
+        draw.line((1080, 250, 1150, 250), **line)
+        draw.line((1000, 480, 1000, 310), **line)
+        draw.line((120, 800, 1100, 800), **line)
+        draw.line((300, 800, 300, 650), **line)
+        draw.line((300, 650, 1000, 650), **line)
+        draw.line((450, 650, 450, 320), **line)
+        draw.line((680, 650, 680, 320), **line)
+        draw.line((1000, 650, 1000, 590), **line)
+    elif kind == "edge_controller":
+        box((330, 180, 1050, 720))
+        box((570, 270, 810, 360))
+        draw.line((650, 100, 1120, 100), **line)
+        box((770, 40, 850, 160))
+        draw.line((650, 100, 1120, 100), **line)
+        draw.line((810, 135, 810, 180), **line)
+        box((80, 330, 250, 430))
+        draw.line((30, 380, 80, 380), **line)
+        draw.line((250, 380, 330, 380), **line)
+        box((100, 600, 270, 690))
+        draw.line((270, 645, 330, 645), **line)
+        box((1120, 600, 1290, 690))
+        draw.line((1050, 645, 1120, 645), **line)
+        draw.line((1205, 690, 1205, 760), **line)
+        draw.line((1050, 480, 1320, 480), **line)
+        draw.line((1120, 455, 1120, 505), **line)
+        draw.line((1140, 455, 1140, 505), **line)
+    elif kind == "allocation_flow":
+        left_boxes = (
+            (150, 60, 520, 135), (150, 180, 520, 255),
+            (150, 300, 520, 375), (150, 420, 520, 495),
+        )
+        right_boxes = (
+            (790, 420, 1130, 495), (790, 540, 1130, 615),
+            (790, 660, 1130, 735),
+        )
+        for bounds in left_boxes + right_boxes:
+            box(bounds)
+        box((1140, 700, 1330, 795))
+        for upper, lower in zip(left_boxes, left_boxes[1:]):
+            center = (upper[0] + upper[2]) // 2
+            draw.line((center, upper[3], center, lower[1]), **line)
+            arrow((center, lower[1]), "down")
+        for upper, lower in zip(right_boxes, right_boxes[1:]):
+            center = (upper[0] + upper[2]) // 2
+            draw.line((center, upper[3], center, lower[1]), **line)
+            arrow((center, lower[1]), "down")
+        draw.line((520, 458, 790, 458), **line)
+        arrow((790, 458), "right")
+        draw.line((1130, 578, 1235, 578), **line)
+        draw.line((1235, 578, 1235, 700), **line)
+        arrow((1235, 700), "down")
+        draw.line((960, 735, 960, 830), **line)
+        draw.line((960, 830, 80, 830), **line)
+        draw.line((80, 830, 80, 98), **line)
+        draw.line((80, 98, 150, 98), **line)
+        arrow((150, 98), "right")
+
+    out = io.BytesIO()
+    image.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
 
 
 def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
@@ -3371,7 +3577,8 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
 
 def _deterministic_geometry_png(caption: str) -> bytes | None:
     """Select an exact renderer only when the brief describes a supported simple geometry."""
-    return (_deterministic_split_clamp_plan_png(caption) or
+    return (_deterministic_control_diagram_png(caption) or
+            _deterministic_split_clamp_plan_png(caption) or
             _deterministic_segmented_cam_ring_plan_png(caption) or
             _deterministic_nested_plan_png(caption) or
             _deterministic_pulling_scene_png(caption) or
