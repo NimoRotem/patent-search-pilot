@@ -4033,6 +4033,25 @@ def test_deterministic_control_diagrams_are_text_free_and_anchor_every_part(
         png, specification)["ok"] is True
 
 
+def test_connector_station_bus_anchor_is_below_and_left_of_enclosure():
+    specification = """
+    View: enlarged schematic block diagram of the first connector station. The first
+    connector station 110 encloses a first contactor 120, a first connector current sensor
+    122, a first control-pilot interface 124, and a first electric-vehicle connector 126.
+    A branch conductor 102 forms the power path and an isolated local bus 106 branches to
+    the enclosed components. End the leader for the isolated local bus 106 on the left
+    portion of that line, at a point both below the enclosing rectangle and to the left of it.
+    """
+
+    kind, anchors = draft_figures._deterministic_control_diagram_anchors(specification)
+
+    assert kind == "connector_station"
+    x, y, evidence = anchors["isolated local bus"]
+    assert x < 200
+    assert y > 720
+    assert "below and left of the station" in evidence
+
+
 def test_deterministic_block_grip_uses_designated_left_device_boundary():
     specification = """
     The covering element 36 is one large plain tile seen in perspective. The machine stands on
