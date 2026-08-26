@@ -4032,6 +4032,7 @@ def test_deterministic_chamber_section_accepts_agent_rephrased_inventory(monkeyp
     assert observed == [-45, 45, 45, -75]
     image = Image.open(io.BytesIO(png)).convert("L")
     assert sum(image.getpixel((865, y)) < 32 for y in range(225, 356)) < 40
+    assert image.getpixel((865, 215)) < 32
     assert sum(image.getpixel((200, y)) < 32 for y in range(360, 621)) > 240
     assert sum(image.getpixel((1200, y)) < 32 for y in range(360, 621)) > 240
 
