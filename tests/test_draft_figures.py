@@ -4003,6 +4003,36 @@ def test_deterministic_chamber_section_accepts_explicit_filing_inventory(monkeyp
     assert observed == [-45, 45, 45, -75]
 
 
+def test_deterministic_chamber_section_accepts_agent_rephrased_inventory(monkeypatch):
+    original = draft_figures._paste_hatched_box
+    observed = []
+
+    def record(image, box, *, angle):
+        observed.append(angle)
+        return original(image, box, angle=angle)
+
+    monkeypatch.setattr(draft_figures, "_paste_hatched_box", record)
+    specification = """
+    The sheet shows four schematic bodies and one broken line: one hatched horizontal slab, the
+    base 12; one closed loop cut twice, appearing as two short hatched legs hanging from the
+    underside of the slab; one hatched band across the bottom, the covering element 36, on which
+    the legs stand; and one closed housing standing on the slab, the air-extraction mechanism 20.
+    The slab, the legs and the band are the cut bodies. In the slab each stroke starts low on the
+    left and ends high on the right, like a forward slash. In both legs each stroke starts high on
+    the left and ends low on the right, like a backslash. In the band each stroke is steep, close
+    to upright and leaning slightly to the right, much nearer to vertical than the legs' strokes.
+    One broken line runs from inside the housing to the chamber 22. That line stops at the upper
+    face of the base 12 and resumes below its lower face, no passage through the base being drawn.
+    """
+
+    png = draft_figures._deterministic_chamber_section_png(specification)
+
+    assert png is not None
+    assert observed == [-45, 45, 45, -75]
+    image = Image.open(io.BytesIO(png)).convert("L")
+    assert sum(image.getpixel((865, y)) < 32 for y in range(225, 356)) < 40
+
+
 def test_deterministic_section_certificate_records_exact_raw_pixel_hatch_angles():
     specification = """
     The sheet shows four bodies, all shown schematically, and one broken line: one horizontal
