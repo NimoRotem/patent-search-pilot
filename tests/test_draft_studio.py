@@ -3460,6 +3460,55 @@ def test_antecedent_basis_still_catches_a_term_that_was_never_introduced():
     assert check["status"] == "warn" and any("retaining shoulder" in i for i in check["items"])
 
 
+def test_antecedent_basis_still_catches_an_unintroduced_plural_term():
+    broken = dict(GOOD)
+    broken["claims"] = "1. A tool comprising a body, wherein the retaining shoulders are annular."
+    check = checks_for(broken)["Antecedent basis in the claims"]
+    assert check["status"] == "warn"
+    assert any("retaining shoulders" in item for item in check["items"])
+
+
+def test_antecedent_basis_recognises_a_method_step_gerund_in_the_parent_claim():
+    broken = dict(GOOD)
+    broken["claims"] = (
+        "1. A method comprising: translating a device across a surface.\n\n"
+        "2. The method of claim 1, wherein the translating is performed by vibration."
+    )
+    check = checks_for(broken)["Antecedent basis in the claims"]
+    assert check["status"] == "pass", check["items"]
+
+
+def test_antecedent_basis_recognises_quantified_plural_parts():
+    broken = dict(GOOD)
+    broken["claims"] = (
+        "1. A carrier comprising two opposed phase-change cassettes and two downward guide "
+        "ducts, wherein the guide ducts route air along the phase-change cassettes."
+    )
+    check = checks_for(broken)["Antecedent basis in the claims"]
+    assert check["status"] == "pass", check["items"]
+
+
+def test_antecedent_basis_recognises_bare_plural_parts_introduced_before_reference():
+    broken = dict(GOOD)
+    broken["claims"] = (
+        "1. A carrier comprising a frame that carries resilient feet and has ledges beneath "
+        "the resilient feet, wherein the ledges support the resilient feet."
+    )
+    check = checks_for(broken)["Antecedent basis in the claims"]
+    assert check["status"] == "pass", check["items"]
+
+
+def test_antecedent_basis_recognises_method_goods_and_thereafter_step():
+    broken = dict(GOOD)
+    broken["claims"] = (
+        "1. A method of transporting goods, the method comprising: placing the goods in a "
+        "carrier; and thereafter transporting the goods.\n\n"
+        "2. The method of claim 1, wherein the transporting is performed without a fan."
+    )
+    check = checks_for(broken)["Antecedent basis in the claims"]
+    assert check["status"] == "pass", check["items"]
+
+
 def test_morphological_variants_are_not_reported_as_unsupported_claim_terms():
     broken = dict(GOOD)
     broken["detailed_description"] += (" A controller energises the pump 14 and connects it to a "

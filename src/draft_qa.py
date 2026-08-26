@@ -190,6 +190,12 @@ _ARTICLE_INTRO_RE = re.compile(
     r"(?=([a-z][a-z\-]*(?:\s+[a-z][a-z\-]*){0,4}))")
 _ARTICLE_REF_RE = re.compile(
     r"\b(?:the|said)\s+(?=([a-z][a-z\-]*(?:\s+[a-z][a-z\-]*){0,4}))")
+_METHOD_STEP_INTRO_RE = re.compile(
+    r"(?:\bcomprising\s*:?[\s\n]*|;[\s\n]*(?:and\s+)?)"
+    r"(?:thereafter\s+)?([a-z][a-z\-]*ing)\b")
+_IRREGULAR_PLURAL_NOUNS = frozenset({
+    "children", "feet", "geese", "men", "mice", "people", "teeth", "women",
+})
 
 # Words that end a noun phrase.  Without this, "the housing is coupled to" reads as a five-word
 # term and never matches the "a housing" that introduced it.
@@ -1039,7 +1045,11 @@ def _antecedent_basis(claims: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         introduced: set[str] = set()
         for match in _ARTICLE_INTRO_RE.finditer(chain_text):
             introduced |= _terms(_trim_phrase(match.group(1)))
+        # Method claims introduce acts directly, without an article: "comprising: translating
+        # a device". A dependent reference to "the translating" has valid basis in that act.
+        introduced |= {match.group(1) for match in _METHOD_STEP_INTRO_RE.finditer(chain_text)}
         own = by_number[claim["number"]]["text"].lower()
+        ancestor_text = " ".join(reversed(chain[1:])).lower()
         for match in _ARTICLE_REF_RE.finditer(own):
             phrase = _trim_phrase(match.group(1))
             if not phrase or phrase in _NO_BASIS_NEEDED:
@@ -1047,6 +1057,9 @@ def _antecedent_basis(claims: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             candidates = _terms(phrase)
             if (candidates & introduced) or (candidates & _NO_BASIS_NEEDED) or \
                     re.match(r"^claim\b", phrase):
+                continue
+            prior_text = ancestor_text + " " + own[:match.start()]
+            if _plural_noun_appears_before(phrase, prior_text):
                 continue
             problems.append(f"claim {claim['number']}: “the {phrase}”")
     if not problems:
@@ -1058,6 +1071,19 @@ def _antecedent_basis(claims: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         f"{len(problems)} definite article(s) may lack antecedent basis. This is a language "
         "heuristic, not a parse of the claim: read each one before changing it.",
         severity="advisory", items=sorted(set(problems))[:40])
+
+
+def _plural_noun_appears_before(phrase: str, prior_text: str) -> bool:
+    """Recognize parts introduced as bare or quantified plurals before a definite reference."""
+    prior_words = set(_normal(prior_text).split())
+    for word in _trim_phrase(phrase).split():
+        plural = (
+            word in _IRREGULAR_PLURAL_NOUNS or
+            (len(word) > 3 and word.endswith("s") and word not in _PHRASE_STOP)
+        )
+        if plural and word in prior_words:
+            return True
+    return False
 
 
 def _claim_support(claims: Sequence[Mapping[str, Any]], spec_text: str) -> dict[str, Any]:

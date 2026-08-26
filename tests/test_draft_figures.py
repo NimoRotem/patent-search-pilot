@@ -4089,6 +4089,32 @@ def test_deterministic_chamber_section_splits_schematic_line_around_solid_base()
     assert any(split_image.getpixel((865, y)) < 32 for y in range(365, 521))
 
 
+def test_deterministic_chamber_section_splits_that_line_wording_used_by_agent():
+    inventory = """
+    The sheet shows four bodies, all shown schematically, and one broken line: one horizontal
+    hatched slab, the base 12; one closed loop cut twice, appearing as two short hatched legs
+    hanging from the underside of the slab, one at each end; one hatched band across the bottom
+    on which both legs stand; and one closed housing standing on the upper face of the slab.
+    """
+    continuous = inventory + """
+    One broken line runs from inside the housing to the chamber 22.
+    """
+    filing_wording = inventory + """
+    One broken line runs from inside the housing to the chamber 22. That line stops at the upper
+    face of the base 12 and resumes below its lower face, no passage through the base 12 being
+    drawn or asserted.
+    """
+
+    continuous_image = Image.open(io.BytesIO(
+        draft_figures._deterministic_chamber_section_png(continuous))).convert("L")
+    filing_image = Image.open(io.BytesIO(
+        draft_figures._deterministic_chamber_section_png(filing_wording))).convert("L")
+    continuous_ink = sum(continuous_image.getpixel((865, y)) < 32 for y in range(225, 356))
+    filing_ink = sum(filing_image.getpixel((865, y)) < 32 for y in range(225, 356))
+
+    assert filing_ink + 40 < continuous_ink
+
+
 def test_deterministic_fragmentary_section_preserves_open_clearance_and_four_bodies():
     specification = """
     The sheet shows four hatched bodies and nothing else: one upright column and three
