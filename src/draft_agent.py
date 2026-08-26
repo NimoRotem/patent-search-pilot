@@ -127,6 +127,11 @@ class AgentRun:
     cost_usd: float = 0.0
     duration_ms: int = 0
     num_turns: int = 0
+    #  What the run actually put through the models. Cost alone hides the shape of the spend: a
+    #  turn whose context is re-sent on every repair round reads tens of millions of cached tokens
+    #  and looks cheap per call while being ruinous in aggregate.
+    tokens: dict[str, int] = field(default_factory=lambda: {
+        "input": 0, "output": 0, "cache_read": 0, "cache_write": 0})
     model: str = ""
     error: str = ""
     cancelled: bool = False
@@ -444,6 +449,13 @@ def _run_once(*, workspace: Path, prompt: str, system_prompt: str, schema: Mappi
 
     out.cost_usd = float(final.get("total_cost_usd") or 0.0)
     out.num_turns = int(final.get("num_turns") or 0)
+    usage = final.get("usage") or {}
+    out.tokens = {
+        "input": int(usage.get("input_tokens") or 0),
+        "output": int(usage.get("output_tokens") or 0),
+        "cache_read": int(usage.get("cache_read_input_tokens") or 0),
+        "cache_write": int(usage.get("cache_creation_input_tokens") or 0),
+    }
     out.session_id = str(final.get("session_id") or session_id)
     payload = final.get("result")
     out.text = payload if isinstance(payload, str) else ""
@@ -515,6 +527,8 @@ def _merge_attempts(previous: AgentRun, current: AgentRun, message: str) -> Agen
     current.cost_usd += previous.cost_usd
     current.duration_ms += previous.duration_ms
     current.num_turns += previous.num_turns
+    for key in ("input", "output", "cache_read", "cache_write"):
+        current.tokens[key] = current.tokens.get(key, 0) + previous.tokens.get(key, 0)
     current.steps = previous.steps + [{"kind": "system", "text": message}] + current.steps
     return current
 

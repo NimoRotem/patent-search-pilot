@@ -758,6 +758,13 @@ class StudioService:
             "last_message_id": cursor["last_id"],
             "turn": ({"id": turn["id"], "turn_no": turn["turn_no"], "status": turn["status"],
                       "stage": turn["stage"], "last_error": turn.get("last_error"),
+                      "agent_runs": turn.get("agent_runs") or 0,
+                      "spend_usd": float(turn.get("spend_usd") or 0),
+                      "model_ms": int(turn.get("model_ms") or 0),
+                      "started_at": str(turn.get("started_at") or ""),
+                      "tokens_total": sum(int(turn.get(key) or 0) for key in
+                                          ("tokens_input", "tokens_output",
+                                           "tokens_cache_read", "tokens_cache_write")),
                       "kind": turn.get("kind"), "section_key": turn.get("section_key") or "",
                       "queue_ahead": (self._queue_ahead(turn["id"])
                                       if turn["status"] == "queued" else 0),
@@ -917,6 +924,11 @@ def process_one(*, stop_event: threading.Event | None = None) -> dict[str, Any] 
         outcome = runner.run(claimed)
         _stamp(running=False, last_result="complete", last_error=None)
         return outcome
+    except draft_studio.TurnBudgetSpent as exc:
+        #  NOT retryable, and deliberately so: a turn that has already spent its ceiling will spend
+        #  it again on the next attempt, so retrying is the one response guaranteed to make it
+        #  worse. The candidate it reached is saved and can be continued on purpose.
+        return _fail(runner, claimed, str(exc), retryable=False)
     except drafting.DraftingValidationError as exc:
         # The agent produced something we will not store - an empty section, a citation to a
         # document it was not given.  Retryable: the next attempt sees the reason in its request.
@@ -979,6 +991,10 @@ def _fail(runner: draft_studio.TurnRunner, claimed: Mapping[str, Any], error: st
 def _continue_terminal_filing_repair(repository: Any, claimed: Mapping[str, Any],
                                      result: Mapping[str, Any], error: str) -> str:
     """Continue a blocked filing gate or a valid candidate interrupted by its provider."""
+    #  A turn stopped by its own ceiling must never be automatically continued: that would spend
+    #  the ceiling again, immediately, with nobody having asked for it.
+    if "reached its ceiling" in str(error):
+        return ""
     filing_gate_stopped = str(error).startswith(_FILING_GATE_EXHAUSTED)
     interrupted_candidate = False
     # A graceful worker restart terminates its drafting or review subprocess with SIGTERM. The

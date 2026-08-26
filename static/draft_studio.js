@@ -1341,9 +1341,14 @@
           <div class="small muted">${esc(turn.summary || turn.stage || '')}</div>
           ${turn.last_error ? `<div class="small bad">${esc(turn.last_error)}</div>` : ''}</div>
         <span class="grow"></span>
-        <span class="small muted">${turn.version_no ? 'v' + turn.version_no + ' · ' : ''}${
-          turn.duration_ms ? Math.round(turn.duration_ms / 1000) + 's' : ''}${
-          turn.cost_usd ? ' · $' + Number(turn.cost_usd).toFixed(2) : ''}</span>
+        <span class="small muted turnspend">${turn.version_no ? 'v' + turn.version_no + ' · ' : ''}${
+          [turn.agent_runs ? turn.agent_runs + ' runs' : '',
+           turn.model_ms ? Math.round(turn.model_ms / 60000) + 'm in models' : '',
+           turn.tokens_input != null ? tokens(
+             (turn.tokens_input || 0) + (turn.tokens_output || 0) +
+             (turn.tokens_cache_read || 0) + (turn.tokens_cache_write || 0)) + ' tokens' : '',
+           Number(turn.spend_usd || turn.cost_usd) ? money(turn.spend_usd || turn.cost_usd) : '',
+          ].filter(Boolean).join(' · ')}</span>
       </div>`).join('')}`;
   }
 
@@ -1767,6 +1772,37 @@
     'resuming after a restart': 'resuming after a server restart',
   };
 
+  /* WHAT THIS TURN HAS COST SO FAR. It used to be invisible until the turn finished, which is how
+     one ran for eight hours and twenty minutes and spent about $343 with the page showing nothing
+     but a spinner and the word "independent review". */
+  function money(value) {
+    const n = Number(value || 0);
+    return n >= 10 ? '$' + n.toFixed(0) : '$' + n.toFixed(2);
+  }
+  function tokens(value) {
+    const n = Number(value || 0);
+    if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M';
+    if (n >= 1e3) return Math.round(n / 1e3) + 'k';
+    return String(n);
+  }
+  function elapsed(since) {
+    const started = new Date(since);
+    if (isNaN(started)) return '';
+    const mins = Math.max(0, Math.round((Date.now() - started.getTime()) / 60000));
+    if (mins < 60) return mins + 'm';
+    return Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm';
+  }
+  function spendLine(turn) {
+    if (!turn) return '';
+    const bits = [];
+    const wall = elapsed(turn.started_at);
+    if (wall) bits.push(wall);
+    if (turn.agent_runs) bits.push(`${turn.agent_runs} agent run${turn.agent_runs === 1 ? '' : 's'}`);
+    if (turn.tokens_total) bits.push(`${tokens(turn.tokens_total)} tokens`);
+    if (turn.spend_usd) bits.push(money(turn.spend_usd));
+    return bits.join(' · ');
+  }
+
   function renderBusy() {
     const turn = S.active_turn;
     const box = $('chatStatus');
@@ -1784,6 +1820,12 @@
         'rechecking every drawing against the current published text';
     } else if (reviewing) {
       $('chatStage').textContent = 'the reviewer is re-checking the current draft';
+    }
+    const meter = $('chatSpend');
+    if (meter) {
+      const line = spendLine(turn);
+      meter.textContent = line;
+      meter.hidden = !line;
     }
     $('chatCancel').hidden = !turn;
     $('chatSend').disabled = !!turn;
@@ -1863,7 +1905,11 @@
       try {
         state = await api(`/api/drafts/${PID}/studio/poll`);
       } catch (error) { return; }
-      if (state.turn && S.active_turn && state.turn.stage !== (S.active_turn || {}).stage) {
+      //  Repaint on the stage OR the spend moving, so the meter ticks while a long turn runs.
+      if (state.turn && S.active_turn && (
+          state.turn.stage !== (S.active_turn || {}).stage ||
+          state.turn.agent_runs !== (S.active_turn || {}).agent_runs ||
+          state.turn.tokens_total !== (S.active_turn || {}).tokens_total)) {
         S.active_turn = Object.assign({}, S.active_turn, state.turn);
         renderBusy();
       }

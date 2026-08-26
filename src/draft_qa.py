@@ -1679,6 +1679,7 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
     """Run a fail-closed text and source-ledger review before spending on drawings."""
     total_cost = 0.0
     total_duration = 0
+    total_tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
     last_model = model or draft_agent.QA_MODEL
     for quality_attempt in range(2):
         try:
@@ -1698,9 +1699,11 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
         except draft_agent.AgentError as exc:
             return {"ok": False, "error": str(exc), "findings": [], "summary": "",
                     "cost_usd": total_cost, "duration_ms": total_duration,
-                    "model": last_model}
+                    "tokens": total_tokens, "model": last_model}
         total_cost += float(run.cost_usd or 0.0)
         total_duration += int(run.duration_ms or 0)
+        for key in total_tokens:
+            total_tokens[key] += int((run.tokens or {}).get(key) or 0)
         last_model = run.model or last_model
         if not run.ok and quality_attempt == 0 and re.search(
                 r"valid structured output.*attempt", str(run.error or ""), re.IGNORECASE):
@@ -1712,7 +1715,8 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
         if not run.ok:
             return {"ok": False, "error": run.error, "findings": [], "summary": "",
                     "cost_usd": total_cost, "duration_ms": total_duration,
-                    "model": last_model, "cancelled": bool(run.cancelled)}
+                    "tokens": total_tokens, "model": last_model,
+                    "cancelled": bool(run.cancelled)}
         summary = str(run.result.get("summary") or "").strip()[:8000]
         raw_findings = run.result.get("findings")
         findings = normalize_findings(raw_findings)
@@ -1729,6 +1733,7 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
                 "findings": findings,
                 "cost_usd": total_cost,
                 "duration_ms": total_duration,
+                "tokens": total_tokens,
                 "model": last_model,
             }
         if quality_attempt == 1:
@@ -1736,7 +1741,8 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
                 "ok": False,
                 "error": quality_error,
                 "findings": [], "summary": "", "cost_usd": total_cost,
-                "duration_ms": total_duration, "model": last_model,
+                "duration_ms": total_duration, "tokens": total_tokens,
+                "model": last_model,
             }
     raise AssertionError("unreachable")
 
@@ -1774,7 +1780,8 @@ def review(workspace: Path, *, checks: Sequence[Mapping[str, Any]],
                 "duration_ms": 0, "model": model or draft_agent.QA_MODEL, "steps": []}
     if not run.ok:
         return {"ok": False, "error": run.error, "findings": [], "summary": "",
-                "cost_usd": run.cost_usd, "duration_ms": run.duration_ms, "model": run.model,
+                "cost_usd": run.cost_usd, "duration_ms": run.duration_ms,
+                "tokens": dict(run.tokens or {}), "model": run.model,
                 "steps": run.steps, "cancelled": bool(run.cancelled)}
     findings = normalize_findings(run.result.get("findings"))
     findings, reconciled = reconcile_exact_section_hatch_findings(workspace, findings)
@@ -1785,7 +1792,8 @@ def review(workspace: Path, *, checks: Sequence[Mapping[str, Any]],
             "reconciliation.")
     return {"ok": True, "error": "", "summary": summary,
             "findings": findings, "reconciled_findings": reconciled,
-            "cost_usd": run.cost_usd, "duration_ms": run.duration_ms, "model": run.model,
+            "cost_usd": run.cost_usd, "duration_ms": run.duration_ms,
+            "tokens": dict(run.tokens or {}), "model": run.model,
             "steps": run.steps}
 
 

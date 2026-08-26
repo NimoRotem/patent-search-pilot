@@ -1,4 +1,6 @@
 """Advanced settings: every knob is real, and a bad value is refused rather than corrected."""
+from unittest.mock import Mock
+
 import pytest
 
 import draft_agent
@@ -82,3 +84,61 @@ def test_every_field_explains_itself_and_offers_only_real_choices():
         if field["kind"] == "model":
             offered = {choice["id"] for choice in field["choices"]} - {""}
             assert offered <= draft_agent.MODEL_IDS, "a model the server cannot run was offered"
+
+
+# =============================================================================================
+# The ceiling on one turn
+# =============================================================================================
+def test_a_turn_has_a_ceiling_on_runs_and_on_dollars():
+    """There was none. One turn made 76 agent runs over eight hours and twenty minutes, put about
+    196 million tokens through the models and cost roughly $343, and nothing was in a position to
+    notice: attempts multiply by repair rounds and every worker restart begins again."""
+    out = draft_settings.resolve(None)
+    assert out["max_agent_runs"] == 14
+    assert out["max_spend_usd"] == 40
+
+
+def test_the_ceiling_cannot_be_set_to_something_meaningless():
+    with pytest.raises(ValueError, match="between 3 and 60"):
+        draft_settings.clean({"max_agent_runs": 0})
+    with pytest.raises(ValueError, match="between 2 and 500"):
+        draft_settings.clean({"max_spend_usd": 100000})
+
+
+def test_the_budget_stops_a_turn_on_runs_and_says_what_it_spent():
+    import draft_studio
+
+    runner = draft_studio.TurnRunner(Mock(), object(), agent=Mock(), workspace=Mock())
+    runner._budget = {"max_agent_runs": 14, "max_spend_usd": 40}
+    spent = {"agent_runs": 14, "spend_usd": 12.5, "tokens_total": 1234567}
+    with pytest.raises(draft_studio.TurnBudgetSpent) as caught:
+        runner._check_budget(1, spent)
+    text = str(caught.value)
+    assert "14 agent runs" in text and "$12.50" in text and "1,234,567 tokens" in text
+    assert "is saved" in text and "nothing was published" in text
+
+
+def test_the_budget_stops_a_turn_on_dollars_too():
+    import draft_studio
+
+    runner = draft_studio.TurnRunner(Mock(), object(), agent=Mock(), workspace=Mock())
+    runner._budget = {"max_agent_runs": 100, "max_spend_usd": 40}
+    with pytest.raises(draft_studio.TurnBudgetSpent, match=r"\$40"):
+        runner._check_budget(1, {"agent_runs": 3, "spend_usd": 41.0, "tokens_total": 10})
+
+
+def test_a_turn_inside_its_budget_is_left_alone():
+    import draft_studio
+
+    runner = draft_studio.TurnRunner(Mock(), object(), agent=Mock(), workspace=Mock())
+    runner._budget = {"max_agent_runs": 14, "max_spend_usd": 40}
+    runner._check_budget(1, {"agent_runs": 13, "spend_usd": 39.99, "tokens_total": 10})
+
+
+def test_a_project_with_no_ceiling_configured_is_not_silently_capped_at_zero():
+    """A missing or zero limit must mean "no limit", not "stop immediately"."""
+    import draft_studio
+
+    runner = draft_studio.TurnRunner(Mock(), object(), agent=Mock(), workspace=Mock())
+    runner._budget = {}
+    runner._check_budget(1, {"agent_runs": 999, "spend_usd": 9999, "tokens_total": 10})

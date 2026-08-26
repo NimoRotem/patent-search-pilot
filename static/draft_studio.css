@@ -297,3 +297,12 @@
   .rsround { grid-template-columns: 60px 1fr 92px; }
   .rsmeta { grid-column: 1 / -1; }
 }
+
+/* What a turn is costing, while it costs it. */
+.chatspend {
+  margin-left: auto;
+  padding-right: 8px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.turnspend { font-variant-numeric: tabular-nums; }

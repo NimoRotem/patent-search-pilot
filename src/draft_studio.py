@@ -67,7 +67,8 @@ _MIGRATION = _SQL_DIR / "006_draft_agent.sql"
 _MIGRATIONS = (_MIGRATION, _SQL_DIR / "018_draft_studio_editing.sql",
                _SQL_DIR / "019_draft_turn_kinds.sql",
                _SQL_DIR / "020_draft_research_rounds.sql",
-               _SQL_DIR / "021_draft_project_settings.sql")
+               _SQL_DIR / "021_draft_project_settings.sql",
+               _SQL_DIR / "022_draft_turn_spend.sql")
 
 
 class StudioError(drafting.DraftingError):
@@ -90,6 +91,16 @@ class SourceReviewUnavailable(StudioError):
     """The independent reviewer failed, so retry the saved candidate unchanged."""
 
     retry_without_repair = True
+
+
+class TurnBudgetSpent(StudioError):
+    """One turn reached the ceiling on what it may spend, and stopped.
+
+    Not retryable. A turn that has already spent its budget will spend it again on the next
+    attempt, so retrying is the one response guaranteed to make it worse.
+    """
+
+    retry_without_repair = False
 
 
 class DrawingBudgetSpent(StudioError):
@@ -1569,6 +1580,40 @@ class StudioRepository:
             raise drafting.DraftingConflict("This worker no longer owns the drafting turn.")
         return dict(row)
 
+    def record_spend(self, turn_id: int, *, runs: int = 1, cost_usd: float = 0.0,
+                     duration_ms: int = 0,
+                     tokens: Mapping[str, int] | None = None) -> dict[str, Any]:
+        """Add one agent run to the turn's running total, and return the total.
+
+        Written as it happens rather than at completion, because the number nobody could see was
+        the whole problem: a turn that had spent hundreds of dollars over eight hours still read
+        cost 0.00 in the database and "independent review" on the page. No lease is required and
+        none is checked: this is bookkeeping, not ownership, and losing the record because a lease
+        turned over mid-turn would defeat the point.
+        """
+        self._ready()
+        counts = dict(tokens or {})
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE app_draft_turns SET agent_runs=agent_runs+%s,"
+                "spend_usd=spend_usd+%s,model_ms=model_ms+%s,"
+                "tokens_input=tokens_input+%s,tokens_output=tokens_output+%s,"
+                "tokens_cache_read=tokens_cache_read+%s,"
+                "tokens_cache_write=tokens_cache_write+%s,updated_at=now() "
+                "WHERE id=%s RETURNING agent_runs,spend_usd,model_ms,tokens_input,"
+                "tokens_output,tokens_cache_read,tokens_cache_write",
+                (int(runs), round(float(cost_usd or 0), 4), int(duration_ms or 0),
+                 int(counts.get("input") or 0), int(counts.get("output") or 0),
+                 int(counts.get("cache_read") or 0), int(counts.get("cache_write") or 0),
+                 int(turn_id)))
+            row = cur.fetchone()
+        out = dict(row or {})
+        out["spend_usd"] = float(out.get("spend_usd") or 0)
+        out["tokens_total"] = sum(int(out.get(key) or 0) for key in
+                                  ("tokens_input", "tokens_output",
+                                   "tokens_cache_read", "tokens_cache_write"))
+        return out
+
     def heartbeat(self, turn_id: int, lease_token: str, *, stage: str = "",
                   lease_seconds: int = LEASE_SECONDS) -> None:
         self._ready()
@@ -1969,6 +2014,14 @@ class TurnRunner:
                 transcript=transcript, cancel=cancel, **extra)
         finally:
             beat.stop()
+        try:
+            spent = self.repository.record_spend(
+                turn_id, cost_usd=run.cost_usd, duration_ms=run.duration_ms, tokens=run.tokens)
+            self._check_budget(turn_id, spent)
+        except TurnBudgetSpent:
+            raise
+        except Exception:                                      # noqa: BLE001 - never lose a run
+            traceback.print_exc()
         if not run.ok:
             raise (drafting.DraftingConflict("Stopped at your request.") if run.cancelled
                    else StudioError(run.error or "The drafting agent did not finish."))
@@ -2348,6 +2401,33 @@ class TurnRunner:
             transcript_path=str(transcript), discard_candidates=False)
         return {"turn": completed, "version": version}
 
+    def _check_budget(self, turn_id: int, spent: Mapping[str, Any]) -> None:
+        """Stop a turn that is running away, and say exactly what it spent.
+
+        THE CEILING EXISTS BECAUSE THERE WAS NONE. A turn on this database made 76 agent runs over
+        eight hours and twenty minutes, put about 196 million tokens through the models and cost
+        roughly $343, and no part of the system was in a position to notice. Attempts multiply by
+        repair rounds, and every worker restart begins the whole thing again, so the real bound on
+        one turn's spend was the patience of whoever was watching it.
+        """
+        limits = getattr(self, "_budget", None) or {}
+        runs = int(spent.get("agent_runs") or 0)
+        usd = float(spent.get("spend_usd") or 0)
+        max_runs = int(limits.get("max_agent_runs") or 0)
+        max_usd = float(limits.get("max_spend_usd") or 0)
+        if max_runs and runs >= max_runs:
+            raise TurnBudgetSpent(
+                f"This turn reached its ceiling of {max_runs} agent runs "
+                f"(${usd:.2f} spent, {int(spent.get('tokens_total') or 0):,} tokens). The draft it "
+                "had reached is saved; nothing was published. Raise the ceiling in Settings, or "
+                "ask for a smaller change.")
+        if max_usd and usd >= max_usd:
+            raise TurnBudgetSpent(
+                f"This turn reached its ceiling of ${max_usd:.2f} "
+                f"({runs} agent runs, {int(spent.get('tokens_total') or 0):,} tokens). The draft "
+                "it had reached is saved; nothing was published. Raise the ceiling in Settings, or "
+                "ask for a smaller change.")
+
     @staticmethod
     def _settings_for(project: Mapping[str, Any]) -> dict[str, Any]:
         return draft_settings.resolve(_json(project.get("settings"), {}))
@@ -2415,6 +2495,7 @@ class TurnRunner:
         project = context["project"]
         allowed = allowed_reference_keys(context["references"], context["documents"])
 
+        self._budget = self._settings_for(project)
         kind = str(turn.get("kind") or "revise")
         if kind == "section_edit" and context["had_version"]:
             return self._run_section_edit(turn, context)
