@@ -1499,13 +1499,66 @@ def test_required_cross_provider_review_fails_closed_without_a_credential(monkey
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_REQUIRED", "1")
     monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: None)
+    monkeypatch.setattr(
+        draft_figures, "_vertex_cross_provider_message",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("Vertex unavailable")))
 
     audit = draft_figures.inspect_cross_provider_endpoints(
         blank_png(), label="FIG. 1", caption="device", numerals=["10 = device"])
 
     assert audit["ok"] is False and audit["inspected"] is False
     assert audit["missing"] == ["10"]
-    assert "not configured" in audit["errors"][0].lower()
+    assert "vertex unavailable" in audit["errors"][0].lower()
+
+
+def test_required_endpoint_review_uses_vertex_when_anthropic_is_not_configured(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_REQUIRED", "1")
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_MODEL", "claude-opus-5")
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_FALLBACK_MODEL", "gemini-2.5-flash")
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: None)
+    saved = []
+    monkeypatch.setattr(
+        draft_figures, "_analysis_cache_put",
+        lambda *args, **kwargs: saved.append((args, kwargs)))
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **_kwargs: None)
+    monkeypatch.setattr(draft_figures.llm, "_record_usage", lambda *_args: None)
+    calls = []
+
+    def vertex(images, **kwargs):
+        calls.append((images, kwargs))
+        return {
+            "usage": {"input_tokens": 75, "output_tokens": 25},
+            "content": [{"type": "text", "text": json.dumps({
+                "matches_spec": True,
+                "summary": "The endpoint is on the device.",
+                "errors": [],
+                "labels": [{
+                    "numeral": "10", "correct": True,
+                    "evidence": "The terminal dot is within the device body.",
+                    "repairable": False, "suggested_x": 0, "suggested_y": 0,
+                }],
+            })}],
+        }
+
+    monkeypatch.setattr(draft_figures, "_vertex_cross_provider_message", vertex)
+    raw = blank_png(1400, 900)
+    audit = draft_figures.inspect_cross_provider_endpoints(
+        raw, raw_png=raw,
+        anchors=[{"numeral": "10", "x": 400, "y": 565, "visible": True}],
+        label="FIG. 1", caption="The device 10.", numerals=["10 = device"])
+
+    assert audit["ok"] is True and audit["inspected"] is True
+    assert audit["provider"] == "vertex"
+    assert audit["model_name"] == "gemini-2.5-flash"
+    assert audit["configured_model"] == "claude-opus-5"
+    assert audit["fallback_from"] == "claude-opus-5"
+    assert audit["fallback_reason"] == "anthropic_not_configured"
+    assert draft_figures.current_cross_provider_endpoint_audit(
+        audit, specification_hash=audit["specification_hash"])
+    assert len(calls) == 1 and len(calls[0][0]) == 3
+    assert calls[0][1]["response_schema"] == draft_figures.CROSS_PROVIDER_ENDPOINT_SCHEMA
+    assert saved and saved[0][1]["provider"] == "vertex"
 
 
 def test_cross_provider_geometry_audit_rejects_an_unrequested_power_cable():
@@ -1710,13 +1763,73 @@ def test_required_cross_provider_geometry_review_fails_closed_without_a_credenti
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_REQUIRED", "1")
     monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: None)
+    monkeypatch.setattr(
+        draft_figures, "_vertex_cross_provider_message",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("Vertex unavailable")))
 
     audit = draft_figures.inspect_cross_provider_geometry(
         blank_png(), label="FIG. 1", caption="housing", numerals=["10 = housing"])
 
     assert audit["ok"] is False and audit["inspected"] is False
     assert audit["missing"] == ["10"]
-    assert "not configured" in audit["errors"][0].lower()
+    assert "vertex unavailable" in audit["errors"][0].lower()
+
+
+def test_geometry_review_uses_vertex_after_anthropic_usage_limit(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_REQUIRED", "1")
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_MODEL", "claude-opus-5")
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_FALLBACK_MODEL", "gemini-2.5-flash")
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: None)
+    saved = []
+    audits = []
+    monkeypatch.setattr(
+        draft_figures, "_analysis_cache_put",
+        lambda *args, **kwargs: saved.append((args, kwargs)))
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **values: audits.append(values))
+    monkeypatch.setattr(draft_figures.llm, "_record_usage", lambda *_args: None)
+    monkeypatch.setattr(
+        draft_figures, "_anthropic_endpoint_message",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError(
+            "You have reached your specified API usage limits.")))
+    calls = []
+
+    def vertex(images, **kwargs):
+        calls.append((images, kwargs))
+        return {
+            "usage": {"input_tokens": 90, "output_tokens": 35},
+            "content": [{"type": "text", "text": json.dumps({
+                "matches_spec": True,
+                "summary": "Only the requested housing is visible.",
+                "errors": [], "missing_geometry": [], "unexpected_geometry": [],
+                "parts": [{
+                    "numeral": "10", "visible": True,
+                    "evidence": "One rectangular housing is visible.",
+                }],
+                "visible_elements": [{
+                    "description": "rectangular housing", "required": True,
+                    "matched_requirement": "10 = housing",
+                    "evidence": "One closed rectangular body.",
+                }],
+            })}],
+        }
+
+    monkeypatch.setattr(draft_figures, "_vertex_cross_provider_message", vertex)
+    audit = draft_figures.inspect_cross_provider_geometry(
+        blank_png(), label="FIG. 1", caption="A housing.", numerals=["10 = housing"])
+
+    assert audit["ok"] is True and audit["inspected"] is True
+    assert audit["provider"] == "vertex"
+    assert audit["model_name"] == "gemini-2.5-flash"
+    assert audit["configured_model"] == "claude-opus-5"
+    assert audit["fallback_from"] == "claude-opus-5"
+    assert audit["fallback_reason"] == "anthropic_quota_exhausted"
+    assert draft_figures.current_cross_provider_geometry_audit(
+        audit, specification_hash=audit["specification_hash"])
+    assert len(calls) == 1 and len(calls[0][0]) == 1
+    assert calls[0][1]["response_schema"] == draft_figures.CROSS_PROVIDER_GEOMETRY_SCHEMA
+    assert saved and saved[0][1]["provider"] == "vertex"
+    assert audits[-1]["provider"] == "vertex"
 
 
 def test_cross_provider_geometry_veto_is_applied_to_same_provider_consensus(monkeypatch):

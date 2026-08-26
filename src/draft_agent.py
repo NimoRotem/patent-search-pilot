@@ -928,8 +928,10 @@ def _run_vertex_once(*, workspace: Path, prompt: str, system_prompt: str,
             candidates = list(getattr(response, "candidates", None) or ())
             content = getattr(candidates[0], "content", None) if candidates else None
             parts = list(getattr(content, "parts", None) or ()) if content else []
-            if content is not None:
-                contents.append(content)
+            if parts:
+                # Vertex accepts only user/model history roles. Normalize provider candidates and
+                # never replay an empty candidate, which otherwise poisons the next tool round.
+                contents.append(types.Content(role="model", parts=parts))
             calls = [getattr(part, "function_call", None) for part in parts]
             calls = [call for call in calls if call is not None]
             text_parts = [str(getattr(part, "text", "") or "").strip() for part in parts]

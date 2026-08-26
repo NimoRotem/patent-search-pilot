@@ -289,6 +289,76 @@ MARKED_ANCHOR_RESPONSE_SCHEMA = {
     "required": ["matches_spec", "summary", "errors", "labels"],
 }
 
+CROSS_PROVIDER_GEOMETRY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "matches_spec": {"type": "boolean"},
+        "summary": {"type": "string"},
+        "errors": {"type": "array", "items": {"type": "string"}},
+        "missing_geometry": {"type": "array", "items": {"type": "string"}},
+        "unexpected_geometry": {"type": "array", "items": {"type": "string"}},
+        "parts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "numeral": {"type": "string"},
+                    "visible": {"type": "boolean"},
+                    "evidence": {"type": "string"},
+                },
+                "required": ["numeral", "visible", "evidence"],
+            },
+        },
+        "visible_elements": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "description": {"type": "string"},
+                    "required": {"type": "boolean"},
+                    "matched_requirement": {"type": "string"},
+                    "evidence": {"type": "string"},
+                },
+                "required": [
+                    "description", "required", "matched_requirement", "evidence",
+                ],
+            },
+        },
+    },
+    "required": [
+        "matches_spec", "summary", "errors", "missing_geometry",
+        "unexpected_geometry", "parts", "visible_elements",
+    ],
+}
+
+CROSS_PROVIDER_ENDPOINT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "matches_spec": {"type": "boolean"},
+        "summary": {"type": "string"},
+        "errors": {"type": "array", "items": {"type": "string"}},
+        "labels": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "numeral": {"type": "string"},
+                    "correct": {"type": "boolean"},
+                    "evidence": {"type": "string"},
+                    "repairable": {"type": "boolean"},
+                    "suggested_x": {"type": "integer"},
+                    "suggested_y": {"type": "integer"},
+                },
+                "required": [
+                    "numeral", "correct", "evidence", "repairable",
+                    "suggested_x", "suggested_y",
+                ],
+            },
+        },
+    },
+    "required": ["matches_spec", "summary", "errors", "labels"],
+}
+
 SECTION_MARK_RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -354,6 +424,12 @@ def vision_model() -> str:
 def cross_provider_model() -> str:
     return os.environ.get(
         "PATENT_FIGURE_CROSSCHECK_MODEL", "claude-opus-5").strip()
+
+
+def cross_provider_fallback_model() -> str:
+    """Return the independent visual-audit model used only when Claude is unavailable."""
+    return os.environ.get(
+        "PATENT_FIGURE_CROSSCHECK_FALLBACK_MODEL", "gemini-2.5-flash").strip()
 
 
 def cross_provider_required() -> bool:
@@ -1284,14 +1360,14 @@ def _marked_progress_put(raw_png: bytes, *, label: str, caption: str, numerals,
 def _audit_log(*, request_id: str, provider: str, model: str, stage: str,
                prompt_version: str, latency_ms: int, cache_hit: bool, success: bool,
                input_tokens: int = 0, output_tokens: int = 0,
-               fallback_reason: str = "") -> None:
+               fallback_from: str = "", fallback_reason: str = "") -> None:
     print(json.dumps({
         "event": "draft_figure_analysis", "timestamp": time.time(),
         "request_id": request_id, "provider": provider, "model": model, "stage": stage,
         "input_tokens": int(input_tokens or 0), "output_tokens": int(output_tokens or 0),
         "cached_tokens": 0, "latency_ms": int(latency_ms), "cost_usd_actual": None,
         "cost_usd_projected": None, "cache_hit": bool(cache_hit), "batch_id": None,
-        "fallback_from": None, "fallback_reason": fallback_reason or None,
+        "fallback_from": fallback_from or None, "fallback_reason": fallback_reason or None,
         "schema_version": "1", "prompt_version": prompt_version,
         "success": bool(success),
     }), flush=True)
@@ -4115,7 +4191,13 @@ def _current_deterministic_semantic_resolution(value) -> bool:
         review_count == SEMANTIC_REVIEW_COUNT and
         resolution.get("semantic_model") == vision_model() and
         resolution.get("semantic_prompt_version") in SEMANTIC_COMPATIBLE_PROMPT_VERSIONS and
-        resolution.get("cross_provider_model") == cross_provider_model() and
+        _current_cross_provider_route({
+            "model_name": resolution.get("cross_provider_model"),
+            "provider": resolution.get("cross_provider_provider"),
+            "configured_model": resolution.get("cross_provider_configured_model"),
+            "fallback_from": resolution.get("cross_provider_fallback_from"),
+            "fallback_reason": resolution.get("cross_provider_fallback_reason"),
+        }) and
         resolution.get("cross_provider_prompt_version") ==
         CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION and
         cross_review_count == CROSS_PROVIDER_GEOMETRY_REVIEW_COUNT and
@@ -4126,6 +4208,25 @@ def _current_deterministic_semantic_resolution(value) -> bool:
         len(anchor_numerals) == len(expected) and set(anchor_numerals) == expected and
         current_cross_provider_geometry_audit(
             cross, specification_hash=str(value.get("specification_hash") or "")))
+
+
+def _current_cross_provider_route(value) -> bool:
+    """Accept the configured Claude route or the explicitly attributed Vertex fallback."""
+    if not isinstance(value, dict):
+        return False
+    configured = cross_provider_model()
+    model = str(value.get("model_name") or "")
+    provider = str(value.get("provider") or "").lower()
+    recorded_configured = str(value.get("configured_model") or "")
+    if model == configured and provider in {"", "anthropic"}:
+        return not recorded_configured or recorded_configured == configured
+    return bool(
+        provider == "vertex" and model == cross_provider_fallback_model() and
+        recorded_configured == configured and
+        value.get("fallback_from") == configured and
+        value.get("fallback_reason") in {
+            "anthropic_not_configured", "anthropic_quota_exhausted",
+        })
 
 
 def _current_cross_provider_geometry_result(value, *, specification_hash: str = "") -> bool:
@@ -4143,7 +4244,7 @@ def _current_cross_provider_geometry_result(value, *, specification_hash: str = 
         return False
     return bool(
         value.get("inspected") and
-        value.get("model_name") == cross_provider_model() and
+        _current_cross_provider_route(value) and
         value.get("prompt_version") == CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION and
         review_count == CROSS_PROVIDER_GEOMETRY_REVIEW_COUNT and
         (not specification_hash or value.get("specification_hash") == specification_hash))
@@ -4468,7 +4569,7 @@ def current_cross_provider_endpoint_audit(value, *, specification_hash: str = ""
     same_spec = not specification_hash or value.get("specification_hash") == specification_hash
     return bool(
         value.get("ok") and value.get("inspected") and same_spec and
-        value.get("model_name") == cross_provider_model() and
+        _current_cross_provider_route(value) and
         value.get("prompt_version") == CROSS_PROVIDER_PROMPT_VERSION and
         review_count == CROSS_PROVIDER_REVIEW_COUNT)
 
@@ -5201,6 +5302,107 @@ def _anthropic_endpoint_message(payload: dict, *, api_key: str) -> dict:
         "Anthropic endpoint audit failed: " + str(last_error or "unknown error")[:500])
 
 
+def _anthropic_quota_exhausted(exc: Exception) -> bool:
+    """Recognize the durable account ceiling that warrants the configured visual fallback."""
+    text = str(exc or "").lower()
+    return bool(
+        re.search(r"\b(?:weekly|monthly|usage) limits?\b", text) or
+        "specified api usage limits" in text or
+        ("reached" in text and "usage" in text and "limit" in text) or
+        ("hit your" in text and "limit" in text and "reset" in text))
+
+
+def _vertex_cross_provider_message(images, *, model: str, system: str, user: str,
+                                   response_schema: dict, max_tokens: int) -> dict:
+    """Run a bounded structured visual audit on Vertex and normalize its response."""
+    from google.genai.types import (
+        GenerateContentConfig,
+        HttpOptions,
+        Part,
+        ThinkingConfig,
+    )
+
+    contents = [Part.from_bytes(data=value, mime_type="image/png") for value in images]
+    contents.append(user)
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            response = llm._client().models.generate_content(
+                model=model,
+                contents=contents,
+                config=GenerateContentConfig(
+                    system_instruction=system,
+                    response_mime_type="application/json",
+                    response_json_schema=response_schema,
+                    temperature=0,
+                    max_output_tokens=max_tokens,
+                    thinking_config=ThinkingConfig(thinking_budget=2048),
+                    http_options=HttpOptions(timeout=120_000),
+                ))
+            parsed = getattr(response, "parsed", None)
+            response_text = (
+                json.dumps(parsed, ensure_ascii=False)
+                if isinstance(parsed, dict)
+                else str(getattr(response, "text", "") or ""))
+            if not response_text.strip():
+                raise ValueError("Vertex cross-provider audit returned no structured output.")
+            usage = getattr(response, "usage_metadata", None)
+            return {
+                "stop_reason": "end_turn",
+                "usage": {
+                    "input_tokens": int(
+                        getattr(usage, "prompt_token_count", 0) or 0) if usage else 0,
+                    "output_tokens": int(
+                        getattr(usage, "candidates_token_count", 0) or 0) if usage else 0,
+                },
+                "content": [{"type": "text", "text": response_text}],
+            }
+        except Exception as exc:                            # noqa: BLE001
+            last_error = exc
+            if attempt < 2:
+                time.sleep((0.5 * (2 ** attempt)) + random.uniform(0, 0.2))
+    raise RuntimeError(
+        "Vertex cross-provider audit failed: " + str(last_error or "unknown error")[:500])
+
+
+def _cross_provider_message(payload: dict, *, api_key: str, images,
+                            response_schema: dict) -> tuple[dict, dict]:
+    """Use Claude when available, falling back only for missing auth or a durable quota ceiling."""
+    configured = str(payload.get("model") or cross_provider_model())
+    if api_key:
+        try:
+            return _anthropic_endpoint_message(payload, api_key=api_key), {
+                "provider": "anthropic", "model": configured,
+                "configured_model": configured, "fallback_from": "",
+                "fallback_reason": "",
+            }
+        except Exception as exc:
+            if not _anthropic_quota_exhausted(exc):
+                raise
+            fallback_reason = "anthropic_quota_exhausted"
+    else:
+        fallback_reason = "anthropic_not_configured"
+    fallback = cross_provider_fallback_model()
+    if not fallback:
+        raise RuntimeError("The required Vertex cross-provider fallback model is not configured.")
+    route = {
+        "provider": "vertex", "model": fallback,
+        "configured_model": configured, "fallback_from": configured,
+        "fallback_reason": fallback_reason,
+    }
+    try:
+        response = _vertex_cross_provider_message(
+            images, model=fallback, system=str(payload.get("system") or ""),
+            user=str(payload["messages"][0]["content"][-1].get("text") or ""),
+            response_schema=response_schema,
+            max_tokens=int(payload.get("max_tokens") or 5000))
+    except Exception as exc:
+        failure = RuntimeError(str(exc))
+        failure.cross_provider_route = route
+        raise failure from exc
+    return response, route
+
+
 def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
                                     numerals) -> dict:
     """Let a separate model family inventory and veto unrequested raw geometry."""
@@ -5228,22 +5430,13 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
     if _current_cross_provider_geometry_result(
             cached, specification_hash=spec_hash):
         _audit_log(
-            request_id=str(uuid.uuid4()), provider="anthropic", model=model,
+            request_id=str(uuid.uuid4()),
+            provider=str(cached.get("provider") or "anthropic"),
+            model=str(cached.get("model_name") or model),
             stage="cross_provider_geometry",
             prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
             latency_ms=0, cache_hit=True, success=bool(cached.get("ok")))
         return cached
-    if not api_key:
-        return {
-            "ok": False, "inspected": False, "skipped": False,
-            "summary": "Cross-provider geometry review is not configured.",
-            "expected": expected, "observed": [], "missing": expected,
-            "unexpected": [], "duplicates": [], "missing_geometry": [],
-            "errors": ["Required cross-provider geometry review is not configured."],
-            "parts": [], "visible_elements": [], "model_name": model,
-            "prompt_version": CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
-            "review_count": 0, "specification_hash": spec_hash,
-        }
 
     system = (
         "You are an adversarial raw-pixel geometry auditor for a utility-patent drawing. "
@@ -5302,6 +5495,13 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
     result = None
     last_error: Exception | None = None
     failure_logged = False
+    route = {
+        "provider": "anthropic" if api_key else "vertex",
+        "model": model if api_key else cross_provider_fallback_model(),
+        "configured_model": model,
+        "fallback_from": model if not api_key else "",
+        "fallback_reason": "anthropic_not_configured" if not api_key else "",
+    }
     for attempt, token_budget in enumerate(CROSS_PROVIDER_GEOMETRY_TOKEN_BUDGETS):
         attempt_payload = dict(payload)
         attempt_payload["max_tokens"] = token_budget
@@ -5321,7 +5521,9 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
         input_tokens = 0
         output_tokens = 0
         try:
-            response = _anthropic_endpoint_message(attempt_payload, api_key=api_key)
+            response, route = _cross_provider_message(
+                attempt_payload, api_key=api_key, images=[png],
+                response_schema=CROSS_PROVIDER_GEOMETRY_SCHEMA)
             usage = response.get("usage") or {}
             input_tokens = int(usage.get("input_tokens") or 0)
             output_tokens = int(usage.get("output_tokens") or 0)
@@ -5339,12 +5541,12 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
                 missing_detail = (
                     ", missing_keys=" + ",".join(missing_keys)) if missing_keys else ""
                 last_error = ValueError(
-                    "Anthropic geometry audit did not return complete JSON "
+                    "Cross-provider geometry audit did not return complete JSON "
                     f"(stop_reason={stop_reason}, text_chars={sum(map(len, text_blocks))}"
                     f"{missing_detail}).")
                 if attempt + 1 < len(CROSS_PROVIDER_GEOMETRY_TOKEN_BUDGETS):
                     _audit_log(
-                        request_id=request_id, provider="anthropic", model=model,
+                        request_id=request_id, provider=route["provider"], model=route["model"],
                         stage="cross_provider_geometry",
                         prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
                         latency_ms=int((time.time() - started) * 1000), cache_hit=False,
@@ -5352,7 +5554,7 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
                         fallback_reason="structured_output_retry")
                     continue
                 _audit_log(
-                    request_id=request_id, provider="anthropic", model=model,
+                    request_id=request_id, provider=route["provider"], model=route["model"],
                     stage="cross_provider_geometry",
                     prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
                     latency_ms=int((time.time() - started) * 1000), cache_hit=False,
@@ -5362,17 +5564,19 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
                 break
             result = cross_provider_geometry_audit(numerals, parsed)
             _audit_log(
-                request_id=request_id, provider="anthropic", model=model,
+                request_id=request_id, provider=route["provider"], model=route["model"],
                 stage="cross_provider_geometry",
                 prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
                 latency_ms=int((time.time() - started) * 1000), cache_hit=False,
                 success=result["inspected"], input_tokens=input_tokens,
-                output_tokens=output_tokens)
+                output_tokens=output_tokens, fallback_from=route["fallback_from"],
+                fallback_reason=route["fallback_reason"])
             break
         except Exception as exc:
             last_error = exc
+            route = getattr(exc, "cross_provider_route", route)
             _audit_log(
-                request_id=request_id, provider="anthropic", model=model,
+                request_id=request_id, provider=route["provider"], model=route["model"],
                 stage="cross_provider_geometry",
                 prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
                 latency_ms=int((time.time() - started) * 1000), cache_hit=False,
@@ -5393,20 +5597,25 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
         }
         if not failure_logged:
             _audit_log(
-                request_id=str(uuid.uuid4()), provider="anthropic", model=model,
+                request_id=str(uuid.uuid4()), provider=route["provider"], model=route["model"],
                 stage="cross_provider_geometry",
                 prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
                 latency_ms=0, cache_hit=False,
                 success=False, fallback_reason="transport_or_parse_error")
     result.update({
-        "model_name": model,
+        "provider": route["provider"],
+        "model_name": route["model"],
+        "configured_model": route["configured_model"],
+        "fallback_from": route["fallback_from"],
+        "fallback_reason": route["fallback_reason"],
         "prompt_version": CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
         "review_count": CROSS_PROVIDER_GEOMETRY_REVIEW_COUNT,
         "specification_hash": spec_hash,
     })
     if result.get("inspected"):
         _analysis_cache_put(
-            key, stage="cross_provider_geometry", provider="anthropic", model=model,
+            key, stage="cross_provider_geometry", provider=route["provider"],
+            model=route["model"],
             prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION, result=result)
     return result
 
@@ -5626,6 +5835,10 @@ def _resolve_deterministic_semantic_dissent(semantic: dict, png: bytes, *, label
         "semantic_model": str(out.get("model_name") or ""),
         "semantic_prompt_version": str(out.get("prompt_version") or ""),
         "cross_provider_model": str(audit.get("model_name") or ""),
+        "cross_provider_provider": str(audit.get("provider") or ""),
+        "cross_provider_configured_model": str(audit.get("configured_model") or ""),
+        "cross_provider_fallback_from": str(audit.get("fallback_from") or ""),
+        "cross_provider_fallback_reason": str(audit.get("fallback_reason") or ""),
         "cross_provider_prompt_version": str(audit.get("prompt_version") or ""),
         "cross_provider_review_count": int(audit.get("review_count") or 0),
         "specification_hash": spec_hash,
@@ -5680,7 +5893,7 @@ def inspect_cross_provider_endpoints(png: bytes, *, label: str, caption: str,
         }
     cached = _analysis_cache_get(key)
     if (isinstance(cached, dict) and cached.get("inspected") and
-            cached.get("model_name") == model and
+            _current_cross_provider_route(cached) and
             cached.get("prompt_version") == CROSS_PROVIDER_PROMPT_VERSION and
             cached.get("specification_hash") == spec_hash and
             cached.get("coordinate_space") == "raw_pixels" and
@@ -5688,25 +5901,12 @@ def inspect_cross_provider_endpoints(png: bytes, *, label: str, caption: str,
             int(cached.get("coordinate_height") or 0) == coordinate_height and
             int(cached.get("review_count") or 0) == CROSS_PROVIDER_REVIEW_COUNT):
         _audit_log(
-            request_id=str(uuid.uuid4()), provider="anthropic", model=model,
+            request_id=str(uuid.uuid4()),
+            provider=str(cached.get("provider") or "anthropic"),
+            model=str(cached.get("model_name") or model),
             stage="cross_provider_endpoints", prompt_version=CROSS_PROVIDER_PROMPT_VERSION,
             latency_ms=0, cache_hit=True, success=bool(cached.get("ok")))
         return cached
-
-    if not api_key:
-        return {
-            "ok": False, "inspected": False, "skipped": False,
-            "summary": "Cross-provider endpoint review is not configured.",
-            "expected": expected, "observed": [],
-            "missing": expected, "unexpected": [], "duplicates": [],
-            "incorrect": [], "labels": [],
-            "errors": ["Required cross-provider endpoint review is not configured."],
-            "model_name": model, "prompt_version": CROSS_PROVIDER_PROMPT_VERSION,
-            "review_count": 0, "specification_hash": spec_hash,
-            "coordinate_space": "raw_pixels",
-            "coordinate_width": coordinate_width,
-            "coordinate_height": coordinate_height,
-        }
 
     coordinate_sheet = _coordinate_grid_overlay(coordinate_png, native_pixels=True)
     montage = _marked_anchor_montage(coordinate_png, anchors, numerals)
@@ -5771,15 +5971,24 @@ def inspect_cross_provider_endpoints(png: bytes, *, label: str, caption: str,
     }
     started = time.time()
     request_id = str(uuid.uuid4())
+    route = {
+        "provider": "anthropic" if api_key else "vertex",
+        "model": model if api_key else cross_provider_fallback_model(),
+        "configured_model": model,
+        "fallback_from": model if not api_key else "",
+        "fallback_reason": "anthropic_not_configured" if not api_key else "",
+    }
     try:
-        response = _anthropic_endpoint_message(payload, api_key=api_key)
+        response, route = _cross_provider_message(
+            payload, api_key=api_key, images=[png, coordinate_sheet, montage],
+            response_schema=CROSS_PROVIDER_ENDPOINT_SCHEMA)
         text_blocks = [
             str(item.get("text") or "") for item in response.get("content") or []
             if isinstance(item, dict) and item.get("type") == "text"
         ]
         parsed = llm._extract_json("\n".join(text_blocks))
         if not isinstance(parsed, dict):
-            raise ValueError("Anthropic endpoint audit did not return complete JSON.")
+            raise ValueError("Cross-provider endpoint audit did not return complete JSON.")
         result = cross_provider_endpoint_audit(
             numerals, parsed, coordinate_width=coordinate_width,
             coordinate_height=coordinate_height)
@@ -5788,12 +5997,14 @@ def inspect_cross_provider_endpoints(png: bytes, *, label: str, caption: str,
         output_tokens = int(usage.get("output_tokens") or 0)
         llm._record_usage(input_tokens, output_tokens)
         _audit_log(
-            request_id=request_id, provider="anthropic", model=model,
+            request_id=request_id, provider=route["provider"], model=route["model"],
             stage="cross_provider_endpoints", prompt_version=CROSS_PROVIDER_PROMPT_VERSION,
             latency_ms=int((time.time() - started) * 1000), cache_hit=False,
             success=result["inspected"], input_tokens=input_tokens,
-            output_tokens=output_tokens)
+            output_tokens=output_tokens, fallback_from=route["fallback_from"],
+            fallback_reason=route["fallback_reason"])
     except Exception as exc:
+        route = getattr(exc, "cross_provider_route", route)
         result = {
             "ok": False, "inspected": False, "summary": "",
             "expected": expected, "observed": [], "missing": expected,
@@ -5801,12 +6012,17 @@ def inspect_cross_provider_endpoints(png: bytes, *, label: str, caption: str,
             "errors": ["Cross-provider endpoint inspection failed: " + str(exc)[:500]],
         }
         _audit_log(
-            request_id=request_id, provider="anthropic", model=model,
+            request_id=request_id, provider=route["provider"], model=route["model"],
             stage="cross_provider_endpoints", prompt_version=CROSS_PROVIDER_PROMPT_VERSION,
             latency_ms=int((time.time() - started) * 1000), cache_hit=False,
             success=False, fallback_reason="transport_or_parse_error")
     result.update({
-        "model_name": model, "prompt_version": CROSS_PROVIDER_PROMPT_VERSION,
+        "provider": route["provider"],
+        "model_name": route["model"],
+        "configured_model": route["configured_model"],
+        "fallback_from": route["fallback_from"],
+        "fallback_reason": route["fallback_reason"],
+        "prompt_version": CROSS_PROVIDER_PROMPT_VERSION,
         "review_count": CROSS_PROVIDER_REVIEW_COUNT,
         "specification_hash": spec_hash,
         "coordinate_space": "raw_pixels",
@@ -5815,7 +6031,8 @@ def inspect_cross_provider_endpoints(png: bytes, *, label: str, caption: str,
     })
     if result.get("inspected"):
         _analysis_cache_put(
-            key, stage="cross_provider_endpoints", provider="anthropic", model=model,
+            key, stage="cross_provider_endpoints", provider=route["provider"],
+            model=route["model"],
             prompt_version=CROSS_PROVIDER_PROMPT_VERSION, result=result)
     return result
 
@@ -7003,7 +7220,7 @@ def _resolve_deterministic_endpoint_veto(certified: dict, audit: dict, raw_png: 
             int(certified.get("review_count") or 0) != 0 or
             audit.get("ok") or not audit.get("inspected") or
             audit.get("reported_matches_spec") is not False or
-            audit.get("model_name") != cross_provider_model() or
+            not _current_cross_provider_route(audit) or
             audit.get("prompt_version") != CROSS_PROVIDER_PROMPT_VERSION or
             int(audit.get("review_count") or 0) != CROSS_PROVIDER_REVIEW_COUNT or
             audit.get("coordinate_space") != "raw_pixels" or
