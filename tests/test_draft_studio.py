@@ -3518,6 +3518,28 @@ def test_antecedent_basis_recognises_method_goods_and_thereafter_step():
     assert check["status"] == "pass", check["items"]
 
 
+def test_antecedent_basis_recognises_bare_mass_nouns_and_action_nouns():
+    broken = dict(GOOD)
+    broken["claims"] = (
+        "1. An equipment assembly comprising a boss; equipment supported on the boss, the "
+        "equipment being a sensor.\n\n"
+        "2. A method comprising observing displacement of an indicator, the displacement "
+        "indicating a compression range."
+    )
+    check = checks_for(broken)["Antecedent basis in the claims"]
+    assert check["status"] == "pass", check["items"]
+
+
+def test_antecedent_basis_does_not_treat_anaphors_or_superlatives_as_components():
+    broken = dict(GOOD)
+    broken["claims"] = (
+        "1. A clamp comprising three jaws, one jaw advancing no farther than the others, and "
+        "three sensor values, a controller selecting the greatest of the sensor values."
+    )
+    check = checks_for(broken)["Antecedent basis in the claims"]
+    assert check["status"] == "pass", check["items"]
+
+
 def test_morphological_variants_are_not_reported_as_unsupported_claim_terms():
     broken = dict(GOOD)
     broken["detailed_description"] += (" A controller energises the pump 14 and connects it to a "
@@ -3532,6 +3554,36 @@ def test_morphological_variants_are_not_reported_as_unsupported_claim_terms():
         assert variant not in reported, f"{variant} is the same word as one in the description"
 
 
+def test_claim_support_recognises_live_derivational_variants():
+    broken = dict(GOOD)
+    broken["detailed_description"] += (
+        " The lid carries the rib. The controller verifies the current and later reclosed the "
+        "contactor. A command is withheld until the delay expires."
+    )
+    broken["claims"] += (
+        "\n\n4. The tool of claim 1, further comprising a lid carrying a rib and a controller "
+        "configured for verifying current before reclosure while withholding a command."
+    )
+    check = checks_for(broken)["Claim terms appear in the description"]
+    reported = " ".join(check.get("items") or [])
+    for variant in ("carrying", "verifying", "reclosure", "withholding"):
+        assert variant not in reported, f"{variant} has a supported derivational form"
+
+
+def test_claim_support_ignores_noncomponent_drafting_vocabulary():
+    broken = dict(GOOD)
+    broken["claims"] += (
+        "\n\n4. A method comprising continuing to move the body, thereby observing a pin "
+        "indicating motion, thereafter placing a wick lying under a frame sized for use, and "
+        "declining another request for a respective device."
+    )
+    check = checks_for(broken)["Claim terms appear in the description"]
+    reported = " ".join(check.get("items") or [])
+    for word in ("continuing", "thereby", "observing", "indicating", "thereafter", "under",
+                 "lying", "sized", "declining", "respective"):
+        assert word not in reported, f"{word} is claim grammar, not a component term"
+
+
 def test_a_genuinely_different_word_is_still_reported():
     broken = dict(GOOD)
     broken["claims"] += "\n\n4. The tool of claim 1, wherein the housing is titanium."
@@ -3542,7 +3594,9 @@ def test_a_genuinely_different_word_is_still_reported():
 
 def test_the_stemmer_is_consistent_across_the_forms_that_bit():
     pairs = [("energising", "energises"), ("driving", "drive"), ("connecting", "connect"),
-             ("fittable", "fitted"), ("receivable", "received"), ("cycles", "cycle")]
+             ("fittable", "fitted"), ("receivable", "received"), ("cycles", "cycle"),
+             ("carrying", "carries"), ("verifying", "verified"),
+             ("reclosure", "reclosed"), ("withholding", "withheld")]
     for left, right in pairs:
         assert draft_qa._stem(left) == draft_qa._stem(right), (left, right)
     assert draft_qa._stem("housing") != draft_qa._stem("body")

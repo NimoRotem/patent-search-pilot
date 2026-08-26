@@ -216,6 +216,7 @@ _NO_BASIS_NEEDED = frozenset({
     "accompanying drawings", "detailed description", "scope", "spirit", "extent", "art of",
     "user", "operator", "environment", "atmosphere", "ambient", "ground", "earth", "air",
     "horizontal", "vertical", "longitudinal", "lateral", "axial", "radial", "art disclosed",
+    "other", "others", "greatest", "smallest", "largest",
 })
 
 _STOPWORDS = frozenset("""
@@ -224,7 +225,8 @@ that this these those it its as such which when where while than then so if not 
 comprising comprises comprise including includes include having has have had wherein whereby
 said one two three first second third plurality least more most other another each any all
 about substantially generally approximately configured adapted arranged thereof therein thereto
-operable further
+operable further continuing thereby indicating observing thereafter under lying sized declining
+respective
 """.split())
 
 
@@ -1062,7 +1064,8 @@ def _antecedent_basis(claims: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
                     re.match(r"^claim\b", phrase):
                 continue
             prior_text = ancestor_text + " " + own[:match.start()]
-            if _plural_noun_appears_before(phrase, prior_text):
+            if _term_appears_before(phrase, prior_text) or \
+                    _plural_noun_appears_before(phrase, prior_text):
                 continue
             problems.append(f"claim {claim['number']}: “the {phrase}”")
     if not problems:
@@ -1087,6 +1090,12 @@ def _plural_noun_appears_before(phrase: str, prior_text: str) -> bool:
         if plural and word in prior_words:
             return True
     return False
+
+
+def _term_appears_before(phrase: str, prior_text: str) -> bool:
+    """Recognize a bare mass noun or action noun introduced before its definite reference."""
+    prior = f" {_normal(prior_text)} "
+    return any(f" {_normal(term)} " in prior for term in _terms(phrase) if len(term) > 2)
 
 
 def _claim_support(claims: Sequence[Mapping[str, Any]], spec_text: str) -> dict[str, Any]:
@@ -1290,6 +1299,14 @@ def _stem(word: str) -> str:
     costs a missed advisory rather than a false one.
     """
     word = word.replace("z", "s")
+    if word == "withheld":
+        return "withhold"
+    if word.endswith(("ies", "ied")) and len(word) > 5:
+        word = word[:-3] + "y"
+    if word.endswith("ification") and len(word) > 10:
+        word = word[:-7] + "y"
+    if word.endswith("closure") and len(word) > 7:
+        return word[:-3]
     for suffix in _SUFFIXES:
         if len(word) > len(suffix) + 2 and word.endswith(suffix):
             word = word[:-len(suffix)]
