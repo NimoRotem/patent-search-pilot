@@ -2176,7 +2176,7 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
             "hinge": (395, 450, "well inside the small hinge circle at the left joint"),
             "latch": (1110, 455, "well inside the latch block bridging the right joint"),
             "jaw carriage": (700, 230, "well inside the topmost jaw carriage"),
-            "jaw pad": (684, 298, "well inside the topmost jaw pad"),
+            "jaw pad": (679, 302, "well inside the topmost jaw pad"),
             "pipe": (700, 450, "well inside the central pipe circle"),
         }
     elif segmented_cam_ring_plan is not None and png == segmented_cam_ring_plan:
@@ -2438,7 +2438,7 @@ def _is_two_boundary_rectangular_plan(text: str) -> bool:
         re.search(r"\bplan view\b", text),
         re.search(r"\brectangular ring\b", text),
         re.search(r"\btwo closed rectangular outlines\b", text),
-        re.search(r"\bone (?:held|lying|sitting) within the other\b", text),
+        re.search(r"\bone (?:(?:held|lying|sitting) )?within the other\b", text),
         re.search(r"\bouter edge of the ring\b", text),
         re.search(r"\binner edge of the ring\b", text),
         re.search(
@@ -2452,7 +2452,23 @@ def _is_two_boundary_rectangular_plan(text: str) -> bool:
         ),
         re.search(r"\bbeyond the outer edge\b[^.]{0,100}\bbackground\b", text),
     ))
-    return boundary_body or outline_ring
+    sectioned_outline_ring = all((
+        re.search(r"\bplan view\b", text),
+        re.search(r"\brectangular ring\b", text),
+        re.search(r"\bexactly two closed rectangular outlines\b", text),
+        re.search(r"\bone within the other\b", text),
+        re.search(r"\bouter edge of the ring and the inner edge\b", text),
+        re.search(r"\bsurface between those two outlines runs unbroken\b", text),
+        re.search(r"\bperimeter member\s+\d+ is the ring surface\b", text),
+        re.search(
+            r"\bsecond side\s+\d+\b[^.]{0,180}\b(?:face|area)\b"
+            r"[^.]{0,180}\bwithin the inner edge\b",
+            text,
+        ),
+        re.search(r"\bbeyond the outer edge lies background\b", text),
+        re.search(r"\bsection lines are drawing conventions\b", text),
+    ))
+    return boundary_body or outline_ring or sectioned_outline_ring
 
 
 def _expected_closed_region_count(caption: str) -> int | None:

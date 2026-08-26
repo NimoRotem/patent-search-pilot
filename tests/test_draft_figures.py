@@ -3398,6 +3398,31 @@ def test_deterministic_nested_plan_accepts_two_outline_ring_wording():
     assert audit["ok"] is True and audit["observed"] == 2
 
 
+def test_deterministic_nested_plan_accepts_current_sectioned_ring_wording():
+    specification = """
+    Plan view looking straight up at the underside of the machine. The sheet shows the
+    underside of the machine as one rectangular ring in the manner of a picture frame.
+    Exactly two closed rectangular outlines appear, one within the other: the outer edge of
+    the ring and the inner edge. The surface between those two outlines runs unbroken from the
+    outer edge straight to the inner edge along every side, so the view reads as a single frame
+    of one width. The perimeter member 24 is the ring surface. The second side 16 is the face at
+    which this view looks straight, appearing as the area held within the inner edge. Beyond the
+    outer edge lies background.
+
+    Two broken section lines cross the view, one horizontal across its lower part and one
+    vertical across its right-hand part. Each begins and ends in the background just beyond
+    the outer edge and crosses the ring surface and the face within it. The section lines are
+    drawing conventions.
+    """
+
+    png = draft_figures._deterministic_nested_plan_png(specification)
+
+    assert draft_figures._expected_closed_region_count(specification) == 2
+    assert png is not None
+    audit = draft_figures.closed_region_audit(png, specification)
+    assert audit["ok"] is True and audit["observed"] == 2
+
+
 def test_deterministic_pulling_scene_accepts_source_clean_single_path_wording():
     specification = """
     The covering element 36 is one large plain tile filling the lower part of the drawing
@@ -3631,8 +3656,8 @@ def test_deterministic_split_clamp_plan_uses_exact_component_anchor_centers():
         draft_figures._pixel_to_normalized(230, 900),
     )
     assert positions["40"] == (
-        draft_figures._pixel_to_normalized(684, 1400),
-        draft_figures._pixel_to_normalized(298, 900),
+        draft_figures._pixel_to_normalized(679, 1400),
+        draft_figures._pixel_to_normalized(302, 900),
     )
     assert positions["90"] == (
         draft_figures._pixel_to_normalized(700, 1400),
