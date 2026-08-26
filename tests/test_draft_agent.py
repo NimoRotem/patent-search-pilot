@@ -364,3 +364,46 @@ def test_vertex_structured_result_validator_rejects_missing_and_extra_fields():
     assert "required" in draft_agent._schema_problem({}, schema)
     assert "unexpected" in draft_agent._schema_problem(
         {"summary": "done", "notes": "no"}, schema)
+
+
+def test_vertex_agent_does_not_replay_an_invalid_or_empty_model_role(monkeypatch, tmp_path):
+    """A blank Vertex candidate once poisoned the next request with an invalid history role."""
+    from google.genai import types
+
+    calls = []
+
+    def generate(_client, *, model, contents, config, deadline, cancel):
+        del model, config, deadline, cancel
+        calls.append(list(contents))
+        if len(calls) == 1:
+            return type("Response", (), {
+                "candidates": [type("Candidate", (), {
+                    "content": types.Content(role="assistant", parts=[]),
+                })()],
+                "usage_metadata": None,
+            })()
+        roles = [str(getattr(item, "role", "") or "") for item in contents]
+        if any(role not in {"user", "model"} for role in roles):
+            raise RuntimeError("Please use a valid role: user, model.")
+        return type("Response", (), {
+            "candidates": [type("Candidate", (), {
+                "content": types.Content(
+                    role="model", parts=[types.Part.from_text(text='{"action":"ready"}')]),
+            })()],
+            "usage_metadata": None,
+        })()
+
+    monkeypatch.setattr(draft_agent, "_vertex_client", lambda: object())
+    monkeypatch.setattr(draft_agent, "_vertex_generate", generate)
+    result = draft_agent._run_vertex_once(
+        workspace=tmp_path, prompt="finish", system_prompt="system",
+        schema={
+            "type": "object",
+            "properties": {"action": {"type": "string"}},
+            "required": ["action"],
+            "additionalProperties": False,
+        }, timeout=30)
+
+    assert result.ok is True and result.result == {"action": "ready"}
+    assert len(calls) == 2
+    assert [item.role for item in calls[1]] == ["user", "user"]
