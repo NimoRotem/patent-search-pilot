@@ -298,7 +298,154 @@
   .rsmeta { grid-column: 1 / -1; }
 }
 
-/* What a turn is costing, while it costs it. */
+/* ── the tab row, folded ─────────────────────────────────────────────────────── */
+/* Draft is the product; Review, Drawings, Sources, History, Filing and Settings are all ABOUT the
+   draft. They fold, so the row above the application can be used for moving around it. */
+.stabmore {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 620;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.stabmore::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(45deg) translate(-1px, -1px);
+  transition: transform .14s ease;
+}
+.stabmore.on::after { transform: rotate(-135deg) translate(-2px, -2px); }
+.stabmore:hover { color: var(--ink); }
+
+.studiomore {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--s3);
+}
+.studiomore .stab { padding: 6px 10px; font-size: 12.5px; }
+
+/* ── jump to a part of the application ───────────────────────────────────────── */
+.secjump {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--s1);
+  scrollbar-width: thin;
+}
+.jumpto {
+  flex: none;
+  border: 1px solid var(--line2);
+  background: var(--s1);
+  color: var(--muted);
+  border-radius: var(--r-pill);
+  padding: 4px 11px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.jumpto:hover { color: var(--ink); border-color: var(--faint); }
+.jumpto.on { color: var(--accent); border-color: rgba(76, 141, 255, .45); background: var(--accent-soft); }
+
+/* ── the message box ─────────────────────────────────────────────────────────── */
+.vh {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.chatrow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  border: 1px solid var(--line2);
+  border-radius: 22px;
+  background: var(--s1);
+  padding: 5px 6px 5px 8px;
+}
+.chatrow:focus-within { border-color: var(--accent); }
+.chatrow #chatInput {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  resize: none;
+  padding: 8px 2px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+  max-height: 220px;
+}
+.chatrow #chatInput:focus { outline: none; box-shadow: none; }
+.chatattach, .chatmic, .chatsend {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px; height: 34px;
+  flex: none;
+  padding: 0;
+  border-radius: 50%;
+  border: 0;
+  cursor: pointer;
+  background: none;
+  color: var(--muted);
+}
+.chatattach svg, .chatmic svg, .chatsend svg { width: 17px; height: 17px; fill: currentColor; }
+.chatattach svg { fill: none; }
+.chatattach:hover, .chatmic:hover { background: var(--s2); color: var(--ink); }
+.chatsend { background: var(--accent); color: var(--accent-fg); }
+.chatsend:hover { background: var(--accent-d); }
+.chatsend:disabled { background: var(--line2); }
+.chatmic.on {
+  background: var(--bad);
+  color: var(--accent-fg);
+  animation: dsecpulse 1.3s ease-in-out infinite;
+}
+.chatbar { display: flex; align-items: center; gap: 8px; margin-top: 7px; flex-wrap: wrap; }
+.chatbar .modelpick select { padding: 4px 24px 4px 8px; font-size: 12px; min-width: 118px; }
+
+/* ── settings ────────────────────────────────────────────────────────────────── */
+.setintro { margin-bottom: 16px; }
+.setintro h3 { font-size: 15px; margin-bottom: 4px; }
+.setgrid { display: grid; gap: 16px; }
+.setfield {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--s1);
+  padding: 12px 14px;
+}
+.setfield label { display: block; margin-bottom: 2px; font-size: 13px; }
+.setfield p { margin: 0 0 9px; line-height: 1.55; }
+.setfield select, .setfield input, .setfield textarea { width: 100%; max-width: 520px; }
+.setfield-int input { max-width: 120px; }
+.setactions { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+#setMsg.good { color: var(--good); }
+#setMsg.bad { color: var(--bad); }
+
+@media (max-width: 760px) {
+  .secjump { padding: 6px 8px; }
+  .setfield select, .setfield input, .setfield textarea { max-width: 100%; }
+}
+
+/* ── what a turn is costing, while it costs it ───────────────────────────────── */
 .chatspend {
   margin-left: auto;
   padding-right: 8px;
