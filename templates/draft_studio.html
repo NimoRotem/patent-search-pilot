@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ project.title }} | Rotem Patents drafting{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='draft_studio.css', v=asset_version) }}">
+{% endblock %}
 {% block body %}
 <div class="studio" data-project="{{ project.id }}">
   <header class="studiohead">
@@ -8,7 +11,9 @@
       <h1 id="stTitle">{{ project.title }}</h1>
       <div class="studiometa">
         <span class="statuspill status-{{ project.status }}" id="stStatus">{{ project.status }}</span>
-        <span id="stVersion">{% if project.latest_version_no %}version {{ project.latest_version_no }}{% else %}no draft yet{% endif %}</span>
+        {#  No version number over the application. Every revision is the one draft that would
+            be filed today; the numbering is bookkeeping and belongs in History. #}
+        <span id="stVersion">{% if not project.latest_version_no %}no draft yet{% endif %}</span>
         <span id="stVerdict"></span>
         {% if project.search_slug %}
         <a href="{{ request.script_root }}/report/{{ project.search_slug }}">prior-art search ↗</a>
@@ -16,6 +21,18 @@
       </div>
     </div>
     <div class="studioactions">
+      {# The tier the drafting agent runs on, per project. A wording change to one section does not
+         need the model a first draft needs, and this is where that is chosen. #}
+      <label class="modelpick" for="stModel">
+        <span class="modelpicklabel">Model</span>
+        <select id="stModel" aria-label="Model the drafting agent runs on">
+          <option value="">Server default</option>
+          {% for model in state.agent.models or [] %}
+          <option value="{{ model.id }}" title="{{ model.detail }}"
+            {% if project.draft_model == model.id %}selected{% endif %}>{{ model.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
       <a class="btn ghost sm" id="stDownloadMd"
          href="{{ request.script_root }}/drafts/{{ project.id }}/download/md">Markdown</a>
       <a class="btn ghost sm" id="stDownloadDocx"

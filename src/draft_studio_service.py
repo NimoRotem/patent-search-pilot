@@ -35,6 +35,18 @@ POLL_SECONDS = max(2.0, float(os.environ.get("DRAFT_TURN_POLL_SECONDS", "5")))
 MAX_UPLOAD_BYTES = 24 * 1024 * 1024
 MAX_DOCUMENTS = 40
 MAX_MANUAL_REFERENCES = 60
+
+#  HOW MANY TURNS RUN AT ONCE, AND WHY IT IS NOT ONE.
+#  It was one, and one worker draining a queue shared by every project on the host is a queue where
+#  a single turn can hold everybody. That is not hypothetical: a drawing repair on one application
+#  sat in "drawing and inspecting figures" for three and a half hours while a one-sentence change
+#  to another application waited behind it, showing its owner "queued - the drafting agent will
+#  pick this up in a moment" the whole time. Postgres remains the authority: claiming is
+#  FOR UPDATE SKIP LOCKED and a partial unique index still allows one active turn PER PROJECT, so
+#  widening this runs different applications side by side and can never run one of them twice.
+DRAFT_TURN_WORKERS = max(1, min(int(os.environ.get("DRAFT_TURN_WORKERS", "3")), 8))
+#  A section of an application is long-form prose; this is a ceiling on storage, not on style.
+MAX_SECTION_CHARS = 200_000
 MAX_AUTOMATIC_FILING_REPAIR_TURNS = max(
     1, min(int(os.environ.get("DRAFT_AUTOMATIC_REPAIR_TURNS", "3")), 6))
 _AUTOMATIC_FILING_REPAIR_KEY = re.compile(r"^auto-filing-repair-(\d+)-(\d+)$")
@@ -43,6 +55,7 @@ _FILING_GATE_EXHAUSTED = "The automatic filing gate could not clear:"
 _STOP = threading.Event()
 _WAKE = threading.Event()
 _THREAD: threading.Thread | None = None
+_THREADS: list[threading.Thread] = []
 _START_LOCK = threading.Lock()
 _RUNNER_FACTORY: Callable[[], draft_studio.TurnRunner] | None = None
 _STATE: dict[str, Any] = {"running": False, "last_turn_id": None, "last_result": None,
@@ -50,6 +63,9 @@ _STATE: dict[str, Any] = {"running": False, "last_turn_id": None, "last_result":
 #  Projects with a review running outside the turn queue. One per project: a second concurrent
 #  review would spend twice and produce two reports of the same version that disagree.
 _REVIEWING: set[int] = set()
+#  Projects whose sheets are being reconciled outside the turn queue. One per project: two image
+#  passes on the same figures would race each other's active version.
+_DRAWING: set[int] = set()
 
 
 # =============================================================================================
@@ -260,26 +276,116 @@ class StudioService:
 
     # -- conversation --------------------------------------------------------------------------
     def start_turn(self, principal: drafting.Principal, project_id: int, *, message: str,
-                   kind: str = "revise", idempotency_key: str | None = None) -> dict[str, Any]:
+                   kind: str = "revise", idempotency_key: str | None = None,
+                   section_key: str = "") -> dict[str, Any]:
         project = self._project(principal, project_id)
         if project.get("status") == "archived":
             raise drafting.DraftingConflict("Restore this project before drafting on it.")
         message = str(message or "").replace("\x00", "").strip()
         if not message:
             raise drafting.DraftingValidationError("Say what you would like changed.")
-        if kind not in ("initial", "revise", "question", "qa_fix"):
+        if kind not in ("initial", "revise", "question", "qa_fix", "section_edit"):
             kind = "revise"
+        section_key = str(section_key or "").strip()
+        if kind == "section_edit":
+            if section_key not in draft_workspace.SECTION_BY_KEY:
+                raise drafting.DraftingValidationError(
+                    "That is not a section of this application.")
+            if not int(project.get("latest_version_no") or 0):
+                raise drafting.DraftingValidationError(
+                    "There is no draft yet. Ask for the first draft in the conversation.")
+        else:
+            section_key = ""
         availability = draft_agent.availability()
         if not availability.get("ok"):
             raise drafting.DraftingConflict(
                 f"The drafting agent is not available on this server: {availability['reason']}")
         turn = self.repository.enqueue_turn_safely(
             project_id, principal.user_id, kind=kind, user_message=message,
-            project_revision=int(project["revision"]), idempotency_key=idempotency_key)
+            project_revision=int(project["revision"]), idempotency_key=idempotency_key,
+            section_key=section_key)
         if kind != "initial":
-            self.repository.add_message(project_id, "user", message)
+            heading = (draft_workspace.SECTION_BY_KEY[section_key][1]
+                       if section_key in draft_workspace.SECTION_BY_KEY else "")
+            self.repository.add_message(
+                project_id, "user", message,
+                payload={"section_key": section_key, "section_heading": heading}
+                if heading else None)
         kick()
         return turn
+
+    def set_model(self, principal: drafting.Principal, project_id: int, model: str
+                  ) -> dict[str, Any]:
+        """Choose which model tier drafts this project, from the next turn onward."""
+        self._project(principal, project_id)
+        chosen = self.repository.set_draft_model(project_id, model)
+        return {"draft_model": chosen,
+                "label": draft_agent.model_label(chosen) or "the server default"}
+
+    # -- hand editing ----------------------------------------------------------------------------
+    def save_section(self, principal: drafting.Principal, project_id: int, *,
+                     section_key: str, text: str) -> dict[str, Any]:
+        """Store one section exactly as the user typed it.
+
+        The application belongs to the person filing it. The gates that refuse an AGENT's output
+        guard against a model inventing something nobody disclosed; they are not a reason to refuse
+        a sentence the applicant wrote about their own invention. So this validates only what would
+        make the version unfilable whoever wrote it: a citation to a document that is not one of
+        this project's sources, and a legal conclusion about patentability. Everything else,
+        including a note the user has deliberately left themselves, is saved, and the Review tab is
+        what tells them it is still there.
+        """
+        project = self._project(principal, project_id)
+        if project.get("status") == "archived":
+            raise drafting.DraftingConflict("Restore this project before editing it.")
+        if section_key not in draft_workspace.SECTION_BY_KEY:
+            raise drafting.DraftingValidationError("That is not a section of this application.")
+        version_no = int(project.get("latest_version_no") or 0)
+        if not version_no:
+            raise drafting.DraftingValidationError(
+                "There is no draft yet. Ask for the first draft in the conversation.")
+        active = self.repository.latest_turn(project_id)
+        if active and active.get("status") in ("queued", "running"):
+            raise drafting.DraftingConflict(
+                "The drafting agent is working on this application, and the version it publishes "
+                "would overwrite this. Nothing was saved; your text is still in the box.")
+        text = str(text or "").replace("\x00", "").strip()
+        if len(text) > MAX_SECTION_CHARS:
+            raise drafting.DraftingValidationError("That section is too large to store.")
+        version = self.drafting_service.repository.get_version(principal, project_id, version_no)
+        sections = dict(version.get("sections") or {})
+        if str(sections.get(section_key) or "").strip() == text:
+            return {"saved": False, "version_no": version_no,
+                    "change_note": version.get("change_note") or ""}
+        sections[section_key] = str(draft_studio.human_text(text))
+
+        heading = draft_workspace.SECTION_BY_KEY[section_key][1]
+        documents = self.repository.documents(project_id)
+        allowed = {draft_cite.normalize(key) for key in draft_studio.allowed_reference_keys(
+            project.get("references", []), documents)}
+        for raw in draft_cite.malformed_citations_in(sections[section_key]):
+            raise drafting.DraftingValidationError(
+                f"{heading} contains a malformed citation [REF:{raw[:40]}].")
+        for citation in draft_cite.citations_in(sections[section_key]):
+            canonical = draft_cite.normalize(citation)
+            if not canonical or canonical not in allowed:
+                raise drafting.DraftingValidationError(
+                    f"{heading} cites {canonical or citation}, which is not one of this project's "
+                    "sources. Add it under Sources first.")
+        for pattern in drafting._LEGAL_CONCLUSION_PATTERNS:
+            found = pattern.search(sections[section_key])
+            if found:
+                raise drafting.DraftingValidationError(
+                    f"{heading} states a legal conclusion ({found.group(0)!r}). An application "
+                    "describes the invention; it does not conclude on patentability.")
+
+        saved = self.repository.save_manual_version(
+            project_id, principal.user_id, sections=sections,
+            citations=draft_studio.citations_of(sections), edited_sections=[section_key],
+            numerals=version.get("numerals") or [], figures=version.get("figure_specs") or [])
+        return {"saved": True, "version_no": int(saved["version_no"]),
+                "continued": bool(saved.get("continued")),
+                "change_note": saved.get("change_note") or ""}
 
     def cancel(self, principal: drafting.Principal, project_id: int, turn_id: int) -> None:
         self._project(principal, project_id)
@@ -369,12 +475,15 @@ class StudioService:
         for report in qa_reports:
             if report.get("version_no") and report["version_no"] not in qa_by_version:
                 qa_by_version[report["version_no"]] = report
+        active = next((t for t in turns if t["status"] in ("queued", "running")), None)
+        if active and active["status"] == "queued":
+            active = dict(active, queue_ahead=self._queue_ahead(active["id"]))
         return {
             "figures": self.figures(project, latest_version),
             "project": project,
             "messages": self.repository.messages(project_id),
             "turns": turns,
-            "active_turn": next((t for t in turns if t["status"] in ("queued", "running")), None),
+            "active_turn": active,
             "qa": qa_reports[0] if qa_reports else None,
             "qa_reports": qa_reports,
             "qa_by_version": qa_by_version,
@@ -612,12 +721,74 @@ class StudioService:
             "last_message_id": cursor["last_id"],
             "turn": ({"id": turn["id"], "turn_no": turn["turn_no"], "status": turn["status"],
                       "stage": turn["stage"], "last_error": turn.get("last_error"),
+                      "kind": turn.get("kind"), "section_key": turn.get("section_key") or "",
+                      "queue_ahead": (self._queue_ahead(turn["id"])
+                                      if turn["status"] == "queued" else 0),
                       "version_no": turn.get("version_no")} if turn else None),
             "qa": ({"id": qa["id"], "verdict": qa["verdict"], "counts": qa["counts"],
                     "version_no": qa.get("version_no")} if qa else None),
             "busy": bool(turn and turn["status"] in ("queued", "running")),
             "reviewing": int(project_id) in _REVIEWING,
+            "drawing": int(project_id) in _DRAWING,
         }
+
+    def _queue_ahead(self, turn_id: int) -> int:
+        """Never let a counter break the page: an unreadable queue reports as no queue."""
+        try:
+            return int(self.repository.queue_ahead(turn_id))
+        except Exception:                                      # noqa: BLE001
+            return 0
+
+    # -- drawings on demand -----------------------------------------------------------------------
+    def reconcile_drawings(self, principal: drafting.Principal, project_id: int) -> dict[str, Any]:
+        """Recheck a published version's sheets on request, without changing its filing text."""
+        project = self._project(principal, project_id)
+        version_no = int(project.get("latest_version_no") or 0)
+        if not version_no:
+            raise drafting.DraftingValidationError("There is no draft to draw from yet.")
+        active = self.repository.latest_turn(project_id)
+        if active and active.get("status") in ("queued", "running"):
+            raise drafting.DraftingConflict(
+                "The drafting agent is working on this application. Its own drawing pass runs "
+                "with it.")
+        if int(project_id) in _DRAWING:
+            raise drafting.DraftingConflict("The drawings are already being reconciled.")
+        version = self.drafting_service.repository.get_version(principal, project_id, version_no)
+        _DRAWING.add(int(project_id))
+        threading.Thread(target=self._reconcile_now,
+                         args=(int(project_id), int(project["user_id"]), version),
+                         name=f"draft-drawings-{project_id}", daemon=True).start()
+        return {"queued": True, "version_no": version_no}
+
+    def _reconcile_now(self, project_id: int, user_id: int, version: Mapping[str, Any]) -> None:
+        try:
+            import draft_figures
+            runner = _runner()
+            sections = version.get("sections") or {}
+            numerals = version.get("numerals") or []
+            figures = version.get("figure_specs") or []
+            disclosure = str((runner._load(project_id)["project"] or {}).get(
+                "disclosure_text") or "")
+            generated = draft_figures.ensure_project_figures(
+                project_id, user_id, sections=sections, disclosure=disclosure,
+                numeral_table=numerals, figure_specs=figures)
+            faults = [] if generated.get("ok") else [
+                str(item) for item in generated.get("errors") or ()]
+            report = runner.mechanical_report(
+                project_id, sections=sections, numerals=numerals, figures=figures,
+                allowed=[], scope="", carried=faults)
+            self.repository.save_qa(
+                project_id, turn_id=None, version_no=int(version["version_no"]), report=report)
+            self.repository.add_message(
+                project_id, "system",
+                ("Every drawing sheet now matches the published text."
+                 if not faults else
+                 f"The drawing pass finished with {len(faults)} sheet(s) still failing checks. "
+                 "The current version remains not filing-ready; Filing lists every defect."))
+        except Exception:                                      # noqa: BLE001 - never kill the thread
+            traceback.print_exc()
+        finally:
+            _DRAWING.discard(int(project_id))
 
     # -- review on demand -------------------------------------------------------------------------
     def rerun_review(self, principal: drafting.Principal, project_id: int) -> dict[str, Any]:
@@ -783,8 +954,12 @@ def _continue_terminal_filing_repair(repository: Any, claimed: Mapping[str, Any]
     # return a usable verdict. It is not a visual rejection, and repeating the exact saved
     # candidate is the repair regardless of the provider's particular error wording.
     figure_transient = str(error).startswith("FigureTransientError:")
+    # A bounded maintenance caller may stop between sheets. Its exact checkpoint is durable, so
+    # continue that candidate without spending a drafting-agent repair on unchanged filing text.
+    drawing_budget_spent = str(error).startswith("DrawingBudgetSpent:")
     if not filing_gate_stopped and (
-            interrupted_run or source_review_unavailable or figure_transient):
+            interrupted_run or source_review_unavailable or figure_transient or
+            drawing_budget_spent):
         try:
             candidate = repository.retry_candidate(int(result.get("id") or claimed["id"]))
             interrupted_candidate = bool(
@@ -841,13 +1016,19 @@ def _loop() -> None:
 
 
 def start_worker() -> threading.Thread:
+    """Start the pool, and return its first thread, which is what callers have always waited on."""
     global _THREAD
     with _START_LOCK:
-        if _THREAD and _THREAD.is_alive():
+        _THREADS[:] = [thread for thread in _THREADS if thread.is_alive()]
+        if _THREAD and _THREAD.is_alive() and len(_THREADS) >= DRAFT_TURN_WORKERS:
             return _THREAD
         _STOP.clear()
-        _THREAD = threading.Thread(target=_loop, name="draft-turn-worker", daemon=True)
-        _THREAD.start()
+        while len(_THREADS) < DRAFT_TURN_WORKERS:
+            thread = threading.Thread(
+                target=_loop, name=f"draft-turn-worker-{len(_THREADS) + 1}", daemon=True)
+            thread.start()
+            _THREADS.append(thread)
+        _THREAD = _THREADS[0]
         return _THREAD
 
 
@@ -861,7 +1042,9 @@ def kick() -> None:
 
 
 def status() -> dict[str, Any]:
-    return {**_STATE, "thread_alive": bool(_THREAD and _THREAD.is_alive()),
+    alive = [thread for thread in _THREADS if thread.is_alive()]
+    return {**_STATE, "thread_alive": bool(alive),
+            "workers": DRAFT_TURN_WORKERS, "threads_alive": len(alive),
             "configured": _RUNNER_FACTORY is not None, "agent": draft_agent.availability()}
 
 

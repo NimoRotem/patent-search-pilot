@@ -41,6 +41,7 @@ import run_queue                                   # gate-full searches wait in 
 import drafting, draft_export, draft_worker
 #  Phase two: the drafting CONVERSATION. A Claude Code agent edits a workspace of files, a second
 #  agent reviews every iteration, and draft_uspto answers "can this be filed".
+import draft_novelty, draft_research                # re-search rounds and their reading
 import draft_studio, draft_studio_service, draft_uspto, draft_workspace
 import figure_compiler, figure_compiler_service       # deterministic filing-drawing compiler
 import claim_chart, translate, drawings          # ported per-card enrichment
@@ -76,7 +77,7 @@ def _asset_version():
     if override:
         return override
     digest = hashlib.sha256()
-    for name in ("style.css", "app.js", "draft_studio.js"):
+    for name in ("style.css", "app.js", "draft_studio.js", "draft_studio.css"):
         path = Path(app.static_folder) / name
         try:
             digest.update(path.read_bytes())
@@ -5872,7 +5873,7 @@ def _studio_payload(state):
         #  re-fetched on every change during a turn.
         "project": dict({key: project.get(key) for key in
                          ("id", "title", "status", "revision", "latest_version_no", "search_slug",
-                          "input_kind", "applicant", "inventors")},
+                          "input_kind", "applicant", "inventors", "draft_model")},
                         disclosure_excerpt=str(project.get("disclosure_text") or "")[:4000],
                         disclosure_chars=len(str(project.get("disclosure_text") or ""))),
         "messages": [{"id": m["id"], "role": m["role"], "body": m["body"],
@@ -5880,7 +5881,7 @@ def _studio_payload(state):
                      for m in state["messages"]],
         "turns": [{key: t.get(key) for key in
                    ("id", "turn_no", "kind", "status", "stage", "summary", "version_no",
-                    "cost_usd", "duration_ms", "model_name", "last_error")}
+                    "cost_usd", "duration_ms", "model_name", "last_error", "section_key")}
                   for t in state["turns"][:40]],
         "active_turn": state.get("active_turn"),
         "version": {"version_no": version.get("version_no"), "sections": version.get("sections"),
@@ -5890,6 +5891,7 @@ def _studio_payload(state):
         "versions": [{"version_no": v["version_no"], "status": v.get("status"),
                       "created_at": str(v.get("created_at") or ""),
                       "change_note": v.get("change_note") or "",
+                      "origin": v.get("origin") or "agent",
                       "verdict": (state["qa_by_version"].get(v["version_no"]) or {}).get("verdict")}
                      for v in project.get("versions", [])],
         "qa": qa,
@@ -6042,9 +6044,149 @@ def draft_studio_message(project_id):
         turn = _studio().start_turn(
             principal, project_id, message=str(body.get("message") or ""),
             kind=str(body.get("kind") or "revise"),
+            section_key=str(body.get("section_key") or ""),
             idempotency_key=str(body.get("idempotency_key") or "") or None)
         return jsonify({"ok": True, "turn": {"id": turn["id"], "turn_no": turn["turn_no"],
                                              "status": turn["status"]}})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/section", methods=["POST"])
+def draft_studio_section(project_id):
+    """Save one section of the application exactly as the user typed it."""
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        body = request.get_json(silent=True) or request.form
+        saved = _studio().save_section(
+            principal, project_id, section_key=str(body.get("section_key") or ""),
+            text=str(body.get("text") or ""))
+        return jsonify({"ok": True, **saved})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/research", methods=["POST"])
+def draft_studio_research(project_id):
+    """Re-search: search from the draft as it stands, measure the art, then draft away from it.
+
+    The search launch has to happen here because the pipeline, the report store and the account
+    ledger are this module's wiring. Everything after it is `draft_research`, which is handed the
+    four things it needs as callables so it can be exercised without any of that.
+    """
+    auth.require_csrf()
+    try:
+        user, principal = _draft_identity()
+        studio = _studio()
+        if draft_research.is_running(project_id):
+            return jsonify({"ok": False,
+                            "error": "A re-search round is already running on this draft."}), 409
+        state_now = studio.state(principal, project_id)
+        active = state_now.get("active_turn")
+        if active:
+            return jsonify({"ok": False, "error": "The drafting agent is still working. A round "
+                                                  "must search a draft that is standing still."}), 409
+        version_no = int((state_now.get("project") or {}).get("latest_version_no") or 0)
+        material = studio.search_material(principal, project_id)
+        query = material["query"]
+        mode, focus, wide = "novelty", "all_text", True
+        slug = search_slug(query, mode, wide=wide, search_focus=focus)
+        state, detail = ensure_report(
+            slug, query=query, mode=mode, wide=wide, search_focus=focus,
+            owner_user_id=(user or {}).get("id"))
+        if state == "busy":
+            return jsonify({"ok": False, "error": f"The search server is busy: {detail}"}), 429
+        (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
+            {"query": query, "mode": mode, "subject": None, "wide": wide,
+             "ood": None, "doc_token": None, "search_focus": focus,
+             "draft_project_id": int(project_id)}))
+        accounts.record_search(
+            user["id"], slug, query, mode, focus, None, notify_email=False,
+            status="complete" if state == "ready" else "running", saved=False)
+        studio.record_search(principal, project_id, slug=slug, query=query,
+                             status="complete" if state == "ready" else "running")
+        opened = draft_research.open_round(project_id, version_no=version_no, slug=slug)
+        history = [item for item in draft_research.rounds(project_id)
+                   if item["round_no"] < opened["round_no"]
+                   and item.get("closest_coverage") is not None]
+
+        def is_ready(item_slug):
+            with _JOB_LOCK:
+                job = dict(_JOBS.get(item_slug, {}))
+            event = _job_event(item_slug, job)
+            return bool(event.get("done") and event.get("ready"))
+
+        def load_view(item_slug):
+            return _draft_report_loader(principal, item_slug, principal.user_id)
+
+        def attach(item_slug, pubs):
+            return studio.import_search(principal, project_id, item_slug, list(pubs))
+
+        def enqueue(message):
+            turn = studio.repository.enqueue_turn_safely(
+                project_id, principal.user_id, kind="revise", user_message=message,
+                project_revision=int(state_now["project"]["revision"]),
+                idempotency_key=f"research-round-{opened['id']}")
+            draft_studio_service.kick()
+            return int(turn["id"])
+
+        draft_research.run_round_in_background(
+            project_id=int(project_id), user_id=int(principal.user_id),
+            round_id=int(opened["id"]), slug=slug, load_view=load_view, is_ready=is_ready,
+            attach=attach, enqueue=enqueue,
+            previous=(history[0] if history else None))
+        return jsonify({"ok": True, "round": _research_payload(opened), "slug": slug,
+                        "status": state})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    except Exception as exc:                                  # search launch boundary
+        traceback.print_exc()
+        return jsonify({"ok": False,
+                        "error": f"Could not start the round: {str(exc)[:200]}"}), 502
+
+
+def _research_payload(row):
+    return {key: row.get(key) for key in
+            ("id", "round_no", "version_no", "slug", "status", "imported_count",
+             "closest_coverage", "mean_top3", "combination", "n_elements", "n_charted",
+             "closest_pub", "closest_title", "turn_id", "note")}
+
+
+@app.route("/api/drafts/<int:project_id>/research")
+def api_draft_research(project_id):
+    try:
+        _user, principal = _draft_identity()
+        _studio()._project(principal, project_id)
+        data = draft_research.series(project_id)
+        return jsonify({"ok": True, "running": draft_research.is_running(project_id),
+                        "measured": data.get("measured", 0),
+                        "delta": data.get("delta"),
+                        "improvement": data.get("improvement"),
+                        "rounds": [_research_payload(item) for item in data["rounds"]]})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/drawings", methods=["POST"])
+def draft_studio_drawings(project_id):
+    """Reconcile the sheets with the published text, without running a drafting agent."""
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        return jsonify({"ok": True, **_studio().reconcile_drawings(principal, project_id)})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/model", methods=["POST"])
+def draft_studio_model(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        body = request.get_json(silent=True) or request.form
+        return jsonify({"ok": True, **_studio().set_model(
+            principal, project_id, str(body.get("model") or ""))})
     except drafting.DraftingError as exc:
         return _studio_error(exc)
 

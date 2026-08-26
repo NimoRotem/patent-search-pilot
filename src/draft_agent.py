@@ -57,6 +57,34 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 DRAFT_MODEL = os.environ.get("DRAFT_AGENT_MODEL", "opus")
 QA_MODEL = os.environ.get("DRAFT_QA_MODEL", "opus")
 
+#  The tiers a project may be drafted on, for the same reason the constants above are aliases: the
+#  CLI resolves an alias to the current model of that tier, so a project drafted last month and
+#  revised today does not silently change generation because a dated identifier was retired.
+#  An id that is not on this list never reaches the command line.
+MODEL_CHOICES = (
+    {"id": "opus", "label": "Opus 5",
+     "detail": "The most capable. Slowest and dearest; the default for a first draft."},
+    {"id": "fable", "label": "Fable 5",
+     "detail": "Strong at long prose. A good choice for description and background work."},
+    {"id": "sonnet", "label": "Sonnet 5",
+     "detail": "Noticeably faster and cheaper. Fine for wording changes to one section."},
+    {"id": "haiku", "label": "Haiku 4.5",
+     "detail": "Fastest and cheapest. Small, well-specified edits only."},
+)
+MODEL_IDS = frozenset(item["id"] for item in MODEL_CHOICES)
+
+
+def normalize_model(value: Any) -> str:
+    """A model id this host will run, or '' meaning the server default for this kind of work."""
+    name = str(value or "").strip().lower()
+    return name if name in MODEL_IDS else ""
+
+
+def model_label(value: Any) -> str:
+    name = normalize_model(value)
+    return next((item["label"] for item in MODEL_CHOICES if item["id"] == name), "")
+
+
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "")
 DRAFT_TIMEOUT = max(120, int(os.environ.get("DRAFT_AGENT_TIMEOUT", "1500")))
 QA_TIMEOUT = max(120, int(os.environ.get("DRAFT_QA_TIMEOUT", "900")))
@@ -189,7 +217,8 @@ def availability() -> dict[str, Any]:
                 "binary": path, "auth": False, "auth_mode": selected}
     return {"ok": True, "reason": "", "binary": path, "auth": True,
             "auth_mode": selected, "version": version(path),
-            "draft_model": DRAFT_MODEL, "qa_model": QA_MODEL}
+            "draft_model": DRAFT_MODEL, "qa_model": QA_MODEL,
+            "models": [dict(item) for item in MODEL_CHOICES]}
 
 
 def config_dir(root: Path) -> Path:

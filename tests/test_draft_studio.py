@@ -2568,6 +2568,21 @@ def test_transient_drawing_capacity_retries_saved_candidate_without_agent_repair
     assert checkpoint["report"]["_gate_resume"]["session_id"] == "draft-session"
 
 
+def test_drawing_budget_exhaustion_never_becomes_a_publishable_fault_list(
+        monkeypatch, tmp_path):
+    runner = draft_studio.TurnRunner(Mock(), object(), qa=Mock(), workspace=Mock())
+    monkeypatch.setattr(
+        runner, "_ensure_figures",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            draft_studio.DrawingBudgetSpent("drawing work is incomplete")))
+
+    with pytest.raises(draft_studio.DrawingBudgetSpent, match="incomplete"):
+        runner._reconcile_drawings(
+            turn_id=3, lease="lease", project_id=7, user_id=91,
+            sections=GOOD, numerals=NUMERALS, figures=FIGURES,
+            disclosure="disclosure", workspace=tmp_path)
+
+
 def test_restart_resumes_a_checkpointed_candidate_without_rerunning_the_agent(
         monkeypatch, tmp_path):
     monkeypatch.setattr(draft_figures, "discard_project_figure_checkpoint",
@@ -3736,6 +3751,7 @@ def test_terminal_filing_gate_failure_continues_from_saved_candidate_without_use
      "audit did not return complete JSON."),
     ("FigureTransientError: the image model could not draw this figure: the image model "
      "returned no response parts (IMAGE_RECITATION)"),
+    "DrawingBudgetSpent: the bounded drawing caller stopped before every sheet passed",
 ])
 def test_terminal_provider_disconnect_continues_a_saved_candidate_without_user_input(error):
     import draft_studio_service as service

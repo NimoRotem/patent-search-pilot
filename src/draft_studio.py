@@ -55,7 +55,14 @@ _GATE_RESUME_KEY = "_gate_resume"
 _AUTOMATIC_GATE_RESUME_TURN_KEY = re.compile(r"^auto-filing-repair-\d+-\d+$")
 _SCHEMA_LOCK = threading.Lock()
 _SCHEMA_READY = False
-_MIGRATION = Path(__file__).resolve().parents[1] / "sql" / "006_draft_agent.sql"
+_SQL_DIR = Path(__file__).resolve().parents[1] / "sql"
+_MIGRATION = _SQL_DIR / "006_draft_agent.sql"
+#  018 adds the chosen model, the turn's section scope, and where a version came from. It is
+#  applied here as well as through migrate.py because every statement in it is replayable and the
+#  worker must never start against a database that is missing a column it writes on its first turn.
+_MIGRATIONS = (_MIGRATION, _SQL_DIR / "018_draft_studio_editing.sql",
+               _SQL_DIR / "019_draft_turn_kinds.sql",
+               _SQL_DIR / "020_draft_research_rounds.sql")
 
 
 class StudioError(drafting.DraftingError):
@@ -76,6 +83,12 @@ class SourceFidelityInspectionError(StudioError):
 
 class SourceReviewUnavailable(StudioError):
     """The independent reviewer failed, so retry the saved candidate unchanged."""
+
+    retry_without_repair = True
+
+
+class DrawingBudgetSpent(StudioError):
+    """A bounded caller stopped drawing work, so retry the same saved candidate unchanged."""
 
     retry_without_repair = True
 
@@ -217,6 +230,16 @@ figures/. Resolve each issue conservatively from the disclosure or omit the unsu
 detail. Return `questions` as an empty array. The automatic review will reject the entire turn if
 one unfinished marker remains. Use commas, colons, full stops, or ordinary hyphens; never use an
 em dash.
+
+THE DRAFT IS THE ONLY DRAFT
+Every file in draft/ reads as the single, finished application that is about to be filed. It is
+never a revision OF something. Never write a version or draft number, a date of revision, a change
+log, a note about what you altered or why, a comparison with an earlier wording, an editorial
+aside, a reviewer's initials, or any sentence addressed to the reader of this conversation rather
+than to the examiner. No "version 2", "revised", "as amended", "previously", "now corrected",
+"see note", no bracketed commentary and no trailing summary paragraph. What you changed and why is
+reported in `summary`, `changes` and `reasoning`, which are read in the studio and never filed.
+The application text itself carries only the invention.
 
 DRAWINGS FOLLOW THE INVENTION
 Generated drawing pixels are evidence to inspect, never authority for the invention. The inventor
@@ -425,6 +448,170 @@ If answering honestly requires a change to the draft, say so in your answer and 
 confirm; do not make the change unasked."""
 
 
+# =============================================================================================
+# The section edit: full context in, a patch out
+# =============================================================================================
+#  A REVISION TURN SENDS EVERYTHING AND GETS EVERYTHING BACK, AND THAT IS THE COST.
+#  Asking for one sentence in the Field of the Disclosure used to run the whole machine: the agent
+#  rewrote files, every drawing was re-inspected, an independent reviewer read the application, and
+#  the repair loop stood ready to do it six more times. Hours, and dollars, for a clause.
+#
+#  This lane keeps the input and throws away the output. The agent still reads the entire
+#  application, the disclosure, the prior art and the conversation, because a clause that
+#  contradicts claim 1 is worse than no clause. It is given NO write tools, so the only thing it
+#  can return is a list of exact find/replace pairs inside one named section, which this process
+#  applies itself. The output is a few hundred tokens instead of twenty thousand, the numeral table
+#  and every drawing are carried forward untouched because nothing could have changed them, and the
+#  version is published after the deterministic checks rather than after a second model reads it.
+SECTION_EDIT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "action": {"type": "string", "enum": ["revised", "answered"]},
+        "summary": {"type": "string"},
+        "edits": {
+            "type": "array",
+            "maxItems": 24,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "find": {"type": "string"},
+                    "replace": {"type": "string"},
+                    "why": {"type": "string"},
+                },
+                "required": ["find", "replace", "why"],
+                "additionalProperties": False,
+            },
+        },
+        "replacement": {"type": "string"},
+        "consequences": {"type": "array", "items": {"type": "string"}},
+        "answer": {"type": "string"},
+    },
+    "required": ["action", "summary", "edits", "replacement", "consequences", "answer"],
+    "additionalProperties": False,
+}
+
+SECTION_EDIT_SYSTEM = """You are editing one section of a US utility patent application that is
+already drafted. You have read access to the whole workspace and no write access at all: your
+answer IS the edit, and the application applies it.
+
+THE SCOPE IS ABSOLUTE
+You may change the text of exactly one section, named in the request. Do not propose a change to
+any other section, to draft/numerals.md, or to any file in figures/. If the requested change would
+make another section wrong, make the change anyway and say precisely what is now inconsistent in
+`consequences`; the user decides whether to ask for that follow-up. Never widen the request.
+
+HOW TO ANSWER
+Prefer `edits`: a list of find/replace pairs. `find` must be text that appears in the target
+section VERBATIM, copied character for character including its punctuation and spacing, and must
+appear exactly once in that section. Keep each `find` as short as it can be while still being
+unique. `replace` is what it becomes, and may be empty to delete. Return `replacement` as an empty
+string when you use `edits`.
+Use `replacement` instead, carrying the complete new text of the section, only when the change is
+so extensive that find/replace pairs would cover most of the section. Return `edits` as an empty
+array when you use `replacement`. Never return both.
+If the user asked a question rather than for a change, set `action` to "answered", answer in
+`answer`, and return no edits.
+
+THE AUTHORITY ORDER IS UNCHANGED
+The inventor's disclosure and what the user has said are the only authority for what the invention
+is. Prior art is context to write around, never a source to borrow from. Never invent a structure,
+relationship, measurement, or result. Keep the terminology, the reference numerals and the
+antecedent basis exactly as the rest of the application uses them: a numeral or a part name that
+appears in your replacement text must already be defined in draft/numerals.md with that same name.
+
+FILING-CLEAN OUTPUT IS ABSOLUTE
+The replaced text is filing text. No placeholder, note, question, TODO, instruction to a person, or
+legal conclusion about patentability, novelty, validity or infringement. No version or draft
+number, no change log, no editorial aside, no sentence addressed to anyone but the examiner. Use
+commas, colons, full stops, or ordinary hyphens; never use an em dash."""
+
+SECTION_EDIT_PROMPT = """Edit ONE section of this application: %(heading)s (the file
+draft/%(filename)s).
+
+What the user asked for is in input/request.md.
+
+Read before you write anything: input/request.md, draft/%(filename)s, draft/numerals.md, the rest
+of draft/, input/disclosure.md, input/conversation.md, and prior_art/INDEX.md with any reference
+that bears on the request. Use tools/patent_lookup.py if you need what a reference actually says.
+
+Then return the smallest set of find/replace pairs inside draft/%(filename)s that does what was
+asked. Change nothing else, and touch no file: your structured answer is the only output.
+
+The current text of that section is between the markers below, and a `find` value must be copied
+from it verbatim.
+--- BEGIN %(heading)s ---
+%(current)s
+--- END %(heading)s ---"""
+
+
+class SectionEditError(StudioError):
+    """A returned patch could not be applied to the section it names."""
+
+
+def apply_section_edits(current: str, result: Mapping[str, Any]) -> str:
+    """Apply an agent's patch to one section's text, or say exactly why it does not fit.
+
+    An edit that does not apply is a hard failure rather than a partial one. Applying three of four
+    pairs would publish a section the agent never wrote and never read back, which is a worse
+    outcome than telling the user the attempt missed and letting it run again.
+    """
+    replacement = str(result.get("replacement") or "")
+    edits = [dict(item) for item in (result.get("edits") or ())
+             if isinstance(item, Mapping)]
+    if replacement.strip() and edits:
+        raise SectionEditError(
+            "The edit returned both a whole-section replacement and a list of changes. "
+            "Only one of them can be the intended edit.")
+    if replacement.strip():
+        return str(human_text(replacement)).replace("\x00", "").strip()
+    if not edits:
+        raise SectionEditError("The edit returned no change to apply.")
+    text = str(current or "")
+    for index, item in enumerate(edits, 1):
+        find = str(human_text(item.get("find") or ""))
+        if not find.strip():
+            raise SectionEditError(f"Change {index} has nothing to find.")
+        replace = str(human_text(item.get("replace") or ""))
+        occurrences = text.count(find)
+        if occurrences == 0:
+            #  Whitespace is the usual near miss: the agent quotes a wrapped paragraph back with
+            #  its line breaks collapsed. Try that reading once, and only when it is unambiguous.
+            loose = _loose_find(text, find)
+            if loose is None:
+                raise SectionEditError(
+                    f"Change {index} looks for text that is not in this section: {find[:160]!r}.")
+            start, end = loose
+            text = text[:start] + replace + text[end:]
+            continue
+        if occurrences > 1:
+            raise SectionEditError(
+                f"Change {index} looks for text that appears {occurrences} times in this section, "
+                f"so where it belongs is ambiguous: {find[:160]!r}.")
+        text = text.replace(find, replace, 1)
+    return str(human_text(text)).replace("\x00", "").strip()
+
+
+def _loose_find(text: str, find: str) -> tuple[int, int] | None:
+    """Locate ``find`` in ``text`` ignoring how whitespace is broken up, if that is unambiguous."""
+    pattern = re.compile(r"\s+".join(re.escape(part) for part in find.split()))
+    if not pattern.pattern:
+        return None
+    matches = list(pattern.finditer(text))
+    if len(matches) != 1:
+        return None
+    return matches[0].start(), matches[0].end()
+
+
+def build_section_edit_prompt(section_key: str, sections: Mapping[str, str]) -> str:
+    entry = draft_workspace.SECTION_BY_KEY.get(section_key)
+    if not entry:
+        raise SectionEditError(f"{section_key!r} is not a section of this application.")
+    filename, heading = entry
+    return SECTION_EDIT_PROMPT % {
+        "heading": heading, "filename": filename,
+        "current": str(sections.get(section_key) or "").strip() or "(this section is empty)"}
+
+
 def build_prompt(kind: str, *, seeded: bool = False) -> str:
     if kind == "initial":
         return FIRST_TURN_PROMPT % {"seeded": (
@@ -441,14 +628,33 @@ def build_prompt(kind: str, *, seeded: bool = False) -> str:
 
 def filing_blockers(report: Mapping[str, Any]) -> list[str]:
     """Reasons a workspace cannot be published as a filing-ready version."""
+    return _blockers(report, drawings=True, text=True)
+
+
+def text_blockers(report: Mapping[str, Any]) -> list[str]:
+    """Classify text findings for the studio without weakening the publication gate."""
+    return _blockers(report, drawings=False, text=True)
+
+
+def drawing_blockers(report: Mapping[str, Any]) -> list[str]:
+    """Classify drawing findings for display and targeted automatic repair."""
+    return _blockers(report, drawings=True, text=False)
+
+
+def _blockers(report: Mapping[str, Any], *, drawings: bool, text: bool) -> list[str]:
     blockers: list[str] = []
-    if str(report.get("status") or "") != "complete":
+    if text and str(report.get("status") or "") != "complete":
         blockers.append("The independent review did not complete.")
     for check in report.get("checks") or ():
-        if str(check.get("status") or "") != "pass":
+        if str(check.get("status") or "") == "pass":
+            continue
+        is_drawing = _report_item_category(check) == "figures_and_numerals"
+        if (is_drawing and drawings) or (not is_drawing and text):
             blockers.append(f"Mechanical check did not pass: {check.get('name') or 'unnamed'}")
     for finding in report.get("findings") or ():
-        blockers.append(f"Independent review finding: {finding.get('title') or 'unnamed'}")
+        is_drawing = _report_item_category(finding) == "figures_and_numerals"
+        if (is_drawing and drawings) or (not is_drawing and text):
+            blockers.append(f"Independent review finding: {finding.get('title') or 'unnamed'}")
     return list(dict.fromkeys(blockers))
 
 
@@ -703,9 +909,74 @@ def validate_sections(sections: Mapping[str, str],
     return out
 
 
+def normalize_sections(sections: Mapping[str, str]) -> dict[str, str]:
+    """Every section, trimmed and with the disallowed punctuation removed. No judgement."""
+    return {key: str(human_text(sections.get(key) or "")).replace("\x00", "").strip()
+            for key, _name, _heading in draft_workspace.SECTION_FILES}
+
+
+def section_problems(sections: Mapping[str, str],
+                     allowed_references: Sequence[str] = ()) -> list[str]:
+    """EVERY reason this text could not be filed, one line each, rather than the first one.
+
+    ``validate_sections`` raises on the first thing it finds, which is right when it is judging a
+    draft the agent has just written: the whole turn is rejected either way. It is wrong for an
+    edit scoped to one section, because it cannot tell "you broke this" from "this was already
+    broken". A scoped edit has to be allowed to leave the rest of the application exactly as bad as
+    it found it, or a placeholder somebody left in the Cross-Reference two months ago makes every
+    other section uneditable for ever. That happened, on a real project, to a request that only
+    wanted a phrase removed from the Field of the Disclosure.
+    """
+    out: list[str] = []
+    normalised = normalize_sections(sections)
+    allowed = {draft_cite.normalize(item) for item in allowed_references
+               if draft_cite.normalize(item)}
+    total = 0
+    for key, _name, heading in draft_workspace.SECTION_FILES:
+        value = normalised[key]
+        total += len(value)
+        if not value:
+            out.append(f"{heading} is empty.")
+        for raw in draft_cite.malformed_citations_in(value):
+            out.append(f"{heading} contains a malformed citation [REF:{raw[:40]}].")
+        for citation in draft_cite.citations_in(value):
+            canonical = draft_cite.normalize(citation)
+            if not canonical:
+                out.append(
+                    f"{heading} cites an unusable publication number [REF:{citation[:40]}].")
+            elif canonical not in allowed:
+                out.append(
+                    f"{heading} cites {canonical}, which is not among this project's sources.")
+        for pattern in drafting._LEGAL_CONCLUSION_PATTERNS:
+            found = pattern.search(value)
+            if found:
+                out.append(f"{heading} states a legal conclusion ({found.group(0)!r}).")
+    if total > drafting.MAX_GENERATED_CHARS:
+        out.append("The draft is too large to store safely.")
+    for marker in draft_qa.find_placeholders(normalised):
+        out.append(f"The draft contains an unresolved placeholder: {marker}.")
+    return list(dict.fromkeys(out))
+
+
 def validate_snapshot(snapshot: Mapping[str, Any],
-                      allowed_references: Sequence[str] = ()) -> dict[str, Any]:
-    """Validate every agent-owned filing artifact before any image call or version save."""
+                      allowed_references: Sequence[str] = (),
+                      drawing_problems: list[str] | None = None) -> dict[str, Any]:
+    """Validate every agent-owned filing artifact before any image call or version save.
+
+    Pass ``drawing_problems`` and everything about the SHEETS, the numeral table and the figure
+    plan is appended to it instead of raised. That is what lets a wording change publish while a
+    drawing is still wrong: the text is judged on the text's own merits and the drawing state is
+    carried forward as a reported defect. Leave it out and the old all-or-nothing gate applies,
+    which is what the retry-candidate path still wants.
+    """
+    collect = drawing_problems is not None
+
+    def refuse(message: str, category: str) -> None:
+        if collect and category == "figures_and_numerals":
+            drawing_problems.append(message)
+            return
+        raise FilingPreflightError(message, category=category)
+
     sections = validate_sections(snapshot.get("sections") or {}, allowed_references)
     numerals = [human_text(dict(item)) for item in (snapshot.get("numerals") or ())]
     figures = [human_text(dict(item)) for item in (snapshot.get("figures") or ())]
@@ -715,39 +986,40 @@ def validate_snapshot(snapshot: Mapping[str, Any],
     markers.extend(draft_qa.placeholders_in_text(
         "Drawing specifications", json.dumps(figures, ensure_ascii=False)))
     if markers:
-        raise FilingPreflightError(
-            "The filing artifacts contain an unresolved placeholder: " + markers[0] + ".",
-            category="figures_and_numerals")
+        refuse("The filing artifacts contain an unresolved placeholder: " + markers[0] + ".",
+               "figures_and_numerals")
     for figure in figures:
         values = {draft_qa._drawing_numeral(value)
                   for value in (figure.get("numerals") or [])}
         values.discard("")
         if len(values) > draft_qa.MAX_NUMERALS_PER_SHEET:
             label = str(figure.get("label") or "Drawing")[:80]
-            raise FilingPreflightError(
-                f"{label} lists {len(values)} numerals, which is more than "
-                f"{draft_qa.MAX_NUMERALS_PER_SHEET} numerals on one sheet. Split it into focused "
-                "views and synchronize the drawing descriptions before generating images.",
-                category="figures_and_numerals")
+            refuse(f"{label} lists {len(values)} numerals, which is more than "
+                   f"{draft_qa.MAX_NUMERALS_PER_SHEET} numerals on one sheet. Split it into "
+                   "focused views and synchronize the drawing descriptions.",
+                   "figures_and_numerals")
     mechanical = draft_qa.run_checks(
         sections=sections, numerals=numerals, figures=figures,
         allowed_references=allowed_references, allow_remote=False)
     failures = [item for item in mechanical if str(item.get("status") or "") == "fail"]
-    if failures:
+    #  Classified ONE BY ONE. The old rule labelled a mixed set "internal_logic" and refused the
+    #  lot, so a single drawing-plan failure alongside a text one hid both behind a text error.
+    drawing_side = [item for item in failures
+                    if str(item.get("name") or "") in _FIGURE_PLAN_CHECKS]
+    text_side = [item for item in failures if item not in drawing_side]
+    for group, category in ((text_side, "internal_logic"),
+                            (drawing_side, "figures_and_numerals")):
+        if not group:
+            continue
         details = []
-        for item in failures[:8]:
+        for item in group[:8]:
             evidence = list(item.get("items") or [])
             evidence_text = " | ".join(str(value)[:180] for value in evidence[:6])
             details.append(
                 f"{item.get('name') or 'Unnamed check'}: " +
                 (evidence_text or str(item.get("detail") or "failed")[:300]))
-        category = ("figures_and_numerals"
-                    if all(str(item.get("name") or "") in _FIGURE_PLAN_CHECKS
-                           for item in failures)
-                    else "internal_logic")
-        raise FilingPreflightError(
-            "The candidate failed the mechanical filing preflight. " + "; ".join(details),
-            category=category)
+        refuse("The candidate failed the mechanical filing preflight. " + "; ".join(details),
+               category)
     return {"sections": sections, "numerals": numerals, "figures": figures}
 
 
@@ -833,6 +1105,17 @@ def project_title_from(version_no: int, sections: Mapping[str, str]) -> str:
     return title.splitlines()[0].strip()[:240] if title else ""
 
 
+def _manual_change_note(keys: Sequence[str]) -> str:
+    """What History shows for a version the user typed."""
+    headings = [draft_workspace.SECTION_BY_KEY[key][1]
+                for key in keys if key in draft_workspace.SECTION_BY_KEY]
+    if not headings:
+        return "Edited by hand."
+    if len(headings) == 1:
+        return f"Edited by hand: {headings[0]}."
+    return f"Edited by hand: {', '.join(headings[:-1])} and {headings[-1]}."
+
+
 def render_markdown(sections: Mapping[str, str]) -> str:
     blocks = []
     for index, (key, _name, heading) in enumerate(draft_workspace.SECTION_FILES):
@@ -864,12 +1147,15 @@ def ensure_schema(force: bool = False) -> None:
         if _SCHEMA_READY and not force:
             return
         drafting.ensure_schema()
-        sql = _MIGRATION.read_text(encoding="utf-8")
-        with db.cursor(autocommit=True) as cur:
-            try:
-                cur.execute(sql, prepare=False)
-            except TypeError:
-                cur.execute(sql)
+        for path in _MIGRATIONS:
+            if not path.exists():
+                continue
+            sql = path.read_text(encoding="utf-8")
+            with db.cursor(autocommit=True) as cur:
+                try:
+                    cur.execute(sql, prepare=False)
+                except TypeError:
+                    cur.execute(sql)
         _SCHEMA_READY = True
 
 
@@ -1051,7 +1337,8 @@ class StudioRepository:
 
     # -- turns --------------------------------------------------------------------------------
     def enqueue_turn(self, project_id: int, user_id: int, *, kind: str, user_message: str,
-                     project_revision: int, idempotency_key: str | None = None) -> dict[str, Any]:
+                     project_revision: int, idempotency_key: str | None = None,
+                     section_key: str = "") -> dict[str, Any]:
         self._ready()
         with self._cursor() as cur:
             cur.execute("SELECT id,status FROM app_draft_turns WHERE project_id=%s "
@@ -1070,10 +1357,11 @@ class StudioRepository:
             turn_no = int(cur.fetchone()["n"])
             cur.execute(
                 "INSERT INTO app_draft_turns (project_id,turn_no,requested_by_user_id,"
-                "project_revision,kind,user_message,idempotency_key,stage) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,'queued') RETURNING *",
+                "project_revision,kind,user_message,idempotency_key,stage,section_key) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,'queued',%s) RETURNING *",
                 (int(project_id), turn_no, int(user_id), int(project_revision), kind,
-                 str(user_message or "")[:MAX_MESSAGE_CHARS], idempotency_key))
+                 str(user_message or "")[:MAX_MESSAGE_CHARS], idempotency_key,
+                 str(section_key or "")[:40]))
             turn = self._turn(dict(cur.fetchone()))
             cur.execute("UPDATE app_drafting_projects SET status='queued',updated_at=now() "
                         "WHERE id=%s", (int(project_id),))
@@ -1149,6 +1437,37 @@ class StudioRepository:
     def latest_turn(self, project_id: int) -> dict[str, Any] | None:
         rows = self.turns(project_id, limit=1)
         return rows[0] if rows else None
+
+    def queue_ahead(self, turn_id: int) -> int:
+        """How many other applications' turns this one is behind.
+
+        The worker pool is shared by every project on the host, so a queued turn is not always
+        "about to start": it can be behind a drawing repair on somebody else's application that has
+        been running for hours. Saying so is the difference between a page that looks broken and a
+        page that is telling the truth.
+        """
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT count(*)::int AS n FROM app_draft_turns ahead "
+                "JOIN app_draft_turns self_ ON self_.id=%s "
+                "JOIN app_drafting_projects p ON p.id=ahead.project_id "
+                "WHERE ahead.id<>self_.id AND p.status<>'archived' "
+                "AND ahead.status IN ('queued','running') "
+                "AND (ahead.status='running' "
+                "     OR (ahead.next_attempt_at,ahead.id)<(self_.next_attempt_at,self_.id))",
+                (int(turn_id),))
+            row = cur.fetchone()
+        return int((row or {}).get("n") or 0)
+
+    def set_draft_model(self, project_id: int, model: str) -> str:
+        """Choose the model tier this project drafts on. '' means the host default."""
+        self._ready()
+        chosen = draft_agent.normalize_model(model)
+        with self._cursor() as cur:
+            cur.execute("UPDATE app_drafting_projects SET draft_model=%s,updated_at=now() "
+                        "WHERE id=%s", (chosen, int(project_id)))
+        return chosen
 
     def cancel_turn(self, project_id: int, turn_id: int) -> None:
         self._ready()
@@ -1289,6 +1608,95 @@ class StudioRepository:
             # A worker crash can therefore never publish one while rolling the other back.
             cur.execute("UPDATE app_draft_figure_turn_checkpoints SET accepted_at=now() "
                         "WHERE turn_id=%s", (turn["id"],))
+            return version
+
+    def save_manual_version(self, project_id: int, user_id: int, *,
+                            sections: Mapping[str, str], citations: Sequence[str],
+                            edited_sections: Sequence[str],
+                            numerals: Sequence[Mapping[str, Any]] = (),
+                            figures: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
+        """Publish a version the USER typed, continuing their editing session where there is one.
+
+        Autosave and a version are at odds: a version per debounced keystroke turns History into
+        noise, and one version an hour loses the intermediate states that make an undo possible.
+        The compromise is a session. While the newest version is one this same person typed within
+        the last quarter of an hour, and no agent turn and no review has read it since, their next
+        save rewrites it in place and adds the newly touched section to its list. Anything else,
+        including the first hand edit after the agent has published, opens a new version.
+
+        A manual version is marked ``origin='manual'`` and is deliberately NOT put through the
+        filing gates here. The user is allowed to write what they mean and see it saved; the Review
+        tab is what tells them whether it still passes, and it can be re-run on demand.
+        """
+        self._ready()
+        touched = [str(key) for key in edited_sections if key]
+        with self._cursor() as cur:
+            cur.execute("SELECT * FROM app_drafting_projects WHERE id=%s FOR UPDATE",
+                        (int(project_id),))
+            project = cur.fetchone()
+            if not project:
+                raise drafting.DraftingNotFound("Draft project was not found.")
+            project = dict(project)
+            head_no = int(project.get("latest_version_no") or 0)
+            head = None
+            if head_no:
+                cur.execute(
+                    "SELECT id,version_no,origin,created_by_user_id,edited_sections,turn_id,"
+                    "created_at>now()-interval '15 minutes' AS fresh "
+                    "FROM app_draft_versions WHERE project_id=%s AND version_no=%s FOR UPDATE",
+                    (int(project_id), head_no))
+                head = cur.fetchone()
+            continuing = bool(
+                head and str(head.get("origin") or "") == "manual" and
+                int(head.get("created_by_user_id") or 0) == int(user_id) and
+                head.get("fresh") and not head.get("turn_id"))
+            if continuing:
+                cur.execute("SELECT count(*)::int AS n FROM app_draft_qa_reports "
+                            "WHERE project_id=%s AND version_no=%s",
+                            (int(project_id), head_no))
+                if int(cur.fetchone()["n"]):
+                    continuing = False
+            already = set(_json(head.get("edited_sections"), []) if continuing else [])
+            markdown = render_markdown(sections)
+            note = _manual_change_note(sorted(already | set(touched)))
+            if continuing:
+                cur.execute(
+                    "UPDATE app_draft_versions SET sections=%s::jsonb,markdown=%s,"
+                    "citations=%s::jsonb,numerals=%s::jsonb,figure_specs=%s::jsonb,"
+                    "change_note=%s,edited_sections=%s::jsonb,created_at=now() "
+                    "WHERE project_id=%s AND version_no=%s RETURNING *",
+                    (_dumps(dict(sections)), markdown, _dumps(list(citations)),
+                     _dumps([dict(item) for item in numerals]),
+                     _dumps([dict(item) for item in figures]), note,
+                     _dumps(sorted(already | set(touched))), int(project_id), head_no))
+                version_no = head_no
+            else:
+                version_no = head_no + 1
+                cur.execute(
+                    "INSERT INTO app_draft_versions (project_id,version_no,base_version_no,"
+                    "project_revision,sections,markdown,citations,model_name,created_by_user_id,"
+                    "change_note,numerals,figure_specs,origin,edited_sections) "
+                    "VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s::jsonb,'',%s,%s,%s::jsonb,%s::jsonb,"
+                    "'manual',%s::jsonb) RETURNING *",
+                    (int(project_id), version_no, head_no or None, project["revision"],
+                     _dumps(dict(sections)), markdown, _dumps(list(citations)), int(user_id),
+                     note, _dumps([dict(item) for item in numerals]),
+                     _dumps([dict(item) for item in figures]), _dumps(sorted(set(touched)))))
+            version = dict(cur.fetchone())
+            version["sections"] = _json(version.get("sections"), {})
+            for key in ("citations", "numerals", "figure_specs", "edited_sections"):
+                version[key] = _json(version.get(key), [])
+            adopted = project_title_from(version_no, sections)
+            if adopted:
+                cur.execute("UPDATE app_drafting_projects SET latest_version_no=%s,title=%s,"
+                            "status=CASE WHEN status='archived' THEN status ELSE 'ready' END,"
+                            "updated_at=now() WHERE id=%s",
+                            (version_no, adopted, int(project_id)))
+            else:
+                cur.execute("UPDATE app_drafting_projects SET latest_version_no=%s,"
+                            "status=CASE WHEN status='archived' THEN status ELSE 'ready' END,"
+                            "updated_at=now() WHERE id=%s", (version_no, int(project_id)))
+            version["continued"] = continuing
             return version
 
     def complete_turn(self, turn_id: int, lease_token: str, *, result: Mapping[str, Any],
@@ -1496,16 +1904,19 @@ class TurnRunner:
     # -- the turn --------------------------------------------------------------------------------
     def _run_agent(self, *, turn_id: int, lease: str, workspace: Path, prompt: str,
                    session_id: str, resume: bool, transcript: Path,
-                   stage: str) -> draft_agent.AgentRun:
+                   stage: str, model: str = "", system_prompt: str = DRAFT_SYSTEM,
+                   schema: Mapping[str, Any] = TURN_SCHEMA,
+                   tools: str = "") -> draft_agent.AgentRun:
         self.repository.heartbeat(turn_id, lease, stage=stage)
         beat = _Heartbeat(self.repository, turn_id, lease, stage)
         beat.start()
         try:
+            extra = {"tools": tools} if tools else {}
             run = self.agent.run(
-                workspace=workspace, prompt=prompt, system_prompt=DRAFT_SYSTEM,
-                schema=TURN_SCHEMA, session_id=session_id, resume=resume,
-                model=self.agent.DRAFT_MODEL, timeout=self.agent.DRAFT_TIMEOUT,
-                transcript=transcript, cancel=beat.cancelled)
+                workspace=workspace, prompt=prompt, system_prompt=system_prompt,
+                schema=schema, session_id=session_id, resume=resume,
+                model=model or self.agent.DRAFT_MODEL, timeout=self.agent.DRAFT_TIMEOUT,
+                transcript=transcript, cancel=beat.cancelled, **extra)
         finally:
             beat.stop()
         if not run.ok:
@@ -1574,6 +1985,22 @@ class TurnRunner:
             self.workspace._write_review(workspace, report)
         except Exception:
             pass
+
+    def _reconcile_drawings(self, *, turn_id: int, lease: str, project_id: int, user_id: int,
+                            sections: Mapping[str, str],
+                            numerals: Sequence[Mapping[str, str]],
+                            figures: Sequence[Mapping[str, Any]], disclosure: str,
+                            workspace: Path) -> list[str]:
+        """Bring every sheet into line with the text or stop publication with exact defects."""
+        generated = self._ensure_figures(
+            turn_id=turn_id, lease=lease, project_id=project_id, user_id=user_id,
+            sections=sections, numerals=numerals, figures=figures,
+            disclosure=disclosure, workspace=workspace)
+        if not generated.get("ok"):
+            errors = [str(item) for item in generated.get("errors") or ()]
+            raise DrawingInspectionError(errors or [
+                "One or more sheets did not pass geometry, leader, and OCR inspection."])
+        return []
 
     def _ensure_figures(self, *, turn_id: int, lease: str, project_id: int, user_id: int,
                         sections: Mapping[str, str], numerals: Sequence[Mapping[str, str]],
@@ -1663,6 +2090,187 @@ class TurnRunner:
         import draft_figures
         return draft_figures.restore_project_figure_checkpoint(turn_id)
 
+    def _run_section_edit(self, turn: Mapping[str, Any], context: Mapping[str, Any]
+                          ) -> dict[str, Any]:
+        """One section, changed by a patch this process applies, published in a single model call.
+
+        Nothing else in the application moves. The numeral table and every figure specification are
+        carried forward from the version that was already checked, so no drawing is redrawn and no
+        drawing can go stale: a specification that did not change cannot disagree with a sheet that
+        did not change. The independent reviewer is not run either; the deterministic checks are,
+        and their report is published so the studio still says whether the application is
+        consistent.
+        """
+        turn_id, lease = int(turn["id"]), turn["lease_token"]
+        project_id = int(turn["project_id"])
+        project = context["project"]
+        workspace: Path = context["workspace"]
+        allowed = allowed_reference_keys(context["references"], context["documents"])
+        section_key = str(turn.get("section_key") or "")
+        if section_key not in draft_workspace.SECTION_BY_KEY:
+            raise drafting.DraftingValidationError(
+                "This edit did not name a section of the application.")
+
+        #  The PUBLISHED version, never a leftover repair candidate. `prepare` prefers a saved
+        #  candidate so a blocked full revision can resume, which is right for that lane and wrong
+        #  here: the user is looking at the published text, their `find` values come from it, and a
+        #  scoped edit must not quietly adopt unpublished work. The workspace is rewritten to the
+        #  same state so what the agent reads is exactly what this process will patch.
+        loaded = self._load(project_id)
+        sections = dict(loaded["sections"] or {})
+        if not sections:
+            raise drafting.DraftingValidationError(
+                "There is no draft to edit yet. Ask for a full draft first.")
+        base_numerals = [dict(item) for item in (loaded["numerals"] or ())]
+        base_figures = [dict(item) for item in (loaded["figures"] or ())]
+        self.workspace.write_sections(workspace, sections)
+        self.workspace.write_numerals(workspace, base_numerals)
+        self.workspace.write_figures(workspace, base_figures)
+        heading = draft_workspace.SECTION_BY_KEY[section_key][1]
+
+        transcript = workspace / ".agent" / f"turn-{turn['turn_no']:04d}.jsonl"
+        run = self._run_agent(
+            turn_id=turn_id, lease=lease, workspace=workspace,
+            prompt=build_section_edit_prompt(section_key, sections),
+            session_id=self.agent.new_session_id(), resume=False, transcript=transcript,
+            stage=f"editing {heading}"[:60], model=self._model_for(project),
+            system_prompt=SECTION_EDIT_SYSTEM, schema=SECTION_EDIT_SCHEMA,
+            #  No Write and no Edit. The tool set is what makes this a patch rather than a rewrite:
+            #  the agent cannot change the workspace, so its structured answer is the only output
+            #  there is, and it is small.
+            tools="Read,Glob,Grep,Bash")
+        result = human_text(dict(run.result))
+        action = str(result.get("action") or "revised")
+
+        if action == "answered":
+            self.repository.add_message(
+                project_id, "agent",
+                str(result.get("answer") or result.get("summary") or "")[:MAX_MESSAGE_CHARS],
+                turn_id=turn_id,
+                payload={"action": action, "summary": result.get("summary"),
+                         "section_key": section_key, "section_heading": heading,
+                         "version_no": None, "cost_usd": run.cost_usd,
+                         "steps": run.steps[-40:]})
+            completed = self.repository.complete_turn(
+                turn_id, lease, result=result,
+                session_id=str(project.get("agent_session_id") or ""),
+                cost_usd=run.cost_usd, duration_ms=run.duration_ms, model_name=run.model,
+                transcript_path=str(transcript), discard_candidates=False)
+            return {"turn": completed, "version": None}
+
+        self.repository.heartbeat(turn_id, lease, stage="applying the change")
+        edited = apply_section_edits(sections.get(section_key) or "", result)
+        if edited == str(sections.get(section_key) or "").strip():
+            raise SectionEditError(f"The edit to {heading} would not have changed anything.")
+        sections[section_key] = edited
+        #  Validate the WHOLE application, not only the edited section: a citation key or a legal
+        #  conclusion introduced here is exactly as unfilable as one written by a full revision.
+        #  Refuse what this edit BROKE, carry what it merely inherited. Anything already wrong
+        #  with the published application is reported to the user rather than used to refuse a
+        #  change to a different section.
+        inherited = set(section_problems(loaded["sections"] or {}, allowed))
+        #  Every other section is carried through BYTE FOR BYTE. Normalising the whole application
+        #  here would silently rewrite text nobody asked about: the first live run of this lane
+        #  turned an em dash into a hyphen in the Background and the Detailed Description, which is
+        #  a house rule doing the right thing in the wrong place. Tidying the rest of the draft is
+        #  the drafting path's job, not a side effect of changing one clause.
+        checked = dict(loaded["sections"] or {})
+        checked[section_key] = normalize_sections(sections)[section_key]
+        introduced = [item for item in section_problems(checked, allowed)
+                      if item not in inherited]
+        if introduced:
+            raise drafting.DraftingValidationError(
+                f"That change to {heading} would leave the application unfilable: "
+                + introduced[0])
+        carried = [item for item in section_problems(checked, allowed) if item in inherited]
+        numerals, figures = base_numerals, base_figures
+
+        version = self.repository.save_version(
+            turn_id, lease, sections=checked, citations=citations_of(checked),
+            change_note=str(result.get("summary") or f"Edited {heading}.")[:4000],
+            model_name=run.model, numerals=numerals, figures=figures)
+        version_no = int(version["version_no"])
+
+        self.repository.add_message(
+            project_id, "agent", str(result.get("summary") or "")[:MAX_MESSAGE_CHARS],
+            turn_id=turn_id,
+            payload={"action": "revised", "summary": result.get("summary"),
+                     "section_key": section_key, "section_heading": heading,
+                     "changes": self.agent.strings(
+                         [str(item.get("why") or "") for item in (result.get("edits") or ())
+                          if isinstance(item, Mapping)]),
+                     "consequences": self.agent.strings(
+                         list(result.get("consequences") or []) +
+                         [f"Already in the draft before this change: {item}"
+                          for item in carried]),
+                     "questions": [], "version_no": version_no,
+                     "cost_usd": run.cost_usd, "steps": run.steps[-40:]})
+        self._publish_review(
+            project_id, turn_id=turn_id, version_no=version_no, workspace=workspace,
+            report=self.mechanical_report(
+                project_id, sections=checked, numerals=numerals, figures=figures,
+                allowed=allowed, scope=heading, carried=carried))
+        completed = self.repository.complete_turn(
+            turn_id, lease, result=result,
+            session_id=str(project.get("agent_session_id") or ""),
+            cost_usd=run.cost_usd, duration_ms=run.duration_ms, model_name=run.model,
+            transcript_path=str(transcript), discard_candidates=False)
+        return {"turn": completed, "version": version}
+
+    def _model_for(self, project: Mapping[str, Any]) -> str:
+        #  Deliberately the module function rather than ``self.agent``: normalising a tier name is
+        #  a fact about which models this host will run, not a capability of an injected agent, and
+        #  a test double that only needs to answer ``run`` must not have to know about it.
+        return draft_agent.normalize_model(project.get("draft_model"))
+
+    def mechanical_report(self, project_id: int, *, sections: Mapping[str, str],
+                          numerals: Sequence[Mapping[str, Any]],
+                          figures: Sequence[Mapping[str, Any]],
+                          allowed: Sequence[str], scope: str = "",
+                          carried: Sequence[str] = ()) -> dict[str, Any]:
+        """The deterministic half of a review, with no model in it.
+
+        Used wherever the text changed and the drawings provably did not: a section edit, and a
+        hand edit. It decides in code, the same way every time, so it costs nothing and can run on
+        every save. What it deliberately does NOT carry is the reviewer's opinion, so its summary
+        says which half ran rather than letting a clean verdict read as a full review.
+        """
+        started = time.time()
+        qa_figures = list(figures)
+        try:
+            loaded = self._load(project_id)
+            qa_figures = figures_for_qa(project_id, int(loaded["project"]["user_id"]), figures)
+        except Exception:                                       # noqa: BLE001 - checks still run
+            pass
+        try:
+            checks = self.qa.run_checks(sections=sections, numerals=numerals, figures=qa_figures,
+                                        allowed_references=allowed)
+        except Exception as exc:                                # noqa: BLE001
+            traceback.print_exc()
+            checks = [{"name": "Mechanical checks", "status": "fail", "severity": "warn",
+                       "detail": f"The checks could not run ({type(exc).__name__}).", "items": []}]
+        checks = list(checks)
+        if carried:
+            checks.append({
+                "name": "Defects this change inherited rather than caused",
+                "status": "fail", "severity": "error", "category": "internal_logic",
+                "detail": "These were already in the published application before this edit. They "
+                          "were not allowed to block it, and they still have to be fixed.",
+                "items": [str(item)[:600] for item in carried][:12]})
+        verdict = self.qa.verdict_for(checks, [])
+        what = f"{scope} was changed. " if scope else ""
+        return human_text({
+            "status": "complete", "verdict": verdict,
+            "summary": (what + self.qa.summarize(checks, [], verdict) +
+                        " Only the automatic checks ran, because the drawings and the numeral "
+                        "table were carried forward unchanged. Re-run the review for the "
+                        "independent reading."),
+            "checks": checks, "findings": [],
+            "counts": self.qa.counts_for(checks, []),
+            "cost_usd": 0.0, "duration_ms": int((time.time() - started) * 1000),
+            "model_name": "the deterministic checks", "last_error": "",
+        })
+
     def run(self, turn: Mapping[str, Any]) -> dict[str, Any]:
         turn_id, lease = int(turn["id"]), turn["lease_token"]
         project_id = int(turn["project_id"])
@@ -1672,6 +2280,8 @@ class TurnRunner:
         allowed = allowed_reference_keys(context["references"], context["documents"])
 
         kind = str(turn.get("kind") or "revise")
+        if kind == "section_edit" and context["had_version"]:
+            return self._run_section_edit(turn, context)
         first = not context["had_version"] and not context.get("resuming_candidate")
         prompt_kind = "initial" if first else ("revise" if kind == "initial" else kind)
         prompt = build_prompt(prompt_kind, seeded=context["seeded"])
@@ -1688,7 +2298,8 @@ class TurnRunner:
                 run = self._run_agent(
                     turn_id=turn_id, lease=lease, workspace=workspace, prompt=prompt,
                     session_id=prior_session or self.agent.new_session_id(),
-                    resume=bool(prior_session), transcript=transcript, stage="drafting")
+                    resume=bool(prior_session), transcript=transcript, stage="drafting",
+                    model=self._model_for(project))
             except StudioError as exc:
                 self._checkpoint_interrupted_agent(
                     turn_id=turn_id, lease=lease, workspace=workspace, allowed=allowed, error=exc)
@@ -1741,7 +2352,8 @@ class TurnRunner:
                     repair = self._run_agent(
                         turn_id=turn_id, lease=lease, workspace=workspace,
                         prompt=FINALIZE_PROMPT, session_id=runs[-1].session_id,
-                        resume=True, transcript=transcript, stage="repairing the draft")
+                        resume=True, transcript=transcript, stage="repairing the draft",
+                        model=self._model_for(project))
                 except StudioError as exc:
                     self._checkpoint_interrupted_agent(
                         turn_id=turn_id, lease=lease, workspace=workspace,
@@ -1791,16 +2403,16 @@ class TurnRunner:
                     self.repository.save_retry_candidate(
                         turn_id, lease, snapshot=snapshot,
                         report=_gate_resume_report(runs, result))
-                    self.repository.heartbeat(turn_id, lease, stage="drawing and inspecting figures")
-                    generated = self._ensure_figures(
+                    # Drawings are filing artifacts. A turn stays unpublished until every sheet
+                    # passes geometry, leader, OCR, semantic, and cross-provider inspection.
+                    self.repository.heartbeat(
+                        turn_id, lease, stage="drawing and inspecting figures")
+                    self._reconcile_drawings(
                         turn_id=turn_id, lease=lease, project_id=project_id,
                         user_id=int(project["user_id"]), sections=sections,
                         numerals=snapshot["numerals"], figures=snapshot["figures"],
-                        disclosure=str(project.get("disclosure_text") or ""), workspace=workspace)
-                    if not generated.get("ok"):
-                        failures = [str(item) for item in generated.get("errors") or ()]
-                        raise DrawingInspectionError(failures or [
-                            "One or more sheets did not pass geometry, leader, and OCR inspection."])
+                        disclosure=str(project.get("disclosure_text") or ""),
+                        workspace=workspace)
                     self.repository.heartbeat(turn_id, lease, stage="independent review")
                     report = self.evaluate(
                         project_id, version_no=int(project.get("latest_version_no") or 0) + 1,
