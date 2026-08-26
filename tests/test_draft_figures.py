@@ -4187,6 +4187,30 @@ def test_chamber_renderer_accepts_current_two_hatched_legs_wording():
     assert len(angles) == 3
 
 
+def test_chamber_renderer_accepts_source_repaired_four_body_inventory_without_line():
+    specification = """
+    The sheet shows four schematic bodies: one hatched horizontal slab, the base 12; one closed
+    loop cut twice, appearing as two hatched legs hanging from the underside of the slab, one at
+    each end and flush with it, so the loop runs at the perimeter of the underside; one hatched
+    band across the bottom, the covering element 36, on which the legs stand; and one closed
+    housing standing on the slab, the air-extraction mechanism 20.
+
+    The slab, the legs and the band are the cut bodies, each filled with regularly spaced parallel
+    hatching. Where two of them meet, a plain solid line is drawn along the join, so the slab, each
+    leg and the band each read as a separate body with its own hatched interior. The housing lies
+    outside the cut, in plain outline with open paper inside. The slab is drawn thick, its upper
+    face visible each side of the housing, and each leg rests on the band.
+    """
+
+    png = draft_figures._deterministic_chamber_section_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    with Image.open(io.BytesIO(png)).convert("L") as image:
+        assert sum(image.getpixel((865, y)) < 32 for y in range(120, 205)) == 0
+        assert sum(image.getpixel((865, y)) < 32 for y in range(380, 560)) == 0
+
+
 def test_chamber_renderer_accepts_two_explicit_fluid_line_segments():
     specification = """
     The sheet shows four schematic bodies and two broken lines: one hatched horizontal slab,
