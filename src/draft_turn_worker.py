@@ -21,16 +21,8 @@ def build_runner() -> draft_studio.TurnRunner:
         draft_studio.StudioRepository(), drafting.DraftingRepository())
 
 
-def run(stop_event: threading.Event | None = None) -> None:
-    """Recover dead owners, then poll and execute one leased turn at a time."""
-    stop = stop_event or threading.Event()
-    draft_studio_service.configure(build_runner)
-    recovered = draft_studio_service.recover_interrupted_turns()
-    print(
-        f"[draft-turn-worker] ready, recovered={recovered}, "
-        f"poll={draft_studio_service.POLL_SECONDS}s",
-        flush=True,
-    )
+def _drain(stop: threading.Event) -> None:
+    """Claim and run turns until asked to stop. One of these per worker slot."""
     while not stop.is_set():
         try:
             worked = draft_studio_service.process_one()
@@ -39,6 +31,38 @@ def run(stop_event: threading.Event | None = None) -> None:
             worked = None
         if worked is None:
             stop.wait(draft_studio_service.POLL_SECONDS)
+
+
+def run(stop_event: threading.Event | None = None) -> None:
+    """Recover dead owners, then drain the queue on ``DRAFT_TURN_WORKERS`` slots.
+
+    ONE SLOT WAS A QUEUE EVERY PROJECT SHARED. A drawing repair that spends hours in
+    "drawing and inspecting figures" held every other application on the host behind it, and the
+    page told their owners the agent would pick their turn up in a moment. Postgres is still the
+    authority for who owns what: claiming is FOR UPDATE SKIP LOCKED and a partial unique index
+    allows one active turn PER PROJECT, so more slots run more APPLICATIONS side by side and can
+    never run one of them twice.
+    """
+    stop = stop_event or threading.Event()
+    draft_studio_service.configure(build_runner)
+    recovered = draft_studio_service.recover_interrupted_turns()
+    slots = draft_studio_service.DRAFT_TURN_WORKERS
+    print(
+        f"[draft-turn-worker] ready, recovered={recovered}, slots={slots}, "
+        f"poll={draft_studio_service.POLL_SECONDS}s",
+        flush=True,
+    )
+    #  The calling thread is the first slot, so SIGTERM still reaches the process directly. The
+    #  other slots are non-daemon threads and are joined without a deadline: every claimed turn
+    #  must finish checkpointing before Supervisor is allowed to replace this process.
+    extra = [threading.Thread(target=_drain, args=(stop,), name=f"draft-turn-slot-{index}",
+                              daemon=False)
+             for index in range(2, max(1, slots) + 1)]
+    for thread in extra:
+        thread.start()
+    _drain(stop)
+    for thread in extra:
+        thread.join()
 
 
 def main() -> None:
