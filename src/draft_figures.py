@@ -41,7 +41,7 @@ MAX_PNG_BYTES = 8 * 1024 * 1024
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
-FIGURE_PROMPT_VERSION = "figure-v5-exact-geometry-without-annotation-placement"
+FIGURE_PROMPT_VERSION = "figure-v6-fresh-canvas-structural-correction"
 SEMANTIC_PROMPT_VERSION = (
     "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology")
 SEMANTIC_COMPATIBLE_PROMPT_VERSIONS = frozenset((
@@ -76,7 +76,7 @@ MARKED_PROGRESS_VERSION = (
     "marked-progress-v7-brief-target-native-pixel-bound-" + PIXEL_ANCHOR_VERSION)
 OCR_PROMPT_VERSION = "google-vision-document-text-v3-section-designations"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
-MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "4")), 4))
+MAX_SEMANTIC_ATTEMPTS = max(1, min(int(os.environ.get("PATENT_FIGURE_ATTEMPTS", "6")), 8))
 MAX_LEADER_REPAIR_ATTEMPTS = 4
 MAX_MARKED_ANCHOR_REPAIR_ATTEMPTS = 12
 MARKED_ANCHOR_STALL_WINDOW = 6
@@ -337,7 +337,11 @@ DRAWING_SYSTEM = (
     "letters, words, digits, dimensions, reference numerals, figure labels, legends, logos, or "
     "watermarks. Treat every stated quantity, count, shape, and spatial relationship as literal, "
     "and count repeated geometry before returning. Leave clear white space around every "
-    "component. A deterministic compositor adds "
+    "component. Draw exactly one stroke for each requested boundary or centerline unless the "
+    "specification explicitly requires multiple boundaries. Do not add nested contours, hidden "
+    "layers, decorative seams, internal slots, or thickness lines merely to make a component "
+    "look three-dimensional. Do not continue a boundary through another component unless the "
+    "specification explicitly requires that continuation. A deterministic compositor adds "
     "the exact reference numerals, leader lines, figure label, and any required cutting-plane "
     "line, arrows, and repeated section designations only after separate vision reviews confirm "
     "the geometry and annotation coordinates."
@@ -6744,6 +6748,23 @@ def _semantic_has_text_contamination(semantic) -> bool:
     return bool(has_text_term and has_presence_term)
 
 
+def _semantic_requires_fresh_canvas(semantic) -> bool:
+    """Restart structural-surplus repairs instead of teaching the model to preserve bad pixels."""
+    if _semantic_has_text_contamination(semantic):
+        return True
+    if (semantic or {}).get("unexpected"):
+        return True
+    errors = " ".join(str(item) for item in (semantic or {}).get("errors") or [])
+    return bool(re.search(
+        r"\b(?:additional|decorative|double(?:d)?|duplicate(?:d)?|excess|extra|hidden|"
+        r"nested|parallel|redundant|repeated|surplus|unexpected|unrequested|unsupported)\b|"
+        r"\b(?:more|too many)\b[^.;]{0,50}\b(?:boundar(?:y|ies)|circles?|components?|"
+        r"contours?|curves?|lines?|outlines?|strokes?)\b",
+        errors,
+        re.IGNORECASE,
+    ))
+
+
 def render_figure(project_id, user_id, *, label, caption, sections=None, instruction="",
                   figure_id=None, base_version=None, disclosure="", source_png=None,
                   region=None, numerals=None, sort_order=0, sheet_number: str = ""):
@@ -6816,12 +6837,17 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
                     retained = max(0, MAX_PROMPT_CHARS - len(correction) - 2)
                     candidate_prompt = prompt[:retained] + "\n\n" + correction
                 retry_source = previous if attempt == 0 else (
-                    None if attempt == 2 or _semantic_has_text_contamination(semantic)
+                    None if attempt == 2 or _semantic_requires_fresh_canvas(semantic)
                     else raw_png)
                 raw_png = _cached_generate(candidate_prompt, retry_source)
                 active_generation = (candidate_prompt, retry_source)
         semantic = inspect_semantics(
             raw_png, label=label, caption=caption, numerals=numerals)
+        if semantic.get("inspected") is False:
+            detail = "; ".join(str(item) for item in semantic.get("errors") or [])
+            raise FigureTransientError(
+                "semantic drawing review is temporarily unavailable" +
+                (f": {detail[:500]}" if detail else ""))
         if semantic.get("ok"):
             semantic = _apply_deterministic_anchor_certificate(
                 raw_png, caption, numerals, semantic)
@@ -6839,12 +6865,13 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
             problems.append("missing components: " + ", ".join(missing_parts))
         clean_problems = [_geometry_text(problem, numerals) for problem in problems]
         clean_problems = [problem for problem in clean_problems if problem]
-        contaminated = _semantic_has_text_contamination(semantic)
+        fresh_canvas = _semantic_requires_fresh_canvas(semantic)
         correction = (
             "SEMANTIC REVIEW FAILED. Produce a corrected geometry-only drawing. " +
             ("; ".join(clean_problems) or
              "make every requested component and relationship visible") + ". " +
-            ("Start again from the disclosed geometry. " if contaminated else
+            ("Start again on a blank white canvas from the disclosed geometry. Do not preserve "
+             "or trace any rejected pixels. " if fresh_canvas else
              "Keep all geometry that already matches. ") +
             "Include no text or digits.")
     if not semantic.get("ok") and not region:
