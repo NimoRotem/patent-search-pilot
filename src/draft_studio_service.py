@@ -901,11 +901,13 @@ def _stamp(**values: Any) -> None:
     _STATE.update(values, updated_at=time.time())
 
 
-def process_one() -> dict[str, Any] | None:
+def process_one(*, stop_event: threading.Event | None = None) -> dict[str, Any] | None:
     """Claim and run one turn. Safe to call from a test or an operator command."""
     if not _RUNNER_FACTORY:
         return None
     runner = _runner()
+    if stop_event is not None:
+        runner.stop_event = stop_event
     worker_id = f"draft-turn-{os.getpid()}-{threading.get_ident()}"
     claimed = runner.repository.claim_turn(worker_id)
     if not claimed:
@@ -1046,7 +1048,7 @@ def _continue_terminal_filing_repair(repository: Any, claimed: Mapping[str, Any]
 def _loop() -> None:
     while not _STOP.is_set():
         try:
-            if process_one() is not None:
+            if process_one(stop_event=_STOP) is not None:
                 continue
         except Exception as exc:                               # noqa: BLE001 - keep the thread up
             _stamp(running=False, last_result="worker-error", last_error=str(exc)[:400])

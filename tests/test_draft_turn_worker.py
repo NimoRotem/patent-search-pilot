@@ -16,6 +16,11 @@ def test_dedicated_worker_configures_recovers_and_polls(monkeypatch):
             calls.append(("wait", seconds))
             self.stopped = True
 
+    def build_runner():
+        return object()
+
+    monkeypatch.setattr(draft_turn_worker, "build_runner", build_runner)
+
     monkeypatch.setattr(
         draft_turn_worker.draft_studio_service,
         "configure",
@@ -29,14 +34,15 @@ def test_dedicated_worker_configures_recovers_and_polls(monkeypatch):
     monkeypatch.setattr(
         draft_turn_worker.draft_studio_service,
         "process_one",
-        lambda: calls.append(("process", None)),
+        lambda *, stop_event=None: calls.append(("process", stop_event)),
     )
 
-    draft_turn_worker.run(Stop())
+    stop = Stop()
+    draft_turn_worker.run(stop)
 
-    assert calls[0] == ("configure", draft_turn_worker.build_runner)
+    assert calls[0] == ("configure", build_runner)
     assert ("recover", None) in calls
-    assert ("process", None) in calls
+    assert ("process", stop) in calls
     assert ("wait", draft_turn_worker.draft_studio_service.POLL_SECONDS) in calls
 
 
@@ -60,7 +66,8 @@ def test_the_worker_drains_on_every_configured_slot():
     seen = set()
     claims = threading.Semaphore(0)
 
-    def process_one():
+    def process_one(*, stop_event=None):
+        assert stop_event is stop
         seen.add(threading.current_thread().name)
         claims.release()
         return None

@@ -25,7 +25,7 @@ def _drain(stop: threading.Event) -> None:
     """Claim and run turns until asked to stop. One of these per worker slot."""
     while not stop.is_set():
         try:
-            worked = draft_studio_service.process_one()
+            worked = draft_studio_service.process_one(stop_event=stop)
         except Exception:  # noqa: BLE001 - a queue or database blip must not stop the daemon
             traceback.print_exc()
             worked = None

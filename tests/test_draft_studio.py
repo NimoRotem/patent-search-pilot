@@ -10,6 +10,7 @@ that thing and nothing else.
 import hashlib
 import json
 import re
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock
@@ -2535,6 +2536,27 @@ def test_valid_candidate_is_checkpointed_before_the_long_review(monkeypatch, tmp
     assert checkpoint["report"]["_gate_resume"]["session_id"] == "draft-session"
     assert checkpoint["report"]["_gate_resume"]["result"]["summary"] == \
         "complete candidate"
+
+
+def test_worker_shutdown_reaches_the_inflight_agent_cancel_event(tmp_path):
+    stop = threading.Event()
+    stop.set()
+    repository = Mock()
+    agent = Mock()
+    agent.DRAFT_MODEL = "draft-model"
+    agent.DRAFT_TIMEOUT = 60
+    agent.run.return_value = draft_agent.AgentRun(
+        ok=False, cancelled=True, error="worker restart")
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, stop_event=stop)
+
+    with pytest.raises(drafting.DraftingConflict):
+        runner._run_agent(
+            turn_id=3, lease="lease", workspace=tmp_path, prompt="draft",
+            session_id="session", resume=False, transcript=tmp_path / "turn.jsonl",
+            stage="drafting")
+
+    assert agent.run.call_args.kwargs["cancel"].is_set() is True
 
 
 def test_transient_drawing_capacity_retries_the_durable_drawing_turn(
