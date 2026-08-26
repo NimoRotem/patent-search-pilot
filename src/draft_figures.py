@@ -59,7 +59,7 @@ CROSS_PROVIDER_PROMPT_VERSION = (
 CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION = (
     "figure-geometry-crosscheck-v4-section-annotations-deferred")
 DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
-    "deterministic-geometry-consensus-v1-byte-exact-two-semantic")
+    "deterministic-geometry-consensus-v2-byte-exact-certified-constraints")
 DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
     "deterministic-semantic-consensus-v1-byte-exact-two-semantic-one-independent")
 DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION = (
@@ -2967,6 +2967,15 @@ def _chamber_section_has_flush_legs(text: str) -> bool:
     )
 
 
+def _chamber_section_splits_line(text: str) -> bool:
+    return bool(re.search(
+        r"\b(?:broken line|that line|the line) stop(?:s|ping)\b[^.]{0,100}"
+        r"\bupper face of the base(?:\s+\d+)?\b"
+        r"[^.]{0,100}\bresum(?:es|ing)\b[^.]{0,80}\blower face\b",
+        text,
+    ))
+
+
 def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     """Render the exact slab, two cut legs, chamber, band, and one broken line."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
@@ -3025,10 +3034,7 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     draw.rectangle((160, 620, 1240, 760), outline="black", width=4)
     draw.rounded_rectangle(
         (740, 90, 990, 220), radius=24, fill="white", outline="black", width=4)
-    split_at_base = bool(re.search(
-        r"\b(?:broken line|that line|the line) stop(?:s|ping)\b[^.]{0,100}"
-        r"\bupper face of the base(?:\s+\d+)?\b"
-        r"[^.]{0,100}\bresum(?:es|ing)\b[^.]{0,80}\blower face\b", text))
+    split_at_base = _chamber_section_splits_line(text)
     line_ranges = ((145, 220), (369, 521)) if split_at_base else ((145, 521),)
     for start, stop in line_ranges:
         for top in range(start, stop, 34):
@@ -3048,19 +3054,70 @@ def _deterministic_geometry_png(caption: str) -> bytes | None:
             _deterministic_chamber_section_png(caption))
 
 
+def _deterministic_chamber_constraint_certificate(png: bytes, caption: str) -> dict:
+    """Measure the chamber renderer constraints that visual reviewers commonly invert."""
+    from PIL import Image
+
+    expected = _deterministic_chamber_section_png(caption)
+    if expected is None or png != expected:
+        return {}
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    image = Image.open(io.BytesIO(png)).convert("L")
+
+    def ink_count(x: int, start: int, stop: int) -> int:
+        return sum(image.getpixel((x, y)) < 32 for y in range(start, stop))
+
+    section = _deterministic_section_hatch_certificate(png, caption) or {}
+    flush_required = _chamber_section_has_flush_legs(text)
+    split_required = _chamber_section_splits_line(text)
+    return {
+        "section_hatching": {
+            "ok": bool(section.get("ok") and section.get("exact_renderer_match")),
+            "components": list(section.get("components") or []),
+            "coordinate_space": section.get("coordinate_space"),
+        },
+        "flush_legs": {
+            "required": flush_required,
+            "ok": bool(
+                flush_required and
+                ink_count(200, 360, 621) > 240 and
+                ink_count(1200, 360, 621) > 240),
+            "base_outer_x": [200, 1200],
+            "leg_outer_x": [200, 1200] if flush_required else [260, 1140],
+        },
+        "split_line": {
+            "required": split_required,
+            "ok": bool(
+                split_required and image.getpixel((865, 215)) < 32 and
+                ink_count(865, 225, 356) < 40 and
+                ink_count(865, 369, 521) >= 110),
+            "x": 865,
+            "upper_terminal_y": 219,
+            "base_interval_y": [220, 360],
+            "lower_start_y": 369,
+        },
+    }
+
+
 def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
     """Bind an inspected image to the exact deterministic renderer selected by its brief."""
     expected = _deterministic_geometry_png(caption)
     actual_hash = hashlib.sha256(png).hexdigest()
     expected_hash = hashlib.sha256(expected).hexdigest() if expected is not None else ""
     exact_match = bool(expected is not None and png == expected)
-    return {
+    certificate = {
         "ok": exact_match,
         "version": DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION,
         "exact_renderer_match": exact_match,
         "png_sha256": actual_hash,
         "renderer_png_sha256": expected_hash,
     }
+    constraints = (
+        _deterministic_chamber_constraint_certificate(png, caption)
+        if exact_match else {})
+    if constraints:
+        certificate["certified_constraints"] = constraints
+    return certificate
 
 
 def _apply_topology_audit(png: bytes, caption: str, semantic: dict) -> dict:
@@ -3210,6 +3267,23 @@ def current_cross_provider_geometry_audit(value, *, specification_hash: str = ""
             semantic_review_count = 0
         png_hash = str(resolution.get("png_sha256") or "") if isinstance(
             resolution, dict) else ""
+        recorded_categories = sorted(set(
+            str(item) for item in resolution.get("certified_dissent_categories") or []
+            if str(item).strip())) if isinstance(resolution, dict) else []
+        verified_categories = _certified_geometry_dissent_categories(
+            errors=value.get("reviewer_errors") or [],
+            missing_geometry=value.get("reviewer_missing_geometry") or [],
+            missing=value.get("missing") or [],
+            unexpected=value.get("reviewer_unexpected") or [],
+            duplicates=value.get("duplicates") or [],
+            certificate=resolution if isinstance(resolution, dict) else {},
+        )
+        certified_dissent_current = (
+            bool(recorded_categories) and verified_categories == recorded_categories)
+        recorded_categories_ok = (
+            not recorded_categories or certified_dissent_current)
+        reviewer_missing_geometry_ok = (
+            not value.get("reviewer_missing_geometry") or certified_dissent_current)
         resolution_current = bool(
             isinstance(resolution, dict) and
             resolution.get("version") == DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION and
@@ -3220,7 +3294,7 @@ def current_cross_provider_geometry_audit(value, *, specification_hash: str = ""
             resolution.get("semantic_model") == vision_model() and
             resolution.get("specification_hash") == value.get("specification_hash") and
             value.get("reviewer_ok") is False and not value.get("missing") and
-            not value.get("reviewer_missing_geometry"))
+            recorded_categories_ok and reviewer_missing_geometry_ok)
     return bool(value.get("ok") and resolution_current and
                 _current_cross_provider_geometry_result(
                     value, specification_hash=specification_hash))
@@ -4424,6 +4498,118 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
     return result
 
 
+def _certified_geometry_dissent_category(value: str) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip().lower()
+    if not text:
+        return ""
+    if ("hatch" in text and
+            re.search(r"\b(?:angle|direction|lean(?:s|ed|ing)?|parallel|slash|slope|"
+                      r"steep|stroke|vertical)\b",
+                      text) and
+            re.search(r"\b(?:base|band|covering element|leg|perimeter member|slab)\b", text)):
+        return "section_hatching"
+    if (re.search(r"\b(?:leg|legs|loop|perimeter member)\b", text) and
+            re.search(r"\b(?:flush|align(?:ed|ment)?)\b", text) and
+            re.search(r"\b(?:base|end|ends|edge|edges|perimeter|slab|underside)\b", text)):
+        return "flush_legs"
+    if (re.search(r"\b(?:broken line|dash(?:ed)?(?: indication| line)?|fluid.communication line)\b",
+                 text) and
+            re.search(r"\b(?:base|slab|upper face|lower face|resum|stop|terminat|continu|"
+                      r"incomplete)\w*\b", text)):
+        return "split_line"
+    return ""
+
+
+def _certified_geometry_dissent_categories(*, errors, missing_geometry, missing,
+                                            unexpected, duplicates,
+                                            certificate: dict) -> list[str] | None:
+    """Return only dissent categories proven by exact renderer pixels."""
+    if missing or unexpected or duplicates:
+        return None
+    findings = [
+        str(item).strip() for item in list(errors or []) + list(missing_geometry or [])
+        if str(item).strip()
+    ]
+    if not findings:
+        return []
+    constraints = certificate.get("certified_constraints") or {}
+    categories = []
+    for finding in findings:
+        category = _certified_geometry_dissent_category(finding)
+        constraint = constraints.get(category) or {}
+        if not category or constraint.get("ok") is not True:
+            return None
+        if category in {"flush_legs", "split_line"} and constraint.get("required") is not True:
+            return None
+        categories.append(category)
+    return sorted(set(categories))
+
+
+def _resolve_cross_provider_geometry_dissent(semantic: dict, audit: dict, png: bytes,
+                                             *, label: str, caption: str,
+                                             numerals) -> dict:
+    """Resolve a reviewer veto only with current model traces and byte-exact proof."""
+    if audit.get("ok") or not audit.get("inspected"):
+        return audit
+    spec_hash = specification_hash(label, caption, numerals)
+    if not _current_cross_provider_geometry_result(audit, specification_hash=spec_hash):
+        return audit
+    certificate = _deterministic_geometry_certificate(png, caption)
+    if not certificate.get("ok") or not _complete_semantic_model_audit(semantic):
+        return audit
+
+    semantic_inventory_clean = bool(
+        not semantic.get("missing") and not semantic.get("unexpected") and
+        not semantic.get("duplicates") and not semantic.get("unexpected_text"))
+    traditional_resolution = bool(
+        semantic.get("ok") and not semantic.get("errors") and semantic_inventory_clean and
+        not audit.get("missing") and not audit.get("missing_geometry") and
+        not audit.get("duplicates"))
+    certified_categories = _certified_geometry_dissent_categories(
+        errors=audit.get("errors") or [],
+        missing_geometry=audit.get("missing_geometry") or [],
+        missing=audit.get("missing") or [],
+        unexpected=audit.get("unexpected") or [],
+        duplicates=audit.get("duplicates") or [],
+        certificate=certificate,
+    )
+    certified_resolution = bool(
+        semantic_inventory_clean and certified_categories)
+    if not traditional_resolution and not certified_resolution:
+        return audit
+
+    resolution = dict(certificate)
+    resolution.update({
+        "semantic_review_count": int(semantic.get("review_count") or 0),
+        "semantic_model": str(semantic.get("model_name") or ""),
+        "specification_hash": spec_hash,
+    })
+    if certified_resolution:
+        resolution["certified_dissent_categories"] = certified_categories
+    resolution_basis = (
+        "byte-exact deterministic constraints" if certified_resolution else
+        "a byte-exact deterministic renderer certificate")
+    resolved = dict(audit)
+    resolved.update({
+        "ok": True,
+        "reviewer_ok": False,
+        "reviewer_summary": str(audit.get("summary") or "")[:2000],
+        "reviewer_errors": list(audit.get("errors") or []),
+        "reviewer_unexpected": list(audit.get("unexpected") or []),
+        "reviewer_missing_geometry": list(audit.get("missing_geometry") or []),
+        "errors": [],
+        "unexpected": [],
+        "missing_geometry": [],
+        "consensus_resolution": resolution,
+        "summary": (
+            "Two semantic reviews and " + resolution_basis + " resolved a "
+            "raw-geometry dissent. Cross-provider review: " +
+            str(audit.get("summary") or "")
+        )[:2000],
+    })
+    return resolved
+
+
 def _apply_cross_provider_geometry_gate(semantic: dict, png: bytes, *, label: str,
                                         caption: str, numerals) -> dict:
     """Attach the independent inventory and make any veto regenerate the geometry."""
@@ -4439,34 +4625,9 @@ def _apply_cross_provider_geometry_gate(semantic: dict, png: bytes, *, label: st
             raise FigureError(detail or "Cross-provider geometry review is not configured.")
         raise FigureTransientError(
             detail or "Cross-provider geometry review is temporarily unavailable.")
-    certificate = _deterministic_geometry_certificate(png, caption)
-    if (certificate.get("ok") and _current_semantic_model_audit(out) and
-            not out.get("errors") and not out.get("missing") and
-            not out.get("unexpected") and not audit.get("missing") and
-            not audit.get("missing_geometry")):
-        resolved = dict(audit)
-        certificate.update({
-            "semantic_review_count": int(out.get("review_count") or 0),
-            "semantic_model": str(out.get("model_name") or ""),
-            "specification_hash": specification_hash(label, caption, numerals),
-        })
-        resolved.update({
-            "ok": True,
-            "reviewer_ok": False,
-            "reviewer_summary": str(audit.get("summary") or "")[:2000],
-            "reviewer_errors": list(audit.get("errors") or []),
-            "reviewer_unexpected": list(audit.get("unexpected") or []),
-            "reviewer_missing_geometry": list(audit.get("missing_geometry") or []),
-            "errors": [],
-            "unexpected": [],
-            "missing_geometry": [],
-            "consensus_resolution": certificate,
-            "summary": (
-                "Two semantic reviews and a byte-exact deterministic renderer certificate "
-                "resolved an extra-geometry dissent. Cross-provider review: " +
-                str(audit.get("summary") or "")
-            )[:2000],
-        })
+    resolved = _resolve_cross_provider_geometry_dissent(
+        out, audit, png, label=label, caption=caption, numerals=numerals)
+    if resolved.get("ok"):
         out["cross_provider_geometry_audit"] = resolved
         return out
     out["ok"] = False
@@ -4523,6 +4684,10 @@ def _resolve_deterministic_semantic_dissent(semantic: dict, png: bytes, *, label
 
     audit = inspect_cross_provider_geometry(
         png, label=label, caption=caption, numerals=numerals)
+    if not current_cross_provider_geometry_audit(
+            audit, specification_hash=spec_hash):
+        audit = _resolve_cross_provider_geometry_dissent(
+            out, audit, png, label=label, caption=caption, numerals=numerals)
     out["cross_provider_geometry_audit"] = audit
     if not current_cross_provider_geometry_audit(audit, specification_hash=spec_hash):
         return out
