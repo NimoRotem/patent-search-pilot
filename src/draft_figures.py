@@ -4524,10 +4524,11 @@ def _certified_geometry_dissent_categories(*, errors, missing_geometry, missing,
                                             unexpected, duplicates,
                                             certificate: dict) -> list[str] | None:
     """Return only dissent categories proven by exact renderer pixels."""
-    if missing or unexpected or duplicates:
+    if missing or duplicates:
         return None
     findings = [
-        str(item).strip() for item in list(errors or []) + list(missing_geometry or [])
+        str(item).strip() for item in (
+            list(errors or []) + list(missing_geometry or []) + list(unexpected or []))
         if str(item).strip()
     ]
     if not findings:
