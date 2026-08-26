@@ -3594,7 +3594,7 @@ def _chamber_section_splits_line(text: str) -> bool:
 
 
 def _deterministic_chamber_section_png(caption: str) -> bytes | None:
-    """Render the exact slab, two cut legs, chamber, band, and constrained fluid line."""
+    """Render the exact slab, two cut legs, chamber, band, and any specified fluid line."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
     exact_inventory = re.search(
         r"\bshows four bodies\b[^.]{0,80}\bone broken line\b"
@@ -3606,6 +3606,17 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
         r"\band one broken line\s*:", text)
     exact_inventory = exact_inventory or re.search(
         r"\bshows four (?:schematic )?bodies and two broken lines\s*:", text)
+    body_only_inventory = bool(
+        re.search(r"\bthe sheet shows four schematic bodies\s*:", text) and
+        not re.search(r"\bbroken lines?\b|\bfluid communication\b", text) and
+        re.search(r"\bclosed loop cut twice\b[^.]{0,120}\btwo hatched legs\b", text) and
+        re.search(r"\bwhere two of them meet\b[^.]{0,180}\bseparate body\b", text) and
+        re.search(
+            r"\bhousing lies outside the cut\b[^.]{0,120}\bopen paper inside\b",
+            text,
+        )
+    )
+    exact_inventory = exact_inventory or body_only_inventory
     line_inventory_only = bool(
         re.search(r"\bno passage, duct, opening or other structure is depicted\b", text) or
         re.search(r"\bthat broken line being all that is drawn for it\b", text) or
@@ -3624,7 +3635,7 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
         re.search(r"\bclosed loop cut twice\b[^.]{0,100}\btwo (?:short )?hatched legs\b", text),
         re.search(r"\bhatched band across the bottom\b", text),
         re.search(r"\bone closed housing\b", text),
-        fluid_communication,
+        fluid_communication or body_only_inventory,
         line_inventory_only,
     )
     if not all(requirements):
@@ -3661,11 +3672,12 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     draw.rectangle((160, 620, 1240, 760), outline="black", width=4)
     draw.rounded_rectangle(
         (740, 90, 990, 220), radius=24, fill="white", outline="black", width=4)
-    split_at_base = _chamber_section_splits_line(text)
-    line_ranges = ((145, 220), (369, 521)) if split_at_base else ((145, 521),)
-    for start, stop in line_ranges:
-        for top in range(start, stop, 34):
-            draw.line((865, top, 865, min(top + 26, stop - 1)), fill="black", width=4)
+    if fluid_communication:
+        split_at_base = _chamber_section_splits_line(text)
+        line_ranges = ((145, 220), (369, 521)) if split_at_base else ((145, 521),)
+        for start, stop in line_ranges:
+            for top in range(start, stop, 34):
+                draw.line((865, top, 865, min(top + 26, stop - 1)), fill="black", width=4)
 
     out = io.BytesIO()
     image.save(out, format="PNG", compress_level=9)
