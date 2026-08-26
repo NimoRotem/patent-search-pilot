@@ -2086,6 +2086,9 @@ def test_the_drafting_prompt_states_the_rules_it_must_not_break():
     assert str(draft_qa.MAX_FIGURE_BRIEF_CHARS) in system
     assert "arbitrary exact counts" in system
     assert "shown schematically" in normalized
+    assert "least-specific schematic outline" in system
+    assert "which end is deeper" in system
+    assert "runout direction" in normalized
     assert "open paper between solid bodies" in system
     assert "keep all line work inside the drawing area" in system
     assert "white-interior strip" in system
@@ -2148,6 +2151,10 @@ def test_the_independent_reviewer_checks_source_fidelity_before_internal_consist
         in preflight
     assert "simple generic outline" in preflight
     assert "depiction convention" in preflight
+    assert "which end is deeper" in preflight
+    assert "runout direction" in preflight
+    assert "functional face, slot, joint, cam, ramp, seal, port, or flow boundary" in preflight
+    assert "substantive even when the brief calls the geometry schematic" in preflight
     assert "must stay confined to the figure brief" in preflight
     assert "by way of example" in preflight
     assert "any closed outline" in preflight

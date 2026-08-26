@@ -1549,7 +1549,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v9-section-line-consistency"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v10-functional-surface-geometry"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1580,6 +1580,12 @@ placement as a depiction convention rather than an invention assertion only when
 it "shown schematically", the claims and description remain shape-neutral, and the choice adds no
 technical function or relationship. Still report exact proportions, counts, materials,
 connections, topology, contact, flow paths, or relative locations that convey technical substance.
+For a functional face, slot, joint, cam, ramp, seal, port, or flow boundary, statements about
+which end is deeper, radial or circumferential end positions, runout direction, taper, angle, or
+contact topology are substantive even when the brief calls the geometry schematic. Report and
+remove every such untraced statement. A minimally specific generic face or opening may remain as
+a depiction convention only when the source affirmatively discloses that functional part and the
+brief does not verbalize any of those undisclosed relationships.
 The chosen convention must stay confined to the figure brief. If the application text or Brief
 Description says that an unsupported outline is shown "by way of example", that a member may have
 "any closed outline", or otherwise adds or broadens an embodiment merely to justify a renderer's

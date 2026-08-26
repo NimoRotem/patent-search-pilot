@@ -3602,6 +3602,23 @@ def _segmented_cam_ring_specification():
     """
 
 
+def _source_clean_segmented_cam_ring_specification():
+    return """
+    Plan view of the segmented cam ring removed from the frame, its two segments coupled, viewed
+    along the ring axis so the hinge end is at the left and the latch end at the right. A flat
+    annulus is bounded by one inner circular boundary and one outer circular boundary. Two
+    joints, one at the left and one at the right, divide the annulus into the first cam ring
+    segment 22 above and the second cam ring segment 24 below. At the joints the segment ends
+    meet along complementary coupling faces 26 and 28.
+
+    Three elongated openings are formed in the annulus, near the top, lower left and lower right.
+    Each is an oblique slot 34. The ring drive face 36 is shown schematically as one short straight
+    flat on the outer boundary of the second cam ring segment 24 near the right joint. Its exact
+    position, tilt, length, end positions and runout are depiction conventions for this sheet
+    only and are not asserted as invention geometry.
+    """
+
+
 def test_deterministic_segmented_cam_ring_cuts_away_outer_arc_without_a_lens():
     specification = _segmented_cam_ring_specification()
 
@@ -3641,6 +3658,72 @@ def test_deterministic_segmented_cam_ring_certifies_one_flat_and_circular_return
         duplicates=[],
         certificate=certificate,
     ) == ["single_drive_face"]
+
+
+def test_source_clean_cam_ring_uses_exact_renderer_and_certifies_visible_inventory():
+    specification = _source_clean_segmented_cam_ring_specification()
+
+    png = draft_figures._deterministic_segmented_cam_ring_plan_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    assert png is not None
+    assert certificate["ok"] is True
+    constraints = certificate["certified_constraints"]
+    assert constraints["cam_ring_segments_and_joints"] == {
+        "ok": True,
+        "segment_count": 2,
+        "joint_count": 2,
+        "joint_centerlines": [[370, 450, 490, 450], [910, 450, 1030, 450]],
+    }
+    slots = constraints["cam_ring_slot_pattern"]
+    assert slots["ok"] is True
+    assert slots["slot_count"] == 3
+    assert slots["uniform_tangent_relative_tilt_degrees"] == 70
+    assert draft_figures._certified_geometry_dissent_categories(
+        errors=["The view appears to contain more than two cam-ring segments and three joints."],
+        missing_geometry=["The three oblique slots do not all tilt in the same direction."],
+        missing=[], unexpected=[], duplicates=[], certificate=certificate,
+    ) == ["cam_ring_segments_and_joints", "cam_ring_slot_pattern"]
+
+
+def test_exact_cam_ring_resolves_independent_slot_and_joint_false_negatives(monkeypatch):
+    specification = _source_clean_segmented_cam_ring_specification()
+    numerals = [
+        "20 = segmented cam ring", "22 = first cam ring segment",
+        "24 = second cam ring segment", "26 = complementary coupling faces at the hinge end",
+        "28 = complementary coupling faces at the latch end", "34 = oblique slot",
+        "36 = ring drive face",
+    ]
+    png = draft_figures._deterministic_segmented_cam_ring_plan_png(specification)
+    spec_hash = draft_figures.specification_hash("FIG. 2", specification, numerals)
+    dissent = accepted_cross_provider_geometry_audit(
+        ok=False,
+        specification_hash=spec_hash,
+        errors=["The view appears to contain more than two cam-ring segments and three joints."],
+        missing_geometry=["The three oblique slots do not all tilt in the same direction."],
+        summary="The deterministic inventory appears wrong.",
+    )
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k: dissent)
+    semantic = {
+        "ok": True, "inspected": True, "errors": [], "missing": [], "unexpected": [],
+        "duplicates": [], "unexpected_text": [],
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+    }
+
+    audited = draft_figures._apply_cross_provider_geometry_gate(
+        semantic, png, label="FIG. 2", caption=specification, numerals=numerals)
+
+    cross = audited["cross_provider_geometry_audit"]
+    assert audited["ok"] is True and cross["ok"] is True
+    assert cross["reviewer_ok"] is False
+    assert cross["consensus_resolution"]["certified_dissent_categories"] == [
+        "cam_ring_segments_and_joints", "cam_ring_slot_pattern",
+    ]
+    assert draft_figures.current_cross_provider_geometry_audit(
+        cross, specification_hash=spec_hash) is True
 
 
 def test_deterministic_segmented_cam_ring_uses_exact_component_anchor_centers():
@@ -3735,6 +3818,44 @@ def test_deterministic_block_grip_uses_exact_component_anchor_centers():
     assert certificate["ok"] is True
     assert {item["numeral"] for item in certificate["anchors"]} == {
         "10", "12", "18", "20", "24", "36", "44"}
+
+
+def test_deterministic_stirring_scene_grounds_the_stirring_element_inside_its_block():
+    specification = """
+    The covering element 36 is one large plain tile seen in perspective. The machine stands on
+    its left-hand part, with open tile to the right. The machine is shown schematically as one
+    plain rectangular body standing on a band that runs round its underside, the band alone
+    touching the tile. Two small closed blocks, each a stirring element 48, are carried by the
+    machine against the upper part of the front face of the rectangular body, clear above the
+    band, each broad enough for a point to stand well inside its front face. Their number, form
+    and drawn position are a depiction convention for this sheet only.
+    """
+    numerals = [
+        "10 = vibration device", "36 = covering element", "48 = stirring element",
+    ]
+    png = draft_figures._deterministic_grip_scene_png(specification)
+    initial = [
+        {"numeral": value.split(" = ", 1)[0], "x": 500, "y": 500, "visible": True}
+        for value in numerals
+    ]
+
+    grounded = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {"ok": True, "anchors": initial})
+    grounded = draft_figures._apply_pixel_grounding(png, numerals, grounded)
+
+    assert png is not None
+    positions = {
+        item["numeral"]: (item["x"], item["y"])
+        for item in grounded["anchors"]
+    }
+    assert positions["48"] == (
+        draft_figures._pixel_to_normalized(310, 1400),
+        draft_figures._pixel_to_normalized(335, 900),
+    )
+    assert grounded["pixel_anchor_audit"]["ok"] is True
+    certificate = grounded["deterministic_anchor_certificate"]
+    assert certificate["renderer"] == "stirring_element_scene"
+    assert {item["numeral"] for item in certificate["anchors"]} == {"10", "36", "48"}
 
 
 def test_deterministic_block_grip_uses_designated_left_device_boundary():

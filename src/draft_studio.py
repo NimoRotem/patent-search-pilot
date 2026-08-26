@@ -318,6 +318,11 @@ When the source discloses a part but not its appearance, the image still needs a
 Use the simplest generic outline and identify it in the figure brief as "shown schematically".
 That outline is a depiction convention only. Never add its chosen shape, proportion, or page
 placement to the patent text or claims, and never imply that the convention is an embodiment.
+For a disclosed functional face, slot, joint, cam, ramp, seal, port, or flow boundary whose exact
+geometry was not disclosed, use the least-specific schematic outline that shows only the
+disclosed function. A generic short face or opening may be placed for visibility as a depiction
+convention, but never state which end is deeper, radial or circumferential end positions, runout
+direction, taper, precise angle, or contact topology unless the inventor source states it.
 Describe a cord, cable, wire, hose, or pulling element as one curved path and target that path.
 Never define it as a white-interior strip or by counting outline strokes.
 Never write generic negative bans on linework such as no rim, ledge, chamfer, parallel line,

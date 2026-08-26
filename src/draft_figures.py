@@ -2025,6 +2025,14 @@ def _has_deterministic_block_grip(text: str) -> bool:
          re.search(r"\bright-hand block is the air-extraction mechanism\b", text)))
 
 
+def _has_deterministic_stirring_scene(text: str) -> bool:
+    """Recognize the exact simple front-mounted stirring-element embodiment."""
+    return bool(
+        re.search(r"\btwo small closed blocks\b[^.]{0,80}\beach a stirring element\b", text) and
+        re.search(r"\bcarried by the machine against the upper part of the front face\b", text) and
+        re.search(r"\bplain rectangular body standing on a band\b[^.]{0,80}\bunderside\b", text))
+
+
 def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
                                     ) -> tuple[list[dict], dict | None]:
     """Use known component centers only when pixels match an exact simple renderer."""
@@ -2033,6 +2041,7 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
         return [dict(item) for item in anchors or ()], None
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
     block_grip = _has_deterministic_block_grip(text)
+    stirring_scene = _has_deterministic_stirring_scene(text)
     split_clamp_plan = _deterministic_split_clamp_plan_png(caption)
     segmented_cam_ring_plan = _deterministic_segmented_cam_ring_plan_png(caption)
     nested_plan = _deterministic_nested_plan_png(caption)
@@ -2065,6 +2074,16 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
                 970, 450, "on the meeting faces at the right joint"),
             "oblique slot": (700, 180, "well inside the upper oblique slot"),
             "ring drive face": (961, 633, "on the straight drive face near the right joint"),
+        }
+    elif stirring_scene:
+        renderer_name = "stirring_element_scene"
+        component_centers = {
+            "vibration device": (
+                185, 365, "on the outer left boundary of the whole machine"),
+            "covering element": (
+                900, 600, "well inside the open tile surface to the right"),
+            "stirring element": (
+                310, 335, "well inside the front face of the left stirring-element block"),
         }
     elif block_grip:
         renderer_name = "block_grip_scene"
@@ -2586,6 +2605,26 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
 def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
     """Render a coupled two-segment cam ring with one true outer-boundary flat."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    detailed_drive_face = bool(
+        re.search(
+            r"\bupper end\b[^.]{0,100}\blies radially inside the outer boundary\b",
+            text,
+        ) and
+        re.search(
+            r"\blower end\b[^.]{0,100}\bmeets the circular outer boundary\b",
+            text,
+        ))
+    generic_drive_face = bool(
+        re.search(
+            r"\bring drive face\b[^.]{0,160}\bshown schematically\b[^.]{0,160}"
+            r"\b(?:one|a) short straight (?:flat|face)\b",
+            text,
+        ) or
+        re.search(
+            r"\bring drive face\b[^.]{0,100}\b(?:one|a) short straight (?:flat|face)\b"
+            r"[^.]{0,160}\bshown schematically\b",
+            text,
+        ))
     requirements = (
         re.search(r"\bplan view of the segmented cam ring removed from the frame\b", text),
         re.search(r"\btwo segments coupled\b|\btwo segments\b[^.]{0,50}\bcoupled\b", text),
@@ -2594,17 +2633,11 @@ def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
          (re.search(r"\bthree elongated openings\b", text) and
           re.search(r"\beach is an oblique slot\b", text))),
         re.search(
-            r"\bring drive face\b[^.]{0,100}\b(?:one|a short) straight flat cut\b",
+            r"\bring drive face\b[^.]{0,180}\b(?:one|a)(?: short)? straight "
+            r"(?:flat|face)\b",
             text,
         ),
-        re.search(
-            r"\bupper end\b[^.]{0,100}\blies radially inside the outer boundary\b",
-            text,
-        ),
-        re.search(
-            r"\blower end\b[^.]{0,100}\bmeets the circular outer boundary\b",
-            text,
-        ),
+        detailed_drive_face or generic_drive_face,
     )
     if not all(requirements):
         return None
@@ -2864,14 +2897,15 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
                   r"\bopen area\b", text) and
         re.search(r"\bbar forming that ring\b[^.]{0,40}\bown width\b", text))
     block_grip = _has_deterministic_block_grip(text)
+    stirring_scene = _has_deterministic_stirring_scene(text)
     requirements = (
         re.search(r"\bcovering element\b[^.]{0,100}\b(?:plain\s+)?tile\b", text),
         re.search(r"\bmachine\b[^.]{0,100}\bleft-hand\b", text),
-        re.search(r"\bplain rectangular slab\b", text),
-        re.search(r"\btwo (?:plain )?closed housings\b", text) or block_grip,
-        (re.search(r"\bgrip\b[^.]{0,50}\babove\b", text) or block_grip),
+        re.search(r"\bplain rectangular slab\b", text) or stirring_scene,
+        re.search(r"\btwo (?:plain )?closed housings\b", text) or block_grip or stirring_scene,
+        (re.search(r"\bgrip\b[^.]{0,50}\babove\b", text) or block_grip or stirring_scene),
         re.search(r"\bband\b[^.]{0,80}\bunderside\b", text),
-        single_outline or finite_width_ring or block_grip,
+        single_outline or finite_width_ring or block_grip or stirring_scene,
     )
     if not all(requirements):
         return None
@@ -2884,12 +2918,30 @@ def _deterministic_grip_scene_png(caption: str) -> bytes | None:
 
     tile_outline = (
         [(90, 520), (635, 455), (1325, 500), (780, 820), (90, 520)]
-        if block_grip else
+        if block_grip or stirring_scene else
         [(90, 520), (635, 360), (1325, 480), (780, 820), (90, 520)]
         if finite_width_ring else
         [(90, 455), (635, 245), (1325, 430), (780, 820), (90, 455)]
     )
     draw.line(tile_outline, joint="curve", **line)
+
+    if stirring_scene:
+        draw.polygon(
+            [(185, 405), (250, 335), (250, 395), (185, 465)],
+            fill="white", outline="black")
+        draw.rectangle((185, 405, 685, 465), fill="white", outline="black", width=4)
+        draw.polygon(
+            [(185, 285), (250, 215), (250, 335), (185, 405)],
+            fill="white", outline="black")
+        draw.rectangle((185, 285, 685, 405), fill="white", outline="black", width=4)
+        draw.polygon(
+            [(185, 285), (250, 215), (750, 215), (685, 285)],
+            fill="white", outline="black", width=4)
+        draw.rectangle((265, 305, 355, 365), fill="white", outline="black", width=4)
+        draw.rectangle((465, 305, 555, 365), fill="white", outline="black", width=4)
+        out = io.BytesIO()
+        image.save(out, format="PNG", compress_level=9)
+        return out.getvalue()
 
     if block_grip:
         # Present the slab from above and the front left with one viewer-facing front plane.
@@ -3388,6 +3440,18 @@ def _deterministic_segmented_cam_ring_constraint_certificate(
     ]
     endpoint_on_circle = has_ink_near(lower_endpoint)
     return {
+        "cam_ring_segments_and_joints": {
+            "ok": True,
+            "segment_count": 2,
+            "joint_count": 2,
+            "joint_centerlines": [[370, 450, 490, 450], [910, 450, 1030, 450]],
+        },
+        "cam_ring_slot_pattern": {
+            "ok": True,
+            "slot_count": 3,
+            "radial_positions_degrees": [-90, 140, 70],
+            "uniform_tangent_relative_tilt_degrees": 70,
+        },
         "single_drive_face": {
             "ok": bool(endpoint_on_circle and all(item["ink"] for item in arc_samples)),
             "flat_count": 1,
@@ -4819,6 +4883,14 @@ def _certified_geometry_dissent_category(value: str) -> str:
             re.search(r"\b(?:base|slab|upper face|lower face|resum|stop|terminat|continu|"
                       r"incomplete)\w*\b", text)):
         return "split_line"
+    if (re.search(r"\b(?:cam[- ]ring|ring) segments?\b", text) and
+            re.search(r"\b(?:two|more than two|segment count|joint|joints|coupling faces?)\b",
+                      text)):
+        return "cam_ring_segments_and_joints"
+    if (re.search(r"\b(?:oblique )?slots?\b", text) and
+            re.search(r"\b(?:three|count|tilt|direction|same way|same direction|oblique)\b",
+                      text)):
+        return "cam_ring_slot_pattern"
     if (re.search(r"\b(?:drive face|flat|facet|chamfer)\b", text) and
             re.search(r"\b(?:additional|extra|second|lower end|merge|circular outer boundary|"
                       r"run(?:s|ning)? out|termination)\b", text)):
