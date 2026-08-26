@@ -2785,6 +2785,28 @@ def test_automatic_continuation_reuses_a_prior_turn_gate_checkpoint():
     assert run.result["summary"] == "complete candidate"
 
 
+def test_internal_gate_resume_never_redrafts_when_its_retry_key_was_rewritten():
+    marker = {
+        "session_id": "draft-session", "model": "draft-model", "cost_usd": 0.5,
+        "duration_ms": 1000, "num_turns": 1, "steps": [],
+        "result": {"action": "revised", "summary": "complete candidate",
+                   "reasoning": [], "changes": [], "questions": [],
+                   "prior_art_strategy": "", "answer": ""},
+    }
+    context = {
+        "resuming_candidate_turn_id": 60,
+        "prepared_qa": {"_gate_resume": marker},
+    }
+
+    run = draft_studio._gate_resume_run(context, {
+        "id": 61, "kind": "gate_resume",
+        "idempotency_key": "operator-recovery-60-1",
+    })
+
+    assert run is not None
+    assert run.session_id == "draft-session"
+
+
 def test_client_qa_fix_cannot_reuse_a_prior_turn_gate_checkpoint():
     context = {
         "resuming_candidate_turn_id": 60,

@@ -169,9 +169,7 @@ def _gate_resume_run(context: Mapping[str, Any], turn: Mapping[str, Any]
     same_turn = candidate_turn_id == current_turn_id
     automatic_continuation = bool(
         0 < candidate_turn_id < current_turn_id and
-        str(turn.get("kind") or "") == "gate_resume" and
-        _AUTOMATIC_GATE_RESUME_TURN_KEY.fullmatch(
-            str(turn.get("idempotency_key") or "")))
+        str(turn.get("kind") or "") == "gate_resume")
     if not same_turn and not automatic_continuation:
         return None
     prepared = context.get("prepared_qa")
