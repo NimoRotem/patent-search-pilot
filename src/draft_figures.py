@@ -41,7 +41,7 @@ MAX_PNG_BYTES = 8 * 1024 * 1024
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
-FIGURE_PROMPT_VERSION = "figure-v11-dual-section-annotation-stripping"
+FIGURE_PROMPT_VERSION = "figure-v12-section-figure-residue-stripping"
 SEMANTIC_PROMPT_VERSION = (
     "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology")
 SEMANTIC_COMPATIBLE_PROMPT_VERSIONS = frozenset((
@@ -762,6 +762,10 @@ _SECTION_ANNOTATION_CONTINUATION = re.compile(
     r"it\s+marks?\s+the\s+plane\b)",
     re.IGNORECASE,
 )
+_SECTION_ANNOTATION_FIGURE_RESIDUE = re.compile(
+    r"^\s*[0-9]{1,3}[A-Za-z]?\s*(?:[.!?]|,\s*(?:at|through|taken|where)\b.*)?\s*$",
+    re.IGNORECASE,
+)
 _ANNOTATION_PLACEMENT = re.compile(
     r"\bidentif(?:ied|ies|ying|ication)\b.{0,160}\bpoint\b|"
     r"\bpoint\b.{0,160}\bidentif(?:ied|ies|ying|ication)\b",
@@ -806,7 +810,7 @@ def _geometry_text(value, numerals=()):
                     (section_annotation_context and (
                         _SECTION_ANNOTATION_DETAIL.search(chunk) or
                         _SECTION_ANNOTATION_CONTINUATION.search(chunk) or
-                        re.fullmatch(r"\s*[0-9]{1,3}[A-Za-z]?\s*[.!?]?\s*", chunk)))):
+                        _SECTION_ANNOTATION_FIGURE_RESIDUE.fullmatch(chunk)))):
                 continue
             chunks.append(chunk)
             kept_geometry = True

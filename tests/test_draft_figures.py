@@ -4839,7 +4839,8 @@ def test_geometry_prompt_strips_adjacent_paragraphs_for_two_cutting_planes():
         "Each enters beyond the outer edge on one side, crosses the ring and inner face, "
         "leaves beyond the opposite edge, and carries a short arrow at each end.\n\n"
         "One runs horizontally and reads as section line 2-2. It marks the plane of FIG. 2.\n\n"
-        "The other runs vertically and reads as section line 4-4. It marks the plane of FIG. 4.\n\n"
+        "The other runs vertically and reads as section line 4-4. It marks the plane of FIG. 4, "
+        "at a place where a clearance is present.\n\n"
         "The ring surface remains continuous between its outer and inner edges.")
 
     cleaned = draft_figures._geometry_text(caption)
@@ -4851,6 +4852,7 @@ def test_geometry_prompt_strips_adjacent_paragraphs_for_two_cutting_planes():
     assert "marks the plane" not in cleaned.lower()
     assert "section line" not in cleaned.lower()
     assert " two" not in cleaned.lower() and " four" not in cleaned.lower()
+    assert "at a place" not in cleaned.lower()
 
 
 def test_geometry_spec_strips_arbitrary_annotation_point_placement():
