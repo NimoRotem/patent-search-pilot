@@ -2951,13 +2951,20 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
 
 
 def _chamber_section_has_flush_legs(text: str) -> bool:
-    return bool(re.search(
-        r"\bouter (?:side|face|edge) of each leg\b[^.]{0,160}"
-        r"\b(?:flush with|aligned with)\b[^.]{0,100}"
-        r"(?:\bcorresponding (?:end|edge) of (?:the )?(?:slab|base)\b|"
-        r"\b(?:that|the respective) (?:end|edge)\b)",
-        text,
-    ))
+    return bool(
+        re.search(
+            r"\bouter (?:side|face|edge) of each leg\b[^.]{0,160}"
+            r"\b(?:flush with|aligned with)\b[^.]{0,100}"
+            r"(?:\bcorresponding (?:end|edge) of (?:the )?(?:slab|base)\b|"
+            r"\b(?:that|the respective) (?:end|edge)\b)",
+            text,
+        ) or
+        re.search(
+            r"\b(?:legs?|loop)\b[^.]{0,180}\bone at each end\b[^.]{0,80}"
+            r"\b(?:and )?flush with (?:it|the (?:slab|base))\b",
+            text,
+        )
+    )
 
 
 def _deterministic_chamber_section_png(caption: str) -> bytes | None:
@@ -3024,8 +3031,8 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
         r"[^.]{0,100}\bresum(?:es|ing)\b[^.]{0,80}\blower face\b", text))
     line_ranges = ((145, 211), (369, 521)) if split_at_base else ((145, 521),)
     for start, stop in line_ranges:
-        for top in range(start, stop, 36):
-            draw.line((865, top, 865, min(top + 20, stop - 1)), fill="black", width=4)
+        for top in range(start, stop, 34):
+            draw.line((865, top, 865, min(top + 26, stop - 1)), fill="black", width=4)
 
     out = io.BytesIO()
     image.save(out, format="PNG", compress_level=9)

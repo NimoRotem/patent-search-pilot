@@ -4015,8 +4015,9 @@ def test_deterministic_chamber_section_accepts_agent_rephrased_inventory(monkeyp
     specification = """
     The sheet shows four schematic bodies and one broken line: one hatched horizontal slab, the
     base 12; one closed loop cut twice, appearing as two short hatched legs hanging from the
-    underside of the slab; one hatched band across the bottom, the covering element 36, on which
-    the legs stand; and one closed housing standing on the slab, the air-extraction mechanism 20.
+    underside of the slab, one at each end and flush with it; one hatched band across the bottom,
+    the covering element 36, on which the legs stand; and one closed housing standing on the slab,
+    the air-extraction mechanism 20.
     The slab, the legs and the band are the cut bodies. In the slab each stroke starts low on the
     left and ends high on the right, like a forward slash. In both legs each stroke starts high on
     the left and ends low on the right, like a backslash. In the band each stroke is steep, close
@@ -4031,6 +4032,8 @@ def test_deterministic_chamber_section_accepts_agent_rephrased_inventory(monkeyp
     assert observed == [-45, 45, 45, -75]
     image = Image.open(io.BytesIO(png)).convert("L")
     assert sum(image.getpixel((865, y)) < 32 for y in range(225, 356)) < 40
+    assert sum(image.getpixel((200, y)) < 32 for y in range(360, 621)) > 240
+    assert sum(image.getpixel((1200, y)) < 32 for y in range(360, 621)) > 240
 
 
 def test_deterministic_section_certificate_records_exact_raw_pixel_hatch_angles():
@@ -4143,6 +4146,8 @@ def test_deterministic_chamber_section_splits_that_line_wording_used_by_agent():
     filing_ink = sum(filing_image.getpixel((865, y)) < 32 for y in range(225, 356))
 
     assert filing_ink + 40 < continuous_ink
+    resumed_ink = sum(filing_image.getpixel((865, y)) < 32 for y in range(369, 521))
+    assert resumed_ink >= 110
 
 
 def test_deterministic_fragmentary_section_preserves_open_clearance_and_four_bodies():
