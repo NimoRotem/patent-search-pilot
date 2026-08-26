@@ -5309,6 +5309,38 @@ def test_structural_surplus_resets_once_then_uses_targeted_edits(monkeypatch):
     ]
 
 
+def test_changed_nonstructural_failure_keeps_corrected_canvas(monkeypatch):
+    generated = []
+    reviews = iter((
+        "the jaw pads do not meet the pipe",
+        "the latch does not bridge both frame ends",
+        "the hinge blocks do not reach the pivot",
+    ))
+
+    def generate(_prompt, previous=None):
+        png = blank_png(width=640 + len(generated))
+        generated.append((previous, png))
+        return png
+
+    monkeypatch.setattr(draft_figures, "MAX_SEMANTIC_ATTEMPTS", 3)
+    monkeypatch.setattr(draft_figures, "_cached_generate", generate)
+    monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
+        "ok": False, "inspected": True, "missing": [],
+        "errors": [next(reviews)], "unexpected": [], "anchors": [],
+    })
+
+    with pytest.raises(draft_figures.FigureError, match="semantic"):
+        draft_figures.render_figure(
+            7, 91, label="FIG. 1", caption="plan view of a split clamp",
+            numerals=["10 = body"])
+
+    assert [previous for previous, _png in generated] == [
+        None,
+        generated[0][1],
+        generated[1][1],
+    ]
+
+
 def test_third_semantic_attempt_resets_repeatedly_rejected_geometry(monkeypatch):
     generated = []
 
