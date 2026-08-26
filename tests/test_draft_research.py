@@ -38,8 +38,9 @@ PUBS = ["US-1111111-A", "US-2222222-B2", "US-3333333-B1"]
 
 
 def test_studio_schema_bootstrap_includes_research_rounds():
-    assert [path.name for path in draft_studio._MIGRATIONS][-1] == \
-        "020_draft_research_rounds.sql"
+    names = [path.name for path in draft_studio._MIGRATIONS]
+    assert "020_draft_research_rounds.sql" in names
+    assert names[-1] == "021_draft_project_settings.sql"
 
 
 # =============================================================================================

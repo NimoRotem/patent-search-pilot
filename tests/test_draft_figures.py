@@ -1281,6 +1281,54 @@ def test_byte_exact_certificate_resolves_a_clear_interior_provider_misread(monke
     assert resolution["coordinates"][0]["basis"] == "certified_clear_interior"
 
 
+def test_byte_exact_certificate_resolves_a_certified_line_target_provider_misread(monkeypatch):
+    image = Image.new("RGB", (1000, 1000), "white")
+    ImageDraw.Draw(image).line((400, 300, 400, 500), fill="black", width=4)
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    raw = output.getvalue()
+    anchors = [{
+        "numeral": "38", "x": 400, "y": 400, "visible": True,
+        "target_evidence": "on the right wall of the radial-guide channel",
+    }]
+    monkeypatch.setattr(draft_figures, "inspect_cross_provider_endpoints", lambda *a, **k: {
+        "ok": False, "inspected": True, "incorrect": ["38"],
+        "reported_matches_spec": False,
+        "expected": ["38"], "observed": ["38"],
+        "missing": [], "unexpected": [], "duplicates": [],
+        "errors": ["Numeral 38: the endpoint is outside the channel."],
+        "labels": [{
+            "numeral": "38", "correct": False, "repairable": True,
+            "evidence": "Current (400, 400); suggested empty-space point (450, 400).",
+            "suggested_x": 450, "suggested_y": 400,
+        }],
+        "coordinate_space": "raw_pixels",
+        "coordinate_width": 1000, "coordinate_height": 1000,
+        "model_name": draft_figures.cross_provider_model(),
+        "prompt_version": draft_figures.CROSS_PROVIDER_PROMPT_VERSION,
+        "review_count": draft_figures.CROSS_PROVIDER_REVIEW_COUNT,
+    })
+    certified = {
+        "ok": True, "inspected": True,
+        "model_name": "deterministic-compositor",
+        "prompt_version": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        "certificate_version": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        "review_count": 0,
+        "coordinate_certificates": [{
+            "numeral": "38", "x": 400, "y": 400,
+            "certificate_source": draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        }],
+    }
+
+    result = draft_figures._apply_cross_provider_endpoint_gate(
+        certified, raw, raw_png=raw, anchors=anchors,
+        label="FIG. 3", caption="radial-guide section", numerals=["38 = radial guide"])
+
+    assert result["ok"] is True
+    resolution = result["cross_provider_audit"]["deterministic_resolution"]
+    assert resolution["coordinates"][0]["basis"] == "certified_line_target"
+
+
 def test_cross_provider_veto_coordinates_are_repaired_and_recertified(monkeypatch):
     raw = blank_png(1000, 1000)
     anchors = [{"numeral": "10", "x": 400, "y": 565, "visible": True,
@@ -2669,6 +2717,11 @@ def test_marked_progress_ignores_current_layout_saved_under_old_pixel_grounding(
     ) is None
 
 
+def test_marked_progress_cache_is_bound_to_the_deterministic_anchor_map():
+    assert (draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION in
+            draft_figures.MARKED_PROGRESS_VERSION)
+
+
 def test_current_marked_audit_rejects_a_pre_native_pixel_review():
     audit = accepted_marked_anchor_audit(
         prompt_version=(
@@ -3727,6 +3780,76 @@ def test_deterministic_split_clamp_top_targets_clear_radial_cutting_line():
 
     assert audit["ok"] is True
     assert audit["colliding_numerals"] == []
+
+
+def _split_clamp_carriage_section_specification():
+    return """
+    Enlarged fragmentary section through one jaw carriage, taken on line 3-3 of FIG. 1.
+    Cut solid material carries section hatching; the frame body, the segmented cam ring 20,
+    the jaw carriage 30 with its follower 32, and the jaw pad 40 each at a slant different
+    from that of every other cut element beside it. A hatched body is formed with a groove,
+    the annular guide 18, and a channel, the radial guide 38, that opens at the underside.
+    A hatched block, the segmented cam ring 20, is received in the groove. One rectangular
+    opening, the oblique slot 34, is formed through that block and receives the follower 32.
+    A hatched jaw carriage 30 lies in the channel and projects below the body. A zigzag spring
+    symbol, the carriage return spring 44, acts between the carriage and the frame body. The
+    jaw pad 40 hangs below the carriage on a small circle and its lower face is a concave arc.
+    """
+
+
+def test_deterministic_split_clamp_carriage_section_has_distinct_hatching_and_concave_pad():
+    specification = _split_clamp_carriage_section_specification()
+    png = draft_figures._deterministic_split_clamp_carriage_section_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    certificate = draft_figures._deterministic_section_hatch_certificate(
+        png, specification)
+    angles = [item["angle_degrees"] for item in certificate["components"]]
+    assert certificate["renderer"] == "split_clamp_carriage_section"
+    assert len(angles) == 5
+    assert len(set(angles)) == 5
+    with Image.open(io.BytesIO(png)).convert("L") as image:
+        assert image.getpixel((570, 790)) < 32
+        assert image.getpixel((700, 720)) < 32
+        assert image.getpixel((700, 790)) == 255
+
+
+def test_deterministic_split_clamp_carriage_section_certifies_every_target():
+    specification = _split_clamp_carriage_section_specification()
+    numerals = [
+        "18 = annular guide", "20 = segmented cam ring", "30 = jaw carriage",
+        "32 = follower", "34 = oblique slot", "38 = radial guide", "40 = jaw pad",
+        "44 = carriage return spring",
+    ]
+    png = draft_figures._deterministic_split_clamp_carriage_section_png(specification)
+    initial = [{
+        "numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+        "visible": True, "evidence": entry,
+    } for entry in numerals]
+
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {"ok": True, "anchors": initial})
+    grounded = draft_figures._apply_pixel_grounding(png, numerals, semantic)
+
+    certificate = grounded["deterministic_anchor_certificate"]
+    assert certificate["renderer"] == "split_clamp_carriage_section"
+    assert {item["numeral"] for item in certificate["anchors"]} == {
+        "18", "20", "30", "32", "34", "38", "40", "44",
+    }
+    anchors = {item["numeral"]: item for item in certificate["anchors"]}
+    assert (anchors["32"]["raw_x"], anchors["32"]["raw_y"]) == (680, 370)
+    assert (anchors["34"]["raw_x"], anchors["34"]["raw_y"]) == (620, 320)
+    assert (anchors["38"]["raw_x"], anchors["38"]["raw_y"]) == (900, 475)
+    assert (anchors["44"]["raw_x"], anchors["44"]["raw_y"]) == (540, 475)
+    with Image.open(io.BytesIO(png)).convert("L") as raw:
+        assert raw.getpixel((450, 240)) < 32
+        assert raw.getpixel((900, 475)) < 32
+    grounded_anchors = {item["numeral"]: item for item in grounded["anchors"]}
+    assert grounded_anchors["34"]["x"] == draft_figures._pixel_to_normalized(620, 1400)
+    assert grounded_anchors["38"]["x"] == draft_figures._pixel_to_normalized(900, 1400)
+    assert grounded["pixel_anchor_audit"]["ok"] is True, json.dumps(
+        grounded["pixel_anchor_audit"], indent=2)
 
 
 def _segmented_cam_ring_specification():

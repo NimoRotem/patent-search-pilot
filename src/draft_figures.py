@@ -65,17 +65,18 @@ DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
 DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
     "deterministic-semantic-consensus-v1-byte-exact-two-semantic-one-independent")
 DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION = (
-    "deterministic-anchor-v7-byte-exact-clear-interior-and-boundary-centerlines")
+    "deterministic-anchor-v12-byte-exact-certified-interiors-and-linework")
 DETERMINISTIC_SECTION_HATCH_CERTIFICATE_VERSION = (
     "deterministic-section-hatching-v1-byte-exact-raw-pixel-angles")
 DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION = (
-    "deterministic-endpoint-resolution-v3-sub-dot-component-or-certified-interior")
+    "deterministic-endpoint-resolution-v4-sub-dot-component-interior-or-linework")
 DETERMINISTIC_SUB_DOT_TOLERANCE_PIXELS = 6
 DETERMINISTIC_CLEAR_INTERIOR_RADIUS_PIXELS = 8
 MARKED_COMPATIBLE_PROMPT_VERSIONS = frozenset((MARKED_ANCHOR_PROMPT_VERSION,))
 PIXEL_ANCHOR_VERSION = "pixel-anchor-v12-brief-target-surface-fidelity"
 MARKED_PROGRESS_VERSION = (
-    "marked-progress-v7-brief-target-native-pixel-bound-" + PIXEL_ANCHOR_VERSION)
+    "marked-progress-v8-anchor-map-bound-" +
+    DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION + "-" + PIXEL_ANCHOR_VERSION)
 OCR_PROMPT_VERSION = "google-vision-document-text-v3-section-designations"
 CLOSED_REGION_AUDIT_VERSION = "closed-region-v1-8-connected"
 DEFAULT_SEMANTIC_ATTEMPTS = 8
@@ -378,14 +379,17 @@ SEMANTIC_GEOMETRY_RULES = (
 _EMPTY_ANCHOR_PART_RE = re.compile(
     r"\b(?:aperture|cavity|chamber|channel|clearance|gap|opening|passage|plenum|port|slot|"
     r"space|void)\b", re.IGNORECASE)
+_EMPTY_ANCHOR_TARGET_RE = re.compile(
+    r"\b(?:inside|within)\s+(?:the\s+)?(?:aperture|cavity|chamber|channel|clearance|"
+    r"gap|opening|passage|plenum|port|slot|space|void)\b", re.IGNORECASE)
 _LINE_ANCHOR_PART_RE = re.compile(
     r"\b(?:boundary|cable|cord|edge|electrical supply|handle|line|loop|path|"
     r"pulling element|ring)\b", re.IGNORECASE)
 _EXPLICIT_LINE_TARGET_RE = re.compile(
-    r"(?:\b(?:on|along|at)\b[^.;|]{0,80}\b(?:boundary|edge|line|centerline)\b|"
+    r"(?:\b(?:on|along|at)\b[^.;|]{0,80}\b(?:boundary|edge|line|centerline|wall)\b|"
     r"\b(?:top|bottom|upper|lower|horizontal|vertical|contact)\s+"
-    r"(?:(?:horizontal|vertical)\s+)?(?:boundary\s+)?(?:edge|line)\b|"
-    r"\b(?:boundary|edge|line)\s+(?:forming|defining)\b|"
+    r"(?:(?:horizontal|vertical)\s+)?(?:boundary\s+)?(?:edge|line|wall)\b|"
+    r"\b(?:boundary|edge|line|wall)\s+(?:forming|defining)\b|"
     r"\b(?:cable|cord|handle|loop|path|pulling element|ring|cross ?bar|outline|curve|"
     r"stroke)\b)", re.IGNORECASE)
 _HORIZONTAL_LINE_TARGET_RE = re.compile(
@@ -1924,8 +1928,10 @@ def _ground_anchors_to_pixels(png: bytes, numerals, anchors, *, max_snap: int = 
         pixel_y = min(height - 1, max(0, round(y * (height - 1) / 1000)))
         part = parts.get(numeral, "")
         is_exterior = bool(exterior[pixel_y, pixel_x])
-        is_empty_space = bool(_EMPTY_ANCHOR_PART_RE.search(part))
         evidence = str(item.get("target_evidence") or item.get("evidence") or "")
+        is_empty_space = bool(
+            _EMPTY_ANCHOR_PART_RE.search(part) or
+            _EMPTY_ANCHOR_TARGET_RE.search(evidence))
         targets_visible_surface = bool(_VISIBLE_SURFACE_TARGET_RE.search(evidence))
         targets_broad_interior = bool(
             targets_visible_surface or _BROAD_INTERIOR_TARGET_RE.search(evidence))
@@ -2160,6 +2166,8 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
     block_grip = _has_deterministic_block_grip(text)
     stirring_scene = _has_deterministic_stirring_scene(text)
     split_clamp_plan = _deterministic_split_clamp_plan_png(caption)
+    split_clamp_carriage_section = (
+        _deterministic_split_clamp_carriage_section_png(caption))
     segmented_cam_ring_plan = _deterministic_segmented_cam_ring_plan_png(caption)
     nested_plan = _deterministic_nested_plan_png(caption)
     pulling_scene = _deterministic_pulling_scene_png(caption)
@@ -2181,6 +2189,22 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
                 664, 200, "on the left outline of the topmost jaw carriage"),
             "jaw pad": (625, 282, "on the outer left arc of the topmost jaw pad"),
             "pipe": (700, 450, "well inside the central pipe circle"),
+        }
+    elif (split_clamp_carriage_section is not None and
+          png == split_clamp_carriage_section):
+        renderer_name = "split_clamp_carriage_section"
+        component_centers = {
+            "annular guide": (450, 240, "on the upper wall of the annular-guide groove"),
+            "segmented cam ring": (
+                430, 310, "well inside the hatching of the block in the groove"),
+            "jaw carriage": (
+                745, 505, "well inside the hatching of the block in the channel"),
+            "follower": (680, 370, "well inside the exposed hatching of the follower post"),
+            "oblique slot": (620, 320, "well inside the open slot beside the follower"),
+            "radial guide": (
+                900, 475, "on the right wall of the radial-guide channel"),
+            "jaw pad": (620, 700, "well inside the left hatching of the concave jaw pad"),
+            "carriage return spring": (540, 475, "on the zigzag spring symbol"),
         }
     elif segmented_cam_ring_plan is not None and png == segmented_cam_ring_plan:
         renderer_name = "segmented_cam_ring_plan"
@@ -3405,6 +3429,108 @@ def _paste_hatched_box(image, box, *, angle: int) -> None:
     image.paste(hatch_layer, (0, 0), mask)
 
 
+def _paste_hatched_polygon(image, points, *, angle: int) -> None:
+    """Fill one non-rectangular cut body with uniform hatching at an exact angle."""
+    from math import ceil, cos, hypot, radians, sin
+    from PIL import Image, ImageDraw
+
+    width, height = image.size
+    diagonal = hypot(width, height) * 1.5
+    theta = radians(angle)
+    direction_x, direction_y = cos(theta), sin(theta)
+    normal_x, normal_y = -direction_y, direction_x
+    center_x, center_y = width / 2, height / 2
+    hatch_layer = Image.new("RGB", image.size, "white")
+    hatch_draw = ImageDraw.Draw(hatch_layer)
+    for offset in range(-ceil(diagonal), ceil(diagonal) + 1, 30):
+        line_center_x = center_x + normal_x * offset
+        line_center_y = center_y + normal_y * offset
+        hatch_draw.line((
+            round(line_center_x - direction_x * diagonal),
+            round(line_center_y - direction_y * diagonal),
+            round(line_center_x + direction_x * diagonal),
+            round(line_center_y + direction_y * diagonal),
+        ), fill="black", width=2)
+    mask = Image.new("L", image.size, 0)
+    ImageDraw.Draw(mask).polygon(points, fill=255)
+    image.paste(hatch_layer, (0, 0), mask)
+
+
+def _deterministic_split_clamp_carriage_section_png(caption: str) -> bytes | None:
+    """Render the clamp carriage section with certified distinct hatching and pad curvature."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    requirements = (
+        re.search(r"\benlarged fragmentary section through one jaw carriage\b", text),
+        re.search(r"\bannular guide\b", text),
+        re.search(r"\bradial guide\b", text),
+        re.search(r"\bsegmented cam ring\b", text),
+        re.search(r"\boblique slot\b", text),
+        re.search(r"\bcarriage return spring\b", text),
+        re.search(r"\bjaw pad\b[^.]{0,160}\blower face (?:is|a) (?:a )?concave arc\b", text),
+        re.search(r"\beach at a slant different from that of every other cut element\b", text),
+    )
+    if not all(requirements):
+        return None
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1400, 900), "white")
+    draw = ImageDraw.Draw(image)
+
+    # One frame body surrounds a horizontal annular-guide groove and a downward-open channel.
+    for box in (
+            (180, 100, 1220, 240), (180, 240, 320, 560),
+            (1080, 240, 1220, 560), (180, 380, 500, 560),
+            (900, 380, 1220, 560)):
+        _paste_hatched_box(image, box, angle=45)
+    draw.line((180, 100, 1220, 100, 1220, 560, 900, 560),
+              fill="black", width=4)
+    draw.line((500, 560, 180, 560, 180, 100), fill="black", width=4)
+    draw.line((320, 240, 1080, 240), fill="black", width=4)
+    draw.line((320, 240, 320, 380, 500, 380), fill="black", width=4)
+    draw.line((900, 380, 1080, 380, 1080, 240), fill="black", width=4)
+    draw.line((500, 380, 500, 560), fill="black", width=4)
+    draw.line((900, 380, 900, 560), fill="black", width=4)
+
+    # The cam ring is one hatched block within the groove. Its only opening receives the follower.
+    ring_box = (360, 260, 1040, 360)
+    _paste_hatched_box(image, ring_box, angle=-30)
+    draw.rectangle(ring_box, outline="black", width=4)
+    slot = [(585, 270), (835, 270), (805, 350), (555, 350)]
+    draw.polygon(slot, fill="white", outline="black")
+    draw.line(slot + [slot[0]], fill="black", width=4, joint="curve")
+
+    # The carriage fills the radial channel. A separately hatched follower rises into the slot.
+    carriage_box = (620, 380, 780, 650)
+    _paste_hatched_box(image, carriage_box, angle=80)
+    draw.rectangle(carriage_box, outline="black", width=4)
+    follower = [(690, 290), (735, 290), (690, 430), (645, 430)]
+    _paste_hatched_polygon(image, follower, angle=-80)
+    draw.line(follower + [follower[0]], fill="black", width=4, joint="curve")
+
+    spring = [(560, 400), (540, 425), (580, 450), (540, 475),
+              (580, 500), (540, 525), (560, 550)]
+    draw.line(spring, fill="black", width=5, joint="curve")
+
+    # A sectioned pad hangs from a schematic pivot. Its lower surface is one concave arc.
+    lower_arc = []
+    for index in range(41):
+        t = index / 40
+        one_minus_t = 1 - t
+        lower_arc.append((
+            round(one_minus_t * 830 + t * 570),
+            round(one_minus_t ** 2 * 790 + 2 * one_minus_t * t * 650 + t ** 2 * 790),
+        ))
+    pad = [(560, 640), (840, 640), (830, 790), *lower_arc[1:], (560, 640)]
+    _paste_hatched_polygon(image, pad, angle=15)
+    draw.line(pad, fill="black", width=4, joint="curve")
+    draw.ellipse((680, 630, 720, 670), fill="white", outline="black", width=4)
+
+    out = io.BytesIO()
+    image.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
+
+
 def _requested_section_hatch_angle(text: str, subject_pattern: str, default: int) -> int:
     """Resolve an explicit section-hatching direction while retaining a safe default."""
     match = re.search(
@@ -3459,7 +3585,17 @@ def _deterministic_section_hatch_certificate(png: bytes, caption: str) -> dict |
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
     chamber = _deterministic_chamber_section_png(caption)
     fragmentary = _deterministic_fragmentary_section_png(caption)
-    if chamber is not None and png == chamber:
+    split_clamp_carriage = _deterministic_split_clamp_carriage_section_png(caption)
+    if split_clamp_carriage is not None and png == split_clamp_carriage:
+        renderer = "split_clamp_carriage_section"
+        components = [
+            _section_hatch_component("frame body", 45),
+            _section_hatch_component("segmented cam ring", -30),
+            _section_hatch_component("jaw carriage", 80),
+            _section_hatch_component("follower", -80),
+            _section_hatch_component("jaw pad", 15),
+        ]
+    elif chamber is not None and png == chamber:
         renderer = "chamber_section"
         base_angle = _requested_section_hatch_angle(
             text, r"(?:the\s+)?(?:base(?:\s+\d+)?|slab)", 45)
@@ -3709,6 +3845,7 @@ def _deterministic_geometry_png(caption: str) -> bytes | None:
     """Select an exact renderer only when the brief describes a supported simple geometry."""
     return (_deterministic_control_diagram_png(caption) or
             _deterministic_split_clamp_plan_png(caption) or
+            _deterministic_split_clamp_carriage_section_png(caption) or
             _deterministic_segmented_cam_ring_plan_png(caption) or
             _deterministic_nested_plan_png(caption) or
             _deterministic_pulling_scene_png(caption) or
@@ -6724,6 +6861,27 @@ def _clear_enclosed_white_point(raw_png: bytes, point: tuple[int, int], *,
         return False
 
 
+def _ink_at_or_near_point(raw_png: bytes, point: tuple[int, int], *, radius: int = 2) -> bool:
+    """Verify that a certified line target lands on actual raw-renderer linework."""
+    try:
+        from PIL import Image, ImageOps
+        with Image.open(io.BytesIO(raw_png)) as source:
+            grayscale = ImageOps.grayscale(source)
+        width, height = grayscale.size
+        center_x, center_y = point
+        radius = max(0, int(radius))
+        if (center_x < 0 or center_y < 0 or center_x >= width or center_y >= height):
+            return False
+        for y in range(max(0, center_y - radius), min(height, center_y + radius + 1)):
+            for x in range(max(0, center_x - radius), min(width, center_x + radius + 1)):
+                if ((x - center_x) ** 2 + (y - center_y) ** 2 <= radius ** 2 and
+                        grayscale.getpixel((x, y)) < 225):
+                    return True
+        return False
+    except (TypeError, ValueError, OverflowError, OSError):
+        return False
+
+
 def _deterministic_endpoint_resolution_evidence(record: dict) -> str:
     numeral = _clean_numeral(record.get("numeral"))
     current_x = int(record.get("current_x"))
@@ -6738,6 +6896,9 @@ def _deterministic_endpoint_resolution_evidence(record: dict) -> str:
         return prefix + (
             "the certified point and provider suggestion are inside the same enclosed "
             "rendered component.")
+    if basis == "certified_line_target":
+        return prefix + (
+            "the designated boundary endpoint is verified on the exact renderer linework.")
     return prefix + (
         "the certified point is clear inside the exact component designated by the renderer.")
 
@@ -6770,7 +6931,10 @@ def _review_endpoint_evidence(audit: dict) -> dict:
     }
     if not provider_incorrect or set(records) != provider_incorrect:
         return fallback
-    allowed_bases = {"sub_dot", "same_enclosed_component", "certified_clear_interior"}
+    allowed_bases = {
+        "sub_dot", "same_enclosed_component", "certified_clear_interior",
+        "certified_line_target",
+    }
     try:
         if any(
                 str(records[numeral].get("basis")) not in allowed_bases or
@@ -6896,11 +7060,14 @@ def _resolve_deterministic_endpoint_veto(certified: dict, audit: dict, raw_png: 
             else:
                 target = str(
                     (anchors_by_numeral.get(numeral) or {}).get("target_evidence") or "")
-                if (not re.search(r"\bwell inside\b", target, re.IGNORECASE) or
-                        not _clear_enclosed_white_point(
-                            raw_png, (current_x, current_y))):
+                if (_has_explicit_line_target(target) and
+                        _ink_at_or_near_point(raw_png, (current_x, current_y))):
+                    basis = "certified_line_target"
+                elif (re.search(r"\bwell inside\b", target, re.IGNORECASE) and
+                      _clear_enclosed_white_point(raw_png, (current_x, current_y))):
+                    basis = "certified_clear_interior"
+                else:
                     return audit
-                basis = "certified_clear_interior"
         resolutions.append({
             "numeral": numeral,
             "current_x": current_x, "current_y": current_y,
@@ -6931,6 +7098,11 @@ def _resolve_deterministic_endpoint_veto(certified: dict, audit: dict, raw_png: 
         resolution_summary = (
             "The proposed correction was smaller than the rendered endpoint dot and was "
             "resolved by the complete byte-exact component certificate.")
+    elif "certified_line_target" in resolution_bases:
+        resolution_summary = (
+            "Each disputed boundary endpoint was verified on the exact linework designated "
+            "by the byte-exact renderer, so the provider coordinate veto was resolved by the "
+            "complete component certificate.")
     elif "certified_clear_interior" in resolution_bases:
         resolution_summary = (
             "Each disputed interior endpoint was a clear point inside the exact enclosed "

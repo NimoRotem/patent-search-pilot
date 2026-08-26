@@ -2497,7 +2497,7 @@ def test_default_finalization_budget_allows_drawing_and_text_repair_rounds():
     assert draft_studio.MAX_FINALIZATION_ROUNDS == 6
 
 
-def test_valid_candidate_is_checkpointed_before_the_long_drawing_gate(monkeypatch, tmp_path):
+def test_valid_candidate_is_checkpointed_before_the_long_review(monkeypatch, tmp_path):
     repository = Mock()
     agent = Mock()
     agent.DRAFT_MODEL = "draft-model"
@@ -2523,8 +2523,8 @@ def test_valid_candidate_is_checkpointed_before_the_long_drawing_gate(monkeypatc
         "previous_sections": {},
     })
     monkeypatch.setattr(
-        runner, "_ensure_figures",
-        lambda **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt()))
+        runner, "evaluate",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt()))
 
     with pytest.raises(KeyboardInterrupt):
         runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
@@ -2537,49 +2537,26 @@ def test_valid_candidate_is_checkpointed_before_the_long_drawing_gate(monkeypatc
         "complete candidate"
 
 
-def test_transient_drawing_capacity_retries_saved_candidate_without_agent_repair(
+def test_transient_drawing_capacity_retries_the_durable_drawing_turn(
         monkeypatch, tmp_path):
-    repository = Mock()
-    agent = Mock()
-    agent.DRAFT_MODEL = "draft-model"
-    agent.DRAFT_TIMEOUT = 60
-    agent.new_session_id.return_value = "new-session"
-    agent.run.return_value = draft_agent.AgentRun(
-        ok=True, session_id="draft-session", model="draft-model",
-        cost_usd=0.5, duration_ms=1000,
-        result={"action": "revised", "summary": "complete candidate",
-                "reasoning": [], "changes": [], "questions": [],
-                "prior_art_strategy": "", "answer": ""})
-    workspace = Mock()
-    workspace.snapshot.return_value = {
-        "sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
-    runner = draft_studio.TurnRunner(
-        repository, object(), agent=agent, qa=draft_qa, workspace=workspace)
-    monkeypatch.setattr(runner, "prepare", lambda _turn: {
-        "workspace": tmp_path,
-        "project": {"user_id": 91, "agent_session_id": "", "latest_version_no": 0,
-                    "disclosure_text": "disclosure"},
-        "references": [{"publication_number": ALLOWED[0]}], "documents": [],
-        "seeded": False, "had_version": False, "resuming_candidate": False,
-        "previous_sections": {},
-    })
+    runner = draft_studio.TurnRunner(Mock(), object(), agent=Mock(), workspace=Mock())
+    monkeypatch.setattr(runner, "_drawings_already_match", lambda *_a, **_k: False)
     monkeypatch.setattr(
         runner, "_ensure_figures",
         lambda **_kwargs: (_ for _ in ()).throw(
             draft_figures.FigureTransientError("429 RESOURCE_EXHAUSTED")))
 
     with pytest.raises(draft_figures.FigureTransientError, match="RESOURCE_EXHAUSTED"):
-        runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
-                    "turn_no": 1, "kind": "initial", "attempts": 1})
-
-    assert agent.run.call_count == 1
-    checkpoint = repository.save_retry_candidate.call_args.kwargs
-    assert checkpoint["report"]["_gate_resume"]["session_id"] == "draft-session"
+        runner._reconcile_drawings(
+            turn_id=3, lease="lease", project_id=7, user_id=91,
+            sections=GOOD, numerals=NUMERALS, figures=FIGURES,
+            disclosure="disclosure", workspace=tmp_path)
 
 
 def test_drawing_budget_exhaustion_never_becomes_a_publishable_fault_list(
         monkeypatch, tmp_path):
     runner = draft_studio.TurnRunner(Mock(), object(), qa=Mock(), workspace=Mock())
+    monkeypatch.setattr(runner, "_drawings_already_match", lambda *_a, **_k: False)
     monkeypatch.setattr(
         runner, "_ensure_figures",
         lambda **_kwargs: (_ for _ in ()).throw(
@@ -2590,6 +2567,48 @@ def test_drawing_budget_exhaustion_never_becomes_a_publishable_fault_list(
             turn_id=3, lease="lease", project_id=7, user_id=91,
             sections=GOOD, numerals=NUMERALS, figures=FIGURES,
             disclosure="disclosure", workspace=tmp_path)
+
+
+def test_drawing_continuation_retry_preserves_completed_sheets():
+    import draft_studio_service
+
+    runner = Mock()
+    runner.repository.fail_turn.return_value = {"status": "queued"}
+    result = draft_studio_service._fail(
+        runner,
+        {"id": 4, "project_id": 7, "requested_by_user_id": 91,
+         "project_revision": 1, "lease_token": "lease"},
+        "DrawingBudgetSpent: the bounded drawing pass stopped between sheets",
+        retryable=True,
+    )
+
+    assert result["status"] == "queued"
+    runner.restore_figures.assert_not_called()
+
+
+def test_stale_drawing_approval_cannot_skip_the_current_gates(monkeypatch):
+    spec = FIGURES[0]
+    expected_hash = draft_figures.specification_hash(
+        spec["label"], spec["caption"], draft_figures.expected_entries(spec, NUMERALS))
+    stored = [{
+        "id": 11, "figure_label": spec["label"], "active_version": 2,
+        "versions": [{
+            "version_no": 2,
+            "semantic_audit": {"ok": True, "specification_hash": expected_hash},
+            "leader_audit": {"ok": True, "specification_hash": expected_hash},
+            "numeral_audit": {"ok": True, "inspected": True},
+        }],
+    }]
+    monkeypatch.setattr(draft_figures, "listing", lambda *_args: stored)
+    monkeypatch.setattr(draft_figures, "current_ocr_audit", lambda *_a, **_k: True)
+    monkeypatch.setattr(draft_figures, "current_leader_audit", lambda *_a, **_k: True)
+    monkeypatch.setattr(draft_figures, "current_semantic_audit", lambda *_a, **_k: False)
+    runner = draft_studio.TurnRunner(Mock(), object(), agent=Mock(), workspace=Mock())
+
+    assert runner._drawings_already_match(7, 91, NUMERALS, [spec]) is False
+
+    monkeypatch.setattr(draft_figures, "current_semantic_audit", lambda *_a, **_k: True)
+    assert runner._drawings_already_match(7, 91, NUMERALS, [spec]) is True
 
 
 def test_restart_resumes_a_checkpointed_candidate_without_rerunning_the_agent(
@@ -2629,16 +2648,19 @@ def test_restart_resumes_a_checkpointed_candidate_without_rerunning_the_agent(
         "prepared_qa": {"_gate_resume": gate_resume},
         "previous_sections": {},
     })
-    monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: {"ok": True})
+    ensure_figures = Mock(return_value={"ok": True})
+    monkeypatch.setattr(runner, "_ensure_figures", ensure_figures)
     monkeypatch.setattr(runner, "evaluate", lambda *args, **kwargs: {
         "status": "complete", "verdict": "pass", "summary": "ready",
         "checks": [], "findings": [], "counts": {}, "cost_usd": 0,
         "duration_ms": 1, "model_name": "review"})
 
-    runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
-                "turn_no": 1, "kind": "initial", "attempts": 1})
+    runner.run({"id": 4, "lease_token": "lease", "project_id": 7,
+                "turn_no": 2, "kind": "gate_resume", "attempts": 1,
+                "idempotency_key": "auto-filing-repair-3-1"})
 
     agent.run.assert_not_called()
+    ensure_figures.assert_called_once()
     assert repository.save_version.call_count == 1
     assert repository.complete_turn.call_args.kwargs["session_id"] == "draft-session"
 
@@ -2681,7 +2703,8 @@ def test_client_qa_fix_cannot_reuse_a_prior_turn_gate_checkpoint():
     }) is None
 
 
-def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, tmp_path):
+def test_turn_runner_publishes_text_and_atomically_queues_the_drawing_gate(
+        monkeypatch, tmp_path):
     class Repository:
         def __init__(self):
             self.saved_versions = []
@@ -2760,15 +2783,14 @@ def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, t
         "seeded": False, "had_version": False,
         "previous_sections": {},
     })
-    drawing_runs = iter([
-        {"ok": False, "errors": ["FIG. 2: wrong fastener axis",
-                                    "FIG. 7: missing process arrow"]},
-        {"ok": True},
-    ])
-    monkeypatch.setattr(runner, "_ensure_figures", lambda **_kwargs: next(drawing_runs))
     reports = iter([
-        {"status": "complete", "verdict": "pass", "summary": "ready",
-         "checks": [{"name": "Claims", "status": "pass"}], "findings": [],
+        {"status": "complete", "verdict": "fail", "summary": "text ready, drawings pending",
+         "checks": [
+             {"name": "Claims", "status": "pass"},
+             {"name": draft_studio._DRAWING_INSPECTION_CHECK, "status": "fail",
+              "category": "figures_and_numerals",
+              "items": ["FIG. 2: wrong fastener axis", "FIG. 7: missing process arrow"]},
+         ], "findings": [],
          "counts": {}, "cost_usd": 0, "duration_ms": 1, "model_name": "review"},
     ])
     monkeypatch.setattr(runner, "evaluate", lambda *args, **kwargs: next(reports))
@@ -2776,19 +2798,16 @@ def test_turn_runner_publishes_only_after_automatic_repair_passes(monkeypatch, t
     out = runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
                       "turn_no": 1, "kind": "initial"})
 
-    assert len(agent.calls) == 2
-    assert agent.calls[1]["resume"] is True
-    assert "did not pass" in agent.calls[1]["prompt"]
+    assert len(agent.calls) == 1
     assert len(repository.saved_versions) == 1
     assert len(repository.saved_reports) == 1
-    assert repository.saved_reports[0]["report"]["verdict"] == "pass"
-    assert all(message[0] != "qa" or message[1] == "ready" for message in repository.messages)
-    assert workspace.review_reports[0]["checks"][0]["items"] == [
-        "FIG. 2: wrong fastener axis", "FIG. 7: missing process arrow"]
+    assert repository.saved_reports[0]["report"]["verdict"] == "fail"
     assert repository.retry_candidates[0][0]["sections"] == GOOD
     assert "_gate_resume" in repository.retry_candidates[0][1]
-    assert any(report["verdict"] == "fail" for _snapshot, report
-               in repository.retry_candidates)
+    assert out["turn"]["discard_candidates"] is False
+    assert out["turn"]["continuation"]["kind"] == "gate_resume"
+    assert out["turn"]["continuation"]["idempotency_key"] == \
+        "auto-filing-repair-3-1"
     assert out["version"]["version_no"] == 1
 
 
@@ -3096,6 +3115,49 @@ def test_terminal_failure_retains_candidate_until_a_project_completes(monkeypatc
     assert not any("DELETE FROM app_draft_turn_candidates" in query for query, _ in queries)
 
 
+def test_complete_turn_atomically_queues_its_drawing_continuation(monkeypatch):
+    queries = []
+    rows = iter([
+        {"id": 33, "project_id": 7, "turn_no": 4, "requested_by_user_id": 91,
+         "project_revision": 2, "status": "complete"},
+        {"n": 5},
+        {"id": 44},
+    ])
+
+    class Cursor:
+        def execute(self, query, params=()):
+            queries.append((query, params))
+
+        def fetchone(self):
+            return next(rows)
+
+    @contextmanager
+    def cursor_factory(**_kwargs):
+        yield Cursor()
+
+    repository = draft_studio.StudioRepository(cursor_factory, migrate=False)
+    monkeypatch.setattr(repository, "_verify", lambda *_args: {
+        "id": 33, "project_id": 7, "turn_no": 4, "requested_by_user_id": 91,
+        "project_revision": 2, "status": "running",
+    })
+
+    result = repository.complete_turn(
+        33, "lease", result={}, session_id="session", cost_usd=1,
+        duration_ms=1000, model_name="model", discard_candidates=False,
+        continuation={
+            "kind": "gate_resume", "idempotency_key": "auto-filing-repair-33-1",
+            "user_message": "Finish all drawings automatically.",
+        })
+
+    assert result["continuation_turn_id"] == 44
+    insert = next((query, params) for query, params in queries
+                  if "INSERT INTO app_draft_turns" in query)
+    assert "gate_resume" in insert[1]
+    assert "auto-filing-repair-33-1" in insert[1]
+    assert any("SET status='queued'" in query for query, _params in queries)
+    assert not any("DELETE FROM app_draft_turn_candidates" in query for query, _ in queries)
+
+
 def test_invalid_workspace_is_automatic_repair_input_not_a_failed_turn(monkeypatch, tmp_path):
     repository = Mock()
     repository.save_version.return_value = {"version_no": 1}
@@ -3270,7 +3332,7 @@ def test_resumed_figure_plan_repair_is_source_locked_before_validation(monkeypat
             for item in saved["figures"]] == revised_figures
 
 
-def test_preflight_failure_retains_the_full_candidate_as_the_repair_source_lock(
+def test_figure_plan_defect_publishes_text_and_queues_automatic_drawings(
         monkeypatch, tmp_path):
     monkeypatch.setattr(draft_figures, "discard_project_figure_checkpoint",
                         lambda _turn_id: False)
@@ -3338,15 +3400,21 @@ def test_preflight_failure_retains_the_full_candidate_as_the_repair_source_lock(
     runner.run({"id": 3, "lease_token": "lease", "project_id": 7,
                 "turn_no": 2, "kind": "revise"})
 
-    assert agent.run.call_count == 2
-    first_report = workspace._write_review.call_args_list[0].args[1]
-    assert first_report["checks"][0]["category"] == "figures_and_numerals"
+    assert agent.run.call_count == 1
     saved = repository.save_version.call_args.kwargs
     assert saved["sections"]["claims"] == GOOD["claims"]
     assert saved["sections"]["detailed_description"] == GOOD["detailed_description"]
     assert saved["numerals"] == NUMERALS
-    assert [{key: item[key] for key in ("label", "caption", "numerals")}
-            for item in saved["figures"]] == repaired_figures
+    assert [item["label"] for item in saved["figures"]] == [
+        item["label"] for item in overlong_figures]
+    assert saved["figures"][0]["caption"] == overlong_figures[0]["caption"].strip()
+    report = repository.save_qa.call_args.kwargs["report"]
+    assert any(check.get("category") == "figures_and_numerals"
+               for check in report["checks"] if check.get("status") != "pass")
+    completion = repository.complete_turn.call_args.kwargs
+    assert completion["discard_candidates"] is False
+    assert completion["continuation"]["kind"] == "gate_resume"
+    assert completion["continuation"]["idempotency_key"] == "auto-filing-repair-3-1"
 
 
 def test_answering_a_question_does_not_discard_an_unpublished_candidate(monkeypatch, tmp_path):
