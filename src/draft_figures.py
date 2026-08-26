@@ -41,6 +41,22 @@ MAX_PNG_BYTES = 8 * 1024 * 1024
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
+
+
+def _image_generation_slot_limit(raw_value) -> int:
+    """Keep paid image concurrency conservative even when host configuration is malformed."""
+    if raw_value is None or not str(raw_value).strip():
+        return 1
+    try:
+        configured = int(str(raw_value).strip())
+    except (TypeError, ValueError):
+        return 1
+    return max(1, min(configured, 4))
+
+
+IMAGE_GENERATION_SLOTS = _image_generation_slot_limit(
+    os.environ.get("PATENT_IMAGE_GENERATION_SLOTS"))
+_IMAGE_GENERATION_SEMAPHORE = threading.BoundedSemaphore(IMAGE_GENERATION_SLOTS)
 FIGURE_PROMPT_VERSION = "figure-v12-section-figure-residue-stripping"
 SEMANTIC_PROMPT_VERSION = (
     "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology")
@@ -8010,28 +8026,45 @@ def _cache_key(prompt: str, previous: bytes | None) -> str:
 def _cached_generate(prompt: str, previous: bytes | None = None) -> bytes:
     """Content-addressed reuse before a paid image call; cache failure never blocks drawing."""
     key = _cache_key(prompt, previous)
-    try:
-        ensure_schema()
-        with db.cursor() as cur:
-            cur.execute("SELECT png FROM app_draft_figure_cache WHERE cache_key=%s", (key,))
-            row = cur.fetchone()
-        if row and row.get("png"):
+
+    def cached_png() -> bytes | None:
+        try:
+            ensure_schema()
+            with db.cursor() as cur:
+                cur.execute("SELECT png FROM app_draft_figure_cache WHERE cache_key=%s", (key,))
+                row = cur.fetchone()
+            return bytes(row["png"]) if row and row.get("png") else None
+        except Exception:
+            return None
+
+    png = cached_png()
+    if png:
+        print(json.dumps({"event": "draft_figure_llm", "provider": "vertex",
+                          "model": image_model(), "prompt_version": FIGURE_PROMPT_VERSION,
+                          "latency_ms": 0, "cache_hit": True, "success": True}), flush=True)
+        return png
+
+    # The production worker has several drafting slots, while the paid image model has a much
+    # narrower burst quota. Keep one generation sequence in flight by default. Recheck the cache
+    # after entering the lane because another slot may have generated this exact prompt while this
+    # caller waited.
+    with _IMAGE_GENERATION_SEMAPHORE:
+        png = cached_png()
+        if png:
             print(json.dumps({"event": "draft_figure_llm", "provider": "vertex",
                               "model": image_model(), "prompt_version": FIGURE_PROMPT_VERSION,
                               "latency_ms": 0, "cache_hit": True, "success": True}), flush=True)
-            return bytes(row["png"])
-    except Exception:
-        pass
-    png = generate_png(prompt, previous_png=previous)
-    try:
-        with db.cursor() as cur:
-            cur.execute(
-                "INSERT INTO app_draft_figure_cache (cache_key,model_name,prompt_version,png) "
-                "VALUES (%s,%s,%s,%s) ON CONFLICT (cache_key) DO NOTHING",
-                (key, image_model(), FIGURE_PROMPT_VERSION, png))
-    except Exception:
-        pass
-    return png
+            return png
+        png = generate_png(prompt, previous_png=previous)
+        try:
+            with db.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO app_draft_figure_cache (cache_key,model_name,prompt_version,png) "
+                    "VALUES (%s,%s,%s,%s) ON CONFLICT (cache_key) DO NOTHING",
+                    (key, image_model(), FIGURE_PROMPT_VERSION, png))
+        except Exception:
+            pass
+        return png
 
 
 def _discard_cached_generation(prompt: str, previous: bytes | None = None) -> None:
