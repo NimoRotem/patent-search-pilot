@@ -3650,7 +3650,16 @@ def test_deterministic_split_clamp_plan_has_single_joints_and_separate_curved_pa
     assert image.getpixel((750, 341)) < 32, "the pipe circle must remain independently visible"
 
 
-def test_deterministic_split_clamp_plan_uses_exact_component_anchor_centers():
+def test_deterministic_split_clamp_lever_starts_outside_latch_block():
+    png = draft_figures._deterministic_split_clamp_plan_png(
+        _split_clamp_plan_specification())
+
+    with Image.open(io.BytesIO(png)).convert("L") as image:
+        assert min(image.crop((1070, 415, 1155, 485)).getextrema()) == 255
+        assert image.getpixel((700, 680)) < 32
+
+
+def test_deterministic_split_clamp_plan_uses_exact_component_targets():
     specification = _split_clamp_plan_specification()
     numerals = [
         "100 = split pipe clamp", "10 = first frame half", "12 = second frame half",
@@ -3675,12 +3684,12 @@ def test_deterministic_split_clamp_plan_uses_exact_component_anchor_centers():
         draft_figures._pixel_to_normalized(450, 900),
     )
     assert positions["30"] == (
-        draft_figures._pixel_to_normalized(700, 1400),
-        draft_figures._pixel_to_normalized(230, 900),
+        draft_figures._pixel_to_normalized(664, 1400),
+        draft_figures._pixel_to_normalized(200, 900),
     )
     assert positions["40"] == (
-        draft_figures._pixel_to_normalized(679, 1400),
-        draft_figures._pixel_to_normalized(302, 900),
+        draft_figures._pixel_to_normalized(625, 1400),
+        draft_figures._pixel_to_normalized(282, 900),
     )
     assert positions["90"] == (
         draft_figures._pixel_to_normalized(700, 1400),
@@ -3693,6 +3702,31 @@ def test_deterministic_split_clamp_plan_uses_exact_component_anchor_centers():
     assert {item["numeral"] for item in certificate["anchors"]} == {
         "100", "10", "12", "14", "16", "30", "40", "90",
     }
+
+
+def test_deterministic_split_clamp_top_targets_clear_radial_cutting_line():
+    specification = _split_clamp_plan_specification()
+    numerals = [
+        "100 = split pipe clamp", "10 = first frame half", "12 = second frame half",
+        "14 = hinge", "16 = latch", "30 = jaw carriage", "40 = jaw pad", "90 = pipe",
+    ]
+    raw = draft_figures._deterministic_split_clamp_plan_png(specification)
+    initial = [{
+        "numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+        "visible": True, "evidence": entry,
+    } for entry in numerals]
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        raw, specification, numerals, {"ok": True, "anchors": initial})
+    grounded = draft_figures._apply_pixel_grounding(raw, numerals, semantic)
+    marks = [{
+        "designation": "3", "start_x": 500, "start_y": 80,
+        "end_x": 500, "end_y": 370, "view_dx": 1, "view_dy": 0,
+    }]
+
+    audit = draft_figures._section_mark_anchor_audit(grounded["anchors"], marks)
+
+    assert audit["ok"] is True
+    assert audit["colliding_numerals"] == []
 
 
 def _segmented_cam_ring_specification():
@@ -4162,6 +4196,28 @@ def test_segmented_cam_ring_renderer_accepts_current_filing_brief_wording():
     with Image.open(io.BytesIO(png)).convert("L") as image:
         assert image.getpixel((1030, 450)) < 64
         assert image.getpixel((970, 415)) < 64
+
+
+def test_segmented_cam_ring_renderer_accepts_source_repaired_ring_without_drive_face():
+    specification = """
+    Plan view of the segmented cam ring removed from the frame, its two segments drawn in the
+    relative positions they occupy when coupled in the closed condition, viewed along the ring
+    axis. A flat annulus is bounded by one inner circular boundary and one outer circular
+    boundary. Two joints, one at the left and one at the right, divide the annulus into two
+    arcuate segments. Three elongated openings are formed in the annulus, one near the top, one
+    at the lower left, one at the lower right. Each is an oblique slot, a long narrow opening
+    lying within the annulus width and inclined to the radius at its own position. The three are
+    alike and all tilt the same way. Features other than the two joints and three slots are not
+    designated in this view.
+    """
+
+    png = draft_figures._deterministic_segmented_cam_ring_plan_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    with Image.open(io.BytesIO(png)).convert("L") as image:
+        assert image.getpixel((1030, 450)) < 64
+        assert image.getpixel((1010, 563)) < 64
 
 
 def test_chamber_renderer_accepts_current_two_hatched_legs_wording():
@@ -5548,6 +5604,15 @@ def test_cutting_plane_arrows_and_both_section_designations_are_overlaid_determi
     assert left_end_ink > 25
     assert marked == draft_figures.annotate_png(
         raw, "FIG. 1", anchors, section_marks=marks)
+
+
+def test_section_designation_is_separated_from_arrowhead_for_ocr():
+    text_x, text_y = draft_figures._section_mark_designation_position(
+        tip=(100, 100), view=(1.0, 0.0), line=(0.0, 1.0), outward=1,
+        font_size=26, text_size=(16, 24), canvas_size=(400, 400))
+
+    assert text_x >= 120
+    assert 0 <= text_y <= 376
 
 
 def test_deterministic_leader_endpoint_has_a_vision_visible_dot():
