@@ -5277,12 +5277,13 @@ def test_uninspected_semantic_review_is_transient_and_preserves_the_generation(m
     assert discarded == []
 
 
-def test_structural_surplus_retries_from_a_clean_canvas(monkeypatch):
-    previous_images = []
+def test_structural_surplus_alternates_clean_canvas_and_targeted_edit(monkeypatch):
+    generated = []
 
     def generate(_prompt, previous=None):
-        previous_images.append(previous)
-        return blank_png(width=640 + len(previous_images))
+        png = blank_png(width=640 + len(generated))
+        generated.append((previous, png))
+        return png
 
     monkeypatch.setattr(draft_figures, "_cached_generate", generate)
     monkeypatch.setattr(draft_figures, "inspect_semantics", lambda *a, **k: {
@@ -5298,7 +5299,14 @@ def test_structural_surplus_retries_from_a_clean_canvas(monkeypatch):
             7, 91, label="FIG. 1", caption="plan view of a split clamp",
             numerals=["10 = body"])
 
-    assert previous_images == [None] * draft_figures.MAX_SEMANTIC_ATTEMPTS
+    assert [previous for previous, _png in generated] == [
+        None,
+        None,
+        generated[1][1],
+        None,
+        generated[3][1],
+        None,
+    ]
 
 
 def test_third_semantic_attempt_resets_repeatedly_rejected_geometry(monkeypatch):
