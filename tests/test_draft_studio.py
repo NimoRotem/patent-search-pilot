@@ -73,6 +73,25 @@ ALLOWED = ["US-11223344-B2"]
 
 
 @pytest.fixture(autouse=True)
+def clean_source_review(monkeypatch, request):
+    """The source-fidelity gate is its own text gate now.
+
+    It used to be reached through ``_ensure_figures``, so every test that stubbed the drawing pass
+    stubbed this along with it. Now that a drafting turn does not draw, it has to be stubbed on its
+    own or these tests would try to run a real reviewing agent. A test that is ABOUT the gate
+    overrides this after the runner is built.
+    """
+    if request.node.get_closest_marker("real_source_review"):
+        return
+    monkeypatch.setattr(
+        draft_studio.TurnRunner, "_review_sources",
+        lambda self, **_kwargs: {
+            "status": "complete", "verdict": "pass", "summary": "clean",
+            "checks": [], "findings": [], "counts": {}, "cost_usd": 0.0,
+            "duration_ms": 0, "model_name": "", "last_error": ""})
+
+
+@pytest.fixture(autouse=True)
 def no_corpus(monkeypatch):
     """Citations resolve against a stub, so these tests never touch Postgres or a paid API."""
     known = {"US-11223344-B2": {"found": True, "publication_number": "US-11223344-B2",
@@ -1807,6 +1826,7 @@ def test_source_preflight_is_independent_read_only_and_ignores_pixels(monkeypatc
     assert seen["cancel"] is cancel
 
 
+@pytest.mark.real_source_review
 def test_cancelled_source_review_is_a_turn_interruption_not_a_filing_finding(
         tmp_path, monkeypatch):
     stop = threading.Event()
@@ -2215,6 +2235,7 @@ def test_the_independent_reviewer_checks_source_fidelity_before_internal_consist
     assert "Do not inspect or rely on rendered images" in preflight
 
 
+@pytest.mark.real_source_review
 def test_source_fidelity_preflight_blocks_rendering_unsupported_geometry(
         monkeypatch, tmp_path):
     qa = Mock()
@@ -2245,6 +2266,7 @@ def test_source_fidelity_preflight_blocks_rendering_unsupported_geometry(
     assert caught.value.report["verdict"] == "fail"
 
 
+@pytest.mark.real_source_review
 def test_source_reviewer_outage_retries_saved_candidate_without_draft_repair(
         monkeypatch, tmp_path):
     qa = Mock()
@@ -2270,6 +2292,7 @@ def test_source_reviewer_outage_retries_saved_candidate_without_draft_repair(
     assert "529 Overloaded" in str(caught.value)
 
 
+@pytest.mark.real_source_review
 def test_clean_source_preflight_is_cached_before_repeated_rendering(monkeypatch, tmp_path):
     qa = Mock()
     qa.review_sources.return_value = {
@@ -2294,6 +2317,7 @@ def test_clean_source_preflight_is_cached_before_repeated_rendering(monkeypatch,
     assert render.call_count == 2
 
 
+@pytest.mark.real_source_review
 def test_source_preflight_cache_changes_when_filing_brief_changes(monkeypatch, tmp_path):
     qa = Mock()
     qa.review_sources.return_value = {

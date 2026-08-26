@@ -2172,12 +2172,30 @@ class TurnRunner:
             traceback.print_exc()
             return False
 
-    def _ensure_figures(self, *, turn_id: int, lease: str, project_id: int, user_id: int,
-                        sections: Mapping[str, str], numerals: Sequence[Mapping[str, str]],
-                        figures: Sequence[Mapping[str, Any]], disclosure: str,
-                        workspace: Path, deadline: float = 0.0) -> dict[str, Any]:
-        import draft_figures
+    def _record_review_spend(self, turn_id: int, outcome: Mapping[str, Any]) -> None:
+        """A reviewer's spend counts too. It was two thirds of the runs on the worst turn seen."""
+        try:
+            spent = self.repository.record_spend(
+                turn_id, cost_usd=float(outcome.get("cost_usd") or 0),
+                duration_ms=int(outcome.get("duration_ms") or 0),
+                tokens=dict(outcome.get("tokens") or {}))
+            self._check_budget(turn_id, spent)
+        except TurnBudgetSpent:
+            raise
+        except Exception:                                      # noqa: BLE001 - never lose a run
+            traceback.print_exc()
 
+    def _review_sources(self, *, turn_id: int, lease: str, sections: Mapping[str, str],
+                        numerals: Sequence[Mapping[str, str]],
+                        figures: Sequence[Mapping[str, Any]], disclosure: str,
+                        workspace: Path, model: str = "") -> dict[str, Any]:
+        """Does every claim limitation and numbered part trace to what the inventor disclosed?
+
+        A TEXT gate, and the most valuable one in the system: it is what catches the agent inventing
+        a structure or a definition to make a claim work. It used to live inside the drawing pass,
+        which meant that taking drawings out of a drafting turn silently took this out with them.
+        It belongs here, on its own, and it still blocks.
+        """
         self.repository.heartbeat(turn_id, lease, stage="checking source fidelity")
         conversation_path = workspace / "input" / "conversation.md"
         conversation = (conversation_path.read_text(encoding="utf-8")
@@ -2211,9 +2229,10 @@ class TurnRunner:
                 cancel = (_AnyEvent(beat.cancelled, self.stop_event)
                           if self.stop_event is not None else beat.cancelled)
                 outcome = self.qa.review_sources(
-                    workspace, transcript=transcript, cancel=cancel)
+                    workspace, transcript=transcript, model=model, cancel=cancel)
             finally:
                 beat.stop()
+            self._record_review_spend(turn_id, outcome)
             if outcome.get("cancelled"):
                 raise drafting.DraftingConflict("Stopped at your request.")
             findings = list(outcome.get("findings") or [])
@@ -2249,6 +2268,17 @@ class TurnRunner:
                 "last_error": outcome.get("error") or "",
             })
             self._source_review_cache[source_hash] = report
+        return report
+
+    def _ensure_figures(self, *, turn_id: int, lease: str, project_id: int, user_id: int,
+                        sections: Mapping[str, str], numerals: Sequence[Mapping[str, str]],
+                        figures: Sequence[Mapping[str, Any]], disclosure: str,
+                        workspace: Path, deadline: float = 0.0) -> dict[str, Any]:
+        import draft_figures
+
+        report = self._review_sources(
+            turn_id=turn_id, lease=lease, sections=sections, numerals=numerals,
+            figures=figures, disclosure=disclosure, workspace=workspace)
         if filing_blockers(report):
             raise SourceFidelityInspectionError(report)
 
@@ -2630,6 +2660,18 @@ class TurnRunner:
                     self.repository.save_retry_candidate(
                         turn_id, lease, snapshot=snapshot,
                         report=_gate_resume_report(runs, result))
+                    # Source fidelity is a text gate. It runs before any drawing work so an
+                    # unsupported claim or numbered component is repaired before image generation.
+                    self.repository.heartbeat(
+                        turn_id, lease, stage="checking source fidelity")
+                    source_report = self._review_sources(
+                        turn_id=turn_id, lease=lease, sections=sections,
+                        numerals=snapshot["numerals"], figures=snapshot["figures"],
+                        disclosure=str(project.get("disclosure_text") or ""),
+                        workspace=workspace,
+                        model=self._settings_for(project).get("review_model") or "")
+                    if filing_blockers(source_report):
+                        raise SourceFidelityInspectionError(source_report)
                     # Text drafting and image work stay separate. Once text passes, a durable
                     # gate-resume turn runs the bounded drawing phase automatically. It can resume
                     # after a restart and cannot mark the project ready until every current image
@@ -2811,6 +2853,8 @@ class TurnRunner:
         finally:
             if beat:
                 beat.stop()
+        if turn_id:
+            self._record_review_spend(turn_id, outcome)
         if outcome.get("cancelled"):
             raise drafting.DraftingConflict("Stopped at your request.")
         findings = outcome.get("findings") or []
