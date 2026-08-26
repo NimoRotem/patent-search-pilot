@@ -4832,6 +4832,27 @@ def test_geometry_prompt_strips_a_complete_hyphenated_cutting_plane_paragraph():
     assert "line -" not in cleaned.lower()
 
 
+def test_geometry_prompt_strips_adjacent_paragraphs_for_two_cutting_planes():
+    caption = (
+        "The underside is one rectangular ring around a plain inner face.\n\n"
+        "Two straight broken section lines cross the whole view, one clear of the other.\n\n"
+        "Each enters beyond the outer edge on one side, crosses the ring and inner face, "
+        "leaves beyond the opposite edge, and carries a short arrow at each end.\n\n"
+        "One runs horizontally and reads as section line 2-2. It marks the plane of FIG. 2.\n\n"
+        "The other runs vertically and reads as section line 4-4. It marks the plane of FIG. 4.\n\n"
+        "The ring surface remains continuous between its outer and inner edges.")
+
+    cleaned = draft_figures._geometry_text(caption)
+
+    assert draft_figures.section_designations(caption) == ["2", "4"]
+    assert "rectangular ring" in cleaned and "ring surface remains continuous" in cleaned
+    assert "each enters" not in cleaned.lower()
+    assert "arrow" not in cleaned.lower()
+    assert "marks the plane" not in cleaned.lower()
+    assert "section line" not in cleaned.lower()
+    assert " two" not in cleaned.lower() and " four" not in cleaned.lower()
+
+
 def test_geometry_spec_strips_arbitrary_annotation_point_placement():
     caption = (
         "The second side 16 is the straight lower edge of the slab. "

@@ -41,7 +41,7 @@ MAX_PNG_BYTES = 8 * 1024 * 1024
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 ALLOWED_SOURCE_FORMATS = ("PNG", "JPEG", "WEBP")
-FIGURE_PROMPT_VERSION = "figure-v10-extended-progress-aware-correction"
+FIGURE_PROMPT_VERSION = "figure-v11-dual-section-annotation-stripping"
 SEMANTIC_PROMPT_VERSION = (
     "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology")
 SEMANTIC_COMPATIBLE_PROMPT_VERSIONS = frozenset((
@@ -57,7 +57,7 @@ MARKED_ANCHOR_PROMPT_VERSION = (
 CROSS_PROVIDER_PROMPT_VERSION = (
     "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage")
 CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION = (
-    "figure-geometry-crosscheck-v3-centerline-occlusion-conventions")
+    "figure-geometry-crosscheck-v4-section-annotations-deferred")
 DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
     "deterministic-geometry-consensus-v1-byte-exact-two-semantic")
 DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
@@ -603,7 +603,7 @@ _SECTION_DESIGNATION_RE = re.compile(
     r"\bline\s+([0-9]{1,3}[A-Za-z]?)\s*[-\u2012-\u2015]\s*\1\b",
     re.IGNORECASE)
 _SOURCE_CUTTING_PLANE_RE = re.compile(
-    r"\b(?:cutting[- ]plane\s+line|section[- ]line|cutting\s+line)\b",
+    r"\b(?:cutting[- ]plane\s+lines?|section[- ]lines?|cutting\s+lines?)\b",
     re.IGNORECASE)
 
 
@@ -756,6 +756,12 @@ _SECTION_ANNOTATION_DETAIL = re.compile(
     r"[0-9]{1,3}[A-Za-z]?\b",
     re.IGNORECASE,
 )
+_SECTION_ANNOTATION_CONTINUATION = re.compile(
+    r"^\s*(?:(?:each|one(?:\s+of\s+them)?|the\s+other|both)\s+"
+    r"(?:enters?|runs?|crosses?|carries?|leaves?|points?)\b|"
+    r"it\s+marks?\s+the\s+plane\b)",
+    re.IGNORECASE,
+)
 _ANNOTATION_PLACEMENT = re.compile(
     r"\bidentif(?:ied|ies|ying|ication)\b.{0,160}\bpoint\b|"
     r"\bpoint\b.{0,160}\bidentif(?:ied|ies|ying|ication)\b",
@@ -790,13 +796,22 @@ def _geometry_text(value, numerals=()):
     """Remove filing annotations from prose before it reaches the image model."""
     chunks = []
     paragraphs = re.split(r"(?:\r?\n[ \t]*){2,}", str(value or ""))
+    section_annotation_context = False
     for paragraph in paragraphs:
-        section_context = bool(_SOURCE_CUTTING_PLANE_RE.search(paragraph))
+        if _SOURCE_CUTTING_PLANE_RE.search(paragraph):
+            section_annotation_context = True
+        kept_geometry = False
         for chunk in re.split(r"(?<=[.!?])\s+|[\r\n]+", paragraph):
             if (_ANNOTATION_ONLY.search(chunk) or _ANNOTATION_PLACEMENT.search(chunk) or
-                    (section_context and _SECTION_ANNOTATION_DETAIL.search(chunk))):
+                    (section_annotation_context and (
+                        _SECTION_ANNOTATION_DETAIL.search(chunk) or
+                        _SECTION_ANNOTATION_CONTINUATION.search(chunk) or
+                        re.fullmatch(r"\s*[0-9]{1,3}[A-Za-z]?\s*[.!?]?\s*", chunk)))):
                 continue
             chunks.append(chunk)
+            kept_geometry = True
+        if kept_geometry:
+            section_annotation_context = False
     text = " ".join(chunks)
     text = _FIGURE_ID_RE.sub("", text)
     values = [re.escape(entry["numeral"]) for entry in numeral_entries(numerals)]
@@ -4240,6 +4255,8 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
         "missing_geometry, unexpected_geometry, parts, and visible_elements. Set matches_spec false "
         "for any extra or missing geometry, wrong count, wrong view, or wrong relationship. Do not "
         "report absent labels, numerals, or leaders because they are added after this review. "
+        "Cutting-plane lines, viewing arrows, and repeated section designations are also "
+        "deliberately absent and added later; do not report their absence. "
         "Apply line-drawing conventions before reporting an error. Count continuous black stroke "
         "centerlines, not the two antialiased pixel edges of one finite-thickness stroke. A "
         "finite-width ring has one outer and inner boundary, each drawn as one black centerline; "
