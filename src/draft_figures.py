@@ -2033,11 +2033,40 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
         return [dict(item) for item in anchors or ()], None
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
     block_grip = _has_deterministic_block_grip(text)
+    split_clamp_plan = _deterministic_split_clamp_plan_png(caption)
+    segmented_cam_ring_plan = _deterministic_segmented_cam_ring_plan_png(caption)
     nested_plan = _deterministic_nested_plan_png(caption)
     pulling_scene = _deterministic_pulling_scene_png(caption)
     fragmentary_section = _deterministic_fragmentary_section_png(caption)
     chamber_section = _deterministic_chamber_section_png(caption)
-    if block_grip:
+    if split_clamp_plan is not None and png == split_clamp_plan:
+        renderer_name = "split_clamp_plan"
+        component_centers = {
+            "split pipe clamp": (
+                431, 181, "on the outer circle of the frame body at the upper left"),
+            "first frame half": (481, 231, "well inside the upper annular frame half"),
+            "second frame half": (700, 760, "well inside the lower annular frame half"),
+            "hinge": (395, 450, "well inside the small hinge circle at the left joint"),
+            "latch": (1110, 455, "well inside the latch block bridging the right joint"),
+            "jaw carriage": (700, 230, "well inside the topmost jaw carriage"),
+            "jaw pad": (684, 298, "well inside the topmost jaw pad"),
+            "pipe": (700, 450, "well inside the central pipe circle"),
+        }
+    elif segmented_cam_ring_plan is not None and png == segmented_cam_ring_plan:
+        renderer_name = "segmented_cam_ring_plan"
+        component_centers = {
+            "segmented cam ring": (
+                933, 217, "on the outer circular boundary at the upper right"),
+            "first cam ring segment": (520, 225, "well inside the upper segment"),
+            "second cam ring segment": (700, 720, "well inside the lower segment"),
+            "complementary coupling faces at the hinge end": (
+                430, 450, "on the meeting faces at the left joint"),
+            "complementary coupling faces at the latch end": (
+                970, 450, "on the meeting faces at the right joint"),
+            "oblique slot": (700, 180, "well inside the upper oblique slot"),
+            "ring drive face": (961, 633, "on the straight drive face near the right joint"),
+        }
+    elif block_grip:
         renderer_name = "block_grip_scene"
         device_target_match = re.search(
             r"\b(?:the )?vibration device(?:\s+\d+)?\b[^.]*\.\s*"
@@ -2436,6 +2465,208 @@ def closed_region_audit(png: bytes, caption: str) -> dict:
         **base, "ok": ok, "inspected": True, "observed": observed,
         "areas": areas[:40], "minimum_area": minimum_area, "errors": errors,
     }
+
+
+def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
+    """Render the exact simple split-clamp plan without model-added concentric geometry."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    requirements = (
+        re.search(r"\bplan view of the split pipe clamp closed around a pipe\b", text),
+        re.search(r"\bviewed along the pipe axis\b", text),
+        re.search(r"\bannular frame body surrounds\b", text),
+        re.search(r"\bbounded by (?:one|an) inner circle\b[^.]{0,80}"
+                  r"\b(?:one|an) outer circle\b", text),
+        re.search(r"\bthree jaw carriages\b", text),
+        re.search(r"\bwhole hinge\b[^.]{0,80}\bwithin the width of the frame body\b", text),
+        re.search(r"\blatch\b[^.]{0,100}\boutside the frame body\b", text),
+        re.search(r"\bjaw pad\b[^.]{0,100}\bmeeting the pipe\b", text),
+    )
+    if not all(requirements):
+        return None
+
+    from math import cos, pi, sin
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1400, 900), "white")
+    draw = ImageDraw.Draw(image)
+    center_x, center_y = 700, 450
+    outer_radius, inner_radius, pipe_radius = 380, 230, 120
+
+    def circle_box(radius: int) -> tuple[int, int, int, int]:
+        return (
+            center_x - radius, center_y - radius,
+            center_x + radius, center_y + radius,
+        )
+
+    def radial_point(radius: float, angle: float) -> tuple[int, int]:
+        return (
+            round(center_x + radius * cos(angle)),
+            round(center_y + radius * sin(angle)),
+        )
+
+    # One radial joint line at each side visibly divides the frame into upper and lower halves.
+    # Hardware drawn over those lines then shows how the halves remain coupled when closed.
+    draw.ellipse(circle_box(outer_radius), outline="black", width=4)
+    draw.ellipse(circle_box(inner_radius), outline="black", width=4)
+    draw.line((center_x - outer_radius, center_y,
+               center_x - inner_radius, center_y), fill="black", width=4)
+    draw.line((center_x + inner_radius, center_y,
+               center_x + outer_radius, center_y), fill="black", width=4)
+
+    draw.ellipse(circle_box(pipe_radius), fill="white", outline="black", width=4)
+
+    pivot_centers = []
+    for angle in (-pi / 2, 7 * pi / 9, 2 * pi / 9):
+        outward_x, outward_y = cos(angle), sin(angle)
+        tangent_x, tangent_y = -outward_y, outward_x
+
+        def offset(radius: float, tangent: float) -> tuple[int, int]:
+            return (
+                round(center_x + outward_x * radius + tangent_x * tangent),
+                round(center_y + outward_y * radius + tangent_y * tangent),
+            )
+
+        inner_center = radial_point(inner_radius, angle)
+        draw.line((
+            round(inner_center[0] - tangent_x * 58),
+            round(inner_center[1] - tangent_y * 58),
+            round(inner_center[0] + tangent_x * 58),
+            round(inner_center[1] + tangent_y * 58),
+        ), fill="white", width=14)
+        carriage = [
+            offset(335, 40), offset(335, -40),
+            offset(184, -36), offset(184, 36),
+        ]
+        draw.polygon(carriage, fill="white", outline="black")
+        draw.line(carriage + [carriage[0]], fill="black", width=4, joint="curve")
+
+        # The pad is a separate crescent member. Its inner arc follows, but does not overwrite,
+        # the pipe circle, while the pivot overlaps the carriage and the pad outer arc.
+        delta = 0.42
+        pad_outer_radius, pad_inner_radius = 184, 124
+        pad = [
+            radial_point(
+                pad_outer_radius,
+                angle - delta + (2 * delta * index / 32),
+            )
+            for index in range(33)
+        ]
+        pad.extend(
+            radial_point(
+                pad_inner_radius,
+                angle + delta - (2 * delta * index / 32),
+            )
+            for index in range(33)
+        )
+        draw.polygon(pad, fill="white")
+        draw.line(pad + [pad[0]], fill="black", width=4, joint="curve")
+        pivot_centers.append(radial_point(184, angle))
+
+    for pivot_x, pivot_y in pivot_centers:
+        draw.ellipse(
+            (pivot_x - 12, pivot_y - 12, pivot_x + 12, pivot_y + 12),
+            fill="white", outline="black", width=4)
+
+    # The hinge stays entirely within the annular band at the left joint.
+    draw.rectangle((386, 388, 404, 416), fill="white", outline="black", width=4)
+    draw.rectangle((386, 484, 404, 512), fill="white", outline="black", width=4)
+    draw.ellipse((353, 408, 437, 492), fill="white", outline="black", width=4)
+
+    # The latch body bridges the right joint, and its attached lever reaches outward and up.
+    draw.rectangle((1060, 405, 1165, 495), fill="white", outline="black", width=4)
+    lever = [(1110, 420), (1132, 431), (1265, 235), (1241, 221)]
+    draw.polygon(lever, fill="white", outline="black")
+    draw.line(lever + [lever[0]], fill="black", width=4, joint="curve")
+
+    out = io.BytesIO()
+    image.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
+
+
+def _deterministic_segmented_cam_ring_plan_png(caption: str) -> bytes | None:
+    """Render a coupled two-segment cam ring with one true outer-boundary flat."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    requirements = (
+        re.search(r"\bplan view of the segmented cam ring removed from the frame\b", text),
+        re.search(r"\btwo segments coupled\b|\btwo segments\b[^.]{0,50}\bcoupled\b", text),
+        re.search(r"\bflat annulus\b", text),
+        (re.search(r"\bthree (?:alike )?oblique slots\b", text) or
+         (re.search(r"\bthree elongated openings\b", text) and
+          re.search(r"\beach is an oblique slot\b", text))),
+        re.search(
+            r"\bring drive face\b[^.]{0,100}\b(?:one|a short) straight flat cut\b",
+            text,
+        ),
+        re.search(
+            r"\bupper end\b[^.]{0,100}\blies radially inside the outer boundary\b",
+            text,
+        ),
+        re.search(
+            r"\blower end\b[^.]{0,100}\bmeets the circular outer boundary\b",
+            text,
+        ),
+    )
+    if not all(requirements):
+        return None
+
+    from math import cos, pi, radians, sin
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1400, 900), "white")
+    draw = ImageDraw.Draw(image)
+    center_x, center_y = 700, 450
+    outer_radius, inner_radius = 330, 210
+    outer_box = (
+        center_x - outer_radius, center_y - outer_radius,
+        center_x + outer_radius, center_y + outer_radius,
+    )
+    inner_box = (
+        center_x - inner_radius, center_y - inner_radius,
+        center_x + inner_radius, center_y + inner_radius,
+    )
+
+    def point(radius: float, degrees: float) -> tuple[int, int]:
+        angle = radians(degrees)
+        return (
+            round(center_x + radius * cos(angle)),
+            round(center_y + radius * sin(angle)),
+        )
+
+    # The short circular run from the joint meets one straight chordal flat. No retained arc is
+    # left outside that chord, so the boundary cannot form a lens or a stepped second face.
+    draw.arc(outer_box, start=0, end=20, fill="black", width=4)
+    draw.arc(outer_box, start=50, end=360, fill="black", width=4)
+    drive_upper = point(outer_radius, 20)
+    drive_lower = point(outer_radius, 50)
+    draw.line((drive_upper, drive_lower), fill="black", width=4)
+    draw.ellipse(inner_box, outline="black", width=4)
+
+    # Complementary end faces divide the annulus without adding another circular boundary.
+    draw.line((370, 450, 490, 450), fill="black", width=4)
+    draw.line((910, 450, 1030, 450), fill="black", width=4)
+
+    def rotated_slot(radial_degrees: float) -> None:
+        radial_angle = radians(radial_degrees)
+        slot_angle = radial_angle + radians(70)
+        slot_center_x = center_x + 270 * cos(radial_angle)
+        slot_center_y = center_y + 270 * sin(radial_angle)
+        along_x, along_y = cos(slot_angle), sin(slot_angle)
+        across_x, across_y = -along_y, along_x
+        polygon = []
+        for along, across in ((65, 30), (65, -30), (-65, -30), (-65, 30)):
+            polygon.append((
+                round(slot_center_x + along_x * along + across_x * across),
+                round(slot_center_y + along_y * along + across_y * across),
+            ))
+        draw.polygon(polygon, fill="white")
+        draw.line(polygon + [polygon[0]], fill="black", width=4, joint="curve")
+
+    for radial_degrees in (-90, 140, 70):
+        rotated_slot(radial_degrees)
+
+    out = io.BytesIO()
+    image.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
 
 
 def _deterministic_nested_plan_png(caption: str) -> bytes | None:
@@ -3064,7 +3295,9 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
 
 def _deterministic_geometry_png(caption: str) -> bytes | None:
     """Select an exact renderer only when the brief describes a supported simple geometry."""
-    return (_deterministic_nested_plan_png(caption) or
+    return (_deterministic_split_clamp_plan_png(caption) or
+            _deterministic_segmented_cam_ring_plan_png(caption) or
+            _deterministic_nested_plan_png(caption) or
             _deterministic_pulling_scene_png(caption) or
             _deterministic_grip_scene_png(caption) or
             _deterministic_fragmentary_section_png(caption) or
@@ -3116,6 +3349,56 @@ def _deterministic_chamber_constraint_certificate(png: bytes, caption: str) -> d
     }
 
 
+def _deterministic_segmented_cam_ring_constraint_certificate(
+        png: bytes, caption: str) -> dict:
+    """Certify the exact drive-flat construction and its circular return."""
+    from math import cos, radians, sin
+    from PIL import Image
+
+    expected = _deterministic_segmented_cam_ring_plan_png(caption)
+    if expected is None or png != expected:
+        return {}
+    image = Image.open(io.BytesIO(png)).convert("L")
+    center_x, center_y, outer_radius = 700, 450, 330
+
+    def point(radius: float, degrees: float) -> tuple[int, int]:
+        angle = radians(degrees)
+        return (
+            round(center_x + radius * cos(angle)),
+            round(center_y + radius * sin(angle)),
+        )
+
+    def has_ink_near(pixel: tuple[int, int], radius: int = 3) -> bool:
+        x, y = pixel
+        return any(
+            image.getpixel((sample_x, sample_y)) < 32
+            for sample_x in range(x - radius, x + radius + 1)
+            for sample_y in range(y - radius, y + radius + 1)
+        )
+
+    lower_endpoint = point(outer_radius, 50)
+    arc_sample_degrees = (52, 56, 60, 65)
+    arc_samples = [
+        {
+            "degrees": degrees,
+            "point": list(point(outer_radius, degrees)),
+            "ink": has_ink_near(point(outer_radius, degrees)),
+        }
+        for degrees in arc_sample_degrees
+    ]
+    endpoint_on_circle = has_ink_near(lower_endpoint)
+    return {
+        "single_drive_face": {
+            "ok": bool(endpoint_on_circle and all(item["ink"] for item in arc_samples)),
+            "flat_count": 1,
+            "lower_endpoint": list(lower_endpoint),
+            "lower_endpoint_on_outer_circle": endpoint_on_circle,
+            "post_face_arc_degrees": [52, 65],
+            "post_face_arc_samples": arc_samples,
+        },
+    }
+
+
 def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
     """Bind an inspected image to the exact deterministic renderer selected by its brief."""
     expected = _deterministic_geometry_png(caption)
@@ -3129,9 +3412,11 @@ def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
         "png_sha256": actual_hash,
         "renderer_png_sha256": expected_hash,
     }
-    constraints = (
-        _deterministic_chamber_constraint_certificate(png, caption)
-        if exact_match else {})
+    constraints = {}
+    if exact_match:
+        constraints.update(_deterministic_chamber_constraint_certificate(png, caption))
+        constraints.update(
+            _deterministic_segmented_cam_ring_constraint_certificate(png, caption))
     if constraints:
         certificate["certified_constraints"] = constraints
     return certificate
@@ -4534,6 +4819,10 @@ def _certified_geometry_dissent_category(value: str) -> str:
             re.search(r"\b(?:base|slab|upper face|lower face|resum|stop|terminat|continu|"
                       r"incomplete)\w*\b", text)):
         return "split_line"
+    if (re.search(r"\b(?:drive face|flat|facet|chamfer)\b", text) and
+            re.search(r"\b(?:additional|extra|second|lower end|merge|circular outer boundary|"
+                      r"run(?:s|ning)? out|termination)\b", text)):
+        return "single_drive_face"
     return ""
 
 
