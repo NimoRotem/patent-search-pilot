@@ -2116,7 +2116,8 @@ def _deterministic_control_diagram_anchors(
         return kind, {
             "first connector station": (200, 430, "on the left outline of the enclosing station"),
             "branch conductor": (120, 250, "on the branch-conductor line outside the station"),
-            "isolated local bus": (1000, 800, "on the isolated-local-bus line outside the station"),
+            "isolated local bus": (
+                150, 800, "on the isolated-local-bus line below and left of the station"),
             "first contactor": (450, 210, "well inside the first-contactor rectangle"),
             "first connector current sensor": (680, 210, "well inside the current-sensor rectangle"),
             "first electric-vehicle connector": (1000, 250, "well inside the connector rectangle"),
