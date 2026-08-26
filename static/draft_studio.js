@@ -263,21 +263,34 @@
         attached to this project before it writes a word, so the first one takes a few minutes.</p></div>`;
       return;
     }
-    const all = S.sections || [];
-    const boilerplate = all.filter((item) => BOILERPLATE.includes(item.key));
-    const main = all.filter((item) => !BOILERPLATE.includes(item.key));
-    const open = boilerplate.some((item) =>
-      sectionUI.editing === item.key || sectionUI.asking === item.key);
-    body.innerHTML =
-      (boilerplate.length ? `<details class="dboiler"${open ? ' open' : ''}>
-        <summary>${boilerplate.map((item) => esc(item.heading)).join(' · ')}</summary>
-        ${boilerplate.map(sectionBlock).join('')}</details>` : '') +
-      main.map(sectionBlock).join('');
+    //  Document order is kept: the fold sits where those headings belong in the application,
+    //  between the title and the field, not hoisted to the top of the pane.
+    const parts = [];
+    const run = [];
+    const flush = () => {
+      if (!run.length) return;
+      const open = sectionUI.boilerOpen ||
+        run.some((item) => sectionUI.editing === item.key || sectionUI.asking === item.key);
+      parts.push(`<details class="dboiler"${open ? ' open' : ''}>
+        <summary>${run.map((item) => esc(item.heading)).join(' · ')}</summary>
+        ${run.map(sectionBlock).join('')}</details>`);
+      run.length = 0;
+    };
+    (S.sections || []).forEach((section) => {
+      if (BOILERPLATE.includes(section.key)) { run.push(section); return; }
+      flush();
+      parts.push(sectionBlock(section));
+    });
+    flush();
+    body.innerHTML = parts.join('');
     wireDraft();
   }
 
   function wireDraft() {
     const body = $('draftBody');
+    //  Remember the fold, or opening it and then touching anything that repaints closes it again.
+    body.querySelectorAll('.dboiler').forEach((fold) => fold.addEventListener(
+      'toggle', () => { sectionUI.boilerOpen = fold.open; }));
     body.querySelectorAll('.dsecedit').forEach((button) =>
       button.addEventListener('click', () => toggleEditor(button.dataset.key)));
     body.querySelectorAll('.dsecask').forEach((button) =>

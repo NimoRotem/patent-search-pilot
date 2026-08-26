@@ -44,7 +44,11 @@ MAX_MANUAL_REFERENCES = 60
 #  pick this up in a moment" the whole time. Postgres remains the authority: claiming is
 #  FOR UPDATE SKIP LOCKED and a partial unique index still allows one active turn PER PROJECT, so
 #  widening this runs different applications side by side and can never run one of them twice.
-DRAFT_TURN_WORKERS = max(1, min(int(os.environ.get("DRAFT_TURN_WORKERS", "3")), 8))
+#  Five, because three saturated the queue while the box sat at load 0.05 of 8 cores with
+#  21 GB free: a drafting turn is almost entirely waiting on a model API, not computing.
+#  The ceiling that matters is the provider's rate limit rather than this machine, which is
+#  why this stops well short of the hard cap.
+DRAFT_TURN_WORKERS = max(1, min(int(os.environ.get("DRAFT_TURN_WORKERS", "5")), 8))
 #  A section of an application is long-form prose; this is a ceiling on storage, not on style.
 MAX_SECTION_CHARS = 200_000
 MAX_AUTOMATIC_FILING_REPAIR_TURNS = max(
