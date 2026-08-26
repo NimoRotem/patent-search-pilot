@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 import draft_agent
 
 
@@ -245,3 +247,120 @@ def test_structured_cli_error_details_are_not_discarded():
         "result": "",
         "errors": ["No conversation found with session ID: missing-session"],
     }) == "No conversation found with session ID: missing-session"
+
+
+def test_provider_quota_detector_matches_the_live_plural_usage_limit_error():
+    assert draft_agent._provider_quota_error(
+        "API Error: 400 You have reached your specified API usage limits. "
+        "You will regain access on 2026-09-01 at 00:00 UTC."
+    ) is True
+
+
+def test_vertex_agent_takes_over_after_subscription_and_api_quota_exhaustion(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "auto")
+    monkeypatch.setattr(draft_agent, "_SUBSCRIPTION_UNAVAILABLE", False)
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "subscription-token")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
+    calls = []
+
+    def run_once(**values):
+        calls.append(values["auth_mode"])
+        return draft_agent.AgentRun(
+            session_id="claude-session", model="opus", duration_ms=20,
+            error=("API Error: 400 You have reached your specified API usage limits. "
+                   "You will regain access on 2026-09-01 at 00:00 UTC."))
+
+    def run_vertex(**values):
+        assert values["workspace"] == Path(tmp_path)
+        return draft_agent.AgentRun(
+            ok=True, session_id="vertex-session", model="vertex/gemini-2.5-pro",
+            result={"action": "revised"}, duration_ms=60,
+            tokens={"input": 100, "output": 20, "cache_read": 0, "cache_write": 0})
+
+    monkeypatch.setattr(draft_agent, "_run_once", run_once)
+    monkeypatch.setattr(draft_agent, "_run_vertex_once", run_vertex)
+
+    result = draft_agent.run(
+        workspace=Path(tmp_path), prompt="repair", system_prompt="system", schema={},
+        session_id="claude-session", resume=True)
+
+    assert result.ok is True
+    assert calls == ["subscription", "api"]
+    assert result.model == "vertex/gemini-2.5-pro"
+    assert result.duration_ms == 100
+    assert result.tokens["input"] == 100
+    assert any("vertex" in step["text"].lower() for step in result.steps)
+
+
+def test_vertex_agent_takes_over_when_explicit_api_route_exhausts_quota(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "api")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
+    monkeypatch.setattr(
+        draft_agent, "_run_once",
+        lambda **_values: draft_agent.AgentRun(
+            model="opus", duration_ms=15,
+            error="You have reached your specified API usage limits."))
+    monkeypatch.setattr(
+        draft_agent, "_run_vertex_once",
+        lambda **_values: draft_agent.AgentRun(
+            ok=True, model="vertex/gemini-2.5-pro", result={"summary": "reviewed"},
+            duration_ms=35))
+
+    result = draft_agent.run(
+        workspace=Path(tmp_path), prompt="review", system_prompt="system", schema={})
+
+    assert result.ok is True
+    assert result.duration_ms == 50
+
+
+def test_vertex_workspace_tools_are_confined_and_only_edit_filing_files(tmp_path):
+    (tmp_path / "draft").mkdir()
+    (tmp_path / "input").mkdir()
+    (tmp_path / "input" / "disclosure.md").write_text("authority", encoding="utf-8")
+
+    written, attachments = draft_agent._vertex_tool(
+        tmp_path, "write_file", {"path": "draft/01-title.md", "content": "A title"},
+        writable=True)
+
+    assert written["ok"] is True
+    assert attachments == []
+    assert (tmp_path / "draft" / "01-title.md").read_text(encoding="utf-8") == "A title"
+    with pytest.raises(ValueError, match="Only draft/ and figures/"):
+        draft_agent._vertex_tool(
+            tmp_path, "write_file",
+            {"path": "input/disclosure.md", "content": "changed"}, writable=True)
+    with pytest.raises(ValueError, match="leaves the drafting workspace"):
+        draft_agent._vertex_tool(
+            tmp_path, "write_file", {"path": "draft/../../outside", "content": "x"},
+            writable=True)
+    assert (tmp_path / "input" / "disclosure.md").read_text(encoding="utf-8") == "authority"
+
+
+def test_vertex_image_read_attaches_pixels_without_exposing_raw_bytes_in_json(tmp_path):
+    (tmp_path / "figures").mkdir()
+    image = b"\x89PNG\r\n\x1a\nnot-a-real-image"
+    (tmp_path / "figures" / "rendered-FIG-1.png").write_bytes(image)
+
+    result, attachments = draft_agent._vertex_tool(
+        tmp_path, "read_file", {"path": "figures/rendered-FIG-1.png"}, writable=False)
+
+    assert result["pixels_attached"] is True
+    assert result["bytes"] == len(image)
+    assert attachments == [(image, "image/png")]
+    assert image not in str(result).encode()
+
+
+def test_vertex_structured_result_validator_rejects_missing_and_extra_fields():
+    schema = {
+        "type": "object",
+        "properties": {"summary": {"type": "string"}},
+        "required": ["summary"],
+        "additionalProperties": False,
+    }
+
+    assert draft_agent._schema_problem({"summary": "done"}, schema) == ""
+    assert "required" in draft_agent._schema_problem({}, schema)
+    assert "unexpected" in draft_agent._schema_problem(
+        {"summary": "done", "notes": "no"}, schema)
