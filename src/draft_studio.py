@@ -1849,12 +1849,14 @@ class TurnRunner:
 
     def __init__(self, repository: StudioRepository, drafting_repository:
                  drafting.DraftingRepository, *, agent=draft_agent, qa=draft_qa,
-                 workspace=draft_workspace):
+                 workspace=draft_workspace,
+                 stop_event: threading.Event | None = None):
         self.repository = repository
         self.drafting = drafting_repository
         self.agent = agent
         self.qa = qa
         self.workspace = workspace
+        self.stop_event = stop_event
         self._source_review_cache: dict[str, dict[str, Any]] = {}
 
     # -- inputs ---------------------------------------------------------------------------------
@@ -1957,12 +1959,14 @@ class TurnRunner:
         beat.start()
         try:
             extra = {"tools": tools} if tools else {}
+            cancel = (_AnyEvent(beat.cancelled, self.stop_event)
+                      if self.stop_event is not None else beat.cancelled)
             run = self.agent.run(
                 workspace=workspace, prompt=prompt,
                 system_prompt=system_prompt + str(house or ""),
                 schema=schema, session_id=session_id, resume=resume,
                 model=model or self.agent.DRAFT_MODEL, timeout=self.agent.DRAFT_TIMEOUT,
-                transcript=transcript, cancel=beat.cancelled, **extra)
+                transcript=transcript, cancel=cancel, **extra)
         finally:
             beat.stop()
         if not run.ok:
@@ -2745,6 +2749,29 @@ class TurnRunner:
         return self._publish_review(
             project_id, turn_id=turn_id, version_no=version_no,
             workspace=workspace, report=report)
+
+
+class _AnyEvent:
+    """An Event-compatible view that is set when any source event is set."""
+
+    def __init__(self, *events: threading.Event):
+        self._events = events
+
+    def is_set(self) -> bool:
+        return any(event.is_set() for event in self._events)
+
+    def wait(self, timeout: float | None = None) -> bool:
+        deadline = None if timeout is None else time.monotonic() + max(0.0, timeout)
+        while not self.is_set():
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                interval = min(0.2, remaining)
+            else:
+                interval = 0.2
+            self._events[0].wait(interval)
+        return True
 
 
 class _Heartbeat:
