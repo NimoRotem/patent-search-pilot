@@ -1636,9 +1636,13 @@ Read these files in full:
 
 Ignore rendered image files. Return the complete structured review. When finished, call
 StructuredOutput with both required root properties, "summary" and "findings". If the review is
-clean, return exactly an empty findings array, for example
-{"summary": "The complete source ledger is clean.", "findings": []}. Never omit the findings
-property, even when there is nothing to report. Keep the summary below 8,000 characters."""
+clean, return exactly an empty findings array. The summary is audit evidence, not a status label:
+use at least 120 characters and explicitly state that the complete claims, numerals or numbered
+parts, figure briefs or drawings, and affirmative inventor sources were all checked and traced.
+For example, return {"summary": "Every claim limitation, numeral, numbered part, figure brief, "
+"drawing description, and affirmative inventor source was checked and traced without an "
+"unsupported technical assertion.", "findings": []}. Never omit the findings property, even when
+there is nothing to report. Keep the summary below 8,000 characters."""
 
 
 def _source_review_quality_error(summary: str,
@@ -1681,11 +1685,13 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
     total_duration = 0
     total_tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
     last_model = model or draft_agent.QA_MODEL
+    quality_guidance = ""
     for quality_attempt in range(2):
         try:
             run = draft_agent.run(
                 workspace=workspace,
-                prompt=SOURCE_REVIEW_PROMPT % {"version": SOURCE_REVIEW_VERSION},
+                prompt=(SOURCE_REVIEW_PROMPT % {"version": SOURCE_REVIEW_VERSION}) +
+                quality_guidance,
                 system_prompt=SOURCE_REVIEW_SYSTEM,
                 schema=REVIEW_SCHEMA,
                 session_id=draft_agent.new_session_id(),
@@ -1744,6 +1750,13 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
                 "duration_ms": total_duration, "tokens": total_tokens,
                 "model": last_model,
             }
+        quality_guidance = (
+            "\n\nAUTOMATIC QUALITY RETRY\n"
+            "The previous source-review output was rejected by the filing gate: " +
+            quality_error + " Read every required file again and return a substantive summary "
+            "that explicitly evidences review of claims, numerals, figures, and inventor sources. "
+            "Do not repeat the prior short summary."
+        )
     raise AssertionError("unreachable")
 
 

@@ -2022,6 +2022,36 @@ def test_source_preflight_fails_closed_after_repeated_non_substantive_results(mo
     assert calls == 2
 
 
+def test_source_preflight_retry_explains_the_rejected_quality_gate(monkeypatch):
+    prompts = []
+
+    def fake_run(**kwargs):
+        prompts.append(kwargs["prompt"])
+        if len(prompts) == 1:
+            return draft_agent.AgentRun(ok=True, model="review-model", result={
+                "summary": "The complete source ledger is clean.",
+                "findings": [],
+            })
+        assert "previous source-review output was rejected" in kwargs["prompt"].lower()
+        assert "claims, numerals, figures, and inventor sources" in kwargs["prompt"].lower()
+        return draft_agent.AgentRun(ok=True, model="review-model", result={
+            "summary": (
+                "Every claim limitation and numbered part was traced to affirmative inventor "
+                "source disclosure. Every numeral is used consistently, and every figure brief "
+                "depicts only those supported structures. The complete claims, numerals, figures, "
+                "and inventor sources were reviewed without an unsupported technical assertion."
+            ),
+            "findings": [],
+        })
+
+    monkeypatch.setattr(draft_agent, "run", fake_run)
+
+    outcome = draft_qa.review_sources(Path("/tmp"))
+
+    assert outcome["ok"] is True
+    assert len(prompts) == 2
+
+
 def test_source_preflight_fails_closed_on_a_malformed_finding(monkeypatch):
     monkeypatch.setattr(draft_agent, "run", lambda **_kwargs: draft_agent.AgentRun(
         ok=True, model="review-model", result={
