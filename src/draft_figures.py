@@ -2606,8 +2606,31 @@ def _is_two_boundary_rectangular_plan(text: str) -> bool:
         re.search(r"\bbeyond the outer edge lies background\b", text),
         re.search(r"\bsection lines are drawing conventions\b", text),
     ))
+    line_work_inventory_ring = all((
+        re.search(r"\bplan view\b", text),
+        re.search(r"\bone rectangular ring\b", text),
+        re.search(
+            r"\b(?:its|the) line work is\s*:\s*the outer edge of the ring\b"
+            r"[^.]{0,120}\binner edge (?:held|lying|sitting) within it\b"
+            r"[^.]{0,120}\btwo section lines\b",
+            text,
+        ),
+        re.search(
+            r"\bsurface between those edges runs unbroken\b"
+            r"[^.]{0,120}\balong every side\b",
+            text,
+        ),
+        re.search(r"\bperimeter member\s+\d+ is the ring surface\b", text),
+        re.search(
+            r"\bsecond side\s+\d+\b[^.]{0,180}\b(?:face|area)\b"
+            r"[^.]{0,180}\bwithin the inner edge\b",
+            text,
+        ),
+        re.search(r"\bbeyond the outer edge lies background\b", text),
+        re.search(r"\btwo broken section lines cross the view\b", text),
+    ))
     return (boundary_body or outline_ring or sectioned_outline_ring or
-            repaired_sectioned_outline_ring)
+            repaired_sectioned_outline_ring or line_work_inventory_ring)
 
 
 def _expected_closed_region_count(caption: str) -> int | None:
@@ -2886,7 +2909,7 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
             r"[^.]{0,100}\bbetween the inner circle and the outer circle\b",
             text,
         ))
-    requirements = (
+    plan_requirements = (
         re.search(r"\bplan view of the split pipe clamp closed around a pipe\b", text),
         re.search(r"\bviewed along the pipe axis\b", text),
         re.search(r"\bannular frame body surrounds\b", text),
@@ -2897,7 +2920,33 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
         re.search(r"\blatch\b[^.]{0,100}\boutside the frame body\b", text),
         re.search(r"\bjaw pad\b[^.]{0,180}\bmeeting the pipe\b", text),
     )
-    if not all(requirements):
+    front_elevation_requirements = (
+        re.search(r"\bfront elevation of the clamp closed around a pipe\b", text),
+        re.search(r"\balong the pipe axis\b", text),
+        re.search(
+            r"\bannular frame body\b[^.]{0,100}\bouter boundary\b"
+            r"[^.]{0,100}\binner boundary\b[^.]{0,100}\bconcentric\b",
+            text,
+        ),
+        re.search(
+            r"\bdivided into two substantially semicircular halves\b"
+            r"[^.]{0,100}\bradial breaks at the left and at the right\b",
+            text,
+        ),
+        re.search(r"\bleft break\b[^.]{0,100}\bhinge\b[^.]{0,100}\bsmall circle\b", text),
+        re.search(
+            r"\bright break\b[^.]{0,100}\blatch\b[^.]{0,100}"
+            r"\b(?:compact )?rectangular body\b",
+            text,
+        ),
+        re.search(r"\bthree carriage blocks\b", text),
+        re.search(
+            r"\binner end of each carriage block\b[^.]{0,180}"
+            r"\bconcave arc meeting the pipe circle\b",
+            text,
+        ),
+    )
+    if not (all(plan_requirements) or all(front_elevation_requirements)):
         return None
 
     from math import cos, pi, sin

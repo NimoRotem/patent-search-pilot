@@ -3612,6 +3612,28 @@ def test_deterministic_nested_plan_accepts_repaired_sectioned_ring_wording():
     assert audit["ok"] is True and audit["observed"] == 2
 
 
+def test_deterministic_nested_plan_accepts_line_work_inventory_wording():
+    specification = """
+    Plan view looking straight up at the underside of the machine. The sheet shows the
+    underside of the machine as one rectangular ring, like a picture frame. Its line work is:
+    the outer edge of the ring, the inner edge held within it, and the two section lines. The
+    surface between those edges runs unbroken from one to the other along every side, so the
+    view reads as one continuous closed frame. The perimeter member 24 is the ring surface. The
+    second side 16 is the face at which this view looks straight, appearing as the area within
+    the inner edge. Beyond the outer edge lies background.
+
+    Two broken section lines cross the view. Each passes through the face within the inner edge,
+    cuts the ring surface on both sides, and ends in the background past the outer edge.
+    """
+
+    png = draft_figures._deterministic_nested_plan_png(specification)
+
+    assert draft_figures._expected_closed_region_count(specification) == 2
+    assert png is not None
+    audit = draft_figures.closed_region_audit(png, specification)
+    assert audit["ok"] is True and audit["observed"] == 2
+
+
 def test_deterministic_pulling_scene_accepts_source_clean_single_path_wording():
     specification = """
     The covering element 36 is one large plain tile filling the lower part of the drawing
@@ -3796,6 +3818,26 @@ def test_deterministic_split_clamp_plan_keeps_hinge_inside_and_pads_on_pipe():
     assert image.getpixel((700, 326)) == 255
     assert image.getpixel((700, 330)) < 32
     assert min(image.crop((1070, 405, 1140, 495)).getextrema()) == 0
+
+
+def test_deterministic_split_clamp_plan_accepts_front_elevation_inventory_wording():
+    specification = """
+    View: front elevation of the clamp closed around a pipe, along the pipe axis.
+    A pipe is drawn as one plain circle centered in the drawing area. Around that circle, an
+    annular frame body is drawn as an outer boundary and an inner boundary, concentric with the
+    pipe circle and spaced outward from it. It is divided into two substantially semicircular
+    halves by radial breaks at the left and at the right. At the left break, a hinge is drawn as
+    a small circle straddling the two halves. At the right break, a latch is drawn as a compact
+    rectangular body attached across the two halves. Three carriage blocks are spaced at roughly
+    equal angular intervals. On the inner end of each carriage block, a small block has an inner
+    edge that is a concave arc meeting the pipe circle, so that the small block contacts the pipe.
+    """
+
+    png = draft_figures._deterministic_split_clamp_plan_png(specification)
+
+    assert png is not None
+    image = Image.open(io.BytesIO(png)).convert("L")
+    assert image.getpixel((700, 330)) < 32
 
 
 def test_deterministic_split_clamp_plan_has_single_joints_and_separate_curved_pads():
