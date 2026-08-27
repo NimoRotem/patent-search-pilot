@@ -498,6 +498,22 @@ def _provider_quota_error(error: str) -> bool:
         ("hit your" in text and "limit" in text and "reset" in text))
 
 
+def _provider_auth_error(error: str) -> bool:
+    """Recognize durable model-provider authentication failures that require another route."""
+    text = str(error or "").lower()
+    return bool(
+        re.search(r"(?:^|\D)401(?:\D|$)", text) or
+        "failed to authenticate" in text or
+        "authentication_error" in text or
+        "oauth access token has been revoked" in text or
+        "invalid x-api-key" in text)
+
+
+def _provider_unavailable_error(error: str) -> bool:
+    """Return true when retrying the same provider account cannot complete the run."""
+    return _provider_quota_error(error) or _provider_auth_error(error)
+
+
 def _vertex_client():
     """One Vertex client per worker thread, using the VM service account."""
     key = (
@@ -1028,7 +1044,7 @@ def _run_vertex_once(*, workspace: Path, prompt: str, system_prompt: str,
 
 def _with_vertex_fallback(common: Mapping[str, Any], previous: AgentRun) -> AgentRun:
     if (not VERTEX_FALLBACK or previous.ok or previous.cancelled or
-            not _provider_quota_error(previous.error)):
+            not _provider_unavailable_error(previous.error)):
         return previous
     vertex = _run_vertex_once(**common)
     return _merge_attempts(
@@ -1038,7 +1054,7 @@ def _with_vertex_fallback(common: Mapping[str, Any], previous: AgentRun) -> Agen
 
 
 def _subscription_limit_error(error: str) -> bool:
-    return _provider_quota_error(error)
+    return _provider_unavailable_error(error)
 
 
 def _rate_limit_error(error: str) -> bool:

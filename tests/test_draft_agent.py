@@ -256,6 +256,39 @@ def test_provider_quota_detector_matches_the_live_plural_usage_limit_error():
     ) is True
 
 
+def test_vertex_agent_takes_over_after_revoked_subscription_and_api_quota(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(draft_agent, "AUTH_MODE", "auto")
+    monkeypatch.setattr(draft_agent, "_SUBSCRIPTION_UNAVAILABLE", False)
+    monkeypatch.setattr(draft_agent, "_oauth_token", lambda: "revoked-subscription-token")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "api-key")
+    calls = []
+
+    def run_once(**values):
+        calls.append(values["auth_mode"])
+        if values["auth_mode"] == "subscription":
+            return draft_agent.AgentRun(
+                model="opus",
+                error=("Failed to authenticate. API Error: 401 OAuth access token has been "
+                       "revoked."))
+        return draft_agent.AgentRun(
+            model="opus", error="You have reached your specified API usage limits.")
+
+    monkeypatch.setattr(draft_agent, "_run_once", run_once)
+    monkeypatch.setattr(
+        draft_agent, "_run_vertex_once",
+        lambda **_values: draft_agent.AgentRun(
+            ok=True, model="vertex/gemini-2.5-pro", result={"summary": "reviewed"}))
+
+    result = draft_agent.run(
+        workspace=Path(tmp_path), prompt="review", system_prompt="system", schema={})
+
+    assert result.ok is True
+    assert result.model == "vertex/gemini-2.5-pro"
+    assert calls == ["subscription", "api"]
+    assert draft_agent._SUBSCRIPTION_UNAVAILABLE is True
+
+
 def test_vertex_agent_takes_over_after_subscription_and_api_quota_exhaustion(
         monkeypatch, tmp_path):
     monkeypatch.setattr(draft_agent, "AUTH_MODE", "auto")
