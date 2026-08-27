@@ -2979,9 +2979,9 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
     if front_elevation:
         for radius in (outer_radius, inner_radius):
             bounds = circle_box(radius)
-            draw.arc(bounds, start=4, end=176, fill="black", width=4)
-            draw.arc(bounds, start=184, end=356, fill="black", width=4)
-        for angle in (4, 176, 184, 356):
+            draw.arc(bounds, start=10, end=170, fill="black", width=4)
+            draw.arc(bounds, start=190, end=350, fill="black", width=4)
+        for angle in (10, 170, 190, 350):
             draw.line((radial_point(inner_radius, radians(angle)),
                        radial_point(outer_radius, radians(angle))),
                       fill="black", width=4)
@@ -3013,8 +3013,9 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
             round(inner_center[0] + tangent_x * 42),
             round(inner_center[1] + tangent_y * 42),
         ), fill="white", width=10)
+        carriage_outer_radius = 290 if front_elevation else 315
         carriage = [
-            offset(315, 36), offset(315, -36),
+            offset(carriage_outer_radius, 36), offset(carriage_outer_radius, -36),
             offset(184, -36), offset(184, 36),
         ]
         draw.polygon(carriage, fill="white", outline="black")
@@ -3042,10 +3043,21 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
         draw.line(pad + [pad[0]], fill="black", width=4, joint="curve")
         pivot_centers.append(radial_point(184, angle))
 
-    for pivot_x, pivot_y in pivot_centers:
-        draw.ellipse(
-            (pivot_x - 12, pivot_y - 12, pivot_x + 12, pivot_y + 12),
-            fill="white", outline="black", width=4)
+    if not front_elevation:
+        for pivot_x, pivot_y in pivot_centers:
+            draw.ellipse(
+                (pivot_x - 12, pivot_y - 12, pivot_x + 12, pivot_y + 12),
+                fill="white", outline="black", width=4)
+
+    if front_elevation:
+        left_upper = radial_point(305, radians(190))
+        left_lower = radial_point(305, radians(170))
+        right_upper = radial_point(305, radians(350))
+        right_lower = radial_point(305, radians(10))
+        draw.line((left_upper, (395, 408)), fill="black", width=4)
+        draw.line((left_lower, (395, 492)), fill="black", width=4)
+        draw.line((right_upper, (1060, 420)), fill="black", width=4)
+        draw.line((right_lower, (1060, 480)), fill="black", width=4)
 
     # The hinge stays entirely within the annular band at the left joint.
     draw.ellipse((353, 408, 437, 492), fill="white", outline="black", width=4)
