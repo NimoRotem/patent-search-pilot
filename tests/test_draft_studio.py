@@ -3094,8 +3094,14 @@ def test_drawing_faults_are_repaired_before_the_independent_review(monkeypatch, 
     saved_report = repository.save_retry_candidate.call_args.kwargs["report"]
     assert saved_report["findings"] == []
     assert saved_report["checks"][0]["category"] == "figures_and_numerals"
+    assert saved_report["summary"] == "1 drawing issue(s) require automatic repair."
+    assert saved_report["checks"][0]["detail"].startswith("1 drawing issue(s) failed.")
     assert saved_report["checks"][0]["items"] == [
         "FIG. 1 failed final-pixel endpoint inspection"]
+
+    error = draft_studio.DrawingInspectionError([
+        "FIG. 1 is overcrowded", "FIG. 2 is overcrowded", "FIG. 2 is overlong"])
+    assert str(error) == "3 drawing issue(s) did not pass inspection."
 
 
 def test_plan_preflight_fault_is_repaired_before_any_image_call(monkeypatch, tmp_path):
