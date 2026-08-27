@@ -1562,7 +1562,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v10-functional-surface-geometry"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v11-claim-drawing-boundary"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1605,6 +1605,12 @@ Description says that an unsupported outline is shown "by way of example", that 
 choice, report it as unsupported even if the resulting claim language is shape-neutral. Remove the
 application statement; never recommend adding a speculative shape or optional embodiment to the
 application text merely to justify a renderer's generic visual choice.
+
+A supported claim limitation or relationship need not appear in a drawing unless the application
+expressly identifies a particular figure as depicting it. The absence of a connection line from a
+schematic figure is not an affirmative statement that two parts are disconnected. Do not report a
+claim-only drawing omission, do not invoke a drawing formality to require it, and never add an
+undisclosed route or topology merely to make every claim limitation visible.
 
 Build a complete source ledger before returning. Trace every limitation in every claim, every
 numbered part, and every specific structure, relationship, result, material, shape, position,
@@ -1689,6 +1695,72 @@ def _source_review_quality_error(summary: str,
     return ""
 
 
+_SOURCE_DRAWING_OMISSION_RE = re.compile(
+    r"\b(?:shown in no (?:figure|drawing)|no (?:figure|drawing) (?:shows|depicts|"
+    r"illustrates)|undepicted|depiction gap|drawing omission)\b",
+    re.IGNORECASE,
+)
+_SOURCE_SUPPORT_ADMISSION_RE = re.compile(
+    r"\b(?:fully|squarely|affirmatively) supported\b|"
+    r"\bsupported by (?:the )?(?:inventor|disclosure|source)",
+    re.IGNORECASE,
+)
+_SOURCE_EXPLICIT_FIGURE_LINK_RE = re.compile(
+    r"\b(?:application|detailed description|brief description|specification)\s+"
+    r"(?:states?|says?|recites?)\s+(?:that\s+)?FIG(?:URE)?\.?\s*\d+\s+"
+    r"(?:shows|depicts|illustrates)",
+    re.IGNORECASE,
+)
+_SOURCE_EXPLICIT_DISCONNECTION_RE = re.compile(
+    r"\b(?:not connected|uncoupled|disconnected|does not (?:touch|connect)|"
+    r"clear of and not touching)\b",
+    re.IGNORECASE,
+)
+
+
+def reconcile_source_drawing_omission_findings(
+        findings: Sequence[Mapping[str, Any]],
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Dismiss only claim-only drawing omissions that the reviewer says are source-supported.
+
+    Source review protects the inventor's disclosure before rendering. It must not oscillate by
+    first removing an undisclosed connection route and then adding that route back merely because
+    a supported claim relationship is not drawn. A real text-to-figure promise or an explicit
+    contradictory connection remains blocking.
+    """
+    kept: list[dict[str, Any]] = []
+    reconciled: list[dict[str, Any]] = []
+    for original in findings:
+        finding = dict(original)
+        title = str(finding.get("title") or "")
+        detail = str(finding.get("detail") or "")
+        evidence = str(finding.get("evidence") or "")
+        fix = str(finding.get("fix") or "")
+        review_text = " ".join((title, detail, evidence))
+        claim_relationship = bool(re.search(
+            r"\b(?:claim|limitation|claim element|coupl(?:e|ed|ing)|relationship)\b",
+            review_text, re.IGNORECASE))
+        claim_only_omission = bool(_SOURCE_DRAWING_OMISSION_RE.search(
+            " ".join((title, detail))))
+        reviewer_admits_support = bool(_SOURCE_SUPPORT_ADMISSION_RE.search(review_text))
+        proposed_depiction = bool(re.search(
+            r"\b(?:depict|draw|show|add)\b", fix, re.IGNORECASE))
+        promised_by_application = bool(_SOURCE_EXPLICIT_FIGURE_LINK_RE.search(review_text))
+        explicit_disconnection = bool(_SOURCE_EXPLICIT_DISCONNECTION_RE.search(evidence))
+        if not (claim_relationship and claim_only_omission and reviewer_admits_support
+                and proposed_depiction and not promised_by_application
+                and not explicit_disconnection):
+            kept.append(finding)
+            continue
+        finding["reconciliation"] = (
+            "A drawing need not depict every claim limitation unless the "
+            "application expressly says that a figure shows it. No such text-to-figure promise "
+            "or explicit contradictory connection was quoted."
+        )
+        reconciled.append(finding)
+    return kept, reconciled
+
+
 def review_sources(workspace: Path, *, transcript: Path | None = None, model: str = "",
                    timeout: int = draft_agent.QA_TIMEOUT,
                    cancel: threading.Event | None = None) -> dict[str, Any]:
@@ -1744,11 +1816,25 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
         else:
             quality_error = _source_review_quality_error(summary, findings)
         if not quality_error:
+            findings, reconciled = reconcile_source_drawing_omission_findings(findings)
+            if reconciled and not findings:
+                summary = (
+                    "Every claim limitation, numeral, numbered part, figure brief, drawing "
+                    "description, and affirmative inventor source was checked and traced. No "
+                    "unresolved source-fidelity findings remain after deterministic "
+                    "reconciliation of a claim-only drawing omission."
+                )
+            elif reconciled:
+                summary += (
+                    " The filing gate reconciled a claim-only drawing omission that the reviewer "
+                    "itself identified as source-supported."
+                )
             return {
                 "ok": True,
                 "error": "",
                 "summary": summary,
                 "findings": findings,
+                "reconciled_findings": reconciled,
                 "cost_usd": total_cost,
                 "duration_ms": total_duration,
                 "tokens": total_tokens,
