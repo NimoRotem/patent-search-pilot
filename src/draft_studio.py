@@ -1678,6 +1678,22 @@ class StudioRepository:
                                    "tokens_cache_read", "tokens_cache_write"))
         return out
 
+    def current_spend(self, turn_id: int) -> dict[str, Any]:
+        """Return the charged total before another paid run is allowed to start."""
+        self._ready()
+        with self._cursor() as cur:
+            cur.execute(
+                "SELECT agent_runs,spend_usd,model_ms,tokens_input,tokens_output,"
+                "tokens_cache_read,tokens_cache_write FROM app_draft_turns WHERE id=%s",
+                (int(turn_id),))
+            row = cur.fetchone()
+        out = dict(row or {})
+        out["spend_usd"] = float(out.get("spend_usd") or 0)
+        out["tokens_total"] = sum(int(out.get(key) or 0) for key in
+                                  ("tokens_input", "tokens_output",
+                                   "tokens_cache_read", "tokens_cache_write"))
+        return out
+
     def heartbeat(self, turn_id: int, lease_token: str, *, stage: str = "",
                   lease_seconds: int = LEASE_SECONDS) -> None:
         self._ready()
@@ -2063,6 +2079,13 @@ class TurnRunner:
                    stage: str, model: str = "", system_prompt: str = DRAFT_SYSTEM,
                    schema: Mapping[str, Any] = TURN_SCHEMA,
                    tools: str = "", house: str = "") -> draft_agent.AgentRun:
+        # Resolve the method on the class. Test doubles commonly use an unconstrained Mock,
+        # whose instance-level getattr fabricates a callable for every missing attribute.
+        current_spend = getattr(type(self.repository), "current_spend", None)
+        if callable(current_spend):
+            spent = current_spend(self.repository, turn_id)
+            if isinstance(spent, Mapping):
+                self._check_budget(turn_id, spent)
         self.repository.heartbeat(turn_id, lease, stage=stage)
         beat = _Heartbeat(self.repository, turn_id, lease, stage)
         beat.start()

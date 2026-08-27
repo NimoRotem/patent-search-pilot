@@ -1,4 +1,5 @@
 """Advanced settings: every knob is real, and a bad value is refused rather than corrected."""
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -133,6 +134,50 @@ def test_a_turn_inside_its_budget_is_left_alone():
     runner = draft_studio.TurnRunner(Mock(), object(), agent=Mock(), workspace=Mock())
     runner._budget = {"max_agent_runs": 14, "max_spend_usd": 40}
     runner._check_budget(1, {"agent_runs": 13, "spend_usd": 39.99, "tokens_total": 10})
+
+
+def test_an_exhausted_turn_does_not_launch_one_more_agent_run(tmp_path):
+    import draft_studio
+
+    class SpendRepository:
+        heartbeat = Mock()
+
+        def current_spend(self, _turn_id):
+            return {
+                "agent_runs": 14,
+                "spend_usd": 12.5,
+                "tokens_total": 1234567,
+            }
+
+    repository = SpendRepository()
+    agent = Mock()
+    agent.DRAFT_MODEL = "opus"
+    agent.DRAFT_TIMEOUT = 60
+    agent.run.return_value = SimpleNamespace(
+        ok=True,
+        cancelled=False,
+        error="",
+        cost_usd=0.1,
+        duration_ms=1,
+        tokens={},
+    )
+    runner = draft_studio.TurnRunner(repository, object(), agent=agent, workspace=Mock())
+    runner._budget = {"max_agent_runs": 14, "max_spend_usd": 40}
+
+    with pytest.raises(draft_studio.TurnBudgetSpent, match="14 agent runs"):
+        runner._run_agent(
+            turn_id=1,
+            lease="lease",
+            workspace=tmp_path,
+            prompt="repair",
+            session_id="session",
+            resume=True,
+            transcript=tmp_path / "turn.jsonl",
+            stage="repairing the draft",
+        )
+
+    agent.run.assert_not_called()
+    repository.heartbeat.assert_not_called()
 
 
 def test_a_project_with_no_ceiling_configured_is_not_silently_capped_at_zero():
