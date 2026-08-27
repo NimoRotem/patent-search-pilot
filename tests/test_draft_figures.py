@@ -2041,6 +2041,78 @@ def test_exact_section_pixels_resolve_reviewers_dissent_on_certified_constraints
         tampered, specification_hash=spec_hash) is False
 
 
+def test_exact_section_pixels_resolve_false_body_separation_and_loop_dissent(monkeypatch):
+    caption = """
+    The sheet shows four schematic bodies: one hatched horizontal slab, the base 12; one closed
+    loop cut twice, appearing as two hatched legs hanging from the underside of the slab, one at
+    each end; one hatched band across the bottom, the covering element 36, on which the legs
+    stand; and one housing standing on the slab, the air-extraction mechanism 20. The slab, the
+    legs and the band are the cut bodies, each filled with regularly spaced parallel hatching:
+    the slab falling to the right, both legs rising to the right, and the band falling to the
+    right more steeply than the slab. Where two meet, a plain solid line runs along the join, so
+    each reads as a separate hatched body. The housing lies outside the cut, in plain unhatched
+    outline. A plain unhatched gap runs through the slab beneath the housing, from the inside of
+    the housing to the chamber 22.
+    """
+    numerals = [
+        "12 = base", "14 = first side", "20 = air-extraction mechanism",
+        "22 = chamber", "24 = perimeter member", "36 = covering element",
+    ]
+    png = draft_figures._deterministic_geometry_png(caption)
+    assert png is not None
+    spec_hash = draft_figures.specification_hash("FIG. 2", caption, numerals)
+    dissent = {
+        "ok": False, "inspected": True, "matches_spec": False,
+        "model_name": draft_figures.cross_provider_model(),
+        "prompt_version": draft_figures.CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
+        "review_count": draft_figures.CROSS_PROVIDER_GEOMETRY_REVIEW_COUNT,
+        "specification_hash": spec_hash,
+        "missing": [], "unexpected": [], "duplicates": [], "missing_geometry": [],
+        "errors": [
+            "The slab, legs, and band read as one continuous monolithic hatched body instead "
+            "of separate bodies with a plain solid line at each join.",
+            "The two distinct leg sections do not visually represent the single closed loop "
+            "cut twice required by the specification.",
+        ],
+        "summary": "The required components are visible, but their section convention appears wrong.",
+    }
+    certificate = draft_figures._deterministic_geometry_certificate(png, caption)
+    assert certificate["certified_constraints"]["section_body_separation"]["ok"] is True
+    assert certificate["certified_constraints"]["perimeter_loop_section"]["ok"] is True
+    assert draft_figures._certified_geometry_dissent_categories(
+        errors=dissent["errors"], missing_geometry=[], missing=[], unexpected=[],
+        duplicates=[], certificate=certificate,
+    ) == ["perimeter_loop_section", "section_body_separation"]
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k: dissent)
+    semantic = {
+        "ok": False, "inspected": True,
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "expected": ["12", "14", "20", "22", "24", "36"],
+        "visible": ["12", "14", "20", "22", "24", "36"],
+        "missing": [], "unexpected": [], "duplicates": [], "unexpected_text": [],
+        "errors": dissent["errors"],
+        "anchors": [
+            {"numeral": value, "x": 500, "y": 500, "visible": True,
+             "evidence": "The requested component is visible."}
+            for value in ("12", "14", "20", "22", "24", "36")
+        ],
+        "specification_hash": spec_hash,
+    }
+
+    audited = draft_figures._resolve_deterministic_semantic_dissent(
+        semantic, png, label="FIG. 2", caption=caption, numerals=numerals)
+
+    assert audited["ok"] is True
+    cross = audited["cross_provider_geometry_audit"]
+    assert cross["ok"] is True and cross["reviewer_ok"] is False
+    assert set(cross["consensus_resolution"]["certified_dissent_categories"]) == {
+        "perimeter_loop_section", "section_body_separation",
+    }
+
+
 def test_deterministic_semantic_dissent_fails_closed_without_complete_anchor_inventory(
         monkeypatch):
     caption = (
