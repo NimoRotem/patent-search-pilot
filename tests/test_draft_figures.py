@@ -1668,6 +1668,9 @@ def test_cross_provider_geometry_review_uses_anthropic_pixels_and_caches_clean_r
     assert "black stroke centerlines" in prompt
     assert "supporting surface" in prompt and "occlusion" in prompt
     assert "finite-width ring" in prompt and "outer and inner" in prompt
+    assert "parts list is an indexing aid, not an exhaustive geometry specification" in prompt
+    assert "one representative instance" in prompt
+    assert "do not infer the permitted instance count from the number of numerals" in prompt
 
 
 @pytest.mark.parametrize("first_text", [
@@ -4551,6 +4554,57 @@ def test_chamber_renderer_accepts_source_repaired_four_body_inventory_without_li
     with Image.open(io.BytesIO(png)).convert("L") as image:
         assert sum(image.getpixel((865, y)) < 32 for y in range(120, 205)) == 0
         assert sum(image.getpixel((865, y)) < 32 for y in range(380, 560)) == 0
+
+
+def test_chamber_renderer_accepts_current_brief_with_a_physical_through_slab_gap():
+    specification = """
+    The sheet shows four schematic bodies: one hatched horizontal slab, the base 12; one closed
+    loop cut twice, appearing as two hatched legs hanging from the underside of the slab, one at
+    each end; one hatched band across the bottom, the covering element 36, on which the legs
+    stand; and one housing standing on the slab, the air-extraction mechanism 20.
+
+    The slab, the legs and the band are the cut bodies. Where two meet, a plain solid line runs
+    along the join, so each reads as a separate hatched body. The housing lies outside the cut,
+    in plain unhatched outline. A plain unhatched gap runs through the slab beneath the housing,
+    from the inside of the housing to the chamber 22, so that the air-extraction mechanism 20 is
+    in fluid communication with the chamber 22. The slab is hatched falling to the right, both
+    legs are hatched rising to the right, and the band is hatched falling to the right more
+    steeply than the slab.
+    """
+
+    png = draft_figures._deterministic_chamber_section_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    with Image.open(io.BytesIO(png)).convert("L") as image:
+        assert image.getpixel((865, 290)) == 255
+        assert image.getpixel((835, 290)) < 64
+        assert image.getpixel((895, 290)) < 64
+    certificate = draft_figures._deterministic_section_hatch_certificate(png, specification)
+    assert [item["angle_degrees"] for item in certificate["components"]] == [45, -45, -45, 70]
+
+
+def test_fragmentary_renderer_accepts_current_complete_lower_area_wording():
+    specification = """
+    The sheet shows four hatched bodies: one upright column and three horizontal bands beneath
+    it. The three bands are stacked in the lower part of the drawing area. Each runs across the
+    drawing area, ending just inside its left and right limits, filled with regularly spaced
+    parallel hatching continuous from side to side, including beneath the column. The uppermost
+    band is the covering element 36, hatched falling to the right; the middle band is the bonding
+    material 40, hatched rising to the right more steeply; the lowest is the substrate 42, hatched
+    falling to the right less steeply than the covering element. The column is the perimeter
+    member 24. It stands above the uppermost band, an open stretch of that band on each side of
+    it, rising from one horizontal line closing it below to just inside the upper limit of the
+    drawing area, hatched rising to the right. Between the bottom line of the column and the top
+    line of the uppermost band lies open unhatched space.
+    """
+
+    png = draft_figures._deterministic_fragmentary_section_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    certificate = draft_figures._deterministic_section_hatch_certificate(png, specification)
+    assert [item["angle_degrees"] for item in certificate["components"]] == [-45, 45, -70, 30]
 
 
 def test_chamber_renderer_accepts_two_explicit_fluid_line_segments():

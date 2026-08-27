@@ -75,7 +75,7 @@ MARKED_ANCHOR_PROMPT_VERSION = (
 CROSS_PROVIDER_PROMPT_VERSION = (
     "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage")
 CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION = (
-    "figure-geometry-crosscheck-v4-section-annotations-deferred")
+    "figure-geometry-crosscheck-v5-caption-geometry-authority")
 DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
     "deterministic-geometry-consensus-v2-byte-exact-certified-constraints")
 DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
@@ -3728,13 +3728,25 @@ def _requested_section_hatch_angle(text: str, subject_pattern: str, default: int
         r"(rising|falling)\s+to\s+the\s+right([^,.;]{0,100})",
         text,
     )
+    if not match:
+        match = re.search(
+            rf"\b(?:{subject_pattern})\b[^.]{{0,160}}\.\s+it\b[^.]{{0,420}}?"
+            r"\b(?:hatched|filled\s+with(?:\s+[a-z-]+){0,6}\s+hatching)\s+"
+            r"(rising|falling)\s+to\s+the\s+right([^,.;]{0,100})",
+            text,
+        )
     if match:
         qualifier = match.group(2)
         degree_match = re.search(r"\b(?:about\s+)?(\d{1,2})\s*degrees?\b", qualifier)
         requested = int(degree_match.group(1)) if degree_match else 0
-        magnitude = (
-            requested if 0 < requested < 90 else
-            (20 if "shallow" in qualifier else 45))
+        magnitude = requested if 0 < requested < 90 else 45
+        if not requested:
+            if re.search(r"\bless\s+steep", qualifier):
+                magnitude = 30
+            elif re.search(r"\b(?:more\s+)?steep", qualifier):
+                magnitude = 70
+            elif "shallow" in qualifier:
+                magnitude = 20
         return -magnitude if match.group(1) == "rising" else magnitude
     for subject in re.finditer(
             rf"\b(?:{subject_pattern})\b(?P<qualifier>[^.]{{0,220}})", text):
@@ -3811,7 +3823,8 @@ def _deterministic_section_hatch_certificate(png: bytes, caption: str) -> dict |
                 _requested_section_hatch_angle(text, r"(?:the\s+)?middle band", 60)),
             _section_hatch_component(
                 "lowest substrate band",
-                _requested_section_hatch_angle(text, r"(?:the\s+)?lowest band", -60)),
+                _requested_section_hatch_angle(
+                    text, r"(?:the\s+)?lowest(?:\s+band)?", -60)),
         ]
     else:
         return None
@@ -3841,14 +3854,14 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
         re.search(r"\b(?:the column|it) stands above the uppermost band\b", text) and
         re.search(r"\bopen (?:stretch|paper)\b[^.]{0,100}\bon each side\b", text) and
         re.search(r"\bhatching(?: lines)? continuous from side to side\b[^.]{0,100}"
-                  r"\bdirectly beneath the column\b", text) and
+                  r"\b(?:directly\s+)?beneath the column\b", text) and
         (re.search(r"\beach band reading as one whole hatched body\b", text) or
          re.search(r"\beach band runs\b[^.]{0,400}\bside to side\b[^.]{0,400}"
                    r"\bhatching(?: lines)? continuous from side to side\b[^.]{0,100}"
                    r"\bdirectly beneath the column\b", text) or
-         re.search(r"\beach band runs\b[^.]{0,400}\bhatching(?: lines)? "
+         re.search(r"\beach(?: band)? runs\b[^.]{0,400}\bhatching(?: lines)? "
                    r"continuous from side to side\b[^.]{0,100}"
-                   r"\bdirectly beneath the column\b", text)))
+                   r"\b(?:directly\s+)?beneath the column\b", text)))
     centred_column = centred_column or positive_open_sides_column
     explicit_inventory = bool(
         re.search(r"\bshows four hatched bodies\s*:", text) and
@@ -3857,8 +3870,8 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
         explicit_inventory and
         re.search(r"\bthree bands are stacked\b[^.]{0,100}\blower part of the drawing area\b",
                   text) and
-        re.search(r"\beach band runs\b[^.]{0,160}\bending just inside\b[^.]{0,100}"
-                  r"\bleft-hand and right-hand limits\b", text))
+        re.search(r"\beach(?: band)? runs\b[^.]{0,160}\bending just inside\b[^.]{0,100}"
+                  r"\bleft(?:-hand)? and right(?:-hand)? limits\b", text))
     requirements = (
         (re.search(r"\bfour hatched bodies\b[^.]{0,80}\bnothing else\b", text) or
          explicit_inventory),
@@ -3879,7 +3892,8 @@ def _deterministic_fragmentary_section_png(caption: str) -> bytes | None:
     column_angle = _requested_section_hatch_angle(text, r"(?:the\s+)?column", 45)
     upper_angle = _requested_section_hatch_angle(text, r"(?:the\s+)?uppermost band", -45)
     middle_angle = _requested_section_hatch_angle(text, r"(?:the\s+)?middle band", 60)
-    lower_angle = _requested_section_hatch_angle(text, r"(?:the\s+)?lowest band", -60)
+    lower_angle = _requested_section_hatch_angle(
+        text, r"(?:the\s+)?lowest(?:\s+band)?", -60)
     _paste_hatched_box(
         image, (column_left + 4, 0, column_right - 4, 316), angle=column_angle)
     _paste_hatched_box(image, (0, 414, 1399, 546), angle=upper_angle)
@@ -3942,6 +3956,16 @@ def _chamber_section_splits_line(text: str) -> bool:
 def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     """Render the exact slab, two cut legs, chamber, band, and any specified fluid line."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    physical_gap = bool(
+        re.search(r"\bplain unhatched gap runs through the slab\b", text) and
+        re.search(r"\bfrom (?:the )?inside of the housing to the chamber(?:\s+\d+)?\b", text))
+    current_physical_gap_inventory = bool(
+        physical_gap and
+        re.search(r"\bthe sheet shows four schematic bodies\s*:", text) and
+        re.search(r"\bclosed loop cut twice\b[^.]{0,120}\btwo hatched legs\b", text) and
+        re.search(r"\bone housing standing on the slab\b", text) and
+        re.search(r"\bhousing lies outside the cut\b[^.]{0,100}\bplain unhatched outline\b",
+                  text))
     exact_inventory = re.search(
         r"\bshows four bodies\b[^.]{0,80}\bone broken line\b"
         r"[^.]{0,60}\bnothing else\b",
@@ -3962,7 +3986,7 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
             text,
         )
     )
-    exact_inventory = exact_inventory or body_only_inventory
+    exact_inventory = exact_inventory or body_only_inventory or current_physical_gap_inventory
     line_inventory_only = bool(
         re.search(r"\bno passage, duct, opening or other structure is depicted\b", text) or
         re.search(r"\bthat broken line being all that is drawn for it\b", text) or
@@ -3974,13 +3998,13 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
             r"[^.]{0,120}\bair-extraction mechanism(?:\s+\d+)?\b"
             r"[^.]{0,120}\bchamber(?:\s+\d+)?\b",
             text,
-        ))
+        )) or physical_gap
     requirements = (
         exact_inventory,
         re.search(r"\b(?:horizontal hatched|hatched horizontal) slab\b", text),
         re.search(r"\bclosed loop cut twice\b[^.]{0,100}\btwo (?:short )?hatched legs\b", text),
         re.search(r"\bhatched band across the bottom\b", text),
-        re.search(r"\bone closed housing\b", text),
+        re.search(r"\bone (?:closed )?housing\b", text),
         fluid_communication or body_only_inventory,
         line_inventory_only,
     )
@@ -4018,7 +4042,11 @@ def _deterministic_chamber_section_png(caption: str) -> bytes | None:
     draw.rectangle((160, 620, 1240, 760), outline="black", width=4)
     draw.rounded_rectangle(
         (740, 90, 990, 220), radius=24, fill="white", outline="black", width=4)
-    if fluid_communication:
+    if physical_gap:
+        draw.rectangle((835, 216, 895, 364), fill="white")
+        draw.line((835, 220, 835, 360), fill="black", width=4)
+        draw.line((895, 220, 895, 360), fill="black", width=4)
+    elif fluid_communication:
         split_at_base = _chamber_section_splits_line(text)
         line_ranges = ((145, 220), (369, 521)) if split_at_base else ((145, 521),)
         for start, stop in line_ranges:
@@ -5561,6 +5589,13 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
         "missing_geometry, unexpected_geometry, parts, and visible_elements. Set matches_spec false "
         "for any extra or missing geometry, wrong count, wrong view, or wrong relationship. Do not "
         "report absent labels, numerals, or leaders because they are added after this review. "
+        "The reference-numeral parts list is an indexing aid, not an exhaustive geometry "
+        "specification. Geometry expressly required anywhere in the caption is required even when "
+        "it has no reference numeral. A single parts record may identify one representative "
+        "instance when the caption expressly requires multiple instances of that same named part. "
+        "Use the caption's explicit count for those repeated instances, and do not infer the "
+        "permitted instance count from the number of numerals. Do not call a caption-required "
+        "unnumbered element or repeated instance unexpected. "
         "Cutting-plane lines, viewing arrows, and repeated section designations are also "
         "deliberately absent and added later; do not report their absence. "
         "Apply line-drawing conventions before reporting an error. Count continuous black stroke "
