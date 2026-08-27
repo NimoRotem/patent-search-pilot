@@ -629,6 +629,21 @@
           They are at the bottom of the table. This is a finding, not a gap in the search — but it
           is the one worth checking by hand.</p>
         {% endif %}
+        {# A zero that is a statement about vocabulary, not about the art. A numeric range or a
+           term the specification defines elsewhere can match nothing while the art is full of the
+           thing it requires. See claim_construction. #}
+        {% if v.claim_chart.uncovered_unconfirmed %}
+        <p class="gridline gridwarn"><b>{{ v.claim_chart.uncovered_unconfirmed|length }} of those
+          zeros cannot be read as “nothing discloses this” yet.</b> Each of these limitations means
+          something its own words do not say, so nothing matching the words is a result about the
+          vocabulary:</p>
+        <ul class="small muted" style="margin:.2em 0 .6em 1.1em;line-height:1.5">
+          {% for u in v.claim_chart.uncovered_unconfirmed %}
+          <li><b>{{ u.element }}</b>: “{{ u.claim_text|truncate(140) }}”<br>{{ u.caveat }}
+            {% if u.terms %}<br>Search it as: {{ u.terms|join(', ') }}.{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
         {% if v.claim_chart.n_rescued %}
         <p class="gridline"><b>{{ v.claim_chart.n_rescued }}</b> of these references are here
           because a claim had nothing against it and the search went back specifically for that

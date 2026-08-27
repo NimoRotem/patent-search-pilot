@@ -305,6 +305,61 @@ def fetch_family(pub, mock=False, lens_family=None, corpus_rows=None, force=Fals
     return result
 
 
+#  ---- publication-level members, kind codes intact -----------------------------------------
+#  `fetch_family` above answers "where in the world is this family", and to do that it COLLAPSES
+#  every publication of one application into a single timeline entry. The kind code is exactly what
+#  that collapse throws away, and the kind code is the whole answer to a different question: is
+#  there a member of this family that published EARLIER than the one we are looking at. A German
+#  Gebrauchsmuster (U1) publishes on registration and can predate its own A1 sibling by more than a
+#  year. See family_sweep for what that is worth.
+MEMBERS_CACHE = DATA / "families"
+
+
+def _members_path(pub):
+    return MEMBERS_CACHE / f"{_pubkey(pub)}.members.json"
+
+
+def publication_members(pub, mock=False, force=False) -> list:
+    """Every PUBLICATION of `pub`'s INPADOC family, kind codes kept. -> [member] (never raises).
+
+    Cached on disk forever beside the timeline, for the same reason: a family does not change, and
+    the EPO byte budget is shared with every other caller on this box.
+    """
+    try:
+        path = _members_path(pub)
+    except ValueError:
+        return []
+    if not force and path.exists():
+        try:
+            return json.loads(path.read_text()) or []
+        except Exception:
+            pass
+    #  NOT CACHED WHEN NOTHING WAS ASKED. "This box has no EPO credentials" and "the weekly byte
+    #  budget is gone" are facts about the box, not about the family, and this cache is never
+    #  refetched: writing an empty answer for either would say "no siblings" for ever, on every box
+    #  that reads the same disk. The empty answer that IS cached is the one the office gave.
+    if mock or not ops.have_creds():
+        return []
+    out = []
+    try:
+        with_kind, kindless = to_docdb(pub)
+        st, body, _ = ops._ops_get(f"family/publication/docdb/{with_kind}")
+        if st == 404 and with_kind != kindless:
+            st, body, _ = ops._ops_get(f"family/publication/docdb/{kindless}")
+        if st == 200 and body:
+            out = [m for m in parse_family_members(body) if m.get("pub")]
+    except ops.OpsBudgetExceeded:
+        return []
+    except Exception:
+        out = []
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(out, default=str))
+    except Exception:
+        pass
+    return out
+
+
 if __name__ == "__main__":
     import sys
     for p in sys.argv[1:] or ["US-11999030-B2"]:

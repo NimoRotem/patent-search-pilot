@@ -38,6 +38,7 @@ import traceback
 
 #  Module level, not inside qualify(): the forum rule below is read after the date block, so a
 #  name bound only on the success path of a try is a NameError waiting for the first odd input.
+import citation                                # the one grammar for a pinpoint, writer and checker
 import search_modes
 
 MACHINE_TRANSLATION_NOTE = ("Machine translation of the relied-on passage; the original-language "
@@ -226,6 +227,36 @@ def self_collision(doc, target_assignees):
 # --------------------------------------------------------------------------- family
 
 
+def sibling_rescue(doc, subject_efd, own=False):
+    """The earlier-published member of this document's family, if there is one. -> dict
+
+    Run on every document this pass throws away, and on every self-collision, because those are
+    exactly the cases where the exclusion is a fact about ONE publication rather than about the
+    disclosure. Counsel, 2026-08-26, on Schmalz's own pole shoe: the A1 published 28 August 2025,
+    after their own priority date, and the Gebrauchsmuster of the same disclosure was gazetted
+    18 April 2024, six months before it. Never raises: a failed lookup must not lose a document.
+    """
+    try:
+        import family_sweep
+        return family_sweep.sweep(doc.get("pub"), subject_efd, own=own)
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return {"checked": False, "best": None,
+                "note": "The family could not be swept for an earlier-published member; check it "
+                        "by hand before treating this document as unavailable."}
+
+
+def _sibling_sentence(sib):
+    """What to append to a block reason, so an exclusion never reads as the end of the matter."""
+    s = sib or {}
+    if s.get("best"):
+        return " BUT: %s" % s.get("note", "")
+    if s.get("checked"):
+        return " %s" % s.get("note", "")
+    return (" The family was not swept for an earlier-published member under another kind code; "
+            "do that before treating the disclosure as unavailable.")
+
+
 def collapse_families(docs):
     """One document per DOCDB family, keeping the member with the most verified evidence.
 
@@ -260,6 +291,102 @@ def collapse_families(docs):
 # --------------------------------------------------------------------------- neutral language
 
 
+#  ARGUMENT DOES NOT ALWAYS USE THE STATUTE'S VOCABULARY, and a linter hunting for "anticipates",
+#  "obvious" and "§ 103" finds none of it. Counsel swept all seventeen concise descriptions of one
+#  packet with the quoted source text stripped out first, so only generated prose was tested. Two
+#  statements failed and neither contains a single word from the patentability lexicon:
+#
+#      "...generally cylindrical in shape, IMPLYING IT EXTENDS ALONG A LONGITUDINAL AXIS."
+#      "...for removing parts therefrom, WHICH CONSTITUTES A MAGNETIC GRIPPER SYSTEM."
+#
+#  The reference says it is annular and generally cylindrical and says nothing about a longitudinal
+#  axis; that inference is the drafter supplying the claim limitation by argument. The second
+#  asserts the reference meets the claim term. This matters more than it looks: argument is the one
+#  defect that gets a submission DISCARDED outright under 1.290(a), rather than corrected.
+#
+#  Two tiers, because the two fail for different reasons.
+
+#  Always argument. These assert that the reference MEETS a category, which is a conclusion about
+#  the claims however well supported the underlying facts are.
+_CONCLUSION_CUE = re.compile(
+    r"(?:[,;]\s*|\s+)(?:which\s+|and\s+)?(?:constitut(?:es?|ing)|amounts?\s+to|"
+    r"may\s+be\s+considered|would\s+be\s+understood|is\s+equivalent\s+to|"
+    r"corresponds?\s+to\s+the\s+claimed|satisf(?:ies|y)|meets?\s+the)\b[^.;]*", re.I)
+
+#  Argument only when the thing inferred is not in the passage. "The reference indicates the shaft
+#  rotates" is a fair restatement when the passage says the shaft rotates, and it is an inference
+#  supplied by the drafter when it does not.
+_INFERENCE_CUE = re.compile(
+    r"(?:[,;]\s*|\s+)(?:which\s+|and\s+|so\s+)?(?:impl(?:y|ies|ying)|suggest(?:s|ing)?|"
+    r"indicat(?:es?|ing)|appears?\s+to|seems?\s+to|effectively|thereby|"
+    r"meaning\s+that|which\s+means|so\s+that\s+it\s+is|therefore)\b[^.;]*", re.I)
+
+_INFER_STOP = {
+    "the", "a", "an", "of", "to", "in", "on", "at", "and", "or", "is", "are", "be", "it", "its",
+    "that", "this", "which", "with", "for", "from", "by", "as", "such", "would", "will", "also",
+    "thus", "there", "then", "into", "along", "upon", "being", "having", "has", "have",
+}
+
+#  How much of an inferred clause has to be in the passage before it is a restatement rather than
+#  an inference. Deliberately high: the cost of stripping a fair sentence is a slightly shorter
+#  description, and the cost of keeping an unfair one is the whole submission.
+INFERENCE_SUPPORT = 0.6
+
+
+def _infer_words(s):
+    return [w for w in re.findall(r"[a-z]{3,}", str(s or "").lower()) if w not in _INFER_STOP]
+
+
+def supported_by(clause, evidence):
+    """Is everything this clause asserts already in the passage it is attached to?"""
+    words = _infer_words(clause)
+    if not words:
+        return True
+    hay = set(_infer_words(evidence))
+    if not hay:
+        return False
+    return sum(1 for w in words if w in hay) / float(len(words)) >= INFERENCE_SUPPORT
+
+
+def strip_inference(text, evidence=""):
+    """-> (clean_text, [what was removed]). An assertion the passage does not carry is removed.
+
+    The structural rule counsel asked for, expressed as code: every sentence in the relevance
+    column has to be a restatement of something the accompanying quotation actually says, and one
+    that asserts a fact the quotation does not contain is flagged and cut. A conclusion about what
+    the reference IS goes whether or not the facts under it hold, because that is the assertion
+    1.290 forbids.
+    """
+    out, changed = str(text or ""), []
+    for m in list(_CONCLUSION_CUE.finditer(out)):
+        changed.append("removed a conclusion about what the reference is: %r"
+                       % " ".join(m.group(0).split())[:80])
+    out = _CONCLUSION_CUE.sub("", out)
+    for m in list(_INFERENCE_CUE.finditer(out)):
+        clause = m.group(0)
+        if supported_by(clause, evidence):
+            continue
+        changed.append("removed an inference the passage does not support: %r"
+                       % " ".join(clause.split())[:80])
+        out = out.replace(clause, "")
+    return (_drop_stubs(out) if changed else " ".join(out.split()).strip(" ,;")), changed
+
+
+def _drop_stubs(text):
+    """Sentences left too short to say anything, after a clause was cut out of them.
+
+    "The device thereby holds the workpiece against the pole face." with the inference removed is
+    "The device.", which is not a shorter description, it is a fragment. A cut that leaves one goes
+    the whole way and takes the sentence.
+    """
+    kept = []
+    for s in re.split(r"(?<=[.!?])\s+", " ".join(str(text or "").split())):
+        s = s.strip()
+        if len(re.findall(r"[A-Za-z]{2,}", s)) >= 4:
+            kept.append(s)
+    return " ".join(kept).strip(" ,;")
+
+
 def neutralise(text):
     """-> (clean_text, [what was changed]). Argument is replaced, not merely flagged."""
     changed = []
@@ -283,37 +410,132 @@ def _norm_for_match(s):
     return re.sub(r"[^a-z0-9]+", " ", str(s or "").lower()).strip()
 
 
-def verify_quotes(doc, source_text):
-    """Drop any quotation the reference's own text does not contain.
+def _passages_of(source):
+    """(publication, [passage], plain text) from whatever `source_text_for` handed back.
 
-    The passage was captured by the reader and has been through grounding, but a filed paper is a
-    representation that the document says this. Re-checking against the stored full text costs
-    nothing and is the difference between a quotation and a paraphrase in quotation marks.
+    `deep_analysis.full_text` returns a DICT of located passages, and the old caller passed that
+    straight into a string match, so the check was against `str(dict)` and the location inside each
+    passage was never looked at. The passages are the whole point: a citation is a triple and two
+    thirds of it live in there.
     """
-    hay = _norm_for_match(source_text)
-    checked, dropped = 0, 0
+    if isinstance(source, dict):
+        passages = [p for p in (source.get("passages") or []) if isinstance(p, dict)]
+        text = " ".join(str(p.get("text") or "") for p in passages)
+        return str(source.get("pub") or ""), passages, text
+    return "", [], str(source or "")
+
+
+def verify_quotes(doc, source_text):
+    """Ground the whole citation, not just the words in it. -> {"checked", "dropped", ...}
+
+    A citation is (publication INCLUDING kind code, location, text) and the old check verified only
+    the text. Three citations in one real packet failed on the other two thirds: an abstract cited
+    on a document whose filed copy has no abstract in it, paragraph numbers belonging to another
+    member of the same family, and a quotation carrying a number the source states qualitatively.
+
+    So, in order:
+
+      PUBLICATION  the passages have to come from the publication this paper identifies, kind code
+                   and all. A1 and B4 of one application have different paragraph numbering, a
+                   different claim count and fourteen paragraphs with no twin, so a quote read from
+                   one and cited on the other resolves to nothing.
+      TEXT         the quotation has to appear in that publication's stored text, as before.
+      LOCATION     the quotation has to appear AT the place it is cited to. Where the recorded
+                   place is wrong and the true one can be found, the citation is corrected from the
+                   data; where the true one cannot be found, the pinpoint is REMOVED and the
+                   quotation stands alone. An unpinpointed quotation is an inconvenience. An
+                   invented pinpoint is a false statement in a live examination.
+    """
+    src_pub, passages, plain = _passages_of(source_text)
+    hay = _norm_for_match(plain)
+    out = {"checked": 0, "dropped": 0, "relocated": 0, "unpinpointed": 0, "note": ""}
+    if src_pub and not citation.same_publication(src_pub, doc.get("pub")):
+        #  Never carry a citation across kind codes. The text we hold is a different publication
+        #  from the one this paper identifies, so nothing read from it may be quoted here.
+        n = sum(1 for r in doc["rows"] if (r.get("quote") or "").strip())
+        for r in doc["rows"]:
+            if (r.get("quote") or "").strip():
+                r["quote"] = ""
+                r["quote_unverified"] = True
+        out.update(checked=n, dropped=n, note=(
+            "The stored text for this paper is %s and the paper identifies %s. Those are different "
+            "publications, and paragraph numbering, claim numbering and the text itself all differ "
+            "between members of one family, so no quotation was carried across."
+            % (src_pub, doc.get("pub"))))
+        return out
     if not hay:
-        return {"checked": 0, "dropped": 0,
-                "note": "No stored full text for this reference, so its quotations could not be "
-                        "re-verified against the source. Check them before filing."}
+        out["note"] = ("No stored full text for this reference, so its quotations could not be "
+                       "re-verified against the source. Check them before filing.")
+        return out
+    fixed, lost = [], []
     for r in doc["rows"]:
         q = (r.get("quote") or "").strip()
         if not q:
             continue
-        checked += 1
+        out["checked"] += 1
+        #  The publication every pinpoint on this row belongs to, recorded on the row so a later
+        #  family collapse cannot move it silently.
+        r["cite_pub"] = src_pub or doc.get("pub")
         needle = _norm_for_match(q.rstrip(" …."))
         #  Match on a solid interior run rather than the whole span: the stored passage is capped
         #  mid-sentence and may carry the reader's ellipsis.
         probe = " ".join(needle.split()[:12])
-        if probe and probe in hay:
+        if not (probe and probe in hay):
+            r["quote"] = ""
+            r["quote_unverified"] = True
+            out["dropped"] += 1
             continue
-        r["quote"] = ""
-        r["quote_unverified"] = True
-        dropped += 1
-    return {"checked": checked, "dropped": dropped,
-            "note": ("%d of %d quotations could not be found in the stored text of this reference "
-                     "and were removed; the finding and its citation remain." % (dropped, checked)
-                     if dropped else "")}
+        if not passages:
+            continue
+        where = _locate(q, passages)
+        cited = [citation.of_text(c) for c in (r.get("cites") or [])]
+        if not citation.resolves(where):
+            #  The words are in the document and the place cannot be established. Keep the
+            #  quotation, take the pinpoint off, and say so.
+            if any(citation.resolves(c) for c in cited):
+                r["cites"] = []
+                r["cite_unresolved"] = True
+                out["unpinpointed"] += 1
+                lost.append(citation.render(next(c for c in cited if citation.resolves(c))))
+            continue
+        if any(citation.same_place(where, c) for c in cited):
+            continue
+        was = next((citation.render(c) for c in cited if citation.resolves(c)), "no citation")
+        r["cites"] = [citation.render(where)] + [
+            citation.render(c) for c in cited
+            if citation.resolves(c) and not citation.same_place(where, c)][:2]
+        r["cite_corrected"] = True
+        out["relocated"] += 1
+        fixed.append("%s -> %s" % (was, citation.render(where)))
+    bits = []
+    if out["dropped"]:
+        bits.append("%d of %d quotations could not be found in the stored text of this reference "
+                    "and were removed; the finding and its citation remain."
+                    % (out["dropped"], out["checked"]))
+    if out["relocated"]:
+        bits.append("%d citation%s corrected against the passage the quotation actually comes "
+                    "from: %s." % (out["relocated"], "" if out["relocated"] == 1 else "s",
+                                   "; ".join(fixed[:4])))
+    if out["unpinpointed"]:
+        bits.append("%d quotation%s kept without a pinpoint because the passage it came from could "
+                    "not be located (%s). An unpinpointed quotation is filed; an invented one is "
+                    "not." % (out["unpinpointed"], "" if out["unpinpointed"] == 1 else "s",
+                              "; ".join(lost[:4])))
+    out["note"] = " ".join(bits)
+    return out
+
+
+def _locate(quote, passages):
+    """The canonical location of `quote` inside these passages, or an unresolvable key."""
+    try:
+        import grounding
+        got = grounding.best_passage(quote, passages)
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return (citation.OTHER, "")
+    if not got:
+        return (citation.OTHER, "")
+    return citation.of_passage(got)
 
 
 # --------------------------------------------------------------------------- language
@@ -421,10 +643,18 @@ def apply(docs, subject, source_text_for, mode="novelty", target_assignees=None,
             kept.append(d)
             continue
         c["qualify"] = qualify(d, subject.get("efd"), mode=mode, forum=forum)
-        if c["qualify"].get("blocked"):
-            blocked.append({"pub": d["pub"], "why": c["qualify"]["note"]})
-            continue
         sc = self_collision(d, target_assignees or [])
+        if c["qualify"].get("blocked") or sc:
+            #  BEFORE DISCARDING ANYTHING, SWEEP ITS FAMILY ACROSS KIND CODES. The exclusion is
+            #  about this publication; a sibling under another kind code may have published a year
+            #  earlier and be full prior art on the same disclosure. Counsel, 2026-08-26:
+            #  "Dead in the US, lethal in Europe, but only if you go looking for the right family
+            #  member." Never allowed to raise: a network answer must not lose a document.
+            c["sibling"] = sibling_rescue(d, subject.get("efd"), own=bool(sc))
+        if c["qualify"].get("blocked"):
+            blocked.append({"pub": d["pub"],
+                            "why": c["qualify"]["note"] + _sibling_sentence(c.get("sibling"))})
+            continue
         if sc:
             c["self_collision"] = sc
         c["quotes"] = verify_quotes(d, source_text_for(d["pub"]))
@@ -452,12 +682,30 @@ def apply(docs, subject, source_text_for, mode="novelty", target_assignees=None,
         c["translation"] = translate_rows(d)
         edits = []
         for r in d["rows"]:
+            #  The passage this row's prose has to be a restatement OF. A `teaches` row has none,
+            #  so any inference on it is the drafter's own and goes.
+            evidence = " ".join([str(r.get("quote") or ""), str(r.get("quote_original") or "")])
             for field in ("disclosure", "note"):
                 clean, changed = neutralise(r.get(field))
                 if changed:
                     r[field] = clean
                     edits.extend(changed)
+                #  AFTER the statutory vocabulary, because the inference sweep tests what is left
+                #  against the passage and there is no point testing a phrase already replaced.
+                clean, changed = strip_inference(r.get(field), evidence)
+                if changed:
+                    r[field] = clean
+                    edits.extend(changed)
         clean_sum, changed_sum = neutralise(d.get("summary"))
+        if changed_sum:
+            d["summary"] = clean_sum
+            edits.extend(changed_sum)
+        #  The summary characterises the whole reference, so everything quoted from it is fair
+        #  evidence for what the summary may say.
+        all_quotes = " ".join(str(r.get("quote") or "") for r in d["rows"])
+        clean_sum, changed_sum = strip_inference(d.get("summary"),
+                                                 all_quotes + " " + str(d["biblio"].get("abstract")
+                                                                        or ""))
         if changed_sum:
             d["summary"] = clean_sum
             edits.extend(changed_sum)

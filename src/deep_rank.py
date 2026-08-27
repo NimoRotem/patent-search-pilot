@@ -1169,6 +1169,30 @@ def _llm_spend(before):
     return out
 
 
+def _subject_spec(qd):
+    """The application's OWN specification, for the claim construction. -> str
+
+    An uploaded document brings its full text with it. A search started from a publication number
+    does not, and that is the case the whole construction pass exists for: the Schmalz claim whose
+    "170° to 190°" is defined as "at least substantially parallel to the displacement direction"
+    one paragraph away arrived as a corpus publication, not as an upload. Read it back from the
+    corpus rather than construing on the claims alone. Never raises: no spec means the geometry
+    rule still runs and the lexicography does not.
+    """
+    text = str((qd or {}).get("disclosure_text") or "")
+    if len(text) > 400:
+        return text[:400000]
+    pub = str((qd or {}).get("publication_number") or "").strip()
+    if not pub:
+        return text
+    try:
+        got = deep_analysis.full_text(pub) or {}
+        return " ".join(str(p.get("text") or "") for p in (got.get("passages") or []))[:400000]
+    except Exception:
+        traceback.print_exc()
+        return text
+
+
 def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", budget=None):
     """Screen wide, read deep, and return the authoritative ranking. Mutates `report`.
 
@@ -1237,6 +1261,22 @@ def run(report, reports_dir=None, slug=None, on_progress=None, depth="deep", bud
         except Exception:
             traceback.print_exc()
         if lims:
+            #  CONSTRUE BEFORE RETRIEVING. A numeric range is searched as the geometry it encodes
+            #  as well as the number it is written as, and the applicant's own "i.e." definition is
+            #  searched as well as the claim's words. Counsel, 2026-08-26: claim 1's "contact
+            #  surface angle ranges in size from 170° to 190°" was reported disclosed by 0 of 232
+            #  references, and 170 to 190 degrees means "parallel", which is the defining
+            #  architecture of the switchable magnet chuck and has been in the art since the 1930s.
+            #  Deterministic and free, so it runs before anything is spent. See claim_construction.
+            try:
+                import claim_construction
+                lims = claim_construction.construe_all(lims, _subject_spec(qd))
+                report["claim_construction"] = {
+                    l["id"]: l["construction"] for l in lims
+                    if isinstance(l, dict) and l.get("construction")
+                    and not l["construction"].get("words_alone")}
+            except Exception:
+                traceback.print_exc()
             #  The reader charts the limitations INSTEAD of the whole claims. Same machinery, same
             #  grounding and refutation gates; a better question. The label is the ledger key.
             claim_items = limmod.as_chart_items(lims)

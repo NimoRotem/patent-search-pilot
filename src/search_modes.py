@@ -275,6 +275,133 @@ def secret_art_note(country, forum="US") -> str:
             % (str(forum).upper(), c))
 
 
+# --------------------------------------------------------------------------------------------
+# THE SAME DOCUMENT IS WORTH DIFFERENT THINGS AT DIFFERENT OFFICES, and one exclusion decided
+# once loses the fact. Counsel, 2026-08-26, on Schmalz's DE 20 2024 100 869 U1:
+#
+#   "In the US, 102(b)(1)(A) very likely removes it: it is the applicant's own disclosure inside
+#    the grace year. At the EPO and the DPMA there is no general grace period. It is full Article
+#    54(2) EPC and Section 3(1) PatG prior art, for novelty AND inventive step, against
+#    EP 4 706 914 and DE 10 2024 125 824, on the very limitation that has no other art anywhere in
+#    the world. Dead in the US, lethal in Europe."
+#
+# So the exclusion is run PER FORUM. Three offices, because they are the three this product's
+# users file in, and because they differ on exactly the two questions that decide: whether an
+# applicant's own earlier disclosure is excepted, and which offices' later-published applications
+# reach.
+FORUMS = ("US", "EP", "DE")
+
+FORUM_NAMES = {"US": "United States Patent and Trademark Office",
+               "EP": "European Patent Office",
+               "DE": "German Patent and Trade Mark Office"}
+
+#  35 U.S.C. 102(b)(1)(A): a disclosure made one year or less before the effective filing date, BY
+#  the inventor or someone who obtained it from them, is not prior art. Europe has no equivalent:
+#  EPC Art. 55 is six months and reaches only evident abuse and a display at a recognised
+#  international exhibition, which is not this. Germany, s.3(5) PatG, is the same six months on the
+#  same two grounds. Expressed in days so the arithmetic is one comparison and not a calendar
+#  argument; the six-month exceptions are deliberately NOT modelled as a grace period, because
+#  treating them as one would remove art at the EPO that is not removed there.
+_OWN_DISCLOSURE_GRACE_DAYS = {"US": 365, "EP": 0, "DE": 0}
+
+_PUBLIC_STATUTE = {"US": "35 U.S.C. 102(a)(1)", "EP": "EPC Art. 54(2)", "DE": "§ 3(1) PatG"}
+_SECRET_STATUTE = {"US": "35 U.S.C. 102(a)(2)", "EP": "EPC Art. 54(3)", "DE": "§ 3(2) PatG"}
+
+#  Which offices' earlier-filed, later-published applications the forum can reach. US and EP are
+#  `_SECRET_ART_FORUM` above; Germany's § 3(2) reaches a German application, and a European or
+#  Euro-PCT application designating Germany.
+_SECRET_ART_FORUM_DE = {"DE", "EP", "WO"}
+
+
+def _grace_days(forum):
+    return _OWN_DISCLOSURE_GRACE_DAYS.get(str(forum or "US").upper(), 0)
+
+
+def own_disclosure_excepted(forum, publication_date, subject_efd):
+    """Is the APPLICANT'S OWN earlier disclosure excepted from prior art in this forum?
+
+    Only ever asked of a document already established to be the applicant's own. In the United
+    States a self-disclosure inside the grace year is removed outright by 102(b)(1)(A). At the EPO
+    and the DPMA it is not: the applicant's own publication defeats his own later application.
+    """
+    days = _grace_days(forum)
+    if not days or not publication_date or not subject_efd:
+        return False
+    delta = (subject_efd - publication_date).days
+    return 0 <= delta <= days
+
+
+def forum_status(forum, country, publication_date, effective_date, subject_efd, own=False):
+    """What one document is worth at one office. -> {"available", "basis", "statute", "why"}
+
+    `own` says the document is the applicant's own work or commonly owned with the application,
+    which is the fact the three offices disagree about.
+    """
+    f = str(forum or "US").upper()
+    cc = str(country or "").upper()[:2]
+    out = {"forum": f, "office": FORUM_NAMES.get(f, f), "available": False,
+           "basis": Basis.NOT_PRIOR_ART.value, "statute": "", "novelty_only": False, "why": ""}
+    if subject_efd is None:
+        out["why"] = "The application's effective filing date is not known, so nothing can be said."
+        return out
+    if publication_date and publication_date < subject_efd:
+        if own and own_disclosure_excepted(f, publication_date, subject_efd):
+            out["why"] = ("Published %s, inside the one-year grace period of 35 U.S.C. "
+                          "102(b)(1)(A), and it is the applicant's own disclosure, so it is very "
+                          "likely not prior art here at all." % publication_date)
+            return out
+        out.update(available=True, basis=Basis.PUBLIC_PRIOR_ART.value,
+                   statute=_PUBLIC_STATUTE.get(f, ""),
+                   why=("Published %s, before the application's effective filing date of %s. Full "
+                        "prior art under %s, for novelty and for inventive step, and no common-"
+                        "ownership exception reaches it%s."
+                        % (publication_date, subject_efd, _PUBLIC_STATUTE.get(f, ""),
+                           " at this office" if own else "")))
+        return out
+    reaches = (cc in _SECRET_ART_FORUM_DE) if f == "DE" else secret_art_reaches(cc, f)
+    if effective_date and effective_date < subject_efd and reaches:
+        if own and f == "US":
+            out["why"] = ("Filed %s and published later, so it is reachable only under 35 U.S.C. "
+                          "102(a)(2), and 102(b)(2)(C) disqualifies a commonly owned 102(a)(2) "
+                          "reference entirely." % effective_date)
+            return out
+        out.update(available=True, basis=Basis.SECRET_PRIOR_ART.value, novelty_only=True,
+                   statute=_SECRET_STATUTE.get(f, ""),
+                   why=("Filed %s and published after the application's effective filing date. "
+                        "Available under %s for NOVELTY ONLY, never for inventive step%s."
+                        % (effective_date, _SECRET_STATUTE.get(f, ""),
+                           ", and no common-ownership exception exists at this office" if own
+                           and f != "US" else "")))
+        return out
+    if effective_date and effective_date < subject_efd:
+        out["why"] = ("Filed before the application but published after it, and %s does not reach "
+                      "a %s publication in that position."
+                      % (_SECRET_STATUTE.get(f, "the equivalent right"), cc or "foreign"))
+        return out
+    out["why"] = ("Neither published nor filed before the application's effective filing date of "
+                  "%s." % subject_efd)
+    return out
+
+
+def forum_matrix(country, publication_date, effective_date, subject_efd, own=False,
+                 forums=FORUMS):
+    """`forum_status` for every office. -> [status]
+
+    Read as a row: a document with `available` False everywhere is genuinely worthless, and one
+    with False in Washington and True in Munich is the case this exists to stop losing.
+    """
+    return [forum_status(f, country, publication_date, effective_date, subject_efd, own=own)
+            for f in forums]
+
+
+def where_it_still_works(matrix, exclude="US"):
+    """The offices where a document excluded in `exclude` is still prior art. -> [status]"""
+    dead = next((m for m in matrix if m["forum"] == str(exclude).upper()), None)
+    if dead and dead.get("available"):
+        return []
+    return [m for m in matrix if m.get("available")]
+
+
 # --- Inventive-step combination scaffold (jurisdiction-neutral) -----------------------------
 @dataclass
 class ElementMapping:

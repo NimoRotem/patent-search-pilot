@@ -586,6 +586,34 @@ def _clip(text, limit=None):
     return t if len(t) <= n else t[:n].rstrip() + " … [claim truncated for display]"
 
 
+def _unconfirmed_zeros(uncovered_rows, report):
+    """The uncovered rows whose zero is a statement about WORDS. -> [{...}]
+
+    "No reference discloses this limitation" is the strongest sentence a search produces, and a
+    vocabulary mismatch manufactures it. Counsel, 2026-08-26: claim 1[e] of the Schmalz application
+    is "the contact surface angle ranges in size from 170° to 190°", which the specification itself
+    defines one paragraph away as "at least substantially parallel to the displacement direction".
+    Zero of 232 references matched the number. GB 874,600, already selected as Document 6 of the
+    same packet, claims the geometry outright.
+    """
+    try:
+        import claim_construction
+    except Exception:                                                     # noqa: BLE001
+        return []
+    stored = ((report or {}).get("claim_construction") or {})
+    out = []
+    for r in uncovered_rows:
+        label = r.get("element")
+        con = stored.get(label) or claim_construction.construe(r.get("claim_text") or "")
+        if claim_construction.zero_is_confirmable(con):
+            continue
+        out.append({"element": label,
+                    "claim_text": r.get("claim_text") or "",
+                    "terms": (con.get("terms") or [])[:8],
+                    "caveat": claim_construction.zero_caveat(con)})
+    return out
+
+
 def build_reading_chart(report, deep, max_cols=None, axis="features"):
     """The element x reference grid built from WHAT WAS READ, not from what was retrieved.
 
@@ -841,6 +869,13 @@ def build_reading_chart(report, deep, max_cols=None, axis="features"):
         #  asked about — "nothing discloses this" and "nobody looked" are opposite findings.
         "n_uncovered": sum(1 for r in rows if r["asked"] and not r["df"]),
         "uncovered": [r["element"] for r in rows if r["asked"] and not r["df"]][:40],
+        #  AND WHICH OF THOSE ZEROS IS A STATEMENT ABOUT VOCABULARY. A limitation written as a
+        #  number ("170° to 190°") whose construction is a geometry ("parallel") can come back at
+        #  zero while the art is full of it, and this page's zero is the strongest sentence in the
+        #  whole report. See claim_construction; the row names the construction so the reader can
+        #  see the two are different questions.
+        "uncovered_unconfirmed": _unconfirmed_zeros(
+            [r for r in rows if r["asked"] and not r["df"]], report),
         #  References that are in this grid because a claim had no art and the search went back for
         #  it (claim_rescue), rather than because the retrieval ranked them.
         "n_rescued": sum(1 for r in refs if r.get("rescue")),
