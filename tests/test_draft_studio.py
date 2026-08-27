@@ -2064,6 +2064,52 @@ def test_source_preflight_retries_a_non_substantive_structured_result(monkeypatc
     assert sessions[0] != sessions[1]
 
 
+def test_vertex_source_preflight_must_read_exact_case_figure_manifest(monkeypatch, tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    for name in ("disclosure.md", "conversation.md", "brief.md"):
+        (input_dir / name).write_text("affirmative inventor source", encoding="utf-8")
+    draft_workspace.write_sections(tmp_path, GOOD)
+    draft_workspace.write_numerals(tmp_path, NUMERALS)
+    draft_workspace.write_figures(tmp_path, FIGURES)
+    required = [
+        "input/disclosure.md", "input/conversation.md", "input/brief.md",
+        *[f"draft/{name}" for _key, name, _heading in draft_workspace.SECTION_FILES],
+        f"draft/{draft_workspace.NUMERALS_FILE}",
+        "figures/FIG-1.md", "figures/FIG-2.md",
+    ]
+    prompts = []
+
+    def fake_run(**kwargs):
+        prompts.append(kwargs["prompt"])
+        read_paths = required if len(prompts) == 2 else required[:-2]
+        return draft_agent.AgentRun(
+            ok=True,
+            model="vertex/gemini-2.5-pro",
+            steps=[{"kind": "tool", "tool": "read_file", "detail": path}
+                   for path in read_paths],
+            result={
+                "summary": (
+                    "Every claim limitation and numbered part was traced to affirmative inventor "
+                    "source disclosure. Every numeral and every figure brief was checked in full, "
+                    "and the complete claims, drawings, and inventor sources contain no "
+                    "unsupported technical assertion."
+                ),
+                "findings": [],
+            },
+        )
+
+    monkeypatch.setattr(draft_agent, "run", fake_run)
+
+    outcome = draft_qa.review_sources(tmp_path)
+
+    assert outcome["ok"] is True
+    assert len(prompts) == 2
+    assert "figures/FIG-1.md" in prompts[0]
+    assert "did not read every required file" in prompts[1]
+    assert "figures/FIG-2.md" in prompts[1]
+
+
 def test_source_preflight_accepts_a_precise_file_path_as_finding_location(monkeypatch):
     calls = 0
 
