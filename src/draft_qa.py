@@ -1562,7 +1562,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v11-claim-drawing-boundary"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v12-exact-read-manifest"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1661,6 +1661,24 @@ For example, return {"summary": "Every claim limitation, numeral, numbered part,
 "drawing description, and affirmative inventor source was checked and traced without an "
 "unsupported technical assertion.", "findings": []}. Never omit the findings property, even when
 there is nothing to report. Keep the summary below 8,000 characters."""
+
+
+def _source_review_required_paths(workspace: Path) -> list[str]:
+    """Existing files the Vertex fallback must prove it opened, with exact path casing."""
+    fixed = [
+        "input/disclosure.md", "input/conversation.md", "input/brief.md",
+        *[f"draft/{name}" for _key, name, _heading in draft_workspace.SECTION_FILES],
+        f"draft/{draft_workspace.NUMERALS_FILE}",
+    ]
+    root = Path(workspace)
+    required = [path for path in fixed if (root / path).is_file()]
+    figure_dir = root / "figures"
+    if figure_dir.is_dir():
+        required.extend(
+            path.relative_to(root).as_posix()
+            for path in sorted(figure_dir.glob("*.md")) if path.is_file()
+        )
+    return list(dict.fromkeys(required))
 
 
 def _source_review_quality_error(summary: str,
@@ -1770,12 +1788,18 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
     total_tokens = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
     last_model = model or draft_agent.QA_MODEL
     quality_guidance = ""
+    required_paths = _source_review_required_paths(workspace)
+    exact_manifest = (
+        "\n\nEXACT CASE-SENSITIVE READ MANIFEST\n"
+        "Open every path below exactly as written before returning a result:\n  " +
+        "\n  ".join(required_paths)
+    ) if required_paths else ""
     for quality_attempt in range(2):
         try:
             run = draft_agent.run(
                 workspace=workspace,
                 prompt=(SOURCE_REVIEW_PROMPT % {"version": SOURCE_REVIEW_VERSION}) +
-                quality_guidance,
+                exact_manifest + quality_guidance,
                 system_prompt=SOURCE_REVIEW_SYSTEM,
                 schema=REVIEW_SCHEMA,
                 session_id=draft_agent.new_session_id(),
@@ -1815,6 +1839,19 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
             quality_error = "The source reviewer returned an empty summary or malformed finding."
         else:
             quality_error = _source_review_quality_error(summary, findings)
+        if (not quality_error and required_paths and
+                str(run.model or "").lower().startswith("vertex/")):
+            read_paths = {
+                str(step.get("detail") or "")
+                for step in (run.steps or [])
+                if str(step.get("tool") or "") == "read_file"
+            }
+            unread = [path for path in required_paths if path not in read_paths]
+            if unread:
+                quality_error = (
+                    "The Vertex source reviewer did not read every required file. "
+                    "Unread exact paths: " + ", ".join(unread)
+                )
         if not quality_error:
             findings, reconciled = reconcile_source_drawing_omission_findings(findings)
             if reconciled and not findings:
