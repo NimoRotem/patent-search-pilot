@@ -925,9 +925,8 @@ def process_one(*, stop_event: threading.Event | None = None) -> dict[str, Any] 
         _stamp(running=False, last_result="complete", last_error=None)
         return outcome
     except draft_studio.TurnBudgetSpent as exc:
-        #  NOT retryable, and deliberately so: a turn that has already spent its ceiling will spend
-        #  it again on the next attempt, so retrying is the one response guaranteed to make it
-        #  worse. The candidate it reached is saved and can be continued on purpose.
+        # Do not retry the same charged turn. The terminal-failure boundary may continue its
+        # saved candidate in a fresh bounded turn under the durable repair-chain safety limit.
         return _fail(runner, claimed, str(exc), retryable=False)
     except drafting.DraftingValidationError as exc:
         # The agent produced something we will not store - an empty section, a citation to a
@@ -949,7 +948,7 @@ def _fail(runner: draft_studio.TurnRunner, claimed: Mapping[str, Any], error: st
           retryable: bool) -> dict[str, Any] | None:
     error = str(draft_studio.human_text(str(error)))
     preserve_partial_drawings = error.startswith((
-        "DrawingBudgetSpent:", "FigureTransientError:"))
+        "DrawingBudgetSpent:", "FigureTransientError:")) or "reached its ceiling" in error
     if not preserve_partial_drawings:
         try:
             runner.restore_figures(int(claimed["id"]))
@@ -991,10 +990,6 @@ def _fail(runner: draft_studio.TurnRunner, claimed: Mapping[str, Any], error: st
 def _continue_terminal_filing_repair(repository: Any, claimed: Mapping[str, Any],
                                      result: Mapping[str, Any], error: str) -> str:
     """Continue a blocked filing gate or a valid candidate interrupted by its provider."""
-    #  A turn stopped by its own ceiling must never be automatically continued: that would spend
-    #  the ceiling again, immediately, with nobody having asked for it.
-    if "reached its ceiling" in str(error):
-        return ""
     filing_gate_stopped = str(error).startswith(_FILING_GATE_EXHAUSTED)
     interrupted_candidate = False
     # A graceful worker restart terminates its drafting or review subprocess with SIGTERM. The
@@ -1015,9 +1010,13 @@ def _continue_terminal_filing_repair(repository: Any, claimed: Mapping[str, Any]
     # A bounded maintenance caller may stop between sheets. Its exact checkpoint is durable, so
     # continue that candidate without spending a drafting-agent repair on unchanged filing text.
     drawing_budget_spent = str(error).startswith("DrawingBudgetSpent:")
+    # The exact charged turn must not retry, but a complete checkpoint may continue in a new
+    # bounded turn. The repair-chain sequence prevents unbounded autonomous spend while allowing
+    # a difficult application to finish without user intervention.
+    turn_budget_spent = "reached its ceiling" in str(error)
     if not filing_gate_stopped and (
             interrupted_run or source_review_unavailable or figure_transient or
-            drawing_budget_spent):
+            drawing_budget_spent or turn_budget_spent):
         try:
             candidate = repository.retry_candidate(int(result.get("id") or claimed["id"]))
             interrupted_candidate = bool(
