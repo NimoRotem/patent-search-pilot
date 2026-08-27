@@ -2798,6 +2798,12 @@ class TurnRunner:
                     # after a restart and cannot mark the project ready until every current image
                     # audit and the final independent review pass.
                     if drawing_continuation:
+                        # A plan defect is cheaper and safer to repair before touching the image
+                        # lane. Drawing an overcrowded, contradictory, or otherwise invalid brief
+                        # cannot cure that brief and only creates pixels that the same turn must
+                        # discard. Return the exact preflight findings to the drafting agent first.
+                        if drawing_faults:
+                            raise DrawingInspectionError(drawing_faults)
                         self.repository.heartbeat(
                             turn_id, lease, stage="drawing and inspecting figures")
                         drawing_faults.extend(self._reconcile_drawings(

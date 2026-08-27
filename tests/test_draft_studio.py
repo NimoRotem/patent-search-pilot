@@ -122,6 +122,35 @@ def test_a_consistent_draft_passes_every_mechanical_check():
     assert draft_qa.verdict_for(list(checks.values()), []) in ("pass", "warn")
 
 
+def test_reference_numeral_leader_cannot_end_in_an_arrowhead():
+    figures = [
+        {
+            **FIGURES[0],
+            "caption": (
+                "The cord 10 is identified by a leader coming down from above and ending in an "
+                "arrowhead whose tip touches the cord."
+            ),
+        },
+        FIGURES[1],
+    ]
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+    assert check["status"] == "fail"
+    assert any("terminal dot" in item for item in check["items"])
+
+    section_arrow = [
+        {
+            **FIGURES[0],
+            "caption": (
+                "A cutting-plane line crosses the view and carries an arrowhead at each end "
+                "to indicate the viewing direction."
+            ),
+        },
+        FIGURES[1],
+    ]
+    assert checks_for(figures=section_arrow)[
+        "Drawing briefs are concise and renderable"]["status"] == "pass"
+
+
 def test_verdict_never_fails_on_an_advisory_check_alone():
     """A heuristic must not be able to condemn a draft — see the calibration note in draft_qa."""
     advisory = [{"name": "Antecedent basis", "status": "fail", "severity": "advisory",
@@ -3067,6 +3096,62 @@ def test_drawing_faults_are_repaired_before_the_independent_review(monkeypatch, 
     assert saved_report["checks"][0]["category"] == "figures_and_numerals"
     assert saved_report["checks"][0]["items"] == [
         "FIG. 1 failed final-pixel endpoint inspection"]
+
+
+def test_plan_preflight_fault_is_repaired_before_any_image_call(monkeypatch, tmp_path):
+    repository = Mock()
+    agent = Mock()
+    agent.DRAFT_MODEL = "draft-model"
+    agent.DRAFT_TIMEOUT = 60
+    agent.strings.side_effect = lambda value, **_kwargs: list(value or [])
+    figures = [
+        {
+            **FIGURES[0],
+            "caption": (
+                "The cord 10 is identified by a leader ending in an arrowhead whose tip "
+                "touches the cord."
+            ),
+        },
+        FIGURES[1],
+    ]
+    workspace = Mock()
+    workspace.snapshot.return_value = {
+        "sections": GOOD, "numerals": NUMERALS, "figures": figures}
+    runner = draft_studio.TurnRunner(
+        repository, object(), agent=agent, qa=draft_qa, workspace=workspace)
+    gate_resume = {
+        "session_id": "draft-session", "model": "draft-model", "cost_usd": 0.5,
+        "duration_ms": 1000, "num_turns": 1, "steps": [],
+        "result": {"action": "revised", "summary": "complete candidate",
+                   "reasoning": [], "changes": [], "questions": [],
+                   "prior_art_strategy": "", "answer": ""},
+    }
+    monkeypatch.setattr(runner, "prepare", lambda _turn: {
+        "workspace": tmp_path,
+        "project": {"user_id": 91, "agent_session_id": "draft-session",
+                    "latest_version_no": 1, "disclosure_text": "disclosure"},
+        "references": [{"publication_number": ALLOWED[0]}], "documents": [],
+        "seeded": False, "had_version": True, "resuming_candidate": True,
+        "resuming_candidate_turn_id": 3,
+        "prepared_snapshot": {"sections": GOOD, "numerals": NUMERALS,
+                              "figures": figures},
+        "prepared_qa": {"_gate_resume": gate_resume},
+        "previous_sections": {},
+    })
+    reconcile = Mock(side_effect=AssertionError("image lane invoked"))
+    monkeypatch.setattr(runner, "_reconcile_drawings", reconcile)
+    monkeypatch.setattr(
+        runner, "_run_agent",
+        Mock(side_effect=RuntimeError("stop after the plan repair report")))
+
+    with pytest.raises(RuntimeError, match="plan repair report"):
+        runner.run({"id": 4, "lease_token": "lease", "project_id": 7,
+                    "turn_no": 2, "kind": "gate_resume", "attempts": 1,
+                    "idempotency_key": "auto-filing-repair-3-1"})
+
+    reconcile.assert_not_called()
+    saved_report = repository.save_retry_candidate.call_args.kwargs["report"]
+    assert "terminal dot" in saved_report["checks"][0]["items"][0]
 
 
 def test_automatic_continuation_reuses_a_prior_turn_gate_checkpoint():
