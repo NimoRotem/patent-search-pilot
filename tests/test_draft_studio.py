@@ -1802,6 +1802,77 @@ def test_non_actionable_source_gap_is_not_returned_as_a_repair_finding():
     assert [finding["title"] for finding in findings] == ["Prior-art inference"]
 
 
+def test_source_review_does_not_require_every_supported_claim_relationship_in_a_figure():
+    omission = {
+        "severity": "major",
+        "category": "formalities",
+        "title": (
+            "Controller coupling is recited in claim 1 and the description but is shown in no "
+            "figure"
+        ),
+        "where": "figures/FIG-2.md; draft/09-claims.md claim 1",
+        "detail": (
+            "No figure depicts the coupling, leaving a claim element undepicted. This is a "
+            "depiction gap only; the coupling is fully supported by the disclosure."
+        ),
+        "evidence": (
+            "Claim 1 recites a controller coupled to a sensor. The disclosure says that the "
+            "controller verifies current with the corresponding sensor."
+        ),
+        "fix": "Depict the disclosed coupling by adding a dashed connection to FIG. 2.",
+    }
+    linked = dict(
+        omission,
+        title="FIG. 2 omits the coupling it says that it shows",
+        detail=(
+            "The detailed description states that FIG. 2 shows the controller coupled to the "
+            "sensor, but the figure brief omits that relationship."
+        ),
+    )
+
+    kept, reconciled = draft_qa.reconcile_source_drawing_omission_findings(
+        [omission, linked])
+
+    assert [finding["title"] for finding in kept] == [linked["title"]]
+    assert [finding["title"] for finding in reconciled] == [omission["title"]]
+    assert "need not depict every claim limitation" in reconciled[0]["reconciliation"]
+
+
+def test_source_preflight_reconciles_a_claim_only_drawing_omission(monkeypatch):
+    monkeypatch.setattr(draft_agent, "run", lambda **_kwargs: draft_agent.AgentRun(
+        ok=True,
+        result={
+            "summary": (
+                "Every claim limitation, numeral, numbered part, figure brief, drawing "
+                "description, and affirmative inventor source was checked and traced in full "
+                "without sampling any section."
+            ),
+            "findings": [{
+                "severity": "major",
+                "category": "formalities",
+                "title": "A supported claim relationship is shown in no figure",
+                "where": "figures/FIG-2.md; draft/09-claims.md claim 1",
+                "detail": (
+                    "No figure depicts the relationship, but the relationship is fully "
+                    "supported by the inventor disclosure."
+                ),
+                "evidence": (
+                    "Claim 1 recites the relationship and the disclosure affirmatively "
+                    "describes it."
+                ),
+                "fix": "Depict the relationship by adding a dashed connection to FIG. 2.",
+            }],
+        },
+    ))
+
+    outcome = draft_qa.review_sources(Path("/tmp"))
+
+    assert outcome["ok"] is True, outcome
+    assert outcome["findings"] == []
+    assert len(outcome["reconciled_findings"]) == 1
+    assert "No unresolved source-fidelity findings remain" in outcome["summary"]
+
+
 def test_findings_are_ordered_by_severity():
     findings = draft_qa.normalize_findings([
         {"severity": "minor", "title": "m", "evidence": "e", "detail": "", "where": "",
