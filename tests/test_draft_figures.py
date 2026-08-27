@@ -4521,6 +4521,72 @@ def test_deterministic_stirring_scene_accepts_current_filing_brief_wording():
         ],
         "allocation_flow",
     ),
+    (
+        """
+        A flat schematic system diagram. A dashed rectangle, the charging installation,
+        encloses the whole diagram. A branch conductor passes through a branch current sensor
+        and supplies a first connector channel, a second connector channel, and a non-charging
+        load in parallel. An edge controller is joined to the branch current sensor. An isolated
+        local bus originates at the edge controller and connects only the two connector channels.
+        """,
+        [
+            "100 = charging installation", "102 = branch conductor",
+            "104 = branch current sensor", "106 = edge controller",
+            "108 = isolated local bus", "118 = non-charging load",
+            "120 = first connector channel", "140 = second connector channel",
+        ],
+        "charging_installation_flat",
+    ),
+    (
+        """
+        Flat schematic of one connector channel. One dashed rectangle, and exactly one, is the
+        first connector channel. An incoming branch supply passes through a contactor, turns
+        right through a connector current sensor, and reaches a vehicle connector that straddles
+        the dashed rectangle. A control-pilot interface joins the vehicle connector. An electric
+        vehicle is right of the dashed rectangle. An isolated local bus enters from the left. A
+        line from the connector current sensor exits downward independently of the local bus.
+        """,
+        [
+            "108 = isolated local bus", "120 = first connector channel",
+            "122 = contactor", "124 = connector current sensor",
+            "126 = control-pilot interface", "128 = vehicle connector",
+            "130 = electric vehicle",
+        ],
+        "connector_channel_flat",
+    ),
+    (
+        """
+        A flat block diagram of the edge controller. One large rectangle is the edge controller.
+        Three smaller empty rectangles lie inside it: a network interface in the upper region,
+        a nonvolatile memory in the lower region, and a service input in the left region. A local
+        fault indicator stands outside the large rectangle. A line from the network interface
+        crosses the upper side, a line from the service input crosses the left side, and two short
+        solid lines extend downward from the lower side of the large rectangle.
+        """,
+        [
+            "106 = edge controller", "110 = network interface",
+            "112 = nonvolatile memory", "114 = service input",
+            "116 = local fault indicator",
+        ],
+        "edge_controller_flat",
+    ),
+    (
+        """
+        A flat process flow diagram. Eight empty shapes with blank interiors stand in one vertical
+        column. In order they are four rectangles, a diamond, a rectangle, a diamond, and a
+        rectangle. The upper diamond has a left return path to the topmost rectangle. The lower
+        diamond branches right to a solid square terminator. The bottom rectangle has a right
+        return path to the topmost rectangle.
+        """,
+        [
+            "202 = available current determination step",
+            "204 = sustaining and deficit assignment step", "206 = pilot command step",
+            "208 = connector verification step", "210 = staged reduction step",
+            "212 = ordered shedding step", "214 = welded-contactor isolation step",
+            "216 = conditional reclosure step",
+        ],
+        "allocation_flow_vertical",
+    ),
 ])
 def test_deterministic_control_diagrams_are_text_free_and_anchor_every_part(
         specification, numerals, renderer):

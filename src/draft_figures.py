@@ -2161,6 +2161,42 @@ def _control_diagram_kind(caption: str) -> str:
     """Recognize controlled block and flow diagrams that must never contain model text."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
     cases = {
+        "charging_installation_flat": (
+            "flat schematic system diagram",
+            "dashed rectangle",
+            "charging installation",
+            "first connector channel",
+            "second connector channel",
+            "non-charging load",
+            "branch current sensor",
+            "isolated local bus",
+        ),
+        "connector_channel_flat": (
+            "flat schematic of one connector channel",
+            "one dashed rectangle",
+            "connector current sensor",
+            "control-pilot interface",
+            "vehicle connector",
+            "electric vehicle",
+            "isolated local bus",
+        ),
+        "edge_controller_flat": (
+            "flat block diagram of the edge controller",
+            "one large rectangle",
+            "network interface",
+            "nonvolatile memory",
+            "service input",
+            "local fault indicator",
+            "two short solid lines extend downward",
+        ),
+        "allocation_flow_vertical": (
+            "flat process flow diagram",
+            "eight empty shapes with blank interiors",
+            "one vertical column",
+            "upper diamond",
+            "lower diamond",
+            "return path",
+        ),
         "charging_control_overview": (
             "schematic block diagram of the charging control system",
             "first connector station",
@@ -2201,6 +2237,46 @@ def _deterministic_control_diagram_anchors(
         caption: str) -> tuple[str, dict[str, tuple[int, int, str]]]:
     """Return exact raw-pixel targets for each supported control-diagram template."""
     kind = _control_diagram_kind(caption)
+    if kind == "charging_installation_flat":
+        return kind, {
+            "charging installation": (80, 450, "on the dashed enclosing rectangle"),
+            "branch conductor": (1180, 180, "on the branch-conductor line clear of a drop"),
+            "branch current sensor": (305, 155, "well inside the sensor rectangle"),
+            "edge controller": (295, 650, "well inside the edge-controller rectangle"),
+            "isolated local bus": (840, 780, "on the isolated-local-bus line clear of a branch"),
+            "non-charging load": (1175, 400, "well inside the rightmost block"),
+            "first connector channel": (695, 400, "well inside the left connector block"),
+            "second connector channel": (935, 400, "well inside the middle connector block"),
+        }
+    if kind == "connector_channel_flat":
+        return kind, {
+            "isolated local bus": (80, 620, "on the isolated-local-bus line outside the channel"),
+            "first connector channel": (120, 420, "on the dashed channel rectangle"),
+            "contactor": (230, 220, "on the left outline of the contactor square"),
+            "connector current sensor": (470, 320, "on the upper outline of the sensor circle"),
+            "control-pilot interface": (685, 620, "well inside the control-pilot rectangle"),
+            "vehicle connector": (910, 375, "well inside the vehicle-connector rectangle"),
+            "electric vehicle": (1200, 375, "well inside the electric-vehicle rectangle"),
+        }
+    if kind == "edge_controller_flat":
+        return kind, {
+            "edge controller": (250, 500, "on the left outline of the edge-controller rectangle"),
+            "network interface": (660, 250, "well inside the network-interface rectangle"),
+            "nonvolatile memory": (660, 580, "well inside the nonvolatile-memory rectangle"),
+            "service input": (420, 410, "well inside the service-input rectangle"),
+            "local fault indicator": (1235, 305, "well inside the fault-indicator rectangle"),
+        }
+    if kind == "allocation_flow_vertical":
+        return kind, {
+            "available current determination step": (620, 70, "well inside the first rectangle"),
+            "sustaining and deficit assignment step": (620, 165, "well inside the second rectangle"),
+            "pilot command step": (620, 260, "well inside the third rectangle"),
+            "connector verification step": (620, 355, "well inside the fourth rectangle"),
+            "staged reduction step": (660, 445, "well inside the upper diamond"),
+            "ordered shedding step": (620, 545, "well inside the middle rectangle"),
+            "welded-contactor isolation step": (660, 635, "well inside the lower diamond"),
+            "conditional reclosure step": (620, 735, "well inside the bottom rectangle"),
+        }
     if kind == "charging_control_overview":
         return kind, {
             "edge controller": (390, 675, "well inside the edge-controller rectangle"),
@@ -2803,17 +2879,124 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
     def box(bounds: tuple[int, int, int, int]) -> None:
         draw.rectangle(bounds, fill="white", outline="black", width=4)
 
+    def dashed_segment(start: tuple[int, int], end: tuple[int, int]) -> None:
+        x1, y1 = start
+        x2, y2 = end
+        if x1 == x2:
+            direction = 1 if y2 >= y1 else -1
+            for offset in range(0, abs(y2 - y1) + 1, 30):
+                first = y1 + (offset * direction)
+                last = y1 + (min(offset + 18, abs(y2 - y1)) * direction)
+                draw.line((x1, first, x2, last), fill="black", width=4)
+        elif y1 == y2:
+            direction = 1 if x2 >= x1 else -1
+            for offset in range(0, abs(x2 - x1) + 1, 30):
+                first = x1 + (offset * direction)
+                last = x1 + (min(offset + 18, abs(x2 - x1)) * direction)
+                draw.line((first, y1, last, y2), fill="black", width=4)
+        else:
+            raise ValueError("dashed segment must be horizontal or vertical")
+
+    def dashed_box(bounds: tuple[int, int, int, int]) -> None:
+        left, top, right, bottom = bounds
+        dashed_segment((left, top), (right, top))
+        dashed_segment((right, top), (right, bottom))
+        dashed_segment((right, bottom), (left, bottom))
+        dashed_segment((left, bottom), (left, top))
+
     def arrow(point: tuple[int, int], direction: str) -> None:
         x, y = point
         if direction == "down":
             points = [(x, y), (x - 13, y - 21), (x + 13, y - 21)]
         elif direction == "right":
             points = [(x, y), (x - 21, y - 13), (x - 21, y + 13)]
+        elif direction == "left":
+            points = [(x, y), (x + 21, y - 13), (x + 21, y + 13)]
         else:
             raise ValueError(f"unsupported arrow direction: {direction}")
         draw.polygon(points, fill="black")
 
-    if kind == "charging_control_overview":
+    if kind == "charging_installation_flat":
+        dashed_box((80, 50, 1320, 840))
+        draw.line((140, 180, 1260, 180), **line)
+        box((260, 130, 350, 230))
+        draw.line((140, 180, 1260, 180), **line)
+        for center in (695, 935, 1175):
+            draw.line((center, 180, center, 330), **line)
+        for bounds in ((610, 330, 780, 470), (850, 330, 1020, 470),
+                       (1090, 330, 1260, 470)):
+            box(bounds)
+        box((160, 580, 430, 740))
+        draw.line((300, 740, 300, 780), **line)
+        draw.line((300, 780, 980, 780), **line)
+        draw.line((695, 780, 695, 470), **line)
+        draw.line((935, 780, 935, 470), **line)
+        draw.line((305, 230, 305, 270), **line)
+        draw.line((305, 270, 390, 270), **line)
+        draw.line((390, 270, 390, 580), **line)
+    elif kind == "connector_channel_flat":
+        dashed_box((120, 90, 900, 760))
+        draw.line((260, 30, 260, 350), **line)
+        box((230, 190, 290, 250))
+        draw.line((260, 250, 260, 350), **line)
+        draw.line((260, 350, 820, 350), **line)
+        draw.ellipse((440, 320, 500, 380), fill="white", outline="black", width=4)
+        draw.line((260, 350, 820, 350), **line)
+        box((820, 285, 1000, 465))
+        box((600, 560, 770, 680))
+        draw.line((770, 620, 910, 465), **line)
+        draw.rounded_rectangle(
+            (1080, 260, 1320, 490), radius=32, fill="white", outline="black", width=4)
+        draw.line((1000, 375, 1080, 375), **line)
+        draw.line((30, 620, 600, 620), **line)
+        draw.line((170, 620, 170, 220), **line)
+        draw.line((170, 220, 230, 220), **line)
+        draw.line((470, 380, 470, 500), **line)
+        draw.line((470, 500, 100, 500), **line)
+    elif kind == "edge_controller_flat":
+        box((250, 120, 1050, 760))
+        box((560, 200, 760, 300))
+        box((560, 520, 760, 640))
+        box((340, 360, 500, 460))
+        box((1150, 250, 1320, 360))
+        draw.line((1050, 305, 1150, 305), **line)
+        draw.line((660, 200, 660, 70), **line)
+        draw.line((340, 410, 190, 410), **line)
+        draw.line((500, 760, 500, 830), **line)
+        draw.line((820, 760, 820, 830), **line)
+    elif kind == "allocation_flow_vertical":
+        rectangles = (
+            (530, 40, 870, 100), (530, 135, 870, 195),
+            (530, 230, 870, 290), (530, 325, 870, 385),
+            (530, 515, 870, 575), (530, 705, 870, 765),
+        )
+        upper_diamond = ((700, 410), (790, 445), (700, 480), (610, 445))
+        lower_diamond = ((700, 600), (790, 635), (700, 670), (610, 635))
+        for bounds in rectangles:
+            box(bounds)
+        draw.polygon(upper_diamond, fill="white", outline="black")
+        draw.line(upper_diamond + (upper_diamond[0],), fill="black", width=4)
+        draw.polygon(lower_diamond, fill="white", outline="black")
+        draw.line(lower_diamond + (lower_diamond[0],), fill="black", width=4)
+        vertical_pairs = (
+            (100, 135), (195, 230), (290, 325), (385, 410),
+            (480, 515), (575, 600), (670, 705),
+        )
+        for start, stop in vertical_pairs:
+            draw.line((700, start, 700, stop), **line)
+            arrow((700, stop), "down")
+        draw.line((610, 445, 420, 445), **line)
+        draw.line((420, 445, 420, 70), **line)
+        draw.line((420, 70, 530, 70), **line)
+        arrow((530, 70), "right")
+        draw.line((790, 635, 1120, 635), **line)
+        arrow((1120, 635), "right")
+        draw.rectangle((1120, 625, 1140, 645), fill="black")
+        draw.line((870, 735, 1000, 735), **line)
+        draw.line((1000, 735, 1000, 70), **line)
+        draw.line((1000, 70, 870, 70), **line)
+        arrow((870, 70), "left")
+    elif kind == "charging_control_overview":
         draw.line((220, 200, 1200, 200), **line)
         box((295, 140, 375, 260))
         draw.line((220, 200, 1200, 200), **line)
