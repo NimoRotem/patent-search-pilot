@@ -4367,7 +4367,7 @@ def test_terminal_provider_disconnect_continues_a_saved_candidate_without_user_i
     assert "No action is required" in repository.add_message.call_args.args[2]
 
 
-def test_automatic_filing_repair_chain_stops_at_its_durable_safety_limit():
+def test_automatic_filing_repair_chain_continues_past_three_bounded_drawing_turns():
     import draft_studio_service as service
 
     repository = Mock()
@@ -4386,6 +4386,38 @@ def test_automatic_filing_repair_chain_stops_at_its_durable_safety_limit():
         "requested_by_user_id": 91,
         "project_revision": 4,
         "idempotency_key": "auto-filing-repair-31-3",
+        "lease_token": "lease",
+    }
+
+    service._fail(
+        runner, claimed,
+        "The automatic filing gate could not clear: source fidelity review failed",
+        retryable=True)
+
+    queued = repository.enqueue_turn_safely.call_args
+    assert queued.kwargs["idempotency_key"] == "auto-filing-repair-31-4"
+    assert "No action is required" in repository.add_message.call_args.args[2]
+
+
+def test_automatic_filing_repair_chain_stops_at_its_durable_safety_limit():
+    import draft_studio_service as service
+
+    repository = Mock()
+    repository.fail_turn.return_value = {
+        "id": 38,
+        "project_id": 7,
+        "requested_by_user_id": 91,
+        "project_revision": 4,
+        "idempotency_key": "auto-filing-repair-31-6",
+        "status": "failed",
+    }
+    runner = Mock(repository=repository)
+    claimed = {
+        "id": 38,
+        "project_id": 7,
+        "requested_by_user_id": 91,
+        "project_revision": 4,
+        "idempotency_key": "auto-filing-repair-31-6",
         "lease_token": "lease",
     }
 
