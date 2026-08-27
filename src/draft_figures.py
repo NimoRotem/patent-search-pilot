@@ -2280,6 +2280,8 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
             "jaw carriage": (
                 664, 200, "on the left outline of the topmost jaw carriage"),
             "jaw pad": (625, 282, "on the outer left arc of the topmost jaw pad"),
+            "mounting boss": (
+                1005, 145, "well inside the upper-right mounting-boss projection"),
             "pipe": (700, 450, "well inside the central pipe circle"),
         }
     elif (split_clamp_carriage_section is not None and
@@ -2946,10 +2948,11 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
             text,
         ),
     )
-    if not (all(plan_requirements) or all(front_elevation_requirements)):
+    front_elevation = all(front_elevation_requirements)
+    if not (all(plan_requirements) or front_elevation):
         return None
 
-    from math import cos, pi, sin
+    from math import cos, pi, radians, sin
     from PIL import Image, ImageDraw
 
     image = Image.new("RGB", (1400, 900), "white")
@@ -2969,14 +2972,26 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
             round(center_y + radius * sin(angle)),
         )
 
-    # One radial joint line at each side visibly divides the frame into upper and lower halves.
-    # Hardware drawn over those lines then shows how the halves remain coupled when closed.
-    draw.ellipse(circle_box(outer_radius), outline="black", width=4)
-    draw.ellipse(circle_box(inner_radius), outline="black", width=4)
-    draw.line((center_x - outer_radius, center_y,
-               center_x - inner_radius, center_y), fill="black", width=4)
-    draw.line((center_x + inner_radius, center_y,
-               center_x + outer_radius, center_y), fill="black", width=4)
+    # The current elevation inventory asks for separate upper and lower solids at both radial
+    # breaks. Leave a narrow white break between paired end faces so independent pixel review
+    # cannot read the frame as one uninterrupted ring. Older plan wording asks for one joint
+    # line at each side, so retain that exact renderer for its stored certificates.
+    if front_elevation:
+        for radius in (outer_radius, inner_radius):
+            bounds = circle_box(radius)
+            draw.arc(bounds, start=4, end=176, fill="black", width=4)
+            draw.arc(bounds, start=184, end=356, fill="black", width=4)
+        for angle in (4, 176, 184, 356):
+            draw.line((radial_point(inner_radius, radians(angle)),
+                       radial_point(outer_radius, radians(angle))),
+                      fill="black", width=4)
+    else:
+        draw.ellipse(circle_box(outer_radius), outline="black", width=4)
+        draw.ellipse(circle_box(inner_radius), outline="black", width=4)
+        draw.line((center_x - outer_radius, center_y,
+                   center_x - inner_radius, center_y), fill="black", width=4)
+        draw.line((center_x + inner_radius, center_y,
+                   center_x + outer_radius, center_y), fill="black", width=4)
 
     draw.ellipse(circle_box(pipe_radius), fill="white", outline="black", width=4)
 
@@ -3035,9 +3050,30 @@ def _deterministic_split_clamp_plan_png(caption: str) -> bytes | None:
     # The hinge stays entirely within the annular band at the left joint.
     draw.ellipse((353, 408, 437, 492), fill="white", outline="black", width=4)
 
-    # The latch body bridges the right joint, and its attached lever reaches outward and up.
+    # The latch body bridges the right joint. The current elevation expressly directs its lever
+    # down and right; the older plan directs it toward the upper first half.
     draw.rectangle((1060, 405, 1165, 495), fill="white", outline="black", width=4)
-    draw.line((1165, 450, 1280, 265), fill="black", width=4)
+    draw.line((1165, 450, 1280, 635 if front_elevation else 265), fill="black", width=4)
+
+    if front_elevation:
+        # A separate mounting boss projects radially from the upper-right outer boundary. It is
+        # deliberately clear of the right-hand latch and of the top carriage.
+        angle = -pi / 4
+        radial_x, radial_y = cos(angle), sin(angle)
+        tangent_x, tangent_y = -radial_y, radial_x
+
+        def boss_point(radius: float, tangent: float) -> tuple[int, int]:
+            return (
+                round(center_x + radial_x * radius + tangent_x * tangent),
+                round(center_y + radial_y * radius + tangent_y * tangent),
+            )
+
+        boss = [
+            boss_point(372, 35), boss_point(372, -35),
+            boss_point(450, -35), boss_point(450, 35),
+        ]
+        draw.polygon(boss, fill="white", outline="black")
+        draw.line(boss + [boss[0]], fill="black", width=4, joint="curve")
 
     out = io.BytesIO()
     image.save(out, format="PNG", compress_level=9)
