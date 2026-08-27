@@ -512,6 +512,15 @@
     });
   }
 
+  function figureReviewFindings(figure) {
+    const match = String(figure.label || '').match(/\bFIG(?:URE)?[\s._-]*(\d{1,2})\b/i);
+    if (!match) return [];
+    const figureToken = new RegExp(`\\bFIG(?:URE)?[\\s._-]*${match[1]}\\b`, 'i');
+    return (((S.qa || {}).findings) || []).filter((finding) => figureToken.test([
+      finding.title, finding.where, finding.detail, finding.evidence, finding.fix,
+    ].map((value) => String(value || '')).join(' ')));
+  }
+
   function renderReview() {
     const body = $('reviewBody');
     const qa = S.qa;
@@ -678,6 +687,14 @@
     }
     if (!audit.inspected) return `<div class="fignumaudit warn"><b>Numeral check unavailable.</b>
       ${esc(audit.error || 'Run an AI redraw or re-save the drawing to inspect it again.')}</div>`;
+    const filingFindings = figureReviewFindings(figure);
+    if (audit.ok && filingFindings.length) {
+      const titles = filingFindings.map((finding) => finding.title).filter(Boolean).join('; ');
+      return `<div class="fignumaudit bad"><b>Later filing review blocked this drawing.</b>
+        ${esc(titles || 'The whole-application review found a drawing fault.')}
+        The individual sheet checks passed, but the drawing remains blocked until a complete
+        filing review clears it.</div>`;
+    }
     if (audit.ok) return `<div class="fignumaudit good"><b>Drawing passed.</b>
       Its visible structure matches the specification, every leader reaches the named feature,
       and every label is exact and unique.</div>`;
