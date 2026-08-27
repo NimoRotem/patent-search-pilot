@@ -3838,6 +3838,11 @@ def test_deterministic_split_clamp_plan_accepts_front_elevation_inventory_wordin
     assert png is not None
     image = Image.open(io.BytesIO(png)).convert("L")
     assert image.getpixel((700, 330)) < 32
+    assert image.getpixel((320, 450)) == 255
+    assert image.getpixel((470, 450)) == 255
+    assert min(image.crop((1180, 520, 1300, 680)).getextrema()) == 0
+    assert min(image.crop((1180, 220, 1300, 380)).getextrema()) == 255
+    assert min(image.crop((990, 100, 1045, 160)).getextrema()) == 0
 
 
 def test_deterministic_split_clamp_plan_has_single_joints_and_separate_curved_pads():
