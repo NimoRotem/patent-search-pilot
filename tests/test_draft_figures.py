@@ -2298,6 +2298,56 @@ def test_cached_same_provider_semantics_still_run_cross_provider_geometry_gate(m
     assert "unrequested cable" in " ".join(result["errors"])
 
 
+def test_semantic_retry_explicitly_corrects_out_of_range_anchor_coordinates(monkeypatch):
+    valid = {
+        "matches_spec": True, "summary": "The housing is visible.", "errors": [],
+        "unexpected_text": [],
+        "anchors": [{
+            "numeral": "10", "x": 500, "y": 500, "visible": True,
+            "evidence": "The anchor is inside the housing body.",
+        }],
+    }
+    responses = [
+        {**valid, "anchors": [{**valid["anchors"][0], "x": 1550}]},
+        valid,
+        valid,
+    ]
+    calls = []
+
+    class Response:
+        usage_metadata = None
+
+        def __init__(self, parsed):
+            self.parsed = parsed
+
+    class Models:
+        def generate_content(self, **values):
+            calls.append(values)
+            return Response(responses.pop(0))
+
+    class Client:
+        models = Models()
+
+    monkeypatch.setattr(draft_figures.llm, "_client", lambda: Client())
+    monkeypatch.setattr(draft_figures.time, "sleep", lambda *_args: None)
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: None)
+    monkeypatch.setattr(draft_figures, "_analysis_cache_put", lambda *args, **kwargs: None)
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *args, **kwargs:
+        accepted_cross_provider_geometry_audit(
+            specification_hash=draft_figures.specification_hash(
+                "FIG. 1", "A housing body is visible.", ["10 = housing"])))
+
+    result = draft_figures.inspect_semantics(
+        blank_png(), label="FIG. 1", caption="A housing body is visible.",
+        numerals=["10 = housing"])
+
+    assert result["ok"] is True and len(calls) == 3
+    assert "PREVIOUS RESPONSE FAILED VALIDATION" in calls[1]["contents"][-1]
+    assert "0 through 1000" in calls[1]["contents"][-1]
+
+
 def test_compose_rechecks_every_gate_after_repairing_a_marked_endpoint(monkeypatch):
     raw = blank_png(1000, 1000)
     initial = [{"numeral": "26", "x": 500, "y": 500,
