@@ -45,6 +45,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import (BaseDocTemplate, Frame, PageTemplate, Paragraph, Spacer, Table,
                                 TableStyle)
 
+import citation                     # a translation has to be OF the member being filed
 import concise_render
 import pdf_fonts
 
@@ -88,6 +89,14 @@ def fetch_translation(pub, timeout=120.0):
     for key, rec in got.items():
         if key == "_summary" or not isinstance(rec, dict):
             continue
+        #  IT HAS TO BE A TRANSLATION OF THE MEMBER BEING FILED. The ladder answers with whatever
+        #  it resolved, and taking the first record regardless of its key is how a translation of a
+        #  sibling ends up attached to a document it does not translate. Two publications of one
+        #  application differ in text, in paragraph numbering and in claim count, so filing one as
+        #  the translation of the other is filing something the examiner cannot reconcile with the
+        #  copy beside it. See citation.same_publication.
+        if not citation.same_publication(key, pub):
+            continue
         text = str(rec.get("description") or "")
         claims = rec.get("claims") or ""
         if isinstance(claims, list):
@@ -124,8 +133,63 @@ def fetch_copy(pub):
     return b""
 
 
+def _norm(s):
+    return re.sub(r"[^a-z0-9]+", " ", str(s or "").lower()).strip()
+
+
+def _squash(s):
+    """Letters and digits only, no spaces at all.
+
+    A PDF text layer breaks lines wherever the typesetter did, and a word broken across a line
+    comes back hyphenated: "magnet-\\nic" extracts as "magnet ic" and never matches "magnetic".
+    Removing every separator on both sides makes the comparison immune to that, to double spaces
+    and to the soft hyphen, at the cost of ignoring word boundaries, which does not matter when the
+    needle is a run of twelve words.
+    """
+    return re.sub(r"[^a-z0-9]+", "", str(s or "").lower())
+
+
+#  Words of a quotation to probe for. The same window `submission_compliance.verify_quotes` uses,
+#  because a stored passage is capped mid-sentence and a whole-string match would fail on the
+#  ellipsis rather than on the copy.
+_PROBE_WORDS = 12
+
+
+def quotes_in_copy(copy, quotes):
+    """Which of these quotations are NOT in the copy that will be filed. -> {"checked", "missing"}
+
+    THE CHEAPEST CHECK IN THE PACKET, and counsel put it third on the build list because it catches
+    the citation defects as well as the copy defects: "after assembling the packet, confirm that
+    every quoted string is present in the text layer of the copy being filed. If the quote isn't in
+    the copy, either the copy is wrong or the quote is."
+
+    Both happened in one packet. The GB 874,600 copy was its six drawing sheets, so an examiner
+    following any of the eight quotations attributed to it would have found pictures. And a
+    quotation attributed to US 2022/0045594 A1 gave a numeric tolerance the document states
+    qualitatively, so it was not in the copy either, for the opposite reason.
+
+    A copy with no text layer answers "unknown", not "missing": that is a scan, and saying its
+    quotations are absent would be as wrong as saying they are present. The audit reports the two
+    separately.
+    """
+    out = {"checked": 0, "missing": [], "readable": False}
+    hay = _squash((copy or {}).get("text") or "")
+    if not hay:
+        return out
+    out["readable"] = True
+    for q in quotes or []:
+        q = str(q or "").strip()
+        if not q:
+            continue
+        out["checked"] += 1
+        probe = _squash(" ".join(_norm(q.rstrip(" ….")).split()[:_PROBE_WORDS]))
+        if probe and probe not in hay:
+            out["missing"].append(q)
+    return out
+
+
 def inspect_copy(blob):
-    """What is actually in this copy. -> {"pages", "chars", "drawings_only"}
+    """What is actually in this copy. -> {"pages", "chars", "drawings_only", "text"}
 
     PRESENCE IS NOT COMPLETENESS, and the difference reached a filing. The copy attached for
     GB 874,600 A was six pages of figures whose own header reads "COMPLETE SPECIFICATION, 4 SHEETS,
@@ -137,7 +201,7 @@ def inspect_copy(blob):
     A patent facsimile with no extractable text at all is either a pure image scan or a drawings
     bundle, and both need a human to look before they are filed as "the item".
     """
-    out = {"pages": 0, "chars": 0, "drawings_only": False}
+    out = {"pages": 0, "chars": 0, "drawings_only": False, "text": ""}
     if not blob:
         return out
     try:
@@ -148,6 +212,9 @@ def inspect_copy(blob):
         out["pages"] = len(r.pages)
         text = " ".join((p.extract_text() or "") for p in r.pages)
         out["chars"] = len("".join(text.split()))
+        #  KEPT, because the audit checks every quotation against the copy that is actually going
+        #  in the envelope. Capped so a 300-page facsimile cannot make the packet build expensive.
+        out["text"] = text[:2_000_000]
     except Exception:                                                     # noqa: BLE001
         traceback.print_exc()
         return out

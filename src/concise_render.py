@@ -174,6 +174,14 @@ def filing_notes(doc_model):
     sc = c.get("self_collision") or {}
     if sc.get("note"):
         out.append(("Common ownership", sc["note"]))
+    #  AN EXCLUSION IS ABOUT ONE PUBLICATION AND A FAMILY IS MANY. Where the sweep found a member
+    #  that published earlier, that is the most valuable line on this page: the disclosure is
+    #  available even though this publication of it is not. See family_sweep.
+    sib = c.get("sibling") or {}
+    if sib.get("best"):
+        out.append(("An earlier member of this family", sib.get("note") or ""))
+    elif sib.get("checked") is False and sib.get("note"):
+        out.append(("Family", sib["note"]))
     tr = c.get("translation") or {}
     if tr.get("translated"):
         out.append(("Translation", "%d relied-on passage%s machine-translated into English; the "

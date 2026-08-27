@@ -5644,11 +5644,17 @@ def _may_read_report(slug):
 
 
 def _concise_source_text(pub):
-    """The reference's own stored full text, for re-verifying quotations before filing."""
+    """The reference's own stored full text, AS LOCATED PASSAGES, for re-verifying before filing.
+
+    Returns the whole `full_text` record rather than a string. It always did, in fact: the string
+    annotation was wrong and the compliance pass was matching against `str(dict)`, which found the
+    words and could not see the coordinate attached to each passage. A citation is a triple and two
+    thirds of it are in there. See submission_compliance.verify_quotes.
+    """
     try:
-        return deep_analysis.full_text(pub) or ""
+        return deep_analysis.full_text(pub) or {}
     except Exception:
-        return ""
+        return {}
 
 
 def _concise_count(slug):
@@ -5921,6 +5927,24 @@ def concise_descriptions(slug):
             subject=subject,
             error=("None of the selected documents carry per-claim evidence in this report: %s"
                    % ", ".join(unknown[:5]))), 400
+    #  UNREADABLE IS A HARD EXCLUSION FROM A FILING SET, whatever it scores. Counsel, 2026-08-26:
+    #  two of the thirteen documents in a real packet were on this search's own "full text still
+    #  unavailable after recovery" list, so everything charted for them rests on an abstract. A
+    #  short text is mapped generously and every cell verifies against the abstract it came from,
+    #  so an unread reference scores HIGH, not low, and the picker's default tick was never what
+    #  put them in. The refusal is here, in front of the person who chose, with the acknowledgement
+    #  that lets somebody who HAS read the document themselves go ahead anyway.
+    acked = set(request.form.getlist("allow_unread"))
+    unread = {c["pub"] for c in cands if c.get("readable") is False}
+    blocked_unread = [p for p in pubs if p in unread and p not in acked]
+    if blocked_unread:
+        return _render_picker(
+            report=rep_for_pick, _deep=deep, slug=slug, cands=_classify(slug, cands, deep),
+            docs=_concise_built(slug), subject=subject,
+            error=("The full text of %s was never read: this corpus holds a title and an abstract "
+                   "and nothing else, so every row filed for it would rest on that abstract. Read "
+                   "the office copy yourself and tick “I have read this document” on its row, or "
+                   "deselect it." % ", ".join(sorted(blocked_unread)[:5]))), 400
     #  EVERYTHING THE THREAD NEEDS IS CAPTURED HERE. The worker outlives this request, so it may
     #  not touch `request` at all.
     start_at = int(request.form.get("start_at") or 1)
@@ -6176,7 +6200,7 @@ def _render_picker(report=None, **kw):
         try:
             import concise_description as _cd
             ctx["sole_reach"] = _cd.sole_reach_notes(deep)
-            ctx["unreached"] = _cd.unreached_limitations(deep)
+            ctx["unreached"] = _cd.unreached_limitations(deep, report)
         except Exception:                                                 # noqa: BLE001
             traceback.print_exc()
     return render_template("concise.html", **ctx)
@@ -6294,11 +6318,11 @@ def _concise_package(out, docs, subject, report=None, identity=None):
     #  PASSED IN, never read here: this runs on the build thread, which outlives the request and
     #  has no session to ask who is signing.
     ident = identity or {"entity_size": "small", "signature_name": "", "signature_title": ""}
-    findings = submission.audit(docs, subject, copies, translations, win,
-                                exemption_claimed=exemption,
-                                entity_size=ident["entity_size"], identity=ident)
+    #  EVERYTHING EXCEPT THE AUDIT ITSELF, WRITTEN FIRST, so the conformance sweep has real files to
+    #  read. Only 00_AUDIT.pdf depends on the findings, and it is built by the same template, the
+    #  same styles and the same embedded faces as the document list, so the document list passing
+    #  is the generator passing. See submission._pdf_findings.
     for name, fn in (
-            ("00_AUDIT.pdf", lambda: submission.audit_pdf(findings, docs, subject, win)),
             ("01_DocumentList_and_Statements.pdf",
              lambda: submission.document_list_and_statements(
                  docs, subject, copies, translations, win, exemption_claimed=exemption,
@@ -6310,6 +6334,21 @@ def _concise_package(out, docs, subject, report=None, identity=None):
             (out / name).write_bytes(blob if isinstance(blob, bytes) else blob.encode("utf-8"))
         except Exception:
             traceback.print_exc()
+    pdf_report = {}
+    try:
+        import pdf_conform
+        pdf_report = pdf_conform.check_paths(sorted(out.glob("*.pdf")))
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+    findings = submission.audit(docs, subject, copies, translations, win,
+                                exemption_claimed=exemption,
+                                entity_size=ident["entity_size"], identity=ident,
+                                pdf_report=pdf_report)
+    try:
+        (out / "00_AUDIT.pdf").write_bytes(
+            submission.audit_pdf(findings, docs, subject, win))
+    except Exception:
+        traceback.print_exc()
     try:
         state, sentence = submission.verdict(findings)
         (out / "READ_ME_FIRST.txt").write_text(

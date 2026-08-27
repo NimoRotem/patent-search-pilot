@@ -323,8 +323,17 @@ def test_the_page_says_what_it_passed_over_and_what_only_one_document_reaches(cl
          "pub": "DE-1-A1", "title": "Polschuh", "verdict": "partial",
          "grounding": "teaches-unquoted", "chartable": False,
          "note": "discloses 130 to 170, overlapping the claimed range only at the endpoint"}])
-    monkeypatch.setattr(cd, "unreached_limitations", lambda deep: [
-        {"limitation": "claim 9[b]", "text": "a second pole shoe"}])
+    #  Two zeros, and they are not the same finding. "a second pole shoe" says what it means, so
+    #  nothing reaching it is a fact about the art. The contact-surface angle means "parallel", so
+    #  nothing MATCHING it is a fact about the vocabulary until the geometry has been searched.
+    monkeypatch.setattr(cd, "unreached_limitations", lambda deep, report=None: [
+        {"limitation": "claim 9[b]", "text": "a second pole shoe",
+         "confirmed": True, "caveat": "", "construction": {"words_alone": True, "terms": []}},
+        {"limitation": "claim 1[e]",
+         "text": "the contact surface angle ranges in size from 170 to 190 degrees",
+         "confirmed": False,
+         "caveat": "Nothing matched the WORDS of this limitation. Read this as not found.",
+         "construction": {"words_alone": False, "terms": ["parallel", "coplanar"]}}])
 
     body = client.get("/report/%s/concise" % report).get_data(as_text=True)
     #  passed over, with the reason that governs
@@ -336,6 +345,9 @@ def test_the_page_says_what_it_passed_over_and_what_only_one_document_reaches(cl
     assert "cannot be" in body and "charted" in body, "say it cannot be filed saying it"
     #  and what nothing reaches
     assert "No reference in this search reaches" in body and "claim 9[b]" in body
+    #  ...but a zero that is a statement about vocabulary is never printed as one about the art
+    assert "Nothing matched the words of" in body
+    assert "claim 1[e]" in body and "Search it as: parallel, coplanar" in body
 
 
 def test_going_over_the_chosen_fee_budget_is_refused_with_the_money_named(client, report):

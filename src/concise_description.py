@@ -33,6 +33,8 @@ import os
 import re
 import traceback
 
+import citation                            # the one grammar for a pinpoint, writer and checker
+
 CITE_MAX = int(os.environ.get("CONCISE_CITES_PER_ROW", "4"))
 #  A row is worth filing when the reference actually says something about the claim. "absent" and
 #  "uncertain" are not findings, and an unverified cell has no passage behind it.
@@ -233,34 +235,13 @@ def _cite(cell):
     The corpus stores US pre-grant text by paragraph number and granted claims by claim number, so
     that is what gets cited. Column/line coordinates are NOT synthesised: the reader never saw a
     column-and-line layout, and inventing one would be a fabricated citation in a filed paper.
+
+    The grammar lives in `citation` because the compliance pass has to read back exactly what this
+    wrote: it verifies the quotation appears AT this place, and a location it cannot parse is a
+    location it cannot check. A place that does not resolve to a claim, a paragraph, a figure or
+    the abstract returns "" rather than a fragment of prose an examiner cannot turn to.
     """
-    coord = cell.get("coord")
-    if isinstance(coord, str):
-        try:
-            coord = json.loads(coord.replace("'", '"'))
-        except Exception:
-            coord = {}
-    coord = coord if isinstance(coord, dict) else {}
-    para = coord.get("para_no") or ""
-    if para:
-        p = re.sub(r"^p0*", "", str(para)) or str(para)
-        return "Paragraph [%s]" % p.zfill(4)
-    if coord.get("claim_no"):
-        return "Claim %s" % coord["claim_no"]
-    if coord.get("figure") or coord.get("fig_no"):
-        return "FIG. %s" % (coord.get("figure") or coord.get("fig_no"))
-    loc = (cell.get("location") or "").strip()
-    if not loc:
-        return ""
-    m = re.match(r"^paragraph\s+p?0*(\d+)$", loc, re.I)
-    if m:
-        return "Paragraph [%s]" % m.group(1).zfill(4)
-    m = re.match(r"^claim\s+(\d+)$", loc, re.I)
-    if m:
-        return "Claim %s" % m.group(1)
-    if loc.lower().startswith("abstract"):
-        return "Abstract"
-    return loc[:80]
+    return citation.render(citation.of_cell(cell))
 
 
 def _dedupe_keep_order(items):
@@ -324,14 +305,16 @@ def rows_for_reference(ref, claims):
             for l in labels:
                 cell = by_label[l]
                 m = meta.get(l) or {}
-                rows.append(_row(n, m.get("text") or "", cell, quote_claim=True, label=l))
+                rows.append(_row(n, m.get("text") or "", cell, quote_claim=True, label=l,
+                                 pub=ref.get("pub")))
         else:
             best = max(labels, key=lambda l: (by_label[l].get("bar") == "discloses",
                                               float(by_label[l].get("confidence") or 0)))
             m = meta.get(best) or {}
             merged = dict(by_label[best])
             merged["_extra_cites"] = [_cite(by_label[l]) for l in labels if l != best]
-            rows.append(_row(n, m.get("text") or "", merged, quote_claim=False, label=best))
+            rows.append(_row(n, m.get("text") or "", merged, quote_claim=False, label=best,
+                             pub=ref.get("pub")))
     return rows
 
 
@@ -352,12 +335,17 @@ def _filing_safe(note):
     return t.strip(" ,;")
 
 
-def _row(claim_no, claim_text, cell, quote_claim, label):
+def _row(claim_no, claim_text, cell, quote_claim, label, pub=""):
     cites = _dedupe_keep_order([_cite(cell)] + list(cell.get("_extra_cites") or []))[:CITE_MAX]
     strong = (cell.get("bar") or "") == "discloses"
     return {
         "claim_no": claim_no,
         "label": label,
+        #  THE PUBLICATION THIS ROW'S CITATIONS BELONG TO, kind code and all. A1 and B4 of one
+        #  application number paragraphs differently and do not have the same claims, so a row that
+        #  cannot say which publication its pinpoint came from cannot be checked, and one that is
+        #  carried onto a sibling resolves to nothing. See citation.same_publication.
+        "cite_pub": pub or "",
         "quote_claim": bool(quote_claim),
         "claim_text": " ".join(str(claim_text or "").split()),
         "claim_paraphrase": _paraphrase(claim_text),
@@ -393,6 +381,14 @@ _SYS = (
     "answer is an error.\n"
     "- Do NOT assert anticipation, obviousness, invalidity or patentability. State disclosure "
     "only. A submission under 1.290 may not argue the merits.\n"
+    "- INFER NOTHING. Every sentence must be a restatement of something the supplied passage "
+    "actually says. If the passage says a member is annular and generally cylindrical, do NOT "
+    "write that it therefore extends along a longitudinal axis: that is you supplying a claim "
+    "limitation. Do not write that the reference 'constitutes', 'amounts to', 'may be considered' "
+    "or 'corresponds to the claimed' anything. Do not use 'implying', 'suggesting', 'indicating', "
+    "'appears to', 'effectively' or 'thereby' to carry a fact the passage does not contain. "
+    "Argument is the one defect that gets a submission discarded rather than corrected, and it "
+    "does not need a single word from the patentability vocabulary to be argument.\n"
     "- Where the evidence is partial, say what IS disclosed and stop. Do NOT write what the "
     "reference fails to disclose, does not teach, or is silent on. The supplied notes are an "
     "analyst's working commentary and often contain such hedges; drop them. A submission "
@@ -534,21 +530,41 @@ def sole_reach_notes(deep):
     return sorted(out, key=lambda d: (_claim_no(d["limitation"]), d["limitation"]))
 
 
-def unreached_limitations(deep):
-    """Limitations NO reference in the search reaches at all. -> [{"limitation", "text"}]
+def unreached_limitations(deep, report=None):
+    """Limitations NO reference in the search reaches at all. -> [{"limitation", "text", ...}]
 
     The other half of the same answer, and the one that decides whether a claim survives. Said
     plainly rather than left to be inferred from an empty column.
+
+    AND NEVER SAID FLAT WHEN THE WORDS WERE THE ONLY THING SEARCHED. Counsel, 2026-08-26: claim
+    1[e], "the contact surface angle ranges in size from 170° to 190°", was reported reached by 0
+    of 232 references. 170 to 190 degrees means "parallel to the direction the magnet travels",
+    which GB 874,600 claims outright and which this search had already selected as Document 6. The
+    sentence was true of the vocabulary and false of the art. So each row carries its construction
+    and, where the construction was not itself searched, the caveat that goes beside it.
     """
+    import claim_construction
     labels = [c for c in (deep or {}).get("claims") or [] if isinstance(c, dict)]
     touched = set()
     for ref in ((deep or {}).get("references") or []):
         for c in (ref.get("claims") or []):
             if isinstance(c, dict) and c.get("item") and (c.get("verdict") or "") != "absent":
                 touched.add(c["item"])
-    return [{"limitation": c.get("label"),
-             "text": str(c.get("text") or "").strip()}
-            for c in labels if c.get("label") not in touched]
+    stored = ((report or {}).get("claim_construction") or {})
+    out = []
+    for c in labels:
+        if c.get("label") in touched:
+            continue
+        text = str(c.get("text") or "").strip()
+        #  The run's own construction when the report carries one (it also holds the applicant's
+        #  definitions and whether the concept reached the portfolio); the geometry alone when it
+        #  does not, so an older report is gated too rather than trusted.
+        con = stored.get(c.get("label")) or claim_construction.construe(text)
+        out.append({"limitation": c.get("label"), "text": text,
+                    "construction": con,
+                    "confirmed": claim_construction.zero_is_confirmable(con),
+                    "caveat": claim_construction.zero_caveat(con)})
+    return out
 
 
 def _by_marginal_coverage(ranked):

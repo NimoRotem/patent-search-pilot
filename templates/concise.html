@@ -75,11 +75,32 @@
 <div class="card" style="margin:1em 0;padding:.8em 1em">
   <b>What the search found about these claims</b>
   {% if unreached %}
+  {% set confirmed = unreached|selectattr('confirmed')|list %}
+  {% set unconfirmed = unreached|rejectattr('confirmed')|list %}
+  {% if confirmed %}
   <p class="small" style="margin:.5em 0 0"><b>No reference in this search reaches
-    {{ unreached|map(attribute='limitation')|join(', ') }}.</b></p>
+    {{ confirmed|map(attribute='limitation')|join(', ') }}.</b></p>
   <ul class="small muted" style="margin:.2em 0 0 1.1em;line-height:1.5">
-    {% for u in unreached %}<li>{{ u.limitation }}: “{{ u.text|truncate(160) }}”</li>{% endfor %}
+    {% for u in confirmed %}<li>{{ u.limitation }}: “{{ u.text|truncate(160) }}”</li>{% endfor %}
   </ul>
+  {% endif %}
+  {# A limitation whose words say less than it requires cannot report a zero. The number is a
+     statement about vocabulary until the construction has been searched as a concept. #}
+  {% if unconfirmed %}
+  <p class="small" style="margin:.5em 0 0"><b>Nothing matched the words of
+    {{ unconfirmed|map(attribute='limitation')|join(', ') }}, and that is not the same as nothing
+    disclosing it.</b></p>
+  <ul class="small" style="margin:.2em 0 0 1.1em;line-height:1.5">
+    {% for u in unconfirmed %}
+    <li>{{ u.limitation }}: “{{ u.text|truncate(160) }}”
+      <br><span class="muted">{{ u.caveat }}</span>
+      {% if u.construction and u.construction.terms %}
+      <br><span class="muted">Search it as: {{ u.construction.terms[:8]|join(', ') }}.</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
   {% endif %}
   {% if sole_reach %}
   <p class="small" style="margin:.6em 0 0"><b>Reached by exactly one document each</b>
@@ -247,6 +268,13 @@
             {% if c.readable is defined and not c.readable %}
             <br><span class="flag flag-bad">full text never read</span>
               <span class="qhelp" data-help="unread" role="button" tabindex="0" aria-label="Why an unread document is not offered">?</span>
+              {#  A HARD EXCLUSION, not a discouraged one. The build refuses this publication
+                  unless the box below is ticked, because an unread reference scores HIGH on
+                  coverage and low on truth: a short text is mapped generously and every cell
+                  verifies against the abstract it came from. #}
+              <br><label class="small"><input type="checkbox" name="allow_unread"
+                    value="{{ c.pub }}"> I have read this document myself and the mapping
+                    holds</label>
             {% endif %}
             {#  THE MOST VALUABLE SENTENCE A SEARCH PRODUCES, and it had nowhere to appear. It
                 does not correlate with rank: the one document of 233 that reaches claim 1[e]
@@ -260,6 +288,21 @@
             {% if c.elsewhere %}
             <br><span class="flag flag-ok">usable at another office</span>
               <br><span class="small muted">{{ c.elsewhere }}</span>
+            {% endif %}
+            {#  AN EXCLUSION IS A STATEMENT ABOUT ONE PUBLICATION, AND A FAMILY IS MANY. The A1 of
+                Schmalz's own pole-shoe disclosure published after their priority date and was
+                correctly discarded; the Gebrauchsmuster of the same disclosure published six
+                months BEFORE it. See family_sweep. #}
+            {% if c.sibling_alert %}
+            <br><span class="flag flag-ok">an earlier member of this family published first:
+              {{ c.sibling.best.pub }}</span>
+              <br><span class="small muted">{{ c.sibling.note }}</span>
+              {% if c.sibling.matrix %}
+              <br><span class="small muted">{% for m in c.sibling.matrix %}{{ m.forum }}:
+                {% if m.available %}{{ m.statute }}{% if m.novelty_only %}, novelty only{% endif %}{% else %}not available{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+              {% endif %}
+            {% elif c.sibling and c.sibling.checked and not c.sibling.best %}
+            <br><span class="small muted">{{ c.sibling.note }}</span>
             {% endif %}
             {% if c.family_siblings %}<br><span class="small muted">also published as {{ c.family_siblings[:3]|join(', ') }}{% if c.family_siblings|length > 3 %} and {{ c.family_siblings|length - 3 }} more{% endif %}. One member is filed; the family is one disclosure</span>{% endif %}</td>
           <td class="small">

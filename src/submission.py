@@ -61,6 +61,7 @@ from reportlab.platypus import (BaseDocTemplate, Frame, PageTemplate, Paragraph,
                                 TableStyle)
 
 import concise_render
+import pdf_conform                           # will Patent Center accept the papers we just wrote
 import pdf_fonts
 import search_modes                          # the forum rule: which offices 102(a)(2) reaches
 
@@ -479,11 +480,17 @@ def elsewhere_note(country, us_reachable, co_owned):
     return note
 
 
-def classify_candidates(cands, subject_efd, subject_owners=()):
+def classify_candidates(cands, subject_efd, subject_owners=(), sweep=True):
     """Annotate each candidate with its date basis and whether it looks commonly owned.
 
     Mutates and returns `cands`, so the picker and the ranking stay one list. Reads one row per
     candidate from the corpus, in one query, because this runs on a page load.
+
+    AND THEN SWEEPS THE FAMILY OF EVERYTHING IT EXCLUDES. An exclusion is a statement about ONE
+    publication, and a family is many: Schmalz's DE 10 2024 105 114 A1 is useless in the US because
+    it published after their own priority date, and the same disclosure was registered as
+    DE 20 2024 100 869 U1 six months BEFORE it. See family_sweep; `sweep=False` for the callers
+    that only want the classification.
     """
     pubs = [c.get("pub") for c in cands if c.get("pub")]
     if not pubs:
@@ -564,6 +571,18 @@ def classify_candidates(cands, subject_efd, subject_owners=()):
         if c["basis"] in (SECRET, NOT_ART) and eff and efd and eff < efd:
             c["elsewhere"] = elsewhere_note(
                 country, search_modes.secret_art_reaches(country), c["co_owned"])
+        #  WHAT THE SAME DOCUMENT IS WORTH AT EACH OFFICE, computed once, per jurisdiction. The
+        #  single US answer above is the one that decides a 1.290 submission; it is not the one
+        #  that decides an EPO opposition or a DPMA nullity action, and running the exclusion once
+        #  loses the difference on exactly the documents where it is largest.
+        c["forums"] = search_modes.forum_matrix(country, pub_d, eff, efd, own=c["co_owned"])
+        c["forums_live"] = [m["forum"] for m in c["forums"] if m.get("available")]
+    if sweep and efd:
+        try:
+            import family_sweep
+            family_sweep.sweep_excluded(cands, efd)
+        except Exception:                                                 # noqa: BLE001
+            traceback.print_exc()
     return cands
 
 
@@ -612,8 +631,195 @@ class Finding:
         return [self.id, self.cite, self.title, self.status, self.detail]
 
 
+def _inference_hits(docs):
+    """Sentences in the relevance column that assert what their passage does not say. -> [str]
+
+    Reported rather than repaired here, because the compliance pass has already removed what it
+    could and this is the check that the removal WORKED. A paper edited by hand between the two
+    passes goes through this and not through that one, which is exactly when it matters.
+    """
+    try:
+        import submission_compliance as sc
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return []
+    out = []
+    for d in docs or []:
+        for r in (d.get("rows") or []):
+            evidence = " ".join([str(r.get("quote") or ""), str(r.get("quote_original") or "")])
+            for field in ("disclosure", "note"):
+                _clean, changed = sc.strip_inference(r.get(field), evidence)
+                out.extend("Doc %s: %s" % (d.get("n"), c) for c in changed)
+    return out
+
+
+def _copy_quote_findings(want_copy, copies, translations=None):
+    """Every quotation checked against the rendition it would actually be read in. -> [Finding]
+
+    Three answers, kept apart on purpose.
+
+      MISSING from a readable rendition   a defect: either the copy is not the document, or the
+                                          quotation is not in the document.
+      NO TEXT LAYER                       an image scan. Calling its quotations absent would be as
+                                          wrong as calling them present, so it is reported as what
+                                          it is: a copy nobody has read carrying quotations nothing
+                                          has checked.
+      NON-ENGLISH WITH NO TRANSLATION     the quotation is English and the copy is Korean. Checking
+                                          one against the other would fail every time and mean
+                                          nothing, so the check waits for the translation that
+                                          1.290(d)(4) requires anyway.
+
+    That last split matters: a guard that cries wolf on six of six quotations from a Korean
+    publication trains its reader to skip the line where a real defect is.
+    """
+    try:
+        import submission_package as sp
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return []
+    translations = translations or {}
+    bad, unchecked, untranslated, checked = [], [], [], 0
+    for d in want_copy:
+        copy = copies.get(d["pub"])
+        if not isinstance(copy, dict):
+            continue
+        quotes = [r.get("quote") for r in (d.get("rows") or []) if (r.get("quote") or "").strip()]
+        if not quotes:
+            continue
+        label = (d.get("biblio") or {}).get("label") or d["pub"]
+        against = copy
+        if needs_translation(d):
+            #  What the examiner reads a quotation from an Ariana or a Seoul publication IN is the
+            #  English translation filed beside the copy, and that is what it has to be found in.
+            tr = translations.get(d["pub"]) or {}
+            body = " ".join(str(tr.get(k) or "") for k in ("claims", "text")).strip()
+            if not body:
+                untranslated.append("Doc %s (%s): %d quotation%s"
+                                    % (d["n"], label, len(quotes),
+                                       "" if len(quotes) == 1 else "s"))
+                continue
+            against = {"text": body}
+        got = sp.quotes_in_copy(against, quotes)
+        if not got["readable"]:
+            unchecked.append("Doc %s (%s): %d quotation%s"
+                             % (d["n"], label, len(quotes), "" if len(quotes) == 1 else "s"))
+            continue
+        checked += got["checked"]
+        if got["missing"]:
+            bad.append("Doc %s (%s): %d of %d quotations are not in the %s, starting “%s”"
+                       % (d["n"], label, len(got["missing"]), got["checked"],
+                          "translation" if against is not copy else "copy",
+                          " ".join(str(got["missing"][0]).split())[:90]))
+    out = []
+    if bad:
+        out.append(Finding(
+            "COPY-QUOTES", "beyond the rule",
+            "Every quotation is in the copy that goes with it", ACTION,
+            "%s. An examiner checks a quotation against the papers you filed for that item, so "
+            "either what you attached is not the document or the quotation is not in it. Settle "
+            "which before signing." % "; ".join(bad)))
+    elif checked:
+        out.append(Finding(
+            "COPY-QUOTES", "beyond the rule",
+            "Every quotation is in the copy that goes with it", OK,
+            "All %d quotation%s found in the text of the copy filed with it, which is the document "
+            "the examiner will open." % (checked, " was" if checked == 1 else "s were")))
+    if unchecked:
+        out.append(Finding(
+            "COPY-QUOTES-UNREADABLE", "beyond the rule",
+            "The copy can be read, so its quotations can be checked", ACTION,
+            "%s could not be checked against their copies: those copies carry no text layer, so "
+            "they are image scans. Read them, or obtain a searchable copy, before filing."
+            % "; ".join(unchecked)))
+    if untranslated:
+        out.append(Finding(
+            "COPY-QUOTES-TRANSLATION", "beyond the rule",
+            "A quotation from a non-English item is checked against its translation", ACTION,
+            "%s could not be checked: the copy is in the original language, the quotation is in "
+            "English, and no translation was produced. 1.290(d)(4) requires the translation in any "
+            "event, and it is also what the quotation has to be found in."
+            % "; ".join(untranslated)))
+    return out
+
+
+def _pdf_findings(pdf_report):
+    """Patent Center's own upload validation, run over the papers before they are sent. -> [Finding]
+
+    Split three ways, because the three ask different people for different things.
+
+      the papers this service wrote   a defect here is a defect in the generator
+      the copies fetched from an office  the practitioner converts them; we cannot
+      the fonts this host can embed   a box with no font files renders on the base-14 and every
+                                      paper it produces fails validation, so it is said out loud
+                                      rather than discovered at upload
+
+    00_AUDIT.pdf is not in the report and does not need to be: it is built by the same template and
+    the same styles as the document list, from the same fonts, so the document list passing is the
+    generator passing.
+    """
+    out = []
+    ours = {n: r for n, r in (pdf_report or {}).items() if pdf_conform.is_generated(n)}
+    theirs = {n: r for n, r in (pdf_report or {}).items() if not pdf_conform.is_generated(n)}
+    bad_ours = ["%s: %s" % (n, "; ".join(r["problems"])) for n, r in sorted(ours.items())
+                if not r["ok"]]
+    bad_theirs = ["%s: %s" % (n, "; ".join(r["problems"])) for n, r in sorted(theirs.items())
+                  if not r["ok"]]
+    if ours:
+        out.append(Finding(
+            "PDF-CONFORM", "Patent Center", "Every paper uploads: fonts embedded, PDF 1.1 to 1.6, "
+            "US Letter or A4, no encryption, no layers, no attachments",
+            OK if not bad_ours else BLOCKED,
+            "All %d generated paper%s passes. 00_AUDIT.pdf is written by the same template and the "
+            "same embedded faces as the document list, so it passes with it."
+            % (len(ours), "" if len(ours) == 1 else "s") if not bad_ours
+            else "These would be rejected at upload: %s." % "; ".join(bad_ours[:6])))
+    if bad_theirs:
+        out.append(Finding(
+            "PDF-CONFORM-COPY", "Patent Center", "The fetched copies upload too", ACTION,
+            "%s. These are copies obtained from the issuing office and cannot be regenerated here. "
+            "Re-save each one as a PDF between 1.1 and 1.6 on US Letter or A4 before uploading."
+            % "; ".join(bad_theirs[:6])))
+    try:
+        gaps = pdf_fonts.missing()
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        gaps = []
+    if gaps:
+        out.append(Finding(
+            "FONTS", "Patent Center", "This host can embed every face it typesets in", BLOCKED,
+            "%s did not resolve to a font file on this machine, so the papers fell back to the "
+            "PDF base-14, which is never embedded and is a listed validation failure. Install the "
+            "fonts (fonts-liberation2 and fonts-droid-fallback) and rebuild the packet."
+            % ", ".join(gaps)))
+    return out
+
+
+def unprintable_in(docs):
+    """Characters no face this host has can draw, in text that will be typeset. -> [str]
+
+    reportlab does not raise on a missing glyph. It substitutes ZapfDingbats, in which "n" is a
+    solid black square, so a name in a script the face does not cover prints as a row of boxes and
+    nothing anywhere says so. `pdf_fonts.with_fallback` handles the ordinary case; this is the
+    check for when even the fallback face is absent.
+    """
+    bad = []
+    for d in docs or []:
+        b = d.get("biblio") or {}
+        for field in ("title", "inventor", "assignee", "label"):
+            v = str(b.get(field) or "")
+            if v and not pdf_fonts.covers_serif(v) and pdf_fonts.FALLBACK not in pdf_fonts.ready():
+                bad.append("Doc %s %s: %r" % (d.get("n"), field, v[:40]))
+        for r in (d.get("rows") or []):
+            v = str(r.get("quote") or "")
+            if v and not pdf_fonts.covers_serif(v) and pdf_fonts.FALLBACK not in pdf_fonts.ready():
+                bad.append("Doc %s: a quotation in a script this host has no face for"
+                           % d.get("n"))
+                break
+    return bad
+
+
 def audit(docs, subject, copies, translations, win, exemption_claimed=False,
-          entity_size="small", identity=None):
+          entity_size="small", identity=None, pdf_report=None):
     """Every 1.290 requirement, checked against the packet that was actually built. -> [Finding]"""
     out = []
     n = len(docs)
@@ -688,6 +894,14 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False,
                            OK if not thin else ACTION,
                            "Every attached copy carries the document's text." if not thin
                            else " ".join(thin)))
+        #  AND THE QUOTATIONS HAVE TO BE IN THE COPY THAT IS ACTUALLY GOING IN THE ENVELOPE. The
+        #  cheapest check in the packet, and it catches two different defects at once: a copy that
+        #  is not the document (GB 874,600, filed as its drawing sheets, with eight quotations
+        #  attributed to an abstract that is not on any of them), and a quotation the document does
+        #  not contain (US 2022/0045594 A1, quoted with a numeric tolerance it states
+        #  qualitatively). If the quote is not in the copy then either the copy is wrong or the
+        #  quote is, and both are the practitioner's to settle before signing.
+        out.extend(_copy_quote_findings(want_copy, copies, translations))
 
     # -- (d)(4) translations -------------------------------------------------------------------
     want_tr = [d for d in docs if needs_translation(d)]
@@ -800,6 +1014,20 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False,
                        "No argumentative or conclusory language found." if not hits
                        else "Remove before filing: %s" % "; ".join(hits[:8])))
 
+    # -- MPEP 1134.01, the half that uses no statutory words -------------------------------------
+    #  A linter hunting for "anticipates", "obvious" or "§ 103" finds neither of the two statements
+    #  that actually failed in a real packet. "generally cylindrical in shape, IMPLYING IT EXTENDS
+    #  ALONG A LONGITUDINAL AXIS" is the drafter supplying a claim limitation; the reference says
+    #  annular and cylindrical and says nothing about an axis. So the bar is structural: a sentence
+    #  in the relevance column has to be a restatement of what the quotation beside it says.
+    inferred = _inference_hits(docs)
+    out.append(Finding("NO-INFERENCE", "MPEP 1134.01",
+                       "Each sentence restates the passage beside it and infers nothing from it",
+                       OK if not inferred else ACTION,
+                       "Every sentence is carried by the passage it is attached to." if not inferred
+                       else "These assert something the quotation does not say, which is argument "
+                            "under 1.290(a) whatever words it uses: %s" % "; ".join(inferred[:6])))
+
     # -- our own bars ----------------------------------------------------------------------------
     unverified, checked, rows_dropped = 0, 0, 0
     for d in docs:
@@ -838,6 +1066,18 @@ def audit(docs, subject, copies, translations, win, exemption_claimed=False,
                        OK if not blocked_pa else ACTION,
                        "Every item qualifies on its dates." if not blocked_pa
                        else "; ".join(blocked_pa)))
+
+    # -- will it upload -----------------------------------------------------------------------
+    out.extend(_pdf_findings(pdf_report))
+    boxes = unprintable_in(docs)
+    if boxes:
+        out.append(Finding(
+            "GLYPHS", "1.290(e)", "Every character on these papers has a glyph to print it",
+            BLOCKED,
+            "This host has no fallback face, and reportlab substitutes ZapfDingbats for a missing "
+            "glyph rather than failing, which prints solid black squares: %s. Install "
+            "fonts-droid-fallback, or supply a romanised form, before this is filed."
+            % "; ".join(boxes[:6])))
 
     # -- (i) 1.8 ----------------------------------------------------------------------------------
     out.append(Finding("NO-CERT-MAILING", "1.290(i)", "A certificate of mailing does not help",
