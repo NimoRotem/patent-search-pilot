@@ -2578,6 +2578,32 @@ def test_drawing_only_repairs_cannot_mutate_filing_sources_or_figure_membership(
     assert restored_figures[1]["numerals"] == FIGURES[1]["numerals"]
 
 
+def test_drawing_only_repair_preserves_unrelated_figure_briefs(tmp_path):
+    baseline = {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
+    revised_figures = [
+        {**FIGURES[0], "caption": "An unrelated rewrite of the first sheet."},
+        {**FIGURES[1], "caption": "A focused correction to the second sheet."},
+    ]
+    draft_workspace.write_sections(tmp_path, GOOD)
+    draft_workspace.write_numerals(tmp_path, NUMERALS)
+    draft_workspace.write_figures(tmp_path, revised_figures)
+    report = {
+        "checks": [],
+        "findings": [{
+            "category": "figures_and_numerals",
+            "title": "FIG. 2 contains surplus geometry",
+            "detail": "Regenerate FIG. 2 without the extra body.",
+        }],
+    }
+
+    assert draft_studio.restore_text_after_drawing_only_review(
+        tmp_path, baseline, report) is True
+
+    restored = draft_workspace.read_figures(tmp_path)
+    assert restored[0]["caption"] == FIGURES[0]["caption"]
+    assert restored[1]["caption"] == "A focused correction to the second sheet."
+
+
 def test_figure_plan_repairs_keep_authoritative_text_and_numerals(tmp_path):
     baseline = {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
     revised_sections = {
