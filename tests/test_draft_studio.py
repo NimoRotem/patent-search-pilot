@@ -2511,13 +2511,18 @@ def test_figure_plan_repairs_keep_authoritative_text_and_numerals(tmp_path):
     baseline = {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES}
     revised_sections = {
         **GOOD,
-        "drawing_descriptions": "FIG. 1 is a focused body view.\n\nFIG. 2 is a ring detail.",
+        "drawing_descriptions": (
+            "FIG. 1 is a focused body view.\n\n"
+            "FIG. 2 is a ring detail.\n\n"
+            "FIG. 3 is a focused passage view."
+        ),
         "detailed_description": "Removed disclosed structure to make the picture easier.",
         "claims": "1. A different invention.",
     }
     revised_figures = [
         {**FIGURES[0], "numerals": ["10", "12"]},
-        {**FIGURES[1], "numerals": ["14", "16", "18", "20"]},
+        {**FIGURES[1], "numerals": ["14", "16", "18"]},
+        {"label": "FIG. 3", "caption": "focused passage view", "numerals": ["20"]},
     ]
     draft_workspace.write_sections(tmp_path, revised_sections)
     draft_workspace.write_numerals(tmp_path, NUMERALS[:-1])
@@ -3160,6 +3165,7 @@ def test_plan_preflight_fault_is_repaired_before_any_image_call(monkeypatch, tmp
 
     reconcile.assert_not_called()
     saved_report = repository.save_retry_candidate.call_args.kwargs["report"]
+    assert saved_report["checks"][0]["name"] == "Drawing plans pass deterministic preflight"
     assert "terminal dot" in saved_report["checks"][0]["items"][0]
 
 

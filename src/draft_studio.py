@@ -123,6 +123,10 @@ class DrawingInspectionError(StudioError):
             f"{_drawing_issue_count(len(self.errors))} did not pass inspection.")
 
 
+class FigurePlanInspectionError(DrawingInspectionError):
+    """A drawing-source defect that may change sheet membership and numeral distribution."""
+
+
 class FilingPreflightError(drafting.DraftingValidationError):
     """A filing gate failure carrying the scope an automatic repair may change."""
 
@@ -708,7 +712,9 @@ def _blockers(report: Mapping[str, Any], *, drawings: bool, text: bool) -> list[
 
 
 _DRAWING_INSPECTION_CHECK = "Every drawing sheet passes geometry, leader, and OCR inspection"
+_FIGURE_PLAN_PREFLIGHT_CHECK = "Drawing plans pass deterministic preflight"
 _FIGURE_PLAN_CHECKS = frozenset({
+    _FIGURE_PLAN_PREFLIGHT_CHECK,
     "Each drawing numeral appears once",
     "Drawing sheets are not overcrowded",
     "Numerals on the drawings are defined",
@@ -2808,7 +2814,7 @@ class TurnRunner:
                         # cannot cure that brief and only creates pixels that the same turn must
                         # discard. Return the exact preflight findings to the drafting agent first.
                         if drawing_faults:
-                            raise DrawingInspectionError(drawing_faults)
+                            raise FigurePlanInspectionError(drawing_faults)
                         self.repository.heartbeat(
                             turn_id, lease, stage="drawing and inspecting figures")
                         drawing_faults.extend(self._reconcile_drawings(
@@ -2858,7 +2864,7 @@ class TurnRunner:
                             source_report.get("model_name") or report.get("model_name") or "")
                         if drawing_faults:
                             drawing_check = {
-                                "name": _DRAWING_INSPECTION_CHECK,
+                                "name": _FIGURE_PLAN_PREFLIGHT_CHECK,
                                 "status": "fail",
                                 "severity": "error",
                                 "category": "figures_and_numerals",
@@ -2883,8 +2889,13 @@ class TurnRunner:
                     report = exc.report
                 except DrawingInspectionError as exc:
                     issue_count = _drawing_issue_count(len(exc.errors))
+                    check_name = (
+                        _FIGURE_PLAN_PREFLIGHT_CHECK
+                        if isinstance(exc, FigurePlanInspectionError)
+                        else _DRAWING_INSPECTION_CHECK
+                    )
                     check = {
-                        "name": "Every drawing sheet passes geometry, leader, and OCR inspection",
+                        "name": check_name,
                         "status": "fail", "severity": "error",
                         "category": "figures_and_numerals",
                         "detail": (
