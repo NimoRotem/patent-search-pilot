@@ -2165,7 +2165,15 @@ class TurnRunner:
         import draft_figures
 
         if self._drawings_already_match(project_id, user_id, numerals, figures):
-            return []
+            written = draft_figures.materialize_review_images(
+                project_id, user_id, workspace)
+            expected = len(list(figures or ()))
+            if written == expected:
+                return []
+            return [
+                f"Only {written} of {expected} checked drawing sheet(s) could be copied into "
+                "the independent review workspace. The final review was not run."
+            ]
         try:
             generated = self._ensure_figures(
                 turn_id=turn_id, lease=lease, project_id=project_id, user_id=user_id,
@@ -2181,7 +2189,14 @@ class TurnRunner:
             traceback.print_exc()
             return [f"The drawing pass did not finish: {type(exc).__name__}: {str(exc)[:400]}"]
         if generated.get("ok"):
-            return []
+            written = int(generated.get("review_images") or 0)
+            expected = len(list(figures or ()))
+            if written == expected:
+                return []
+            return [
+                f"Only {written} of {expected} checked drawing sheet(s) could be copied into "
+                "the independent review workspace. The final review was not run."
+            ]
         errors = [str(item) for item in generated.get("errors") or ()]
         if errors:
             return errors
@@ -2766,24 +2781,68 @@ class TurnRunner:
                             numerals=snapshot["numerals"], figures=snapshot["figures"],
                             disclosure=str(project.get("disclosure_text") or ""),
                             workspace=workspace))
-                    self.repository.heartbeat(turn_id, lease, stage="independent review")
-                    report = self.evaluate(
-                        project_id, version_no=int(project.get("latest_version_no") or 0) + 1,
-                        workspace=workspace, allowed=allowed, sections=sections,
-                        numerals=snapshot["numerals"], figures=snapshot["figures"],
-                        review_index=review_index,
-                        review_model=self._settings_for(project).get("review_model") or "",
-                        turn_id=turn_id, lease=lease)
-                    if drawing_faults:
-                        report = dict(report)
-                        report["checks"] = list(report.get("checks") or []) + [{
-                            "name": _DRAWING_INSPECTION_CHECK, "status": "fail",
-                            "severity": "error", "category": "figures_and_numerals",
-                            "detail": "The text was published on its own merits. These drawing "
-                                      "defects do not block drafting and do block filing.",
-                            "items": [str(item)[:600] for item in drawing_faults][:12]}]
+                        if drawing_faults:
+                            # The final reviewer is evidence-based and is required to open every
+                            # checked sheet. Running it with missing or rejected pixels turns a
+                            # mechanical drawing defect into invented edits against files that do
+                            # not exist in the candidate workspace. Repair the drawing fault first,
+                            # then run the independent review over the complete checked package.
+                            raise DrawingInspectionError(drawing_faults)
+                        self.repository.heartbeat(turn_id, lease, stage="independent review")
+                        report = self.evaluate(
+                            project_id,
+                            version_no=int(project.get("latest_version_no") or 0) + 1,
+                            workspace=workspace, allowed=allowed, sections=sections,
+                            numerals=snapshot["numerals"], figures=snapshot["figures"],
+                            review_index=review_index,
+                            review_model=self._settings_for(project).get("review_model") or "",
+                            turn_id=turn_id, lease=lease)
+                    else:
+                        # The source reviewer is the independent text review. The final reviewer
+                        # is deliberately deferred because its contract requires opening every
+                        # rendered sheet and the byte-exact audit evidence. Calling it here, before
+                        # the separate drawing turn, makes it report missing pixels and propose
+                        # edits to generated files that do not exist yet.
+                        self.repository.heartbeat(turn_id, lease, stage="checking filing text")
+                        report = dict(self.mechanical_report(
+                            project_id, sections=sections, numerals=snapshot["numerals"],
+                            figures=snapshot["figures"], allowed=allowed))
+                        source_checks = [dict(item) for item in
+                                         (source_report.get("checks") or [])]
+                        report["checks"] = source_checks + list(report.get("checks") or [])
+                        source_summary = str(source_report.get("summary") or "").strip()
+                        if source_summary:
+                            report["summary"] = (
+                                source_summary + " " + str(report.get("summary") or "").strip()
+                            ).strip()[:8000]
                         report["counts"] = draft_qa.counts_for(
                             report["checks"], report.get("findings") or [])
+                        report["cost_usd"] = float(source_report.get("cost_usd") or 0.0)
+                        report["model_name"] = str(
+                            source_report.get("model_name") or report.get("model_name") or "")
+                        if drawing_faults:
+                            drawing_check = {
+                                "name": _DRAWING_INSPECTION_CHECK,
+                                "status": "fail",
+                                "severity": "error",
+                                "category": "figures_and_numerals",
+                                "detail": (
+                                    "The filing text passed its text gates. The automatic drawing "
+                                    "continuation must repair these drawing-plan defects before "
+                                    "the package can be filing ready."
+                                ),
+                                "items": [str(item)[:600] for item in drawing_faults][:12],
+                            }
+                            report["checks"].append(drawing_check)
+                            report["summary"] = (
+                                str(report.get("summary") or "").strip() + " "
+                                "The automatic drawing continuation will repair the remaining "
+                                "drawing-plan defects."
+                            ).strip()[:8000]
+                            report["counts"] = draft_qa.counts_for(
+                                report["checks"], report.get("findings") or [])
+                            report["verdict"] = draft_qa.verdict_for(
+                                report["checks"], report.get("findings") or [])
                 except SourceFidelityInspectionError as exc:
                     report = exc.report
                 except DrawingInspectionError as exc:
@@ -2871,8 +2930,11 @@ class TurnRunner:
             project_id, turn_id=turn_id, version_no=version_no,
             workspace=workspace, report=report or {})
 
+        # Even a text phase whose stored drawings still pass must run the final package reviewer:
+        # wording may have changed relationships or citations that only the complete text-plus-
+        # pixels review can judge. The continuation is automatic and uses the saved candidate.
         needs_drawing_continuation = bool(
-            not drawing_continuation and drawing_blockers(report or {}))
+            not drawing_continuation and snapshot.get("sections"))
         continuation = None
         if needs_drawing_continuation:
             continuation = {
