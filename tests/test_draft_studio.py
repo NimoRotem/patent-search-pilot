@@ -2811,6 +2811,11 @@ def test_image_generation_slot_limit_is_bounded_and_invalid_values_fail_safe(
     assert draft_figures._image_generation_slot_limit(configured) == expected
 
 
+def test_default_drawing_window_covers_a_full_multi_sheet_review():
+    assert draft_studio.DEFAULT_DRAWING_BUDGET_SECONDS == 3600
+    assert draft_studio.DRAWING_BUDGET_SECONDS >= 3600
+
+
 def test_drawing_budget_exhaustion_never_becomes_a_publishable_fault_list(
         monkeypatch, tmp_path):
     runner = draft_studio.TurnRunner(Mock(), object(), qa=Mock(), workspace=Mock())

@@ -54,7 +54,9 @@ MAX_FINALIZATION_ROUNDS = max(
     2, min(int(os.environ.get("DRAFT_FINALIZATION_ROUNDS", "6")), 6))
 #  How long the explicit drawing pass may run before it reports what it did not reach. Unbounded,
 #  it re-inspects every sheet whenever an audit constant moves, which measured 53 minutes.
-DRAWING_BUDGET_SECONDS = max(60, int(os.environ.get("DRAFT_DRAWING_SECONDS", "900")))
+DEFAULT_DRAWING_BUDGET_SECONDS = 3600
+DRAWING_BUDGET_SECONDS = max(
+    60, int(os.environ.get("DRAFT_DRAWING_SECONDS", str(DEFAULT_DRAWING_BUDGET_SECONDS))))
 _GATE_RESUME_KEY = "_gate_resume"
 _AUTOMATIC_GATE_RESUME_TURN_KEY = re.compile(r"^auto-filing-repair-\d+-\d+$")
 _SCHEMA_LOCK = threading.Lock()
