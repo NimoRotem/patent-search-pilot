@@ -5048,9 +5048,17 @@ def inspect_semantics(png: bytes, *, label: str, caption: str, numerals) -> dict
         request_id = str(uuid.uuid4())
         for attempt in range(3):
             try:
+                attempt_instruction = instruction
+                if attempt:
+                    attempt_instruction += (
+                        "\n\nPREVIOUS RESPONSE FAILED VALIDATION. Return a fresh, complete JSON "
+                        "object. Every anchor x and y must be an integer from 0 through 1000 "
+                        "in the requested normalized coordinate frame. Do not return native "
+                        "pixel coordinates or values outside that range.")
                 response = llm._client().models.generate_content(
                     model=model,
-                    contents=[Part.from_bytes(data=png, mime_type="image/png"), instruction],
+                    contents=[Part.from_bytes(data=png, mime_type="image/png"),
+                              attempt_instruction],
                     config=GenerateContentConfig(
                         response_mime_type="application/json",
                         response_json_schema=SEMANTIC_RESPONSE_SCHEMA,
