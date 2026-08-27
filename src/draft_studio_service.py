@@ -53,7 +53,7 @@ DRAFT_TURN_WORKERS = max(1, min(int(os.environ.get("DRAFT_TURN_WORKERS", "5")), 
 #  A section of an application is long-form prose; this is a ceiling on storage, not on style.
 MAX_SECTION_CHARS = 200_000
 MAX_AUTOMATIC_FILING_REPAIR_TURNS = max(
-    1, min(int(os.environ.get("DRAFT_AUTOMATIC_REPAIR_TURNS", "3")), 6))
+    1, min(int(os.environ.get("DRAFT_AUTOMATIC_REPAIR_TURNS", "6")), 6))
 _AUTOMATIC_FILING_REPAIR_KEY = re.compile(r"^auto-filing-repair-(\d+)-(\d+)$")
 _FILING_GATE_EXHAUSTED = "The automatic filing gate could not clear:"
 
