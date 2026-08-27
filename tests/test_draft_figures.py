@@ -3809,6 +3809,26 @@ def test_deterministic_pulling_scene_accepts_machine_as_complete_body_and_band_w
     assert draft_figures._deterministic_geometry_png(specification) == png
 
 
+def test_deterministic_pulling_scene_accepts_an_outlined_cord_convention():
+    specification = """
+    The covering element 36 is one large plain tile in perspective. The machine stands on its
+    right-hand part with open tile to the left. The machine is one plain rectangular body
+    standing on a band that runs round its underside, the band alone touching the tile. The
+    flexible pulling element 46 is drawn as a loose cord in outline: one long closed body bounded
+    by two roughly parallel curved lines. It begins at the left-hand side of the machine, runs
+    away to the left, and sags over the open tile. Its drawn width is a depiction convention.
+    """
+
+    png = draft_figures._deterministic_pulling_scene_png(specification)
+
+    assert png is not None
+    assert draft_figures._deterministic_geometry_png(specification) == png
+    image = Image.open(io.BytesIO(png)).convert("L")
+    assert image.getpixel((445, 489)) == 255
+    assert min(image.getpixel((445, y)) for y in range(478, 485)) == 0
+    assert min(image.getpixel((445, y)) for y in range(494, 501)) == 0
+
+
 def test_deterministic_grip_scene_accepts_closed_block_grip_wording():
     specification = """
     The covering element 36 is one large plain tile seen in perspective. The machine stands on

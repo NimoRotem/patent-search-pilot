@@ -3337,6 +3337,10 @@ def _deterministic_nested_plan_png(caption: str) -> bytes | None:
 def _deterministic_pulling_scene_png(caption: str) -> bytes | None:
     """Render the simple tile, machine, and single-stroke pulling-element scene exactly."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    outlined_cord = bool(
+        re.search(r"\bflexible pulling element\b[^.]{0,120}\bcord in outline\b", text) and
+        re.search(r"\bone long closed body\b[^.]{0,100}"
+                  r"\btwo roughly parallel curved lines\b", text))
     plain_body_only = bool(
         re.search(r"\bone plain rectangular body\b", text) and
         re.search(r"\bno housing, grip or other part is drawn\b", text))
@@ -3352,6 +3356,10 @@ def _deterministic_pulling_scene_png(caption: str) -> bytes | None:
         re.search(r"\bthe machine as one plain rectangular body\b[^.]{0,100}"
                   r"\bstanding on a band\b", text) and
         re.search(r"\bthe band alone touching the tile\b", text))
+    plain_body_only = plain_body_only or bool(
+        re.search(r"\bthe machine is one plain rectangular body\b[^.]{0,100}"
+                  r"\bstanding on a band\b", text) and
+        re.search(r"\bthe band alone touching the tile\b", text))
     legacy_housings = bool(
         re.search(r"\bplain slab\b[^.]{0,100}\btwo closed housings\b", text))
     requirements = (
@@ -3359,8 +3367,9 @@ def _deterministic_pulling_scene_png(caption: str) -> bytes | None:
         re.search(r"\bmachine\b[^.]{0,100}\bright-hand\b", text),
         plain_body_only or legacy_housings,
         re.search(r"\bband\b[^.]{0,80}\bunderside\b", text),
-        re.search(r"\bflexible pulling element\b[^.]{0,100}\b(?:one|single)\b"
-                  r"[^.]{0,60}\b(?:curved\s+)?(?:line|path|stroke)\b", text),
+        outlined_cord or re.search(
+            r"\bflexible pulling element\b[^.]{0,100}\b(?:one|single)\b"
+            r"[^.]{0,60}\b(?:curved\s+)?(?:line|path|stroke)\b", text),
         re.search(r"\bruns?\s+(?:away\s+)?to\s+the\s+left\b", text),
         re.search(r"\bsag(?:ging|s)\b", text),
     )
@@ -3416,7 +3425,16 @@ def _deterministic_pulling_scene_png(caption: str) -> bytes | None:
              3 * one_minus_t ** 2 * t * control_1[1] +
              3 * one_minus_t * t ** 2 * control_2[1] + t ** 3 * end[1])
         points.append((round(x), round(y)))
-    draw.line(points, fill="black", width=5, joint="curve")
+    if outlined_cord:
+        upper = [(x, y - 10) for x, y in points]
+        lower = [(x, y + 10) for x, y in points]
+        draw.polygon(upper + list(reversed(lower)), fill="white")
+        draw.line(upper, fill="black", width=4, joint="curve")
+        draw.line(lower, fill="black", width=4, joint="curve")
+        draw.line((upper[0], lower[0]), fill="black", width=4)
+        draw.line((upper[-1], lower[-1]), fill="black", width=4)
+    else:
+        draw.line(points, fill="black", width=5, joint="curve")
 
     out = io.BytesIO()
     image.save(out, format="PNG", compress_level=9)
