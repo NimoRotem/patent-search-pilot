@@ -4084,14 +4084,55 @@ def _deterministic_chamber_constraint_certificate(png: bytes, caption: str) -> d
     def ink_count(x: int, start: int, stop: int) -> int:
         return sum(image.getpixel((x, y)) < 32 for y in range(start, stop))
 
+    def row_ink_count(y: int, start: int, stop: int) -> int:
+        return sum(image.getpixel((x, y)) < 32 for x in range(start, stop))
+
     section = _deterministic_section_hatch_certificate(png, caption) or {}
     flush_required = _chamber_section_has_flush_legs(text)
     split_required = _chamber_section_splits_line(text)
+    body_separation_required = bool(
+        re.search(r"\bplain solid line\b[^.]{0,80}\bjoin\b", text) and
+        re.search(r"\bseparate hatched bod(?:y|ies)\b", text))
+    loop_section_required = bool(
+        re.search(r"\bclosed loop cut twice\b[^.]{0,120}\btwo (?:short )?hatched legs\b",
+                  text))
+    left_leg = (200, 320) if flush_required else (260, 380)
+    right_leg = (1080, 1200) if flush_required else (1020, 1140)
+    leg_boundaries_ok = all((
+        ink_count(left_leg[0], 360, 621) > 240,
+        ink_count(left_leg[1], 360, 621) > 240,
+        ink_count(right_leg[0], 360, 621) > 240,
+        ink_count(right_leg[1], 360, 621) > 240,
+    ))
+    join_boundaries_ok = bool(
+        row_ink_count(360, 200, 1201) > 920 and
+        row_ink_count(620, 160, 1241) > 1060)
+    chamber_open_ok = ink_count(700, 370, 610) < 8
     return {
         "section_hatching": {
             "ok": bool(section.get("ok") and section.get("exact_renderer_match")),
             "components": list(section.get("components") or []),
             "coordinate_space": section.get("coordinate_space"),
+        },
+        "section_body_separation": {
+            "required": body_separation_required,
+            "ok": bool(body_separation_required and leg_boundaries_ok and
+                       join_boundaries_ok and chamber_open_ok),
+            "cut_region_count": 4,
+            "solid_join_rows_y": [360, 620],
+            "leg_boundary_columns_x": [
+                left_leg[0], left_leg[1], right_leg[0], right_leg[1]],
+            "open_chamber_sample_x": 700,
+        },
+        "perimeter_loop_section": {
+            "required": loop_section_required,
+            "ok": bool(loop_section_required and leg_boundaries_ok and chamber_open_ok),
+            "section_count": 2,
+            "section_boxes": [
+                [left_leg[0], 360, left_leg[1], 620],
+                [right_leg[0], 360, right_leg[1], 620],
+            ],
+            "open_chamber_sample_x": 700,
         },
         "flush_legs": {
             "required": flush_required,
@@ -5766,6 +5807,17 @@ def _certified_geometry_dissent_category(value: str) -> str:
             re.search(r"\b(?:flush|align(?:ed|ment)?)\b", text) and
             re.search(r"\b(?:base|end|ends|edge|edges|perimeter|slab|underside)\b", text)):
         return "flush_legs"
+    if (re.search(r"\b(?:closed loop|loop cut twice|single loop)\b", text) and
+            re.search(r"\b(?:leg|legs|leg sections?)\b", text) and
+            re.search(r"\b(?:distinct|separate|single|represent|depict|continuity)\b", text)):
+        return "perimeter_loop_section"
+    if (re.search(r"\b(?:base|slab)\b", text) and
+            re.search(r"\b(?:leg|legs|perimeter member)\b", text) and
+            re.search(r"\b(?:band|covering element)\b", text) and
+            (re.search(r"\b(?:monolithic|single continuous|one continuous)\b", text) or
+             re.search(r"\bseparate (?:hatched )?bod(?:y|ies)\b", text) or
+             re.search(r"\bsolid line\b[^.]{0,80}\bjoin\b", text))):
+        return "section_body_separation"
     if (re.search(r"\b(?:broken line|dash(?:ed)?(?: indication| line)?|fluid.communication line)\b",
                  text) and
             re.search(r"\b(?:base|slab|upper face|lower face|resum|stop|terminat|continu|"
@@ -5806,7 +5858,9 @@ def _certified_geometry_dissent_categories(*, errors, missing_geometry, missing,
         constraint = constraints.get(category) or {}
         if not category or constraint.get("ok") is not True:
             return None
-        if category in {"flush_legs", "split_line"} and constraint.get("required") is not True:
+        if category in {
+                "flush_legs", "split_line", "section_body_separation",
+                "perimeter_loop_section"} and constraint.get("required") is not True:
             return None
         categories.append(category)
     return sorted(set(categories))
