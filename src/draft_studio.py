@@ -767,6 +767,8 @@ def restore_text_after_drawing_only_review(workspace: Path, snapshot: Mapping[st
     baseline_figures = human_text(
         [dict(item) for item in baseline_snapshot["figures"]])
     current_figures = human_text(draft_workspace.read_figures(workspace))
+    mentioned_figures = draft_qa.figures_mentioned(json.dumps(
+        [*checks, *findings], ensure_ascii=False, sort_keys=True))
     used_current: set[int] = set()
     locked_figures = []
     for index, baseline in enumerate(baseline_figures):
@@ -783,9 +785,12 @@ def restore_text_after_drawing_only_review(workspace: Path, snapshot: Mapping[st
         current = match[1] if match else None
         if match:
             used_current.add(match[0])
+        caption_source = current if (
+            current and (not mentioned_figures or baseline_number in mentioned_figures)
+        ) else baseline
         locked_figures.append({
             "label": str(baseline.get("label") or f"FIG. {index + 1}"),
-            "caption": str((current or baseline).get("caption") or ""),
+            "caption": str(caption_source.get("caption") or ""),
             "numerals": list(baseline.get("numerals") or []),
         })
     comparable_current = [{
