@@ -112,10 +112,15 @@ class DrawingBudgetSpent(StudioError):
     retry_without_repair = True
 
 
+def _drawing_issue_count(count: int) -> str:
+    return f"{count} drawing {'issue' if count == 1 else 'issues'}"
+
+
 class DrawingInspectionError(StudioError):
     def __init__(self, errors: Sequence[str]):
         self.errors = [str(item)[:2000] for item in errors if str(item).strip()]
-        super().__init__(f"{len(self.errors)} drawing issue(s) did not pass inspection.")
+        super().__init__(
+            f"{_drawing_issue_count(len(self.errors))} did not pass inspection.")
 
 
 class FilingPreflightError(drafting.DraftingValidationError):
@@ -2877,19 +2882,23 @@ class TurnRunner:
                 except SourceFidelityInspectionError as exc:
                     report = exc.report
                 except DrawingInspectionError as exc:
+                    issue_count = _drawing_issue_count(len(exc.errors))
                     check = {
                         "name": "Every drawing sheet passes geometry, leader, and OCR inspection",
                         "status": "fail", "severity": "error",
                         "category": "figures_and_numerals",
                         "detail": (
-                            f"{len(exc.errors)} drawing issue(s) failed. Each failure is listed "
+                            f"{issue_count} failed. Each failure is listed "
                             "below so the next repair can address the full set."
                         ),
                         "items": exc.errors,
                     }
                     report = {
                         "status": "failed", "verdict": "fail",
-                        "summary": f"{len(exc.errors)} drawing issue(s) require automatic repair.",
+                        "summary": (
+                            f"{issue_count} "
+                            f"{'requires' if len(exc.errors) == 1 else 'require'} automatic repair."
+                        ),
                         "checks": [check], "findings": [],
                         "counts": draft_qa.counts_for([check], []), "cost_usd": 0.0,
                         "duration_ms": 0, "model_name": "", "last_error": str(exc),
