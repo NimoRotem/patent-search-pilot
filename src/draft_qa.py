@@ -180,6 +180,11 @@ _ARBITRARY_EXACT_ENDPOINT_TARGET_RE = re.compile(
     r"(?:rectangle|ring|band|line|edge|face|surface|member|shape|body)\b"
     r"))[^.\n]*",
     re.IGNORECASE)
+_REFERENCE_LEADER_ARROWHEAD_RE = re.compile(
+    r"\bleader(?:\s+line)?\b[^.\n]{0,260}"
+    r"\b(?:end(?:s|ed|ing)?|terminat(?:e|es|ed|ing))\b[^.\n]{0,80}"
+    r"(?:\b(?:in|with|at)\b\s*)?(?:an?\s+)?arrowhead\b",
+    re.IGNORECASE)
 _LEGACY_FIGURE_LABEL_LIMIT = 60
 #  The phrase is captured in a LOOKAHEAD so the scan consumes only the article.  Consuming the
 #  noun phrase as well was a real defect: in "a tool comprising a body, a pump", the first match
@@ -711,6 +716,12 @@ def _figure_checks(sections: Mapping[str, str],
             brief_issues.append(
                 f"{label}: arbitrary exact endpoint target {exact_target.group(0)[:180]!r}; "
                 "identify a broad interior region, stable named part, or full boundary instead")
+        for arrowhead_target in _REFERENCE_LEADER_ARROWHEAD_RE.finditer(caption):
+            brief_issues.append(
+                f"{label}: reference-numeral leader ends in an arrowhead in "
+                f"{arrowhead_target.group(0)[:180]!r}; every numeral leader must end in a "
+                "terminal dot on the named feature, while arrowheads are reserved for view, "
+                "section, motion, or flow direction")
     if brief_issues:
         out.append(_check(
             "Drawing briefs are concise and renderable", "fail",
