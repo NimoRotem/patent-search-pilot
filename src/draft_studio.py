@@ -115,7 +115,7 @@ class DrawingBudgetSpent(StudioError):
 class DrawingInspectionError(StudioError):
     def __init__(self, errors: Sequence[str]):
         self.errors = [str(item)[:2000] for item in errors if str(item).strip()]
-        super().__init__(f"{len(self.errors)} drawing sheet(s) did not pass inspection.")
+        super().__init__(f"{len(self.errors)} drawing issue(s) did not pass inspection.")
 
 
 class FilingPreflightError(drafting.DraftingValidationError):
@@ -2881,13 +2881,15 @@ class TurnRunner:
                         "name": "Every drawing sheet passes geometry, leader, and OCR inspection",
                         "status": "fail", "severity": "error",
                         "category": "figures_and_numerals",
-                        "detail": (f"{len(exc.errors)} sheet(s) failed. Each failure is listed "
-                                   "below so the next repair can address the full set."),
+                        "detail": (
+                            f"{len(exc.errors)} drawing issue(s) failed. Each failure is listed "
+                            "below so the next repair can address the full set."
+                        ),
                         "items": exc.errors,
                     }
                     report = {
                         "status": "failed", "verdict": "fail",
-                        "summary": f"{len(exc.errors)} drawing sheet(s) require automatic repair.",
+                        "summary": f"{len(exc.errors)} drawing issue(s) require automatic repair.",
                         "checks": [check], "findings": [],
                         "counts": draft_qa.counts_for([check], []), "cost_usd": 0.0,
                         "duration_ms": 0, "model_name": "", "last_error": str(exc),
