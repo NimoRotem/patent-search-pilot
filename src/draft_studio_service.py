@@ -1027,14 +1027,22 @@ def _continue_terminal_filing_repair(repository: Any, claimed: Mapping[str, Any]
             interrupted_candidate = False
     if not filing_gate_stopped and not interrupted_candidate:
         return ""
-    prior_key = str(result.get("idempotency_key") or claimed.get("idempotency_key") or "")
-    matched = _AUTOMATIC_FILING_REPAIR_KEY.fullmatch(prior_key)
-    if matched:
-        origin_turn_id = int(matched.group(1))
-        sequence = int(matched.group(2)) + 1
-    else:
-        origin_turn_id = int(result.get("id") or claimed["id"])
+    current_turn_id = int(result.get("id") or claimed["id"])
+    if interrupted_candidate:
+        # Provider failures and bounded time or spend slices did not consume a semantic repair
+        # attempt. Start a fresh bounded chain from this durable checkpoint so infrastructure
+        # timing cannot strand a mechanically repairable application at the filing-repair limit.
+        origin_turn_id = current_turn_id
         sequence = 1
+    else:
+        prior_key = str(result.get("idempotency_key") or claimed.get("idempotency_key") or "")
+        matched = _AUTOMATIC_FILING_REPAIR_KEY.fullmatch(prior_key)
+        if matched:
+            origin_turn_id = int(matched.group(1))
+            sequence = int(matched.group(2)) + 1
+        else:
+            origin_turn_id = current_turn_id
+            sequence = 1
     if sequence > MAX_AUTOMATIC_FILING_REPAIR_TURNS:
         return "limit"
 

@@ -4529,6 +4529,47 @@ def test_automatic_filing_repair_chain_stops_at_its_durable_safety_limit():
     assert "safety limit" in repository.add_message.call_args.args[2]
 
 
+@pytest.mark.parametrize("error", [
+    "DrawingBudgetSpent: the drawing pass reached its time budget.",
+    ("This turn reached its ceiling of 14 agent runs ($7.06 spent, 559,213 tokens). "
+     "The draft it had reached is saved; nothing was published."),
+])
+def test_technical_candidate_continuation_starts_a_new_chain_at_the_repair_limit(error):
+    import draft_studio_service as service
+
+    repository = Mock()
+    repository.fail_turn.return_value = {
+        "id": 38,
+        "project_id": 7,
+        "requested_by_user_id": 91,
+        "project_revision": 4,
+        "idempotency_key": "auto-filing-repair-31-6",
+        "status": "failed",
+    }
+    repository.retry_candidate.return_value = {
+        "turn_id": 38,
+        "snapshot": {"sections": GOOD, "numerals": NUMERALS, "figures": FIGURES},
+        "qa_report": {"verdict": "fail"},
+    }
+    repository.enqueue_turn_safely.return_value = {"id": 39, "status": "queued"}
+    runner = Mock(repository=repository)
+    claimed = {
+        "id": 38,
+        "project_id": 7,
+        "requested_by_user_id": 91,
+        "project_revision": 4,
+        "idempotency_key": "auto-filing-repair-31-6",
+        "lease_token": "lease",
+    }
+
+    service._fail(runner, claimed, error, retryable=False)
+
+    queued = repository.enqueue_turn_safely.call_args
+    assert queued.kwargs["kind"] == "gate_resume"
+    assert queued.kwargs["idempotency_key"] == "auto-filing-repair-38-1"
+    assert "No action is required" in repository.add_message.call_args.args[2]
+
+
 def test_a_publication_number_in_prose_is_not_three_reference_numerals():
     """Measured live: the turn that finally cited a reference properly FAILED the numeral check,
     because "US 9,108,319 B2" beside its token read as numerals 9, 108 and 319."""
