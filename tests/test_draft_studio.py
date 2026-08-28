@@ -1979,6 +1979,51 @@ def test_source_review_cannot_invent_a_flow_arrow_to_repair_an_unpromised_omissi
     assert "must not invent a connection" in reconciled[0]["reconciliation"]
 
 
+def test_source_review_allows_arrows_to_depict_an_exact_disclosed_flow_path():
+    finding = {
+        "severity": "critical",
+        "category": "figures_and_numerals",
+        "title": "Unsupported flow arrows in figure",
+        "where": "figures/FIG-2.md",
+        "detail": (
+            "The inventor described the circulation path in text but did not ask for it to be "
+            "depicted with arrows in a drawing."
+        ),
+        "evidence": (
+            "The source passage describes the path from the central inlet, along the cassette "
+            "faces, down the guide ducts, through the tray perforations, and back through the "
+            "return passage, but does not mention or request that arrows be drawn."
+        ),
+        "fix": "Delete the flow-arrow instruction from figures/FIG-2.md.",
+    }
+
+    kept, reconciled = draft_qa.reconcile_source_depiction_convention_findings([finding])
+
+    assert kept == []
+    assert [item["title"] for item in reconciled] == [finding["title"]]
+    assert "need not prescribe patent-drawing notation" in reconciled[0]["reconciliation"]
+
+
+def test_source_review_keeps_an_arrow_finding_when_the_notation_changes_direction():
+    finding = {
+        "severity": "critical",
+        "category": "figures_and_numerals",
+        "title": "Flow arrows contradict the disclosed direction",
+        "where": "figures/FIG-2.md",
+        "detail": "The arrows point in the wrong direction and do not match the source path.",
+        "evidence": (
+            "The source passage describes the clockwise flow path but does not request arrows. "
+            "The brief instead specifies counterclockwise arrows."
+        ),
+        "fix": "Remove the incorrect flow-arrow instruction from figures/FIG-2.md.",
+    }
+
+    kept, reconciled = draft_qa.reconcile_source_depiction_convention_findings([finding])
+
+    assert [item["title"] for item in kept] == [finding["title"]]
+    assert reconciled == []
+
+
 def test_source_preflight_reconciles_a_claim_only_drawing_omission(monkeypatch):
     monkeypatch.setattr(draft_agent, "run", lambda **_kwargs: draft_agent.AgentRun(
         ok=True,
