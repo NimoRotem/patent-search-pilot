@@ -282,6 +282,11 @@ def readiness(*, project: Mapping[str, Any], version: Mapping[str, Any],
                     "specification_hash") != expected_hash:
                 live_drawing_failures.append(
                     f"{label}: leader inspection belongs to a different drawing specification")
+            if not draft_figures.current_geometry_binding(
+                    figure, project.get("user_id"), active, spec.get("caption") or ""):
+                live_drawing_failures.append(
+                    f"{label}: pixels are not bound to the current deterministic geometry "
+                    "and exact constraint certificate")
     if live_drawing_failures:
         blockers.append({
             "title": "One or more active drawings have not passed live inspection",

@@ -4646,6 +4646,36 @@ def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
     return certificate
 
 
+def current_geometry_binding(figure, user_id, version, caption: str) -> bool:
+    """Bind a supported brief to the current exact renderer and its pixel constraints."""
+    expected = _deterministic_geometry_png(caption)
+    if expected is None:
+        return True
+    try:
+        active_version = int((figure or {}).get("active_version") or 0)
+        version_no = int((version or {}).get("version_no") or 0)
+        if (not active_version or version_no != active_version or
+                str((version or {}).get("source_kind") or "") != "deterministic"):
+            return False
+        _mime, stored = png_bytes(
+            int((figure or {}).get("id") or 0), int(user_id or 0), version_no, base=True)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if not stored or stored != expected:
+        return False
+    certificate = _deterministic_geometry_certificate(stored, caption)
+    if not (certificate.get("ok") and certificate.get("exact_renderer_match")):
+        return False
+    for constraint in (certificate.get("certified_constraints") or {}).values():
+        if not isinstance(constraint, dict):
+            return False
+        if constraint.get("required") is False:
+            continue
+        if constraint.get("ok") is not True:
+            return False
+    return True
+
+
 def _apply_topology_audit(png: bytes, caption: str, semantic: dict) -> dict:
     out = dict(semantic or {})
     audit = closed_region_audit(png, caption)
@@ -8716,7 +8746,9 @@ def materialize_review_images(project_id: int, user_id: int, workspace: Path) ->
         numeral = active.get("numeral_audit") or {}
         semantic = active.get("semantic_audit") or {}
         leader = active.get("leader_audit") or {}
-        if not (current_ocr_audit(
+        if not (current_geometry_binding(
+                    figure, user_id, active, workspace_spec.get("caption") or "") and
+                current_ocr_audit(
                     numeral,
                     expected_sheet_number=f"{index}/{len(figures)}",
                     expected_section_designations=section_designations(
@@ -9111,20 +9143,22 @@ def render_figure(project_id, user_id, *, label, caption, sections=None, instruc
              "make every requested component and relationship visible") + ". " +
             retry_instruction +
             "Include no text or digits.")
-    if not semantic.get("ok") and not region:
-        deterministic = _deterministic_geometry_png(caption)
-        if deterministic is not None:
-            raw_png = deterministic
-            semantic = inspect_semantics(
-                raw_png, label=label, caption=caption, numerals=numerals)
-            if semantic.get("ok"):
-                semantic = _apply_deterministic_anchor_certificate(
-                    raw_png, caption, numerals, semantic)
-                semantic = _apply_pixel_grounding(raw_png, numerals, semantic)
-                semantic = _apply_topology_audit(raw_png, caption, semantic)
-            if semantic.get("ok"):
-                source_kind = "deterministic"
-                active_generation = None
+    if (not region and deterministic_png is not None and
+            (not semantic.get("ok") or raw_png != deterministic_png)):
+        if active_generation:
+            _discard_cached_generation(*active_generation)
+            active_generation = None
+        raw_png = deterministic_png
+        source_kind = "deterministic"
+        semantic = inspect_semantics(
+            raw_png, label=label, caption=caption, numerals=numerals)
+        if semantic.get("ok"):
+            semantic = _apply_deterministic_anchor_certificate(
+                raw_png, caption, numerals, semantic)
+            semantic = _apply_pixel_grounding(raw_png, numerals, semantic)
+            semantic = _apply_topology_audit(raw_png, caption, semantic)
+        if semantic.get("ok"):
+            active_generation = None
     if not semantic.get("ok"):
         detail = "; ".join((semantic.get("errors") or []) +
                            (["missing " + ", ".join(semantic.get("missing") or [])]
@@ -9282,21 +9316,15 @@ def ensure_project_figures(project_id: int, user_id: int, *, sections, disclosur
                        int((current or {}).get("active_version") or 0)), None) or {}
         expected_set = {item["numeral"] for item in numeral_entries(expected)}
         expected_sections = section_designations(caption)
-        deterministic_png = _deterministic_geometry_png(caption)
         deterministic_match_cache = {}
 
         def matches_current_deterministic_renderer(version) -> bool:
-            if deterministic_png is None:
-                return True
             version_no = int(version.get("version_no") or 0)
-            if (not current or version_no <= 0 or
-                    str(version.get("source_kind") or "") != "deterministic"):
+            if not current or version_no <= 0:
                 return False
             if version_no not in deterministic_match_cache:
-                _mime, stored_base_png = png_bytes(
-                    current["id"], user_id, version_no, base=True)
-                deterministic_match_cache[version_no] = bool(
-                    stored_base_png and stored_base_png == deterministic_png)
+                deterministic_match_cache[version_no] = current_geometry_binding(
+                    current, user_id, version, caption)
             return deterministic_match_cache[version_no]
 
         def accepted_for_current_spec(version) -> bool:
