@@ -7512,7 +7512,10 @@ def _filing_figure_images(project, version):
         active = next((row for row in versions
                        if int(row.get("version_no") or 0) ==
                        int(figure.get("active_version") or 0)), None) or {}
-        if not (draft_figures.current_ocr_audit(
+        if not (draft_figures.current_geometry_binding(
+                    figure, project.get("user_id"), active,
+                    (spec or {}).get("caption") or "") and
+                draft_figures.current_ocr_audit(
                     active.get("numeral_audit") or {},
                     expected_sheet_number=f"{sheet_index}/{len(figures)}",
                     expected_section_designations=(

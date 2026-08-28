@@ -1448,6 +1448,22 @@ def test_readiness_rechecks_the_active_drawing_instead_of_trusting_old_qa():
     assert any("active drawings" in item["title"] for item in report["blockers"])
 
 
+def test_readiness_rejects_pixels_that_are_not_bound_to_the_current_exact_renderer(
+        monkeypatch):
+    monkeypatch.setattr(
+        draft_figures, "current_geometry_binding",
+        lambda *_args, **_kwargs: False, raising=False)
+
+    report = draft_uspto.readiness(
+        project={"user_id": 7, "inventors": "Dana", "applicant": "Example"},
+        version=clean_version(), qa=clean_qa(), figures=checked_figures())
+
+    assert not report["ready"]
+    assert any(
+        "current deterministic geometry" in item["items"]
+        for item in report["blockers"])
+
+
 def test_readiness_rejects_a_wrong_or_stale_drawing_sheet_number():
     figures = checked_figures()
     figures[0]["versions"][0]["numeral_audit"]["expected_sheet_number"] = "1/3"

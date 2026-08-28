@@ -4809,6 +4809,34 @@ def test_flat_edge_controller_exact_paths_classify_visual_dissent():
     ]
 
 
+def test_current_geometry_binding_rejects_generated_pixels_for_an_exact_controller_brief(
+        monkeypatch):
+    specification = """
+    A flat block diagram of the edge controller. One large rectangle, the edge controller,
+    occupies the left and central portion of the drawing area. Three smaller empty rectangles
+    lie inside it: a network interface in the upper region, a service input in the left region,
+    and a nonvolatile memory in the lower region. A local fault indicator stands outside the
+    large rectangle. A short solid line runs upward from the network interface rectangle and
+    crosses the upper side of the large rectangle. A short solid line runs leftward from the
+    service input rectangle and crosses the left side of the large rectangle. Two short solid
+    lines extend downward from the lower side of the large rectangle, spaced well apart.
+    """
+    exact = draft_figures._deterministic_geometry_png(specification)
+    assert exact is not None
+    monkeypatch.setattr(
+        draft_figures, "png_bytes",
+        lambda *_args, **_kwargs: ("image/png", exact))
+
+    figure = {"id": 77, "active_version": 1}
+    generated = {"version_no": 1, "source_kind": "generated"}
+    deterministic = {"version_no": 1, "source_kind": "deterministic"}
+
+    assert not draft_figures.current_geometry_binding(
+        figure, 4, generated, specification)
+    assert draft_figures.current_geometry_binding(
+        figure, 4, deterministic, specification)
+
+
 def test_connector_station_bus_anchor_is_below_and_left_of_enclosure():
     specification = """
     View: enlarged schematic block diagram of the first connector station. The first
@@ -6067,6 +6095,89 @@ def test_render_uses_deterministic_nested_plan_before_raster_generation(monkeypa
     assert saved[0]["source_kind"] == "deterministic"
     assert draft_figures.closed_region_audit(
         saved[0]["base_png"], specification)["observed"] == 4
+
+
+def test_render_never_publishes_generated_pixels_for_a_supported_exact_brief(monkeypatch):
+    specification = (
+        "The whole sheet contains four outlines and nothing else. From the outside inward, "
+        "draw three nested rectangles and one circle at the centre. Each outline is drawn "
+        "once as one closed line."
+    )
+    exact = draft_figures._deterministic_geometry_png(specification)
+    altered = Image.open(io.BytesIO(exact)).convert("RGB")
+    altered.putpixel((10, 10), (0, 0, 0))
+    generated_buffer = io.BytesIO()
+    altered.save(generated_buffer, format="PNG")
+    generated = generated_buffer.getvalue()
+    assert generated != exact
+    exact_reviews = 0
+    generation_calls = []
+    monkeypatch.setattr(draft_figures, "MAX_SEMANTIC_ATTEMPTS", 2)
+    monkeypatch.setattr(
+        draft_figures, "_cached_generate",
+        lambda *args, **kwargs: generation_calls.append((args, kwargs)) or generated)
+    monkeypatch.setattr(draft_figures, "_discard_cached_generation", lambda *a, **k: None)
+
+    def inspect(png, **_kwargs):
+        nonlocal exact_reviews
+        if png == exact:
+            exact_reviews += 1
+            if exact_reviews == 1:
+                return {"ok": False, "missing": [], "errors": ["reviewer false negative"]}
+        return {
+            "ok": True,
+            "anchors": [
+                {"numeral": "16", "x": 500, "y": 850, "visible": True,
+                 "evidence": "outer margin"},
+                {"numeral": "24", "x": 800, "y": 500, "visible": True,
+                 "evidence": "inner band"},
+                {"numeral": "30", "x": 500, "y": 500, "visible": True,
+                 "evidence": "circle center"},
+            ],
+        }
+
+    monkeypatch.setattr(draft_figures, "inspect_semantics", inspect)
+    accepted_pixel = {
+        "ok": True, "inspected": True, "version": draft_figures.PIXEL_ANCHOR_VERSION,
+        "adjusted": [], "allowed_spaces": [], "ungrounded": [],
+    }
+    monkeypatch.setattr(
+        draft_figures, "_apply_pixel_grounding",
+        lambda _png, _numerals, semantic: {
+            **semantic, "pixel_anchor_audit": dict(accepted_pixel),
+        })
+    monkeypatch.setattr(
+        draft_figures, "_compose_checked_sheet",
+        lambda png, **kwargs: (
+            png,
+            {"ok": True, "detected": ["16", "24", "30"],
+             "expected": ["16", "24", "30"], "correct_figure_label": True,
+             "other_text": [], "confidence": 0.99},
+            {"ok": True, "inspected": True, "errors": [], "incorrect": [],
+             "marked_anchor_audit": accepted_marked_anchor_audit()},
+            list(kwargs["semantic"]["anchors"]), dict(accepted_pixel)))
+    monkeypatch.setattr(draft_figures, "create_figure", lambda *a, **k: {"id": 46})
+    saved = []
+
+    def save(_figure_id, **kwargs):
+        saved.append(kwargs)
+        return {
+            "version_no": 1, "audit": kwargs["ocr_audit"],
+            "semantic_audit": kwargs["semantic_audit"],
+            "leader_audit": kwargs["leader_audit"],
+            "detected_numerals": ["16", "24", "30"],
+        }
+
+    monkeypatch.setattr(draft_figures, "_audited_version", save)
+
+    draft_figures.render_figure(
+        7, 91, label="FIG. 3", caption=specification,
+        numerals=["16 = second side", "24 = perimeter member", "30 = extraction opening"])
+
+    assert generation_calls
+    assert exact_reviews == 2
+    assert saved[0]["source_kind"] == "deterministic"
+    assert saved[0]["base_png"] == exact
 
 
 def test_render_keeps_an_exact_deterministic_ring_when_vision_anchor_is_near_its_edge(
@@ -7635,6 +7746,7 @@ def test_checked_images_include_exact_audit_evidence_for_the_independent_reviewe
     }])
     active = {
         "version_no": 2,
+        "source_kind": "deterministic",
         "numeral_audit": accepted_ocr_audit(
             sheet_number="1/1", expected=("10",), detected=["10"],
             detected_sheet_number="1/1", detected_figure_label="FIG. 1"),
