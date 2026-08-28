@@ -1562,7 +1562,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v13-no-invented-drawing-links"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v14-supported-drawing-notation"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1617,6 +1617,11 @@ the application expressly says that the particular figure depicts it. Source lan
 only a condition, prerequisite, purpose, or later state does not disclose a process-flow trigger.
 When a figure shows a state as a separate path or panel, do not invent an entry arrow to make the
 layout look complete.
+Conversely, the inventor need not prescribe patent-drawing notation. A conventional arrow, line,
+connector, outline, or hatch may illustrate the exact direction, path, connection, structure, or
+material boundary that an affirmative USER passage already describes. Do not report such notation
+merely because the inventor did not explicitly ask that it be drawn. Report it only when the
+notation adds or contradicts technical substance beyond the affirmative source.
 
 Build a complete source ledger before returning. Trace every limitation in every claim, every
 numbered part, and every specific structure, relationship, result, material, shape, position,
@@ -1738,6 +1743,26 @@ _SOURCE_FIX_ADDS_TECHNICAL_RELATION_RE = re.compile(
     r"(?:line|arrow|connection|transition|route|path|coupling|flow)\b",
     re.IGNORECASE,
 )
+_SOURCE_DISCLOSED_RELATION_NOTATION_ONLY_RE = re.compile(
+    r"\b(?:inventor(?:'s)?(?:\s+source)?|source(?:\s+passage)?|disclosure)\b"
+    r"[^.\n]{0,220}\b(?:describ(?:e|es|ed)|disclos(?:e|es|ed)|states?)\b"
+    r"[^.\n]{0,220}\b(?:path|flow|direction|route|relationship|connection)\b"
+    r"[^.\n]{0,260}\b(?:does\s+not|did\s+not|never)\b"
+    r"[^.\n]{0,120}\b(?:ask|request|mention|specify|require)\w*\b"
+    r"[^.\n]{0,140}\b(?:arrow|draw|depict|illustrat|line)\w*\b",
+    re.IGNORECASE,
+)
+_SOURCE_FIX_REMOVES_NOTATION_RE = re.compile(
+    r"\b(?:delete|remove|omit)\b[^.\n]{0,180}\b"
+    r"(?:arrow|line|connector|outline|hatch|depict|illustrat|flow-arrow)\w*\b",
+    re.IGNORECASE,
+)
+_SOURCE_NOTATION_TECHNICAL_MISMATCH_RE = re.compile(
+    r"\b(?:does\s+not\s+match|contradicts?|wrong\s+direction|different\s+"
+    r"(?:path|direction|route)|adds?\s+(?:an?\s+)?(?:new|undisclosed)\s+"
+    r"(?:path|direction|route|relationship|connection))\b",
+    re.IGNORECASE,
+)
 _SOURCE_SUPPORT_ADMISSION_RE = re.compile(
     r"\b(?:fully|squarely|affirmatively) supported\b|"
     r"\bsupported by (?:the )?(?:inventor|disclosure|source)",
@@ -1816,6 +1841,36 @@ def reconcile_source_drawing_omission_findings(
     return kept, reconciled
 
 
+def reconcile_source_depiction_convention_findings(
+        findings: Sequence[Mapping[str, Any]],
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Keep source-supported technical substance even when the inventor did not name its glyph."""
+    kept: list[dict[str, Any]] = []
+    reconciled: list[dict[str, Any]] = []
+    for original in findings:
+        finding = dict(original)
+        review_text = " ".join(str(finding.get(field) or "")
+                               for field in ("title", "detail", "evidence"))
+        where = str(finding.get("where") or "")
+        category = str(finding.get("category") or "")
+        fix = str(finding.get("fix") or "")
+        is_figure_finding = category == "figures_and_numerals" or "figures/" in where
+        notation_only = bool(_SOURCE_DISCLOSED_RELATION_NOTATION_ONLY_RE.search(review_text))
+        removes_notation = bool(_SOURCE_FIX_REMOVES_NOTATION_RE.search(fix))
+        technical_mismatch = bool(_SOURCE_NOTATION_TECHNICAL_MISMATCH_RE.search(review_text))
+        if not (is_figure_finding and notation_only and removes_notation
+                and not technical_mismatch):
+            kept.append(finding)
+            continue
+        finding["reconciliation"] = (
+            "The inventor need not prescribe patent-drawing notation. Conventional arrows or "
+            "lines may depict the exact path or direction that the reviewer itself identified "
+            "as affirmatively disclosed, without adding technical substance."
+        )
+        reconciled.append(finding)
+    return kept, reconciled
+
+
 def review_sources(workspace: Path, *, transcript: Path | None = None, model: str = "",
                    timeout: int = draft_agent.QA_TIMEOUT,
                    cancel: threading.Event | None = None) -> dict[str, Any]:
@@ -1890,19 +1945,23 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
                     "Unread exact paths: " + ", ".join(unread)
                 )
         if not quality_error:
-            findings, reconciled = reconcile_source_drawing_omission_findings(findings)
+            findings, omission_reconciled = reconcile_source_drawing_omission_findings(findings)
+            findings, notation_reconciled = reconcile_source_depiction_convention_findings(
+                findings)
+            reconciled = [*omission_reconciled, *notation_reconciled]
             if reconciled and not findings:
                 summary = (
                     "Every claim limitation, numeral, numbered part, figure brief, drawing "
                     "description, and affirmative inventor source was checked and traced. No "
                     "unresolved source-fidelity findings remain after deterministic "
-                    "reconciliation of a drawing omission whose repair would have introduced "
-                    "an unpromised technical relationship."
+                    "reconciliation of figure findings that confused drawing notation with "
+                    "invention substance or would have introduced an unpromised relationship."
                 )
             elif reconciled:
                 summary += (
-                    " The filing gate reconciled a drawing omission whose proposed repair would "
-                    "have introduced an unpromised technical relationship."
+                    " The filing gate reconciled figure findings that confused drawing notation "
+                    "with invention substance or would have introduced an unpromised technical "
+                    "relationship."
                 )
             return {
                 "ok": True,
