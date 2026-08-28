@@ -2422,6 +2422,8 @@ class TurnRunner:
                 ocr = active.get("numeral_audit") or {}
                 if (semantic.get("specification_hash") != want or
                         leader.get("specification_hash") != want or
+                        not draft_figures.current_geometry_binding(
+                            figure, user_id, active, str(spec.get("caption") or "")) or
                         not draft_figures.current_semantic_audit(semantic) or
                         not draft_figures.current_leader_audit(leader) or
                         not draft_figures.current_ocr_audit(
