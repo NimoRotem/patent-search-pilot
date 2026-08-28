@@ -5117,6 +5117,13 @@ def test_branch_current_safety_flow_template_certifies_every_route_and_anchor():
     }
     assert len({(item["x"], item["y"]) for item in semantic["anchors"]}) == 6
     assert semantic["pixel_anchor_audit"]["ok"] is True
+    assert all(
+        item.get("anchor_source") == draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION
+        for item in semantic["anchors"])
+    assert {
+        item["numeral"]
+        for item in semantic["deterministic_anchor_certificate"]["anchors"]
+    } == {"300", "302", "304", "306", "308", "310"}
 
 
 def test_branch_current_safety_flow_follows_connected_caption_routes_exactly():
@@ -5161,6 +5168,13 @@ def test_branch_current_safety_flow_follows_connected_caption_routes_exactly():
     }
     assert len({(item["x"], item["y"]) for item in semantic["anchors"]}) == 6
     assert semantic["pixel_anchor_audit"]["ok"] is True
+    assert all(
+        item.get("anchor_source") == draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION
+        for item in semantic["anchors"])
+    assert {
+        item["numeral"]
+        for item in semantic["deterministic_anchor_certificate"]["anchors"]
+    } == {"300", "302", "304", "306", "308", "310"}
 
 
 def test_exact_branch_current_flow_resolves_only_certified_route_dissent(monkeypatch):
