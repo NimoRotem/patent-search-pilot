@@ -2041,6 +2041,90 @@ def test_exact_section_pixels_resolve_reviewers_dissent_on_certified_constraints
         tampered, specification_hash=spec_hash) is False
 
 
+def test_exact_flat_charging_pixels_resolve_reviewers_connectivity_dissent(monkeypatch):
+    caption = """
+    A flat schematic system diagram. A dashed rectangle, the charging installation, encloses the
+    whole diagram. A horizontal branch conductor passes through a branch current sensor and
+    supplies a first connector channel, a second connector channel, and a non-charging load in
+    parallel. Its left end stops short of the dashed rectangle and its right end meets the right
+    side without crossing it. An edge controller is joined to the branch current sensor by a line
+    that runs down, then right, then down to its top side. An isolated local bus runs from a point
+    vertically below the edge controller to a point vertically below the second connector channel.
+    A vertical line connects the controller bottom to the bus left end, and vertical lines connect
+    the first and second connector channels to the bus.
+    """
+    numerals = [
+        "100 = charging installation", "102 = branch conductor",
+        "104 = branch current sensor", "106 = edge controller",
+        "108 = isolated local bus", "118 = non-charging load",
+        "120 = first connector channel", "140 = second connector channel",
+    ]
+    png = draft_figures._deterministic_geometry_png(caption)
+    assert png is not None
+    spec_hash = draft_figures.specification_hash("FIG. 1", caption, numerals)
+    dissent = accepted_cross_provider_geometry_audit(
+        ok=False,
+        specification_hash=spec_hash,
+        errors=[
+            "The branch conductor stops short of the right dashed enclosure boundary.",
+        ],
+        missing_geometry=[
+            "A vertical line connecting the bottom of the second connector channel to the "
+            "isolated local bus.",
+        ],
+        unexpected=[
+            "A horizontal line segment connecting the bottom of the edge controller to the "
+            "vertical line dropping from the first connector channel.",
+        ],
+        summary="The controller wiring appears inconsistent with the brief.",
+    )
+    certificate = draft_figures._deterministic_geometry_certificate(png, caption)
+    assert certificate["certified_constraints"][
+        "charging_branch_conductor_endpoint"]["ok"] is True
+    assert certificate["certified_constraints"][
+        "charging_local_bus_connectivity"]["ok"] is True
+    assert certificate["certified_constraints"][
+        "charging_sensor_controller_path"]["ok"] is True
+    assert draft_figures._certified_geometry_dissent_categories(
+        errors=dissent["errors"], missing_geometry=dissent["missing_geometry"],
+        missing=[], unexpected=dissent["unexpected"], duplicates=[], certificate=certificate,
+    ) == ["charging_branch_conductor_endpoint", "charging_local_bus_connectivity"]
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k: dissent)
+    semantic = {
+        "ok": False, "inspected": True,
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "expected": ["100", "102", "104", "106", "108", "118", "120", "140"],
+        "visible": ["100", "102", "104", "106", "108", "118", "120", "140"],
+        "missing": [], "unexpected": [], "duplicates": [], "unexpected_text": [],
+        "errors": [
+            "The line connecting the branch current sensor to the edge controller turns left "
+            "instead of right.",
+            "The isolated local bus extends past the point below the second connector channel.",
+        ],
+        "anchors": [
+            {"numeral": value, "x": 500, "y": 500, "visible": True,
+             "evidence": "The requested component is visible."}
+            for value in ("100", "102", "104", "106", "108", "118", "120", "140")
+        ],
+        "specification_hash": spec_hash,
+    }
+
+    audited = draft_figures._resolve_deterministic_semantic_dissent(
+        semantic, png, label="FIG. 1", caption=caption, numerals=numerals)
+
+    assert audited["ok"] is True
+    assert audited["reviewer_ok"] is False
+    cross = audited["cross_provider_geometry_audit"]
+    assert cross["ok"] is True and cross["reviewer_ok"] is False
+    assert set(cross["consensus_resolution"]["certified_dissent_categories"]) == {
+        "charging_branch_conductor_endpoint", "charging_local_bus_connectivity",
+    }
+    assert draft_figures._current_deterministic_semantic_resolution(audited) is True
+
+
 def test_exact_section_pixels_resolve_false_body_separation_and_loop_dissent(monkeypatch):
     caption = """
     The sheet shows four schematic bodies: one hatched horizontal slab, the base 12; one closed
