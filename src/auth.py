@@ -723,6 +723,16 @@ def login():
     error = ""
     inline = (request.headers.get("X-Reauth") == "1" or
               "application/json" in request.headers.get("Accept", ""))
+    #  ALREADY SIGNED IN? Then this is a bookmark, a stale link, or a redirect this app itself
+    #  issued before the peer session was adopted, and it is not a request to sign in. Rendering
+    #  the form anyway asks somebody for a password they do not need and tells them, wrongly,
+    #  that they are shut out of their own work. Send them where they were going instead.
+    #  GET only: a POST is a deliberate sign-in, and possibly as somebody else. `?force=1` still
+    #  shows the form, so switching accounts never needs the sign-out link to be found first.
+    if request.method == "GET" and not inline and request.args.get("force") != "1" \
+            and current_user():
+        target = _safe_next(request.args.get("next"))
+        return redirect(_after_login_target(target) if target else url_for("index"))
     if request.method == "POST":
         email = request.form.get("email", "").strip()
         supplied = request.form.get("password", "")

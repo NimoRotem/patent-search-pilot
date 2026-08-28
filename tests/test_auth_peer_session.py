@@ -130,6 +130,32 @@ def test_it_is_off_when_it_is_not_configured(monkeypatch):
     assert "user_id" not in left
 
 
+def test_a_signed_in_visitor_is_not_shown_the_login_form(peer, monkeypatch):
+    """The exact URL that was reported: /login?next=/drafts, arriving with a peer session.
+
+    It is the redirect this app issued a moment earlier, so following it must not present a
+    password box to somebody who is already signed in.
+    """
+    monkeypatch.setattr(auth, "TRUST_LOOPBACK", False)
+    monkeypatch.setattr(auth, "API_TOKEN", "")
+    peer.config["FORCE_AUTH"] = True
+    peer.config["FORCE_ACCOUNTS"] = True
+    auth.reset_limits()
+    try:
+        client = peer.test_client()
+        client.set_cookie("session", _sign({"user_id": PEER_ID, "session_version": 1}),
+                          domain="localhost")
+        response = client.get("/login?next=/drafts")
+        assert response.status_code == 302
+        assert response.headers["Location"].endswith("/drafts")
+        #  ...and the escape hatch still works, so switching accounts is always possible.
+        assert client.get("/login?next=/drafts&force=1").status_code == 200
+    finally:
+        peer.config.pop("FORCE_AUTH", None)
+        peer.config.pop("FORCE_ACCOUNTS", None)
+        auth.reset_limits()
+
+
 def test_the_gate_adopts_before_it_sends_anyone_to_a_login_box(peer, monkeypatch):
     """End to end: the peer's cookie, through the real before_request gate, on a gated page."""
     monkeypatch.setattr(auth, "TRUST_LOOPBACK", False)
