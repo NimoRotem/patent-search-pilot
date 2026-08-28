@@ -2015,6 +2015,36 @@ def test_source_review_cannot_invent_a_flow_arrow_to_repair_an_unpromised_omissi
     assert "must not invent a connection" in reconciled[0]["reconciliation"]
 
 
+def test_source_review_cannot_turn_a_general_open_command_into_a_shedding_trigger():
+    finding = {
+        "severity": "critical",
+        "category": "internal_logic",
+        "title": "Figure flow diagram omits a trigger condition described in the text",
+        "where": "figures/FIG-5.md",
+        "detail": (
+            "The flow diagram shows the welded-contactor check as a separate process with no "
+            "trigger. The source states that this check is performed in response to an open "
+            "command. The shedding step is one such command, and the diagram should reflect "
+            "this dependency."
+        ),
+        "evidence": (
+            "The brief has no connecting line between the two flows. The source says a welded "
+            "condition is recorded when current remains above a threshold after an open command."
+        ),
+        "fix": (
+            "In the process-flow list, add the following item:\n\n- A line leaves the right side of "
+            "the shedding step 304 and enters the left vertex of the welded-contactor check "
+            "step 306."
+        ),
+    }
+
+    kept, reconciled = draft_qa.reconcile_source_drawing_omission_findings([finding])
+
+    assert kept == []
+    assert [item["title"] for item in reconciled] == [finding["title"]]
+    assert "must not invent a connection" in reconciled[0]["reconciliation"]
+
+
 def test_source_review_allows_arrows_to_depict_an_exact_disclosed_flow_path():
     finding = {
         "severity": "critical",
