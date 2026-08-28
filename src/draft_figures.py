@@ -2763,7 +2763,11 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
         item = dict(value)
         numeral = _clean_numeral(item.get("numeral"))
         part = part_by_numeral.get(numeral, "")
-        center = component_centers.get(part)
+        component_part = part
+        center = component_centers.get(component_part)
+        if center is None:
+            component_part = re.split(r"\s*[;:|]\s*", part, maxsplit=1)[0].strip()
+            center = component_centers.get(component_part)
         if center:
             raw_x, raw_y, target = center
             item.update({
@@ -2773,7 +2777,7 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
                 "anchor_source": DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
             })
             certificate_anchors.append({
-                "numeral": numeral, "part": part,
+                "numeral": numeral, "part": component_part,
                 "raw_x": raw_x, "raw_y": raw_y,
                 "x": item["x"], "y": item["y"],
             })
