@@ -413,6 +413,16 @@ def test_section_designations_are_required_only_on_the_source_view_with_a_cuttin
     assert draft_figures.section_designations(resulting_view) == []
 
 
+def test_section_designations_accept_a_comma_between_line_and_repeated_mark():
+    source_view = (
+        "A first cutting-plane line, 5-5, crosses the first carriage. Both ends have viewing "
+        "arrows pointing left and the repeated designation 5 at each end. A second "
+        "cutting-plane line, 8-8, crosses the second carriage. Both ends have viewing arrows "
+        "pointing left and the repeated designation 8 at each end.")
+
+    assert draft_figures.section_designations(source_view) == ["5", "8"]
+
+
 def test_section_mark_consensus_requires_two_complete_coordinate_reviews():
     first = {
         "matches_spec": True, "summary": "line crosses the named carriage", "errors": [],

@@ -702,7 +702,7 @@ _FIGURE_ID_RE = re.compile(
 _SHEET_NUMBER_RE = re.compile(
     r"(?<![A-Za-z0-9])(\d{1,3})\s*/\s*(\d{1,3})(?![A-Za-z0-9])")
 _SECTION_DESIGNATION_RE = re.compile(
-    r"\bline\s+([0-9]{1,3}[A-Za-z]?)\s*[-\u2012-\u2015]\s*\1\b",
+    r"\bline\s*,?\s+([0-9]{1,3}[A-Za-z]?)\s*[-\u2012-\u2015]\s*\1\b",
     re.IGNORECASE)
 _SOURCE_CUTTING_PLANE_RE = re.compile(
     r"\b(?:cutting[- ]plane\s+lines?|section[- ]lines?|cutting\s+lines?)\b",
