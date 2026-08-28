@@ -7044,6 +7044,22 @@ def test_marked_endpoint_spec_contains_local_part_definitions_and_targets():
     assert "complete sheet" not in encoded and "identified at" in encoded
 
 
+def test_marked_endpoint_spec_prefers_points_to_target_over_later_cross_reference():
+    caption = (
+        "A fragmentary portion of the rail 10 lies on the workpiece. The numeral 10 points to "
+        "the upper face of the rail 10, well inside its outline. A transverse center index 24 "
+        "is a straight line segment on the rail 10. The numeral 24 and its leader are to the "
+        "left of the rail 10, and the leader points to the transverse center index.")
+
+    specification = json.loads(draft_figures._marked_endpoint_specification(
+        "FIG. 7", caption, ["10 = rail", "24 = transverse center index"]))
+    parts = {item["numeral"]: item for item in specification["parts"]}
+
+    assert parts["10"]["target"] == (
+        "The numeral 10 points to the upper face of the rail 10, well inside its outline.")
+    assert parts["24"]["target"].startswith("The numeral 24 and its leader")
+
+
 def test_marked_endpoint_spec_keeps_a_following_target_sentence_in_the_same_bullet():
     caption = (
         "- The vibration device 10 is the whole rectangular assembly. "

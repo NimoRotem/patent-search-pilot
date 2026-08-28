@@ -5654,7 +5654,8 @@ def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
                 if clean(chunk)]
 
     target_marker = re.compile(
-        r"\b(?:identif(?:ied|ies|ying)|endpoint|leader(?:\s+line)?(?:\s+ends?)?)\b",
+        r"\b(?:identif(?:ied|ies|ying)|endpoint|leader(?:\s+line)?(?:\s+ends?)?|"
+        r"point(?:s|ed|ing)?\s+to)\b",
         re.IGNORECASE)
     all_numerals = [entry["numeral"] for entry in entries]
     parts = []
