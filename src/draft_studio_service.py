@@ -995,9 +995,14 @@ def _continue_terminal_filing_repair(repository: Any, claimed: Mapping[str, Any]
     # A graceful worker restart terminates its drafting or review subprocess with SIGTERM. The
     # shell reports that signal as exit code 143. Treat that like a provider disconnect only when
     # a complete candidate was checkpointed, so a deployment cannot strand filing-ready work.
+    # A resumed provider session can disappear while that same graceful stop is propagating. The
+    # candidate check below is still mandatory, so this cannot manufacture a continuation from an
+    # incomplete drafting response.
+    lost_resume_session = "No conversation found with session ID:" in str(error)
     interrupted_run = bool(
         draft_agent._transient_provider_error(error) or
-        re.search(r"\bexit code (?:130|143)\b", str(error), re.IGNORECASE))
+        re.search(r"\bexit code (?:130|143)\b", str(error), re.IGNORECASE) or
+        lost_resume_session)
     # The independent reviewer is fail-closed: this exception means no source verdict was
     # accepted, not that the candidate failed source fidelity. Its formatting, timeout, or
     # availability problem can only be repaired by rerunning the mandatory review. No user input
