@@ -1770,7 +1770,9 @@ _SOURCE_DRAWING_RELATIONSHIP_OMISSION_RE = re.compile(
     re.IGNORECASE,
 )
 _SOURCE_FIX_ADDS_TECHNICAL_RELATION_RE = re.compile(
-    r"\b(?:add|draw|depict|insert|show|connect)\b[^.\n]{0,180}\b"
+    r"\b(?:add|draw|depict|insert|show|connect)\b[^.\n]{0,180}"
+    r"(?:[ \t]*\r?\n){0,3}[ \t]*(?:[-*][ \t]*)?"
+    r"(?:an?[ \t]+)?"
     r"(?:line|arrow|connection|transition|route|path|coupling|flow)\b",
     re.IGNORECASE,
 )
