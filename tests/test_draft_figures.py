@@ -4815,6 +4815,37 @@ def test_flat_edge_controller_template_terminates_ports_on_requested_boundaries(
     assert constraints["controller_boundary_ports"]["ok"] is True
 
 
+def test_flat_edge_controller_template_understands_from_to_boundary_paths():
+    specification = """
+    A flat block diagram of the edge controller. One large rectangle, the edge controller,
+    occupies the left and central portion of the drawing area. Three smaller empty rectangles
+    lie inside it: a network interface in the upper region, a service input in the left region,
+    and a nonvolatile memory in the lower region. A local fault indicator stands outside the
+    large rectangle. A straight solid vertical line runs from the top side of the network
+    interface to the upper boundary of the edge controller. A straight solid horizontal line
+    runs from the left side of the service input to the left boundary of the edge controller.
+    Both lines terminate on the named boundaries and do not cross them. Two short solid lines
+    extend downward from the lower side of the large rectangle, spaced well apart.
+    """
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+
+    assert png is not None
+    with Image.open(io.BytesIO(png)).convert("L") as image:
+        assert image.getpixel((660, 120)) < 64
+        assert image.getpixel((660, 90)) > 240
+        assert image.getpixel((250, 410)) < 64
+        assert image.getpixel((210, 410)) > 240
+        assert image.getpixel((520, 250)) > 240
+        assert image.getpixel((420, 330)) > 240
+
+    constraints = draft_figures._deterministic_geometry_certificate(
+        png, specification)["certified_constraints"]
+    assert constraints["controller_network_interface_path"]["direction"] == "up"
+    assert constraints["controller_service_input_path"]["direction"] == "left"
+    assert all(item["ok"] is True for item in constraints.values())
+
+
 def _flat_allocation_flow_specification():
     return """
     A flat process flow diagram in plain black line work on white. Eight empty shapes with blank
@@ -4828,6 +4859,55 @@ def _flat_allocation_flow_specification():
     leaves the right side of the bottom rectangle, runs right, rises clear of the terminator and
     column, then runs left into the right side of the topmost rectangle.
     """
+
+
+def _split_allocation_flow_first_specification():
+    return """
+    A flat process flow diagram in plain black line work on white. A column of five empty shapes
+    with blank interiors is arranged vertically in the center. The first, second, third, and
+    fourth shapes from the top are rectangles. The fifth shape from the top is a diamond. A
+    vertical solid line with an arrowhead at its lower end joins each shape to the one below it.
+    A left return path leaves the left vertex of the fifth shape, runs left, rises alongside the
+    column, and runs right into the left side of the topmost rectangle. From the lower vertex of
+    the fifth shape, a line with an arrowhead points downward to a small empty circle. The circle
+    contains the capital letter 'A' and indicates continuation of the process in FIG. 5.
+    """
+
+
+def _split_allocation_flow_second_specification():
+    return """
+    A flat process flow diagram continues from FIG. 4, starting with a small empty circle labeled
+    'A' at the top center. A column of five empty shapes with blank interiors stands below it.
+    The first shape is a rectangle. The second shape is a diamond. The third shape is a
+    rectangle. The fourth shape is a diamond. The fifth and bottommost shape is a rectangle. A
+    vertical solid line with an arrowhead at its lower end joins the connector to the first shape
+    and each shape to the one below. A line leaves the left vertex of the second shape and runs
+    left. A short horizontal line leaves the right vertex of the fourth shape, runs right, and
+    ends in an arrowhead at a small solid square terminator. A right return path starts at the
+    right side of the bottom rectangle, runs right, rises clear of the column, and turns left.
+    """
+
+
+def test_split_allocation_flow_templates_certify_connector_and_every_route():
+    first = draft_figures._deterministic_control_diagram_png(
+        _split_allocation_flow_first_specification())
+    second = draft_figures._deterministic_control_diagram_png(
+        _split_allocation_flow_second_specification())
+
+    assert first is not None and second is not None
+    for png, specification, renderer in (
+        (first, _split_allocation_flow_first_specification(), "allocation_flow_split_first"),
+        (second, _split_allocation_flow_second_specification(), "allocation_flow_split_second"),
+    ):
+        certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+        assert certificate["ok"] is True and certificate["renderer"] == renderer
+        constraints = certificate["certified_constraints"]
+        assert constraints["allocation_flow_shape_sequence"]["ok"] is True
+        assert constraints["allocation_flow_vertical_connections"]["ok"] is True
+        assert constraints["allocation_flow_connector"]["ok"] is True
+        assert all(
+            item.get("required") is False or item.get("ok") is True
+            for item in constraints.values())
 
 
 def test_flat_allocation_flow_template_certifies_shape_order_and_every_route():
@@ -4894,6 +4974,52 @@ def test_exact_allocation_flow_resolves_unassignable_blank_step_shapes(monkeypat
     tampered["reviewer_missing"] = ["999"]
     assert draft_figures.current_cross_provider_geometry_audit(
         tampered, specification_hash=spec_hash) is False
+
+
+def test_exact_split_flow_resolves_only_certified_step_and_connector_dissent(monkeypatch):
+    specification = _split_allocation_flow_first_specification()
+    numerals = [
+        "202 = available current determination step",
+        "204 = sustaining and deficit assignment step",
+        "206 = pilot command step", "208 = connector verification step",
+        "209 = branch overcurrent detection step",
+    ]
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    spec_hash = draft_figures.specification_hash("FIG. 4", specification, numerals)
+    missing = ["202", "204", "206", "208", "209"]
+    dissent = accepted_cross_provider_geometry_audit(
+        ok=False, specification_hash=spec_hash, missing=missing,
+        missing_geometry=[
+            "The continuation connector circle is missing the capital letter A."],
+        summary="The blank shapes and continuation connector could not be assigned.",
+    )
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k: dissent)
+    semantic = {
+        "ok": True, "inspected": True, "errors": [], "missing": [], "unexpected": [],
+        "duplicates": [], "unexpected_text": [],
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "expected": missing, "visible": missing,
+        "anchors": [
+            {"numeral": value, "x": 500, "y": 500, "visible": True,
+             "evidence": "The requested flow shape is visible in its specified slot."}
+            for value in missing
+        ],
+        "specification_hash": spec_hash,
+    }
+
+    audited = draft_figures._apply_cross_provider_geometry_gate(
+        semantic, png, label="FIG. 4", caption=specification, numerals=numerals)
+
+    cross = audited["cross_provider_geometry_audit"]
+    assert audited["ok"] is True and cross["ok"] is True
+    assert cross["missing"] == [] and cross["missing_geometry"] == []
+    assert cross["consensus_resolution"]["certified_dissent_categories"] == [
+        "allocation_flow_connector", "allocation_flow_shape_sequence"]
+    assert draft_figures.current_cross_provider_geometry_audit(
+        cross, specification_hash=spec_hash) is True
 
 
 def test_flat_edge_controller_exact_paths_classify_visual_dissent():
