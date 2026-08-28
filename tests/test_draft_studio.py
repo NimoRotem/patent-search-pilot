@@ -4597,6 +4597,7 @@ def test_terminal_filing_gate_failure_continues_from_saved_candidate_without_use
 
 @pytest.mark.parametrize("error", [
     "StudioError: API Error: Connection lost mid-response. The response may be incomplete.",
+    "StudioError: No conversation found with session ID: stopped-review-session",
     "SourceReviewUnavailable: The drafting agent produced no result (exit code 143).",
     "SourceReviewUnavailable: Failed to provide valid structured output after 5 attempts",
     ("FigureTransientError: Cross-provider geometry inspection failed: Anthropic geometry "
