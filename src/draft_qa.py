@@ -1483,6 +1483,10 @@ WHAT TO CHECK, in this order of importance:
    when the brief expressly calls it schematic, the claims and description stay neutral about its
    form and placement, and the pixels add no technical function or relationship.
 
+   An off-sheet connection line is not the remote component to which it leads. Do not demand that
+   such a line carry the remote component's numeral unless the figure expressly depicts that
+   component. A leader ending on the connection line would label the line as the remote part.
+
    Read review/figure-audit-evidence.json before reporting a visual defect. It binds the exact
    rendered image hash to prior OCR, independent geometry, deterministic pixel-map, leader, and
    native-pixel endpoint checks. It is audit evidence only, never inventor support. If your visual
@@ -1730,8 +1734,8 @@ _SOURCE_DRAWING_OMISSION_RE = re.compile(
     re.IGNORECASE,
 )
 _SOURCE_DRAWING_RELATIONSHIP_OMISSION_RE = re.compile(
-    r"\b(?:incomplete|disconnected|isolated|separate)\s+"
-    r"(?:process\s+)?(?:flow|path|branch|subprocess)\b|"
+    r"\b(?:incomplete|disconnected|unconnected|isolated|separate)\s+"
+    r"(?:process\s+)?(?:flows?|paths?|branches?|subprocess(?:es)?)\b|"
     r"\b(?:no|without)\s+(?:defined\s+)?(?:entry\s+point|connecting\s+line|connection|"
     r"transition|route|arrow)\b|"
     r"\b(?:omits?|missing|lacks?)\b[^.\n]{0,100}\b"
@@ -2029,12 +2033,20 @@ def review(workspace: Path, *, checks: Sequence[Mapping[str, Any]],
                 "tokens": dict(run.tokens or {}), "model": run.model,
                 "steps": run.steps, "cancelled": bool(run.cancelled)}
     findings = normalize_findings(run.result.get("findings"))
-    findings, reconciled = reconcile_exact_section_hatch_findings(workspace, findings)
+    findings, hatch_reconciled = reconcile_exact_section_hatch_findings(workspace, findings)
+    findings, offsheet_reconciled = reconcile_offsheet_connection_label_findings(
+        workspace, findings)
+    findings, omission_reconciled = reconcile_source_drawing_omission_findings(findings)
+    reconciled = [*hatch_reconciled, *offsheet_reconciled, *omission_reconciled]
     summary = str(run.result.get("summary") or "")[:8000]
     if reconciled and not findings:
         summary = (
             "Independent review completed with no unresolved findings after exact-image "
-            "reconciliation.")
+            "reconciliation."
+            if hatch_reconciled and len(reconciled) == len(hatch_reconciled) else
+            "Independent review completed with no unresolved findings after deterministic "
+            "source and figure reconciliation."
+        )
     return {"ok": True, "error": "", "summary": summary,
             "findings": findings, "reconciled_findings": reconciled,
             "cost_usd": run.cost_usd, "duration_ms": run.duration_ms,
@@ -2111,6 +2123,75 @@ def reconcile_exact_section_hatch_findings(
             "certified_hatch_components": [dict(item) for item in components],
         })
         reconciled.append(resolved)
+    return kept, reconciled
+
+
+_OFFSHEET_CONNECTION_LABEL_OMISSION_RE = re.compile(
+    r"\b(?:omit|missing|lack|unlabel|not\s+label)\w*\b[^.\n]{0,180}"
+    r"\b(?:label|numeral|reference\s+numeral)\w*\b|"
+    r"\b(?:label|numeral|reference\s+numeral)\w*\b[^.\n]{0,180}"
+    r"\b(?:omit|missing|lack|unlabel)\w*\b",
+    re.IGNORECASE,
+)
+_OFFSHEET_CONNECTION_LABEL_FIX_RE = re.compile(
+    r"\b(?:add|place)\b[^.\n]{0,260}\b(?:leader|numeral|label)\w*\b"
+    r"[^.\n]{0,260}\bconnection\s+lines?\b",
+    re.IGNORECASE,
+)
+
+
+def reconcile_offsheet_connection_label_findings(
+        workspace: Path, findings: Sequence[Mapping[str, Any]],
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Do not assign a remote component's numeral to its off-sheet connection line."""
+    ledger = {
+        str(item.get("numeral") or ""): str(item.get("part") or "").strip()
+        for item in draft_workspace.read_numerals(workspace)
+    }
+    kept: list[dict[str, Any]] = []
+    reconciled: list[dict[str, Any]] = []
+    for original in findings:
+        finding = dict(original)
+        combined = " ".join(str(finding.get(key) or "") for key in (
+            "title", "where", "detail", "evidence"))
+        fix = str(finding.get("fix") or "")
+        figure = figure_number(combined)
+        requested = set(re.findall(r"\((\d{2,4})\)", fix))
+        brief_path = Path(workspace) / "figures" / f"FIG-{figure}.md"
+        try:
+            brief = brief_path.read_text(encoding="utf-8")
+        except OSError:
+            brief = ""
+        marker = "## Numerals shown on this figure"
+        shown_text = brief.split(marker, 1)[1] if marker in brief else ""
+        shown = set(re.findall(r"(?m)^\s*-\s*(\d{1,4})\b", shown_text))
+        remote_parts_supported = bool(requested and requested.isdisjoint(shown))
+        for numeral in requested:
+            tokens = re.findall(r"[a-z0-9]+", ledger.get(numeral, "").lower())
+            if not tokens:
+                remote_parts_supported = False
+                break
+            part_pattern = r"[-\s]+".join(re.escape(token) for token in tokens)
+            if not re.search(
+                    r"\bconnection\s+to\s+(?:the\s+)?" + part_pattern + r"\b",
+                    brief, re.IGNORECASE):
+                remote_parts_supported = False
+                break
+        exact_case = bool(
+            str(finding.get("category") or "") == "figures_and_numerals" and
+            figure and "connection" in combined.lower() and
+            _OFFSHEET_CONNECTION_LABEL_OMISSION_RE.search(combined) and
+            _OFFSHEET_CONNECTION_LABEL_FIX_RE.search(fix) and
+            remote_parts_supported)
+        if not exact_case:
+            kept.append(finding)
+            continue
+        finding["reconciliation"] = (
+            "The figure brief shows an offsheet connection to each named component, not the "
+            "remote component itself. Adding the remote part's numeral to that line would "
+            "misidentify the connection line as the numbered part."
+        )
+        reconciled.append(finding)
     return kept, reconciled
 
 
