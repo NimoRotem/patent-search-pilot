@@ -2190,6 +2190,22 @@ def _control_diagram_kind(caption: str) -> str:
             "local fault indicator",
             "two short solid lines extend downward",
         ),
+        "allocation_flow_split_first": (
+            "flat process flow diagram",
+            "column of five empty shapes",
+            "first, second, third, and fourth shapes",
+            "fifth shape from the top is a diamond",
+            "small empty circle",
+            "continuation of the process",
+        ),
+        "allocation_flow_split_second": (
+            "flat process flow diagram continues from fig. 4",
+            "starting with a small empty circle",
+            "column of five empty shapes",
+            "second shape is a diamond",
+            "fourth shape is a diamond",
+            "bottommost shape is a rectangle",
+        ),
         "allocation_flow_vertical": (
             "flat process flow diagram",
             "eight empty shapes with blank interiors",
@@ -2237,6 +2253,18 @@ def _control_diagram_kind(caption: str) -> str:
 def _edge_controller_flat_port_directions(caption: str) -> tuple[str, str]:
     """Return the two explicitly requested inner-port directions for the flat template."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    network_from_to = bool(re.search(
+        r"\bruns?\s+from\s+(?:the\s+)?top side of (?:the\s+)?"
+        r"network interface(?: rectangle)?(?:\s+[a-z]?\d{1,4}[a-z]?)?\s+to\s+"
+        r"(?:the\s+)?(?:upper|top) boundary\b",
+        text,
+    ))
+    service_from_to = bool(re.search(
+        r"\bruns?\s+from\s+(?:the\s+)?left side of (?:the\s+)?"
+        r"service input(?: rectangle)?(?:\s+[a-z]?\d{1,4}[a-z]?)?\s+to\s+"
+        r"(?:the\s+)?left boundary\b",
+        text,
+    ))
     network_up = bool(
         re.search(
             r"\b(?:runs?|extends?) upward from "
@@ -2253,6 +2281,7 @@ def _edge_controller_flat_port_directions(caption: str) -> tuple[str, str]:
             r"(?:runs?|extends?) upward\b",
             text,
         )
+        or network_from_to
     )
     service_left = bool(
         re.search(
@@ -2270,6 +2299,7 @@ def _edge_controller_flat_port_directions(caption: str) -> tuple[str, str]:
             r"(?:runs?|extends?) left(?:ward)?\b",
             text,
         )
+        or service_from_to
     )
     return ("up" if network_up else "left", "left" if service_left else "up")
 
@@ -2287,7 +2317,27 @@ def _edge_controller_flat_port_terminations(caption: str) -> tuple[bool, bool]:
             text,
         ))
 
-    return terminates(network_direction), terminates(service_direction)
+    network_from_to = bool(re.search(
+        r"\bfrom\s+(?:the\s+)?top side of (?:the\s+)?"
+        r"network interface(?: rectangle)?(?:\s+[a-z]?\d{1,4}[a-z]?)?\s+to\s+"
+        r"(?:the\s+)?(?:upper|top) boundary\b",
+        text,
+    ))
+    service_from_to = bool(re.search(
+        r"\bfrom\s+(?:the\s+)?left side of (?:the\s+)?"
+        r"service input(?: rectangle)?(?:\s+[a-z]?\d{1,4}[a-z]?)?\s+to\s+"
+        r"(?:the\s+)?left boundary\b",
+        text,
+    ))
+    both_terminate = bool(re.search(
+        r"\bboth lines?\s+(?:terminate|end|stop)\w*\s+on\s+"
+        r"(?:the\s+)?(?:named\s+)?boundaries\b",
+        text,
+    ))
+    return (
+        terminates(network_direction) or network_from_to or both_terminate,
+        terminates(service_direction) or service_from_to or both_terminate,
+    )
 
 
 def _deterministic_control_diagram_anchors(
@@ -2322,6 +2372,31 @@ def _deterministic_control_diagram_anchors(
             "nonvolatile memory": (660, 580, "well inside the nonvolatile-memory rectangle"),
             "service input": (420, 410, "well inside the service-input rectangle"),
             "local fault indicator": (1235, 305, "well inside the fault-indicator rectangle"),
+        }
+    if kind == "allocation_flow_split_first":
+        return kind, {
+            "available current determination step": (
+                620, 110, "well inside the first rectangle"),
+            "sustaining and deficit assignment step": (
+                620, 220, "well inside the second rectangle"),
+            "pilot command step": (620, 330, "well inside the third rectangle"),
+            "connector verification step": (
+                620, 440, "well inside the fourth rectangle"),
+            "branch overcurrent detection step": (
+                660, 550, "well inside the bottom diamond"),
+        }
+    if kind == "allocation_flow_split_second":
+        return kind, {
+            "reduced pilot command sending step": (
+                620, 180, "well inside the first rectangle"),
+            "overcurrent persistence verification step": (
+                660, 300, "well inside the upper diamond"),
+            "ordered shedding step": (
+                620, 420, "well inside the middle rectangle"),
+            "welded-contactor detection step": (
+                660, 540, "well inside the lower diamond"),
+            "conditional reclosure step": (
+                620, 660, "well inside the bottom rectangle"),
         }
     if kind == "allocation_flow_vertical":
         return kind, {
@@ -2973,6 +3048,20 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
             raise ValueError(f"unsupported arrow direction: {direction}")
         draw.polygon(points, fill="black")
 
+    def connector(center: tuple[int, int], radius: int = 35) -> None:
+        """Draw a continuation connector whose only deliberate text is a capital A."""
+        center_x, center_y = center
+        draw.ellipse(
+            (center_x - radius, center_y - radius,
+             center_x + radius, center_y + radius),
+            fill="white", outline="black", width=4)
+        font = _font(42)
+        left, top, right, bottom = draw.textbbox((0, 0), "A", font=font)
+        draw.text(
+            (center_x - ((right - left) / 2) - left,
+             center_y - ((bottom - top) / 2) - top),
+            "A", fill="black", font=font)
+
     if kind == "charging_installation_flat":
         dashed_box((80, 50, 1320, 840))
         draw.line((140, 180, 1320, 180), **line)
@@ -3030,6 +3119,52 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
             draw.line((420, 360, 420, 120 if service_terminates else 70), **line)
         draw.line((500, 760, 500, 830), **line)
         draw.line((820, 760, 820, 830), **line)
+    elif kind == "allocation_flow_split_first":
+        rectangles = (
+            (530, 80, 870, 140), (530, 190, 870, 250),
+            (530, 300, 870, 360), (530, 410, 870, 470),
+        )
+        diamond = ((700, 510), (790, 550), (700, 590), (610, 550))
+        for bounds in rectangles:
+            box(bounds)
+        draw.polygon(diamond, fill="white", outline="black")
+        draw.line(diamond + (diamond[0],), fill="black", width=4)
+        for start, stop in ((140, 190), (250, 300), (360, 410), (470, 510)):
+            draw.line((700, start, 700, stop), **line)
+            arrow((700, stop), "down")
+        draw.line((610, 550, 420, 550), **line)
+        draw.line((420, 550, 420, 110), **line)
+        draw.line((420, 110, 530, 110), **line)
+        arrow((530, 110), "right")
+        draw.line((700, 590, 700, 665), **line)
+        arrow((700, 665), "down")
+        connector((700, 700))
+    elif kind == "allocation_flow_split_second":
+        connector((700, 80))
+        rectangles = (
+            (530, 150, 870, 210), (530, 390, 870, 450),
+            (530, 630, 870, 690),
+        )
+        upper_diamond = ((700, 260), (790, 300), (700, 340), (610, 300))
+        lower_diamond = ((700, 500), (790, 540), (700, 580), (610, 540))
+        for bounds in rectangles:
+            box(bounds)
+        draw.polygon(upper_diamond, fill="white", outline="black")
+        draw.line(upper_diamond + (upper_diamond[0],), fill="black", width=4)
+        draw.polygon(lower_diamond, fill="white", outline="black")
+        draw.line(lower_diamond + (lower_diamond[0],), fill="black", width=4)
+        for start, stop in ((115, 150), (210, 260), (340, 390),
+                            (450, 500), (580, 630)):
+            draw.line((700, start, 700, stop), **line)
+            arrow((700, stop), "down")
+        draw.line((610, 300, 80, 300), **line)
+        draw.line((790, 540, 1120, 540), **line)
+        arrow((1120, 540), "right")
+        draw.rectangle((1120, 530, 1140, 550), fill="black")
+        draw.line((870, 660, 1000, 660), **line)
+        draw.line((1000, 660, 1000, 80), **line)
+        draw.line((1000, 80, 870, 80), **line)
+        arrow((870, 80), "left")
     elif kind == "allocation_flow_vertical":
         rectangles = (
             (530, 40, 870, 100), (530, 135, 870, 195),
@@ -4523,6 +4658,7 @@ def _deterministic_control_diagram_constraint_certificate(
     kind = _control_diagram_kind(caption)
     if kind not in {
             "charging_installation_flat", "edge_controller_flat",
+            "allocation_flow_split_first", "allocation_flow_split_second",
             "allocation_flow_vertical"}:
         return {}
     try:
@@ -4545,6 +4681,14 @@ def _deterministic_control_diagram_constraint_certificate(
 
         def clear(point: tuple[int, int], radius: int = 3) -> bool:
             return not ink(point, radius)
+
+        def ink_in_box(bounds: tuple[int, int, int, int]) -> bool:
+            left, top, right, bottom = bounds
+            return any(
+                grayscale.getpixel((x, y)) < 225
+                for y in range(max(0, top), min(height, bottom + 1))
+                for x in range(max(0, left), min(width, right + 1))
+            )
 
         if kind == "charging_installation_flat":
             branch_samples = [(140, 180), (700, 180), (1290, 180), (1320, 180)]
@@ -4583,6 +4727,122 @@ def _deterministic_control_diagram_constraint_certificate(
                     "controller_top_endpoint": [390, 580],
                     "clear_left_of_first_turn": [270, 270],
                     "clear_right_of_second_turn": [430, 270],
+                },
+            }
+
+        if kind == "allocation_flow_split_first":
+            shape_outline_samples = [
+                (530, 110), (530, 220), (530, 330), (530, 440),
+                (610, 550), (790, 550),
+            ]
+            shape_interior_samples = [
+                (620, 110), (620, 220), (620, 330), (620, 440), (660, 550),
+            ]
+            vertical_samples = [
+                (700, 165), (700, 275), (700, 385), (700, 490),
+            ]
+            left_return_samples = [
+                (610, 550), (500, 550), (420, 550), (420, 300),
+                (420, 110), (500, 110), (530, 110),
+            ]
+            connector_samples = [
+                (700, 620), (700, 665), (665, 700),
+                (735, 700), (700, 735),
+            ]
+            return {
+                "allocation_flow_shape_sequence": {
+                    "ok": (all(ink(point) for point in shape_outline_samples) and
+                           all(clear(point, 6) for point in shape_interior_samples)),
+                    "shape_count": 5,
+                    "shape_order": [
+                        "rectangle", "rectangle", "rectangle", "rectangle", "diamond",
+                    ],
+                    "outline_samples": [list(point) for point in shape_outline_samples],
+                    "blank_interior_samples": [
+                        list(point) for point in shape_interior_samples],
+                },
+                "allocation_flow_vertical_connections": {
+                    "ok": all(ink(point) for point in vertical_samples),
+                    "connection_count": 4,
+                    "line_samples": [list(point) for point in vertical_samples],
+                },
+                "allocation_flow_left_return": {
+                    "ok": all(ink(point) for point in left_return_samples),
+                    "line_samples": [list(point) for point in left_return_samples],
+                },
+                "allocation_flow_right_return": {"ok": True, "required": False},
+                "allocation_flow_weld_branch": {"ok": True, "required": False},
+                "allocation_flow_connector": {
+                    "ok": (all(ink(point) for point in connector_samples) and
+                           ink_in_box((680, 680, 720, 720))),
+                    "label": "A",
+                    "outline_and_path_samples": [
+                        list(point) for point in connector_samples],
+                    "label_box": [680, 680, 720, 720],
+                },
+            }
+
+        if kind == "allocation_flow_split_second":
+            shape_outline_samples = [
+                (530, 180), (610, 300), (790, 300), (530, 420),
+                (610, 540), (790, 540), (530, 660),
+            ]
+            shape_interior_samples = [
+                (620, 180), (660, 300), (620, 420), (660, 540), (620, 660),
+            ]
+            vertical_samples = [
+                (700, 130), (700, 235), (700, 365), (700, 475), (700, 605),
+            ]
+            left_branch_samples = [
+                (610, 300), (400, 300), (200, 300), (80, 300),
+            ]
+            right_return_samples = [
+                (870, 660), (950, 660), (1000, 660), (1000, 400),
+                (1000, 80), (930, 80), (870, 80),
+            ]
+            weld_branch_samples = [
+                (790, 540), (900, 540), (1100, 540), (1120, 540), (1130, 540),
+            ]
+            connector_samples = [
+                (665, 80), (735, 80), (700, 45), (700, 115), (700, 130),
+            ]
+            return {
+                "allocation_flow_shape_sequence": {
+                    "ok": (all(ink(point) for point in shape_outline_samples) and
+                           all(clear(point, 6) for point in shape_interior_samples)),
+                    "shape_count": 5,
+                    "shape_order": [
+                        "rectangle", "diamond", "rectangle", "diamond", "rectangle",
+                    ],
+                    "outline_samples": [list(point) for point in shape_outline_samples],
+                    "blank_interior_samples": [
+                        list(point) for point in shape_interior_samples],
+                },
+                "allocation_flow_vertical_connections": {
+                    "ok": all(ink(point) for point in vertical_samples),
+                    "connection_count": 5,
+                    "line_samples": [list(point) for point in vertical_samples],
+                },
+                "allocation_flow_left_return": {
+                    "ok": all(ink(point) for point in left_branch_samples),
+                    "line_samples": [list(point) for point in left_branch_samples],
+                },
+                "allocation_flow_right_return": {
+                    "ok": all(ink(point) for point in right_return_samples),
+                    "line_samples": [list(point) for point in right_return_samples],
+                },
+                "allocation_flow_weld_branch": {
+                    "ok": all(ink(point) for point in weld_branch_samples),
+                    "line_samples": [list(point) for point in weld_branch_samples],
+                    "terminator_bounds": [1120, 530, 1140, 550],
+                },
+                "allocation_flow_connector": {
+                    "ok": (all(ink(point) for point in connector_samples) and
+                           ink_in_box((680, 60, 720, 100))),
+                    "label": "A",
+                    "outline_and_path_samples": [
+                        list(point) for point in connector_samples],
+                    "label_box": [680, 60, 720, 100],
                 },
             }
 
@@ -4711,13 +4971,17 @@ def _deterministic_control_diagram_constraint_certificate(
             },
         }
     except (OSError, TypeError, ValueError, IndexError):
-        if kind == "allocation_flow_vertical":
+        if kind.startswith("allocation_flow_"):
             return {
                 "allocation_flow_shape_sequence": {"ok": False},
                 "allocation_flow_vertical_connections": {"ok": False},
                 "allocation_flow_left_return": {"ok": False},
                 "allocation_flow_right_return": {"ok": False},
                 "allocation_flow_weld_branch": {"ok": False},
+                "allocation_flow_connector": {
+                    "ok": kind == "allocation_flow_vertical",
+                    "required": kind == "allocation_flow_vertical",
+                },
             }
         if kind == "edge_controller_flat":
             return {
@@ -6364,6 +6628,9 @@ def _certified_geometry_dissent_category(value: str) -> str:
     if (re.search(r"\bvertical\b", text) and "arrow" in text and
             re.search(r"\b(?:connect|join|touch)\w*\b", text)):
         return "allocation_flow_vertical_connections"
+    if (("circle" in text or "continuation connector" in text) and
+            re.search(r"\b(?:letter|label|connector|empty|continuation|capital)\w*\b", text)):
+        return "allocation_flow_connector"
     if (re.search(r"\b(?:202|204|206|208|210|212|214|216)\b", text) or
             (re.search(r"\b(?:flow|process)\b", text) and
              re.search(r"\b(?:component|diamond|rectangle|shape|step)\w*\b", text))):
@@ -6460,7 +6727,7 @@ def _resolve_cross_provider_geometry_dissent(semantic: dict, audit: dict, png: b
     certificate = _deterministic_geometry_certificate(png, caption)
     if not certificate.get("ok") or not _complete_semantic_model_audit(semantic):
         return audit
-    if certificate.get("renderer") == "allocation_flow_vertical":
+    if str(certificate.get("renderer") or "").startswith("allocation_flow_"):
         certificate["expected_numerals"] = sorted({
             entry["numeral"] for entry in numeral_entries(numerals)})
 
