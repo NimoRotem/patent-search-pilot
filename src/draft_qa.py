@@ -185,6 +185,7 @@ _REFERENCE_LEADER_ARROWHEAD_RE = re.compile(
     r"\b(?:end(?:s|ed|ing)?|terminat(?:e|es|ed|ing))\b[^.\n]{0,80}"
     r"(?:\b(?:in|with|at)\b\s*)?(?:an?\s+)?arrowhead\b",
     re.IGNORECASE)
+_GROUPING_SHAPE_RE = re.compile(r"\b(?:square\s+bracket|rectangle)\b", re.IGNORECASE)
 _LEGACY_FIGURE_LABEL_LIMIT = 60
 #  The phrase is captured in a LOOKAHEAD so the scan consumes only the article.  Consuming the
 #  noun phrase as well was a real defect: in "a tool comprising a body, a pump", the first match
@@ -722,6 +723,32 @@ def _figure_checks(sections: Mapping[str, str],
                 f"{arrowhead_target.group(0)[:180]!r}; every numeral leader must end in a "
                 "terminal dot on the named feature, while arrowheads are reserved for view, "
                 "section, motion, or flow direction")
+        for entry in figure.get("numerals") or ():
+            numeral = _drawing_numeral(entry)
+            if not numeral or ":" not in str(entry):
+                continue
+            anchor_text = str(entry).split(":", 1)[1]
+            anchor_shapes = {
+                re.sub(r"\s+", " ", match.group(0).lower())
+                for match in _GROUPING_SHAPE_RE.finditer(anchor_text)
+            }
+            caption_shapes = set()
+            numeral_pattern = re.compile(rf"\b{re.escape(numeral)}\b", re.IGNORECASE)
+            for sentence in re.split(r"(?<=[.!?])\s+|\n+", caption):
+                for numeral_match in numeral_pattern.finditer(sentence):
+                    prefix = sentence[max(0, numeral_match.start() - 180):numeral_match.start()]
+                    shapes = list(_GROUPING_SHAPE_RE.finditer(prefix))
+                    if shapes:
+                        caption_shapes.add(re.sub(
+                            r"\s+", " ", shapes[-1].group(0).lower()))
+            if (len(anchor_shapes) == 1 and len(caption_shapes) == 1 and
+                    anchor_shapes != caption_shapes):
+                caption_shape = next(iter(caption_shapes))
+                anchor_shape = next(iter(anchor_shapes))
+                brief_issues.append(
+                    f"{label}: numeral {numeral} declares a {caption_shape} in the caption "
+                    f"but its leader target declares a {anchor_shape}; use one depicted "
+                    "grouping shape consistently")
     if brief_issues:
         out.append(_check(
             "Drawing briefs are concise and renderable", "fail",
