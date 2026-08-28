@@ -5483,6 +5483,58 @@ def test_separate_sequence_flow_resolves_only_certified_bracket_dissent(monkeypa
     assert audited["cross_provider_geometry_audit"]["ok"] is True
 
 
+def test_separate_sequence_flow_resolves_context_dropped_shape_dissent(monkeypatch):
+    specification = _separate_sequence_branch_current_safety_flow_specification()
+    numerals = [
+        "300 = branch current safety process", "302 = branch current check step",
+        "304 = shedding step", "306 = welded contactor check step",
+        "308 = fault indication step",
+    ]
+    expected = [value.split(" = ", 1)[0] for value in numerals]
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    spec_hash = draft_figures.specification_hash("FIG. 5", specification, numerals)
+    dissent = accepted_cross_provider_geometry_audit(
+        ok=False, specification_hash=spec_hash,
+        errors=[
+            "The 'branch current check step' diamond is at the top-left, not the top center.",
+            "An unexpected small rectangular shape is connected to the branch current check "
+            "step diamond.",
+        ],
+        unexpected=[
+            "Small rectangular shape.: A small rectangular shape is visible at the top-right, "
+            "connected to the top-left diamond.",
+        ],
+        summary="A fifth rectangular shape appears beside the top-left diamond.",
+    )
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k: dissent)
+    semantic = {
+        "ok": False, "inspected": True,
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "expected": expected, "visible": expected,
+        "missing": [], "unexpected": [], "duplicates": [], "unexpected_text": [],
+        "errors": ["An extra rectangular shape appears in the self loop."],
+        "anchors": [
+            {"numeral": numeral, "x": 100 + (index * 100), "y": 500,
+             "visible": True, "evidence": "The named geometry is visible."}
+            for index, numeral in enumerate(expected)
+        ],
+        "specification_hash": spec_hash,
+    }
+
+    audited = draft_figures._resolve_deterministic_semantic_dissent(
+        semantic, png, label="FIG. 5", caption=specification, numerals=numerals)
+
+    assert audited["ok"] is True and audited["errors"] == []
+    cross = audited["cross_provider_geometry_audit"]
+    assert cross["ok"] is True and cross["reviewer_ok"] is False
+    assert cross["consensus_resolution"]["certified_dissent_categories"] == [
+        "branch_safety_shape_sequence"
+    ]
+
+
 def test_exact_branch_current_flow_resolves_only_certified_route_dissent(monkeypatch):
     specification = _branch_current_safety_flow_specification()
     numerals = [
@@ -5581,6 +5633,11 @@ def test_exact_branch_current_flow_resolves_only_certified_route_dissent(monkeyp
         "The line from the left vertex of the welded contactor check step misses the top of the "
         "reclosure check step.",
         "branch_safety_reclosure_path",
+    ),
+    (
+        "Small rectangular shape.: A small rectangular shape is visible at the top-right, "
+        "connected to the top-left diamond.",
+        "branch_safety_shape_sequence",
     ),
 ])
 def test_branch_current_flow_dissent_categories_are_constraint_specific(finding, category):

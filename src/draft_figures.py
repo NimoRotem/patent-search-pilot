@@ -7361,6 +7361,9 @@ def _certified_geometry_dissent_category(value: str) -> str:
     if ("reclosure" in text and
             re.search(r"\b(?:no|without|outgoing|leave|leaves|terminal|extra)\b", text)):
         return "branch_safety_reclosure_terminal"
+    if ("small rectangular shape" in text and
+            re.search(r"\btop[- ]left diamond\b", text)):
+        return "branch_safety_shape_sequence"
     if ("branch current" in text and
             re.search(r"\b(?:component|diamond|rectangle|shape|step|sequence)\w*\b", text)):
         return "branch_safety_shape_sequence"
