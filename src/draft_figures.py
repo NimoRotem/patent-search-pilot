@@ -6091,6 +6091,8 @@ def _certified_geometry_dissent_category(value: str) -> str:
          re.search(r"\b(?:line|segment|start|end|span|extend|connect|join|below|vertical|"
                    r"horizontal|left|right|point)\w*\b", text)) or
             ("edge controller" in text and "connector channel" in text and
+             re.search(r"\b(?:line|segment|connect|drop|vertical|horizontal)\w*\b", text)) or
+            ("first connector channel" in text and "second connector channel" in text and
              re.search(r"\b(?:line|segment|connect|drop|vertical|horizontal)\w*\b", text))):
         return "charging_local_bus_connectivity"
     if ("hatch" in text and

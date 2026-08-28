@@ -2075,6 +2075,8 @@ def test_exact_flat_charging_pixels_resolve_reviewers_connectivity_dissent(monke
         unexpected=[
             "A horizontal line segment connecting the bottom of the edge controller to the "
             "vertical line dropping from the first connector channel.",
+            "A horizontal line segment connecting the vertical line dropping from the first "
+            "connector channel to the vertical line dropping from the second connector channel.",
         ],
         summary="The controller wiring appears inconsistent with the brief.",
     )
