@@ -2161,6 +2161,7 @@ def _has_deterministic_stirring_scene(text: str) -> bool:
 def _control_diagram_kind(caption: str) -> str:
     """Recognize controlled block and flow diagrams that must never contain model text."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    text = re.sub(r"\bsmall\s+empty\s+circle\b", "small circle", text)
     cases = {
         "charging_installation_flat": (
             "flat schematic system diagram",
@@ -2195,12 +2196,13 @@ def _control_diagram_kind(caption: str) -> str:
             "column of five empty shapes",
             "first, second, third, and fourth shapes",
             "fifth shape from the top is a diamond",
-            "small empty circle",
+            "small circle",
             "continuation of the process",
         ),
         "allocation_flow_split_second": (
-            "flat process flow diagram continues from fig. 4",
-            "starting with a small empty circle",
+            "flat process flow diagram",
+            "continues from fig. 4",
+            "starting with a small circle",
             "column of five empty shapes",
             "second shape is a diamond",
             "fourth shape is a diamond",
