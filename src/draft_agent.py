@@ -1096,7 +1096,8 @@ def _transient_provider_error(error: str) -> bool:
             "overloaded", "service unavailable", "temporarily unavailable",
             "server-side issue", "internal server error", "connection lost",
             "connection reset", "connection closed", "unexpected eof", "broken pipe",
-            "network error", "no response parts", "image_recitation")))
+            "network error", "no response parts", "image_recitation",
+            "without returning the required structured answer")))
 
 
 def _wait_for_rate_limit_retry(seconds: int,
