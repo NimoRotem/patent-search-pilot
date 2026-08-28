@@ -1606,6 +1606,90 @@ def test_cross_provider_geometry_audit_rejects_an_unrequested_power_cable():
     assert "power cable" in " ".join(audit["unexpected"]).lower()
 
 
+def test_cross_provider_geometry_audit_ignores_parts_list_only_metadata_complaint():
+    audit = draft_figures.cross_provider_geometry_audit(["10 = rail"], {
+        "matches_spec": False,
+        "summary": (
+            "The drill bushing is required by the caption but is not included in the "
+            "reference-numeral parts list."
+        ),
+        "errors": [
+            "The specification mentions drill bushing 54 as required, but it is not included "
+            "in the provided parts list. It is treated as an unnumbered required element."
+        ],
+        "missing_geometry": [],
+        "unexpected_geometry": [],
+        "parts": [{
+            "numeral": "10", "visible": True,
+            "evidence": "The rail body is visible across the sheet.",
+        }],
+        "visible_elements": [{
+            "description": "rail body", "required": True,
+            "matched_requirement": "rail 10",
+            "evidence": "One long rectangular rail is visible.",
+        }, {
+            "description": "drill bushing", "required": True,
+            "matched_requirement": "The caption expressly requires drill bushing 54.",
+            "evidence": "A circular bushing outline is visible on the carriage.",
+        }],
+    })
+
+    assert audit["ok"] is True
+    assert audit["errors"] == []
+    assert audit["ignored_parts_list_feedback"]
+
+
+def test_cross_provider_geometry_audit_keeps_real_geometry_failure_with_parts_list_complaint():
+    audit = draft_figures.cross_provider_geometry_audit(["10 = rail"], {
+        "matches_spec": False,
+        "summary": "The required drill bushing is not visible.",
+        "errors": [
+            "The drill bushing is not included in the provided parts list."
+        ],
+        "missing_geometry": ["The required drill bushing is absent from the drawing."],
+        "unexpected_geometry": [],
+        "parts": [{
+            "numeral": "10", "visible": True,
+            "evidence": "The rail body is visible across the sheet.",
+        }],
+        "visible_elements": [{
+            "description": "rail body", "required": True,
+            "matched_requirement": "rail 10",
+            "evidence": "One long rectangular rail is visible.",
+        }],
+    })
+
+    assert audit["ok"] is False
+    assert audit["missing_geometry"] == [
+        "The required drill bushing is absent from the drawing."
+    ]
+
+
+def test_cross_provider_geometry_audit_ignores_parts_list_only_summary_mismatch():
+    audit = draft_figures.cross_provider_geometry_audit(["12 = shell floor"], {
+        "matches_spec": False,
+        "summary": (
+            "The shell floor is required by the caption but is not present in the provided "
+            "parts list. The shell floor is visible as required."
+        ),
+        "errors": [],
+        "missing_geometry": [],
+        "unexpected_geometry": [],
+        "parts": [{
+            "numeral": "12", "visible": True,
+            "evidence": "The shell floor is the lower hatched slab.",
+        }],
+        "visible_elements": [{
+            "description": "shell floor", "required": True,
+            "matched_requirement": "shell floor 12",
+            "evidence": "The lower hatched slab is visible.",
+        }],
+    })
+
+    assert audit["ok"] is True
+    assert audit["ignored_parts_list_feedback"]
+
+
 def test_cross_provider_geometry_audit_rejects_two_strokes_for_single_curve():
     audit = draft_figures.cross_provider_geometry_audit(["46 = pulling element"], {
         "matches_spec": True,
