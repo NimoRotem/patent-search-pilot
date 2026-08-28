@@ -7039,6 +7039,25 @@ def test_geometry_prompt_strips_a_complete_hyphenated_cutting_plane_paragraph():
     assert "line -" not in cleaned.lower()
 
 
+def test_geometry_prompt_strips_cutting_line_pronoun_continuations():
+    caption = (
+        "A rectangular shell 10 supports a lid 60.\n\n"
+        "A broken cutting-plane line 2-2 crosses the lid 60 and the shell 10. "
+        "The line is horizontal, parallel to the front faces of the bodies. "
+        "The line starts to the left of the shell 10 and ends to the right of the shell 10. "
+        "Arrows at each end point toward the rear."
+    )
+
+    cleaned = draft_figures._geometry_text(
+        caption, ["10 = shell", "60 = lid"])
+
+    assert "rectangular shell" in cleaned and "supports a lid" in cleaned
+    assert "cutting" not in cleaned.lower()
+    assert "the line is horizontal" not in cleaned.lower()
+    assert "the line starts" not in cleaned.lower()
+    assert "arrows" not in cleaned.lower()
+
+
 def test_geometry_prompt_strips_adjacent_paragraphs_for_two_cutting_planes():
     caption = (
         "The underside is one rectangular ring around a plain inner face.\n\n"

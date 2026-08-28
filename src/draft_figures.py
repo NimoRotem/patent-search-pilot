@@ -75,7 +75,7 @@ MARKED_ANCHOR_PROMPT_VERSION = (
 CROSS_PROVIDER_PROMPT_VERSION = (
     "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage")
 CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION = (
-    "figure-geometry-crosscheck-v7-structured-verdict-consistency")
+    "figure-geometry-crosscheck-v8-deferred-section-continuations")
 DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
     "deterministic-geometry-consensus-v2-byte-exact-certified-constraints")
 DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
@@ -861,6 +861,8 @@ _SECTION_ANNOTATION_DETAIL = re.compile(
 _SECTION_ANNOTATION_CONTINUATION = re.compile(
     r"^\s*(?:(?:each|one(?:\s+of\s+them)?|the\s+other|both)\s+"
     r"(?:enters?|runs?|crosses?|carries?|leaves?|points?)\b|"
+    r"(?:the|this|that)\s+(?:broken\s+)?line\s+"
+    r"(?:is|starts?|ends?|begins?|extends?|runs?|crosses?|passes?|lies?|has)\b|"
     r"it\s+marks?\s+the\s+plane\b)",
     re.IGNORECASE,
 )
