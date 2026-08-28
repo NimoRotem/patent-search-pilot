@@ -2230,6 +2230,15 @@ def _control_diagram_kind(caption: str) -> str:
             "local fault indicator",
             "two short solid lines extend downward",
         ),
+        "branch_current_safety_flow": (
+            "flat process flow diagram",
+            "branch current check step",
+            "shedding step",
+            "welded contactor check step",
+            "fault indication step",
+            "reclosure check step",
+            "large square bracket",
+        ),
         "allocation_flow_split_first": (
             "flat process flow diagram",
             "column of five empty shapes",
@@ -2449,6 +2458,20 @@ def _deterministic_control_diagram_anchors(
             "ordered shedding step": (620, 545, "well inside the middle rectangle"),
             "welded-contactor isolation step": (660, 635, "well inside the lower diamond"),
             "conditional reclosure step": (620, 735, "well inside the bottom rectangle"),
+        }
+    if kind == "branch_current_safety_flow":
+        return kind, {
+            "branch current safety process": (
+                120, 450, "on the vertical stroke of the enclosing square bracket"),
+            "branch current check step": (
+                500, 160, "well inside the upper diamond"),
+            "shedding step": (500, 350, "well inside the shedding rectangle"),
+            "welded contactor check step": (
+                900, 350, "well inside the right-hand diamond"),
+            "fault indication step": (
+                900, 550, "well inside the fault-indication rectangle"),
+            "reclosure check step": (
+                500, 670, "well inside the lower-left reclosure rectangle"),
         }
     if kind == "charging_control_overview":
         return kind, {
@@ -3238,6 +3261,38 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
         draw.line((1000, 735, 1000, 70), **line)
         draw.line((1000, 70, 870, 70), **line)
         arrow((870, 70), "left")
+    elif kind == "branch_current_safety_flow":
+        check = ((500, 110), (590, 160), (500, 210), (410, 160))
+        welded = ((900, 300), (1000, 350), (900, 400), (800, 350))
+        draw.polygon(check, fill="white", outline="black")
+        draw.line(check + (check[0],), fill="black", width=4)
+        box((370, 300, 630, 400))
+        draw.polygon(welded, fill="white", outline="black")
+        draw.line(welded + (welded[0],), fill="black", width=4)
+        box((770, 500, 1030, 600))
+        box((370, 620, 630, 720))
+
+        draw.line((590, 160, 710, 160), **line)
+        draw.line((710, 160, 710, 80), **line)
+        draw.line((710, 80, 500, 80), **line)
+        draw.line((500, 80, 500, 110), **line)
+        arrow((500, 110), "down")
+
+        draw.line((500, 210, 500, 300), **line)
+        arrow((500, 300), "down")
+        draw.line((500, 400, 500, 470), **line)
+        draw.line((500, 470, 300, 470), **line)
+        draw.line((300, 470, 300, 35), **line)
+        draw.line((300, 35, 500, 35), **line)
+        draw.line((500, 35, 500, 110), **line)
+        arrow((500, 110), "down")
+
+        draw.line((900, 400, 900, 500), **line)
+        arrow((900, 500), "down")
+
+        draw.line((120, 20, 120, 820), **line)
+        draw.line((120, 20, 1180, 20), **line)
+        draw.line((120, 820, 1180, 820), **line)
     elif kind == "charging_control_overview":
         draw.line((220, 200, 1200, 200), **line)
         box((295, 140, 375, 260))
@@ -4700,7 +4755,7 @@ def _deterministic_control_diagram_constraint_certificate(
     if kind not in {
             "charging_installation_flat", "edge_controller_flat",
             "allocation_flow_split_first", "allocation_flow_split_second",
-            "allocation_flow_vertical"}:
+            "allocation_flow_vertical", "branch_current_safety_flow"}:
         return {}
     try:
         from PIL import Image, ImageOps
@@ -4945,6 +5000,70 @@ def _deterministic_control_diagram_constraint_certificate(
                 },
             }
 
+        if kind == "branch_current_safety_flow":
+            shape_outline_samples = [
+                (410, 160), (590, 160), (370, 350),
+                (800, 350), (1000, 350), (770, 550), (370, 670),
+            ]
+            shape_interior_samples = [
+                (500, 160), (500, 350), (900, 350), (900, 550), (500, 670),
+            ]
+            self_loop_samples = [
+                (590, 160), (650, 160), (710, 160), (710, 80),
+                (600, 80), (500, 80), (500, 110),
+            ]
+            shedding_path_samples = [(500, 210), (500, 250), (500, 300)]
+            feedback_samples = [
+                (500, 400), (500, 450), (500, 470), (300, 470),
+                (300, 300), (300, 35), (400, 35), (500, 35), (500, 110),
+            ]
+            fault_path_samples = [(900, 400), (900, 450), (900, 500)]
+            bracket_samples = [
+                (120, 20), (120, 450), (120, 820),
+                (400, 20), (1180, 20), (400, 820), (1180, 820),
+            ]
+            return {
+                "branch_safety_shape_sequence": {
+                    "ok": (all(ink(point) for point in shape_outline_samples) and
+                           all(clear(point, 6) for point in shape_interior_samples)),
+                    "shape_count": 5,
+                    "shape_order": [
+                        "diamond", "rectangle", "diamond", "rectangle", "rectangle",
+                    ],
+                    "outline_samples": [list(point) for point in shape_outline_samples],
+                    "blank_interior_samples": [
+                        list(point) for point in shape_interior_samples],
+                },
+                "branch_safety_self_loop": {
+                    "ok": all(ink(point) for point in self_loop_samples),
+                    "line_samples": [list(point) for point in self_loop_samples],
+                    "target_vertex": [500, 110],
+                },
+                "branch_safety_shedding_path": {
+                    "ok": all(ink(point) for point in shedding_path_samples),
+                    "line_samples": [list(point) for point in shedding_path_samples],
+                },
+                "branch_safety_feedback": {
+                    "ok": all(ink(point) for point in feedback_samples),
+                    "line_samples": [list(point) for point in feedback_samples],
+                    "target_vertex": [500, 110],
+                },
+                "branch_safety_fault_path": {
+                    "ok": all(ink(point) for point in fault_path_samples),
+                    "line_samples": [list(point) for point in fault_path_samples],
+                },
+                "branch_safety_bracket": {
+                    "ok": all(ink(point) for point in bracket_samples),
+                    "line_samples": [list(point) for point in bracket_samples],
+                    "opening": "right",
+                    "enclosed_bounds": [120, 20, 1180, 820],
+                },
+                "branch_safety_reclosure_terminal": {
+                    "ok": clear((700, 670), 8) and clear((500, 770), 8),
+                    "clear_outgoing_samples": [[700, 670], [500, 770]],
+                },
+            }
+
         network_direction, service_direction = _edge_controller_flat_port_directions(caption)
         network_terminates, service_terminates = (
             _edge_controller_flat_port_terminations(caption))
@@ -5029,6 +5148,16 @@ def _deterministic_control_diagram_constraint_certificate(
                 "controller_network_interface_path": {"ok": False},
                 "controller_service_input_path": {"ok": False},
                 "controller_boundary_ports": {"ok": False},
+            }
+        if kind == "branch_current_safety_flow":
+            return {
+                "branch_safety_shape_sequence": {"ok": False},
+                "branch_safety_self_loop": {"ok": False},
+                "branch_safety_shedding_path": {"ok": False},
+                "branch_safety_feedback": {"ok": False},
+                "branch_safety_fault_path": {"ok": False},
+                "branch_safety_bracket": {"ok": False},
+                "branch_safety_reclosure_terminal": {"ok": False},
             }
         return {
             "charging_branch_conductor_endpoint": {"ok": False},
@@ -6678,6 +6807,28 @@ def _certified_geometry_dissent_category(value: str) -> str:
     if ("right return" in text or
             ("return path" in text and "right" in text)):
         return "allocation_flow_right_return"
+    if ("branch current check" in text and
+            ("self-loop" in text or "self loop" in text or
+             ("right vertex" in text and "top vertex" in text))):
+        return "branch_safety_self_loop"
+    if ("shedding" in text and "branch current check" in text and
+            re.search(r"\b(?:feedback|return|back up|top vertex)\b", text)):
+        return "branch_safety_feedback"
+    if ("branch current check" in text and "shedding" in text and
+            re.search(r"\b(?:line|path|arrow|point|bottom vertex)\w*\b", text)):
+        return "branch_safety_shedding_path"
+    if ("welded contactor" in text and "fault indication" in text and
+            re.search(r"\b(?:line|path|arrow|point|bottom vertex)\w*\b", text)):
+        return "branch_safety_fault_path"
+    if ("square bracket" in text and
+            re.search(r"\b(?:enclos|span|contain|surround|right-hand|right hand)\w*\b", text)):
+        return "branch_safety_bracket"
+    if ("reclosure" in text and
+            re.search(r"\b(?:no|without|outgoing|leave|leaves|terminal|extra)\b", text)):
+        return "branch_safety_reclosure_terminal"
+    if ("branch current" in text and
+            re.search(r"\b(?:component|diamond|rectangle|shape|step|sequence)\w*\b", text)):
+        return "branch_safety_shape_sequence"
     if (re.search(r"\b(?:welded[- ]contactor|solid square terminator)\b", text) and
             re.search(r"\b(?:arrow|branch|line|path|terminator)\w*\b", text)):
         return "allocation_flow_weld_branch"
