@@ -2918,9 +2918,9 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
 
     if kind == "charging_installation_flat":
         dashed_box((80, 50, 1320, 840))
-        draw.line((140, 180, 1260, 180), **line)
+        draw.line((140, 180, 1320, 180), **line)
         box((260, 130, 350, 230))
-        draw.line((140, 180, 1260, 180), **line)
+        draw.line((140, 180, 1320, 180), **line)
         for center in (695, 935, 1175):
             draw.line((center, 180, center, 330), **line)
         for bounds in ((610, 330, 780, 470), (850, 330, 1020, 470),
@@ -2928,7 +2928,7 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
             box(bounds)
         box((160, 580, 430, 740))
         draw.line((300, 740, 300, 780), **line)
-        draw.line((300, 780, 980, 780), **line)
+        draw.line((300, 780, 935, 780), **line)
         draw.line((695, 780, 695, 470), **line)
         draw.line((935, 780, 935, 470), **line)
         draw.line((305, 230, 305, 270), **line)
@@ -2960,8 +2960,8 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
         box((340, 360, 500, 460))
         box((1150, 250, 1320, 360))
         draw.line((1050, 305, 1150, 305), **line)
-        draw.line((660, 200, 660, 70), **line)
-        draw.line((340, 410, 190, 410), **line)
+        draw.line((560, 250, 190, 250), **line)
+        draw.line((420, 360, 420, 70), **line)
         draw.line((500, 760, 500, 830), **line)
         draw.line((820, 760, 820, 830), **line)
     elif kind == "allocation_flow_vertical":

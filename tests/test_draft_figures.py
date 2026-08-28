@@ -4526,8 +4526,10 @@ def test_deterministic_stirring_scene_accepts_current_filing_brief_wording():
         A flat schematic system diagram. A dashed rectangle, the charging installation,
         encloses the whole diagram. A branch conductor passes through a branch current sensor
         and supplies a first connector channel, a second connector channel, and a non-charging
-        load in parallel. An edge controller is joined to the branch current sensor. An isolated
-        local bus originates at the edge controller and connects only the two connector channels.
+        load in parallel. Its left end stops short of the enclosure and its right end meets the
+        enclosure without crossing it. An edge controller is joined to the branch current sensor.
+        An isolated local bus runs from a point vertically below the edge controller to a point
+        vertically below the second connector channel and connects only the two connector channels.
         """,
         [
             "100 = charging installation", "102 = branch conductor",
@@ -4559,8 +4561,9 @@ def test_deterministic_stirring_scene_accepts_current_filing_brief_wording():
         A flat block diagram of the edge controller. One large rectangle is the edge controller.
         Three smaller empty rectangles lie inside it: a network interface in the upper region,
         a nonvolatile memory in the lower region, and a service input in the left region. A local
-        fault indicator stands outside the large rectangle. A line from the network interface
-        crosses the upper side, a line from the service input crosses the left side, and two short
+        fault indicator stands outside the large rectangle. A line from the network interface runs
+        left and crosses the left side, a line from the service input runs upward and crosses the
+        upper side, and two short
         solid lines extend downward from the lower side of the large rectangle.
         """,
         [
@@ -4613,6 +4616,47 @@ def test_deterministic_control_diagrams_are_text_free_and_anchor_every_part(
     assert grounded["pixel_anchor_audit"]["ok"] is True, grounded["pixel_anchor_audit"]
     assert draft_figures._deterministic_geometry_certificate(
         png, specification)["ok"] is True
+
+
+def test_flat_charging_installation_template_tracks_reviewed_endpoint_geometry():
+    specification = """
+    A flat schematic system diagram. A dashed rectangle, the charging installation, encloses the
+    whole diagram. A branch conductor passes through a branch current sensor and supplies a first
+    connector channel, a second connector channel, and a non-charging load. The left end stops
+    short of the dashed rectangle and the right end meets it without crossing. An edge controller
+    is joined to the sensor. An isolated local bus runs from a point vertically below the edge
+    controller to a point vertically below the second connector channel. Two connector channels
+    connect to that bus while the non-charging load does not.
+    """
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    assert png is not None
+    with Image.open(io.BytesIO(png)).convert("L") as image:
+        assert image.getpixel((1290, 180)) < 64
+        assert image.getpixel((1320, 180)) < 64
+        assert image.getpixel((1350, 180)) > 240
+        assert image.getpixel((300, 780)) < 64
+        assert image.getpixel((935, 780)) < 64
+        assert image.getpixel((980, 780)) > 240
+
+
+def test_flat_edge_controller_template_tracks_current_port_directions():
+    specification = """
+    A flat block diagram of the edge controller. One large rectangle is the edge controller.
+    Three smaller empty rectangles lie inside it: a network interface in the upper region, a
+    nonvolatile memory in the lower region, and a service input in the left region. A local fault
+    indicator stands outside the large rectangle. A line from the network interface runs left and
+    crosses the left side, a line from the service input runs upward and crosses the upper side,
+    and two short solid lines extend downward from the lower side of the large rectangle.
+    """
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    assert png is not None
+    with Image.open(io.BytesIO(png)).convert("L") as image:
+        assert image.getpixel((200, 250)) < 64
+        assert image.getpixel((660, 70)) > 240
+        assert image.getpixel((420, 80)) < 64
+        assert image.getpixel((200, 410)) > 240
 
 
 def test_connector_station_bus_anchor_is_below_and_left_of_enclosure():
