@@ -4910,6 +4910,27 @@ def test_split_allocation_flow_templates_certify_connector_and_every_route():
             for item in constraints.values())
 
 
+def test_split_allocation_flow_templates_accept_filing_clean_caption_variants():
+    first = """
+    A flat process flow diagram in plain black line work on white. A column of five empty shapes
+    with blank interiors is arranged vertically in the center. The first, second, third, and
+    fourth shapes from the top are rectangles. The fifth shape from the top is a diamond. From
+    the lower vertex of the fifth shape, a line points downward to a small circle. The circle
+    contains the capital letter A and indicates continuation of the process in FIG. 5.
+    """
+    second = """
+    A flat process flow diagram in plain black line work on white. The diagram continues from
+    FIG. 4, starting with a small empty circle labeled A. A column of five empty shapes is below
+    it. The second shape is a diamond. The fourth shape is a diamond. The fifth and bottommost
+    shape is a rectangle.
+    """
+
+    assert draft_figures._control_diagram_kind(first) == "allocation_flow_split_first"
+    assert draft_figures._control_diagram_kind(second) == "allocation_flow_split_second"
+    assert draft_figures._deterministic_control_diagram_png(first) is not None
+    assert draft_figures._deterministic_control_diagram_png(second) is not None
+
+
 def test_flat_allocation_flow_template_certifies_shape_order_and_every_route():
     specification = _flat_allocation_flow_specification()
 
