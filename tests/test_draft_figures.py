@@ -5054,6 +5054,28 @@ def _branch_current_safety_flow_specification():
     """
 
 
+def _connected_branch_current_safety_flow_specification():
+    return """
+    A flat process flow diagram in plain black line work on white, with no shading and no text.
+    A diamond shape is the branch current check step 302. A rectangle below it is the shedding
+    step 304. A diamond to the right is the welded contactor check step 306. A rectangle below
+    that diamond is the fault indication step 308. A rectangle in the lower left is the
+    reclosure check step 310.
+
+    A line leaves the bottom vertex of the branch current check step and enters the top of the
+    shedding step. A line leaves the right vertex of the branch current check step, loops
+    clockwise, and enters the upper-right face of that same diamond. A line leaves the bottom of
+    the shedding step, travels to its left, and enters the upper-left face of the branch current
+    check diamond. A line leaves the right side of the shedding step and enters the left vertex
+    of the welded contactor check step. A line leaves the bottom vertex of the welded contactor
+    check step and enters the top of the fault indication step. A line leaves the left vertex of
+    the welded contactor check step and enters the top of the reclosure check step.
+
+    A large square bracket 300 opens to the right and encloses all other shapes, indicating the
+    branch current safety process.
+    """
+
+
 def test_branch_current_safety_flow_template_certifies_every_route_and_anchor():
     specification = _branch_current_safety_flow_specification()
     numerals = [
@@ -5087,6 +5109,50 @@ def test_branch_current_safety_flow_template_certifies_every_route_and_anchor():
     for category in (
             "branch_safety_self_loop", "branch_safety_shedding_path",
             "branch_safety_feedback", "branch_safety_fault_path"):
+        assert all(
+            left < x <= right and top <= y <= bottom
+            for x, y in constraints[category]["line_samples"])
+    assert {item["numeral"] for item in semantic["anchors"]} == {
+        "300", "302", "304", "306", "308", "310"
+    }
+    assert len({(item["x"], item["y"]) for item in semantic["anchors"]}) == 6
+    assert semantic["pixel_anchor_audit"]["ok"] is True
+
+
+def test_branch_current_safety_flow_follows_connected_caption_routes_exactly():
+    specification = _connected_branch_current_safety_flow_specification()
+    numerals = [
+        "300: branch current safety process; leader points to the large square bracket.",
+        "302: branch current check step", "304: shedding step",
+        "306: welded contactor check step", "308: fault indication step",
+        "310: reclosure check step",
+    ]
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": numeral, "x": 500, "y": 500, "visible": True}
+                for numeral in ("300", "302", "304", "306", "308", "310")
+            ],
+        })
+    semantic = draft_figures._apply_pixel_grounding(png, numerals, semantic)
+
+    assert png is not None and certificate["ok"] is True
+    constraints = certificate["certified_constraints"]
+    assert constraints["branch_safety_self_loop"]["target_mode"] == "upper_right_face"
+    assert constraints["branch_safety_feedback"]["target_mode"] == "upper_left_face"
+    assert constraints["branch_safety_shedding_welded_path"]["required"] is True
+    assert constraints["branch_safety_shedding_welded_path"]["ok"] is True
+    assert constraints["branch_safety_reclosure_path"]["required"] is True
+    assert constraints["branch_safety_reclosure_path"]["ok"] is True
+    left, top, right, bottom = constraints["branch_safety_bracket"]["enclosed_bounds"]
+    for category in (
+            "branch_safety_self_loop", "branch_safety_shedding_path",
+            "branch_safety_feedback", "branch_safety_shedding_welded_path",
+            "branch_safety_fault_path", "branch_safety_reclosure_path"):
         assert all(
             left < x <= right and top <= y <= bottom
             for x, y in constraints[category]["line_samples"])
@@ -5185,6 +5251,16 @@ def test_exact_branch_current_flow_resolves_only_certified_route_dissent(monkeyp
     (
         "An extra outgoing line leaves the reclosure check step, which should be terminal.",
         "branch_safety_reclosure_terminal",
+    ),
+    (
+        "The line from the shedding step misses the left vertex of the welded contactor check "
+        "step.",
+        "branch_safety_shedding_welded_path",
+    ),
+    (
+        "The line from the left vertex of the welded contactor check step misses the top of the "
+        "reclosure check step.",
+        "branch_safety_reclosure_path",
     ),
 ])
 def test_branch_current_flow_dissent_categories_are_constraint_specific(finding, category):
