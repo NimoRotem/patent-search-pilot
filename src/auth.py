@@ -55,6 +55,30 @@ _LOOPBACK = ("127.0.0.1", "::1", "localhost")
 # Exactly one today (nginx). See client_ip() for why this is the security-critical number.
 TRUSTED_PROXY_HOPS = max(1, int(_num("TRUSTED_PROXY_HOPS", 1)))
 
+# ---- ONE SIGN-IN FOR THE DOMAIN --------------------------------------------------------------
+#
+# nimo.iptorch.com serves TWO copies of this application: the full-text app at "/" and this one
+# at /classic/, each with its own accounts table and its own .secret_key. After the 2026-08-27
+# root cutover a person signed in at the root arrived here signed out, and since this copy is
+# where the drafting studio and its projects live, a second login box reads as having lost them.
+#
+# So a request carrying a session cookie the PEER app signed, naming a live account there whose
+# email also has a live account HERE, is adopted once into a local session and behaves like any
+# other from then on. Three things this is careful about:
+#
+#  * Identity is matched on EMAIL, never on id. The two databases number their users
+#    independently: peer id 1 is nimo@rotem.ai there and a retired QA account here.
+#  * The peer's own session_version must still match, so a cookie their password change has
+#    already revoked cannot open a door here that it no longer opens there.
+#  * It grants nothing this app would not grant that email anyway. No account is created.
+#
+# Off unless both the key file and the DSN are set, so every other deployment, and the test
+# suite, behave exactly as before.
+PEER_SECRET_FILE = _env("PEER_SESSION_SECRET_FILE")
+PEER_ACCOUNTS_DSN = _env("PEER_ACCOUNTS_DSN")
+PEER_COOKIE_NAME = _env("PEER_SESSION_COOKIE_NAME", "session")
+_peer_signer = None
+
 # Endpoints that must stay reachable without a session.
 #
 # `shared_report` and `shared_report_logo` are open because that is the whole point of a share
@@ -124,7 +148,26 @@ def _peer_is_trusted_proxy(peer):
 
 
 def is_loopback():
-    return (request.environ.get("REMOTE_ADDR", "") or "") in _LOOPBACK
+    """Did this request come from a process ON this box, rather than through the front door?
+
+    IT USED TO READ REMOTE_ADDR, and behind nginx REMOTE_ADDR is 127.0.0.1 for every request that
+    has ever arrived. So `is_loopback()` was true for the entire internet, and eleven routes are
+    gated on `current_user() or is_loopback()`. Measured 2026-08-25 against the live site with no
+    session and no credentials: `/api/designs?q=gripper` returned EUIPO rows, `/api/factory/pulse`
+    returned the build status. Both were meant to require a sign-in.
+
+    The distinction that actually holds: nginx sets X-Forwarded-For on everything it proxies, and
+    a local caller connecting straight to the port sets nothing. So loopback means a loopback peer
+    AND no proxy header, which is exactly the draft worker, a cron on this box, and a developer
+    with curl on the machine. A forged X-Forwarded-For can only take this privilege AWAY from its
+    sender, which is the safe direction for a header the caller controls.
+    """
+    peer = request.environ.get("REMOTE_ADDR", "") or ""
+    if peer not in _LOOPBACK:
+        return False
+    return not (request.headers.get("X-Forwarded-For")
+                or request.headers.get("X-Real-IP")
+                or request.headers.get("X-Forwarded-Proto"))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -468,6 +511,87 @@ def _wants_json():
     return "application/json" in accept and "text/html" not in accept
 
 
+def _peer_serializer():
+    """Flask's session serializer, holding the PEER app's key instead of ours.
+
+    The serializer is not usable standalone, so it is borrowed from a throwaway Flask object
+    exactly as patent-lookup does it. Nothing is served from that object; it exists to carry the
+    key and the salt so the signature and the tagged-JSON payload are read exactly as written,
+    whatever scheme the installed Flask uses. Built once, on the first request that needs it.
+    """
+    global _peer_signer
+    if _peer_signer is None:
+        from flask import Flask
+        from flask.sessions import SecureCookieSessionInterface
+        key = Path(PEER_SECRET_FILE).read_text().strip()
+        if not key:
+            raise ValueError("peer secret file is empty")
+        holder = Flask(__name__)
+        holder.secret_key = key
+        _peer_signer = SecureCookieSessionInterface().get_signing_serializer(holder)
+        if _peer_signer is None:
+            raise ValueError("no signing serializer for the peer key")
+    return _peer_signer
+
+
+def _peer_account(user_id, session_version):
+    """The peer's own record for the account that cookie names, or None.
+
+    One query, and only on the request that adopts. A peer whose database is down, or who has
+    deactivated the account, or whose session_version has moved on, simply does not adopt: the
+    caller falls through to this app's own login, which is the behaviour without any of this.
+    """
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+        with psycopg.connect(PEER_ACCOUNTS_DSN, connect_timeout=3, row_factory=dict_row) as conn:
+            row = conn.execute("SELECT email, is_active, coalesce(session_version,1) AS sv "
+                               "FROM app_users WHERE id=%s", (int(user_id),)).fetchone()
+    except Exception:
+        return None
+    if not row or not row.get("is_active"):
+        return None
+    if int(session_version) != int(row["sv"]):
+        return None
+    return row.get("email")
+
+
+def _adopt_peer_session():
+    """Turn a valid peer session into a local one. True if this request just signed someone in.
+
+    See the PEER_* block at the top of this module for why this exists and what it refuses.
+    """
+    if not (PEER_SECRET_FILE and PEER_ACCOUNTS_DSN) or session.get("user_id"):
+        return False
+    raw = request.cookies.get(PEER_COOKIE_NAME, "")
+    if not raw:
+        return False
+    #  A peer visitor with no account HERE would otherwise re-run the lookup on every request.
+    #  Remembering the tail of the cookie we already refused stops that, and still retries the
+    #  moment the peer signs in again, because that writes a different signature.
+    if session.get("peer_refused") == raw[-24:]:
+        return False
+    try:
+        payload = _peer_serializer().loads(raw, max_age=int(SESSION_HOURS * 3600))
+    except Exception:
+        payload = None
+    uid = (payload or {}).get("user_id")
+    version = (payload or {}).get("session_version")
+    email = _peer_account(uid, version) if uid and version is not None else None
+    local = accounts.get_user_by_email(email) if email else None
+    if not local or not local.get("is_active"):
+        session["peer_refused"] = raw[-24:]
+        return False
+    session.permanent = True
+    session["user_id"] = local["id"]
+    session["session_version"] = int(local.get("session_version") or 1)
+    session["csrf_token"] = secrets.token_urlsafe(32)
+    session.pop("peer_refused", None)
+    if hasattr(g, "patent_user"):
+        del g.patent_user
+    return True
+
+
 def current_user():
     """Active named user for this request, cached on Flask ``g``."""
     if hasattr(g, "patent_user"):
@@ -577,7 +701,7 @@ def _after_login_target(nxt):
 # Shown instead of raw JSON when a BROWSER (not a fetch/XHR caller) trips a rate limit.
 _TOOMANY_HTML = """<!doctype html><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>Slow down | Rotem Patents</title>
+<title>Slow down | IPtorch</title>
 <style>
  body{font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1115;color:#e6e8ee;
       display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
@@ -746,6 +870,17 @@ def account():
                     preferred_jurisdiction=request.form.get("preferred_jurisdiction", "US"))
                 g.patent_user = user
                 message = "Account preferences saved."
+            elif action == "filing":
+                #  Both of these end up on a paper filed at the USPTO: the entity size sets the
+                #  fee and the signature is applied under 37 CFR 1.4(d)(2). Set once, used every
+                #  time, so nobody retypes them into a filing.
+                user = accounts.set_filing_identity(
+                    user["id"],
+                    entity_size=request.form.get("entity_size", "small"),
+                    signature_name=request.form.get("signature_name", ""),
+                    signature_title=request.form.get("signature_title", ""))
+                g.patent_user = user
+                message = "Filing details saved."
             elif action == "share":
                 #  ONE password for every link this account publishes. Set once here, copied onto
                 #  each report at publish time, never shown again. Clearing it also stops anything
@@ -972,6 +1107,11 @@ def init_app(app, state_path=None):
     @app.before_request
     def _gate():                                              # noqa: unused
         ep = request.endpoint or ""
+        # ---- 0. one sign-in for the domain ----
+        # Before anything else, so the masthead on an open page also shows the visitor signed in
+        # rather than offering a login they have already been through on the other app. Costs a
+        # cookie read when there is nothing to adopt. See the PEER_* block at the top.
+        _adopt_peer_session()
         # ---- 1. auth ----
         if auth_enabled(app) and ep not in _OPEN_ENDPOINTS:
             if not (_authenticated() or (TRUST_LOOPBACK and is_loopback())):
