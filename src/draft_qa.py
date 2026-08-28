@@ -1562,7 +1562,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v12-exact-read-manifest"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v13-no-invented-drawing-links"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1611,6 +1611,12 @@ expressly identifies a particular figure as depicting it. The absence of a conne
 schematic figure is not an affirmative statement that two parts are disconnected. Do not report a
 claim-only drawing omission, do not invoke a drawing formality to require it, and never add an
 undisclosed route or topology merely to make every claim limitation visible.
+Never propose adding a line, arrow, connection, transition, route, path, coupling, or topology to
+a figure unless an exact affirmative USER passage expressly describes that same relationship and
+the application expressly says that the particular figure depicts it. Source language that states
+only a condition, prerequisite, purpose, or later state does not disclose a process-flow trigger.
+When a figure shows a state as a separate path or panel, do not invent an entry arrow to make the
+layout look complete.
 
 Build a complete source ledger before returning. Trace every limitation in every claim, every
 numbered part, and every specific structure, relationship, result, material, shape, position,
@@ -1718,6 +1724,20 @@ _SOURCE_DRAWING_OMISSION_RE = re.compile(
     r"illustrates)|undepicted|depiction gap|drawing omission)\b",
     re.IGNORECASE,
 )
+_SOURCE_DRAWING_RELATIONSHIP_OMISSION_RE = re.compile(
+    r"\b(?:incomplete|disconnected|isolated|separate)\s+"
+    r"(?:process\s+)?(?:flow|path|branch|subprocess)\b|"
+    r"\b(?:no|without)\s+(?:defined\s+)?(?:entry\s+point|connecting\s+line|connection|"
+    r"transition|route|arrow)\b|"
+    r"\b(?:omits?|missing|lacks?)\b[^.\n]{0,100}\b"
+    r"(?:connection|connecting\s+line|transition|route|path|arrow)\b",
+    re.IGNORECASE,
+)
+_SOURCE_FIX_ADDS_TECHNICAL_RELATION_RE = re.compile(
+    r"\b(?:add|draw|depict|insert|show|connect)\b[^.\n]{0,180}\b"
+    r"(?:line|arrow|connection|transition|route|path|coupling|flow)\b",
+    re.IGNORECASE,
+)
 _SOURCE_SUPPORT_ADMISSION_RE = re.compile(
     r"\b(?:fully|squarely|affirmatively) supported\b|"
     r"\bsupported by (?:the )?(?:inventor|disclosure|source)",
@@ -1739,12 +1759,12 @@ _SOURCE_EXPLICIT_DISCONNECTION_RE = re.compile(
 def reconcile_source_drawing_omission_findings(
         findings: Sequence[Mapping[str, Any]],
         ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Dismiss only claim-only drawing omissions that the reviewer says are source-supported.
+    """Dismiss drawing omissions whose proposed repair would invent an unpromised relationship.
 
     Source review protects the inventor's disclosure before rendering. It must not oscillate by
     first removing an undisclosed connection route and then adding that route back merely because
-    a supported claim relationship is not drawn. A real text-to-figure promise or an explicit
-    contradictory connection remains blocking.
+    a supported relationship is not drawn or a separate state lacks an entry arrow. A real
+    text-to-figure promise or an explicit contradictory connection remains blocking.
     """
     kept: list[dict[str, Any]] = []
     reconciled: list[dict[str, Any]] = []
@@ -1765,16 +1785,33 @@ def reconcile_source_drawing_omission_findings(
             r"\b(?:depict|draw|show|add)\b", fix, re.IGNORECASE))
         promised_by_application = bool(_SOURCE_EXPLICIT_FIGURE_LINK_RE.search(review_text))
         explicit_disconnection = bool(_SOURCE_EXPLICIT_DISCONNECTION_RE.search(evidence))
-        if not (claim_relationship and claim_only_omission and reviewer_admits_support
-                and proposed_depiction and not promised_by_application
-                and not explicit_disconnection):
+        claim_only_case = (
+            claim_relationship and claim_only_omission and reviewer_admits_support
+            and proposed_depiction and not promised_by_application
+            and not explicit_disconnection
+        )
+        unpromised_relationship_case = (
+            bool(_SOURCE_DRAWING_RELATIONSHIP_OMISSION_RE.search(review_text))
+            and bool(_SOURCE_FIX_ADDS_TECHNICAL_RELATION_RE.search(fix))
+            and not promised_by_application
+            and not explicit_disconnection
+        )
+        if not (claim_only_case or unpromised_relationship_case):
             kept.append(finding)
             continue
-        finding["reconciliation"] = (
-            "A drawing need not depict every claim limitation unless the "
-            "application expressly says that a figure shows it. No such text-to-figure promise "
-            "or explicit contradictory connection was quoted."
-        )
+        if unpromised_relationship_case:
+            finding["reconciliation"] = (
+                "A source review must not invent a connection, arrow, route, or process trigger "
+                "to repair an omission unless the application expressly promises that exact "
+                "relationship in this figure. No such promise or explicit contradictory "
+                "connection was quoted."
+            )
+        else:
+            finding["reconciliation"] = (
+                "A drawing need not depict every claim limitation unless the "
+                "application expressly says that a figure shows it. No such text-to-figure "
+                "promise or explicit contradictory connection was quoted."
+            )
         reconciled.append(finding)
     return kept, reconciled
 
@@ -1859,12 +1896,13 @@ def review_sources(workspace: Path, *, transcript: Path | None = None, model: st
                     "Every claim limitation, numeral, numbered part, figure brief, drawing "
                     "description, and affirmative inventor source was checked and traced. No "
                     "unresolved source-fidelity findings remain after deterministic "
-                    "reconciliation of a claim-only drawing omission."
+                    "reconciliation of a drawing omission whose repair would have introduced "
+                    "an unpromised technical relationship."
                 )
             elif reconciled:
                 summary += (
-                    " The filing gate reconciled a claim-only drawing omission that the reviewer "
-                    "itself identified as source-supported."
+                    " The filing gate reconciled a drawing omission whose proposed repair would "
+                    "have introduced an unpromised technical relationship."
                 )
             return {
                 "ok": True,

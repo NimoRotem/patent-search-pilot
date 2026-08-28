@@ -1952,6 +1952,33 @@ def test_source_review_does_not_require_every_supported_claim_relationship_in_a_
     assert "need not depict every claim limitation" in reconciled[0]["reconciliation"]
 
 
+def test_source_review_cannot_invent_a_flow_arrow_to_repair_an_unpromised_omission():
+    finding = {
+        "severity": "major",
+        "category": "figures_and_numerals",
+        "title": "Incomplete Process Flow in FIG. 5",
+        "where": "figures/FIG-5.md",
+        "detail": (
+            "The reclosure path is separate and has no defined entry point. The disclosure "
+            "states prerequisites for reclosure but does not state that shedding triggers it."
+        ),
+        "evidence": (
+            "The brief says that a separate path is shown for reclosure. The inventor says a "
+            "contactor is not reclosed until its sensor reports zero and a delay expires."
+        ),
+        "fix": (
+            "Add a dashed line with an arrowhead from the shedding step 304 to the reclosure "
+            "check step 310."
+        ),
+    }
+
+    kept, reconciled = draft_qa.reconcile_source_drawing_omission_findings([finding])
+
+    assert kept == []
+    assert [item["title"] for item in reconciled] == [finding["title"]]
+    assert "must not invent a connection" in reconciled[0]["reconciliation"]
+
+
 def test_source_preflight_reconciles_a_claim_only_drawing_omission(monkeypatch):
     monkeypatch.setattr(draft_agent, "run", lambda **_kwargs: draft_agent.AgentRun(
         ok=True,
