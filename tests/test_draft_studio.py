@@ -3304,6 +3304,34 @@ def test_stale_drawing_approval_cannot_skip_the_current_gates(monkeypatch):
     assert runner._drawings_already_match(7, 91, NUMERALS, [spec]) is True
 
 
+def test_generated_pixels_cannot_skip_a_new_current_exact_renderer(monkeypatch):
+    spec = FIGURES[0]
+    expected_hash = draft_figures.specification_hash(
+        spec["label"], spec["caption"], draft_figures.expected_entries(spec, NUMERALS))
+    stored = [{
+        "id": 11, "figure_label": spec["label"], "active_version": 2,
+        "versions": [{
+            "version_no": 2,
+            "semantic_audit": {"ok": True, "specification_hash": expected_hash},
+            "leader_audit": {"ok": True, "specification_hash": expected_hash},
+            "numeral_audit": {"ok": True, "inspected": True},
+        }],
+    }]
+    monkeypatch.setattr(draft_figures, "listing", lambda *_args: stored)
+    monkeypatch.setattr(draft_figures, "current_ocr_audit", lambda *_a, **_k: True)
+    monkeypatch.setattr(draft_figures, "current_leader_audit", lambda *_a, **_k: True)
+    monkeypatch.setattr(draft_figures, "current_semantic_audit", lambda *_a, **_k: True)
+    binding = Mock(return_value=False)
+    monkeypatch.setattr(draft_figures, "current_geometry_binding", binding)
+    runner = draft_studio.TurnRunner(Mock(), object(), agent=Mock(), workspace=Mock())
+
+    assert runner._drawings_already_match(7, 91, NUMERALS, [spec]) is False
+    binding.assert_called_once_with(stored[0], 91, stored[0]["versions"][0], spec["caption"])
+
+    binding.return_value = True
+    assert runner._drawings_already_match(7, 91, NUMERALS, [spec]) is True
+
+
 def test_current_drawings_are_materialized_before_the_independent_review(monkeypatch, tmp_path):
     runner = draft_studio.TurnRunner(Mock(), object(), agent=Mock(), workspace=Mock())
     monkeypatch.setattr(runner, "_drawings_already_match", lambda *_args: True)
