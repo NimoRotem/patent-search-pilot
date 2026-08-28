@@ -1,0 +1,1 @@
+The present disclosure relates to clamps that are applied around a pipe, and more particularly to a reusable split clamp whose frame opens on a hinge to receive a pipe that is already in place and whose jaws are advanced onto the pipe by a latch driven cam mechanism.

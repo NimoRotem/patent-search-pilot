@@ -32,7 +32,8 @@ def anon(monkeypatch):
         webapp.app.config.pop("FORCE_ACCOUNTS", None)
 
 
-PUBLIC = ["/", "/about", "/how-it-works", "/login", "/register"]
+#  /how-it-works merged into /about and is now a redirect, so it is asserted separately.
+PUBLIC = ["/", "/about", "/login", "/register"]
 GATED = ["/history", "/library", "/drafts", "/account"]
 
 
@@ -67,27 +68,51 @@ def test_the_landing_page_states_the_corpus_from_the_database_not_a_constant(ano
     assert "references read in full" in body
 
 
+def test_the_old_how_it_works_url_still_lands(anon):
+    """It merged into /about. The URL is in the footer of every e-mail already sent."""
+    r = anon.get("/how-it-works")
+    assert r.status_code == 302
+    assert r.headers.get("Location", "").endswith("/about")
+
+
 def test_every_public_page_offers_a_way_in_and_a_way_to_understand(anon):
-    for path in ("/", "/about", "/how-it-works"):
+    for path in ("/", "/about"):
         body = anon.get(path).get_data(as_text=True)
         assert "/register" in body, f"{path} has no sign-up path"
-        assert "/how-it-works" in body or path == "/how-it-works"
+        assert "/about" in body, f"{path} does not say where to read what this is"
 
 
 def test_the_public_pages_do_not_overclaim(anon):
     """The product is a retrieval aid, and every public surface has to say so. This is the one
     piece of copy that is not allowed to be quietly softened."""
-    for path in ("/", "/about", "/how-it-works"):
+    for path in ("/", "/about"):
         body = anon.get(path).get_data(as_text=True).lower()
         assert "not a search opinion" in body or "not legal advice" in body, path
+    #  And /about has to be explicit about it, not lean on the footer.
+    about = anon.get("/about").get_data(as_text=True).lower()
+    assert "not a clearance search" in about
+    assert "a short result list is not a clear field" in about
 
 
-def test_how_it_works_describes_the_stage_that_actually_decides_the_order(anon):
-    """If the reading stage is ever removed, this page becomes a lie and this test fails."""
-    body = anon.get("/how-it-works").get_data(as_text=True)
+def test_about_describes_the_stage_that_actually_decides_the_order(anon):
+    """If the reading stage is ever removed, this page becomes a lie and this test fails. It is
+    the one claim the product makes that its competitors do not, so it is the one that has to be
+    true."""
+    body = anon.get("/about").get_data(as_text=True)
     assert "read in full" in body
-    assert "verbatim quote" in body
-    assert re.search(r"refut", body, re.I)
+    assert "verbatim" in body
+    #  Not just that it reads them: that reading CHANGES the answer, which is the whole point.
+    assert re.search(r"falls away|drop|discard", body, re.I)
+
+
+def test_about_does_not_publish_the_specification_sheet(anon):
+    """It used to name the database and its version, the embedding model and its dimension count,
+    the index type, the passage count and the machine size. A customer acts on none of it and a
+    competitor acts on all of it. The measurements live on the admin Coverage page."""
+    body = anon.get("/about").get_data(as_text=True)
+    for leak in ("pgvector", "PostgreSQL", "Postgres", "gemini-embedding", "HNSW", "BigQuery",
+                 "768", "recall"):
+        assert leak not in body, "the specification sheet is back: %r" % leak
 
 
 def test_a_signed_in_user_gets_the_search_box_at_the_root(monkeypatch):

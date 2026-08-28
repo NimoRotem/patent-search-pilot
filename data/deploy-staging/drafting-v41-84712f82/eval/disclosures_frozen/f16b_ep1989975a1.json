@@ -1,0 +1,101 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "f16b_ep1989975a1",
+ "subject_pub": "EP-1989975-A1",
+ "n_claims_source": 8,
+ "claims_source": "display_record",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 12,
+  "by_kind": {
+   "independent_limitation": 4,
+   "combination": 1,
+   "dependent_limitation": 7
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A stand with supports.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The stand has at least one changeable intermediate part.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "An information device is arranged on the intermediate part.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "At least one intermediate part is equipped with a resilient component.",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A stand with supports and at least one changeable intermediate part, where an information device is arranged on the intermediate part, and at least one intermediate part is equipped with a resilient component.",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "Each intermediate part with its resilient component is interchangeably arranged inside the support.",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The resilient component is preferably two-part.",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The resilient component's first end is fixedly arranged on the intermediate part.",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The resilient component's second end is arranged inside the intermediate part.",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The resilient component is arranged at the lower end of one or more intermediate parts.",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The resilient component is formed from two juxtaposed wires.",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The resilient component has a boundary.",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "0e013ce505932d42"
+}

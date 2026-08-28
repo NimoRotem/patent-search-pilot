@@ -1,0 +1,155 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b25j_ep2052675a1",
+ "subject_pub": "EP-2052675-A1",
+ "n_claims_source": 13,
+ "claims_source": "family_claims:US-2009112056-A1",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 21,
+  "by_kind": {
+   "independent_limitation": 11,
+   "combination": 1,
+   "dependent_limitation": 9
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A control assembly for manipulating movement of an endoscopic instrument",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "An endoscopic instrument mounting arrangement adapted to receive the endoscopic instrument",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The mounting arrangement has three independent degrees of freedom of movement for the endoscopic instrument",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Each degree of freedom of movement is about or along a respective axis",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Three driving arrangements",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Each driving arrangement is configured to drive the endoscopic instrument in only one degree of freedom of movement",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Three independent control elements configured to receive user input",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Actuation of each control element regulates one of three corresponding control signals",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Each control signal controls a respective one of the driving arrangements",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Each control signal controls its respective driving arrangement independent from the other two driving arrangements",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Control is in accordance with user input",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A method of manufacturing a control assembly for manipulating movement of an endoscopic instrument, comprising: providing an endoscopic instrument mounting arrangement with three independent degrees of freedom of movement, each about or alo",
+   "kind": "combination",
+   "source": "claim 8",
+   "weight": 0.9
+  },
+  {
+   "text": "The endoscopic instrument is an endoscope",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The mounting arrangement comprises a curved track rotatable about a rotation axis with respect to a support structure",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The curved track has a center of curvature along the rotation axis",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "An endoscopic instrument mount receives the endoscopic instrument and is moveable along the curved track",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The instrument is moved in a radial direction with respect to the curved track",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "At least one control element comprises one or more relays adapted to receive the respective control signal and actuate one of the driving arrangements",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "A user operated control unit adapted to house the control elements",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The three degrees of freedom of movement are substantially confocal in free space around a fixed point",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "Each driving assembly operates with only one degree of freedom",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "44a10e572842769d"
+}

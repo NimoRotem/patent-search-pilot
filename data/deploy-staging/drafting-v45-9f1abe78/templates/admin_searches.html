@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}All account searches | Rotem Patents{% endblock %}
+{% block body %}
+<div class="wrap adminpage">
+  <div class="pagehead"><div><h1>All account searches</h1><p class="muted">Operational view of report ownership, completion, saving and notification state.</p></div><a class="btn ghost sm" href="{{ request.script_root }}/admin/users">Users</a></div>
+  <div class="tablewrap"><table class="admintable">
+    <thead><tr><th>Owner</th><th>Search</th><th>Mode / focus</th><th>Status</th><th>Notification</th><th>Updated</th></tr></thead>
+    <tbody>{% for s in searches %}<tr>
+      <td data-label="Owner"><b>{{ s.full_name }}</b><span>{{ s.email }}</span></td>
+      <td data-label="Search"><a class="adminsearch-title" href="{{ request.script_root }}/report/{{ s.slug }}">{{ s.title or s.query or s.slug }}</a><span><a href="{{ request.script_root }}/admin/searches/{{ s.slug }}">{{ s.slug }} — who ran it</a></span></td>
+      <td data-label="Mode / focus">{{ s.mode.replace('_',' ') }} · {{ 'claims' if s.search_focus == 'claims' else 'all text' }}</td>
+      <td data-label="Status"><span class="badge {{ 'b-cached' if s.status == 'complete' else '' }}">{{ s.status }}</span>{% if s.saved %} · saved{% endif %}</td>
+      <td data-label="Notification">{{ s.notification_status }}</td><td data-label="Updated">{{ s.updated_at }}</td>
+    </tr>{% else %}<tr><td colspan="6" class="muted adminempty">No account searches yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endblock %}

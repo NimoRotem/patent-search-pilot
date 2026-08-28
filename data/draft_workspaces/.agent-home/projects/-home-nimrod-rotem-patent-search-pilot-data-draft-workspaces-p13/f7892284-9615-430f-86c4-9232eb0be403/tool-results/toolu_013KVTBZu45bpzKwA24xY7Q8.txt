@@ -1,0 +1,402 @@
+figures/FIG-6.md:6:A crank socket 38
+figures/FIG-6.md:6:that receives the hand crank 36
+figures/FIG-6.md:8:A hand crank 36
+figures/FIG-6.md:8:aligned with the crank socket 38
+figures/FIG-6.md:10:A release handle 52
+figures/FIG-6.md:10:drawn beside the crank socket 38
+figures/FIG-6.md:10:The release handle 52
+figures/FIG-6.md:12:A mechanical interlock 58
+figures/FIG-6.md:12:is drawn at the crank socket 38
+figures/FIG-6.md:12:ll body to the release handle 52
+figures/FIG-3.md:6:A front transverse shaft 22
+figures/FIG-3.md:8:A rear transverse shaft 24
+figures/FIG-3.md:10:A front sprocket 26
+figures/FIG-3.md:10:on the front transverse shaft 22
+figures/FIG-3.md:12:A rear sprocket 28
+figures/FIG-3.md:12:on the rear transverse shaft 24
+figures/FIG-3.md:12:loop with the front sprocket 26
+figures/FIG-3.md:14:n endless synchronizing chain 30
+figures/FIG-3.md:14:ing around the front sprocket 26
+figures/FIG-3.md:14:and the rear sprocket 28
+figures/FIG-3.md:16:A worm wheel 34
+figures/FIG-3.md:16:on the front transverse shaft 22
+figures/FIG-3.md:16:shaft from the front sprocket 26
+figures/FIG-3.md:18:A worm input shaft 32
+figures/FIG-3.md:18:e running from the worm wheel 34
+figures/FIG-3.md:18:the end nearer the worm wheel 34
+figures/FIG-3.md:18:oothed edge of the worm wheel 34
+figures/FIG-4.md:3:the locking pawl 40
+figures/FIG-4.md:3:and the locked-state flag 54
+figures/FIG-4.md:6:A guide tower 14
+figures/FIG-4.md:8:A corner post 16
+figures/FIG-4.md:8:ccommodating the locking pawl 40
+figures/FIG-4.md:10:A rack 18
+figures/FIG-4.md:10:g the side of the corner post 16
+figures/FIG-4.md:12:A locking pawl 40
+figures/FIG-4.md:12:space between the corner post 16
+figures/FIG-4.md:12:ts left end engaging the rack 18
+figures/FIG-4.md:14:A pawl pivot 42
+figures/FIG-4.md:14:the body of the locking pawl 40
+figures/FIG-4.md:14:mounted to the guide tower 14
+figures/FIG-4.md:16:A compression spring 44
+figures/FIG-4.md:16:cting between the guide tower 14
+figures/FIG-4.md:16:the body of the locking pawl 40
+figures/FIG-4.md:16:o as to bias the locking pawl 40
+figures/FIG-4.md:18:A locked-state flag 54
+figures/FIG-4.md:18:the body of the locking pawl 40
+figures/FIG-4.md:18:and aligned with the window 56
+figures/FIG-4.md:20:A window 56
+figures/FIG-4.md:20:the locked-state flag 54
+figures/FIG-5.md:6:A base frame 10
+figures/FIG-5.md:8:Four locking pawls 40
+figures/FIG-5.md:8:nner corner of the base frame 10
+figures/FIG-5.md:10:A release balance bar 48
+figures/FIG-5.md:10:mounted on the base frame 10
+figures/FIG-5.md:12:A balance bar pivot 50
+figures/FIG-5.md:12:ner end of the release handle 52
+figures/FIG-5.md:12:and the release balance bar 48
+figures/FIG-5.md:12:the release balance bar 48
+figures/FIG-5.md:12:elative to the release handle 52
+figures/FIG-5.md:14:A release handle 52
+figures/FIG-5.md:14:meets the release balance bar 48
+figures/FIG-5.md:14:at the balance bar pivot 50
+figures/FIG-5.md:16:Four release cables 46
+figures/FIG-5.md:16:ts on the release balance bar 48
+figures/FIG-5.md:18:A cable adjuster 62
+figures/FIG-2.md:6:A base frame 10
+figures/FIG-2.md:8:A guide tower 14
+figures/FIG-2.md:8:ner corners of the base frame 10
+figures/FIG-2.md:10:A corner post 16
+figures/FIG-2.md:10:drawn inside each guide tower 14
+figures/FIG-2.md:12:A rack 18
+figures/FIG-2.md:12:the side of each corner post 16
+figures/FIG-2.md:12:he interior of the base frame 10
+figures/FIG-2.md:12:and that confronts the pinion 20
+figures/FIG-2.md:12:rse shaft at that guide tower 14
+figures/FIG-2.md:12:tically along the corner post 16
+figures/FIG-2.md:14:A pinion 20
+figures/FIG-2.md:14:is drawn at each guide tower 14
+figures/FIG-2.md:14:of that bar meeting the rack 18
+figures/FIG-2.md:14:of the corner post 16
+figures/FIG-2.md:14:in that guide tower 14
+figures/FIG-2.md:16:A front transverse shaft 22
+figures/FIG-2.md:16:drawing area from the pinion 20
+figures/FIG-2.md:16:at the lower left guide tower 14
+figures/FIG-2.md:16:to the pinion 20
+figures/FIG-2.md:16:t the lower right guide tower 14
+figures/FIG-2.md:16:both of those pinions 20
+figures/FIG-2.md:18:A rear transverse shaft 24
+figures/FIG-2.md:18:drawing area from the pinion 20
+figures/FIG-2.md:18:at the upper left guide tower 14
+figures/FIG-2.md:18:to the pinion 20
+figures/FIG-2.md:18:t the upper right guide tower 14
+figures/FIG-2.md:18:both of those pinions 20
+figures/FIG-2.md:20:ane perpendicular to the rack 18
+figures/FIG-2.md:20:of the lower left corner post 16
+figures/FIG-2.md:20:ss the lower left guide tower 14
+figures/FIG-2.md:20:and the corner post 16
+figures/FIG-2.md:20:n area outside the base frame 10
+figures/FIG-2.md:20:in front of that guide tower 14
+figures/FIG-2.md:20:ndpoint inside the base frame 10
+figures/FIG-2.md:20:behind that guide tower 14
+figures/FIG-1.md:6:A support surface 64
+figures/FIG-1.md:8:A base frame 10
+figures/FIG-1.md:8:r face of the support surface 64
+figures/FIG-1.md:10:Four upright guide towers 14
+figures/FIG-1.md:10:rise from the base frame 10
+figures/FIG-1.md:10:Each guide tower 14
+figures/FIG-1.md:10:end joined to the base frame 10
+figures/FIG-1.md:10:The two rear guide towers 14
+figures/FIG-1.md:12:An equipment deck 12
+figures/FIG-1.md:12:pper ends of the guide towers 14
+figures/FIG-1.md:12:nd parallel to the base frame 10
+figures/FIG-1.md:14:Four corner posts 16
+figures/FIG-1.md:14:derside of the equipment deck 12
+figures/FIG-1.md:14:wn into the four guide towers 14
+figures/FIG-1.md:14:Each corner post 16
+figures/FIG-1.md:14:upper end of the guide tower 14
+figures/FIG-1.md:14:y the wall of the guide tower 14
+figures/FIG-1.md:16:A removable cover 60
+figures/FIG-1.md:16:form below the equipment deck 12
+figures/FIG-1.md:18:A release handle 52
+figures/FIG-1.md:18:from a wall of the base frame 10
+figures/FIG-1.md:18:portion of the release handle 52
+figures/FIG-1.md:18:ncealed within the base frame 10
+figures/FIG-1.md:18:The release handle 52
+figures/FIG-1.md:20:A hand crank 36
+figures/FIG-1.md:20:ring a wall of the base frame 10
+figures/FIG-1.md:20:The hand crank 36
+draft/09-claims.md:49:The platform of claim 10
+draft/09-claims.md:85:The platform of claim 14
+draft/09-claims.md:87:The platform of claim 14
+draft/09-claims.md:99:The method of claim 17
+draft/09-claims.md:101:The method of claim 17
+draft/09-claims.md:103:The method of claim 17
+draft/09-claims.md:105:The method of claim 17
+draft/08-detailed-description.md:5:atform comprises a base frame 10
+draft/08-detailed-description.md:5:at rests on a support surface 64
+draft/08-detailed-description.md:5:and an equipment deck 12
+draft/08-detailed-description.md:5:carried above the base frame 10
+draft/08-detailed-description.md:5:ns parallel to the base frame 10
+draft/08-detailed-description.md:5:The support surface 64
+draft/08-detailed-description.md:5:The base frame 10
+draft/08-detailed-description.md:5:The equipment deck 12
+draft/08-detailed-description.md:5:remains on the equipment deck 12
+draft/08-detailed-description.md:5:height of the equipment deck 12
+draft/08-detailed-description.md:7:The base frame 10
+draft/08-detailed-description.md:7:ies four upright guide towers 14
+draft/08-detailed-description.md:7:each corner of the base frame 10
+draft/08-detailed-description.md:7:The equipment deck 12
+draft/08-detailed-description.md:7:carries four corner posts 16
+draft/08-detailed-description.md:7:corner of the equipment deck 12
+draft/08-detailed-description.md:7:Each corner post 16
+draft/08-detailed-description.md:7:ctive one of the guide towers 14
+draft/08-detailed-description.md:9:each corner post 16
+draft/08-detailed-description.md:9:carries a rack 18
+draft/08-detailed-description.md:9:tending along the corner post 16
+draft/08-detailed-description.md:9:lustrated embodiment the rack 18
+draft/08-detailed-description.md:9:acing side of the corner post 16
+draft/08-detailed-description.md:9:the side of the corner post 16
+draft/08-detailed-description.md:9:he interior of the base frame 10
+draft/08-detailed-description.md:11:A pinion 20
+draft/08-detailed-description.md:11:s mounted in each guide tower 14
+draft/08-detailed-description.md:11:and meshes with the rack 18
+draft/08-detailed-description.md:11:of the corner post 16
+draft/08-detailed-description.md:11:at slides in that guide tower 14
+draft/08-detailed-description.md:11:o that rotation of the pinion 20
+draft/08-detailed-description.md:11:es or lowers that corner post 16
+draft/08-detailed-description.md:11:corner of the equipment deck 12
+draft/08-detailed-description.md:13:a removable cover 60
+draft/08-detailed-description.md:13:t removing the equipment deck 12
+draft/08-detailed-description.md:15:A release handle 52
+draft/08-detailed-description.md:15:and a hand crank 36
+draft/08-detailed-description.md:19:ises a front transverse shaft 22
+draft/08-detailed-description.md:19:a rear transverse shaft 24
+draft/08-detailed-description.md:19:and a worm input shaft 32
+draft/08-detailed-description.md:21:the two pinions 20
+draft/08-detailed-description.md:21:to the front transverse shaft 22
+draft/08-detailed-description.md:21:and the two pinions 20
+draft/08-detailed-description.md:21:to the rear transverse shaft 24
+draft/08-detailed-description.md:21:of the front transverse shaft 22
+draft/08-detailed-description.md:21:and the rear transverse shaft 24
+draft/08-detailed-description.md:21:so that the two pinions 20
+draft/08-detailed-description.md:23:a front sprocket 26
+draft/08-detailed-description.md:23:to the front transverse shaft 22
+draft/08-detailed-description.md:23:a rear sprocket 28
+draft/08-detailed-description.md:23:to the rear transverse shaft 24
+draft/08-detailed-description.md:23:e endless synchronizing chain 30
+draft/08-detailed-description.md:23:runs over the front sprocket 26
+draft/08-detailed-description.md:23:and the rear sprocket 28
+draft/08-detailed-description.md:23:e endless synchronizing chain 30
+draft/08-detailed-description.md:23:ns the front transverse shaft 22
+draft/08-detailed-description.md:23:and the rear transverse shaft 24
+draft/08-detailed-description.md:25:The front transverse shaft 22
+draft/08-detailed-description.md:25:the rear transverse shaft 24
+draft/08-detailed-description.md:25:the front sprocket 26
+draft/08-detailed-description.md:25:the rear sprocket 28
+draft/08-detailed-description.md:25:e endless synchronizing chain 30
+draft/08-detailed-description.md:25:that couples all four pinions 20
+draft/08-detailed-description.md:25:Because all four pinions 20
+draft/08-detailed-description.md:25:every corner post 16
+draft/08-detailed-description.md:25:the equipment deck 12
+draft/08-detailed-description.md:25:ls parallel to the base frame 10
+draft/08-detailed-description.md:25:and the equipment deck 12
+draft/08-detailed-description.md:25:not rack in the guide towers 14
+draft/08-detailed-description.md:27:The worm input shaft 32
+draft/08-detailed-description.md:27:worm that drives a worm wheel 34
+draft/08-detailed-description.md:27:to the front transverse shaft 22
+draft/08-detailed-description.md:27:ation of the worm input shaft 32
+draft/08-detailed-description.md:27:es the front transverse shaft 22
+draft/08-detailed-description.md:27:e endless synchronizing chain 30
+draft/08-detailed-description.md:27:the rear transverse shaft 24
+draft/08-detailed-description.md:27:and through the four pinions 20
+draft/08-detailed-description.md:27:the four corner posts 16
+draft/08-detailed-description.md:27:The worm input shaft 32
+draft/08-detailed-description.md:27:and the worm wheel 34
+draft/08-detailed-description.md:27:worm of the worm input shaft 32
+draft/08-detailed-description.md:27:and the worm wheel 34
+draft/08-detailed-description.md:27:weight on the equipment deck 12
+draft/08-detailed-description.md:27:e endless synchronizing chain 30
+draft/08-detailed-description.md:27:and the pinions 20
+draft/08-detailed-description.md:29:ven by a removable hand crank 36
+draft/08-detailed-description.md:29:received in a crank socket 38
+draft/08-detailed-description.md:29:upled to the worm input shaft 32
+draft/08-detailed-description.md:29:The hand crank 36
+draft/08-detailed-description.md:29:and the crank socket 38
+draft/08-detailed-description.md:29:her embodiment the hand crank 36
+draft/08-detailed-description.md:29:to the same worm input shaft 32
+draft/08-detailed-description.md:29:n through the same worm wheel 34
+draft/08-detailed-description.md:31:e endless synchronizing chain 30
+draft/08-detailed-description.md:31:nning over the front sprocket 26
+draft/08-detailed-description.md:31:and the rear sprocket 28
+draft/08-detailed-description.md:31:e endless synchronizing chain 30
+draft/08-detailed-description.md:31:ng the front transverse shaft 22
+draft/08-detailed-description.md:31:to the rear transverse shaft 24
+draft/08-detailed-description.md:31:ng the front transverse shaft 22
+draft/08-detailed-description.md:31:to the rear transverse shaft 24
+draft/08-detailed-description.md:31:constrains all of the pinions 20
+draft/08-detailed-description.md:35:each guide tower 14
+draft/08-detailed-description.md:35:carries a locking pawl 40
+draft/08-detailed-description.md:35:mounted on a pawl pivot 42
+draft/08-detailed-description.md:35:fixed in that guide tower 14
+draft/08-detailed-description.md:35:Each locking pawl 40
+draft/08-detailed-description.md:35:pivots on its pawl pivot 42
+draft/08-detailed-description.md:35:in which the locking pawl 40
+draft/08-detailed-description.md:35:engages the rack 18
+draft/08-detailed-description.md:35:of the corner post 16
+draft/08-detailed-description.md:35:at slides in that guide tower 14
+draft/08-detailed-description.md:35:in which the locking pawl 40
+draft/08-detailed-description.md:35:is clear of that rack 18
+draft/08-detailed-description.md:35:and the corner post 16
+draft/08-detailed-description.md:35:A compression spring 44
+draft/08-detailed-description.md:35:biases the locking pawl 40
+draft/08-detailed-description.md:35:the position the locking pawl 40
+draft/08-detailed-description.md:37:With the four locking pawls 40
+draft/08-detailed-description.md:37:weight of the equipment deck 12
+draft/08-detailed-description.md:37:passes from each corner post 16
+draft/08-detailed-description.md:37:ough the engaged locking pawl 40
+draft/08-detailed-description.md:37:into the guide tower 14
+draft/08-detailed-description.md:37:nd thence into the base frame 10
+draft/08-detailed-description.md:37:and the support surface 64
+draft/08-detailed-description.md:37:The four locking pawls 40
+draft/08-detailed-description.md:37:arried by its own guide tower 14
+draft/08-detailed-description.md:37:by its own compression spring 44
+draft/08-detailed-description.md:37:and engages its own rack 18
+draft/08-detailed-description.md:37:he four engaged locking pawls 40
+draft/08-detailed-description.md:37:and the four guide towers 14
+draft/08-detailed-description.md:37:e endless synchronizing chain 30
+draft/08-detailed-description.md:37:and the locking pawls 40
+draft/08-detailed-description.md:37:e through the removable cover 60
+draft/08-detailed-description.md:37:t removing the equipment deck 12
+draft/08-detailed-description.md:41:a release balance bar 48
+draft/08-detailed-description.md:41:is mounted on the base frame 10
+draft/08-detailed-description.md:41:and four release cables 46
+draft/08-detailed-description.md:41:nnect the release balance bar 48
+draft/08-detailed-description.md:41:to the four locking pawls 40
+draft/08-detailed-description.md:41:one release cable 46
+draft/08-detailed-description.md:41:to each locking pawl 40
+draft/08-detailed-description.md:41:Each release cable 46
+draft/08-detailed-description.md:41:ge on the release balance bar 48
+draft/08-detailed-description.md:41:to one of the locking pawls 40
+draft/08-detailed-description.md:41:tension in the release cable 46
+draft/08-detailed-description.md:41:pivots that locking pawl 40
+draft/08-detailed-description.md:41:gainst its compression spring 44
+draft/08-detailed-description.md:41:A cable adjuster 62
+draft/08-detailed-description.md:41:ast one of the release cables 46
+draft/08-detailed-description.md:43:The release handle 52
+draft/08-detailed-description.md:43:ed to the release balance bar 48
+draft/08-detailed-description.md:43:at a balance bar pivot 50
+draft/08-detailed-description.md:43:Pulling the release handle 52
+draft/08-detailed-description.md:43:laces the release balance bar 48
+draft/08-detailed-description.md:43:nsion all four release cables 46
+draft/08-detailed-description.md:43:o move all four locking pawls 40
+draft/08-detailed-description.md:43:and the release handle 52
+draft/08-detailed-description.md:43:osition for the locking pawls 40
+draft/08-detailed-description.md:43:The release balance bar 48
+draft/08-detailed-description.md:43:elative to the release handle 52
+draft/08-detailed-description.md:43:e about the balance bar pivot 50
+draft/08-detailed-description.md:43:The four release cables 46
+draft/08-detailed-description.md:43:If the release balance bar 48
+draft/08-detailed-description.md:43:y fixed to the release handle 52
+draft/08-detailed-description.md:43:the shortest release cable 46
+draft/08-detailed-description.md:43:would lift its locking pawl 40
+draft/08-detailed-description.md:43:and the longest release cable 46
+draft/08-detailed-description.md:43:sion to lift its locking pawl 40
+draft/08-detailed-description.md:43:leaving one locking pawl 40
+draft/08-detailed-description.md:43:engaged with its rack 18
+draft/08-detailed-description.md:43:t single engaged locking pawl 40
+draft/08-detailed-description.md:43:en be dragged across its rack 18
+draft/08-detailed-description.md:43:the travel of the corner post 16
+draft/08-detailed-description.md:43:cause the release balance bar 48
+draft/08-detailed-description.md:43:elative to the release handle 52
+draft/08-detailed-description.md:43:ges until every release cable 46
+draft/08-detailed-description.md:43:eded to lift its locking pawl 40
+draft/08-detailed-description.md:43:on of the release balance bar 48
+draft/08-detailed-description.md:43:as an unreleased locking pawl 40
+draft/08-detailed-description.md:45:Releasing the release handle 52
+draft/08-detailed-description.md:45:ckens all four release cables 46
+draft/08-detailed-description.md:45:lets each compression spring 44
+draft/08-detailed-description.md:45:return its locking pawl 40
+draft/08-detailed-description.md:45:oth of the corresponding rack 18
+draft/08-detailed-description.md:45:osition of every locking pawl 40
+draft/08-detailed-description.md:49:Each locking pawl 40
+draft/08-detailed-description.md:49:carries a locked-state flag 54
+draft/08-detailed-description.md:49:t moves with the locking pawl 40
+draft/08-detailed-description.md:49:and each guide tower 14
+draft/08-detailed-description.md:49:has a window 56
+draft/08-detailed-description.md:49:so that the locked-state flag 54
+draft/08-detailed-description.md:49:is visible through the window 56
+draft/08-detailed-description.md:49:only when that locking pawl 40
+draft/08-detailed-description.md:49:aged with a tooth of the rack 18
+draft/08-detailed-description.md:49:When the locking pawl 40
+draft/08-detailed-description.md:49:aged with a tooth of the rack 18
+draft/08-detailed-description.md:49:the locked-state flag 54
+draft/08-detailed-description.md:49:is displaced from the window 56
+draft/08-detailed-description.md:49:osition of the release handle 52
+draft/08-detailed-description.md:49:or of the release balance bar 48
+draft/08-detailed-description.md:51:After the release handle 52
+draft/08-detailed-description.md:51:re loading the equipment deck 12
+draft/08-detailed-description.md:51:t all four locked-state flags 54
+draft/08-detailed-description.md:51:ible through the four windows 56
+draft/08-detailed-description.md:51:A locked-state flag 54
+draft/08-detailed-description.md:51:at the guide tower 14
+draft/08-detailed-description.md:51:that the locking pawl 40
+draft/08-detailed-description.md:55:a mechanical interlock 58
+draft/08-detailed-description.md:55:ociated with the crank socket 38
+draft/08-detailed-description.md:55:coupled to the release handle 52
+draft/08-detailed-description.md:55:The mechanical interlock 58
+draft/08-detailed-description.md:55:s insertion of the hand crank 36
+draft/08-detailed-description.md:55:into the crank socket 38
+draft/08-detailed-description.md:55:unless the release handle 52
+draft/08-detailed-description.md:55:return of the release handle 52
+draft/08-detailed-description.md:55:position until the hand crank 36
+draft/08-detailed-description.md:55:removed from the crank socket 38
+draft/08-detailed-description.md:57:The mechanical interlock 58
+draft/08-detailed-description.md:57:riven until the locking pawls 40
+draft/08-detailed-description.md:57:so no locking pawl 40
+draft/08-detailed-description.md:57:is dragged across a rack 18
+draft/08-detailed-description.md:57:The release handle 52
+draft/08-detailed-description.md:57:t return while the hand crank 36
+draft/08-detailed-description.md:57:is in the crank socket 38
+draft/08-detailed-description.md:57:t left with the locking pawls 40
+draft/08-detailed-description.md:57:Once the hand crank 36
+draft/08-detailed-description.md:57:the release handle 52
+draft/08-detailed-description.md:57:the four compression springs 44
+draft/08-detailed-description.md:57:seat the four locking pawls 40
+draft/08-detailed-description.md:61:perator places the base frame 10
+draft/08-detailed-description.md:61:on the support surface 64
+draft/08-detailed-description.md:61:machine on the equipment deck 12
+draft/08-detailed-description.md:61:and holds the release handle 52
+draft/08-detailed-description.md:61:laces the release balance bar 48
+draft/08-detailed-description.md:61:sions the four release cables 46
+draft/08-detailed-description.md:61:moves all four locking pawls 40
+draft/08-detailed-description.md:61:clear of the four racks 18
+draft/08-detailed-description.md:61:With the release handle 52
+draft/08-detailed-description.md:61:the mechanical interlock 58
+draft/08-detailed-description.md:61:onger blocks the crank socket 38
+draft/08-detailed-description.md:61:erator inserts the hand crank 36
+draft/08-detailed-description.md:61:into the crank socket 38
+draft/08-detailed-description.md:61:operator turns the hand crank 36
+draft/08-detailed-description.md:61:ch turns the worm input shaft 32
+draft/08-detailed-description.md:61:the worm wheel 34
+draft/08-detailed-description.md:61:the front transverse shaft 22
+draft/08-detailed-description.md:61:e endless synchronizing chain 30
+draft/08-detailed-description.md:61:the rear transverse shaft 24
+draft/08-detailed-description.md:61:and the four pinions 20
+draft/08-detailed-description.md:61:lowers the four corner posts 16
+draft/08-detailed-description.md:61:the equipment deck 12
+draft/08-detailed-description.md:61:ng parallel to the base frame 10
+draft/08-detailed-description.md:63:height of the equipment deck 12
+draft/08-detailed-description.md:63:erator removes the hand crank 36
+draft/08-detailed-description.md:63:from the crank socket 38
+draft/08-detailed-description.md:63:hich frees the release handle 52
+draft/08-detailed-description.md:63:n releases the release handle 52
+draft/08-detailed-description.md:63:The four compression springs 44
+draft/08-detailed-description.md:63:return the four locking pawls 40
+draft/08-detailed-description.md:63:arest teeth of the four racks 18
+draft/08-detailed-description.md:63:ms that the locked-state flag 54
+draft/08-detailed-description.md:63:of every locking pawl 40
+draft/08-detailed-description.md:63:is visible through the window 56
+draft/08-detailed-description.md:63:the corresponding guide tower 14
+
+[Showing results with pagination = limit: 400]

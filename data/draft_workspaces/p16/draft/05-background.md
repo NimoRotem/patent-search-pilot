@@ -1,0 +1,11 @@
+Pipework in process plants, buildings, vehicles and drilling installations often has to be gripped by a device that cannot be threaded on from a free end of the pipe. Sensors, monitoring heads, marking tools, small actuators and conduit supports are attached to a run of pipe that is already installed. A clamp intended for that duty is therefore built as a split clamp: a frame that opens, is placed around the pipe transversely, and is closed again.
+
+A split frame presents a mechanical problem that a one piece collar does not have, because the tightening motion has to be delivered to a frame that is divided. Where the grip is obtained by drawing the two frame halves toward one another so that the frame itself shrinks onto the pipe, the closing force enters the frame at the split line, and the grip that results depends on the closure hardware and on how far the halves have been drawn together.
+
+Where instead the frame is fitted with jaws that are advanced against the pipe one at a time, the grip is taken away from the split line, but the jaws have to be balanced against one another by the operator. If one jaw is advanced further than the others, the pipe is pushed away from the axis of the frame, and the clamp is seated differently each time it is fitted.
+
+A clamp whose jaw faces match one nominal pipe diameter also obliges a technician to select the clamp to suit the pipe before working, and a jaw face of fixed curvature meets a pipe of a different diameter along an edge rather than over an area.
+
+An operator working with a quick acting latch further has little indication of how hard the clamp has been applied. The latch closes to the same position whether the jaws have only just reached the pipe or have been driven hard against it, so the feel of the latch does not report the load the clamp is carrying, and a reading of pipe diameter reports only the size of the pipe.
+
+There is accordingly a need for a split pipe clamp that can be fitted by hand around an in place pipe over a range of diameters, that advances several jaws onto the pipe together rather than one at a time, and that reports mechanically to the operator when the clamping load has reached the intended range.

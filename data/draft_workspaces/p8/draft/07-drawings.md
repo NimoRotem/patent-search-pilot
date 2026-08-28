@@ -1,0 +1,11 @@
+FIG. 1 is a perspective view of a vibration device according to a first embodiment, shown in use on a covering element and carrying a handle, the handle, the vibration motor, the air-extraction mechanism, the base, the perimeter member and the covering element being shown schematically.
+
+FIG. 2 is a vertical sectional view taken on line 2-2 of FIG. 3, showing the vibration device of FIG. 1 resting on a covering element, the base, the perimeter member and the covering element being shown in section and the air-extraction mechanism carried on the first side of the base being shown in elevation, the vibration motor and the handle being omitted for clarity, and the air-extraction mechanism, the base, the perimeter member and the covering element being shown schematically.
+
+FIG. 3 is a bottom plan view of the vibration device of FIG. 1, showing the second side and the perimeter member, the second side and the perimeter member being shown schematically.
+
+FIG. 4 is an enlarged fragmentary sectional view taken on line 4-4 of FIG. 3, at a place along the perimeter member where the clearance is present, showing the lower end of the perimeter member and the covering element beneath it, the bearing face at the lower end of the perimeter member, the clearance between the bearing face and the exposed face of the covering element, and the covering element bedded in bonding material spread over a substrate, the perimeter member, the covering element, the bonding material and the substrate being shown schematically.
+
+FIG. 5 is a perspective view of a second embodiment in which a flexible pulling element is connected to the device for drawing the device across a covering element, the vibration motor and the air-extraction mechanism being omitted for clarity, and the vibration device, the covering element, the flexible pulling element and the connection of the flexible pulling element to the vibration device being shown schematically.
+
+FIG. 6 is a schematic view of a third embodiment including one or more stirring elements for autonomous movement, the vibration device being shown as a single body with the base, the perimeter member, the vibration motor and the air-extraction mechanism not separately shown and the covering element omitted for clarity, the vibration device and the stirring elements being shown schematically.

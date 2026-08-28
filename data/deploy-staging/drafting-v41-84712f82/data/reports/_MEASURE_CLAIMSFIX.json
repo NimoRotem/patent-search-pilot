@@ -1,0 +1,4295 @@
+{
+ "method": "Before/after measurement for the 'why relevant' full-text fix (BUG 2).",
+ "BEFORE": {
+  "tally": {
+   "accurate": 35,
+   "overclaims": 1,
+   "vague": 4
+  },
+  "n": 40,
+  "bad": 1,
+  "rate": 0.025
+ },
+ "AFTER": {
+  "tally": {
+   "accurate": 37,
+   "overclaims": 3
+  },
+  "n": 40,
+  "bad": 3,
+  "rate": 0.075
+ },
+ "delta_rate": 0.05,
+ "text_basis_before": {
+  "title-only": 40
+ },
+ "text_basis_after": {
+  "claims+description": 31,
+  "claims": 5,
+  "description": 4
+ },
+ "avg_source_chars": {
+  "before": 1087,
+  "after": 4102
+ },
+ "cited_claim_or_body_after": 34,
+ "rows_before": [
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies the vacuum gripper unit, vacuum pump, and common vacuum chamber.",
+   "pub": "US-10456928-B2",
+   "why": "Based on the provided text, which appears to be an abstract and a partial claim, the reference is relevant as it describes a \"vacuum gripper unit\" that includes a \"vacuum pump\" and a \"common vacuum ch",
+   "reads_on": [
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ],
+   "text": "US-10456928-B2 Vacuum gripper unit comprising vacuum pump. The present invention relates to a vacuum gripper unit. The unit has a first mounting container and a second mounting container of cylindrical shapes formed in an H-type when seen from the outside, including a main body for providing a common vacuum chamber. A vacuum pump is inserted into the first mounting container, while the vacuum pump",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "Every claim in the rationale is directly supported by the abstract provided.",
+   "pub": "US-9266686-B2",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"vacuum gripper\" for \"gripping a work-piece\" and mentions a \"gripper plate having at least one suction port\" and a \"",
+   "reads_on": [
+    "Vacuum gripper"
+   ],
+   "text": "US-9266686-B2 Vacuum gripper. A vacuum gripper for gripping a work-piece includes a flat or curved gripper plate having at least one suction port. A work-piece suction throttling zone is formed around the suction port. The gripper plate has at least one recess provided at a side facing the work-piece and arranged beyond the work-piece suction throttling zone (6) formed around the suction port. At ",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately reflects the text's description of a gripper with a base and vacuum suction ports.",
+   "pub": "US-10195746-B2",
+   "why": "Based on the provided text, which appears to be an abstract or summary, the reference is relevant as it describes a \"Grasping gripper\" that includes \"a base\" and \"one or more ports at the base or at o",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Air extraction means mounted to first side"
+   ],
+   "text": "US-10195746-B2 Grasping gripper. An example gripper may include: a base; two or more fingers attached to the base, with each finger being movable towards, and away from, one or more others of the fingers; and one or more ports at the base or at one or more of the fingers to provide suction through a vacuum.\n\n[text] An example gripper may include: a base; two or more fingers attached to the base, w",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "Every claim in the rationale is directly supported by the provided abstract text.",
+   "pub": "US-7240935-B2",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"vacuum gripper\" for \"suctioning work pieces\" with a \"flexible suction body\" and a \"sealing lip bounding a vacuum ch",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-7240935-B2 Suction grip arm. A vacuum gripper for suctioning work pieces, having a vacuum connection, a flexible suction body and a suction body holder, where the side of the suction body facing the work piece has a sealing lip bounding a vacuum chamber, and the vacuum chamber is connected to the vacuum connection. The suction body has a contact surface abutting the work pieces with prevailing ",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies key components and functions explicitly stated in the abstract.",
+   "pub": "US-9815209-B2",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"modular vacuum gripper\" with a \"sealing device\" and a \"vacuum generation device adapted to suck out the air\". It al",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Air extraction means configured to continuously extract air from chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-9815209-B2 Casing with modular vacuum. A modular vacuum gripper having a first plate, a second plate provided with at least one downstream orifice, framework members, assembly device for assembling the first plate, the second plate and the framework members, at least one upstream orifice situated on one of the walls of the vacuum gripper, sealing device, vacuum generation device adapted to suck",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately summarizes the abstract's key features and acknowledges limitations due to partial text.",
+   "pub": "US-9803680-B2",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"releasable vacuum holding device\" for \"attaching objects to a contact surface\" using a \"vacuum chamber\" and an \"ela",
+   "reads_on": [
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-9803680-B2 Releasable vacuum holding device. The invention relates to a releasable holding device (1) for attaching objects to a contact surface (8), with a vacuum chamber (7), which is open towards the contact surface (8) and in which, after application to the contact surface (8) by means of a suction device (20) generating a vacuum, a vacuum can be generated, the vacuum drawing the holding de",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "overclaims",
+   "reason": "The rationale mentions 'Air extraction means' and 'Seal element contact surface' which are not in the abstract.",
+   "pub": "US-8414045-B2",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"Vacuum gripper\" that includes a \"suction plate for gripping an object\" and defines a \"suction chamber\".",
+   "reads_on": [
+    "Air extraction means configured to continuously extract air from chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-8414045-B2 Vacuum gripper. A vacuum gripper includes a suction plate for gripping an object. The suction plate has a lid and a suction bottom which define a suction chamber there between and engage formfittingly at least on one side within one another via a tongue and groove joint extending in parallel relation to a gripping plane. The tongue and groove joint includes a groove on one of the suc",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "Every claim in the rationale is directly supported by the provided actual text.",
+   "pub": "US-8290624-B2",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"gripper\" that \"grasps irregular and deformable work pieces\" using \"vacuum\" to provide lifting force. The text also ",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Seal element attached to second side, protruding away from first side",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-8290624-B2 Uniform lighting and gripper positioning system for robotic picking operations. A gripper grasps irregular and deformable work pieces so as to lift and hold packaged, processed, or raw, and manipulate the work pieces for the purpose of material handling, assembly, packaging, and other robotic and automated manipulative functions. A vacuum is induced at multiple points through a flexi",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately states the text mentions 'vacuum gripper' and 'pneumatically operated gripper in the form of a vacuum gripper'.",
+   "pub": "US-10562195-B2",
+   "why": "Based on the provided text, which is limited to the title and a short introductory paragraph, the reference appears to be relevant as it explicitly mentions a \"vacuum gripper\" and a \"pneumatically ope",
+   "reads_on": [
+    "Vacuum gripper"
+   ],
+   "text": "US-10562195-B2 Gripper, in particular pneumatically operated gripper in the form of a vacuum gripper or gripping tongs. The present invention relates to a gripper (100) and in particular a pneumatically operated gripper (100) in the form of a vacuum gripper or gripping tongs. The gripper (100) comprises a gripper holder (3.1, 3.2) via which the gripper (100) is preferably detachably connectable to",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately quotes and summarizes the abstract, and the 'reads on' elements are directly supported.",
+   "pub": "US-2007187965-A1",
+   "why": "Based on the abstract alone, the reference appears to disclose a vacuum gripper, mentioning \"a vacuum gripper for suctioning workpieces with an vacuum port, an elastic vacuum element and a vacuum elem",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ],
+   "text": "US-2007187965-A1 . \n\n[text] Vacuum gripper. The invention concerns a vacuum gripper for suctioning workpieces with an vacuum port, an elastic vacuum element and a vacuum element holder, wherein the vacuum element has a sealing lip on its side facing the workpiece, which delimits the vacuum chamber, and the vacuum chamber is flow-connected to the vacuum port, wherein the vacuum gripper has means th",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately extracts key features from the abstract, directly matching the provided 'reads on' elements.",
+   "pub": "US-11207792-B2",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"gripper for gripping a product\" which includes a \"suction device which has a contact surface\" and a \"sealing device",
+   "reads_on": [
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-11207792-B2 Gripper, cutting apparatus and method for cutting a product. The present invention relates to a gripper for gripping a product, in particular a food product, having a suction device which has a contact surface which can be brought into contact with a section, in particular with an end section, of the product, wherein the suction device comprises at least one first suction section wh",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "All claims in the rationale are directly supported by the provided text.",
+   "pub": "US-2014161582-A1",
+   "why": "The reference appears to be relevant as it describes a \"gripping element\" with a \"body\" that includes a \"second portion, at least in part elastically deformable, intended to interact directly with the",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ],
+   "text": "US-2014161582-A1 . \n\n[text] A gripping element ( 1 ) having a body ( 2 ) comprising: a first portion ( 3 ) coupling with a manipulator and a second portion ( 4 ), at least in part elastically deformable, intended to interact directly with the item (W) to be manipulated, wherein said second portion ( 4 ) comprises in its turn a substantially flat base ( 5 ) and a perimetrical edge ( 6 ), the latter",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies the vacuum gripper and sealing edge for contacting an object.",
+   "pub": "US-2005134063-A1",
+   "why": "Based on the provided text, which appears to be a claim from a patent, the reference is relevant as it mentions a \"vacuum gripper\" and a \"sealing edge\" adapted for contacting an object, which suggests",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-2005134063-A1 . \n\n[text] The gripping device as recited in claim 1 , wherein the vacuum gripper comprises a wall defining a vacuum chamber and having a sealing edge, wherein the sealing edge is adapted for contacting the object.",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "Rationale accurately reflects the title and a specific claim detail from the reference.",
+   "pub": "US-11078051-B2",
+   "why": "Based on the title alone, the reference \"Seal for a vacuum material lifter\" appears to be relevant as it explicitly mentions a \"seal for a vacuum lifter\", which is a component of a vacuum gripper. The",
+   "reads_on": [
+    "Loop-shaped vacuum seal element"
+   ],
+   "text": "US-11078051-B2 Seal for a vacuum material lifter. A seal for a vacuum lifter and method of manufacture wherein the seal has a continuous unbroken outer fluid resistant skin of elastomer which forms a boundary around a homogeneous cellular structure with no interior seams or joints.\n\n[text] The vacuum lifter of claim 1 , wherein the seal forms a closed periphery.",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately describes elements present in the reference's actual text.",
+   "pub": "US-6382692-B1",
+   "why": "The reference is relevant as it describes a \"Vacuum gripper\" with an \"elastic vacuum body\" that includes a \"sealing lip\" defining a \"vacuum chamber.\" This aligns with the invention's focus on a vacuum",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means in fluid communication with chamber through base element"
+   ],
+   "text": "US-6382692-B1 Vacuum gripper. An elastic vacuum body of a vacuum gripper 10 for suctioning workpieces comprises a sealing lip 22 defining a vacuum chamber 26 at a side of the vacuum body 20 facing the workpiece. The vacuum chamber 26 is flow-connected to a vacuum supply and ribs 36, 38, 40 project into the vacuum chamber 26. The sealing lip 22 comprises at least one groove 28 on its surface 30 fac",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately quotes and summarizes elements from the provided abstract.",
+   "pub": "US-8382174-B2",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"suction gripper\" which includes a \"cup member\" and a \"suction port\". The abstract mentions that the cup member has ",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Air extraction means configured to continuously extract air from chamber"
+   ],
+   "text": "US-8382174-B2 System, method, and apparatus for suction gripping. A suction gripper includes a cup member, a suction port, and a valve. The cup member has inner and outer surfaces defining an opening such that the inner surface defines an inner cavity. The suction port provides suction. The valve in is fluid communication with the suction port and the inner cavity of the cup member to modify the s",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately reflects the abstract, mentioning the gripping element, sealing elements, vacuum ducts, and rubber/metal components",
+   "pub": "DE-202005007145-U1",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"Vacuum operated gripping element\" that includes \"several specifically shaped sealing elements and vacuum ducts\". It",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Air extraction means in fluid communication with chamber through base element"
+   ],
+   "text": "DE-202005007145-U1 Vacuum operated gripping element, comprising several specifically shaped sealing elements and vacuum ducts. The device can be connected to a robot arm or similarly working device and is assembled of the suction element (1) made of rubber and a metal holding element (2). Both parts (1,2) are provided with a first bore (3) for the creation of a vacuum and a second bore (4) for the",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately describes the text's content and its limitations regarding 'vacuum gripper' specifics.",
+   "pub": "US-6171049-B1",
+   "why": "The provided reference text is limited to a single passage describing a 'device according to claim 6' and its 'gripping means'. This passage mentions a 'flexible contact surface adapted to grasp the o",
+   "reads_on": [],
+   "text": "US-6171049-B1 Method and device for receiving, orientating and assembling of components. Workpieces such as chips are removed from a receiving plane by a transfer unit, which carries them to a delivery plane. The workpieces are transported in two segments during two phases, each workpiece being deposited between the phases on an intermediate station arranged in the region of the feed path. The tra",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "vague",
+   "reason": "The rationale is generic, relying only on the title without specific, checkable ties to the provided text.",
+   "pub": "US-3240525-A",
+   "why": "Based on the title alone, this reference appears to be relevant as it is titled \"Vacuum device for handling articles\", which suggests a vacuum gripper. However, without the full text, it is impossible",
+   "reads_on": [],
+   "text": "US-3240525-A Vacuum device for handling articles. \n\n[text] against the lip formed thereby for holding the sealing edge in contact with the surface to which it is sealed to even in the event of distortion of the gripper pad or other surface being gripped.",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies elements from the abstract present in the claims.",
+   "pub": "US-4708381-A",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"holder fixed by vacuum for industrial use\" which comprises a \"rigid backpiece\" and a \"flexible intermediate element",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element"
+   ],
+   "text": "US-4708381-A Holder fixed by vacuum for industrial use. A holder for industrial use attachable by vacuum comprises a rigid backpiece (3), a flexible intermediate element (2), and a central distance-maintaining element (1). The intermediate element (2) comprises a comparatively rigid sealing ring (9) with a sealing lip (13), which in use abuts against the element held fixed and with its opposite si",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "All claims in the rationale are directly supported by the provided text.",
+   "pub": "US-6279976-B1",
+   "why": "Based on the abstract alone, the reference appears to disclose a vacuum gripper in the form of a \"wafer handling device\" or \"vacuum-assisted chuck assembly\" that includes a \"conforming perimeter seal\"",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element elastically deformable at contact surface",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-6279976-B1 Wafer handling device having conforming perimeter seal. A vacuum-assisted chuck assembly for coupling to a warped semiconductor wafer is provided. In one embodiment, the assembly comprises a wafer chuck and a conforming perimeter seal. The seal permits effective vacuum coupling of the chuck to the warped wafer without operator intervention. As vacuum pressure is applied, the seal pre",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "All claims in the rationale are directly supported by the provided abstract text.",
+   "pub": "DE-102005020840-A1",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"vacuum gripper\" for \"taking in by pressure and holding work pieces\". It also mentions a \"vacuum element configured ",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ],
+   "text": "DE-102005020840-A1 Suction pads. The invention relates to a vacuum gripper for taking in by pressure and holding work pieces. Said gripper comprises a vacuum element (1) configured as an elastic shaped element and a vacuum element holder (2). Said vacuum element holder comprises a first bore (3) for applying a negative pressure thereto and a second bore (4) for applying a positive pressure between",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately reflects the abstract's description of a flexible vacuum gripper with an internal chamber.",
+   "pub": "US-6419291-B1",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"flexible vacuum gripper device\" that uses \"vacuum to grip the objects\". It also mentions a \"gripper element definin",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-6419291-B1 Adjustable flexible vacuum gripper and method of gripping. A flexible vacuum gripper device and method of gripping. The device includes a housing, an inflatable gripper element defining an internal chamber and being radially or circumferentially expandable, the inflatable gripper element having a front end which is adapted to grip an object and a rear end coupled to the housing, a va",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "vague",
+   "reason": "The rationale is generic and doesn't tie specific features from the text to its relevance.",
+   "pub": "US-3152828-A",
+   "why": "The reference is titled \"Vacuum cup units for lifting pads,\" which appears to be relevant to a vacuum gripper. However, without the full claims and description, it is not possible to determine specifi",
+   "reads_on": [],
+   "text": "US-3152828-A Vacuum cup units for lifting pads. \n\n[text] In both FIGURES 2 and 3, the seal includes a body 1 molded from suitable flexible air impervious material into an annular or ring-like seal 2 in the form of a substantially frusto-conical skirt, and an integral medial scuff pad portion 3. It will also be seen that the marginal or peripheral material engaging edge portion of the annular skirt",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately describes the suction cup as a vacuum gripper and identifies the sealing ring as a loop-shaped vacuum seal element.",
+   "pub": "US-8534633-B2",
+   "why": "Based on the abstract alone, the reference appears to disclose a vacuum gripper, referred to as a \"suction cup for a tool driven by vacuum\", that is \"arranged to be brought tightly into contact with t",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-8534633-B2 Suction cup having replaceable sealing surfaces. A suction cup for a tool driven by vacuum is presented, the suction cup in a first or upper end arranged to be brought into fluid flow communication with a vacuum source and in its opposite end arranged to be brought tightly into contact with the surface of an object to be handled. The suction cup is in its lower end arranged to be cou",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "Rationale accurately reflects the disclosed components and their relationships in the reference.",
+   "pub": "US-4763941-A",
+   "why": "The reference describes an \"Automatic vacuum gripper\" comprising a \"gripper member with a resilient seal coupled to a hollow piston and shaft\" and a \"vacuum source\".",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-4763941-A Automatic vacuum gripper. The automatic vacuum gripper comprises a gripper member with a resilient seal coupled to a hollow piston and shaft. The piston is spring loaded downward in a cylinder coupled to a vacuum source. With vacuum applied, the piston does not move until the gripped part is completely sealed to the gripper member.\n\n[text] The vacuum gripper of claim 1 wherein said ca",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "Rationale accurately reflects the abstract's description of a suction-based parcel gripping device.",
+   "pub": "US-4635988-A",
+   "why": "Based on the abstract alone, this reference appears to be relevant as it describes a \"device for gripping parcels\" that utilizes \"suction on a relatively large surface area of the parcel\" to handle th",
+   "reads_on": [
+    "Air extraction means configured to continuously extract air from chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-4635988-A Procedure and device for gripping parcels. A method and apparatus for handling parcels wherein, for the handling of bulky parcels with a low mass and covered with a relatively fragile wrapping, a gripping method is utilized which serves to exert suction on a relatively large surface area of the parcel so as not to damage the wrapping of the parcels wherein the intensity of suction is ",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately reflects the title's content and acknowledges the lack of full text.",
+   "pub": "US-9885419-B2",
+   "why": "Based on the title alone, this reference appears to be relevant as it discloses a \"Seal for a vacuum material lifter\", which suggests a component for a vacuum gripper. However, without the full text, ",
+   "reads_on": [],
+   "text": "US-9885419-B2 Seal for a vacuum material lifter. A seal for a vacuum lifter and method of manufacture wherein the seal has a continuous unbroken outer fluid resistant skin of elastomer which forms a boundary around a homogeneous cellular structure with no interior seams or joints.\n\n[text] FIG. 1 is a side view of a vacuum lifter with a pad and seal;",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies the explicit mention of 'console for a vacuum clamping device' in the text.",
+   "pub": "DE-102005017684-A1",
+   "why": "Based on the provided text, which appears to be an abstract or a very short description, the reference is relevant because it explicitly mentions \"eine Konsole f\u00fcr eine Unterdruckspanneinrichtung\" (a ",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Vacuum clamping device"
+   ],
+   "text": "DE-102005017684-A1 Support for vacuum clamping device has insert with at least one channel running parallel to longitudinal axis of longitudinal bearer. The support has at least one longitudinal bearer (14) and at least two inserts (16) forming the support surface (12). Each insert has at least one channel (32) running parallel to longitudinal direction (34). The channels come out on the endfaces ",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies elements from the abstract like 'vacuum clamping device', 'console', and 'displaceable slide'.",
+   "pub": "DE-102014214802-A1",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it mentions a \"vacuum clamping device\" and a \"console\" as part of this device. It also describes a \"displaceable on the console sli",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Driven driver for moving a clamping means",
+    "Vacuum clamping device"
+   ],
+   "text": "DE-102014214802-A1 Under pressure clamp. The invention relates to a vacuum clamping device with at least one console and at least one displaceable on the console slide, which has a console guide portion and a suction cup, and with at least one suction block, wherein the suction blocks facing the workpiece to be clamped upper clamping surface and a holding portion opposite thereto, wherein the hold",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies the clamping device and the suction device for workpiece clamping.",
+   "pub": "EP-2745987-A2",
+   "why": "The reference is relevant as it describes a \"Spannvorrichtung\" (clamping device) which appears to be a \"vacuum clamping device\" based on the mention of a \"Saugeinrichtung (14) zum Ansaugen eines zu sp",
+   "reads_on": [
+    "Vacuum clamping device"
+   ],
+   "text": "EP-2745987-A2 Clamping device. The invention relates to a clamping device with a supporting device and a suction device for sucking a workpiece to be clamped, wherein the support means comprises a housing forming a cylinder on which at least three axially projecting and axially movable positioning pin are provided, and arranged in the cylinder next to the positioning pins a piston is, which is axi",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The title explicitly mentions 'Vacuum chuck apparatus', which is a type of 'Vacuum clamping device'.",
+   "pub": "US-4858975-A",
+   "why": "Based on the title alone, this reference appears to disclose a \"Vacuum chuck apparatus\" which is a type of \"Vacuum clamping device\".",
+   "reads_on": [
+    "Vacuum clamping device"
+   ],
+   "text": "US-4858975-A Vacuum chuck apparatus for wet processing wafers. A vacuum chuck apparatus operable in both gas and liquid includes a liquid-gas separating membrane which allows passage of gas molecules but prevents passage of liquid. The liquid-gas separating membrane is disposed between an inlet hole of the chuck and a manifold which is connected to a pneumatic system. The pneumatic system includes",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies key terms from the abstract that directly relate to the 'reads on' concept.",
+   "pub": "EP-0175295-A1",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it mentions a \"Vacuum holder\" and \"vacuum elements\" which are components of a \"Vacuum clamping device\".",
+   "reads_on": [
+    "Vacuum clamping device"
+   ],
+   "text": "EP-0175295-A1 Vacuum holder for fixing work pieces on work benches, tables or the like. The vacuum holder is formed by individual vacuum elements 3 which, in plan view (fixing plane), have the cross-section of an equilateral polygon, preferably a hexagon. Suction openings 6 are formed in the upper suction face. Provided in all lateral faces are connecting openings 7 which serve for the vacuum conn",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "Rationale accurately reflects the text's description of holding curved workpieces with suction pressure.",
+   "pub": "US-4491306-A",
+   "why": "The text describes a system for \"Holding curved workpieces\" using \"holding and clamping elements\" and mentions \"below-atmospheric suction pressure in the plenum\", which appears to be a form of vacuum ",
+   "reads_on": [
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ],
+   "text": "US-4491306-A Holding curved workpieces. Large, spherically preshaped, thin workpieces are held and clamped in discrete, well-defined points under utilization of holding and clamping elements in which a portion of a head is universally pivotable about a point being the center of a sealing rim for a plenum chamber adjacent the engaging workpiece in which plenum chamber high pressure is established s",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "Every claim in the rationale is directly supported by the actual text provided.",
+   "pub": "EP-1258319-A3",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"Vacuum clamping device for workpieces for a stationary tool machine\" which includes \"suction clamps\" that can be po",
+   "reads_on": [
+    "Vacuum clamping device",
+    "Clamping means for vacuum clamping device"
+   ],
+   "text": "EP-1258319-A3 Vacuum clamping device for workpieces for a stationary tool machine. A vacuum clamping device for workpieces for stationary machining has suction clamps (1) which are arranged on a support structure and can be positioned for adaptation to different workpiece formats. To clamp the workpieces (2) that can be placed on them, the suction clamps (1) each have a suction chamber (3) on thei",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "vague",
+   "reason": "The rationale is generic and does not provide specific, checkable ties to the actual text.",
+   "pub": "DE-10023916-A1",
+   "why": "The reference is topically related, but its available text does not clearly disclose specific elements of the query; treat as unconfirmed.",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Driven driver for moving a clamping means",
+    "Driver displaceably guided along the console's longitudinal direction",
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ],
+   "text": "DE-10023916-A1 Machine worktable with framed arm and traveling mounts controls mount position on arm and arm position off drive belt engagedly coupled to mount and arm.. The mount (2) can be moved to controllable positions (9) along the bracket arm (1) as also controllably (9) positioned using a drive belt (3), chain or threaded rod lying within the arm and connected to both arm and mount (2) by m",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "Every claim in the rationale is directly supported by the actual text provided.",
+   "pub": "EP-2740569-A2",
+   "why": "The reference describes a console table for a wood processing machine with vacuum tensioners on the consoles, and a vacuum system with vacuum channels integrated into the console profiles that can be ",
+   "reads_on": [
+    "Vacuum clamping device"
+   ],
+   "text": "EP-2740569-A2 Console table for a wood processing machine. The desk (10) has movable consoles (22-28) movably locked along guide rails (18, 20) and releasably locked at the guide rails in a desired position. Vacuum tensioners (50) for a workpiece are positioned on upper sides (48) of the consoles. Stopper elements (58, 64, 66) limit processing fields for the workpiece. Stationary consoles (30, 32)",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "vague",
+   "reason": "The rationale is generic and does not provide specific, checkable ties to the actual text.",
+   "pub": "US-2002074703-A1",
+   "why": "The reference is topically related, but its available text does not clearly disclose specific elements of the query; treat as unconfirmed.",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Driven driver for moving a clamping means"
+   ],
+   "text": "US-2002074703-A1 . \n\n[text] [0026]FIG. 2 shows that the clamping beam 10 is provided with a recess 34 such that the drives 18 - 22 , the toothed belts 24 - 28 , the deflection rollers 30 and devices 36 for raising the suction blocks can be accommodated. The devices 36 are realized in the form of piston/cylinder units, with the cylinder 38 being rigidly connected to the clamping beam 10 and the pis",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "Every claim in the rationale is directly supported by the actual text provided.",
+   "pub": "EP-1077112-A3",
+   "why": "The reference is relevant because its title, \"Device for clamping workpieces,\" mentions a \"clamping device,\" which appears to be a \"vacuum clamping device\" based on the description. The description al",
+   "reads_on": [
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ],
+   "text": "EP-1077112-A3 Device for clamping workpieces. The device consists of a base element (10) fastened to a working surface by a vacuum clamping device (19). The base element contains a piston unit (13), with one part projecting over the top of the base element when fitted. The part carries a clamping claw (20) for work pieces. The underside of the piston unit, and the side walls and base (17) of the b",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "Rationale accurately identifies disclosed elements and notes limitations due to abstract-only review.",
+   "pub": "DE-102008038257-A1",
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"Vacuum-clamping device for clamping workpiece\" and mentions a \"clamping surface\" and a \"clamping space\" for suction",
+   "reads_on": [
+    "Vacuum clamping device"
+   ],
+   "text": "DE-102008038257-A1 Vacuum-clamping device for clamping workpiece, has housing with clamping surface, and brake element shifted in housing in direction of workpiece, within clamping space by low pressure obtained in clamping space. The device (10) has a housing (14) with a clamping surface (16) turned towards a workpiece. A clamping space (18) is provided in the clamping surface for suction of the ",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  }
+ ],
+ "rows_after": [
+  {
+   "verdict": "accurate",
+   "reason": "All claims in the rationale are directly supported by the provided text, including specific components and their functions.",
+   "pub": "US-10456928-B2",
+   "why": "The reference appears to be relevant as it describes a \"vacuum gripper unit\" with a \"main body\" that has a \"common vacuum chamber\" and a \"suction pad\" that is connected to the main body and communicat",
+   "reads_on": [
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-10456928-B2 Vacuum gripper unit comprising vacuum pump. The present invention relates to a vacuum gripper unit. The unit has a first mounting container and a second mounting container of cylindrical shapes formed in an H-type when seen from the outside, including a main body for providing a common vacuum chamber. A vacuum pump is inserted into the first mounting container, while the vacuum pump",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately maps the reference's components to the claimed elements without overstating or hallucinating.",
+   "pub": "US-9266686-B2",
+   "why": "This reference appears to be relevant as it describes a \"vacuum gripper for gripping a work-piece\" which includes a \"gripper plate\" that could be considered a base element, and \"at least one suction p",
+   "reads_on": [
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ],
+   "text": "US-9266686-B2 Vacuum gripper. A vacuum gripper for gripping a work-piece includes a flat or curved gripper plate having at least one suction port. A work-piece suction throttling zone is formed around the suction port. The gripper plate has at least one recess provided at a side facing the work-piece and arranged beyond the work-piece suction throttling zone (6) formed around the suction port. At ",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies elements present in the text and contrasts with the absent 'loop-shaped vacuum seal element'.",
+   "pub": "US-10195746-B2",
+   "why": "The reference describes a 'gripper' with a 'base' and 'one or more ports' that 'provide suction through a vacuum', and it describes 'fingers' rather than a 'loop-shaped vacuum seal element'.",
+   "reads_on": [
+    "Air extraction means mounted to first side",
+    "Air extraction means configured to continuously extract air from chamber"
+   ],
+   "text": "US-10195746-B2 Grasping gripper. An example gripper may include: a base; two or more fingers attached to the base, with each finger being movable towards, and away from, one or more others of the fingers; and one or more ports at the base or at one or more of the fingers to provide suction through a vacuum.\n\n[claim 1] A gripper comprising: a base; two or more fingers attached to the base, each of ",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "All claims in the rationale are directly supported by the actual text of the reference.",
+   "pub": "US-7240935-B2",
+   "why": "The reference appears relevant as it describes a \"vacuum gripper for suctioning work pieces\" with a \"flexible suction body\" and a \"sealing lip bounding a vacuum chamber,\" which is connected to a \"vacu",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-7240935-B2 Suction grip arm. A vacuum gripper for suctioning work pieces, having a vacuum connection, a flexible suction body and a suction body holder, where the side of the suction body facing the work piece has a sealing lip bounding a vacuum chamber, and the vacuum chamber is connected to the vacuum connection. The suction body has a contact surface abutting the work pieces with prevailing ",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies corresponding elements and their functions from the reference text.",
+   "pub": "US-9815209-B2",
+   "why": "The reference appears to be relevant as it discloses a \"modular vacuum gripper\" with a \"first plate forming a top wall\" and a \"second wall provided with at least one downstream orifice and forming a b",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Seal element attached to second side, protruding away from first side",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Air extraction means configured to continuously extract air from chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-9815209-B2 Casing with modular vacuum. A modular vacuum gripper having a first plate, a second plate provided with at least one downstream orifice, framework members, assembly device for assembling the first plate, the second plate and the framework members, at least one upstream orifice situated on one of the walls of the vacuum gripper, sealing device, vacuum generation device adapted to suck",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "All claims in the rationale are directly supported by the actual text provided.",
+   "pub": "US-9803680-B2",
+   "why": "The reference appears to be relevant as it describes a \"releasable holding device\" with a \"vacuum chamber\" and an \"elastic seal\" that is \"U-shaped in profile\" and \"encircling\" to create a vacuum for a",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface"
+   ],
+   "text": "US-9803680-B2 Releasable vacuum holding device. The invention relates to a releasable holding device (1) for attaching objects to a contact surface (8), with a vacuum chamber (7), which is open towards the contact surface (8) and in which, after application to the contact surface (8) by means of a suction device (20) generating a vacuum, a vacuum can be generated, the vacuum drawing the holding de",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately quotes and summarizes the core elements of the vacuum gripper from the reference.",
+   "pub": "US-8414045-B2",
+   "why": "The reference appears to be relevant as it describes a \"vacuum gripper\" that includes a \"suction plate for gripping an object\" and defines a \"suction chamber there between\".",
+   "reads_on": [
+    "Seal element with contact surface and encircling surface defining a chamber"
+   ],
+   "text": "US-8414045-B2 Vacuum gripper. A vacuum gripper includes a suction plate for gripping an object. The suction plate has a lid and a suction bottom which define a suction chamber there between and engage formfittingly at least on one side within one another via a tongue and groove joint extending in parallel relation to a gripping plane. The tongue and groove joint includes a groove on one of the suc",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "All claims in the rationale are directly supported by the provided text, including specific component descriptions.",
+   "pub": "US-8290624-B2",
+   "why": "The reference appears to disclose a vacuum gripper, mentioning \"A gripper grasps irregular and deformable work pieces\" and that \"A vacuum is induced at multiple points through a flexible gripping hood",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Seal element attached to second side, protruding away from first side",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Air extraction means configured to continuously extract air from chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-8290624-B2 Uniform lighting and gripper positioning system for robotic picking operations. A gripper grasps irregular and deformable work pieces so as to lift and hold packaged, processed, or raw, and manipulate the work pieces for the purpose of material handling, assembly, packaging, and other robotic and automated manipulative functions. A vacuum is induced at multiple points through a flexi",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies the presence of a vacuum gripper, flexible suction cup, and seal.",
+   "pub": "US-10562195-B2",
+   "why": "The reference appears to be relevant as it describes a \"vacuum gripper\" [paragraph p0002] that includes a \"flexible suction cup serving as the gripping member\" [claim 11] and a \"seal surrounding the s",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-10562195-B2 Gripper, in particular pneumatically operated gripper in the form of a vacuum gripper or gripping tongs. The present invention relates to a gripper (100) and in particular a pneumatically operated gripper (100) in the form of a vacuum gripper or gripping tongs. The gripper (100) comprises a gripper holder (3.1, 3.2) via which the gripper (100) is preferably detachably connectable to",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately describes elements present in the reference, directly matching the provided text.",
+   "pub": "US-2007187965-A1",
+   "why": "The reference appears to be relevant as it describes a \"vacuum gripper for suctioning a workpiece\" comprising an \"elastic vacuum element having a sealing lip on a side facing the workpiece to delimit ",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ],
+   "text": "US-2007187965-A1 . \n\n[claim 1] A vacuum gripper for suctioning a workpiece, the gripper comprising: a vacuum port; an elastic vacuum element having a sealing lip on a side facing the workpiece to delimit a vacuum chamber, said vacuum chamber being flow-connected to said vacuum port; a vacuum element holder disposed between said vacuum element and said vacuum port; means for detecting or displaying",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately describes the gripper's suction device, contact surface, suction section, sealing device, and vacuum pumping.",
+   "pub": "US-11207792-B2",
+   "why": "The reference appears to be relevant as it describes a \"gripper for gripping a product\" with a \"suction device which has a contact surface which can be brought into contact with a section of the produ",
+   "reads_on": [
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-11207792-B2 Gripper, cutting apparatus and method for cutting a product. The present invention relates to a gripper for gripping a product, in particular a food product, having a suction device which has a contact surface which can be brought into contact with a section, in particular with an end section, of the product, wherein the suction device comprises at least one first suction section wh",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately describes the gripping element's features (flat base, perimetrical edge, air intake duct) as disclosed.",
+   "pub": "US-2014161582-A1",
+   "why": "The reference appears to disclose a gripping element with a 'substantially flat base' and a 'perimetrical edge' that extends around the base, which seems to correspond to a rigid base element and a lo",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Seal element attached to second side, protruding away from first side",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ],
+   "text": "US-2014161582-A1 . \n\n[claim 1] A gripping element ( 1 ) having a body ( 2 ) comprising: a first portion ( 3 ) coupling with a manipulator and a second portion ( 4 ), at least in part elastically deformable, intended to interact directly with the item (W) to be manipulated, wherein said second portion ( 4 ) comprises in its turn a substantially flat base ( 5 ) and a perimetrical edge ( 6 ), the lat",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies disclosures of a vacuum gripper, sealing edge, and contact surface.",
+   "pub": "US-2005134063-A1",
+   "why": "The reference appears to be relevant as it discloses a \"vacuum gripper\" for \"gripping an object\". It also mentions a \"wall defining a vacuum chamber and having a sealing edge, wherein the sealing edge",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-2005134063-A1 . \n\n[claim 1] A gripping device for gripping an object, the gripping device comprising: a vacuum gripper; a magnet disposed within the vacuum gripper and moveable between a gripping position and a retracted position; gripping means for moving the magnet to the gripping position; and releasing means for moving the magnet to the retracted position.\n\n[claim 3] The gripping device as ",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies the vacuum lifter, seal, closed periphery, and gland location from the text.",
+   "pub": "US-11078051-B2",
+   "why": "The reference appears to be relevant as it describes a \"vacuum lifter\" which includes a \"seal\" that forms a \"closed periphery\", suggesting a loop-shaped element for creating a vacuum. The seal is loca",
+   "reads_on": [
+    "Loop-shaped vacuum seal element"
+   ],
+   "text": "US-11078051-B2 Seal for a vacuum material lifter. A seal for a vacuum lifter and method of manufacture wherein the seal has a continuous unbroken outer fluid resistant skin of elastomer which forms a boundary around a homogeneous cellular structure with no interior seams or joints.\n\n[claim 1] A vacuum lifter comprising: a rotator configured for attachment to a boom of a piece of construction equip",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately describes the vacuum gripper's components and their connections as stated in the text.",
+   "pub": "US-6382692-B1",
+   "why": "The reference appears to be relevant as it describes a \"vacuum gripper for suctioning workpieces\" comprising a \"sealing lip defining a vacuum chamber\" which is \"flow-connected to a vacuum supply\".",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Bracing structure arranged within or outside the seal element"
+   ],
+   "text": "US-6382692-B1 Vacuum gripper. An elastic vacuum body of a vacuum gripper 10 for suctioning workpieces comprises a sealing lip 22 defining a vacuum chamber 26 at a side of the vacuum body 20 facing the workpiece. The vacuum chamber 26 is flow-connected to a vacuum supply and ribs 36, 38, 40 project into the vacuum chamber 26. The sealing lip 22 comprises at least one groove 28 on its surface 30 fac",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "All claims in the rationale are directly supported by the provided text of the reference.",
+   "pub": "US-8382174-B2",
+   "why": "The reference appears to be relevant as it describes a 'suction gripper' which is also referred to as a 'vacuum gripper' in the text. It includes a 'cup member' with 'inner and outer surfaces defining",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-8382174-B2 System, method, and apparatus for suction gripping. A suction gripper includes a cup member, a suction port, and a valve. The cup member has inner and outer surfaces defining an opening such that the inner surface defines an inner cavity. The suction port provides suction. The valve in is fluid communication with the suction port and the inner cavity of the cup member to modify the s",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "All claims in the rationale are directly supported by the provided text, including specific component numbers and functions.",
+   "pub": "DE-202005007145-U1",
+   "why": "The reference appears to disclose a vacuum gripper with a 'metal holding element (2)' that functions as a base and a 'suction element (1) made of rubber' which acts as a seal. It also mentions a 'firs",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ],
+   "text": "DE-202005007145-U1 Vacuum operated gripping element, comprising several specifically shaped sealing elements and vacuum ducts. The device can be connected to a robot arm or similarly working device and is assembled of the suction element (1) made of rubber and a metal holding element (2). Both parts (1,2) are provided with a first bore (3) for the creation of a vacuum and a second bore (4) for the",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately describes the device, gripping means, and vacuum gripper mechanism as disclosed in the claims.",
+   "pub": "US-6171049-B1",
+   "why": "The reference appears to be relevant as it describes a 'device for periodically receiving, placing and depositing flat objects' which includes 'means for gripping the object substantially laterally'. ",
+   "reads_on": [
+    "Seal element with contact surface",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means configured to continuously extract air from chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-6171049-B1 Method and device for receiving, orientating and assembling of components. Workpieces such as chips are removed from a receiving plane by a transfer unit, which carries them to a delivery plane. The workpieces are transported in two segments during two phases, each workpiece being deposited between the phases on an intermediate station arranged in the region of the feed path. The tra",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately describes elements present in the reference, such as the vacuum pad, peripheral seal, and integrated pump.",
+   "pub": "US-3240525-A",
+   "why": "The reference appears to be relevant as it discloses a \"vacuum attaching pad having an attaching face with a peripheral seal means thereon\" and an \"air evacuating pump incorporated into said handle an",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-3240525-A Vacuum device for handling articles. \n\n[claim 1] A DEVICE FOR HANDLING OBJECTS HAVING A SUBSTANTIALLY SMOOTH SURFACE COMPRISING A VACUUM ATTACHING PAD HAVING AN ATTACHING FACE WITH A PERIPHERAL SEAL MEANS THEREON, A HANDLE ATTACHED TO SAID PAD, AND AN AIR EVACUATING PUMP INCORPORATED INTO SAID HANDLE AND COMMUNICATED WITH THE ATTACHING SURFACE OF THE PAD FOR EXHAUSTING AIR FROM THE AT",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "All claims in the rationale are directly supported by the provided text, including specific quotes.",
+   "pub": "US-4708381-A",
+   "why": "The reference appears to be relevant as it discloses a 'rigid backpiece' which can be considered a rigid base element, and a 'seal element having a peripheral sealing ring portion terminating in a sea",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface"
+   ],
+   "text": "US-4708381-A Holder fixed by vacuum for industrial use. A holder for industrial use attachable by vacuum comprises a rigid backpiece (3), a flexible intermediate element (2), and a central distance-maintaining element (1). The intermediate element (2) comprises a comparatively rigid sealing ring (9) with a sealing lip (13), which in use abuts against the element held fixed and with its opposite si",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "overclaims",
+   "reason": "The reference does not explicitly disclose an 'encircling surface defining a chamber' or 'air extraction means mounted to first side'.",
+   "pub": "US-6279976-B1",
+   "why": "The reference appears to disclose a vacuum gripper, as the abstract mentions a \"vacuum-assisted chuck assembly\" and a \"conforming perimeter seal\" that forms an \"air-tight seal\" to couple to an object.",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-6279976-B1 Wafer handling device having conforming perimeter seal. A vacuum-assisted chuck assembly for coupling to a warped semiconductor wafer is provided. In one embodiment, the assembly comprises a wafer chuck and a conforming perimeter seal. The seal permits effective vacuum coupling of the chuck to the warped wafer without operator intervention. As vacuum pressure is applied, the seal pre",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately describes the vacuum gripper, vacuum element, holder, and peripheral seal as disclosed.",
+   "pub": "DE-102005020840-A1",
+   "why": "The reference discloses a vacuum gripper with a vacuum element (1) configured as an elastic shaped element and a vacuum element holder (2), and a peripheral seal (7) that delimits areas of negative pr",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ],
+   "text": "DE-102005020840-A1 Suction pads. The invention relates to a vacuum gripper for taking in by pressure and holding work pieces. Said gripper comprises a vacuum element (1) configured as an elastic shaped element and a vacuum element holder (2). Said vacuum element holder comprises a first bore (3) for applying a negative pressure thereto and a second bore (4) for applying a positive pressure between",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "All claims in the rationale are directly supported by the actual text of the reference.",
+   "pub": "US-6419291-B1",
+   "why": "The reference appears to be relevant as it describes a \"flexible vacuum gripper device\" that includes a \"housing\" (which may function as a rigid base element) and an \"inflatable gripper element defini",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-6419291-B1 Adjustable flexible vacuum gripper and method of gripping. A flexible vacuum gripper device and method of gripping. The device includes a housing, an inflatable gripper element defining an internal chamber and being radially or circumferentially expandable, the inflatable gripper element having a front end which is adapted to grip an object and a rear end coupled to the housing, a va",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies disclosed components and functions based on the provided text.",
+   "pub": "US-3152828-A",
+   "why": "The reference appears to disclose a vacuum gripper, mentioning a \"VACUUM LIFTING APPARATUS\" and a \"VACUUM CUP\" that includes a \"CARRIER PLATE (C)\" which seems to function as a rigid base element, and ",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Seal element attached to second side, protruding away from first side",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Air extraction means configured to continuously extract air from chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-3152828-A Vacuum cup units for lifting pads. \n\n[claim 4] VACUUM LIFTING APPARATUS, COMPRISING, IN COMBINATION, A VACUUM CUP INCLUDING, A CARRIER PLATE (C) RECESSED ALONG ITS UPPER EDGE TO PROVIDE A POCKET, A ONE-PIECE RESILIENT VACUUM CUP (B) HAVING A MEDIAL PORTION COEXTENSIVE WITH THE LOWER MATERIAL ENGAGING FACE OF SAID CARRIER PLATE (C) AND ALSO HAVING AN ELASTIC FLANGE (7) FITTED IN SAID P",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "All claims in the rationale are directly supported by the provided text, including specific quotes.",
+   "pub": "US-8534633-B2",
+   "why": "The reference appears to disclose a vacuum gripper, referred to as a 'suction cup for a vacuum powered tool', which has a 'first or upper end configured to be brought into fluid flow communication wit",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Air extraction means mounted to first side",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-8534633-B2 Suction cup having replaceable sealing surfaces. A suction cup for a tool driven by vacuum is presented, the suction cup in a first or upper end arranged to be brought into fluid flow communication with a vacuum source and in its opposite end arranged to be brought tightly into contact with the surface of an object to be handled. The suction cup is in its lower end arranged to be cou",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "overclaims",
+   "reason": "The reference mentions an 'O-ring' but does not explicitly state the seal is 'loop-shaped' or has an 'encircling surface'.",
+   "pub": "US-4763941-A",
+   "why": "The reference appears to be relevant as it describes a \"vacuum gripper\" with a \"resilient seal\" that defines a \"gripping cavity\" for contacting and picking up a component part. This seal seems to be l",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-4763941-A Automatic vacuum gripper. The automatic vacuum gripper comprises a gripper member with a resilient seal coupled to a hollow piston and shaft. The piston is spring loaded downward in a cylinder coupled to a vacuum source. With vacuum applied, the piston does not move until the gripped part is completely sealed to the gripper member.\n\n[claim 1] A vacuum gripper for gripping a part to be",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately describes the vacuum gripper, suction chamber, and continuous lip as disclosed.",
+   "pub": "US-4635988-A",
+   "why": "The reference appears to disclose a vacuum gripper, mentioning an \"apparatus for gripping\" that forms a \"suction chamber\" and uses \"suction\" to handle parcels. It also describes a \"continuous lip made",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-4635988-A Procedure and device for gripping parcels. A method and apparatus for handling parcels wherein, for the handling of bulky parcels with a low mass and covered with a relatively fragile wrapping, a gripping method is utilized which serves to exert suction on a relatively large surface area of the parcel so as not to damage the wrapping of the parcels wherein the intensity of suction is ",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "All claims in the rationale are directly supported by the provided text and figures.",
+   "pub": "US-9885419-B2",
+   "why": "The reference appears to be relevant as it describes a \"seal for a vacuum lifter\" and mentions a \"vacuum lifter with a pad and seal\", which suggests a component of a vacuum gripper. The seal is descri",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ],
+   "text": "US-9885419-B2 Seal for a vacuum material lifter. A seal for a vacuum lifter and method of manufacture wherein the seal has a continuous unbroken outer fluid resistant skin of elastomer which forms a boundary around a homogeneous cellular structure with no interior seams or joints.\n\n[claim 1] A seal for a vacuum lifter vacuum pad sized to lift heavy objects, said seal comprising: a monolithic body ",
+   "text_basis": "generator-input",
+   "slug": "grabo_gripper_novelty"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "Every claim in the rationale is directly supported by the provided abstract and description of the reference.",
+   "pub": "DE-102005017684-A1",
+   "why": "The reference appears to be relevant as it discloses a \"Konsole f\u00fcr eine Unterdruckspanneinrichtung\" (console for a vacuum clamping device). The abstract mentions that the console has \"wenigstens eine",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Vacuum clamping device"
+   ],
+   "text": "DE-102005017684-A1 Support for vacuum clamping device has insert with at least one channel running parallel to longitudinal axis of longitudinal bearer. The support has at least one longitudinal bearer (14) and at least two inserts (16) forming the support surface (12). Each insert has at least one channel (32) running parallel to longitudinal direction (34). The channels come out on the endfaces ",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale directly quotes and translates elements present in the abstract and description of the reference.",
+   "pub": "DE-102014214802-A1",
+   "why": "The reference discloses a \"Unterdruckspanneinrichtung mit wenigstens einer Konsole\" (vacuum clamping device with at least one console) and a \"Schlitten, welcher einen Konsolenf\u00fchrungsabschnitt und ein",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ],
+   "text": "DE-102014214802-A1 Under pressure clamp. The invention relates to a vacuum clamping device with at least one console and at least one displaceable on the console slide, which has a console guide portion and a suction cup, and with at least one suction block, wherein the suction blocks facing the workpiece to be clamped upper clamping surface and a holding portion opposite thereto, wherein the hold",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies the clamping device, suction device, and axially movable positioning pins.",
+   "pub": "EP-2745987-A2",
+   "why": "The reference appears to be relevant as it discloses a \"Spannvorrichtung\" (clamping device) with a \"Saugeinrichtung\" (suction device) for clamping a workpiece, which aligns with the concept of a vacuu",
+   "reads_on": [
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device",
+    "Driver with at least one extendable driver pin"
+   ],
+   "text": "EP-2745987-A2 Clamping device. The invention relates to a clamping device with a supporting device and a suction device for sucking a workpiece to be clamped, wherein the support means comprises a housing forming a cylinder on which at least three axially projecting and axially movable positioning pin are provided, and arranged in the cylinder next to the positioning pins a piston is, which is axi",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "overclaims",
+   "reason": "The reference does not disclose a 'console' for the vacuum clamping device.",
+   "pub": "US-4858975-A",
+   "why": "The reference appears to be relevant as it discloses a \"vacuum chuck apparatus\" or \"vacuum chuck system\" which is a type of vacuum clamping device. It also mentions a \"holder for supporting said head\"",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ],
+   "text": "US-4858975-A Vacuum chuck apparatus for wet processing wafers. A vacuum chuck apparatus operable in both gas and liquid includes a liquid-gas separating membrane which allows passage of gas molecules but prevents passage of liquid. The liquid-gas separating membrane is disposed between an inlet hole of the chuck and a manifold which is connected to a pneumatic system. The pneumatic system includes",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately describes the reference's core features: 'Vacuum clamping device' and 'individual vacuum elements' connected for va",
+   "pub": "EP-0175295-A1",
+   "why": "The reference appears to be relevant as it describes a \"Vacuum clamping device\" which is formed by \"individual vacuum elements\" that can be connected to each other for vacuum connection.",
+   "reads_on": [
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ],
+   "text": "EP-0175295-A1 Vacuum holder for fixing work pieces on work benches, tables or the like. The vacuum holder is formed by individual vacuum elements 3 which, in plan view (fixing plane), have the cross-section of an equilateral polygon, preferably a hexagon. Suction openings 6 are formed in the upper suction face. Provided in all lateral faces are connecting openings 7 which serve for the vacuum conn",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately identifies elements like 'holding and clamping element', 'workpieces', 'suction pressure in the plenum', and 'base ",
+   "pub": "US-4491306-A",
+   "why": "The reference appears to be relevant as it describes a 'holding and clamping element' for 'workpieces' which utilizes 'below-atmospheric suction pressure in the plenum' for holding, which could be rel",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ],
+   "text": "US-4491306-A Holding curved workpieces. Large, spherically preshaped, thin workpieces are held and clamped in discrete, well-defined points under utilization of holding and clamping elements in which a portion of a head is universally pivotable about a point being the center of a sealing rim for a plenum chamber adjacent the engaging workpiece in which plenum chamber high pressure is established s",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The reference explicitly describes a vacuum clamping device with suction clamps and a compressed air connection.",
+   "pub": "EP-1258319-A3",
+   "why": "The reference discloses a vacuum clamping device for workpieces, which includes suction clamps that have a compressed air connection.",
+   "reads_on": [
+    "Clamping means for vacuum clamping device",
+    "Fluid supply for pressurizing coupled clamping means",
+    "Vacuum clamping device"
+   ],
+   "text": "EP-1258319-A3 Vacuum clamping device for workpieces for a stationary tool machine. A vacuum clamping device for workpieces for stationary machining has suction clamps (1) which are arranged on a support structure and can be positioned for adaptation to different workpiece formats. To clamp the workpieces (2) that can be placed on them, the suction clamps (1) each have a suction chamber (3) on thei",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately translates and interprets the German text, aligning with the 'reads on' elements.",
+   "pub": "DE-10023916-A1",
+   "why": "The reference appears to be relevant as it describes a 'Konsole' (console) with a 'verschiebbar gelagerte Aufnahme' (displaceably mounted receptacle) that can be 'l\u00e4ngs der Konsole mittels einer Steue",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Driven driver for moving a clamping means",
+    "Driver displaceably guided along the console's longitudinal direction",
+    "Clamping means for vacuum clamping device"
+   ],
+   "text": "DE-10023916-A1 Machine worktable with framed arm and traveling mounts controls mount position on arm and arm position off drive belt engagedly coupled to mount and arm.. The mount (2) can be moved to controllable positions (9) along the bracket arm (1) as also controllably (9) positioned using a drive belt (3), chain or threaded rod lying within the arm and connected to both arm and mount (2) by m",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "All claims in the rationale are directly supported by the provided text, including specific component mentions.",
+   "pub": "EP-2740569-A2",
+   "why": "The reference describes a \"Console table\" with \"movable consoles\" and \"stationary consoles\". \"Vacuum tensioners (50)\" are positioned on the upper sides of the movable consoles for a workpiece. A vacuu",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Clamping means for vacuum clamping device",
+    "Fluid supply for pressurizing coupled clamping means",
+    "Vacuum clamping device"
+   ],
+   "text": "EP-2740569-A2 Console table for a wood processing machine. The desk (10) has movable consoles (22-28) movably locked along guide rails (18, 20) and releasably locked at the guide rails in a desired position. Vacuum tensioners (50) for a workpiece are positioned on upper sides (48) of the consoles. Stopper elements (58, 64, 66) limit processing fields for the workpiece. Stationary consoles (30, 32)",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "The rationale accurately describes the clamping beam, suction blocks, and drive for transporting them as disclosed.",
+   "pub": "US-2002074703-A1",
+   "why": "The reference appears to disclose a 'Console for vacuum clamping device' in the form of a 'clamping beam (10)' that has 'suction blocks (12)' for fixing workpieces, and a 'drive (18, 20, 22)' for 'tra",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Driven driver for moving a clamping means",
+    "Driver displaceably guided along the console's longitudinal direction",
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ],
+   "text": "US-2002074703-A1 . \n\n[claim 1] Device for fixing workpieces, in particular, plate-shaped workpieces, with at least one clamping beam ( 10 ), at least one suction block ( 12 ) that lies on the clamping beam ( 10 ) and a drive ( 18 , 20 , 22 ) for transporting the suction block ( 12 ) in the longitudinal direction of the clamping beam ( 10 ) or for driving a position detector for detecting the posit",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "Every claim in the rationale is directly supported by the actual text provided.",
+   "pub": "EP-1077112-A3",
+   "why": "The reference discloses a 'Grundelement (10)' that is fastened to a working surface by a 'Vakuumspannvorrichtung (19)', and a 'Kolbenanordnung (13)' with a part projecting over the top of the base ele",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ],
+   "text": "EP-1077112-A3 Device for clamping workpieces. The device consists of a base element (10) fastened to a working surface by a vacuum clamping device (19). The base element contains a piston unit (13), with one part projecting over the top of the base element when fitted. The part carries a clamping claw (20) for work pieces. The underside of the piston unit, and the side walls and base (17) of the b",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  },
+  {
+   "verdict": "accurate",
+   "reason": "Every claim in the rationale is directly supported by the actual text provided.",
+   "pub": "DE-102008038257-A1",
+   "why": "The reference appears to be relevant as it describes a \"Vacuum-clamping device for clamping workpiece\" with a \"housing with a clamping surface\" and a \"clamping space... for suction of the workpiece, w",
+   "reads_on": [
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ],
+   "text": "DE-102008038257-A1 Vacuum-clamping device for clamping workpiece, has housing with clamping surface, and brake element shifted in housing in direction of workpiece, within clamping space by low pressure obtained in clamping space. The device (10) has a housing (14) with a clamping surface (16) turned towards a workpiece. A clamping space (18) is provided in the clamping surface for suction of the ",
+   "text_basis": "generator-input",
+   "slug": "schmalz_vacuum_clamp"
+  }
+ ],
+ "meta_after": [
+  {
+   "pub": "US-10456928-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "description",
+     "kind": "whole",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "paragraph p0016",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Best Mode",
+      "page_no": null,
+      "para_no": "p0016"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "paragraph p0016",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Best Mode",
+      "page_no": null,
+      "para_no": "p0016"
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4777,
+   "why": "The reference appears to be relevant as it describes a \"vacuum gripper unit\" with a \"main body\" that has a \"common vacuum chamber\" and a \"suction pad\" that is connected to the main body and communicates with the vacuum chamber, with a \"lower edge thereof comes into contact with the surface of an object P to be gripped\".",
+   "reads_on": [
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-9266686-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4489,
+   "why": "This reference appears to be relevant as it describes a \"vacuum gripper for gripping a work-piece\" which includes a \"gripper plate\" that could be considered a base element, and \"at least one suction port provided in the gripper plate\" which functions as an air extraction means. The gripper plate has \"at least one recess provided in the gripper plate at a side facing the work-piece\" which could be ",
+   "reads_on": [
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ]
+  },
+  {
+   "pub": "US-10195746-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 7,
+   "citations": [
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 0.889
+    },
+    {
+     "element": "Air extraction means configured to continuously extract air from chamber",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 0.889
+    }
+   ],
+   "source_chars": 4134,
+   "why": "The reference describes a 'gripper' with a 'base' and 'one or more ports' that 'provide suction through a vacuum', and it describes 'fingers' rather than a 'loop-shaped vacuum seal element'.",
+   "reads_on": [
+    "Air extraction means mounted to first side",
+    "Air extraction means configured to continuously extract air from chamber"
+   ]
+  },
+  {
+   "pub": "US-7240935-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 7,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4352,
+   "why": "The reference appears relevant as it describes a \"vacuum gripper for suctioning work pieces\" with a \"flexible suction body\" and a \"sealing lip bounding a vacuum chamber,\" which is connected to a \"vacuum connection.\" The suction body also has a \"contact surface abutting the work pieces with prevailing vacuum in the vacuum chamber.\"",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-9815209-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Rigid base element with first and second opposite sides",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element attached to second side, protruding away from first side",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element elastically deformable at contact surface",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means configured to continuously extract air from chamber",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4270,
+   "why": "The reference appears to be relevant as it discloses a \"modular vacuum gripper\" with a \"first plate forming a top wall\" and a \"second wall provided with at least one downstream orifice and forming a bottom wall\", which could correspond to a rigid base element with opposite sides. It also mentions \"at least one deformable element extending over the second plate so as to form a sealed contact surfac",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Seal element attached to second side, protruding away from first side",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Air extraction means configured to continuously extract air from chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-9803680-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims",
+   "n_passages": 5,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element elastically deformable at contact surface",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4463,
+   "why": "The reference appears to be relevant as it describes a \"releasable holding device\" with a \"vacuum chamber\" and an \"elastic seal\" that is \"U-shaped in profile\" and \"encircling\" to create a vacuum for attaching objects to a contact surface.",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface"
+   ]
+  },
+  {
+   "pub": "US-8414045-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 8,
+   "citations": [
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4546,
+   "why": "The reference appears to be relevant as it describes a \"vacuum gripper\" that includes a \"suction plate for gripping an object\" and defines a \"suction chamber there between\".",
+   "reads_on": [
+    "Seal element with contact surface and encircling surface defining a chamber"
+   ]
+  },
+  {
+   "pub": "US-8290624-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Rigid base element with first and second opposite sides",
+     "label": "paragraph p0005",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Summary",
+      "page_no": null,
+      "para_no": "p0005"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "paragraph p0005",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Summary",
+      "page_no": null,
+      "para_no": "p0005"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element attached to second side, protruding away from first side",
+     "label": "paragraph p0005",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Summary",
+      "page_no": null,
+      "para_no": "p0005"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "paragraph p0005",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Summary",
+      "page_no": null,
+      "para_no": "p0005"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element elastically deformable at contact surface",
+     "label": "paragraph p0005",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Summary",
+      "page_no": null,
+      "para_no": "p0005"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "paragraph p0006",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Summary",
+      "page_no": null,
+      "para_no": "p0006"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "paragraph p0006",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Summary",
+      "page_no": null,
+      "para_no": "p0006"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means configured to continuously extract air from chamber",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "paragraph p0018",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Detailed Description",
+      "page_no": null,
+      "para_no": "p0018"
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4893,
+   "why": "The reference appears to disclose a vacuum gripper, mentioning \"A gripper grasps irregular and deformable work pieces\" and that \"A vacuum is induced at multiple points through a flexible gripping hood\". It also describes a \"flexible hood mounted to a base plate\" with a \"membrane and a circumferential lip\", which seems to correspond to a seal element attached to a base element.",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Seal element attached to second side, protruding away from first side",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Air extraction means configured to continuously extract air from chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-10562195-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "paragraph p0008",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Description",
+      "page_no": null,
+      "para_no": "p0008"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "claim 11",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 11
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "claim 11",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 11
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "claim 11",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 11
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "paragraph p0008",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Description",
+      "page_no": null,
+      "para_no": "p0008"
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 5070,
+   "why": "The reference appears to be relevant as it describes a \"vacuum gripper\" [paragraph p0002] that includes a \"flexible suction cup serving as the gripping member\" [claim 11] and a \"seal surrounding the suction opening\" [paragraph p0008].",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-2007187965-A1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element elastically deformable at contact surface",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 3691,
+   "why": "The reference appears to be relevant as it describes a \"vacuum gripper for suctioning a workpiece\" comprising an \"elastic vacuum element having a sealing lip on a side facing the workpiece to delimit a vacuum chamber, said vacuum chamber being flow-connected to said vacuum port.\" This aligns with the invention's concept of a vacuum gripper with a seal element defining a chamber and air extraction ",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ]
+  },
+  {
+   "pub": "US-11207792-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "claim 10",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 10
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "paragraph p0011",
+     "kind": "paragraph",
+     "coord": {
+      "heading": null,
+      "page_no": null,
+      "para_no": "p0011"
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4367,
+   "why": "The reference appears to be relevant as it describes a \"gripper for gripping a product\" with a \"suction device which has a contact surface which can be brought into contact with a section of the product\". This suction device includes a \"suction section which is bounded in the radial direction by a sealing device and which is in communication with a pumping device generating a vacuum\", which sugges",
+   "reads_on": [
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-2014161582-A1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 5,
+   "citations": [
+    {
+     "element": "Rigid base element with first and second opposite sides",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element attached to second side, protruding away from first side",
+     "label": "paragraph p0017",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Detailed Description Of The Preferred Embodiments",
+      "page_no": null,
+      "para_no": "p0017"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "paragraph p0009",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Summary",
+      "page_no": null,
+      "para_no": "p0009"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element elastically deformable at contact surface",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 0.875
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 0.875
+    }
+   ],
+   "source_chars": 3610,
+   "why": "The reference appears to disclose a gripping element with a 'substantially flat base' and a 'perimetrical edge' that extends around the base, which seems to correspond to a rigid base element and a loop-shaped vacuum seal element. It also mentions 'at least one duct for the air intake extending in the body' and opening at the base, suggesting air extraction means in fluid communication with a cham",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Seal element attached to second side, protruding away from first side",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ]
+  },
+  {
+   "pub": "US-2005134063-A1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 8,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "claim 3",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 3
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "claim 3",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 3
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "claim 3",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 3
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 3846,
+   "why": "The reference appears to be relevant as it discloses a \"vacuum gripper\" for \"gripping an object\". It also mentions a \"wall defining a vacuum chamber and having a sealing edge, wherein the sealing edge is adapted for contacting the object\", which suggests a seal element with a contact surface.",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-11078051-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 9,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 0.923
+    }
+   ],
+   "source_chars": 2781,
+   "why": "The reference appears to be relevant as it describes a \"vacuum lifter\" which includes a \"seal\" that forms a \"closed periphery\", suggesting a loop-shaped element for creating a vacuum. The seal is located in a \"gland extending along a periphery of the pad\", which could correspond to a base element.",
+   "reads_on": [
+    "Loop-shaped vacuum seal element"
+   ]
+  },
+  {
+   "pub": "US-6382692-B1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "paragraph p0009",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Description Of The Preferred Embodiment",
+      "page_no": null,
+      "para_no": "p0009"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "description",
+     "kind": "whole",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Bracing structure arranged within or outside the seal element",
+     "label": "description",
+     "kind": "whole",
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4507,
+   "why": "The reference appears to be relevant as it describes a \"vacuum gripper for suctioning workpieces\" comprising a \"sealing lip defining a vacuum chamber\" which is \"flow-connected to a vacuum supply\".",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Bracing structure arranged within or outside the seal element"
+   ]
+  },
+  {
+   "pub": "US-8382174-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 5,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "claim 2",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 2
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4141,
+   "why": "The reference appears to be relevant as it describes a 'suction gripper' which is also referred to as a 'vacuum gripper' in the text. It includes a 'cup member' with 'inner and outer surfaces defining an opening' and an 'inner cavity', which seems to correspond to a seal element defining a chamber. It also mentions a 'suction port configured to provide a suction' which is in 'fluid communication' ",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "DE-202005007145-U1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Rigid base element with first and second opposite sides",
+     "label": "description",
+     "kind": "whole",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "description",
+     "kind": "whole",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4686,
+   "why": "The reference appears to disclose a vacuum gripper with a 'metal holding element (2)' that functions as a base and a 'suction element (1) made of rubber' which acts as a seal. It also mentions a 'first bore (3) for the creation of a vacuum' which is in fluid communication with the chamber formed by the seal.",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ]
+  },
+  {
+   "pub": "US-6171049-B1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Seal element with contact surface",
+     "label": "claim 11",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 11
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element elastically deformable at contact surface",
+     "label": "claim 11",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 11
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means configured to continuously extract air from chamber",
+     "label": "claim 11",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 11
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "claim 11",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 11
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4536,
+   "why": "The reference appears to be relevant as it describes a 'device for periodically receiving, placing and depositing flat objects' which includes 'means for gripping the object substantially laterally'. Specifically, the gripping means comprise 'at least one flexible contact surface adapted to grasp the object when inflated under pressure and to release the object when contracted under a vacuum', whi",
+   "reads_on": [
+    "Seal element with contact surface",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means configured to continuously extract air from chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-3240525-A",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 7,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "paragraph p0002",
+     "kind": "paragraph",
+     "coord": {
+      "heading": null,
+      "page_no": null,
+      "para_no": "p0002"
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 3908,
+   "why": "The reference appears to be relevant as it discloses a \"vacuum attaching pad having an attaching face with a peripheral seal means thereon\" and an \"air evacuating pump incorporated into said handle and communicated with the attaching surface of the pad for exhausting air from the attaching surface inwardly of said seal means,\" which aligns with the concept of a vacuum gripper with a seal element a",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-4708381-A",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims",
+   "n_passages": 5,
+   "citations": [
+    {
+     "element": "Rigid base element with first and second opposite sides",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element elastically deformable at contact surface",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4461,
+   "why": "The reference appears to be relevant as it discloses a 'rigid backpiece' which can be considered a rigid base element, and a 'seal element having a peripheral sealing ring portion terminating in a sealing lip' which functions as a loop-shaped vacuum seal element. The abstract also mentions the sealing ring 'in use abuts against the element held fixed', suggesting a contact surface for gripping.",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface"
+   ]
+  },
+  {
+   "pub": "US-6279976-B1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element elastically deformable at contact surface",
+     "label": "paragraph p0009",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Detailed Description Of The Embodiments",
+      "page_no": null,
+      "para_no": "p0009"
+     },
+     "span": 0.933
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4893,
+   "why": "The reference appears to disclose a vacuum gripper, as the abstract mentions a \"vacuum-assisted chuck assembly\" and a \"conforming perimeter seal\" that forms an \"air-tight seal\" to couple to an object. The claims further describe a \"vacuum chuck assembly\" with a \"conforming flexible cup\" that maintains an \"air-tight seal\" under vacuum pressure.",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "DE-102005020840-A1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 5083,
+   "why": "The reference discloses a vacuum gripper with a vacuum element (1) configured as an elastic shaped element and a vacuum element holder (2), and a peripheral seal (7) that delimits areas of negative pressure and positive pressure.",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ]
+  },
+  {
+   "pub": "US-6419291-B1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "description",
+     "kind": "whole",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4929,
+   "why": "The reference appears to be relevant as it describes a \"flexible vacuum gripper device\" that includes a \"housing\" (which may function as a rigid base element) and an \"inflatable gripper element defining an internal chamber\" that is adapted to grip an object using vacuum, similar to a vacuum seal element. It also mentions a \"vacuum source communicating with the internal chamber\" for gripping.",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-3152828-A",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 5,
+   "citations": [
+    {
+     "element": "Rigid base element with first and second opposite sides",
+     "label": "claim 4",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 4
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "claim 4",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 4
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element attached to second side, protruding away from first side",
+     "label": "claim 4",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 4
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "paragraph p0004",
+     "kind": "paragraph",
+     "coord": {
+      "heading": null,
+      "page_no": null,
+      "para_no": "p0004"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element elastically deformable at contact surface",
+     "label": "claim 4",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 4
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "paragraph p0009",
+     "kind": "paragraph",
+     "coord": {
+      "heading": null,
+      "page_no": null,
+      "para_no": "p0009"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "paragraph p0009",
+     "kind": "paragraph",
+     "coord": {
+      "heading": null,
+      "page_no": null,
+      "para_no": "p0009"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means configured to continuously extract air from chamber",
+     "label": "paragraph p0002",
+     "kind": "paragraph",
+     "coord": {
+      "heading": null,
+      "page_no": null,
+      "para_no": "p0002"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "paragraph p0004",
+     "kind": "paragraph",
+     "coord": {
+      "heading": null,
+      "page_no": null,
+      "para_no": "p0004"
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 3640,
+   "why": "The reference appears to disclose a vacuum gripper, mentioning a \"VACUUM LIFTING APPARATUS\" and a \"VACUUM CUP\" that includes a \"CARRIER PLATE (C)\" which seems to function as a rigid base element, and a \"one-piece resilient vacuum cup (B)\" which appears to be a loop-shaped vacuum seal element.",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Seal element attached to second side, protruding away from first side",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Air extraction means configured to continuously extract air from chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-8534633-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Rigid base element with first and second opposite sides",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 5082,
+   "why": "The reference appears to disclose a vacuum gripper, referred to as a 'suction cup for a vacuum powered tool', which has a 'first or upper end configured to be brought into fluid flow communication with a vacuum source' and a 'second or lower end opposite the first end and configured to be brought tightly into contact with a surface of an object to be handled'. It also mentions a 'sealing ring' whi",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Air extraction means mounted to first side",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-4763941-A",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 8,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "paragraph p0006",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Description Of The Preferred Embodiment",
+      "page_no": null,
+      "para_no": "p0006"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "paragraph p0006",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Description Of The Preferred Embodiment",
+      "page_no": null,
+      "para_no": "p0006"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element elastically deformable at contact surface",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "paragraph p0006",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Description Of The Preferred Embodiment",
+      "page_no": null,
+      "para_no": "p0006"
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4309,
+   "why": "The reference appears to be relevant as it describes a \"vacuum gripper\" with a \"resilient seal\" that defines a \"gripping cavity\" for contacting and picking up a component part. This seal seems to be loop-shaped, as it is described as potentially comprising an \"O-ring.\"",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-4635988-A",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 8,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "claim 3",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 3
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "claim 2",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 2
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "paragraph p0010",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Detailed Description Of The Preferred Embodiments",
+      "page_no": null,
+      "para_no": "p0010"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "claim 2",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 2
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4289,
+   "why": "The reference appears to disclose a vacuum gripper, mentioning an \"apparatus for gripping\" that forms a \"suction chamber\" and uses \"suction\" to handle parcels. It also describes a \"continuous lip made of semirigid material delimiting the outside edge of said suction chamber.\"",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-9885419-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "claims+description",
+   "n_passages": 8,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 0.978
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "paragraph p0003",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Background Of The Invention",
+      "page_no": null,
+      "para_no": "p0003"
+     },
+     "span": 0.929
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "paragraph p0003",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "Background Of The Invention",
+      "page_no": null,
+      "para_no": "p0003"
+     },
+     "span": 0.929
+    }
+   ],
+   "source_chars": 2760,
+   "why": "The reference appears to be relevant as it describes a \"seal for a vacuum lifter\" and mentions a \"vacuum lifter with a pad and seal\", which suggests a component of a vacuum gripper. The seal is described as having a \"continuous unbroken outer fluid resistant skin of elastomer which forms a boundary around a homogeneous cellular structure\".",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "DE-102005017684-A1",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "description",
+   "n_passages": 3,
+   "citations": [
+    {
+     "element": "Console for vacuum clamping device",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": {
+      "lang": "de"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": {
+      "lang": "de"
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1727,
+   "why": "The reference appears to be relevant as it discloses a \"Konsole f\u00fcr eine Unterdruckspanneinrichtung\" (console for a vacuum clamping device). The abstract mentions that the console has \"wenigstens einem L\u00e4ngstr\u00e4ger und wenigstens zwei die Spannfl\u00e4che aufweisenden Eins\u00e4tzen\" (at least one longitudinal bearer and at least two inserts forming the support surface), with each insert having \"wenigstens e",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "DE-102014214802-A1",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "description",
+   "n_passages": 2,
+   "citations": [
+    {
+     "element": "Console for vacuum clamping device",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Clamping means for vacuum clamping device",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 2072,
+   "why": "The reference discloses a \"Unterdruckspanneinrichtung mit wenigstens einer Konsole\" (vacuum clamping device with at least one console) and a \"Schlitten, welcher einen Konsolenf\u00fchrungsabschnitt und eine Saugeraufnahme aufweist\" (carriage, which has a console guide section and a suction cup receptacle).",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "EP-2745987-A2",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "claims",
+   "n_passages": 5,
+   "citations": [
+    {
+     "element": "Clamping means for vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Driver with at least one extendable driver pin",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4159,
+   "why": "The reference appears to be relevant as it discloses a \"Spannvorrichtung\" (clamping device) with a \"Saugeinrichtung\" (suction device) for clamping a workpiece, which aligns with the concept of a vacuum clamping device. It also mentions \"Positionierstifte\" (positioning pins) that are axially movable, which could be related to extendable driver pins.",
+   "reads_on": [
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device",
+    "Driver with at least one extendable driver pin"
+   ]
+  },
+  {
+   "pub": "US-4858975-A",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "claims+description",
+   "n_passages": 8,
+   "citations": [
+    {
+     "element": "Console for vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Clamping means for vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4081,
+   "why": "The reference appears to be relevant as it discloses a \"vacuum chuck apparatus\" or \"vacuum chuck system\" which is a type of vacuum clamping device. It also mentions a \"holder for supporting said head\" which could be interpreted as a console for the vacuum clamping device.",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "EP-0175295-A1",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "claims+description",
+   "n_passages": 8,
+   "citations": [
+    {
+     "element": "Clamping means for vacuum clamping device",
+     "label": "description",
+     "kind": "whole",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4573,
+   "why": "The reference appears to be relevant as it describes a \"Vacuum clamping device\" which is formed by \"individual vacuum elements\" that can be connected to each other for vacuum connection.",
+   "reads_on": [
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "US-4491306-A",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Console for vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Clamping means for vacuum clamping device",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4489,
+   "why": "The reference appears to be relevant as it describes a 'holding and clamping element' for 'workpieces' which utilizes 'below-atmospheric suction pressure in the plenum' for holding, which could be related to a vacuum clamping device. It also mentions a 'base provided for fastening to a stand, frame, table or the like' which might be considered a console.",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "EP-1258319-A3",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "claims+description",
+   "n_passages": 5,
+   "citations": [
+    {
+     "element": "Clamping means for vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Fluid supply for pressurizing coupled clamping means",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4372,
+   "why": "The reference discloses a vacuum clamping device for workpieces, which includes suction clamps that have a compressed air connection.",
+   "reads_on": [
+    "Clamping means for vacuum clamping device",
+    "Fluid supply for pressurizing coupled clamping means",
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "DE-10023916-A1",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "description",
+   "n_passages": 3,
+   "citations": [
+    {
+     "element": "Console for vacuum clamping device",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": {
+      "lang": "de"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Driven driver for moving a clamping means",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": {
+      "lang": "de"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Driver displaceably guided along the console's longitudinal direction",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": {
+      "lang": "de"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Clamping means for vacuum clamping device",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": {
+      "lang": "de"
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 2446,
+   "why": "The reference appears to be relevant as it describes a 'Konsole' (console) with a 'verschiebbar gelagerte Aufnahme' (displaceably mounted receptacle) that can be 'l\u00e4ngs der Konsole mittels einer Steuerungseinrichtung gesteuert positionierbar und arretierbar ist' (controllably positionable and lockable along the console by means of a control device), which aligns with the concept of a driven driver",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Driven driver for moving a clamping means",
+    "Driver displaceably guided along the console's longitudinal direction",
+    "Clamping means for vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "EP-2740569-A2",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "claims+description",
+   "n_passages": 7,
+   "citations": [
+    {
+     "element": "Console for vacuum clamping device",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": null,
+     "span": 0.875
+    },
+    {
+     "element": "Clamping means for vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Fluid supply for pressurizing coupled clamping means",
+     "label": "paragraph 0032",
+     "kind": "paragraph",
+     "coord": {
+      "heading": "eine perspektivische Darstellung des Konsolentischs aus Figur 1 , und",
+      "para_no": "0032"
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4673,
+   "why": "The reference describes a \"Console table\" with \"movable consoles\" and \"stationary consoles\". \"Vacuum tensioners (50)\" are positioned on the upper sides of the movable consoles for a workpiece. A vacuum system with vacuum channels is integrated into the profile bodies of all consoles.",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Clamping means for vacuum clamping device",
+    "Fluid supply for pressurizing coupled clamping means",
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "US-2002074703-A1",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "claims+description",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Console for vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Driven driver for moving a clamping means",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Driver displaceably guided along the console's longitudinal direction",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Clamping means for vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 3708,
+   "why": "The reference appears to disclose a 'Console for vacuum clamping device' in the form of a 'clamping beam (10)' that has 'suction blocks (12)' for fixing workpieces, and a 'drive (18, 20, 22)' for 'transporting the suction block (12) in the longitudinal direction of the clamping beam (10)'.",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Driven driver for moving a clamping means",
+    "Driver displaceably guided along the console's longitudinal direction",
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "EP-1077112-A3",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "claims",
+   "n_passages": 6,
+   "citations": [
+    {
+     "element": "Console for vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Clamping means for vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "claim 1",
+     "kind": "claim_own",
+     "coord": {
+      "claim_no": 1
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 4646,
+   "why": "The reference discloses a 'Grundelement (10)' that is fastened to a working surface by a 'Vakuumspannvorrichtung (19)', and a 'Kolbenanordnung (13)' with a part projecting over the top of the base element, which carries a clamping claw for workpieces.",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "DE-102008038257-A1",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "description",
+   "n_passages": 3,
+   "citations": [
+    {
+     "element": "Clamping means for vacuum clamping device",
+     "label": "description",
+     "kind": "whole",
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "abstract",
+     "kind": "abstract",
+     "coord": {
+      "lang": "de"
+     },
+     "span": 1.0
+    }
+   ],
+   "source_chars": 2611,
+   "why": "The reference appears to be relevant as it describes a \"Vacuum-clamping device for clamping workpiece\" with a \"housing with a clamping surface\" and a \"clamping space... for suction of the workpiece, where the clamping space is charged with low pressure.\"",
+   "reads_on": [
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ]
+  }
+ ],
+ "meta_before": [
+  {
+   "pub": "US-10456928-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1572,
+   "why": "Based on the provided text, which appears to be an abstract and a partial claim, the reference is relevant as it describes a \"vacuum gripper unit\" that includes a \"vacuum pump\" and a \"common vacuum chamber\".",
+   "reads_on": [
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ]
+  },
+  {
+   "pub": "US-9266686-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Vacuum gripper",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 0.8
+    }
+   ],
+   "source_chars": 1167,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"vacuum gripper\" for \"gripping a work-piece\" and mentions a \"gripper plate having at least one suction port\" and a \"work-piece suction throttling zone\".",
+   "reads_on": [
+    "Vacuum gripper"
+   ]
+  },
+  {
+   "pub": "US-10195746-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Rigid base element with first and second opposite sides",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 592,
+   "why": "Based on the provided text, which appears to be an abstract or summary, the reference is relevant as it describes a \"Grasping gripper\" that includes \"a base\" and \"one or more ports at the base or at one or more of the fingers to provide suction through a vacuum.\" This suggests a vacuum gripper with a base and means for vacuum suction.",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Air extraction means mounted to first side"
+   ]
+  },
+  {
+   "pub": "US-7240935-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [],
+   "source_chars": 670,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"vacuum gripper\" for \"suctioning work pieces\" with a \"flexible suction body\" and a \"sealing lip bounding a vacuum chamber\", where the \"vacuum chamber is connected to the vacuum connection\".",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-9815209-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element elastically deformable at contact surface",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means configured to continuously extract air from chamber",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1285,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"modular vacuum gripper\" with a \"sealing device\" and a \"vacuum generation device adapted to suck out the air\". It also mentions a \"deformable element extending over the second plate so as to form a sealed contact surface\".",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Air extraction means configured to continuously extract air from chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-9803680-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [],
+   "source_chars": 1609,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"releasable vacuum holding device\" for \"attaching objects to a contact surface\" using a \"vacuum chamber\" and an \"elastic seal\". The full claims and description are not available, so further structural details cannot be confirmed.",
+   "reads_on": [
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-8414045-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Air extraction means configured to continuously extract air from chamber",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1039,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"Vacuum gripper\" that includes a \"suction plate for gripping an object\" and defines a \"suction chamber\".",
+   "reads_on": [
+    "Air extraction means configured to continuously extract air from chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-8290624-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Rigid base element with first and second opposite sides",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element attached to second side, protruding away from first side",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element elastically deformable at contact surface",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1407,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"gripper\" that \"grasps irregular and deformable work pieces\" using \"vacuum\" to provide lifting force. The text also mentions a \"flexible gripping hood\" and a \"gripping device has a flexible hood mounted to a base plate.\"",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element",
+    "Seal element attached to second side, protruding away from first side",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-10562195-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Vacuum gripper",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1608,
+   "why": "Based on the provided text, which is limited to the title and a short introductory paragraph, the reference appears to be relevant as it explicitly mentions a \"vacuum gripper\" and a \"pneumatically operated gripper in the form of a vacuum gripper\". However, no structural details are available to establish a more specific match.",
+   "reads_on": [
+    "Vacuum gripper"
+   ]
+  },
+  {
+   "pub": "US-2007187965-A1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 429,
+   "why": "Based on the abstract alone, the reference appears to disclose a vacuum gripper, mentioning \"a vacuum gripper for suctioning workpieces with an vacuum port, an elastic vacuum element and a vacuum element holder\". It also mentions that \"the vacuum element has a sealing lip on its side facing the workpiece, which delimits the vacuum chamber, and the vacuum chamber is flow-connected to the vacuum por",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ]
+  },
+  {
+   "pub": "US-11207792-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [],
+   "source_chars": 1591,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"gripper for gripping a product\" which includes a \"suction device which has a contact surface\" and a \"sealing device\" that bounds a \"first suction section\" and is in communication with a \"pumping device generating a vacuum\".",
+   "reads_on": [
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-2014161582-A1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element elastically deformable at contact surface",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 0.875
+    }
+   ],
+   "source_chars": 728,
+   "why": "The reference appears to be relevant as it describes a \"gripping element\" with a \"body\" that includes a \"second portion, at least in part elastically deformable, intended to interact directly with the item (W) to be manipulated.\" This second portion has a \"substantially flat base\" and a \"perimetrical edge\" that extends around the base, which seems to correspond to a vacuum seal element. The refere",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element elastically deformable at contact surface",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ]
+  },
+  {
+   "pub": "US-2005134063-A1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 231,
+   "why": "Based on the provided text, which appears to be a claim from a patent, the reference is relevant as it mentions a \"vacuum gripper\" and a \"sealing edge\" adapted for contacting an object, which suggests a vacuum seal element.",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-11078051-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 364,
+   "why": "Based on the title alone, the reference \"Seal for a vacuum material lifter\" appears to be relevant as it explicitly mentions a \"seal for a vacuum lifter\", which is a component of a vacuum gripper. The text also mentions that \"the seal forms a closed periphery\", which could relate to a loop-shaped seal.",
+   "reads_on": [
+    "Loop-shaped vacuum seal element"
+   ]
+  },
+  {
+   "pub": "US-6382692-B1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1093,
+   "why": "The reference is relevant as it describes a \"Vacuum gripper\" with an \"elastic vacuum body\" that includes a \"sealing lip\" defining a \"vacuum chamber.\" This aligns with the invention's focus on a vacuum gripper with a seal element and a chamber.",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means in fluid communication with chamber through base element"
+   ]
+  },
+  {
+   "pub": "US-8382174-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1267,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"suction gripper\" which includes a \"cup member\" and a \"suction port\". The abstract mentions that the cup member has \"inner and outer surfaces defining an opening such that the inner surface defines an inner cavity\", and the \"suction port provides suction\".",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Air extraction means configured to continuously extract air from chamber"
+   ]
+  },
+  {
+   "pub": "DE-202005007145-U1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1356,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"Vacuum operated gripping element\" that includes \"several specifically shaped sealing elements and vacuum ducts\". It also mentions a \"suction element (1) made of rubber and a metal holding element (2)\", which could correspond to a base and seal element.",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Air extraction means in fluid communication with chamber through base element"
+   ]
+  },
+  {
+   "pub": "US-6171049-B1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [],
+   "source_chars": 969,
+   "why": "The provided reference text is limited to a single passage describing a 'device according to claim 6' and its 'gripping means'. This passage mentions a 'flexible contact surface adapted to grasp the object when inflated under pressure and to release the object when contracted under a vacuum', which appears to be a type of gripper, but it does not explicitly disclose a 'vacuum gripper' or the speci",
+   "reads_on": []
+  },
+  {
+   "pub": "US-3240525-A",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [],
+   "source_chars": 254,
+   "why": "Based on the title alone, this reference appears to be relevant as it is titled \"Vacuum device for handling articles\", which suggests a vacuum gripper. However, without the full text, it is impossible to confirm any specific structural features.",
+   "reads_on": []
+  },
+  {
+   "pub": "US-4708381-A",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Rigid base element with first and second opposite sides",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 0.75
+    }
+   ],
+   "source_chars": 1609,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"holder fixed by vacuum for industrial use\" which comprises a \"rigid backpiece\" and a \"flexible intermediate element\" that includes a \"comparatively rigid sealing ring with a sealing lip\".",
+   "reads_on": [
+    "Rigid base element with first and second opposite sides",
+    "Loop-shaped vacuum seal element"
+   ]
+  },
+  {
+   "pub": "US-6279976-B1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element elastically deformable at contact surface",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1302,
+   "why": "Based on the abstract alone, the reference appears to disclose a vacuum gripper in the form of a \"wafer handling device\" or \"vacuum-assisted chuck assembly\" that includes a \"conforming perimeter seal\" which forms an \"air-tight seal\" and \"deforms accordingly to accommodate the deflecting object\".",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element elastically deformable at contact surface",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "DE-102005020840-A1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1609,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"vacuum gripper\" for \"taking in by pressure and holding work pieces\". It also mentions a \"vacuum element configured as an elastic shaped element\" and a \"peripheral seal\" which \"delimits the areas of negative pressure and positive pressure\".",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element"
+   ]
+  },
+  {
+   "pub": "US-6419291-B1",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element with contact surface and encircling surface defining a chamber",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Air extraction means mounted to first side",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 0.75
+    },
+    {
+     "element": "Air extraction means in fluid communication with chamber through base element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 0.75
+    }
+   ],
+   "source_chars": 1609,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"flexible vacuum gripper device\" that uses \"vacuum to grip the objects\". It also mentions a \"gripper element defining an internal chamber\" and a \"vacuum source communicating with the internal chamber\".",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element with contact surface and encircling surface defining a chamber",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-3152828-A",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [],
+   "source_chars": 757,
+   "why": "The reference is titled \"Vacuum cup units for lifting pads,\" which appears to be relevant to a vacuum gripper. However, without the full claims and description, it is not possible to determine specific structural details.",
+   "reads_on": []
+  },
+  {
+   "pub": "US-8534633-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Loop-shaped vacuum seal element",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Seal element contact surface urged towards and grips object surface",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1608,
+   "why": "Based on the abstract alone, the reference appears to disclose a vacuum gripper, referred to as a \"suction cup for a tool driven by vacuum\", that is \"arranged to be brought tightly into contact with the surface of an object to be handled\". It also mentions a \"sealing ring having a sealing surface\" which appears to be a loop-shaped vacuum seal element.",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-4763941-A",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [],
+   "source_chars": 433,
+   "why": "The reference describes an \"Automatic vacuum gripper\" comprising a \"gripper member with a resilient seal coupled to a hollow piston and shaft\" and a \"vacuum source\".",
+   "reads_on": [
+    "Loop-shaped vacuum seal element",
+    "Air extraction means mounted to first side",
+    "Air extraction means in fluid communication with chamber through base element",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-4635988-A",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [],
+   "source_chars": 812,
+   "why": "Based on the abstract alone, this reference appears to be relevant as it describes a \"device for gripping parcels\" that utilizes \"suction on a relatively large surface area of the parcel\" to handle them. The abstract mentions a \"gripping method\" that exerts suction, which suggests a vacuum gripper.",
+   "reads_on": [
+    "Air extraction means configured to continuously extract air from chamber",
+    "Seal element contact surface urged towards and grips object surface"
+   ]
+  },
+  {
+   "pub": "US-9885419-B2",
+   "slug": "grabo_gripper_novelty",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [],
+   "source_chars": 351,
+   "why": "Based on the title alone, this reference appears to be relevant as it discloses a \"Seal for a vacuum material lifter\", which suggests a component for a vacuum gripper. However, without the full text, specific structural details of the seal or lifter cannot be confirmed.",
+   "reads_on": []
+  },
+  {
+   "pub": "DE-102005017684-A1",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Console for vacuum clamping device",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 902,
+   "why": "Based on the provided text, which appears to be an abstract or a very short description, the reference is relevant because it explicitly mentions \"eine Konsole f\u00fcr eine Unterdruckspanneinrichtung\" (a console for a vacuum clamping device).",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "DE-102014214802-A1",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Console for vacuum clamping device",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Driven driver for moving a clamping means",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1352,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it mentions a \"vacuum clamping device\" and a \"console\" as part of this device. It also describes a \"displaceable on the console slide\" which could be related to a driven driver for moving a clamping means.",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Driven driver for moving a clamping means",
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "EP-2745987-A2",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Vacuum clamping device",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1359,
+   "why": "The reference is relevant as it describes a \"Spannvorrichtung\" (clamping device) which appears to be a \"vacuum clamping device\" based on the mention of a \"Saugeinrichtung (14) zum Ansaugen eines zu spannenden Werkst\u00fccks (12)\" (suction device for sucking a workpiece to be clamped).",
+   "reads_on": [
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "US-4858975-A",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [],
+   "source_chars": 925,
+   "why": "Based on the title alone, this reference appears to disclose a \"Vacuum chuck apparatus\" which is a type of \"Vacuum clamping device\".",
+   "reads_on": [
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "EP-0175295-A1",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Vacuum clamping device",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1164,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it mentions a \"Vacuum holder\" and \"vacuum elements\" which are components of a \"Vacuum clamping device\".",
+   "reads_on": [
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "US-4491306-A",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [],
+   "source_chars": 1267,
+   "why": "The text describes a system for \"Holding curved workpieces\" using \"holding and clamping elements\" and mentions \"below-atmospheric suction pressure in the plenum\", which appears to be a form of vacuum clamping.",
+   "reads_on": [
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "EP-1258319-A3",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [],
+   "source_chars": 1516,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"Vacuum clamping device for workpieces for a stationary tool machine\" which includes \"suction clamps\" that can be positioned on a \"support structure\" and have a \"suction chamber\" for clamping workpieces. It also mentions that each suction clamp has a \"built-in injector nozzle as its own vacuum generator\" operated w",
+   "reads_on": [
+    "Vacuum clamping device",
+    "Clamping means for vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "DE-10023916-A1",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Console for vacuum clamping device",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Driven driver for moving a clamping means",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Driver displaceably guided along the console's longitudinal direction",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Clamping means for vacuum clamping device",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1198,
+   "why": "The reference is topically related, but its available text does not clearly disclose specific elements of the query; treat as unconfirmed.",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Driven driver for moving a clamping means",
+    "Driver displaceably guided along the console's longitudinal direction",
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "EP-2740569-A2",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [],
+   "source_chars": 1342,
+   "why": "The reference describes a console table for a wood processing machine with vacuum tensioners on the consoles, and a vacuum system with vacuum channels integrated into the console profiles that can be connected to an external vacuum source.",
+   "reads_on": [
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "US-2002074703-A1",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Console for vacuum clamping device",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Driven driver for moving a clamping means",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 728,
+   "why": "The reference is topically related, but its available text does not clearly disclose specific elements of the query; treat as unconfirmed.",
+   "reads_on": [
+    "Console for vacuum clamping device",
+    "Driven driver for moving a clamping means"
+   ]
+  },
+  {
+   "pub": "EP-1077112-A3",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Clamping means for vacuum clamping device",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    },
+    {
+     "element": "Vacuum clamping device",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1114,
+   "why": "The reference is relevant because its title, \"Device for clamping workpieces,\" mentions a \"clamping device,\" which appears to be a \"vacuum clamping device\" based on the description. The description also mentions a \"base element\" that is fastened by a \"vacuum clamping device\" and contains a \"piston unit\" with a \"clamping claw\" for workpieces.",
+   "reads_on": [
+    "Clamping means for vacuum clamping device",
+    "Vacuum clamping device"
+   ]
+  },
+  {
+   "pub": "DE-102008038257-A1",
+   "slug": "schmalz_vacuum_clamp",
+   "basis": "title-only",
+   "n_passages": 1,
+   "citations": [
+    {
+     "element": "Vacuum clamping device",
+     "label": "text",
+     "kind": null,
+     "coord": null,
+     "span": 1.0
+    }
+   ],
+   "source_chars": 1283,
+   "why": "Based on the abstract alone, the reference appears to be relevant as it describes a \"Vacuum-clamping device for clamping workpiece\" and mentions a \"clamping surface\" and a \"clamping space\" for suction of the workpiece. However, the full text of the claims and description is not available, so specific structural details of a console or driven driver cannot be confirmed.",
+   "reads_on": [
+    "Vacuum clamping device"
+   ]
+  }
+ ],
+ "caveat": "generator, why-verifier and judge are all gemini-2.5-flash; they share blind spots, so this is self-consistency against the shown text, not ground truth"
+}

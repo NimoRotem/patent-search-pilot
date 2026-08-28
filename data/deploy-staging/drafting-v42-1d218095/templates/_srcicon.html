@@ -1,0 +1,61 @@
+{#  ONE GLYPH PER SEARCH SOURCE.
+
+    The report lists sixteen sources on a wide search and they were telling apart only by a word
+    and a coloured dot, in a strip that clipped. A glyph is what makes "BigQuery Google Patents"
+    and "Google Patents page scraper" distinguishable at a glance, and it is what lets the
+    collapsed run line show every source in a fixed width instead of clipping the last ten.
+
+    Deliberately NOT brand marks: these are drawn in currentColor so they inherit the source's
+    state colour (used / degraded / failed / not configured), which a logo could not do, and an
+    unknown source id falls through to a neutral dot rather than rendering nothing.
+
+    Grouped by WHAT THE SOURCE IS, because that is the useful distinction when reading a run:
+    our own corpus, a warehouse query, an official office, a semantic engine, a scholarly index,
+    a web fallback.  #}
+{% macro srcicon(id) -%}
+{%- set g = {
+  'local':'db', 'docchunks':'chunks', 'image':'image',
+  'claim_dense':'claimdoc', 'claim_bm25':'claimdoc',
+  'bigquery_gpatents':'cube', 'bigquery_semantic':'ai', 'pqai':'ai',
+  'serpapi_gpatents':'gpatents', 'gpatents_scrape':'gpatents',
+  'uspto':'shield', 'epo_ops':'stars', 'euipo':'stars',
+  'himmpat':'globe', 'ipaustralia':'globe', 'kipris':'globe',
+  'lens':'aperture', 'openalex':'book', 'citation_expand':'cite',
+  'web_patent_fallback':'cloud', 'scrapingbee_patents':'cloud',
+  'firecrawl_patents':'cloud', 'tavily_patents':'cloud'
+}.get(id, 'dot') -%}
+<svg class="sicon" viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none"
+     stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+{%- if g == 'db' -%}
+  <ellipse cx="8" cy="3.6" rx="5.2" ry="2.1"/><path d="M2.8 3.6v8.8c0 1.16 2.33 2.1 5.2 2.1s5.2-.94 5.2-2.1V3.6"/><path d="M2.8 8c0 1.16 2.33 2.1 5.2 2.1s5.2-.94 5.2-2.1"/>
+{%- elif g == 'chunks' -%}
+  <rect x="2" y="2.4" width="12" height="11.2" rx="1.6"/><path d="M4.6 5.6h6.8M4.6 8h6.8M4.6 10.4h4.2"/>
+{%- elif g == 'image' -%}
+  <rect x="2" y="3" width="12" height="10" rx="1.6"/><circle cx="5.9" cy="6.4" r="1.1"/><path d="M2.6 11.4 6 8.4l2.4 2 2-1.7 3 2.6"/>
+{%- elif g == 'claimdoc' -%}
+  <path d="M4 1.8h5l3 3v9.4H4z"/><path d="M9 1.8v3h3"/><path d="M6 8.6h4M6 11h2.6"/>
+{%- elif g == 'cube' -%}
+  <path d="M8 1.6 14 5v6L8 14.4 2 11V5z"/><path d="M2 5l6 3.4L14 5M8 8.4v6"/>
+{%- elif g == 'ai' -%}
+  <circle cx="8" cy="8" r="1.9"/><circle cx="3" cy="3.6" r="1.3"/><circle cx="13" cy="3.6" r="1.3"/><circle cx="3" cy="12.4" r="1.3"/><circle cx="13" cy="12.4" r="1.3"/><path d="M4.1 4.6 6.6 6.7M11.9 4.6 9.4 6.7M4.1 11.4 6.6 9.3M11.9 11.4 9.4 9.3"/>
+{%- elif g == 'gpatents' -%}
+  <circle cx="7" cy="7" r="4.4"/><path d="M10.3 10.3 14 14"/><path d="M9.4 6.1a2.7 2.7 0 1 0 .2 2.2H7"/>
+{%- elif g == 'shield' -%}
+  <path d="M8 1.6 13.2 3.5v4.6c0 3.2-2.2 5.4-5.2 6.3-3-.9-5.2-3.1-5.2-6.3V3.5z"/><path d="M5.6 6.4h4.8M5.6 8.8h4.8"/>
+{%- elif g == 'stars' -%}
+  <circle cx="8" cy="8" r="6"/><path d="m8 4.6.62 1.3 1.4.2-1.01 1 .24 1.42L8 7.85l-1.25.67.24-1.42-1.01-1 1.4-.2z"/><circle cx="3.4" cy="8" r=".55" fill="currentColor" stroke="none"/><circle cx="12.6" cy="8" r=".55" fill="currentColor" stroke="none"/><circle cx="8" cy="12.6" r=".55" fill="currentColor" stroke="none"/>
+{%- elif g == 'globe' -%}
+  <circle cx="8" cy="8" r="6"/><path d="M2 8h12"/><path d="M8 2c1.7 1.9 2.6 3.9 2.6 6S9.7 12.1 8 14C6.3 12.1 5.4 10.1 5.4 8S6.3 3.9 8 2z"/>
+{%- elif g == 'aperture' -%}
+  <circle cx="8" cy="8" r="6"/><path d="M8 2v5.2M13.2 5 8.7 7.6M13.2 11 8.7 8.4M8 14V8.8M2.8 11l4.5-2.6M2.8 5l4.5 2.6"/>
+{%- elif g == 'book' -%}
+  <path d="M2.2 3.2h4a2.4 2.4 0 0 1 1.8.9 2.4 2.4 0 0 1 1.8-.9h4v9.1h-4a2 2 0 0 0-1.8.9 2 2 0 0 0-1.8-.9h-4z"/><path d="M8 4.1v9.1"/>
+{%- elif g == 'cite' -%}
+  <circle cx="4" cy="4" r="2"/><circle cx="12" cy="8" r="2"/><circle cx="4" cy="12" r="2"/><path d="M5.9 5 10.1 7M10.1 9 5.9 11"/>
+{%- elif g == 'cloud' -%}
+  <path d="M4.6 12.2a3.1 3.1 0 0 1-.3-6.15 4 4 0 0 1 7.63 1.05 2.75 2.75 0 0 1-.33 5.1"/><path d="M8 8.4v5M6.2 11.4 8 13.4l1.8-2"/>
+{%- else -%}
+  <circle cx="8" cy="8" r="3.4"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}

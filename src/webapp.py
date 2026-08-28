@@ -43,6 +43,7 @@ import runstore                                    # durable lease and terminal-
 import drafting, draft_export, draft_worker
 #  Phase two: the drafting CONVERSATION. A Claude Code agent edits a workspace of files, a second
 #  agent reviews every iteration, and draft_uspto answers "can this be filed".
+import draft_novelty, draft_research                # re-search rounds and their reading
 import draft_studio, draft_studio_service, draft_uspto, draft_workspace
 import figure_compiler, figure_compiler_service       # deterministic filing-drawing compiler
 import claim_chart, translate, drawings          # ported per-card enrichment
@@ -78,7 +79,7 @@ def _asset_version():
     if override:
         return override
     digest = hashlib.sha256()
-    for name in ("style.css", "app.js", "draft_studio.js"):
+    for name in ("style.css", "app.js", "draft_studio.js", "draft_studio.css"):
         path = Path(app.static_folder) / name
         try:
             digest.update(path.read_bytes())
@@ -1216,12 +1217,7 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
                     #  phrases have no ledger asking, and the round was measured at half the local
                     #  channel's 958 s. Quick is one round whatever the kind.
                     cfg=AgentConfig(mode=mode,
-                                    #  Quick is the FIND phase: seed + query set + element
-                                    #  passes, no agentic round and no cross-encoder head ,
-                                    #  both re-added by the phases that render their output.
-                                    max_rounds=(0 if depth == "quick" else profile.rounds),
-                                    final_rerank=(depth != "quick"),
-                                    find_mode=(depth == "quick"),
+                                    max_rounds=(1 if depth == "quick" else profile.rounds),
                                     elements_per_round=3, ground=True,
                                     search_config=("claim_agentic" if search_focus == "claims"
                                                    else "agentic"),
@@ -1264,7 +1260,6 @@ def _generate(slug, query, subject, mode, wide=False, doc_token=None,
             # Log the wall-clock windows so the parallelism is verifiable in the service log.
             t0 = min((v["start"] for v in timing.values()), default=time.time())
             for nm, v in sorted(timing.items(), key=lambda kv: kv[1]["start"]):
-                print(f"[gen {slug}] fanout done at {time.time()-t0:.1f}s", flush=True)
                 print(f"[fanout {slug}] {nm}: {v['start']-t0:6.2f}s .. {v.get('end', v['start'])-t0:6.2f}s "
                       f"({v.get('end', v['start'])-v['start']:.2f}s)", flush=True)
 
@@ -2535,17 +2530,16 @@ def corpus_page():
 
 @app.route("/factory")
 def factory_page():
-    """The corpus factory, now a section of /corpus.
+    """The corpus factory while it is running.
 
-    It was its own page, and that was the defect: /factory reported 1.77M publications while
-    /corpus reported 4.98M, with nothing on either page saying they were different databases at
-    different stages. Both numbers were right and the pair of them read as a contradiction. They
-    are one page now, with the distinction stated where the second set of numbers appears.
-
-    The URL is kept and redirected rather than deleted, because it is in the nav history of
-    anyone who was watching a build.
+    The numbers come from a snapshot the factory publishes to object storage once a minute, not
+    from a database this process can reach: the search tier has no route to the staging database
+    and should not have one. Staleness is computed from the snapshot's own timestamp, so a dead
+    publisher reads as stale instead of as zero.
     """
-    return redirect(request.script_root + "/corpus#factory")
+    if not auth.auth_enabled(app) or auth.current_user() or auth.is_loopback():
+        return render_template("factory.html", title="Factory")
+    return redirect(url_for("auth.login", next=request.script_root + "/factory"))
 
 
 @app.route("/api/factory/pulse")
@@ -2623,25 +2617,6 @@ def api_designs():
         traceback.print_exc()
         return jsonify({"designs": [], "error": f"{type(exc).__name__}: {exc}"}), 502
     return jsonify(res)
-
-
-@app.route("/api/designs/<design_number>")
-def api_design_details(design_number):
-    """One registered design by number, so Lookup can resolve an RCD the way it resolves a
-    publication number. A design number is not a publication number and the register apps do
-    not answer for it, so a reader pasting `005632742-0001` into Lookup got nothing back."""
-    if auth.auth_enabled(app) and not (auth.current_user() or auth.is_loopback()):
-        abort(401)
-    from sources import euipo as _euipo
-    num = _design_number_or_404(design_number)
-    try:
-        d = _euipo.design_details(num)
-    except Exception as exc:                                              # noqa: BLE001
-        traceback.print_exc()
-        return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 502
-    if not d:
-        return jsonify({"error": "EUIPO is not configured on this instance"}), 503
-    return jsonify(d)
 
 
 @app.route("/api/designs/<design_number>/view/<int:order>")
@@ -3303,7 +3278,6 @@ def report(slug):
     #  The filing artefacts belong on the report itself, not only on a share of it: the owner is
     #  the one who builds them and the most likely person to come back for them.
     view["concise_docs"] = _concise_built(slug)
-    view["has_reading"] = _has_reading(slug)
     view["concise_built"] = len(view["concise_docs"])
     return render_template("report.html", v=view, ood=ood, corpus=corpus_facts.facts())
 
@@ -5277,7 +5251,6 @@ def shared_report(token):
     view["share_token"] = token
     view["read_only"] = True
     view["concise_docs"] = _concise_built(slug)
-    view["has_reading"] = _has_reading(slug)
     return render_template("report.html", v=view, read_only=True, share_token=token,
                            ood=None, corpus=corpus_facts.facts())
 
@@ -5366,7 +5339,6 @@ def public_report_page(slug):
     #  usually the person who needs the papers, and hiding them behind an account defeats the
     #  point of publishing the report at all.
     view["concise_docs"] = _concise_built(slug)
-    view["has_reading"] = _has_reading(slug)
     visit_key = public_report.record_visit(slug, request, unlocked=_public_unlocked(slug))
     resp = make_response(render_template(
         "report.html", v=view, read_only=True, layout="base_public.html", share_token=None,
@@ -5454,30 +5426,6 @@ def shared_report_logo(token):
 #  what may appear on it; the important one is that no citation is ever written by a model.
 
 CONCISE_DIR = REPORTS / "concise"
-
-
-#  {slug: (deep.json mtime, verdict)}. The report page asks on every render whether this search
-#  has a reading worth offering the 1.290 flow for, and the honest answer lives INSIDE deep.json:
-#  a find run writes the file with no references, so existence alone said yes to a page that
-#  would then redirect straight back. Parsed once per file change, remembered after.
-_HAS_READING: dict = {}
-
-
-def _has_reading(slug):
-    path = REPORTS / ("%s.deep.json" % slug)
-    try:
-        mtime = path.stat().st_mtime
-    except OSError:
-        return False
-    cached = _HAS_READING.get(slug)
-    if cached and cached[0] == mtime:
-        return cached[1]
-    try:
-        verdict = bool((json.loads(path.read_text()).get("references") or []))
-    except Exception:
-        verdict = False
-    _HAS_READING[slug] = (mtime, verdict)
-    return verdict
 
 
 def _concise_deep(slug):
@@ -5680,59 +5628,6 @@ def _pretty_app_no(raw):
     return "%s/%s,%s" % (digits[:2], digits[2:5], digits[5:])
 
 
-@app.route("/api/passage")
-def api_passage():
-    """The passage behind a grid cell, in its original language and in English.
-
-    The read-time guard drops a non-English quote from the grid because an English report cannot
-    render what its reader cannot verify. The passage itself sits in the corpus and the cell
-    records exactly where; this returns it with a disk-cached machine translation, fetched only
-    when somebody opens that cell. The translation is labelled and never enters the verbatim bar.
-    """
-    if auth.auth_enabled(app) and not (auth.current_user() or auth.is_loopback()):
-        return jsonify({"found": False, "error": "sign in to fetch translations"}), 403
-    pub = (request.args.get("pub") or "").strip()
-    loc = (request.args.get("loc") or "").strip().lower()
-    if not pub or not loc:
-        return jsonify({"found": False}), 400
-    text = ""
-    with db.cursor() as cur:
-        cur.execute("SELECT id, abstract FROM publications WHERE publication_number=%s LIMIT 1",
-                    (pub,))
-        row = cur.fetchone()
-        if row:
-            m = re.search(r"claim\s+(\d+)", loc)
-            if m:
-                cur.execute("SELECT text FROM claims WHERE publication_id=%s AND claim_no=%s "
-                            "LIMIT 1", (row["id"], int(m.group(1))))
-                r2 = cur.fetchone()
-                text = (r2["text"] if r2 else "") or ""
-            elif "abstract" in loc:
-                text = row["abstract"] or ""
-            else:
-                m = re.search(r"paragraph\s+p?0*(\d+)", loc)
-                if m:
-                    want = m.group(1)
-                    cur.execute("SELECT para_no, text FROM paragraphs WHERE publication_id=%s "
-                                "ORDER BY id LIMIT 400", (row["id"],))
-                    for r2 in cur.fetchall():
-                        pn = re.sub(r"^p", "", str(r2["para_no"] or "").lower()).lstrip("0") or "0"
-                        if pn == want.lstrip("0"):
-                            text = r2["text"] or ""
-                            break
-    if not text:
-        return jsonify({"found": False})
-    import translate as translate_mod
-    out = translate_mod.translate(text[:4000])
-    return jsonify({
-        "found": True,
-        "original": text[:4000],
-        "lang": out.get("lang") or "",
-        "translated": bool(out.get("translated")),
-        "translation": (out.get("text") or "") if out.get("translated") else "",
-    })
-
-
 @app.route("/api/build-settings")
 def api_build_settings():
     """What a rebuild will use, and what it could use instead.
@@ -5777,10 +5672,11 @@ def concise_descriptions(slug):
         auth.require_csrf()
     deep = _concise_deep(slug)
     if not deep or not (deep.get("references") or []):
-        #  Nothing to describe means nothing to show: the report page's phase bar carries the
-        #  one real action, running the full search. A dead-end page with an instruction on it
-        #  is a button that should not have existed.
-        return redirect(url_for("report", slug=slug))
+        return render_template("concise.html", slug=slug, cands=[], docs=[],
+                               subject=_concise_subject(slug), error=(
+                                   "This report has no full-text reading stage, so there is no "
+                                   "per-claim evidence to describe. Re-run the search at depth "
+                                   "'deep' first."))
     import concise_description
     import concise_render
     #  The REPORT, not {}: the picker ranks on what the ledger says each reference kills and on
@@ -5799,19 +5695,9 @@ def concise_descriptions(slug):
         return render_template("concise.html", slug=slug, cands=cands,
                                docs=_concise_built(slug), subject=subject, error=None,
                                blocked=j.get("blocked") or [],
-                               building=(j.get("state") == "running"),
-                               verdict=j.get("verdict") or "")
+                               verdict=j.get("verdict") or _concise_verdict_on_disk(slug))
 
     pubs = [p.strip() for p in request.form.getlist("pubs") if p.strip()]
-    if not pubs and request.form.get("auto"):
-        #  ONE CLICK, THE PACKAGE COUNSEL ASKED FOR: the top documents by what the ledger says
-        #  they kill , office actions first, one per family, covering as many claims as the
-        #  evidence supports. The picker's order IS the selection logic, fixed 2026-08-20.
-        try:
-            top = max(1, min(int(request.form.get("auto")), 20))
-        except (TypeError, ValueError):
-            top = 10
-        pubs = [c["pub"] for c in cands[:top]]
     if not pubs:
         return render_template("concise.html", slug=slug, cands=cands, docs=_concise_built(slug), subject=subject,
                                error="Select at least one document."), 400
@@ -5860,7 +5746,9 @@ def concise_descriptions(slug):
 
     if (_concise_job(slug) or {}).get("state") == "running":
         #  A second click must not start a second build over the same output directory.
-        return redirect(url_for("concise_descriptions", slug=slug))
+        return render_template("concise.html", slug=slug, cands=cands,
+                               docs=_concise_built(slug), subject=subject, error=None,
+                               blocked=[], family_notes=[], building=True)
 
     with _CONCISE_JOBS_LOCK:
         #  total counts one step per document for the build, one for the compliance pass, and one
@@ -5892,9 +5780,11 @@ def concise_descriptions(slug):
             #  EVERY artefact of the previous build, not only the descriptions. A copy
             #  or a translation left behind for an item this build no longer lists
             #  would be filed as part of a submission it does not belong to.
+            #  `Translation_*` and `*_before_filing.txt` are the names an earlier build used. A
+            #  package built before the rename kept them, and they were still going into the zip.
             for pattern in ("ConciseDescription_*", "*.model.json", "00_*", "01_*",
-                            "40_Copy_*", "50_Translation_*", "MANIFEST.csv",
-                            "READ_ME_FIRST.txt"):
+                            "40_Copy_*", "50_Translation_*", "Translation_*", "Copy_*",
+                            "*_before_filing.txt", "MANIFEST.csv", "READ_ME_FIRST.txt"):
                 for stale in out.glob(pattern):
                     try:
                         stale.unlink()
@@ -5902,8 +5792,7 @@ def concise_descriptions(slug):
                         traceback.print_exc()
             for k, d in enumerate(docs, 1):
                 _concise_set(slug, done=len(pubs) + k,
-                             msg="Rendering PDF and DOCX, document %d of %d: %s"
-                                 % (k, len(docs), d["pub"]))
+                             msg="Writing document %d of %d: %s" % (k, len(docs), d["pub"]))
                 for fmt, fn in (("pdf", concise_render.to_pdf), ("docx", concise_render.to_docx)):
                     try:
                         (out / concise_render.filename(d, fmt)).write_bytes(fn(d))
@@ -5941,10 +5830,9 @@ def concise_descriptions(slug):
                          error="Could not build the documents: %s" % str(exc)[:200])
 
     threading.Thread(target=_work, name="concise-build", daemon=True).start()
-    #  Post/Redirect/Get: rendering the result of the POST directly meant a browser refresh
-    #  re-submitted the form, and a re-submit AFTER completion silently started a whole new
-    #  build over the same directory. The GET shows the running build's progress.
-    return redirect(url_for("concise_descriptions", slug=slug))
+    return render_template("concise.html", slug=slug, cands=cands, docs=_concise_built(slug),
+                           subject=subject, error=None, blocked=[], family_notes=[],
+                           building=True)
 
 
 def _concise_doc_paths(slug, n):
@@ -5994,6 +5882,25 @@ def concise_document(slug, n):
     return render_template("concise_doc.html", slug=slug, n=n, stem=paths["stem"],
                            markdown=paths["md"].read_text(encoding="utf-8"),
                            error=err, saved=saved)
+
+
+def _concise_verdict_on_disk(slug):
+    """The packet's own verdict, read back from READ_ME_FIRST.txt. -> str
+
+    The job dict holds it while the process lives, and a restart empties that dict while the packet
+    sits on disk unchanged: the page then showed no verdict for a package that has one. The note in
+    the packet is the durable copy, so it is the one to read when the job is gone.
+    """
+    try:
+        p = CONCISE_DIR / slug / "READ_ME_FIRST.txt"
+        if not p.exists():
+            return ""
+        lines = [l.strip() for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+        #  line 0 is the application, line 1 the banner, line 2 the sentence.
+        return ": ".join(lines[1:3]) if len(lines) > 2 else (lines[1] if len(lines) > 1 else "")
+    except Exception:                                                     # noqa: BLE001
+        traceback.print_exc()
+        return ""
 
 
 def _concise_package(out, docs, subject, report=None):
@@ -6463,6 +6370,16 @@ def _draft_report_choices(user, limit=300):
     return choices
 
 
+def _draft_party_defaults(user, values=None):
+    values = dict(values or {})
+    if not values.get("inventors"):
+        values["inventors"] = user.get("default_inventors") or user.get("full_name") or ""
+    if not values.get("applicant"):
+        values["applicant"] = (user.get("default_applicant") or user.get("organization") or
+                               user.get("full_name") or "")
+    return values
+
+
 def _draft_new_context(user, principal, slug, selected=None, values=None, error=""):
     choices = _draft_report_choices(user)
     report_view = None
@@ -6471,11 +6388,7 @@ def _draft_new_context(user, principal, slug, selected=None, values=None, error=
             report_view = _draft_report_loader(principal, slug, user["id"])
         except drafting.DraftingError as exc:
             error = error or str(exc)
-    values = dict(values or {})
-    if not values.get("applicant"):
-        values["applicant"] = user.get("default_applicant") or user.get("organization") or ""
-    if not values.get("inventors"):
-        values["inventors"] = user.get("default_inventors") or user.get("full_name") or ""
+    values = _draft_party_defaults(user, values)
     if report_view:
         account_search = accounts.get_search(user["id"], slug) or {}
         source_document = report_view.get("query_document") or {}
@@ -6829,6 +6742,7 @@ def draft_print(project_id):
         if not version_no:
             raise drafting.DraftingNotFound("No draft version is ready to print.")
         version = service.get_version(principal, project_id, version_no)
+        version = {**version, "sections": draft_export.application_sections(version)}
         return render_template("draft_print.html", project=project, version=version,
                                section_order=drafting.SECTION_ORDER,
                                notice=draft_export.WORKING_DRAFT_NOTICE)
@@ -6917,6 +6831,7 @@ def draft_start():
                    "government_support_details", "claim_strategy", "means_plus_function",
                    "protected_terms", "filing_deadline")}
         values["claim_types"] = request.form.getlist("claim_types")
+        values = _draft_party_defaults(user, values)
         try:
             # A finished owned search is already a complete intake. The action on the report is a
             # POST so one click can create durable state without turning a GET into a mutation.
@@ -6983,6 +6898,8 @@ def draft_studio_page(project_id):
     try:
         _user, principal = _draft_identity()
         state = _studio().state(principal, project_id)
+    except drafting.DraftingPermissionDenied:
+        return redirect(url_for("auth.login", next=request.path))
     except drafting.DraftingError as exc:
         return render_template("notfound.html", slug=str(exc)), _draft_error_status(exc)
     #  The page renders itself from exactly the same JSON the poller fetches, so there is one
@@ -7013,7 +6930,7 @@ def _studio_payload(state):
         #  re-fetched on every change during a turn.
         "project": dict({key: project.get(key) for key in
                          ("id", "title", "status", "revision", "latest_version_no", "search_slug",
-                          "input_kind", "applicant", "inventors")},
+                          "input_kind", "applicant", "inventors", "draft_model")},
                         disclosure_excerpt=str(project.get("disclosure_text") or "")[:4000],
                         disclosure_chars=len(str(project.get("disclosure_text") or ""))),
         "messages": [{"id": m["id"], "role": m["role"], "body": m["body"],
@@ -7021,7 +6938,9 @@ def _studio_payload(state):
                      for m in state["messages"]],
         "turns": [{key: t.get(key) for key in
                    ("id", "turn_no", "kind", "status", "stage", "summary", "version_no",
-                    "cost_usd", "duration_ms", "model_name", "last_error")}
+                    "cost_usd", "duration_ms", "model_name", "last_error", "section_key",
+                    "agent_runs", "model_ms", "spend_usd", "tokens_input", "tokens_output",
+                    "tokens_cache_read", "tokens_cache_write", "started_at", "completed_at")}
                   for t in state["turns"][:40]],
         "active_turn": state.get("active_turn"),
         "version": {"version_no": version.get("version_no"), "sections": version.get("sections"),
@@ -7031,6 +6950,7 @@ def _studio_payload(state):
         "versions": [{"version_no": v["version_no"], "status": v.get("status"),
                       "created_at": str(v.get("created_at") or ""),
                       "change_note": v.get("change_note") or "",
+                      "origin": v.get("origin") or "agent",
                       "verdict": (state["qa_by_version"].get(v["version_no"]) or {}).get("verdict")}
                      for v in project.get("versions", [])],
         "qa": qa,
@@ -7183,9 +7103,172 @@ def draft_studio_message(project_id):
         turn = _studio().start_turn(
             principal, project_id, message=str(body.get("message") or ""),
             kind=str(body.get("kind") or "revise"),
+            section_key=str(body.get("section_key") or ""),
             idempotency_key=str(body.get("idempotency_key") or "") or None)
         return jsonify({"ok": True, "turn": {"id": turn["id"], "turn_no": turn["turn_no"],
                                              "status": turn["status"]}})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/section", methods=["POST"])
+def draft_studio_section(project_id):
+    """Save one section of the application exactly as the user typed it."""
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        body = request.get_json(silent=True) or request.form
+        saved = _studio().save_section(
+            principal, project_id, section_key=str(body.get("section_key") or ""),
+            text=str(body.get("text") or ""))
+        return jsonify({"ok": True, **saved})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/research", methods=["POST"])
+def draft_studio_research(project_id):
+    """Re-search: search from the draft as it stands, measure the art, then draft away from it.
+
+    The search launch has to happen here because the pipeline, the report store and the account
+    ledger are this module's wiring. Everything after it is `draft_research`, which is handed the
+    four things it needs as callables so it can be exercised without any of that.
+    """
+    auth.require_csrf()
+    try:
+        user, principal = _draft_identity()
+        studio = _studio()
+        if draft_research.is_running(project_id):
+            return jsonify({"ok": False,
+                            "error": "A re-search round is already running on this draft."}), 409
+        state_now = studio.state(principal, project_id)
+        active = state_now.get("active_turn")
+        if active:
+            return jsonify({"ok": False, "error": "The drafting agent is still working. A round "
+                                                  "must search a draft that is standing still."}), 409
+        version_no = int((state_now.get("project") or {}).get("latest_version_no") or 0)
+        material = studio.search_material(principal, project_id)
+        query = material["query"]
+        mode, focus, wide = "novelty", "all_text", True
+        chosen = _studio().settings(principal, project_id)["values"]
+        slug = search_slug(query, mode, wide=wide, search_focus=focus)
+        state, detail = ensure_report(
+            slug, query=query, mode=mode, wide=wide, search_focus=focus,
+            owner_user_id=(user or {}).get("id"))
+        if state == "busy":
+            return jsonify({"ok": False, "error": f"The search server is busy: {detail}"}), 429
+        (REPORTS / f"{slug}.meta.json").write_text(json.dumps(
+            {"query": query, "mode": mode, "subject": None, "wide": wide,
+             "ood": None, "doc_token": None, "search_focus": focus,
+             "draft_project_id": int(project_id)}))
+        accounts.record_search(
+            user["id"], slug, query, mode, focus, None, notify_email=False,
+            status="complete" if state == "ready" else "running", saved=False)
+        studio.record_search(principal, project_id, slug=slug, query=query,
+                             status="complete" if state == "ready" else "running")
+        opened = draft_research.open_round(project_id, version_no=version_no, slug=slug)
+        history = [item for item in draft_research.rounds(project_id)
+                   if item["round_no"] < opened["round_no"]
+                   and item.get("closest_coverage") is not None]
+
+        def is_ready(item_slug):
+            with _JOB_LOCK:
+                job = dict(_JOBS.get(item_slug, {}))
+            event = _job_event(item_slug, job)
+            return bool(event.get("done") and event.get("ready"))
+
+        def load_view(item_slug):
+            return _draft_report_loader(principal, item_slug, principal.user_id)
+
+        def attach(item_slug, pubs):
+            keep = max(1, min(int(chosen.get("research_references") or 5), 10))
+            return studio.import_search(principal, project_id, item_slug, list(pubs)[:keep])
+
+        def enqueue(message):
+            turn = studio.repository.enqueue_turn_safely(
+                project_id, principal.user_id, kind="revise", user_message=message,
+                project_revision=int(state_now["project"]["revision"]),
+                idempotency_key=f"research-round-{opened['id']}")
+            draft_studio_service.kick()
+            return int(turn["id"])
+
+        draft_research.run_round_in_background(
+            project_id=int(project_id), user_id=int(principal.user_id),
+            round_id=int(opened["id"]), slug=slug, load_view=load_view, is_ready=is_ready,
+            attach=attach, enqueue=enqueue,
+            previous=(history[0] if history else None))
+        return jsonify({"ok": True, "round": _research_payload(opened), "slug": slug,
+                        "status": state})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+    except Exception as exc:                                  # search launch boundary
+        traceback.print_exc()
+        return jsonify({"ok": False,
+                        "error": f"Could not start the round: {str(exc)[:200]}"}), 502
+
+
+def _research_payload(row):
+    return {key: row.get(key) for key in
+            ("id", "round_no", "version_no", "slug", "status", "imported_count",
+             "closest_coverage", "mean_top3", "combination", "n_elements", "n_charted",
+             "closest_pub", "closest_title", "turn_id", "note")}
+
+
+@app.route("/api/drafts/<int:project_id>/research")
+def api_draft_research(project_id):
+    try:
+        _user, principal = _draft_identity()
+        _studio()._project(principal, project_id)
+        data = draft_research.series(project_id)
+        return jsonify({"ok": True, "running": draft_research.is_running(project_id),
+                        "measured": data.get("measured", 0),
+                        "delta": data.get("delta"),
+                        "improvement": data.get("improvement"),
+                        "rounds": [_research_payload(item) for item in data["rounds"]]})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/api/drafts/<int:project_id>/settings")
+def api_draft_settings(project_id):
+    try:
+        _user, principal = _draft_identity()
+        return jsonify({"ok": True, **_studio().settings(principal, project_id)})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/settings", methods=["POST"])
+def draft_studio_settings(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        body = request.get_json(silent=True) or {}
+        return jsonify({"ok": True, **_studio().save_settings(
+            principal, project_id, body if isinstance(body, dict) else {})})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/drawings", methods=["POST"])
+def draft_studio_drawings(project_id):
+    """Reconcile the sheets with the published text, without running a drafting agent."""
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        return jsonify({"ok": True, **_studio().reconcile_drawings(principal, project_id)})
+    except drafting.DraftingError as exc:
+        return _studio_error(exc)
+
+
+@app.route("/drafts/<int:project_id>/studio/model", methods=["POST"])
+def draft_studio_model(project_id):
+    auth.require_csrf()
+    try:
+        _user, principal = _draft_identity()
+        body = request.get_json(silent=True) or request.form
+        return jsonify({"ok": True, **_studio().set_model(
+            principal, project_id, str(body.get("model") or ""))})
     except drafting.DraftingError as exc:
         return _studio_error(exc)
 
@@ -7409,15 +7492,35 @@ def _readiness_for(principal, project_id):
     return project, version, report, references
 
 
-def _filing_figure_images(project):
+def _filing_figure_images(project, version):
     """The exact active PNGs that passed both live drawing gates, in filing order."""
     images = []
-    for figure in _figures_for(project):
+    figures = _figures_for(project)
+    specs = (version or {}).get("figure_specs") or []
+    if isinstance(specs, str):
+        try:
+            specs = json.loads(specs)
+        except json.JSONDecodeError:
+            specs = []
+    specs_by_key = {
+        draft_figures.figure_key(item.get("label")): item
+        for item in specs if isinstance(item, dict)
+    }
+    for sheet_index, figure in enumerate(figures, 1):
+        spec = specs_by_key.get(draft_figures.figure_key(figure.get("figure_label")))
         versions = figure.get("versions") or []
         active = next((row for row in versions
                        if int(row.get("version_no") or 0) ==
                        int(figure.get("active_version") or 0)), None) or {}
-        if not ((active.get("numeral_audit") or {}).get("ok") and
+        if not (draft_figures.current_geometry_binding(
+                    figure, project.get("user_id"), active,
+                    (spec or {}).get("caption") or "") and
+                draft_figures.current_ocr_audit(
+                    active.get("numeral_audit") or {},
+                    expected_sheet_number=f"{sheet_index}/{len(figures)}",
+                    expected_section_designations=(
+                        draft_figures.section_designations(spec.get("caption") or "")
+                        if spec else None)) and
                 draft_figures.current_semantic_audit(active.get("semantic_audit") or {}) and
                 draft_figures.current_leader_audit(active.get("leader_audit") or {})):
             raise drafting.DraftingValidationError(
@@ -7461,7 +7564,7 @@ def draft_filing_download(project_id, fmt):
         return send_file(
             draft_uspto.render_filing_docx(project, version, readiness_report=report,
                                            references=references,
-                                           figure_images=_filing_figure_images(project)),
+                                           figure_images=_filing_figure_images(project, version)),
             as_attachment=True, download_name=name,
             mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     except drafting.DraftingError as exc:

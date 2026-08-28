@@ -1,0 +1,210 @@
+{
+ "n": 2,
+ "pub": "WO-2010135788-A1",
+ "family_id": "43222064",
+ "biblio": {
+  "pub": "WO-2010135788-A1",
+  "label": "WO 2010135788 A1",
+  "kind": "foreign",
+  "title": "Switchable magnetic implement",
+  "country": "WO",
+  "inventor": "Franz Kocijan",
+  "assignee": "Magswitch Technology Worldwide Pty Ltd",
+  "publication_date": "2010-12-02",
+  "priority_date": "2009-05-29",
+  "filing_date": "2010-05-31",
+  "dates_source": "corpus",
+  "abstract": "Described are switchable magnetic implements for use a work piece or tool holders and as jigs for machining or welding operations, the implement having at least two permanent magnets received within a housing having or comprised of at least two main pole pieces, one or both of the magnets being movable to selectively generate an external magnetic field and a magnetic flux path trough the pole pieces when in contact with a ferromagnetic work piece, which is characterised by including at least two pole extension members which are respectively secured, preferably in exchangeable manner, to the associated one of the main pole pieces, and in that the pole extension members have at least two engagement surfaces adapted to be brought into contact with two work pieces, the engagement surfaces being contoured to at least partially match the contours of differently shaped work pieces, eg provide a curved or non-rectilinear engagement or contact location as well as rectilinear contact / engagement surfaces at the same implement.",
+  "issue_date_pretty": "December 2, 2010",
+  "priority_date_pretty": "May 29, 2009"
+ },
+ "subject": {
+  "app_no": "19/318,450",
+  "pub_no": "US 2026/0070232 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a switchable magnetic implement for securing workpieces, which can be used as a magnetic gripper, featuring movable magnets and pole extension members with optimized engagement surfaces for improved flux transfer.",
+ "rows": [
+  {
+   "claim_no": 1,
+   "label": "claim 1[a]",
+   "quote_claim": true,
+   "claim_text": "A magnetic gripper for gripping a ferromagnetic workpiece, said magnetic gripper comprising",
+   "claim_paraphrase": "A magnetic gripper for gripping a ferromagnetic workpiece, said magnetic gripper comprising",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The present invention relates to switchable magnetic devices used to secure work pieces for and during metal working applications (such as welding, machining, joining, etc) or to serve as<'>holders for ancillary tools used during such metal working or generally as",
+   "note": "The reference describes a switchable magnetic implement for securing workpieces, which is a magnetic gripper for gripping a ferromagnetic workpiece.",
+   "cites": [
+    "Paragraph [0001]"
+   ],
+   "confidence": 0.8,
+   "_id": 0,
+   "disclosure": "The reference describes a switchable magnetic implement for securing work pieces for and during metal working applications, which is a magnetic gripper for gripping a ferromagnetic workpiece."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[b]",
+   "quote_claim": true,
+   "claim_text": "a magnet which is arranged in the housing and which is displaceable along a displacement direction between a gripping position for gripping the ferromagnetic workpiece and a release position for releasing the ferromagnetic workpiece",
+   "claim_paraphrase": "a magnet which is arranged in the housing and which is displaceable along a displacement direction between a gripping position for gripping the ferromagnetic workpiece and a …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "Both magnets 11 , 12 are disc or cylindrically shaped magnets which are diametrically magnetised, Ie the north pole and the south pole of the magnets are located on opposite sides of a vertical plane that extends over the hight",
+   "note": "The reference discloses magnets that are movable to switch the magnetic field on and off, but it describes rotation of one magnet rather than displacement along a direction.",
+   "cites": [
+    "Paragraph [0001]"
+   ],
+   "confidence": 0.7,
+   "_id": 1,
+   "disclosure": "The reference discloses that both magnets 11, 12 are disc or cylindrically shaped magnets which are diametrically magnetised, and are movable to selectively generate an external magnetic field."
+  },
+  {
+   "claim_no": 2,
+   "label": "claim 2[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the housing extends along a longitudinal axis",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the housing extends along a longitudinal axis",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "Both magnets 11 , 12 are disc or cylindrically shaped magnets which are diametrically magnetised, Ie the north pole and the south pole of the magnets are located on opposite sides of a vertical plane that extends over the hight",
+   "note": "The reference describes cylindrical magnets and a stacking axis, which implies a longitudinal axis for the device",
+   "cites": [
+    "Paragraph [0001]"
+   ],
+   "confidence": 0.7,
+   "_id": 2,
+   "disclosure": "The reference discloses that both magnets 11, 12 are disc or cylindrically shaped magnets, implying the housing extends along a longitudinal axis."
+  },
+  {
+   "claim_no": 3,
+   "label": "claim 3[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein each pole shoe has an active structure for directing the magnetic field portion",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein each pole shoe has an active structure for directing the magnetic field portion",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "Relevant is that the contact or engagement surfaces that provide the interface between pole extension members and a work piece, are optimised in order to provide an improved flux transfer functionality between the active magnetic material (permanent magnets) through the",
+   "note": "The reference discusses optimizing engagement surfaces for improved flux transfer, implying they direct the magnetic field",
+   "cites": [
+    "Paragraph [0005]"
+   ],
+   "confidence": 0.7,
+   "_id": 3,
+   "disclosure": "The reference discloses that the contact or engagement surfaces of the pole extension members are optimised to provide an improved flux transfer functionality, thereby directing the magnetic field."
+  },
+  {
+   "claim_no": 4,
+   "label": "claim 4[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 3, wherein the active structure has a bevel",
+   "claim_paraphrase": "The magnetic gripper according to claim 3, wherein the active structure has a bevel",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "Figure 2c illustrates a second embodiment of a pole extension member 130, which is again a ferromagnetic steel plate 132' with two long holes 134 extending through the plate 132'. However, instead of having a straight lower engagement edge surface,",
+   "note": "The reference discloses engagement surfaces that are 'pitched' or 'notched', which could be interpreted as having a bevel",
+   "cites": [
+    "Paragraph [0012]"
+   ],
+   "confidence": 0.6,
+   "_id": 4,
+   "disclosure": "The reference discloses a pole extension member 130 that has a lower engagement edge surface which is 'pitched' or 'notched'."
+  },
+  {
+   "claim_no": 5,
+   "label": "claim 5[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 3, wherein the active structure has a plurality of projections for directing the magnetic field portion and for forming the workpiece contact surface",
+   "claim_paraphrase": "The magnetic gripper according to claim 3, wherein the active structure has a plurality of projections for directing the magnetic field portion and for forming the workpiece …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "In another embodiment of the modularly attachable pole extension members, figures 3a and 3b illustrate multi-piece extension members 150 and 160, respectively. In figure 3a, the pole extension member 150 consists of a plurality of thin, stacked ferromagnetic plates 151,",
+   "note": "The reference discloses a pole extension member consisting of a plurality of stacked plates defining a staggered engagement surface, which could be considered projections",
+   "cites": [
+    "Paragraph [0013]"
+   ],
+   "confidence": 0.7,
+   "_id": 5,
+   "disclosure": "The reference discloses multi-piece extension members 150 and 160, where pole extension member 150 consists of a plurality of thin, stacked ferromagnetic plates 151, which can be considered projections for forming the workpiece contact surface."
+  },
+  {
+   "claim_no": 8,
+   "label": "claim 8[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein the number of pole shoes includes a first pole shoe and a second pole shoe",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein the number of pole shoes includes a first pole shoe and a second pole shoe",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The magnetic device 10 essentially consist of two permanent magnets 11 , 12 located within a housing 15 consisting of two pole pieces 16, 17",
+   "note": "The reference describes a magnetic device with two pole pieces, which function as pole shoes.",
+   "cites": [
+    "Paragraph [0001]"
+   ],
+   "confidence": 0.9,
+   "_id": 6,
+   "disclosure": "The reference discloses that the magnetic device 10 essentially consists of two permanent magnets 11, 12 located within a housing 15 consisting of two pole pieces 16, 17, which function as pole shoes."
+  },
+  {
+   "claim_no": 13,
+   "label": "claim 13[a]",
+   "quote_claim": false,
+   "claim_text": "The magnetic gripper according to claim 1, wherein a housing portion of the housing is designed to largely suppress the escape of the magnetic field of the magnet from the housing portion, or",
+   "claim_paraphrase": "The magnetic gripper according to claim 1, wherein a housing portion of the housing is designed to largely suppress the escape of the magnetic field of the magnet from the housing …",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "In this arrangement, the first and second magnets act as an internal active magnetic shunt and as a result the external magnetic field strength from the device is quite low (and ideally not present).",
+   "note": "The reference describes a mechanism to reduce the external magnetic field when the device is in the 'off' position, which partially suppresses the escape of the magnetic field.",
+   "cites": [
+    "Paragraph [0002]"
+   ],
+   "confidence": 0.7,
+   "_id": 7,
+   "disclosure": "The reference discloses that in the described arrangement, the first and second magnets act as an internal active magnetic shunt, resulting in a quite low external magnetic field strength from the device, thereby largely suppressing the escape of the magnetic field."
+  },
+  {
+   "claim_no": 14,
+   "label": "claim 14[a]",
+   "quote_claim": false,
+   "claim_text": "A magnetic gripper system, the magnetic gripper system comprising",
+   "claim_paraphrase": "A magnetic gripper system, the magnetic gripper system comprising",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The present invention relates to switchable magnetic devices used to secure work pieces for and during metal working applications (such as welding, machining, joining, etc) or to serve as<'>holders for ancillary tools used during such metal working or generally as",
+   "note": "The reference describes a switchable magnetic implement used to secure workpieces, which constitutes a magnetic gripper system.",
+   "cites": [
+    "Paragraph [0001]",
+    "Paragraph [0002]"
+   ],
+   "confidence": 0.9,
+   "_id": 8,
+   "disclosure": "The reference describes switchable magnetic devices used to secure work pieces for and during metal working applications, which constitutes a magnetic gripper system."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "public_prior_art",
+   "blocked": false,
+   "forum": "US"
+  },
+  "quotes": {
+   "checked": 9,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

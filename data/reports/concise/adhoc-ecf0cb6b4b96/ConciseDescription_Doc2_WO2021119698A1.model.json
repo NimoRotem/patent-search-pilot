@@ -1,0 +1,83 @@
+{
+ "n": 2,
+ "pub": "WO-2021119698-A1",
+ "family_id": "74205551",
+ "biblio": {
+  "pub": "WO-2021119698-A1",
+  "label": "WO 2021119698 A1",
+  "kind": "foreign",
+  "title": "Vacuum gripper element and vacuum gripper device",
+  "country": "WO",
+  "inventor": "Gerhard Angerer",
+  "assignee": "Trumpf Maschinen Austria GmbH and Co KG",
+  "publication_date": "2021-06-24",
+  "priority_date": "2019-12-18",
+  "filing_date": "2020-12-16",
+  "dates_source": "corpus",
+  "abstract": "The invention relates to a vacuum gripper element (1) and a vacuum gripper device (24) which are designed to suck against or to hold a component that is to be transported when a vacuum is supplied. The vacuum gripper device (24) comprises a support device (6) and at least one vacuum gripper element (1) connected releasably to the support device (6) as necessary. The vacuum gripper element (1) comprises a main body (2) having at least one vacuum supply channel (3) and a resilient, flexible sealing element (4). A first fastening means (5) is formed here by a detent coupling (8) for interlocking connection and release of the vacuum gripper element (1) to/from the support device (6) as necessary. Alternatively, the main body (2) comprises a first main body part and a second main body part, which first main body part is intended for interlocking connection and release to/from the support device as necessary by means of the first fastening means (5), and which second main body part is connected to the resilient, flexible sealing element (4). A second fastening means is formed here by a detent coupling (8') for interlocking connection and release of the first main body part to/from the second main body part as necessary.",
+  "issue_date_pretty": "June 24, 2021",
+  "priority_date_pretty": "December 18, 2019"
+ },
+ "subject": {
+  "app_no": "19/315,746",
+  "pub_no": "US 2026/0109053 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a vacuum gripper element and a vacuum gripper device designed to suck against or hold a component to be transported when a vacuum is supplied.",
+ "rows": [
+  {
+   "claim_no": 9,
+   "label": "claim 9[a]",
+   "quote_claim": false,
+   "claim_text": "A vacuum handling apparatus comprising",
+   "claim_paraphrase": "A vacuum handling apparatus comprising",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The invention relates to a vacuum gripper element (1) and a vacuum gripper device (24) which are designed to suck against or to hold a component that is to be transported when a vacuum is supplied.",
+   "note": "The reference discloses a vacuum gripper device designed to suck or hold a component.",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 1.0,
+   "_id": 0,
+   "disclosure": "The reference discloses a vacuum gripper device (24) that is designed to suck against or to hold a component that is to be transported when a vacuum is supplied."
+  },
+  {
+   "claim_no": 10,
+   "label": "claim 10[a]",
+   "quote_claim": false,
+   "claim_text": "The vacuum handling apparatus according to claim 9, wherein the grip unit and the suction plate are releasably connected to one another via a coupling device",
+   "claim_paraphrase": "The vacuum handling apparatus according to claim 9, wherein the grip unit and the suction plate are releasably connected to one another via a coupling device",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A first fastening means (5) is formed here by a detent coupling (8) for interlocking connection and release of the vacuum gripper element (1) to/from the support device (6) as necessary.",
+   "note": "The reference discloses a vacuum gripper element connected releasably to a support device via a detent coupling, which aligns with a grip unit and suction plate being releasably connected via a coupling device.",
+   "cites": [
+    "Abstract"
+   ],
+   "confidence": 0.9,
+   "_id": 1,
+   "disclosure": "The reference discloses a first fastening means (5) formed by a detent coupling (8) for interlocking connection and release of the vacuum gripper element (1) to/from the support device (6)."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "unknown",
+   "blocked": false,
+   "note": "The target's effective filing date was not supplied, so prior-art status could not be checked. Confirm it before filing."
+  },
+  "quotes": {
+   "checked": 2,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

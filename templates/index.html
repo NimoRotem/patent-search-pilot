@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Search prior art | Rotem Patents{% endblock %}
+{% block title %}Search prior art | IPtorch{% endblock %}
 {% block body %}
 {#  THE SEARCH PAGE IS THE SEARCH FIELD.
 
@@ -144,19 +144,32 @@
         The badge is driven by the same fact the engine uses (does the input carry claims), so it
         cannot disagree with what actually runs. Server-rendered default, flipped by the extract
         step the moment a document turns out to have claims.  #}
-    {#  Hidden, not deleted (owner call 2026-08-23): the caveat narration came off the page,
-        but the extract step's script still writes here and a missing node would throw.  #}
+    {#  WHICH SEARCH IS ABOUT TO RUN, and how long it takes. Two facts, because a typed paragraph
+        and an uploaded document with claims start genuinely different work at genuinely different
+        cost. The sentence explaining WHY moved behind the (?), which is where an explanation of a
+        thing you can already see belongs.
+
+        Hidden until the extract step decides: `kindWhat` is still written by that script, so the
+        node stays even though it is no longer rendered as prose. #}
     <div class="kindbadge" id="kindBadge" data-kind="concept" hidden>
       <span class="kindname" id="kindName">Concept search</span>
       <span class="kindeta" id="kindEta">about 12-30 minutes</span>
-      <span class="kindwhat small muted" id="kindWhat">Breaks the description into its distinct
-        technical concepts and searches each one, then reads the strongest references in full.</span>
+      <button type="button" class="qmark" id="kindHelp" aria-label="What this kind of search does"
+        data-title="Concept search"
+        data-help="Breaks the description into its distinct technical concepts and searches each one, then reads the strongest references in full. No claims exist yet, so there is no claim-by-claim chart.">?</button>
+      <span class="kindwhat small muted" id="kindWhat" hidden></span>
     </div>
 
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    {#  ONE BUTTON AND A (?). The paragraph that used to sit beside it said what the search does,
+        how long the first results take and that they are cached: all true, all worth knowing
+        once, none of it worth reading every time somebody starts a search. #}
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button class="btn" type="submit" id="gobtn">Search prior art</button>
-      <span class="small muted">Searches the local corpus and external patent APIs. First matches
-        usually appear within a minute. Cached afterwards.</span>
+      <button type="button" class="qmark" data-title="What happens when you press this"
+        aria-label="What happens when you press Search prior art"
+        data-help="Your description is broken into its distinct technical ideas and each one is searched separately, against our own patent database and against the public registers. The strongest references are then read in full, not just their abstracts, and every statement in the report is tied to the passage it came from.
+
+First results usually appear within a minute and the reading continues after that. You can leave the page; the search keeps running and the finished report waits for you.">?</button>
     </div>
 
     {% if current_user %}
@@ -170,11 +183,14 @@
     <p class="small muted notifyopt"><a href="{{ request.script_root }}/login">Sign in</a> to save the search, leave it running, and receive a report-ready email.</p>
     {% endif %}
 
-    {#  The one line that replaces the wall. Every number is live from the DB via
-        corpus_facts.facts() — never hardcoded — so it cannot state a corpus size or a date
-        ceiling the tool no longer has. #}
-    <p class="scope-line small muted">{{ disc.one_line() }} ·
-      <a href="{{ request.script_root }}/about">about this tool and its limits</a></p>
+    {#  WHAT THIS LINE USED TO BE: "Bounded corpus: 4,984,254 pubs · 8 CPC classes · current to
+        2026-08-18 · measured recall 19% @10". Every number was live and correct, and all four
+        are engineering telemetry that means nothing to the person about to type a description
+        and quite a lot to a competitor. The limit that a reader actually has to know is one
+        sentence, and it is here; the measurements are on the admin Coverage page. #}
+    <p class="scope-line small muted">A search here is evidence, not a clearance opinion. Every
+      finding is tied to the passage it came from, and every one of them is worth checking.
+      <a href="{{ request.script_root }}/about">What this covers</a></p>
   </form>
 </div>
 {% endblock %}
@@ -257,6 +273,15 @@ window.addEventListener('pageshow', () => {
     $('kindName').textContent = k.label;
     $('kindEta').textContent = k.eta_text;
     $('kindWhat').textContent = k.summary;
+    //  The summary is the honest explanation of which search this is and it is not short. It
+    //  goes behind the (?) beside the badge rather than as a third line of prose above the box.
+    const help = $('kindHelp');
+    if(help){
+      help.setAttribute('data-title', k.label);
+      help.setAttribute('data-help', k.summary || '');
+      help.setAttribute('aria-label', 'What ' + k.label.toLowerCase() + ' does');
+    }
+    badge.hidden = false;
   }
 
   function claimRow(c, i){

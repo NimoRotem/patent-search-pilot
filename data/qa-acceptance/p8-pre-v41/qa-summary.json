@@ -1,0 +1,221 @@
+{
+  "project_id": 8,
+  "title": "VIBRATION DEVICE FOR BEDDING COVERING ELEMENTS, HELD BY A SUSTAINED PRESSURE DIFFERENTIAL ACROSS A RIGID LOW-FRICTION PERIMETER",
+  "version_no": 4,
+  "ready": false,
+  "blockers": [
+    {
+      "title": "The independent review did not pass",
+      "detail": "The application text traces cleanly to the inventor's sources. Every claim limitation, numbered part and described relationship (rigid base, motor on the first side, air-extraction mechanism in fluid communication with a chamber on the second side, rigid low-friction perimeter loop terminating in a bearing face, the non-sealing clearance and continuous ingress, the sustained sub-atmospheric chamber and holding force, the all-rigid transmission path, sliding while held, handles, the rope/wire/cable pulling element with decoupled control, and the stirring elements added in the later inventor message) is supported by an exact passage in input/disclosure.md or input/conversation.md, and the drawing sheets add no structure the text does not already state (the base slab, blocks, housing, bands and loops are expressly declared schematic conventions, and the text stays neutral about their form and placement). All four [REF:...] characterisations in the Background match their prior_art/ files, including the negative statements about US-11247858-B2. Terminology is consistent between claims, description, numeral table and briefs, numerals 10-48 each label one part everywhere, and each cited figure shows what the text says it shows. Two drawing defects remain, both in the rendered sheets rather than in the specification: leader terminals colliding with the cutting-plane lines in FIG. 3, and stirring-element placement in FIG. 6 that contradicts its own brief. Neither creates unsupported matter, and both have automatic fixes in the existing figure briefs.",
+      "items": ""
+    },
+    {
+      "title": "In FIG. 3 both leader terminal dots land on cutting-plane line 2-2, and numeral 16 lands exactly on the 2-2/4-4 crossing",
+      "detail": "On the composited sheet the terminal dot of numeral 16 sits at the exact centre of the view, where the broken horizontal cutting-plane line (2-2) and the broken vertical cutting-plane line (4-4) cross; the leader from '16' runs down-right and stops on that crossing, so on the printed sheet numeral 16 reads as designating the cutting-plane lines rather than the plain face inside the inner edge of the ring. The dot of numeral 24 lies on the same horizontal 2-2 line: it is at the line's height in the left-hand band of the ring, with the dashes visibly continuing at that height on both sides of it. This does not conflict with any check that was actually run. The recorded endpoint evidence was taken in the 1400x900 raw-geometry frame, whose companion geometry review states of the section lines that they are 'excluded from this review per instructions; no such paths are drawn', i.e. the frame the dots were certified in contains no cutting-plane lines; and the section marks were located by a separate reviewer that placed both lines through the centre of the figure ('The horizontal line is placed at the vertical midpoint (y=500), and the vertical line is placed at the horizontal midpoint (x=500)'), the same centre at which numeral 16's dot was placed. So the two records are each internally correct but were never compared, and the collision appears only in the final sheet. A section designation is not a reference numeral, and a numeral leader must not terminate on one.",
+      "items": "figures/rendered-FIG-3.png; figures/FIG-3-BOTTOM-PLAN-VIEW-OF-THE-VIBRATION-DEVICE.md (callout list and section-line paragraphs); review/figure-audit-evidence.json, FIG. 3 endpoints"
+    },
+    {
+      "title": "FIG. 6 draws the stirring elements at the bottom of the front face, against the band, not where its own brief places them",
+      "detail": "The brief and the recorded geometry summary both say the two blocks are drawn against the upper part of the body's front face and clear above the band. On the sheet both blocks sit at the bottom of that face, immediately at the band: the left-hand block occupies roughly y 375-440 within a front face that spans roughly y 130-410 at that x, so its lower edge reaches the line where the body meets the band, and the right-hand block visibly straddles that junction line. My reading of the junction line carries about +/-20 px of uncertainty, but the left block's separation from the top edge of the face (about 245 px) is far outside that margin, so the 'upper part' instruction is plainly not met. Nothing unsupported is asserted by this: the specification says only that 'The vibration device 10 carries one or more stirring elements 48' and that they 'are shown schematically in FIG. 6', claim 10 and claim 20 are location-neutral, and the blocks do not touch the covering element 36. The defect is that the authoritative brief and the sheet disagree.",
+      "items": "figures/rendered-FIG-6.png; figures/FIG-6-THIRD-EMBODIMENT-WITH-STIRRING-ELEMENTS.md; review/figure-audit-evidence.json, FIG. 6 geometry summary"
+    },
+    {
+      "title": "One or more active drawings have not passed live inspection",
+      "detail": "Every filing sheet must still match its specification and reference numerals at download time.",
+      "items": "FIG. 1: current semantic drawing consensus did not pass; FIG. 1: current leader placement consensus did not pass; FIG. 2: current semantic drawing consensus did not pass; FIG. 2: current leader placement consensus did not pass; FIG. 3: current semantic drawing consensus did not pass; FIG. 3: current leader placement consensus did not pass; FIG. 4: current semantic drawing consensus did not pass; FIG. 4: current leader placement consensus did not pass; FIG. 5: current semantic drawing consensus did not pass; FIG. 5: current leader placement consensus did not pass; FIG. 6: current leader placement consensus did not pass"
+    }
+  ],
+  "formalities": [],
+  "qa_verdict": "warn",
+  "section_count": 10,
+  "figure_count": 6,
+  "citation_count": 5,
+  "reference_count": 5,
+  "open_notes": [],
+  "placeholder_hits": [],
+  "filing_text_raw_reference_markers": 0,
+  "filing_text_em_dash_count": 0,
+  "filing_text_sha256": "13d9a077fc4354f93e1806f6223a6fd399fcfb46937de468ce057ec831c65895",
+  "figures": [
+    {
+      "id": 7,
+      "label": "FIG. 1",
+      "active_version": 29,
+      "mime": "image/png",
+      "bytes": 32258,
+      "sha256": "6cc330f9290845994d2ad6a1abf58ca39bfe6be270a828d5a5759a0dd919192f",
+      "expected_sheet_number": "1/6",
+      "detected_sheet_numbers": [
+        "1/6"
+      ],
+      "detected_figure_label": "FIG. 1",
+      "detected_numerals": [
+        "20",
+        "18",
+        "44",
+        "10",
+        "12",
+        "24",
+        "36"
+      ],
+      "ocr_current": true,
+      "semantic_current": false,
+      "leader_current": false,
+      "specification_hash": "3db32c97a5aec8341a9ce08caed5c117449a4c16b3dbdaa0d4db3f00a63d3ea7",
+      "pixel_anchor_version": "pixel-anchor-v12-brief-target-surface-fidelity",
+      "semantic_prompt_version": "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology",
+      "leader_prompt_version": "figure-leader-v8-section-designations-routing-only-independent-consensus",
+      "marked_prompt_version": "deterministic-anchor-v7-byte-exact-clear-interior-and-boundary-centerlines",
+      "cross_provider_geometry_ok": true,
+      "cross_provider_endpoints_ok": true
+    },
+    {
+      "id": 11,
+      "label": "FIG. 2",
+      "active_version": 35,
+      "mime": "image/png",
+      "bytes": 33988,
+      "sha256": "1ad37dd7ba2eaef5b7b20a5c2f16cea60df3f0f588924fa50a5e42b853727c7c",
+      "expected_sheet_number": "2/6",
+      "detected_sheet_numbers": [
+        "2/6"
+      ],
+      "detected_figure_label": "FIG. 2",
+      "detected_numerals": [
+        "14",
+        "20",
+        "12",
+        "22",
+        "24",
+        "36"
+      ],
+      "ocr_current": true,
+      "semantic_current": false,
+      "leader_current": false,
+      "specification_hash": "9b7d6fbd5b3350c9f5e78f43ac2c94d2775204db6c6d6fb7ede80f296804217f",
+      "pixel_anchor_version": "pixel-anchor-v12-brief-target-surface-fidelity",
+      "semantic_prompt_version": "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology",
+      "leader_prompt_version": "figure-leader-v8-section-designations-routing-only-independent-consensus",
+      "marked_prompt_version": "deterministic-anchor-v7-byte-exact-clear-interior-and-boundary-centerlines",
+      "cross_provider_geometry_ok": true,
+      "cross_provider_endpoints_ok": true
+    },
+    {
+      "id": 8,
+      "label": "FIG. 3",
+      "active_version": 26,
+      "mime": "image/png",
+      "bytes": 19868,
+      "sha256": "3009211db0828bac0d6b327aa6b656bb93f613239e2342bcd72cc2d6f4ef04ac",
+      "expected_sheet_number": "3/6",
+      "detected_sheet_numbers": [
+        "3/6"
+      ],
+      "detected_figure_label": "FIG. 3",
+      "detected_numerals": [
+        "16",
+        "24"
+      ],
+      "ocr_current": true,
+      "semantic_current": false,
+      "leader_current": false,
+      "specification_hash": "754170b2a58fb63e9f9a930b37b41a27048a3b8b64a8faff9f97c8bcf00d0e38",
+      "pixel_anchor_version": "pixel-anchor-v12-brief-target-surface-fidelity",
+      "semantic_prompt_version": "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology",
+      "leader_prompt_version": "figure-leader-v8-section-designations-routing-only-independent-consensus",
+      "marked_prompt_version": "deterministic-anchor-v7-byte-exact-clear-interior-and-boundary-centerlines",
+      "cross_provider_geometry_ok": true,
+      "cross_provider_endpoints_ok": true
+    },
+    {
+      "id": 10,
+      "label": "FIG. 4",
+      "active_version": 28,
+      "mime": "image/png",
+      "bytes": 43745,
+      "sha256": "08503a11895bf0e4510049d5f7b7daf68e76b0aae7bb15e9a89041fb530ee68b",
+      "expected_sheet_number": "4/6",
+      "detected_sheet_numbers": [
+        "4/6"
+      ],
+      "detected_figure_label": "FIG. 4",
+      "detected_numerals": [
+        "26",
+        "34",
+        "38",
+        "40",
+        "24",
+        "42",
+        "36"
+      ],
+      "ocr_current": true,
+      "semantic_current": false,
+      "leader_current": false,
+      "specification_hash": "9f7176b8f1c8b84f99939f06a52b31eab227d96429d938a181a6a4282b8ccaf4",
+      "pixel_anchor_version": "pixel-anchor-v12-brief-target-surface-fidelity",
+      "semantic_prompt_version": "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology",
+      "leader_prompt_version": "figure-leader-v8-section-designations-routing-only-independent-consensus",
+      "marked_prompt_version": "deterministic-anchor-v7-byte-exact-clear-interior-and-boundary-centerlines",
+      "cross_provider_geometry_ok": true,
+      "cross_provider_endpoints_ok": true
+    },
+    {
+      "id": 26,
+      "label": "FIG. 5",
+      "active_version": 6,
+      "mime": "image/png",
+      "bytes": 27436,
+      "sha256": "9a46e012d9136f32c9b6ffc085f1a773f6a3d76d79808220b0f76c2a53396901",
+      "expected_sheet_number": "5/6",
+      "detected_sheet_numbers": [
+        "5/6"
+      ],
+      "detected_figure_label": "FIG. 5",
+      "detected_numerals": [
+        "46",
+        "10",
+        "24",
+        "36"
+      ],
+      "ocr_current": true,
+      "semantic_current": false,
+      "leader_current": false,
+      "specification_hash": "c7128ee9cee2dbcc2b4f9279403e50fe54eac707c9db7145f527d01bf33e32e0",
+      "pixel_anchor_version": "pixel-anchor-v12-brief-target-surface-fidelity",
+      "semantic_prompt_version": "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology",
+      "leader_prompt_version": "figure-leader-v8-section-designations-routing-only-independent-consensus",
+      "marked_prompt_version": "deterministic-anchor-v7-byte-exact-clear-interior-and-boundary-centerlines",
+      "cross_provider_geometry_ok": true,
+      "cross_provider_endpoints_ok": true
+    },
+    {
+      "id": 31,
+      "label": "FIG. 6",
+      "active_version": 1,
+      "mime": "image/png",
+      "bytes": 28511,
+      "sha256": "5401688f7c6fc068e9eacff082f7f93fc556ba78cc0cf4652aa370800a5d3846",
+      "expected_sheet_number": "6/6",
+      "detected_sheet_numbers": [
+        "6/6"
+      ],
+      "detected_figure_label": "FIG. 6",
+      "detected_numerals": [
+        "10",
+        "48",
+        "36"
+      ],
+      "ocr_current": true,
+      "semantic_current": true,
+      "leader_current": false,
+      "specification_hash": "95945eba2acbe71e81243146cf9d5b2ec182c1cd7569732a0f7212f3e747e335",
+      "pixel_anchor_version": "pixel-anchor-v12-brief-target-surface-fidelity",
+      "semantic_prompt_version": "figure-semantic-v13-explicit-endpoint-targets-consensus-pixel-grounded-marked-topology",
+      "leader_prompt_version": "figure-leader-v8-section-designations-routing-only-independent-consensus",
+      "marked_prompt_version": "figure-anchor-v15-native-pixel-actionable-coordinate-certificate-majority",
+      "cross_provider_geometry_ok": true,
+      "cross_provider_endpoints_ok": true
+    }
+  ],
+  "docx": {}
+}

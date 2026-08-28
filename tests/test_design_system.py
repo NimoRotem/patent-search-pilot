@@ -4,12 +4,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_shared_shell_uses_the_new_rotem_patents_identity():
+def test_shared_shell_carries_the_product_identity():
+    """The masthead moved into its own partial so the register lookup, a different process on the
+    same domain, can render the same one. base.html has to still be using it."""
     base = (ROOT / "templates" / "base.html").read_text()
+    assert '{% include "_chrome.html" %}' in base
 
-    assert 'aria-label="Rotem Patents home"' in base
-    assert 'class="brandmark"' in base
-    assert "Rotem Patents" in base
+    chrome = (ROOT / "templates" / "_chrome.html").read_text()
+    assert 'aria-label="IPtorch home"' in chrome
+    assert 'class="brandmark"' in chrome
+    assert "IPtorch" in chrome
+    assert "Rotem Patents" not in chrome, "the old name is back in the masthead"
 
 
 def test_shared_shell_declares_a_light_interface():
@@ -70,4 +75,5 @@ def test_every_application_page_title_uses_the_shared_product_name():
             continue
         source = path.read_text()
         if "{% block title %}" in source:
-            assert "Rotem Patents" in source, path.name
+            assert "IPtorch" in source, path.name
+            assert "Rotem Patents" not in source, path.name

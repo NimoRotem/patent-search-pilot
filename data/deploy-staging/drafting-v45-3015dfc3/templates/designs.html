@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}EU registered designs | Rotem Patents{% endblock %}
+{% block body %}
+{#
+  EU registered Community designs, searched directly against EUIPO's design-search API.
+
+  This is a SEPARATE question from the patent search and is deliberately not folded into a
+  report. A registered design protects appearance, carries no claims and no description, and
+  `webview.substance_order` drops design families from a patent report on purpose. Routing
+  these through the normal candidate path would also insert permanently text-less rows into
+  the corpus. See the note at the top of src/sources/euipo.py.
+
+  Everything on this page is served by this app: the EUIPO image endpoints need our OAuth
+  token and client id, so the drawings are proxied through /api/designs/<n>/view/<order>.
+#}
+<h1 style="margin-bottom:.15em">EU registered designs</h1>
+<p class="small muted" style="margin-top:0">
+  The EU register of <b>registered Community designs</b>, searched by what the product is.
+  This is the one European right that neither Google Patents nor our own corpus carries, and a
+  design published before a priority date discloses that <b>appearance</b> to the public.
+  It protects how a product looks, not how it works, so nothing here has claims to read.
+</p>
+
+<form id="dsForm" class="card" style="margin:1em 0;padding:1em" onsubmit="return false">
+  <label for="dsQ" class="small"><b>What is the product?</b></label>
+  <div style="display:flex;gap:.5em;margin-top:.35em;flex-wrap:wrap">
+    <input id="dsQ" name="q" style="flex:1;min-width:280px"
+           placeholder="suction cup gripper vacuum lifter" autocomplete="off" autofocus>
+    <button class="btn" id="dsGo" type="submit">Search designs</button>
+  </div>
+  <div style="display:flex;gap:.6em;margin-top:.6em;flex-wrap:wrap;align-items:center">
+    <label for="dsBefore" class="small muted">Applied for before</label>
+    <input id="dsBefore" type="date" style="min-width:150px">
+    <span class="small muted">
+      the priority date you are testing. Leave empty to search the whole register.
+    </span>
+  </div>
+  <p class="small muted" style="margin:.6em 0 0">
+    Words are matched against the register's own <b>product indication</b>, a short curated
+    phrase such as &ldquo;Suction cups for attachment&rdquo;. Each word is searched separately,
+    so extra words widen the search rather than narrowing it.
+  </p>
+</form>
+
+<div id="dsState" class="card" style="margin:1em 0;padding:.8em 1em" hidden>
+  <b id="dsPhase">Searching EUIPO…</b>
+  <div class="small muted" id="dsMsg" style="margin-top:.3em"></div>
+</div>
+
+<div id="dsMeta" class="small muted" style="margin:.6em 0" hidden></div>
+<div id="dsGrid" class="dsgrid"></div>
+
+<style>
+  .dsgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:1em; }
+  .dscard { border:1px solid var(--line,#dcdcdc); border-radius:8px; overflow:hidden;
+            display:flex; flex-direction:column; background:var(--card,#fff); }
+  /* The register's drawings are line art on white, so the tile is white in both themes on
+     purpose: a dark tile puts a grey slab around every drawing. */
+  .dsthumb { background:#fff; height:170px; display:flex; align-items:center;
+             justify-content:center; border-bottom:1px solid var(--line,#dcdcdc); }
+  .dsthumb img { max-width:100%; max-height:170px; object-fit:contain; }
+  .dsbody { padding:.55em .7em .7em; display:flex; flex-direction:column; gap:.25em; }
+  .dstitle { font-weight:600; line-height:1.25; }
+  .dsnum { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.82em; }
+  .dstag { display:inline-block; font-size:.72em; padding:.1em .45em; border-radius:4px;
+           border:1px solid var(--line,#dcdcdc); margin-right:.25em; }
+  .dsmore { font-size:.78em; }
+</style>
+
+<script>
+(function () {
+  var B = window.APP_BASE || "";
+  var form = document.getElementById("dsForm");
+  var grid = document.getElementById("dsGrid");
+  var state = document.getElementById("dsState");
+  var phase = document.getElementById("dsPhase");
+  var msg = document.getElementById("dsMsg");
+  var meta = document.getElementById("dsMeta");
+  var go = document.getElementById("dsGo");
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  //  Status codes come off the wire as REGISTERED_AND_FULLY_PUBLISHED. Show the register's
+  //  own vocabulary, just readably: inventing friendlier words would misstate a legal status.
+  function statusText(s) {
+    return String(s || "").toLowerCase().replace(/_/g, " ");
+  }
+
+  function card(d) {
+    var el = document.createElement("div");
+    el.className = "dscard";
+    var thumb = "";
+    if (d.views && d.views.length) {
+      thumb = '<img loading="lazy" alt="' + esc(d.title || d.design_number) + '" src="' +
+              B + "/api/designs/" + encodeURIComponent(d.design_number) +
+              "/view/" + encodeURIComponent(d.views[0]) + '">';
+    } else {
+      //  A 3D or video representation has no still view to show. Say so rather than
+      //  rendering a broken image.
+      thumb = '<span class="small muted">no still view</span>';
+    }
+    var loc = (d.locarno || []).map(function (l) {
+      return '<span class="dstag">Locarno ' + esc(l) + "</span>";
+    }).join("");
+    //  The publication date is the one that decides prior art, and it is not always the
+    //  application date: publication can be deferred. Show both when they differ.
+    var dates = esc(d.application_date || "");
+    if (d.publication_date && d.publication_date !== d.application_date) {
+      dates += ' <span class="muted">· published ' + esc(d.publication_date) + "</span>";
+    }
+    el.innerHTML =
+      '<div class="dsthumb">' + thumb + "</div>" +
+      '<div class="dsbody">' +
+        '<div class="dstitle">' + esc(d.title || "(no product indication)") + "</div>" +
+        '<div class="small dsnum">' + esc(d.design_number) + "</div>" +
+        '<div class="small">' + dates + "</div>" +
+        (d.applicant ? '<div class="small muted">' + esc(d.applicant) + "</div>" : "") +
+        '<div style="margin-top:.2em">' + loc +
+          '<span class="dstag">' + esc(statusText(d.status)) + "</span></div>" +
+        '<div class="dsmore" style="margin-top:.35em">' +
+          '<a href="' + esc(d.url) + '" target="_blank" rel="noopener">EUIPO record</a>' +
+          (d.views && d.views.length > 1
+            ? ' <span class="muted">· ' + d.views.length + " views</span>" : "") +
+        "</div>" +
+      "</div>";
+    return el;
+  }
+
+  function search() {
+    var q = (document.getElementById("dsQ").value || "").trim();
+    if (!q) { return; }
+    var before = document.getElementById("dsBefore").value || "";
+    grid.innerHTML = "";
+    meta.hidden = true;
+    state.hidden = false;
+    phase.textContent = "Searching EUIPO…";
+    msg.textContent = before ? "Designs applied for before " + before : "Whole register";
+    go.disabled = true;
+
+    var url = B + "/api/designs?q=" + encodeURIComponent(q) +
+              (before ? "&before=" + encodeURIComponent(before) : "");
+    fetch(url, { credentials: "same-origin" })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        go.disabled = false;
+        if (!res.ok) {
+          //  Show the reason. An empty grid with no explanation reads as "the EU register
+          //  holds nothing like this", which is a different and possibly false statement.
+          phase.textContent = "EUIPO could not answer";
+          msg.textContent = res.j && res.j.error ? res.j.error : "unknown error";
+          return;
+        }
+        state.hidden = true;
+        var rows = (res.j && res.j.designs) || [];
+        if (!rows.length) {
+          meta.hidden = false;
+          meta.textContent = "No registered design matches those words.";
+          return;
+        }
+        rows.forEach(function (d) { grid.appendChild(card(d)); });
+        var bits = [rows.length + " registered designs"];
+        if (before) { bits.push("applied for before " + before); }
+        if (res.j.remaining != null) {
+          bits.push(res.j.remaining.toLocaleString() + " EUIPO calls left today");
+        }
+        meta.hidden = false;
+        //  The executed query is shown for the same reason the report shows its scope: a
+        //  reader has to be able to answer "what did you actually search?".
+        meta.innerHTML = esc(bits.join(" · ")) +
+          '<div style="margin-top:.25em"><code class="small">' + esc(res.j.query) + "</code></div>" +
+          ((res.j.warnings || []).length
+            ? '<div style="margin-top:.25em">' + esc(res.j.warnings.join("; ")) + "</div>" : "");
+      })
+      .catch(function (e) {
+        go.disabled = false;
+        phase.textContent = "EUIPO could not be reached";
+        msg.textContent = String(e);
+      });
+  }
+
+  form.addEventListener("submit", search);
+  go.addEventListener("click", search);
+})();
+</script>
+{% endblock %}

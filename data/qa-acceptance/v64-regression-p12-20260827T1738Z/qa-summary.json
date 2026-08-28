@@ -1,0 +1,54 @@
+{
+  "project_id": 12,
+  "title": "Self-Flushing Inline Liquid Metering Valve With Indexed Dose Selection",
+  "version_no": 1,
+  "ready": false,
+  "blockers": [
+    {
+      "title": "The independent review did not pass",
+      "detail": "Source fidelity is clean. Tracing every independent and dependent claim limitation, all 29 reference numerals, and every structure, relationship, sequence, material and variant in draft/06-summary.md, draft/08-detailed-description.md and the four figure briefs back to input/disclosure.md (input/conversation.md repeats it verbatim), I found no untraced item: the cylindrical housing with inlet and outlet at opposite axial ends, the fixed metering sleeve with dose chamber / concentrate port / carrier-liquid admission port / flush bypass, the two-land-and-waist piston and its ordered port sequence, the one-way outlet valve, the index collar with helical cam groove, follower pin, three axial stop faces, spring-biased detent in one of three recesses, transparent window with three numerals, the flexible lip, the flush poppet, the annular rinse channel with two radial rinse openings, and the cartridge with threaded end cap are all stated in the inventor's own words. Terminology is one-name-per-thing throughout (all six preserved terms from input/brief.md are used), the abstract is 145 words, and summary, description, claims and briefs do not contradict one another. Numeral-to-part mapping is one-to-one across numerals.md, all four briefs and the description, and every 'FIG. N shows ...' list in the description matches exactly the numeral set of the corresponding brief (18 on FIG. 1 and FIG. 2, 22 on FIG. 2 and FIG. 3, 44 on FIG. 3 and FIG. 4 each label the same part). Neither FIG. 2 nor FIG. 3 is taken on a section line of another view - both are enlargements of the FIG. 1 metering portion - so no cutting-plane line, section designation or arrows are called for anywhere in the set. The prior review's background finding has been fixed: the sentence now reads as conditional need-framing ('Where a dosing device sits between a concentrate source and a carrier line under pressure...'), matching the rest of the section. Two limits on this review: figures/ contains only the four Markdown briefs - there is no rendered-*.png and no review/figure-audit-evidence.json anywhere in the workspace, so no OCR, geometry, leader, hatch or endpoint verification was possible and nothing here is evidence that eventual sheets will be correct; and prior_art/INDEX.md lists no references and the draft carries no [REF:] citation, so the citation check is vacuously clean - per input/brief.md no prior-art search was run, and the art given to this review may be incomplete.",
+      "items": ""
+    },
+    {
+      "title": "Every specification numeral appears in a drawing",
+      "detail": "29 reference numeral(s) are used in the specification but absent from every drawing. Add each missing numeral to an appropriate focused sheet or redistribute the existing drawing plan. Do not remove a disclosed part, numeral definition, or supporting text to silence this check.",
+      "items": "10; 12; 14; 16; 18; 20"
+    },
+    {
+      "title": "Each described figure has a drawing sheet",
+      "detail": "A figure is described in the specification but no drawing has been prepared for it. Every described figure is required before the package can be published.",
+      "items": "FIG. 1; FIG. 2; FIG. 3; FIG. 4"
+    },
+    {
+      "title": "All four described figures exist only as Markdown briefs; no drawing sheet has been rendered and no audit evidence exists",
+      "detail": "draft/07-drawings.md describes four figures and draft/08-detailed-description.md attributes specific numbered content to each of them, but figures/ contains only the four .md briefs. A recursive search of the workspace finds no .png file at all and no review/figure-audit-evidence.json, so no image exists for any described figure and no pixel, OCR, leader, hatch or endpoint verification could be performed. This single absence is the whole cause of both reported mechanical failures: the 29 numerals are 'absent from every drawing' only because no drawing file exists to read them from, and each described figure lacks a sheet for the same reason. The drawing plan itself is complete and internally consistent and should not be disturbed: the four briefs between them assign every numeral defined in draft/numerals.md (FIG. 1: 10, 12, 14, 16, 18, 52, 64, 66; FIG. 2: 18, 20, 22, 24, 30, 32, 34, 38; FIG. 3: 22, 26, 28, 44, 56, 58, 60, 62; FIG. 4: 36, 40, 42, 44, 46, 48, 50, 54 - 29 distinct numerals, 10 through 66), every numeral on each sheet has exactly one explicit target in that sheet's 'Targets' list, and each target names the same part that numeral labels in draft/numerals.md and in the detailed description. The mechanical check's suggested remedy - 'Add each missing numeral to an appropriate focused sheet or redistribute the existing drawing plan' - should therefore not be followed, because redistributing numerals would break a mapping that is already complete and correct.",
+      "items": "figures/ (FIG-1.md, FIG-2.md, FIG-3.md, FIG-4.md); draft/07-drawings.md; draft/08-detailed-description.md; review/figure-audit-evidence.json (absent)"
+    },
+    {
+      "title": "4 figure(s) are described but no drawing sheet exists",
+      "detail": "35 USC 113 requires a drawing where one is necessary to understand the invention. Drawings may be filed informally and corrected later, but they must be filed.",
+      "items": ""
+    },
+    {
+      "title": "The drawing set does not match the application text",
+      "detail": "Every described figure must have exactly one checked sheet, with no obsolete or extra sheet.",
+      "items": "missing FIG. 1; missing FIG. 2; missing FIG. 3; missing FIG. 4"
+    }
+  ],
+  "formalities": [],
+  "qa_verdict": "fail",
+  "section_count": 10,
+  "figure_count": 0,
+  "citation_count": 0,
+  "reference_count": 0,
+  "open_notes": [],
+  "placeholder_hits": [],
+  "filing_text_raw_reference_markers": 0,
+  "filing_text_em_dash_count": 0,
+  "filing_text_sha256": "cb08aea48aa5f9f6a83985347b1332748400a282c02b8e745946ec2d2781340b",
+  "figures": [],
+  "docx": {},
+  "all_drawings_current": false,
+  "docx_media_matches_figures": false,
+  "acceptance_pass": false
+}

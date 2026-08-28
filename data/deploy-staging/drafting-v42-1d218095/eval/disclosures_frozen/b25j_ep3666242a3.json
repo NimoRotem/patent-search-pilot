@@ -1,0 +1,305 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b25j_ep3666242a3",
+ "subject_pub": "EP-3666242-A3",
+ "n_claims_source": 17,
+ "claims_source": "family_claims:US-11707399-B2",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 46,
+  "by_kind": {
+   "independent_limitation": 18,
+   "combination": 1,
+   "dependent_limitation": 27
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A motion assistance apparatus",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a proximal frame configured to support a proximal part of a user",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a connecting frame rotatably connected to the proximal frame",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a distal frame rotatably connected to the connecting frame",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the distal frame configured to support a distal part of the user",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a power transmitter including a slider, a pusher and a coupler",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the slider configured to slide along the proximal frame",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the pusher rotatably connected to the distal frame and the slider",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "the coupler configured to rotatably connect the slider and the pusher",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "in a whole range of motion of the coupler, the coupler remains closer to the proximal part of the user than to a rotation axis of the connecting frame",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A motion assistance apparatus comprising: a proximal frame configured to support a proximal part of a user",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "a distal frame configured to support a distal part of the user",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "a connecting frame rotatably connected to each of the proximal frame and the distal frame",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "the connecting frame is configured to rotate in a direction so as to be parallel to the proximal frame",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "this rotation occurs in response to the proximal frame rotating in a direction in which an angle between the proximal frame and the distal frame increases",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "a power transmitter configured to transmit a power from the proximal frame to the distal frame",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "the power transmitter includes a slider connected to an end of a pusher via a coupler",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "the pusher is configured to rotate in 2 degrees of freedom (DOF) with respect to the slider",
+   "kind": "independent_limitation",
+   "source": "claim 13",
+   "weight": 1.0
+  },
+  {
+   "text": "A motion assistance apparatus comprising: a proximal frame supporting a proximal part of a user; a connecting frame rotatably connected to the proximal frame; a distal frame rotatably connected to the connecting frame and supporting a dista",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "the power transmitter and connecting frame connect the distal frame and the proximal frame",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "the distal frame performs a 2-degree of freedom (DOF) motion with respect to the proximal frame",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "the 2-DOF motion includes a motion traversing a sagittal plane of the user",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "the connecting frame rotates to urge itself parallel to the proximal frame",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "this rotation occurs when the distal frame rotates to increase an extension angle between the distal frame and the proximal frame",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "the apparatus increases an extension angle between the distal frame and the proximal frame",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "this increase occurs when the slider slides toward the distal part of the user",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "a restraint connected to the distal frame",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "the restraint overlaps the proximal frame when viewed from a side of the user",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "a cam configured to protrude from the proximal frame to support the restraint",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "the cam has a first end and a second end",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "a height of the cam varies from the first end to the second end",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "a rotary body rotatably connected to the proximal frame",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "a wire configured to connect the rotary body and the slider",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "the distal frame comprises a first segment frame connected to the connecting frame",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "the distal frame comprises a second segment frame angle-adjustably connected to the first segment frame",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "a driving elastic body connects the proximal frame and the slider",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "the driving elastic body provides an elastic force to push the slider toward the distal part of the user",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "an auxiliary elastic body connects the proximal frame and the connecting frame",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "the distal frame is in rolling contact with the connecting frame",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "a thigh-wearable portion connected to the proximal frame",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "the thigh-wearable portion is worn on a thigh of the user",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "a shank-wearable portion connected to the distal frame",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "the shank-wearable portion is worn on a shank of the user",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "the slider is configured to slide along the proximal frame",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "the pusher is rotatably connected to the distal frame and the slider",
+   "kind": "dependent_limitation",
+   "source": "claim 14",
+   "weight": 0.7
+  },
+  {
+   "text": "the distal frame performs a 2-DOF motion with respect to the proximal frame",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "f59ef297c684c752"
+}

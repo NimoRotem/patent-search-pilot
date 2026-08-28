@@ -1,0 +1,197 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b08b_ep3336019a3",
+ "subject_pub": "EP-3336019-A3",
+ "n_claims_source": 10,
+ "claims_source": "display_record:DE-102016121253-A1",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 28,
+  "by_kind": {
+   "independent_limitation": 9,
+   "combination": 1,
+   "dependent_limitation": 18
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A first transport device with a first circulating transport means",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A second transport device with a second circulating transport means",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Goods are receivable between the circulating transport means",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Goods are transported by the circulating transport means",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Each circulating transport means is guided around at least two deflecting wheels",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "At least one adjusting device is provided to adjust a position of at least one deflecting wheel",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The adjusting device has a displaceable support",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A deflecting wheel is rotatably arranged on the displaceable support",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A first tensioning means biases the support in a predetermined direction",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A transport device for goods with two circulating transport means, where goods are received and transported between them, each circulating means guided by at least two deflecting wheels, and an adjusting device adjusts a deflecting wheel's ",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "The adjusting device has a locking means",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The locking means at least partially prevents return of the support against the predetermined direction",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The locking means comprises a ratchet mechanism",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The circulating transport means is a transport chain",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The tensioning means biases the carrier with a force less than 200N",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The tensioning means biases the carrier with a force less than 150N",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The tensioning means biases the carrier with a force less than 100N",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The tensioning means biases the carrier with a force less than 80N",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The tensioning means biases the carrier with a force less than 60N",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The tensioning means biases the carrier with a force less than 50N",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The tensioning means biases the carrier with a force greater than 10N",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The tensioning means biases the carrier with a force greater than 20N",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The support is displaceable in a rectilinear direction",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The adjusting device has a movable actuator",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The adjusting device has a rotatable actuator",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The actuator acts mechanically on the support",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The adjusting device has a tensioning means that loads the actuator in a predetermined tensioning direction",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The actuator is rotatable about a predetermined axis of rotation",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "c61dd7c573838fd9"
+}

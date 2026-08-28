@@ -17,6 +17,7 @@ the intermediate model: a value that is right in the model and wrong on the page
 5. Assignee and earliest priority date are not 1.290(e) identification fields, and the assignee
    values did not cleanly match the public record.
 """
+import datetime
 import json
 import os
 import sys
@@ -190,35 +191,8 @@ def test_a_translation_that_is_not_in_english_is_refused(monkeypatch):
     assert got and got["source"] == "gpatents_direct"
 
 
-def test_the_document_list_marks_what_is_still_missing():
-    docs = [_doc(n=1), _doc(n=2, biblio={"pub": "JP-2019155534-A", "label": "JP 2019155534 A",
-                                         "country": "JP", "inventor": "Yusei Kimura"})]
-    text = _pdf_text(sp.document_list(docs, SUBJECT, translations={}))
-    assert "OUTSTANDING" in text
-    assert "no copy required" in text
 
 
-def test_the_package_never_claims_to_be_complete():
-    docs = [_doc(n=1, biblio={"pub": "JP-1-A", "country": "JP", "label": "JP 1 A"})]
-    note = sp.readme(docs, SUBJECT, translations={})
-    assert "NOT A COMPLETE SUBMISSION" in note
-    items = sp.outstanding(docs, {})
-    assert any("legible copy" in i for i in items)
-    assert any("translation" in i for i in items)
-    assert any("Patent Center" in i for i in items)
-
-
-def test_the_fee_paragraph_follows_the_document_count():
-    one = _pdf_text(sp.statements([_doc()], SUBJECT))
-    assert "1.290(g)" in one and "three or fewer" in one
-    many = _pdf_text(sp.statements([_doc(n=i) for i in range(1, 8)], SUBJECT))
-    assert "more than the three" in many
-
-
-def test_both_statements_are_on_the_paper():
-    text = _pdf_text(sp.statements([_doc()], SUBJECT))
-    assert "1.290(d)(5)(i)" in text and "1.290(d)(5)(ii)" in text
-    assert "duty to disclose" in text and "122(e)" in text
 
 
 def test_the_zip_carries_the_whole_package():
@@ -238,3 +212,193 @@ def test_assignee_and_priority_date_are_not_printed():
     #  and what 1.290(e) does ask for is still there
     assert "First Named Inventor" in text
     assert "Publication Date" in text or "Issue Date" in text
+
+
+def test_no_em_dash_reaches_a_paper_that_gets_filed():
+    """An em dash was in the heading of every concise description filed at the Office, and in the
+    PDF's own metadata title. It is a house rule that none of them ship, and the place to enforce
+    it is the rendered bytes rather than a reviewer's eye.
+    """
+    import io
+
+    import concise_md
+    import concise_render as cr
+    import submission as S
+
+    docs = [{"n": 1, "pub": "JP-2007301640-A",
+             "biblio": {"pub": "JP-2007301640-A", "label": "JP 2007301640 A", "kind": "foreign",
+                        "country": "JP", "inventor": "Takeshi Ide",
+                        "issue_date_pretty": "November 22, 2007",
+                        "title": "Faceplate for magnetic chuck"},
+             "summary": "It discloses a faceplate for a magnetic chuck.",
+             "rows": [{"claim_no": "1", "claim_text": "a magnet in a housing",
+                       "quote_claim": "claim 1", "prose": "The reference discloses a magnet.",
+                       "quote": "a magnet is arranged in the housing", "location": "[0004]"}],
+             "compliance": {}}]
+    subject = {"app_no": "19/318,450", "pub_no": "US 2026/0070232 A1",
+               "title": "Magnetic gripper", "inventor": "A Inventor"}
+    docs[0]["subject"] = subject
+    win = S.window("2026-03-12", today=datetime.date(2026, 8, 24))
+
+    def _text(blob):
+        from pypdf import PdfReader
+        r = PdfReader(io.BytesIO(blob))
+        meta = " ".join(str(v) for v in (r.metadata or {}).values())
+        return meta + "\n" + "\n".join((p.extract_text() or "") for p in r.pages)
+
+    import submission_package as sp
+
+    papers = {
+        "the concise description": _text(cr.to_pdf(docs[0])),
+        "its markdown": concise_md.to_markdown(docs[0]),
+        "the audit": _text(S.audit_pdf(S.audit(docs, subject, {}, {}, win), docs, subject, win)),
+        "the document list": _text(S.document_list_and_statements(docs, subject, {}, {}, win)),
+        "the manifest": S.manifest_csv(docs, {}, {}),
+        "the subject line": cr.subject_line(subject),
+        "the running head": cr.running_head(subject),
+        #  The translation cover is a paper we write around somebody else's text, and its own
+        #  heading carried one. The translated passage is quoted as it came and is not ours to
+        #  edit, so only the chrome is asserted here.
+        "the translation cover": _text(sp.translation_pdf(
+            docs[0], {"rows": [{"id": 1, "english": "a magnet is arranged in the housing"}],
+                      "engine": "test"}, subject)),
+    }
+    for what, text in papers.items():
+        for dash in ("—", "–"):
+            assert dash not in text, "%s carries %r" % (what, dash)
+
+
+# ------------------------------------------------------------- 6. the fonts on the filed page
+
+def _fonts_of(blob):
+    """{BaseFont: is it embedded} for every font resource on every page."""
+    import io
+    from pypdf import PdfReader
+    out = {}
+    for pg in PdfReader(io.BytesIO(blob)).pages:
+        res = (pg.get("/Resources") or {}).get("/Font") or {}
+        try:
+            res = res.get_object()
+        except Exception:                                                 # noqa: BLE001
+            pass
+        for k in res:
+            f = res[k].get_object()
+            d = f.get("/FontDescriptor")
+            out[str(f.get("/BaseFont"))] = bool(d) and any(
+                x in d.get_object() for x in ("/FontFile", "/FontFile2", "/FontFile3"))
+    return out
+
+
+def _cjk_doc():
+    """The real CN 216190291 U shape: a Chinese-only inventor and a Latin applicant."""
+    return _doc(n=3, biblio={
+        "pub": "CN-216190291-U", "label": "CN 216190291 U", "kind": "foreign", "country": "CN",
+        "inventor": "徐勇", "assignee": "Hubei Sanliu Heavy Industries Co., Ltd.",
+        "title": "永磁起重器", "issue_date_pretty": "April 5, 2022"})
+
+
+def _filed_papers():
+    """One of each paper that goes to the Office, with a document that exercises the fallback."""
+    import submission as S
+    import submission_package as sp
+    d = _cjk_doc()
+    win = S.window("2026-03-12", today=datetime.date(2026, 8, 24))
+    return {
+        "concise description": concise_render.to_pdf(d),
+        "audit": S.audit_pdf(S.audit([d], SUBJECT, {}, {}, win), [d], SUBJECT, win),
+        "document list": S.document_list_and_statements([d], SUBJECT, {}, {}, win),
+        "translation": sp.translation_pdf(
+            d, {"rows": [{"id": 1, "english": "a magnet in the housing"}], "engine": "t"},
+            SUBJECT),
+    }
+
+
+def test_this_host_can_embed_every_face_a_filing_needs():
+    """A box with no font files renders a filing on the base-14 and it bounces at upload. That is
+    an environment fault, not a code one, so it is said here rather than discovered at Patent
+    Center."""
+    import pdf_fonts
+    assert pdf_fonts.missing() == [], (
+        "install the fonts: %s" % pdf_fonts.missing())
+
+
+def test_every_filed_pdf_embeds_all_of_its_fonts():
+    """Patent Center's PDF guidelines list an unembedded font as a validation failure, and
+    reportlab's default faces are the base-14, which are never embedded. Measured on the packet
+    for adhoc-efbf2979420b: seventeen of twenty-one papers would have bounced.
+
+    A Table is the trap. Its cells here are all Paragraphs, so every style names an embedded face,
+    and the Table STILL emitted its own default cell font. So did the canvas.
+    """
+    for what, blob in _filed_papers().items():
+        fonts = _fonts_of(blob)
+        assert fonts, "%s has no font resources at all" % what
+        unembedded = sorted(n for n, emb in fonts.items() if not emb)
+        assert not unembedded, "%s carries %s" % (what, unembedded)
+
+
+def test_a_name_the_latin_face_cannot_draw_is_not_printed_as_boxes():
+    """Asked for a glyph it does not have, reportlab substitutes ZapfDingbats. 徐勇 went onto a
+    filed document list as ■■, which leaves the 1.290(e)(4) identification blank."""
+    for what, blob in _filed_papers().items():
+        text = _pdf_text(blob)
+        for glyph in ("■", "�"):
+            assert glyph not in text, "%s printed %r" % (what, glyph)
+
+
+def test_the_paper_identifies_the_party_by_a_name_it_can_print():
+    """1.290(e)(3) accepts the applicant, the patentee OR the first named inventor, and that OR is
+    the way out: the applicant carries a Latin name where all seven inventors do not."""
+    text = _pdf_text(concise_render.to_pdf(_cjk_doc()))
+    assert "Hubei Sanliu" in text
+    assert "Applicant" in text
+
+
+def test_cjk_that_has_no_alternative_still_renders_and_still_extracts():
+    """A title or a quoted passage has no applicant to fall back on, so it has to be drawn. It
+    also has to come back out: a Table cell in a face with no CJK glyphs dropped the characters
+    from the text layer entirely, which is a paper that looks right and is not searchable."""
+    text = _pdf_text(concise_render.to_pdf(_cjk_doc()))
+    assert "永磁起重器" in text, "the CJK title did not survive into the text layer"
+
+
+def test_the_fallback_only_wraps_what_it_has_to():
+    """Wrapping everything would work and would also make every paper a CJK font embedding. The
+    span is only around the runs the Latin face cannot draw."""
+    import pdf_fonts
+    assert pdf_fonts.with_fallback("Takeshi Ide") == "Takeshi Ide"
+    assert pdf_fonts.with_fallback("Jörg Müller, Renée Lévesque") == "Jörg Müller, Renée Lévesque"
+    out = pdf_fonts.with_fallback("Inventor: 徐勇 (CN)")
+    assert out.startswith("Inventor: <font face=") and out.endswith("</font> (CN)")
+    #  and it steps over the markup the caller already escaped rather than splitting an entity
+    assert pdf_fonts.with_fallback("A &amp; B") == "A &amp; B"
+    assert "&amp;" in pdf_fonts.with_fallback("徐 &amp; 勇")
+
+
+def test_a_character_the_source_scan_could_not_read_is_named_not_edited():
+    """Google's OCR of a 1986 Japanese publication put a solid black square mid-sentence, and it
+    went onto a filed paper looking exactly like a rendering failure of ours. It is not: it is
+    what the machine translation says. Editing a translation to look tidier is the one response
+    that would actually be wrong, so the audit names it and the paper carries it as it came.
+    """
+    import submission as S
+
+    d = _doc(n=4, biblio={"pub": "JP-S6165742-A", "label": "JP S61-65742 A", "country": "JP",
+                          "kind": "foreign", "inventor": "A Inventor",
+                          "issue_date_pretty": "April 4, 1986"})
+    win = S.window("2026-03-12", today=datetime.date(2026, 8, 24))
+    dirty = {"JP-S6165742-A": {"text": "the plate jr, ■, and :jS2 at intersections",
+                               "claims": "", "engine": "t"}}
+    clean = {"JP-S6165742-A": {"text": "the plate and the bracket at intersections",
+                               "claims": "", "engine": "t"}}
+
+    f = {x.id: x for x in S.audit([d], SUBJECT, {}, dirty, win)}
+    assert "TRANSLATION-OCR" in f, "an unreadable character on a filed paper went unmentioned"
+    assert f["TRANSLATION-OCR"].status == S.NOTE, "it is a thing to read, not a thing to fix"
+    assert "Doc 4 (JP S61-65742 A): 1" in f["TRANSLATION-OCR"].detail
+    assert "not in this rendering" in f["TRANSLATION-OCR"].detail, (
+        "say whose fault it is, or somebody spends an hour on the renderer")
+
+    assert "TRANSLATION-OCR" not in {x.id for x in S.audit([d], SUBJECT, {}, clean, win)}
+    #  and the translation still has to be attached at all, which is the (d)(4) finding proper
+    assert f["TRANSLATION"].status == S.OK

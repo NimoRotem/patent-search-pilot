@@ -9,6 +9,8 @@ import sys
 
 import pytest
 
+import webapp
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if os.path.join(ROOT, "src") not in sys.path:
     sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -381,14 +383,30 @@ def test_designs_are_not_planned_into_the_patent_fan_out():
 
 
 # --------------------------------------------------------------------------- web routes
-def test_the_designs_page_renders(app_client):
+def test_designs_moved_into_the_lookup_and_says_what_the_right_covers():
+    """It stopped being a destination: an EU design is one more thing you look up, so it is a tab
+    there. The URL survives as a redirect because it is in readers' history.
+
+    The copy travelled with it. A reader who thinks these are patents will read a claim chart into
+    a drawing, so the page still has to say what a registered design actually protects.
+    """
+    import os
+
+    import pytest as _pytest
+
+    engine = "/home/nimrod_rotem/patent-lookup/app.py"
+    if not os.path.exists(engine):
+        _pytest.skip("the lookup engine is not on this box")
+    js = open(engine, encoding="utf-8").read()
+    assert "designsPane" in js and "registered Community designs" in js
+    assert "not how it works" in js
+    assert "/api/designs?q=" in js, "the tab does not call this app for the rows"
+
+
+def test_the_designs_url_still_lands_somewhere(app_client):
     r = app_client.get("/designs")
-    assert r.status_code == 200
-    html = r.get_data(as_text=True)
-    assert "EU registered designs" in html
-    #  The page must say what the right actually covers. A reader who thinks these are
-    #  patents will read a claim chart into a drawing.
-    assert "not how it works" in html
+    assert r.status_code == 302
+    assert "#designs" in r.headers.get("Location", "")
 
 
 def test_the_designs_api_refuses_an_empty_query(app_client):
@@ -472,18 +490,34 @@ def test_health_reports_the_fan_out_flag():
     assert row["search_available"] is True
 
 
-def test_the_corpus_page_reconciles_its_source_table_with_the_designs_page(app_client):
-    """The source table on /corpus describes the retrieval ENGINE's fan-out, a separate app
-    that has no EUIPO adapter, so it correctly reports EUIPO as not available. This app does
-    have one, on its own page. Without a line reconciling the two, a reader sees 'EUIPO: not
-    available' next to a Designs tab in the nav and cannot tell which is true."""
-    html = app_client.get("/corpus").get_data(as_text=True)
+def test_the_coverage_page_reconciles_its_source_table_with_the_designs_tab(app_client):
+    """The source table on /corpus describes the retrieval ENGINE's fan-out, a separate app that
+    has no EUIPO adapter, so it correctly reports EUIPO as not available. This app does have one.
+    Without a line reconciling the two, a reader sees "EUIPO: not available" next to a working
+    designs search and cannot tell which is true.
+
+    The page is admin-only now, so the client has to be an administrator to read it at all.
+    """
+    import accounts
+    import auth as _auth
+
+    webapp.app.config.update(FORCE_AUTH=True, FORCE_ACCOUNTS=True)
+    admin = {"id": 72, "email": "o@example.test", "full_name": "O", "is_admin": True,
+             "is_active": True, "email_on_completion": True, "session_version": 3}
+    real = accounts.get_user
+    accounts.get_user = lambda uid: dict(admin)
+    try:
+        with app_client.session_transaction() as sess:
+            sess["user_id"] = 72
+            sess["session_version"] = 3
+        html = app_client.get("/corpus").get_data(as_text=True)
+    finally:
+        accounts.get_user = real
+        for k in ("FORCE_AUTH", "FORCE_ACCOUNTS"):
+            webapp.app.config.pop(k, None)
+        _auth.reset_limits()
     assert "are searched separately, on the" in html
-    assert "/designs" in html
-
-
-def test_the_designs_page_is_reachable_from_every_page(app_client):
-    assert 'href="/designs"' in app_client.get("/corpus").get_data(as_text=True)
+    assert "#designs" in html, "the reconciling line points nowhere now that the page is a tab"
 
 
 # --------------------------------------------------------------------------- lookup by number
@@ -516,11 +550,20 @@ def test_the_details_route_surfaces_an_upstream_failure(app_client, monkeypatch)
     assert "euipo down" in r.get_json()["error"]
 
 
-def test_lookup_accepts_a_design_number_and_says_so(app_client):
-    html = app_client.get("/patentlookup").get_data(as_text=True)
-    assert "005632742-0001" in html
-    assert "/api/designs/" in html, "the page must resolve design numbers itself"
-    assert "/designs" in html
+def test_lookup_accepts_a_design_number_and_says_so():
+    """One box for both, which is the whole point of folding designs in. The page is the engine's
+    now, so that is where the promise has to be kept."""
+    import os
+
+    import pytest as _pytest
+
+    engine = "/home/nimrod_rotem/patent-lookup/app.py"
+    if not os.path.exists(engine):
+        _pytest.skip("the lookup engine is not on this box")
+    js = open(engine, encoding="utf-8").read()
+    assert "006785523-0001" in js, "the box does not offer a design number as an example"
+    assert "/api/designs/" in js, "the page cannot resolve a design number"
+    assert "EU registered designs" in js
 
 
 # --------------------------------------------------------------------------- the merged page

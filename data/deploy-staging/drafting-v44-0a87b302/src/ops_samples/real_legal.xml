@@ -1,0 +1,1624 @@
+<?xml version="1.0" encoding="UTF-8"?><?xml-stylesheet type="text/xsl" href="../../../../../style/legal.xsl"?>
+<ops:world-patent-data xmlns="http://www.epo.org/exchange" xmlns:ops="http://ops.epo.org" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <ops:patent-family legal="true" total-result-count="12">
+        <ops:publication-reference>
+            <document-id document-id-type="epodoc">
+                <doc-number>EP2496850</doc-number>
+            </document-id>
+        </ops:publication-reference>
+        <ops:family-member family-id="43365841">
+            <publication-reference>
+                <document-id document-id-type="docdb">
+                    <country>EP</country>
+                    <doc-number>2496850</doc-number>
+                    <kind>A1</kind>
+                    <date>20120912</date>
+                </document-id>
+                <document-id document-id-type="epodoc">
+                    <doc-number>EP2496850</doc-number>
+                    <date>20120912</date>
+                </document-id>
+            </publication-reference>
+            <application-reference doc-id="329082565">
+                <document-id document-id-type="docdb">
+                    <country>EP</country>
+                    <doc-number>10778927</doc-number>
+                    <kind>A</kind>
+                    <date>20101029</date>
+                </document-id>
+            </application-reference>
+            <priority-claim sequence="1" kind="national">
+                <document-id document-id-type="docdb">
+                    <country>DE</country>
+                    <doc-number>102009046508</doc-number>
+                    <kind>A</kind>
+                    <date>20091106</date>
+                </document-id>
+                <priority-active-indicator>YES</priority-active-indicator>
+            </priority-claim>
+            <priority-claim sequence="2" kind="regional">
+                <document-id document-id-type="docdb">
+                    <country>EP</country>
+                    <doc-number>2010066520</doc-number>
+                    <kind>W</kind>
+                    <date>20101029</date>
+                </document-id>
+                <priority-active-indicator>NO</priority-active-indicator>
+                <priority-linkage-type>W</priority-linkage-type>
+            </priority-claim>
+            <ops:legal code="17P " desc="REQUEST FOR EXAMINATION FILED" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2012-09-1217P +REQUEST FOR EXAMINATION FILED Effective DATE 20120606</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2012-09-12</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">17P</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2012-09-13</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2012-09-13</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L525EP desc="Effective DATE">20120606</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="AK  " desc="DESIGNATED CONTRACTING STATES" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2012-09-12AK  +DESIGNATED CONTRACTING STATES Kind Code of Ref Document A1</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2012-09-12AK  +DESIGNATED CONTRACTING STATES Designated State(s) AL AT BE BG CH CY CZ DE DK EE ES FI FR GB GR HR HU IE IS IT LI LT LU LV MC MK MT NL NO PL PT RO RS SE SI SK SM TR</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2012-09-12</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">AK</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2012-09-13</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2012-09-13</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L506EP desc="Kind Code of Ref Document">A1</ops:L506EP>
+                    <ops:L507EP desc="Designated State(s)">AL AT BE BG CH CY CZ DE DK EE ES FI FR GB GR HR HU IE IS IT LI LT LU LV MC MK MT NL NO PL PT RO RS SE SI SK SM TR</ops:L507EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="DAX " desc="REQUEST FOR EXTENSION OF THE EUROPEAN PATENT (DELETED)" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2013-02-13DAX  REQUEST FOR EXTENSION OF THE EUROPEAN PATENT (DELETED)</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2013-02-13</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">DAX</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2013-02-14</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2013-02-14</ops:L019EP>
+                <ops:L500EP/>
+            </ops:legal>
+            <ops:legal code="17Q " desc="FIRST EXAMINATION REPORT DESPATCHED" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2013-05-2217Q +FIRST EXAMINATION REPORT DESPATCHED Effective DATE 20130423</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2013-05-22</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">17Q</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2013-05-23</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2013-05-23</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L525EP desc="Effective DATE">20130423</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="RAP1" desc="PARTY DATA CHANGED (APPLICANT DATA CHANGED OR RIGHTS OF AN APPLICATION TRANSFERRED)" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2015-03-25RAP1 PARTY DATA CHANGED (APPLICANT DATA CHANGED OR RIGHTS OF AN APPLICATION TRANSFERRED) OWNER BSH HAUSGERAETE GMBH</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2015-03-25</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">RAP1</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2015-03-28</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2015-03-25</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L509EP desc="OWNER">BSH HAUSGERAETE GMBH</ops:L509EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="INTG" desc="INTENTION TO GRANT ANNOUNCED" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2015-09-16INTG+INTENTION TO GRANT ANNOUNCED Effective DATE 20150820</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2015-09-16</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">INTG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2015-09-19</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2015-09-16</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L525EP desc="Effective DATE">20150820</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="AK  " desc="DESIGNATED CONTRACTING STATES" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-02-10AK  +DESIGNATED CONTRACTING STATES Kind Code of Ref Document B1</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-02-10AK  +DESIGNATED CONTRACTING STATES Designated State(s) AL AT BE BG CH CY CZ DE DK EE ES FI FR GB GR HR HU IE IS IT LI LT LU LV MC MK MT NL NO PL PT RO RS SE SI SK SM TR</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-02-10</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">AK</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-02-13</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-02-10</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L506EP desc="Kind Code of Ref Document">B1</ops:L506EP>
+                    <ops:L507EP desc="Designated State(s)">AL AT BE BG CH CY CZ DE DK EE ES FI FR GB GR HR HU IE IS IT LI LT LU LV MC MK MT NL NO PL PT RO RS SE SI SK SM TR</ops:L507EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-02-10REG  REFERENCE TO A NATIONAL CODE Ref Country Code GB</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-02-10REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code FG4D</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-02-10REG  REFERENCE TO A NATIONAL CODE Free Format Text NOT ENGLISH</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-02-10</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-02-13</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-02-13</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">GB</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="EUROPEAN PATENT GRANTED" infl="+">FG4D</ops:L502EP>
+                    <ops:L510EP desc="Free Format Text">NOT ENGLISH</ops:L510EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-02-15REG  REFERENCE TO A NATIONAL CODE Ref Country Code AT</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-02-15REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code REF</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-02-15REG  REFERENCE TO A NATIONAL CODE Ref Document Number 774802</ops:pre>
+                <ops:pre line="00004">EP    10778927A  2016-02-15REG  REFERENCE TO A NATIONAL CODE Country of Ref Document AT</ops:pre>
+                <ops:pre line="00005">EP    10778927A  2016-02-15REG  REFERENCE TO A NATIONAL CODE Kind Code of Ref Document T</ops:pre>
+                <ops:pre line="00006">EP    10778927A  2016-02-15REG  REFERENCE TO A NATIONAL CODE Effective DATE 20160215</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-02-15</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-02-20</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-02-17</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">AT</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="REFERENCE TO AT NUMBER (EP PATENT VALIDATED IN AUSTRIA)" infl="+">REF</ops:L502EP>
+                    <ops:L503EP desc="Ref Document Number">774802</ops:L503EP>
+                    <ops:L504EP desc="Country of Ref Document">AT</ops:L504EP>
+                    <ops:L506EP desc="Kind Code of Ref Document">T</ops:L506EP>
+                    <ops:L525EP desc="Effective DATE">20160215</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-02-15REG  REFERENCE TO A NATIONAL CODE Ref Country Code CH</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-02-15REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code EP</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-02-15</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-02-20</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-02-18</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">CH</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="EUROPEAN PATENT TAKES EFFECT AS A NATIONAL PATENT IN CH/LI" infl="+">EP</ops:L502EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-03-09REG  REFERENCE TO A NATIONAL CODE Ref Country Code IE</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-03-09REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code FG4D</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-03-09REG  REFERENCE TO A NATIONAL CODE Free Format Text LANGUAGE OF EP DOCUMENT: GERMAN</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-03-09</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-03-19</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-03-16</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">IE</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="EUROPEAN PATENTS GRANTED DESIGNATING IRELAND" infl="+">FG4D</ops:L502EP>
+                    <ops:L510EP desc="Free Format Text">LANGUAGE OF EP DOCUMENT: GERMAN</ops:L510EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-03-11REG  REFERENCE TO A NATIONAL CODE Ref Country Code ES</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-03-11REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code FG2A</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-03-11REG  REFERENCE TO A NATIONAL CODE Ref Document Number 2563175</ops:pre>
+                <ops:pre line="00004">EP    10778927A  2016-03-11REG  REFERENCE TO A NATIONAL CODE Country of Ref Document ES</ops:pre>
+                <ops:pre line="00005">EP    10778927A  2016-03-11REG  REFERENCE TO A NATIONAL CODE Kind Code of Ref Document T3</ops:pre>
+                <ops:pre line="00006">EP    10778927A  2016-03-11REG  REFERENCE TO A NATIONAL CODE Effective DATE 20160311</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-03-11</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-03-19</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-03-19</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">ES</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="DEFINITIVE PROTECTION" infl="+">FG2A</ops:L502EP>
+                    <ops:L503EP desc="Ref Document Number">2563175</ops:L503EP>
+                    <ops:L504EP desc="Country of Ref Document">ES</ops:L504EP>
+                    <ops:L506EP desc="Kind Code of Ref Document">T3</ops:L506EP>
+                    <ops:L525EP desc="Effective DATE">20160311</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-03-24REG  REFERENCE TO A NATIONAL CODE Ref Country Code DE</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-03-24REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code R096</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-03-24REG  REFERENCE TO A NATIONAL CODE Ref Document Number 502010011051</ops:pre>
+                <ops:pre line="00004">EP    10778927A  2016-03-24REG  REFERENCE TO A NATIONAL CODE Country of Ref Document DE</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-03-24</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-03-26</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-03-26</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">DE</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="DPMA PUBLICATION OF MENTIONED EP PATENT GRANT" infl="+">R096</ops:L502EP>
+                    <ops:L503EP desc="Ref Document Number">502010011051</ops:L503EP>
+                    <ops:L504EP desc="Country of Ref Document">DE</ops:L504EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-05-17REG  REFERENCE TO A NATIONAL CODE Ref Country Code SE</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-05-17REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code TRGR</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-05-17</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-05-21</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-05-19</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">SE</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="TRANSLATION OF GRANTED EP PATENT" infl="+">TRGR</ops:L502EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-06-10REG  REFERENCE TO A NATIONAL CODE Ref Country Code LT</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-06-10REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code MG4D</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-06-10</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-06-18</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-06-18</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">LT</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="INVALIDATED EUROPEAN PATENT" infl="-">MG4D</ops:L502EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-07-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code FI</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-07-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-07-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-07-29</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-08-06</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-08-02</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">FI</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-07-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code HR</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-07-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-07-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-07-29</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-08-06</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-08-02</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">HR</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-07-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code NO</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-07-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-07-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160510</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-07-29</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-08-06</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-08-02</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">NO</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160510</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code LV</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-08-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-09-10</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-09-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">LV</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code PT</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160613</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-08-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-09-10</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-09-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">PT</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160613</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code RS</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-08-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-09-10</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-09-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">RS</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code NL</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-08-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-09-10</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-09-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">NL</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code LT</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-08-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-09-10</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-09-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">LT</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code IS</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160610</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-08-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-09-10</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-09-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">IS</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160610</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-06-15REG  REFERENCE TO A NATIONAL CODE Ref Country Code NL</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-06-15REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code MP</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-06-15REG  REFERENCE TO A NATIONAL CODE Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-06-15</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-09-10</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-09-07</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">NL</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="PATENT INVALID IN THE NETHERLANDS AS NO TRANSLATION HAS BEEN FILED" infl="-">MP</ops:L502EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-10-03REG  REFERENCE TO A NATIONAL CODE Ref Country Code GR</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-10-03REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code EP</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-10-03REG  REFERENCE TO A NATIONAL CODE Ref Document Number 20160400734</ops:pre>
+                <ops:pre line="00004">EP    10778927A  2016-10-03REG  REFERENCE TO A NATIONAL CODE Country of Ref Document GR</ops:pre>
+                <ops:pre line="00005">EP    10778927A  2016-10-03REG  REFERENCE TO A NATIONAL CODE Effective DATE 20160601</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-10-03</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-10-10</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-10-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">GR</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="EP PATENT VALIDATED IN GREECE" infl="+">EP</ops:L502EP>
+                    <ops:L503EP desc="Ref Document Number">20160400734</ops:L503EP>
+                    <ops:L504EP desc="Country of Ref Document">GR</ops:L504EP>
+                    <ops:L525EP desc="Effective DATE">20160601</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-10-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code EE</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-10-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-10-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-10-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-11-15</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-11-08</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">EE</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-10-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code DK</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-10-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-10-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-10-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-11-15</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-11-08</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">DK</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-10-25REG  REFERENCE TO A NATIONAL CODE Ref Country Code FR</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-10-25REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code PLFP</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-10-25REG  REFERENCE TO A NATIONAL CODE Year of Fee Payment 7</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-10-25</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-11-15</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-11-09</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">FR</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="FEE PAYMENT" infl="+">PLFP</ops:L502EP>
+                    <ops:L520EP desc="Year of Fee Payment">7</ops:L520EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code SK</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-11-30</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-12-13</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-12-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">SK</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code CZ</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-11-30</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-12-13</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-12-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">CZ</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code RO</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-11-30</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-12-13</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-12-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">RO</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code SM</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-11-30</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2016-12-13</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2016-12-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">SM</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-12-28REG  REFERENCE TO A NATIONAL CODE Ref Country Code HU</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-12-28REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code AG4A</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-12-28REG  REFERENCE TO A NATIONAL CODE Ref Document Number E028754</ops:pre>
+                <ops:pre line="00004">EP    10778927A  2016-12-28REG  REFERENCE TO A NATIONAL CODE Country of Ref Document HU</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-12-28</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-01-07</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-01-05</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">HU</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="FILING OF THE TRANSLATION OF THE TEXT OF EUROPEAN PATENTS" infl="+">AG4A</ops:L502EP>
+                    <ops:L503EP desc="Ref Document Number">E028754</ops:L503EP>
+                    <ops:L504EP desc="Country of Ref Document">HU</ops:L504EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="26N " desc="NO OPPOSITION FILED" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2017-01-1826N +NO OPPOSITION FILED Effective DATE 20161111</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2017-01-18</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">26N</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-01-21</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-01-18</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L525EP desc="Effective DATE">20161111</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-11-11REG  REFERENCE TO A NATIONAL CODE Ref Country Code DE</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2016-11-11REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code R097</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2016-11-11REG  REFERENCE TO A NATIONAL CODE Ref Document Number 502010011051</ops:pre>
+                <ops:pre line="00004">EP    10778927A  2016-11-11REG  REFERENCE TO A NATIONAL CODE Country of Ref Document DE</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-11-11</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-01-21</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-01-21</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">DE</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="NO OPPOSITION FILED AGAINST GRANTED PATENT, OR EPO OPPOSITION PROCEEDINGS CONCLUDED WITHOUT DECISION" infl="+">R097</ops:L502EP>
+                    <ops:L503EP desc="Ref Document Number">502010011051</ops:L503EP>
+                    <ops:L504EP desc="Country of Ref Document">DE</ops:L504EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2017-02-28PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code BE</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2017-02-28PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2017-02-28PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20161031</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2017-02-28</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-03-04</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-03-02</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">BE</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20161031</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2017-02-28PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code BG</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2017-02-28PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2017-02-28PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160510</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2017-02-28</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-03-04</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-03-02</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">BG</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160510</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2017-05-31REG  REFERENCE TO A NATIONAL CODE Ref Country Code CH</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2017-05-31REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code PL</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2017-05-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-06-03</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-06-02</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">CH</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="PATENT CEASED" infl="-">PL</ops:L502EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="GBPC" desc="GB: EUROPEAN PATENT CEASED THROUGH NON-PAYMENT OF RENEWAL FEE" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2017-06-28GBPC-GB: EUROPEAN PATENT CEASED THROUGH NON-PAYMENT OF RENEWAL FEE Effective DATE 20161029</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2017-06-28</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">GBPC</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-07-01</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-07-01</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L525EP desc="Effective DATE">20161029</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2017-07-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code LI</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2017-07-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2017-07-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20161031</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2017-07-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-08-05</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-08-02</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">LI</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20161031</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2017-07-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code CH</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2017-07-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2017-07-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20161031</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2017-07-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-08-05</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-08-02</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">CH</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20161031</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2017-07-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code GB</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2017-07-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2017-07-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20161029</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2017-07-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-08-05</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-08-02</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">GB</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20161029</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2017-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code LU</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2017-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2017-08-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20161029</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2017-08-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-09-09</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-09-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">LU</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20161029</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2017-07-26REG  REFERENCE TO A NATIONAL CODE Ref Country Code IE</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2017-07-26REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code MM4A</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2017-07-26</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-09-09</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-09-07</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">IE</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="PATENT LAPSED" infl="-">MM4A</ops:L502EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2017-10-23REG  REFERENCE TO A NATIONAL CODE Ref Country Code FR</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2017-10-23REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code PLFP</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2017-10-23REG  REFERENCE TO A NATIONAL CODE Year of Fee Payment 8</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2017-10-23</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-11-11</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-11-09</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">FR</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="FEE PAYMENT" infl="+">PLFP</ops:L502EP>
+                    <ops:L520EP desc="Year of Fee Payment">8</ops:L520EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2017-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code IE</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2017-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2017-11-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20161029</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2017-11-30</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-12-09</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-12-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">IE</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20161029</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2017-12-15REG  REFERENCE TO A NATIONAL CODE Ref Country Code AT</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2017-12-15REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code MM01</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2017-12-15REG  REFERENCE TO A NATIONAL CODE Ref Document Number 774802</ops:pre>
+                <ops:pre line="00004">EP    10778927A  2017-12-15REG  REFERENCE TO A NATIONAL CODE Country of Ref Document AT</ops:pre>
+                <ops:pre line="00005">EP    10778927A  2017-12-15REG  REFERENCE TO A NATIONAL CODE Kind Code of Ref Document T</ops:pre>
+                <ops:pre line="00006">EP    10778927A  2017-12-15REG  REFERENCE TO A NATIONAL CODE Effective DATE 20161029</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2017-12-15</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2017-12-23</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2017-12-21</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">AT</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="LAPSE BECAUSE OF NOT PAYING ANNUAL FEES" infl="-">MM01</ops:L502EP>
+                    <ops:L503EP desc="Ref Document Number">774802</ops:L503EP>
+                    <ops:L504EP desc="Country of Ref Document">AT</ops:L504EP>
+                    <ops:L506EP desc="Kind Code of Ref Document">T</ops:L506EP>
+                    <ops:L525EP desc="Effective DATE">20161029</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2018-01-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code AT</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2018-01-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2018-01-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20161029</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2018-01-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2018-02-10</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2018-02-07</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">AT</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20161029</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2018-05-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code CY</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2018-05-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2018-05-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2018-05-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2018-06-09</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2018-06-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">CY</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2018-06-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code MC</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2018-06-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2018-06-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2018-06-29</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2018-07-07</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2018-07-04</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">MC</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2018-06-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code TR</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2018-06-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2018-06-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2018-06-29</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2018-07-07</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2018-07-04</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">TR</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2018-06-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code MT</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2018-06-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2018-06-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2018-06-29</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2018-07-07</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2018-07-04</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">MT</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2018-06-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code MK</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2018-06-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2018-06-29PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2018-06-29</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2018-07-07</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2018-07-04</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">MK</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2017-12-13REG  REFERENCE TO A NATIONAL CODE Ref Country Code BE</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2017-12-13REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code MM</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2017-12-13REG  REFERENCE TO A NATIONAL CODE Effective DATE 20161031</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2017-12-13</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2018-10-06</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2018-10-04</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">BE</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="LAPSED BECAUSE OF NON-PAYMENT OF THE ANNUAL FEE" infl="-">MM</ops:L502EP>
+                    <ops:L525EP desc="Effective DATE">20161031</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2018-10-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code AL</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2018-10-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2018-10-31PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20160210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2018-10-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2018-11-10</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2018-11-06</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">AL</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF FAILURE TO SUBMIT A TRANSLATION OF THE DESCRIPTION OR TO PAY THE FEE WITHIN THE PRESCRIBED TIME-LIMIT</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20160210</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2018-10-23REG  REFERENCE TO A NATIONAL CODE Ref Country Code FR</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2018-10-23REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code PLFP</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2018-10-23REG  REFERENCE TO A NATIONAL CODE Year of Fee Payment 9</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2018-10-23</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2018-11-10</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2018-11-07</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">FR</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="FEE PAYMENT" infl="+">PLFP</ops:L502EP>
+                    <ops:L520EP desc="Year of Fee Payment">9</ops:L520EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="GRAA" desc="(EXPECTED) GRANT" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-01-08GRAA+(EXPECTED) GRANT Free Format Text ORIGINAL CODE: 0009210</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-01-08</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">GRAA</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2021-07-24</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2021-07-21</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L510EP desc="Free Format Text">ORIGINAL CODE: 0009210</ops:L510EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="GRAS" desc="GRANT FEE PAID" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2015-12-04GRAS+GRANT FEE PAID Free Format Text ORIGINAL CODE: EPIDOSNIGR3</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2015-12-04</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">GRAS</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2021-07-24</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2021-07-21</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L510EP desc="Free Format Text">ORIGINAL CODE: EPIDOSNIGR3</ops:L510EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="GRAP" desc="DESPATCH OF COMMUNICATION OF INTENTION TO GRANT A PATENT" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2015-08-19GRAP+DESPATCH OF COMMUNICATION OF INTENTION TO GRANT A PATENT Free Format Text ORIGINAL CODE: EPIDOSNIGR1</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2015-08-19</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">GRAP</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2021-07-24</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2021-07-21</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L510EP desc="Free Format Text">ORIGINAL CODE: EPIDOSNIGR1</ops:L510EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PUAI" desc="PUBLIC REFERENCE MADE UNDER ARTICLE 153(3) EPC TO A PUBLISHED INTERNATIONAL APPLICATION THAT HAS ENTERED THE EUROPEAN PHASE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2012-08-10PUAI PUBLIC REFERENCE MADE UNDER ARTICLE 153(3) EPC TO A PUBLISHED INTERNATIONAL APPLICATION THAT HAS ENTERED THE EUROPEAN PHASE Free Format Text ORIGINAL CODE: 0009012</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2012-08-10</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PUAI</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2021-07-24</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2021-07-21</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L510EP desc="Free Format Text">ORIGINAL CODE: 0009012</ops:L510EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="STAA" desc="INFORMATION ON THE STATUS OF AN EP PATENT APPLICATION OR GRANTED EP PATENT" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-12-16STAA INFORMATION ON THE STATUS OF AN EP PATENT APPLICATION OR GRANTED EP PATENT Free Format Text STATUS: NO OPPOSITION FILED WITHIN TIME LIMIT</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-12-16</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">STAA</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2021-07-24</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2021-07-21</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L510EP desc="Free Format Text">STATUS: NO OPPOSITION FILED WITHIN TIME LIMIT</ops:L510EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PLBE" desc="NO OPPOSITION FILED WITHIN TIME LIMIT" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2016-12-16PLBE+NO OPPOSITION FILED WITHIN TIME LIMIT Free Format Text ORIGINAL CODE: 0009261</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2016-12-16</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PLBE</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2022-03-05</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2022-03-03</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L510EP desc="Free Format Text">ORIGINAL CODE: 0009261</ops:L510EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PGFP" desc="ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2024-01-18PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code GR</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2024-01-18PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Payment DATE 20231019</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2024-01-18PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Year of Fee Payment 14</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2024-01-18</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PGFP</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2024-01-20</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2024-01-19</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">GR</ops:L501EP>
+                    <ops:L518EP desc="Payment DATE">20231019</ops:L518EP>
+                    <ops:L520EP desc="Year of Fee Payment">14</ops:L520EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PGFP" desc="ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2024-01-22PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code ES</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2024-01-22PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Payment DATE 20231117</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2024-01-22PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Year of Fee Payment 14</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2024-01-22</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PGFP</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2024-01-27</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2024-01-23</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">ES</ops:L501EP>
+                    <ops:L518EP desc="Payment DATE">20231117</ops:L518EP>
+                    <ops:L520EP desc="Year of Fee Payment">14</ops:L520EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PGFP" desc="ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2024-01-31PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code HU</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2024-01-31PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Payment DATE 20231019</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2024-01-31PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Year of Fee Payment 14</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2024-01-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PGFP</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2024-02-03</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2024-02-01</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">HU</ops:L501EP>
+                    <ops:L518EP desc="Payment DATE">20231019</ops:L518EP>
+                    <ops:L520EP desc="Year of Fee Payment">14</ops:L520EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PGFP" desc="ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2024-01-31PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code IT</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2024-01-31PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Payment DATE 20231031</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2024-01-31PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Year of Fee Payment 14</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2024-01-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PGFP</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2024-02-03</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2024-02-01</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">IT</ops:L501EP>
+                    <ops:L518EP desc="Payment DATE">20231031</ops:L518EP>
+                    <ops:L520EP desc="Year of Fee Payment">14</ops:L520EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PGFP" desc="ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2024-01-31PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code SE</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2024-01-31PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Payment DATE 20231025</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2024-01-31PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Year of Fee Payment 14</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2024-01-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PGFP</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2024-02-03</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2024-02-01</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">SE</ops:L501EP>
+                    <ops:L518EP desc="Payment DATE">20231025</ops:L518EP>
+                    <ops:L520EP desc="Year of Fee Payment">14</ops:L520EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PGFP" desc="ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2024-01-31PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code SI</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2024-01-31PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Payment DATE 20231019</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2024-01-31PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Year of Fee Payment 14</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2024-01-31</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PGFP</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2024-02-03</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2024-02-01</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">SI</ops:L501EP>
+                    <ops:L518EP desc="Payment DATE">20231019</ops:L518EP>
+                    <ops:L520EP desc="Year of Fee Payment">14</ops:L520EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PGFP" desc="ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2024-02-29PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code PL</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2024-02-29PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Payment DATE 20231013</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2024-02-29PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Year of Fee Payment 14</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2024-02-29</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PGFP</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2024-03-11</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2024-03-07</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">PL</ops:L501EP>
+                    <ops:L518EP desc="Payment DATE">20231013</ops:L518EP>
+                    <ops:L520EP desc="Year of Fee Payment">14</ops:L520EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2025-06-03REG  REFERENCE TO A NATIONAL CODE Ref Country Code SE</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2025-06-03REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code EUG</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2025-06-03</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2025-06-08</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2025-06-03</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">SE</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="EP PATENT HAS LAPSED" infl="-">EUG</ops:L502EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2025-07-18PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code HU</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2025-07-18PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2025-07-18PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20241030</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2025-07-18</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2025-07-27</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2025-07-21</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">HU</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20241030</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2025-07-21PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code GR</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2025-07-21PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2025-07-21PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20250512</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2025-07-21</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2025-07-27</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2025-07-22</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">GR</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20250512</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2025-08-29REG  REFERENCE TO A NATIONAL CODE Ref Country Code SI</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2025-08-29REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code KO00</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2025-08-29REG  REFERENCE TO A NATIONAL CODE Effective DATE 20241030</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2025-08-29</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2025-09-06</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2025-09-02</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">SI</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="LAPSE OF PATENT" infl="-">KO00</ops:L502EP>
+                    <ops:L525EP desc="Effective DATE">20241030</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2025-10-13PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code SE</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2025-10-13PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2025-10-13PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20241030</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2025-10-13</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2025-10-18</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2025-10-14</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">SE</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20241030</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2025-10-13PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code IT</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2025-10-13PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2025-10-13PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20241029</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2025-10-13</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2025-10-18</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2025-10-14</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">IT</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20241029</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="REG " desc="REFERENCE TO A NATIONAL CODE" infl=" " dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2025-12-05REG  REFERENCE TO A NATIONAL CODE Ref Country Code ES</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2025-12-05REG  REFERENCE TO A NATIONAL CODE Ref Legal Event Code FD2A</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2025-12-05REG  REFERENCE TO A NATIONAL CODE Effective DATE 20251205</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L007EP desc="Gazette DATE">2025-12-05</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">REG</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2025-12-13</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2025-12-11</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">ES</ops:L501EP>
+                    <ops:L502EP desc="Ref Legal Event Code" descData="ANNOUNCEMENT OF LAPSE IN SPAIN" infl="-">FD2A</ops:L502EP>
+                    <ops:L525EP desc="Effective DATE">20251205</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PGFP" desc="ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2026-01-08PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code DE</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2026-01-08PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Payment DATE 20251031</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2026-01-08PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Year of Fee Payment 16</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2026-01-08</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PGFP</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2026-01-10</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2026-01-09</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">DE</ops:L501EP>
+                    <ops:L518EP desc="Payment DATE">20251031</ops:L518EP>
+                    <ops:L520EP desc="Year of Fee Payment">16</ops:L520EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PGFP" desc="ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="+" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2026-01-15PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code FR</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2026-01-15PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Payment DATE 20251022</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2026-01-15PGFP+ANNUAL FEE PAID TO NATIONAL OFFICE  [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Year of Fee Payment 16</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2026-01-15</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PGFP</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2026-01-17</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2026-01-16</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">FR</ops:L501EP>
+                    <ops:L518EP desc="Payment DATE">20251022</ops:L518EP>
+                    <ops:L520EP desc="Year of Fee Payment">16</ops:L520EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2026-01-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code ES</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2026-01-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2026-01-30PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20241030</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2026-01-30</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2026-02-07</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2026-02-02</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">ES</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20241030</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2026-06-12PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code SI</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2026-06-12PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2026-06-12PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20241030</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2026-06-12</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2026-06-20</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2026-06-16</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">SI</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20241030</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+            <ops:legal code="PG25" desc="LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO]" infl="-" dateMigr="00010101">
+                <ops:pre line="00001">EP    10778927A  2026-07-09PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Ref Country Code PL</ops:pre>
+                <ops:pre line="00002">EP    10778927A  2026-07-09PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Free Format Text LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:pre>
+                <ops:pre line="00003">EP    10778927A  2026-07-09PG25-LAPSED IN A CONTRACTING STATE [ANNOUNCED VIA POSTGRANT INFORMATION FROM NATIONAL OFFICE TO EPO] Effective DATE 20241029</ops:pre>
+                <ops:L001EP desc="Country Code">EP</ops:L001EP>
+                <ops:L002EP desc="Filing / Published Document">F</ops:L002EP>
+                <ops:L003EP desc="Document Number">    10778927</ops:L003EP>
+                <ops:L004EP desc="Kind Code">A </ops:L004EP>
+                <ops:L005EP desc="IPR Type">PI</ops:L005EP>
+                <ops:L006EP desc="PRS DOCUMENT TYPE">A </ops:L006EP>
+                <ops:L007EP desc="Gazette DATE">2026-07-09</ops:L007EP>
+                <ops:L008EP desc="Legal Event Code 1">PG25</ops:L008EP>
+                <ops:L018EP desc="DATE last exchanged">2026-07-18</ops:L018EP>
+                <ops:L019EP desc="DATE first created">2026-07-13</ops:L019EP>
+                <ops:L500EP>
+                    <ops:L501EP desc="Ref Country Code">PL</ops:L501EP>
+                    <ops:L510EP desc="Free Format Text">LAPSE BECAUSE OF NON-PAYMENT OF DUE FEES</ops:L510EP>
+                    <ops:L525EP desc="Effective DATE">20241029</ops:L525EP>
+                </ops:L500EP>
+            </ops:legal>
+        </ops:family-member>
+        <ops:family-member family-id="43365841">
+            <publication-reference>
+                <document-id document-id-type="docdb">
+                    <country>EP</country>
+                    <doc-number>2496850</doc-number>
+                    <kind>B1</kind>
+                    <date>20160210</date>
+                </document-id>
+                <document-id document-id-type="epodoc">
+                    <doc-number>EP2496850</doc-number>
+                    <date>20160210</date>
+                </document-id>
+            </publication-reference>
+            <application-reference doc-id="329082565">
+                <document-id document-id-type="docdb">
+                    <country>EP</country>
+                    <doc-number>10778927</doc-number>
+                    <kind>A</kind>
+                    <date>20101029</date>
+                </document-id>
+            </application-reference>
+            <priority-claim sequence="1" kind="national">
+                <document-id document-id-type="docdb">
+                    <country>DE</country>
+                    <doc-number>102009046508</doc-number>
+                    <kind>A</kind>
+                    <date>20091106</date>
+                </document-id>
+                <priority-active-indicator>YES</priority-active-indicator>
+            </priority-claim>
+            <priority-claim sequence="2" kind="regional">
+                <document-id document-id-type="docdb">
+                    <country>EP</country>
+                    <doc-number>2010066520</doc-number>
+                    <kind>W</kind>
+                    <date>20101029</date>
+                </document-id>
+                <priority-active-indicator>NO</priority-active-indicator>
+                <priority-linkage-type>W</priority-linkage-type>
+            </priority-claim>
+        </ops:family-member>
+    </ops:patent-family>
+</ops:world-patent-data>

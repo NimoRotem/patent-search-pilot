@@ -214,7 +214,7 @@ def self_collision(doc, target_assignees):
              "effective filing date is excepted; filing it may simply have the reference "
              "withdrawn. At the EPO there is no common-ownership exception and the same document "
              "is full Article 54(3) novelty art against the applicant's own later European case. "
-             "Dead in the US, lethal in Europe — confirm ownership as of the effective filing "
+             "Dead in the US, lethal in Europe: confirm ownership as of the effective filing "
              "date before deciding where to use it."
              if us_disqualified else
              "It predates the target as public prior art, so 102(b)(2)(C) does not reach it "
@@ -365,7 +365,7 @@ def translate_rows(doc, tier="strong"):
         return {"translated": 0, "note": "Translation unavailable; non-English passages were left "
                                          "in the original and must be translated before filing."}
     sys_p = ("Translate each supplied patent passage into English. Return JSON "
-             '{"rows":[{"id":<int>,"english":"..."}]}. Translate only — do not summarise, '
+             '{"rows":[{"id":<int>,"english":"..."}]}. Translate only, do not summarise, '
              "explain, or add anything not in the source.")
     payload = {"rows": [{"id": i, "text": r["quote"][:900]} for i, r in enumerate(targets)]}
     try:

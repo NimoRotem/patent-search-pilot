@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>{% block title %}Rotem Patents{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23175cd3'/><path d='M9 8h10l4 4v12H9zM19 8v5h5M12 18h8M12 22h6' fill='none' stroke='white' stroke-width='1.8'/></svg>">
+{% block head %}{% endblock %}
+<script>
+window.APP_BASE = {{ request.script_root|tojson }};
+  //  The lookup ENGINE is a sibling app at the root of this domain, not under our prefix. It
+  //  shares this app's session cookie (path "/"), so the browser calls it directly with
+  //  credentials:'same-origin' and no token is minted or forwarded.
+  window.LOOKUP_BASE = {{ lookup_base|tojson }};
+/* The progress narrative uses the same live/cached corpus fact as the footer.  Never bake a
+   publication count into app.js: ingestion changes it while the UI asset remains cached. */
+window.CORPUS_PUBLICATIONS = {{ (corpus.publications if corpus and corpus.publications else 0)|tojson }};
+window.CSRF_TOKEN = {{ csrf_token()|tojson }};
+window.CURRENT_USER_EMAIL = {{ (current_user.email if current_user else '')|tojson }};
+window.NAMED_ACCOUNT_SESSION = {{ (true if current_user else false)|tojson }};
+</script>
+</head>
+<body>
+{% set endpoint = request.endpoint or '' %}
+{% set signed_in = current_user or current_is_admin %}
+<a class="skip" href="#main">Skip to main content</a>
+<header class="top">
+  <div class="wrap navshell">
+    <a class="brand" href="{{ request.script_root }}/" aria-label="Rotem Patents home">
+      <svg class="brandmark" viewBox="0 0 36 36" aria-hidden="true">
+        <rect x="1" y="1" width="34" height="34" rx="8"></rect>
+        <path d="M10.5 8.5h10l5 5v14h-15z"></path>
+        <path d="M20.5 8.5v5h5M14 19h8M14 23h6"></path>
+      </svg>
+      <span class="brandname">Rotem Patents</span>
+    </a>
+    {# A visitor needs product context. An authenticated person needs the work areas first. #}
+    {% if signed_in or not account_mode %}
+      <nav class="primarynav appnav" aria-label="Primary navigation">
+        <a href="{{ request.script_root }}/" class="navitem{% if endpoint == 'index' %} active{% endif %}"{% if endpoint == 'index' %} aria-current="page"{% endif %}>Search</a>
+        <a href="{{ request.script_root }}/history" class="navitem{% if endpoint == 'history' %} active{% endif %}"{% if endpoint == 'history' %} aria-current="page"{% endif %}>History</a>
+        <a href="{{ request.script_root }}/patentlookup" class="navitem{% if endpoint == 'patent_lookup' %} active{% endif %}"{% if endpoint == 'patent_lookup' %} aria-current="page"{% endif %}>Lookup</a>
+        <a href="{{ request.script_root }}/designs" class="navitem{% if endpoint == 'designs_page' %} active{% endif %}"{% if endpoint == 'designs_page' %} aria-current="page"{% endif %}>Designs</a>
+        <a href="{{ request.script_root }}/corpus" class="navitem{% if endpoint == 'corpus_page' %} active{% endif %}"{% if endpoint == 'corpus_page' %} aria-current="page"{% endif %}>Corpus</a>
+        <a href="{{ request.script_root }}/factory" class="navitem{% if endpoint == 'factory_page' %} active{% endif %}"{% if endpoint == 'factory_page' %} aria-current="page"{% endif %}>Factory</a>
+        {% if current_user %}
+          <a href="{{ request.script_root }}/library" class="navitem{% if endpoint == 'library' %} active{% endif %}"{% if endpoint == 'library' %} aria-current="page"{% endif %}>Library</a>
+          <a href="{{ request.script_root }}/drafts" class="navitem navdraft{% if endpoint.startswith('draft') %} active{% endif %}"{% if endpoint.startswith('draft') %} aria-current="page"{% endif %}>Drafting</a>
+        {% endif %}
+      </nav>
+    {% else %}
+      <nav class="primarynav publicnav" aria-label="Primary navigation">
+        <a href="{{ request.script_root }}/how-it-works" class="navitem{% if endpoint == 'how_it_works' %} active{% endif %}"{% if endpoint == 'how_it_works' %} aria-current="page"{% endif %}>How it works</a>
+        <a href="{{ request.script_root }}/about" class="navitem{% if endpoint == 'about' %} active{% endif %}"{% if endpoint == 'about' %} aria-current="page"{% endif %}>About</a>
+      </nav>
+    {% endif %}
+
+    <nav class="utilitynav" aria-label="Account and help">
+      {% if signed_in or not account_mode %}
+        <a class="helpnav{% if endpoint == 'how_it_works' %} active{% endif %}" href="{{ request.script_root }}/how-it-works"{% if endpoint == 'how_it_works' %} aria-current="page"{% endif %}>How it works</a>
+      {% endif %}
+      {% if current_is_admin %}<a href="{{ request.script_root }}/admin/users"{% if endpoint.startswith('auth.admin_') %} class="active" aria-current="page"{% endif %}>Admin</a>{% endif %}
+      {% if current_user %}
+        <a href="{{ request.script_root }}/account" class="accountnav{% if endpoint == 'auth.account' %} active{% endif %}" aria-label="Signed in as {{ current_user.full_name }}, {{ current_user.email }}"{% if endpoint == 'auth.account' %} aria-current="page"{% endif %}>
+          <span class="accountname">{{ current_user.full_name }}</span>
+          <span class="accountemail">{{ current_user.email }}</span>
+        </a>
+        <a class="signout" href="{{ request.script_root }}/logout">Sign out</a>
+      {% elif account_mode %}
+        <a href="{{ request.script_root }}/login">Sign in</a>
+        <a class="navcta" href="{{ request.script_root }}/register">Create account</a>
+      {% endif %}
+    </nav>
+  </div>
+</header>
+<main id="main">{% block body %}{% endblock %}</main>
+<footer>
+  <div class="wrap footergrid">
+    <div class="footerbrand">
+      <strong>Rotem Patents</strong>
+      <span>Evidence-backed patent search and drafting. Not legal advice.</span>
+    </div>
+    <nav class="footlinks" aria-label="Footer navigation">
+      <a href="{{ request.script_root }}/how-it-works">How it works</a>
+      <a href="{{ request.script_root }}/about">Coverage</a>
+      {% if current_user %}
+        <a href="{{ request.script_root }}/account">Account</a>
+      {% elif account_mode %}
+        <a href="{{ request.script_root }}/register">Create account</a>
+      {% endif %}
+    </nav>
+    <details class="systemscope">
+      <summary>System coverage</summary>
+      <p>Postgres 17 and pgvector. {% if corpus and corpus.publications %}{{ '{:,}'.format(corpus.publications) }} publications{% else %}Local corpus{% endif %}. {{ corpus.cpc_count or 8 }} CPC classes. {{ (corpus.jurisdictions or ['US','EP','WO','DE'])|join(', ') }}{% if corpus.max_date_str %}. Current to {{ corpus.max_date_str }}{% endif %}. Semantic, agentic and external patent API retrieval.</p>
+    </details>
+  </div>
+</footer>
+<script src="{{ url_for('static', filename='app.js', v=asset_version) }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,138 @@
+{
+ "n": 7,
+ "pub": "US-2005258657-A1",
+ "family_id": "7961965",
+ "biblio": {
+  "pub": "US-2005258657-A1",
+  "label": "U.S. Patent Application Publication No. US 2005/0258657 A1",
+  "kind": "publication",
+  "title": "Vacuum handling device having a suction nozzle and gripper part contained within a single housing",
+  "country": "US",
+  "inventor": "Gunter Gebauer",
+  "assignee": "Festo SE and Co KG",
+  "publication_date": "2005-11-24",
+  "priority_date": "2001-09-21",
+  "filing_date": "2002-09-12",
+  "dates_source": "corpus",
+  "abstract": "A vacuum handling device comprises includes a vacuum source having a suction nozzle means (6) operating on the ejector principle and furthermore a suction gripper (3) which possesses a gripper part (26) connected with the suction side of the suction nozzle means (6). The housing of the vacuum source (2) and of the suction gripper (3) constitute a housing unit (4), the gripper part (26) being adjustably mounted on the housing unit (4) for setting in the acting suction direction (44) thereof.",
+  "issue_date_pretty": "November 24, 2005",
+  "priority_date_pretty": "September 21, 2001"
+ },
+ "subject": {
+  "app_no": "19/315,746",
+  "pub_no": "US 2026/0109053 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a vacuum handling device having a suction nozzle and gripper part contained within a single housing, where the housing unit is a hollow body and includes an outlet for exhaust air.",
+ "rows": [
+  {
+   "claim_no": 1,
+   "label": "claim 1[a]",
+   "quote_claim": true,
+   "claim_text": "A grip unit for a vacuum hand-operated laying device and for use with a suction plate, the grip unit comprising",
+   "claim_paraphrase": "A grip unit for a vacuum hand-operated laying device and for use with a suction plate, the grip unit comprising",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A vacuum handling device comprising a vacuum source, which possesses a suction nozzle means adapted to operate on the ejector principle and furthermore a suction gripper which possesses a gripper part connected with the suction side of the suction nozzle",
+   "note": "The reference describes a vacuum handling device with a vacuum source and suction gripper",
+   "cites": [
+    "Paragraph [0001]"
+   ],
+   "confidence": 0.7,
+   "_id": 0,
+   "disclosure": "The reference describes a vacuum handling device comprising a vacuum source and a suction gripper (3) which possesses a gripper part connected with the suction side of the suction nozzle."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[b]",
+   "quote_claim": true,
+   "claim_text": "a housing which has a grip portion for gripping the grip unit, and an, electrically operated, vacuum generating device",
+   "claim_paraphrase": "a housing which has a grip portion for gripping the grip unit, and an, electrically operated, vacuum generating device",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The vacuum handling device 1 is composed of two principal parts, that is to say a first part in the form of a vacuum source 2 and a second part in the form of a suction gripper 3 .",
+   "note": "The reference describes a housing for a vacuum source and suction gripper, The vacuum source operates on an ejector principle, which is typically pneumatic, not electric.",
+   "cites": [
+    "Paragraph [0005]"
+   ],
+   "confidence": 0.6,
+   "_id": 1,
+   "disclosure": "The reference discloses a vacuum handling device (1) composed of a vacuum source (2) and a suction gripper (3)."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[c]",
+   "quote_claim": true,
+   "claim_text": "wherein the grip portion is designed as a hollow body",
+   "claim_paraphrase": "the grip portion is designed as a hollow body",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "Preferably the housing unit 4 is designed in the form of a hollow body, which contains a cavity 5 which is preferably continuous in the longitudinal direction and in which the principal components of the device are accommodated.",
+   "note": "The reference states the housing unit is a hollow body",
+   "cites": [
+    "Paragraph [0006]"
+   ],
+   "confidence": 0.7,
+   "_id": 2,
+   "disclosure": "The reference discloses that the housing unit (4) is designed in the form of a hollow body, which contains a cavity (5)."
+  },
+  {
+   "claim_no": 1,
+   "label": "claim 1[d]",
+   "quote_claim": true,
+   "claim_text": "exhaust air discharged by the vacuum generating device is guided through the grip portion to an air outlet, and",
+   "claim_paraphrase": "exhaust air discharged by the vacuum generating device is guided through the grip portion to an air outlet, and",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "Finally the suction nozzle 7 furthermore possesses an outlet opening 16 which is connected with an outlet 17 opening to the outer face of the housing unit 4 , and accordingly leading into the atmosphere, from the housing unit 4",
+   "note": "The reference describes an outlet for exhaust air from the vacuum generating device",
+   "cites": [
+    "Paragraph [0008]"
+   ],
+   "confidence": 0.6,
+   "_id": 3,
+   "disclosure": "The reference discloses that the suction nozzle (7) possesses an outlet opening (16) which is connected with an outlet (17) opening to the outer face of the housing unit (4) and leading into the atmosphere."
+  },
+  {
+   "claim_no": 9,
+   "label": "claim 9[a]",
+   "quote_claim": false,
+   "claim_text": "A vacuum handling apparatus comprising",
+   "claim_paraphrase": "A vacuum handling apparatus comprising",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "A vacuum handling device comprises includes a vacuum source having a suction nozzle means ( 6 ) operating on the ejector principle and furthermore a suction gripper ( 3 ) which possesses a gripper part ( 26 ) connected with",
+   "note": "The reference describes a vacuum handling device.",
+   "cites": [
+    "Abstract",
+    "Paragraph [0010]"
+   ],
+   "confidence": 1.0,
+   "_id": 4,
+   "disclosure": "The reference discloses a vacuum handling device comprising a vacuum source having a suction nozzle means (6) and a suction gripper (3)."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "unknown",
+   "blocked": false,
+   "note": "The target's effective filing date was not supplied, so prior-art status could not be checked. Confirm it before filing."
+  },
+  "quotes": {
+   "checked": 5,
+   "dropped": 0,
+   "note": ""
+  },
+  "rows_dropped": 0,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}

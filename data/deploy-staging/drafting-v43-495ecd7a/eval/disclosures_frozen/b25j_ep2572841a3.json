@@ -1,0 +1,455 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b25j_ep2572841a3",
+ "subject_pub": "EP-2572841-A3",
+ "n_claims_source": 1,
+ "claims_source": "family_claims:US-2013074667-A1",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 71,
+  "by_kind": {
+   "independent_limitation": 21,
+   "combination": 3,
+   "dependent_limitation": 47
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "A cutting unit for slicing food products",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The cutting unit is a rotating cutting knife",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The cutting unit is driven by a drive",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A product feeder feeds food product to the cutting unit",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A receiving unit receives cut food product slices",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A control system stores at least one specification",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The control system monitors at least one status parameter",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The control system determines if a predefined condition is met based on status parameter and specification",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "The predefined condition requires a maintenance measure",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "A robot displaces food products",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "The robot has at least one robot arm",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "A gripping unit is located on the robot arm for picking up food product",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "The robot seizes food products from a surface",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "The robot displaces food products to a desired location",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "A control system stores at least one specification for a robot motion program",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "The control system monitors at least one status parameter for the robot",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "The predefined condition for the robot requires a maintenance measure",
+   "kind": "independent_limitation",
+   "source": "claim 14",
+   "weight": 1.0
+  },
+  {
+   "text": "At least one camera captures information related to the cutting unit",
+   "kind": "independent_limitation",
+   "source": "claim 29",
+   "weight": 1.0
+  },
+  {
+   "text": "At least one camera captures information related to the food product",
+   "kind": "independent_limitation",
+   "source": "claim 29",
+   "weight": 1.0
+  },
+  {
+   "text": "At least one camera captures information related to the food product slices",
+   "kind": "independent_limitation",
+   "source": "claim 29",
+   "weight": 1.0
+  },
+  {
+   "text": "At least one camera captures information related to the robot",
+   "kind": "independent_limitation",
+   "source": "claim 34",
+   "weight": 1.0
+  },
+  {
+   "text": "A device for slicing a food product comprising a cutting unit, a product feeder, a receiving unit, and a control system storing specifications, monitoring status parameters, and determining if a maintenance condition is met",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "A device with a robot for displacing food products, having a robot arm with a gripping unit, a control system storing motion program specifications, monitoring status parameters, and determining if a maintenance condition is met",
+   "kind": "combination",
+   "source": "claim 14",
+   "weight": 0.9
+  },
+  {
+   "text": "A device for slicing food products comprising a cutting unit, a product feeder, a receiving unit, and a camera capturing information about the cutting unit, food product, or slices",
+   "kind": "combination",
+   "source": "claim 29",
+   "weight": 0.9
+  },
+  {
+   "text": "The control system stores specifications for a cutting program",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The specification is selected from a plurality of cutting program specifications",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "The status parameter is the temperature of the drive",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "The drive is an electric motor",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "The status parameter is the motor current of the electric motor",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "A gripper with a gripper drive is provided",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The gripper engages the food product during slicing",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The status parameter is the motor current of the gripper drive",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "The status parameter is the cutting pressure of the cutting unit",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "The status parameter is vibration intensity and/or frequency at the device",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "The status parameter is oscillation intensity at the cutting knife's edge",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "The status parameter is food product temperature before slicing",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "The status parameter is sliced food product temperature after slicing",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "Cutting program specifications include cutting speed of the cutting unit",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Cutting program specifications include the type of food product",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "Cutting program specifications include the feed rate of the food product",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  },
+  {
+   "text": "The control system applies specifications against status parameters to determine condition",
+   "kind": "dependent_limitation",
+   "source": "claim 11",
+   "weight": 0.7
+  },
+  {
+   "text": "The predefined condition is met when leaving a tolerance region for the status parameter",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The tolerance region is determined by the cutting program specification",
+   "kind": "dependent_limitation",
+   "source": "claim 12",
+   "weight": 0.7
+  },
+  {
+   "text": "The cutting knife has a sensor for capturing the status parameter",
+   "kind": "dependent_limitation",
+   "source": "claim 13",
+   "weight": 0.7
+  },
+  {
+   "text": "The control system stores selected motion program specifications from a plurality",
+   "kind": "dependent_limitation",
+   "source": "claim 15",
+   "weight": 0.7
+  },
+  {
+   "text": "The robot arm has an electric drive",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "The status parameter is the supply current of the robot arm's electric drive",
+   "kind": "dependent_limitation",
+   "source": "claim 16",
+   "weight": 0.7
+  },
+  {
+   "text": "The status parameter is the temperature of the robot arm's electric drive",
+   "kind": "dependent_limitation",
+   "source": "claim 17",
+   "weight": 0.7
+  },
+  {
+   "text": "The status parameter is the position of the robot arm",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "The status parameter is the speed of the robot arm",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "The robot arm position/speed is captured by an incremental encoder",
+   "kind": "dependent_limitation",
+   "source": "claim 18",
+   "weight": 0.7
+  },
+  {
+   "text": "A camera captures a status parameter of the device",
+   "kind": "dependent_limitation",
+   "source": "claim 19",
+   "weight": 0.7
+  },
+  {
+   "text": "The camera and control system determine food product slice position as a status parameter",
+   "kind": "dependent_limitation",
+   "source": "claim 20",
+   "weight": 0.7
+  },
+  {
+   "text": "The camera and control system determine a center point of food product slices as a status parameter",
+   "kind": "dependent_limitation",
+   "source": "claim 21",
+   "weight": 0.7
+  },
+  {
+   "text": "The control system adjusts an operation parameter if the predefined condition is met",
+   "kind": "dependent_limitation",
+   "source": "claim 22",
+   "weight": 0.7
+  },
+  {
+   "text": "The control system outputs a warning signal if the predefined condition is met",
+   "kind": "dependent_limitation",
+   "source": "claim 23",
+   "weight": 0.7
+  },
+  {
+   "text": "The control system continuously monitors the status parameter",
+   "kind": "dependent_limitation",
+   "source": "claim 24",
+   "weight": 0.7
+  },
+  {
+   "text": "The control system monitors the status parameter at discrete sample points",
+   "kind": "dependent_limitation",
+   "source": "claim 25",
+   "weight": 0.7
+  },
+  {
+   "text": "The control system determines the condition by evaluating status parameters at different times",
+   "kind": "dependent_limitation",
+   "source": "claim 26",
+   "weight": 0.7
+  },
+  {
+   "text": "The control system considers at least one status parameter in condition calculation",
+   "kind": "dependent_limitation",
+   "source": "claim 27",
+   "weight": 0.7
+  },
+  {
+   "text": "A memory element stores the status parameters",
+   "kind": "dependent_limitation",
+   "source": "claim 28",
+   "weight": 0.7
+  },
+  {
+   "text": "The camera monitors the orientation of the food product",
+   "kind": "dependent_limitation",
+   "source": "claim 30",
+   "weight": 0.7
+  },
+  {
+   "text": "The camera monitors the structure or size of the food product slices",
+   "kind": "dependent_limitation",
+   "source": "claim 31",
+   "weight": 0.7
+  },
+  {
+   "text": "The camera monitors the wear of the cutting knife",
+   "kind": "dependent_limitation",
+   "source": "claim 32",
+   "weight": 0.7
+  },
+  {
+   "text": "The camera determines the form of the loaded cutting knife",
+   "kind": "dependent_limitation",
+   "source": "claim 33",
+   "weight": 0.7
+  },
+  {
+   "text": "The camera determines the position of the food product slices",
+   "kind": "dependent_limitation",
+   "source": "claim 35",
+   "weight": 0.7
+  },
+  {
+   "text": "The camera determines the center point of the food product slices",
+   "kind": "dependent_limitation",
+   "source": "claim 36",
+   "weight": 0.7
+  },
+  {
+   "text": "The camera determines the position of the gripping unit",
+   "kind": "dependent_limitation",
+   "source": "claim 37",
+   "weight": 0.7
+  },
+  {
+   "text": "A control system monitors a status parameter determined by camera information",
+   "kind": "dependent_limitation",
+   "source": "claim 38",
+   "weight": 0.7
+  },
+  {
+   "text": "The predefined condition requires a measure, especially maintenance",
+   "kind": "dependent_limitation",
+   "source": "claim 38",
+   "weight": 0.7
+  },
+  {
+   "text": "A memory element stores information detected by the camera",
+   "kind": "dependent_limitation",
+   "source": "claim 39",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "254d5ffe45dad01d"
+}

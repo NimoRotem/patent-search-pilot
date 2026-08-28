@@ -1,14 +1,19 @@
 {% extends "base.html" %}
-{% block title %}{{ project.title }} | Rotem Patents drafting{% endblock %}
+{% block title %}{{ project.title }} | IPtorch drafting{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='draft_studio.css', v=asset_version) }}">
+{% endblock %}
 {% block body %}
 <div class="studio" data-project="{{ project.id }}">
   <header class="studiohead">
     <div class="studiotitle">
       <div class="draftcrumb"><a href="{{ request.script_root }}/drafts">Drafts</a></div>
-      <h1 id="stTitle">{{ project.title }}</h1>
+      <h1 id="stTitle" title="{{ project.title }}">{{ project.title }}</h1>
       <div class="studiometa">
         <span class="statuspill status-{{ project.status }}" id="stStatus">{{ project.status }}</span>
-        <span id="stVersion">{% if project.latest_version_no %}version {{ project.latest_version_no }}{% else %}no draft yet{% endif %}</span>
+        {#  No version number over the application. Every revision is the one draft that would
+            be filed today; the numbering is bookkeeping and belongs in History. #}
+        <span id="stVersion">{% if not project.latest_version_no %}no draft yet{% endif %}</span>
         <span id="stVerdict"></span>
         {% if project.search_slug %}
         <a href="{{ request.script_root }}/report/{{ project.search_slug }}">prior-art search ↗</a>
@@ -36,28 +41,58 @@
   <div class="studiobody">
     <!-- ── conversation ───────────────────────────────────────────────────── -->
     <section class="studiochat" aria-label="Conversation with the drafting agent">
+      {#  Collapsing the conversation gives the application the whole page, which is what you want
+          the moment you are reading rather than instructing. #}
+      <button type="button" class="chatfold" id="chatFold"
+              title="Hide the conversation" aria-label="Hide the conversation"
+              aria-expanded="true"></button>
       <div class="chatfeed" id="chatFeed" aria-live="polite"></div>
 
       <div class="chatstatus" id="chatStatus" hidden>
         <span class="spin" aria-hidden="true"></span>
         <span id="chatStage">working…</span>
+        {#  What it has cost so far, while it is costing it. #}
+        <span class="chatspend small muted" id="chatSpend" hidden></span>
         <button type="button" class="btn ghost xs" id="chatCancel">Stop</button>
       </div>
 
       <form class="chatcompose" id="chatForm">
         <div class="chatattached" id="chatAttached" hidden></div>
-        <textarea id="chatInput" rows="3" maxlength="20000"
-          placeholder="Ask for a change, add a fact, or ask a question. For example: “Claim 1 is too narrow; the seal does not have to be annular.”"></textarea>
-        <div class="chatbar">
+        <div class="chatrow">
           <label class="chatattach" title="Attach prior art or other material">
             <input type="file" id="chatFiles" accept=".pdf,.docx,.txt" multiple hidden>
-            <span>Attach</span>
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor"
+              stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+            <span class="vh">Attach a document</span>
+          </label>
+          <textarea id="chatInput" rows="1" maxlength="20000"
+            placeholder="Ask for a change, add a fact, or ask a question"></textarea>
+          {#  One control, two states, like a phone: dictate while the box is empty, send once
+              there is something to send. Nothing to read, nothing to decide. #}
+          <button type="button" class="chatmic" id="chatMic" title="Dictate" aria-label="Dictate">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2a2 2 0 0 1 2 2v5a2 2 0 1 1-4
+              0V4a2 2 0 0 1 2-2zM5 9a5 5 0 0 0 4 4.9V16H7v1.5h6V16h-2v-2.1A5 5 0 0 0 15 9h-1.5a3.5
+              3.5 0 1 1-7 0H5z"/></svg>
+          </button>
+          <button class="chatsend" type="submit" id="chatSend" title="Send" aria-label="Send" hidden>
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 17l14-7L3 3v5.5l9 1.5-9 1.5z"/></svg>
+          </button>
+        </div>
+        <div class="chatbar">
+          <label class="modelpick" for="stModel">
+            <span class="vh">Model the drafting agent runs on</span>
+            <select id="stModel" aria-label="Model the drafting agent runs on">
+              <option value="">Server default</option>
+              {% for model in state.agent.models or [] %}
+              <option value="{{ model.id }}" title="{{ model.detail }}"
+                {% if project.draft_model == model.id %}selected{% endif %}>{{ model.label }}</option>
+              {% endfor %}
+            </select>
           </label>
           <button type="button" class="chatmode" id="chatModeBtn" data-kind="revise"
                   title="Switch between asking for a change and asking a question">Revise the draft</button>
           <span class="grow"></span>
-          <span class="small muted" id="chatHint">Enter to send · Shift+Enter for a new line</span>
-          <button class="btn sm" type="submit" id="chatSend">Send</button>
+          <span class="small muted" id="chatHint">Enter to send</span>
         </div>
       </form>
     </section>
@@ -66,12 +101,22 @@
     <section class="studiodraft" aria-label="The draft">
       <nav class="studiotabs" role="tablist">
         <button class="stab on" data-pane="draft" role="tab">Draft</button>
+        {#  Review, Drawings, Sources, History and Filing are all about the draft rather than the
+            draft itself. They fold away so the row above the application can be used for getting
+            around the application. #}
+        <button type="button" class="stabmore" id="stabMore" aria-expanded="false"
+                aria-controls="studioMore">Everything else
+          <span class="tabbadge" id="tabMoreBadge"></span></button>
+      </nav>
+      <div class="studiomore" id="studioMore" hidden>
         <button class="stab" data-pane="review" role="tab">Review <span class="tabbadge" id="tabReview"></span></button>
         <button class="stab" data-pane="figures" role="tab">Drawings <span class="tabbadge" id="tabFigures"></span></button>
         <button class="stab" data-pane="sources" role="tab">Sources <span class="tabbadge" id="tabSources"></span></button>
         <button class="stab" data-pane="history" role="tab">History</button>
         <button class="stab" data-pane="filing" role="tab">Filing</button>
-      </nav>
+        <button class="stab" data-pane="settings" role="tab">Settings</button>
+      </div>
+      <nav class="secjump" id="secJump" aria-label="Jump to a part of the application"></nav>
 
       <div class="spane on" id="pane-draft"><div class="draftbody" id="draftBody"></div></div>
       <div class="spane" id="pane-review"><div id="reviewBody"></div></div>
@@ -79,7 +124,19 @@
       <div class="spane" id="pane-sources"><div id="sourcesBody"></div></div>
       <div class="spane" id="pane-history"><div id="historyBody"></div></div>
       <div class="spane" id="pane-filing"><div id="filingBody"></div></div>
+
     </section>
+  </div>
+</div>
+
+<div class="setmodal" id="setModal" hidden role="dialog" aria-modal="true"
+     aria-labelledby="setModalTitle">
+  <div class="setmodalcard">
+    <div class="setmodalhead">
+      <h2 id="setModalTitle">Settings</h2>
+      <button type="button" class="chip" id="setClose">Close</button>
+    </div>
+    <div class="setmodalbody" id="settingsBody"></div>
   </div>
 </div>
 

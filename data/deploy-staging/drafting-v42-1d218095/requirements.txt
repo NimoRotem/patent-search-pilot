@@ -1,0 +1,41 @@
+psycopg[binary]==3.2.3
+Flask==3.1.3
+openai==1.59.6
+google-cloud-bigquery==3.27.0
+google-cloud-bigquery-storage==2.27.0
+# Direct runtime dependencies used by the drafting image generator and image normalizer. These
+# used to be present only as hand-installed packages on production, so a clean deploy could start
+# successfully and then fail the first time a user opened the drawing workflow.
+google-genai==1.47.0
+# Last release supporting production's Python 3.9. Untrusted decoding is restricted in
+# draft_figures.normalize_source_image to the PNG, JPEG, and WebP plugins with byte/pixel caps.
+Pillow==11.3.0
+pydantic==2.13.4
+# Python 3.9-compatible release required by the production datasets stack. The Arrow 2026 IPC
+# pre-buffer advisory is not exposed through Python bindings; the fixed 23.x line needs Python 3.10.
+pyarrow==21.0.0
+numpy==2.0.2
+# Deterministic connected-region checks backstop exact topology requirements in patent figures.
+# 1.13 is the last line supporting the deployment's Python 3.9 floor and accepts NumPy 2.0.
+scipy==1.13.1
+# Requests 2.33 drops Python 3.9, which this production worker still runs. 2.32.5 closes the
+# credential-forwarding issue; the remaining 2.33-only advisory is for extract_zipped_paths(),
+# an internal utility this application never calls.
+requests==2.32.5
+tqdm==4.67.1
+# The 1.2.2 symlink-rewrite fix requires Python 3.10. This Python 3.9 service only calls the
+# read-only load_dotenv() API; it never calls the affected set_key()/unset_key() functions.
+python-dotenv==1.0.1
+tenacity==9.0.0
+reportlab==5.0.0
+python-docx==1.2.0
+openpyxl==3.1.5
+gunicorn==23.0.0
+pymongo==4.10.1
+#  Reads a PDF back to check it: `export_pdf` renders one and the acceptance test opens it to
+#  count the pages and confirm it is not a stub. It was hand-installed on the original host and
+#  never declared here, so a clean deploy installed everything, started fine, and failed the first
+#  time anything opened a PDF — which is exactly the failure this file's other comments describe.
+#  Found on 2026-08-21 building the second host: 1,417 of 1,418 tests passed and the one that did
+#  not was ModuleNotFoundError.
+pypdf==6.14.2

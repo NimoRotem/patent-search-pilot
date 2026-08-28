@@ -1,0 +1,1 @@
+Finish every drawing sheet automatically from the saved filing candidate. Run current geometry, semantic, OCR, sheet-number, leader, endpoint, and independent-review checks. Publish filing readiness only after all pass.

@@ -1,0 +1,252 @@
+input/conversation.md:9:[Omitted long matching line]
+input/conversation.md:11:The lid carries a depending indexing rib. As the lid closes, the rib enters a mating channel in the spacer frame and shifts the thermal module into a registered position in which the peripheral outlet openings overlap the side supply passages. A compressible lid gasket seals against the upper edge of the shell after registration. The same closing movement presses resilient feet of the spacer frame against ledges of the shell so that the module cannot lift away from the tray during transport.
+input/conversation.md:13:A removable absorbent wick lies in a shallow condensate channel around the product tray. Openings at the lower ends of the guide ducts discharge condensate into the channel. A pull tab on the wick remains accessible when the product tray is removed, allowing the wick to be replaced without opening a phase-change cassette.
+input/conversation.md:15:The shell includes a mechanical exposure indicator visible from outside. An indicator stem is thermally coupled to one phase-change cassette and retained by a temperature-responsive latch. If that cassette softens enough to release the latch, a spring moves the indicator stem to a latched exposed position. The indication remains exposed after the cassette cools again and is reset manually only after the carrier is opened. The indicator does not control airflow.
+input/conversation.md:21:[Omitted long matching line]
+input/disclosure.md:7:[Omitted long matching line]
+input/disclosure.md:9:The lid carries a depending indexing rib. As the lid closes, the rib enters a mating channel in the spacer frame and shifts the thermal module into a registered position in which the peripheral outlet openings overlap the side supply passages. A compressible lid gasket seals against the upper edge of the shell after registration. The same closing movement presses resilient feet of the spacer frame against ledges of the shell so that the module cannot lift away from the tray during transport.
+input/disclosure.md:11:A removable absorbent wick lies in a shallow condensate channel around the product tray. Openings at the lower ends of the guide ducts discharge condensate into the channel. A pull tab on the wick remains accessible when the product tray is removed, allowing the wick to be replaced without opening a phase-change cassette.
+input/disclosure.md:13:The shell includes a mechanical exposure indicator visible from outside. An indicator stem is thermally coupled to one phase-change cassette and retained by a temperature-responsive latch. If that cassette softens enough to release the latch, a spring moves the indicator stem to a latched exposed position. The indication remains exposed after the cassette cools again and is reset manually only after the carrier is opened. The indicator does not control airflow.
+tools/patent_lookup.py:12:sys.path.insert(0, "/home/nimrod_rotem/patent-search-pilot/src")
+draft/09-claims.md:7:a thermal module removably received in the outer shell above the product tray, the thermal module comprising a rigid spacer frame and two opposed phase-change cassettes held by the spacer frame, the spacer frame defining a central inlet opening, two downward guide ducts located beside the phase-change cassettes, peripheral outlet openings positioned to align with the side supply passages, and a mating channel; and
+draft/09-claims.md:9:an insulated lid closable on the upper edge of the outer shell and carrying a depending indexing rib positioned to enter the mating channel as the insulated lid closes and to shift the thermal module into a registered position in which the peripheral outlet openings overlap the side supply passages;
+draft/09-claims.md:11:[Omitted long matching line]
+draft/09-claims.md:17:4. The passive cold-chain carrier of claim 1, wherein the two opposed phase-change cassettes are held by the spacer frame with an inner face of a first phase-change cassette confronting an inner face of a second phase-change cassette across a central space, and the central inlet opening opens downward into the central space.
+draft/09-claims.md:23:7. The passive cold-chain carrier of claim 6, wherein the spacer frame further defines discharge openings at lower ends of the guide ducts, the discharge openings discharging condensate into the condensate channel.
+draft/09-claims.md:25:8. The passive cold-chain carrier of claim 6, wherein the absorbent wick carries a pull tab that remains accessible when the product tray is removed from the outer shell, so that the absorbent wick is replaceable without opening a phase-change cassette.
+draft/09-claims.md:29:10. The passive cold-chain carrier of claim 9, wherein the exposed position is a latched position in which the mechanical exposure indicator retains the indicator stem after said one of the phase-change cassettes has cooled again, the mechanical exposure indicator being resettable manually only after the carrier is opened.
+draft/09-claims.md:41:[Omitted long matching line]
+draft/09-claims.md:45:15. The thermal module of claim 13, wherein the mating channel opens upward at a top region of the spacer frame.
+draft/09-claims.md:47:16. The thermal module of claim 13, wherein the spacer frame further defines discharge openings at lower ends of the guide ducts and positioned to discharge condensate into a condensate channel extending around the product tray within the outer shell.
+draft/09-claims.md:51:fitting two conditioned phase-change cassettes to a rigid spacer frame of a thermal module, the spacer frame defining a central inlet opening, two downward guide ducts located beside the phase-change cassettes, peripheral outlet openings, and a mating channel;
+draft/09-claims.md:57:closing an insulated lid on an upper edge of the outer shell so that a depending indexing rib carried by the insulated lid enters the mating channel and shifts the thermal module into a registered position in which the peripheral outlet openings overlap the side supply passages; and
+draft/09-claims.md:59:thereafter transporting the goods while air circulates, without operation of any powered air mover, along a circulation path in which air rising from a product region within the product tray enters the central inlet opening, divides along faces of the two phase-change cassettes, descends through the guide ducts, enters the side supply passages, passes through perforations in the product tray, and returns through the lower return passage.
+draft/09-claims.md:63:19. The method of claim 17, further comprising, after the transporting, opening the insulated lid, removing the product tray from the outer shell, and drawing a removable absorbent wick, by a pull tab of the absorbent wick, out of a condensate channel extending around the product tray within the outer shell, without opening a phase-change cassette.
+draft/09-claims.md:65:[Omitted long matching line]
+figures/FIG-4.md:7:[Omitted long matching line]
+figures/FIG-4.md:9:Where that channel meets the open vertical space, an opening passes through the left face of the module body, so that the channel opens sideways into that space between the module body and the upright wall body. This opening is one of the peripheral outlet openings 54.
+figures/FIG-4.md:11:[Omitted long matching line]
+figures/FIG-4.md:13:A thin hatched horizontal bottom wall joins the thin upright wall and extends rightward, and the open space beneath that bottom wall is the lower return passage 24.
+figures/FIG-4.md:15:Where the thin upright wall meets that bottom wall, a series of small openings passes through the product tray, so that the side supply passage 28 opens through them into the space beneath the bottom wall. These openings are the perforations 30.
+figures/FIG-4.md:19:- 24: inside the open space beneath the thin horizontal bottom wall.
+figures/FIG-4.md:20:- 26: well inside the hatching of the thin upright wall, above the small openings.
+figures/FIG-4.md:21:- 28: inside the open vertical space between the upright wall body and the thin wall.
+figures/FIG-4.md:22:- 30: on one of the small openings through the product tray.
+figures/FIG-4.md:23:- 50: inside the open vertical channel in the module body.
+figures/FIG-4.md:24:- 54: on the opening through the left face of the module body.
+draft/numerals.md:19:| 48 | central inlet opening |
+draft/numerals.md:21:| 54 | peripheral outlet openings |
+draft/numerals.md:30:| 76 | discharge openings |
+figures/FIG-2.md:3:Perspective view of the thermal module alone, seen from above and in front so the open top, near long side and near short end are visible. Plain black line work on white, no hatching, all inside the drawing area.
+figures/FIG-2.md:5:The main body is a rectangular open frame, shown schematically, with near and far long side walls, left and right short end walls and a bottom panel joining them, its top open. This frame is the spacer frame 42; with the two slabs it holds it is the thermal module 40.
+figures/FIG-2.md:7:[Omitted long matching line]
+figures/FIG-2.md:9:In the bottom panel, within the open central gap between the slabs, a rectangular through opening is drawn, so the viewer looks down through the panel there. This opening is the central inlet opening 48.
+figures/FIG-2.md:11:A further through opening passes down through the bottom panel at the foot of the channel beside each slab, so the viewer looks down through the panel there and each channel is open at its lower end.
+figures/FIG-2.md:13:Along the lower part of the near long side wall, at the foot of the channel beside the first phase-change cassette 44, a rectangular opening passes through the wall. This is one of the peripheral outlet openings 54. A matching opening in the far long side wall is concealed behind the second phase-change cassette 46.
+figures/FIG-2.md:15:The top edge of the near long side wall carries an upwardly open groove, shown schematically. This groove is the mating channel 56.
+figures/FIG-2.md:25:- 48: well inside the opening in the bottom panel between the slabs.
+figures/FIG-2.md:26:- 54: on the opening in the near long side wall.
+figures/FIG-7.md:7:Carried by the wall body, and drawn as a horizontally elongated plain rectangular outline within the outer portion of the wall body and open at its outer end, is the body of the mechanical exposure indicator 80, shown schematically.
+draft/05-background.md:5:[Omitted long matching line]
+draft/05-background.md:7:[Omitted long matching line]
+draft/05-background.md:9:There remains a need for a reusable passive carrier that establishes the same circulation path around the payload every time it is closed, without a powered air mover and without relying on the care of the person who packed it, that manages the condensate produced by repeated opening without taking the refrigerant out of service, and that retains a visible mechanical record of a refrigerant temperature excursion after the refrigerant has recovered.
+figures/FIG-3.md:13:To the right of the upright wall body, spaced from its inner surface, a hatched body is drawn in section extending from beneath the closure slab downward past the lower edge of the fragment, so that it is shown cut off there. This body is the sectioned spacer frame 42. Its upper edge carries an upwardly open groove that receives the lower end of the depending indexing rib 62. This groove is the mating channel 56.
+draft/10-abstract.md:1:[Omitted long matching line]
+figures/FIG-5.md:7:In the upper left part of the drawing area, a hatched portion of the module body is drawn in section. An open vertical channel passes down through this module body, bounded by hatched material to its left and right. This channel is one of the guide ducts 50. At the lower end of the channel, an opening passes through the downwardly facing bottom surface of the module body. This opening is one of the discharge openings 76.
+figures/FIG-5.md:9:[Omitted long matching line]
+figures/FIG-5.md:11:In the upwardly facing top surface of the horizontal bottom body, at the foot of the open vertical space and below the discharge opening 76, a shallow upwardly open trough is drawn in section, wider than it is deep. This trough is the condensate channel 70.
+figures/FIG-5.md:17:- 50: inside the open vertical channel in the module body.
+figures/FIG-5.md:21:- 76: on the opening through the bottom surface of the module body.
+draft/06-summary.md:3:[Omitted long matching line]
+draft/06-summary.md:5:[Omitted long matching line]
+draft/06-summary.md:7:[Omitted long matching line]
+draft/06-summary.md:9:In a further aspect, a shallow condensate channel extends around the product tray and receives a removable absorbent wick. Discharge openings at lower ends of the guide ducts deliver condensate into the condensate channel. A pull tab on the absorbent wick remains accessible when the product tray is removed, so the wick is replaced without opening a phase-change cassette and without taking the cassettes out of service.
+draft/06-summary.md:11:[Omitted long matching line]
+figures/FIG-1.md:5:Two thick hatched upright wall bodies joined by a thick hatched bottom form a container open at top: the sectioned outer shell 10, its bottom the floor 12. Each wall body carries an inward-projecting block below its top end. A thick hatched slab across both top ends is the insulated lid 60, closed, a narrow rib projecting down inboard of the left end and a compressible body between slab and each end.
+figures/FIG-1.md:7:[Omitted long matching line]
+figures/FIG-1.md:9:[Omitted long matching line]
+figures/FIG-1.md:11:Three broken-line curves enclose: upper left, the rib, groove, wall top, compressible body, projecting block and small block on it; lower left, the outboard channel opening, the channel lower end and its downward opening, gap, tray openings, tray bottom wall and space under it; lower right, the channel lower end and downward opening, the tray wall with its openings, the gap, bottom body, trough, absorbent body, strip.
+draft/08-detailed-description.md:7:The product tray 20 is an upwardly open receptacle having a bottom wall and tray side walls 26, and receives the goods to be transported. A product region is the space within the product tray 20 that is occupied by those goods. Tray feet 22 depend from the product tray 20 and stand on the floor 12, so that the product tray 20 is supported above the floor 12 and a lower return passage 24 remains between the bottom wall of the product tray 20 and the floor 12.
+draft/08-detailed-description.md:9:The tray side walls 26 are spaced inward from the side walls 14 of the outer shell 10, so that two side supply passages 28 are formed, each side supply passage 28 extending downward between one tray side wall 26 and the confronting side wall 14. Perforations 30 through the product tray 20 open from the side supply passages 28 into the lower return passage 24. The tray side walls 26, one side supply passage 28 and the perforations 30 are seen in FIG. 4.
+draft/08-detailed-description.md:15:[Omitted long matching line]
+draft/08-detailed-description.md:17:The spacer frame 42 also defines a mating channel 56 that opens upward at a top region of the spacer frame 42, and carries resilient feet 58. The mating channel 56 and a rib entering it from above are shaped so that engagement between them during the closing travel translates the spacer frame 42 horizontally into position, rather than merely resting one upon the other.
+draft/08-detailed-description.md:21:[Omitted long matching line]
+draft/08-detailed-description.md:25:[Omitted long matching line]
+draft/08-detailed-description.md:29:[Omitted long matching line]
+draft/08-detailed-description.md:31:The carrier 100 is free of a fan, a pump and any powered air mover. Air warmed in the product region rises to the central inlet opening 48, and air cooled along the faces of the phase-change cassettes descends through the guide ducts 50 and the side supply passages 28, so that circulation proceeds without any powered air mover.
+draft/08-detailed-description.md:35:[Omitted long matching line]
+draft/08-detailed-description.md:37:The absorbent wick 72 carries a pull tab 74 that remains accessible when the product tray 20 is removed from the outer shell 10. A saturated wick is therefore drawn out and replaced as a service item between shipments, by lifting out the product tray 20 and pulling the pull tab 74, without opening a phase-change cassette and without taking the cassettes out of service to dry the interior.
+draft/08-detailed-description.md:45:[Omitted long matching line]
+draft/08-detailed-description.md:47:[Omitted long matching line]
+draft/08-detailed-description.md:51:[Omitted long matching line]
+draft/08-detailed-description.md:55:[Omitted long matching line]
+draft/07-drawings.md:3:FIG. 2 is a perspective view of the thermal module removed from the carrier, showing the spacer frame, the two opposed phase-change cassettes, the central inlet opening, a peripheral outlet opening, the mating channel and the resilient feet.
+draft/07-drawings.md:7:FIG. 4 is an enlarged view of the lower side region of FIG. 1 enclosed by the broken-line curve there designated FIG. 4, showing a peripheral outlet opening where a guide duct meets a side supply passage, perforations of the product tray, and the lower return passage.
+draft/07-drawings.md:9:FIG. 5 is an enlarged view of the condensate channel region of FIG. 1 enclosed by the broken-line curve there designated FIG. 5, showing a discharge opening at a lower end of a guide duct, the condensate channel, the absorbent wick and its pull tab.
+review/previous-qa.md:5:[Omitted long matching line]
+review/previous-qa.md:9:[Omitted long matching line]
+review/previous-qa.md:17:[Omitted long matching line]
+review/previous-qa.md:22:  - Indicator body drawn open at both ends through the full wall thickness, with the stem's inner end projecting into the interior, is untraced
+review/previous-qa.md:29:[Omitted long matching line]
+review/previous-qa.md:30:  - Suggested fix: In figures/FIG-2.md replace the sentence with: "The top edge of the near long side wall carries an upwardly open groove, shown schematically. This groove is the mating channel 56." Leave the numeral note ("56: well inside the groove in the top edge of the near long side wall.") unchanged. No change to draft/07-drawings.md, draft/08-detailed-description.md, or the claims is required, since none of them verbalises the channel's runout direction.
+review/previous-qa.md:33:[Omitted long matching line]
+review/previous-qa.md:34:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:4:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:6:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:19:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:21:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:23:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:25:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:28:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:31:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:32:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:36:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:38:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:41:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:42:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:44:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:48:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:257:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:258:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:259:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:261:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:317:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:319:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:348:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:350:[Omitted long matching line]
+.agent/source-review-0080-58d073df0176.jsonl:352:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:4:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:6:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:21:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:23:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:25:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:27:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:30:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:31:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:33:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:37:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:39:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:41:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:43:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:45:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:49:[Omitted long matching line]
+.agent/source-review-0089-a6ebacc632b3.jsonl:224:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:4:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:6:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:20:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:22:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:24:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:26:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:28:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:30:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:32:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:36:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:38:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:40:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:42:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:44:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:48:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:387:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:388:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:392:[Omitted long matching line]
+.agent/source-review-0080-c21ea7cb7778.jsonl:394:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:4:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:6:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:19:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:21:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:23:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:29:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:57:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:59:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:61:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:63:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:68:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:72:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:74:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:76:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:94:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:96:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:98:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:225:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:227:[Omitted long matching line]
+.agent/source-review-0080-29a93b131079.jsonl:229:[Omitted long matching line]
+.agent/review-0001-04.jsonl:13:[Omitted long matching line]
+.agent/review-0001-04.jsonl:15:[Omitted long matching line]
+.agent/review-0001-04.jsonl:28:[Omitted long matching line]
+.agent/review-0001-04.jsonl:30:[Omitted long matching line]
+.agent/review-0001-04.jsonl:32:[Omitted long matching line]
+.agent/review-0001-04.jsonl:34:[Omitted long matching line]
+.agent/review-0001-04.jsonl:36:[Omitted long matching line]
+.agent/review-0001-04.jsonl:38:[Omitted long matching line]
+.agent/review-0001-04.jsonl:40:[Omitted long matching line]
+.agent/review-0001-04.jsonl:45:[Omitted long matching line]
+.agent/review-0001-04.jsonl:47:[Omitted long matching line]
+.agent/review-0001-04.jsonl:49:[Omitted long matching line]
+.agent/review-0001-04.jsonl:51:[Omitted long matching line]
+.agent/review-0001-04.jsonl:53:[Omitted long matching line]
+.agent/review-0001-04.jsonl:57:[Omitted long matching line]
+.agent/review-0001-04.jsonl:135:[Omitted long matching line]
+.agent/review-0001-04.jsonl:142:[Omitted long matching line]
+.agent/review-0001-04.jsonl:218:[Omitted long matching line]
+.agent/review-0001-04.jsonl:222:[Omitted long matching line]
+.agent/review-0001-04.jsonl:223:[Omitted long matching line]
+.agent/review-0001-04.jsonl:301:[Omitted long matching line]
+.agent/review-0001-04.jsonl:312:[Omitted long matching line]
+.agent/review-0001-04.jsonl:313:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:4:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:6:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:19:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:21:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:23:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:25:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:27:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:29:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:31:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:35:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:37:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:39:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:42:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:43:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:45:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:285:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:287:[Omitted long matching line]
+.agent/source-review-0080-2b2fb52f7689.jsonl:289:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:4:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:6:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:18:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:20:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:22:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:24:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:26:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:28:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:30:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:34:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:36:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:38:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:40:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:42:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:46:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:359:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:361:[Omitted long matching line]
+.agent/source-review-0089-ff0cea201862.jsonl:363:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:4:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:6:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:20:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:22:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:24:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:26:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:28:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:30:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:32:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:36:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:38:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:40:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:42:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:44:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:46:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:288:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:289:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:384:[Omitted long matching line]
+.agent/source-review-0080-89d5698e06ae.jsonl:386:[Omitted long matching line]
+
+[Showing results with pagination = limit: 250]

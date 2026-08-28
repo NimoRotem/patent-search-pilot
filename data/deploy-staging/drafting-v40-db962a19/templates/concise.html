@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}Concise descriptions of relevance | Rotem Patents{% endblock %}
+{% block body %}
+{#
+  The picker for 37 CFR 1.290 submissions. Deliberately shows what the evidence actually supports
+  BEFORE anything is generated: how many claims each reference speaks to, and how many of those
+  rest on a verbatim passage rather than a characterisation. A document with no strong rows can
+  still be filed, but the practitioner should know that before it goes in the envelope.
+#}
+<h1 style="margin-bottom:.2em">Concise descriptions of relevance</h1>
+<p class="small muted" style="margin-top:0">
+  Third-party preissuance submission under 37 CFR § 1.290 — one document per reference, built from
+  this search's per-claim evidence. <a href="{{ url_for('report', slug=slug) }}">back to the report</a>
+</p>
+
+{#  BUILD PROGRESS. A build is minutes of work — a model call and an enrichment fetch per
+    document, then the compliance pass, then two renderings each — and it used to run inside the
+    POST with nothing on screen, which reads exactly like a click that did not register. The bar is
+    driven by real step counts from the server, not a timer. #}
+<div id="cdProg" class="card" style="margin:1em 0;padding:.8em 1em" {% if not building|default(false) %}hidden{% endif %}>
+  <b id="cdProgTitle">Building the submission…</b>
+  <div class="exprogbar" style="margin:.5em 0 .3em"><div class="exprogfill" id="cdProgFill"></div></div>
+  <div class="exprogrow">
+    <span id="cdProgMsg">Starting</span>
+    <span id="cdProgCount" class="small muted"></span>
+    <span id="cdProgClock" class="small muted"></span>
+  </div>
+  <p class="small muted" style="margin:.4em 0 0">
+    You can leave this page; the build keeps going and the documents will be here when you return.
+  </p>
+</div>
+
+{% if error %}<div class="warn" style="margin:1em 0">{{ error }}</div>{% endif %}
+
+{#  What the compliance pass refused or merged. Shown BEFORE the download list on purpose: a
+    document that was dropped is a decision the practitioner has to agree with, and finding out
+    afterwards that a reference is missing is worse than being told why. #}
+{#  THE VERDICT, where the practitioner lands after the build. The audit paper in the packet says
+    the same thing at length; this is so the answer is on screen without opening a PDF. #}
+{% if verdict %}
+<div class="card" style="margin:1em 0;padding:.7em 1em">
+  <b>{{ verdict }}</b>
+  <p class="small muted" style="margin:.3em 0 0">Every requirement of 37 CFR 1.290 is listed in
+    <b>00_AUDIT.pdf</b> in the archive, with the paragraph it comes from and whether this packet
+    satisfies it.</p>
+</div>
+{% endif %}
+{% if blocked %}
+<div class="warn" style="margin:1em 0">
+  <b>Not filed. These were refused and are not in the packet:</b>
+  <ul style="margin:.4em 0 0 1.1em">
+    {% for b in blocked %}<li><b>{{ b.pub }}</b>: {{ b.why }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% if family_notes %}
+<div class="card" style="margin:1em 0;padding:.7em 1em">
+  <b class="small">Family members merged</b>
+  <ul class="small muted" style="margin:.3em 0 0 1.1em">
+    {% for n in family_notes %}<li>{{ n }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if docs %}
+<div class="card" style="margin:1em 0;padding:1em">
+  <h2 style="margin-top:0">Ready to file</h2>
+  <table class="tbl">
+    <thead><tr><th>#</th><th>Document</th><th>Claims addressed</th><th>Download</th></tr></thead>
+    <tbody>
+    {% for d in docs %}
+      <tr>
+        <td>{{ d.n }}</td>
+        <td>{{ d.label }}<br><span class="small muted">{{ d.pub }}</span></td>
+        <td>{{ d.rows }} row{{ '' if d.rows == 1 else 's' }}</td>
+        <td>
+          <a href="{{ url_for('concise_document', slug=slug, n=d.n) }}"><b>Preview &amp; edit</b></a> ·
+          <a href="{{ url_for('concise_download', slug=slug, name=d.pdf) }}">PDF</a> ·
+          <a href="{{ url_for('concise_download', slug=slug, name=d.docx) }}">DOCX</a>
+          {#  Read these HERE. They are no longer printed into the paper: one of them said, on a
+              document filed at the Office, that quotations had failed verification. #}
+          {% if d.notes %}
+          <details class="small" style="margin-top:.35rem">
+            <summary>{{ d.notes|length }} note{{ '' if d.notes|length == 1 else 's' }} to check before filing</summary>
+            <ul style="margin:.3rem 0 0 1.1rem;line-height:1.5">
+              {% for label, text in d.notes %}<li><b>{{ label }}.</b> {{ text }}</li>{% endfor %}
+            </ul>
+            <p class="muted" style="margin:.35rem 0 0">These are for you, not for the examiner, and
+              are deliberately not printed into the PDF or the DOCX.</p>
+          </details>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p style="margin:.6em 0">
+    <a class="btn sm" href="{{ url_for('concise_zip', slug=slug) }}">Download all as .zip</a>
+    <span class="small muted">PDFs and DOCXs only — the working files stay here.</span>
+  </p>
+  <p class="small muted">
+    PDF is the filing artefact; DOCX is the editable copy. Every coordinate on the page comes from
+    the passage the reader actually read — nothing is written by a model. Check the biblio block
+    and the application identification before filing.
+  </p>
+</div>
+{% endif %}
+
+{% if cands %}
+<form method="post" id="cdForm"{% if building|default(false) %} hidden{% endif %} action="{{ url_for('concise_descriptions', slug=slug) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card" style="margin:1em 0;padding:1em">
+    <h2 style="margin-top:0">The application under examination</h2>
+    <p class="small muted" style="margin-top:0">
+      Named on every page. The search may have been run from a family member or an uploaded draft,
+      so these are editable.
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));gap:.6em">
+      <label>Application No.<br><input name="app_no" value="{{ subject.app_no }}" placeholder="18/915,337" style="width:100%"></label>
+      <label>Publication No.<br><input name="pub_no" value="{{ subject.pub_no }}" placeholder="US 2025/0033224 A1" style="width:100%"></label>
+      <label>Title<br><input name="title" value="{{ subject.title }}" placeholder="Portable vacuum gripper" style="width:100%"></label>
+      <label>First named inventor<br><input name="inventor" value="{{ subject.inventor }}" placeholder="Nhon Hoa Nguyen" style="width:100%"></label>
+    </div>
+    <label class="small" style="display:block;margin-top:.6em">Number the first document as
+      <input name="start_at" value="1" size="3"></label>
+  </div>
+
+  <div class="card" style="margin:1em 0;padding:1em">
+    <h2 style="margin-top:0">Documents</h2>
+    <p class="small muted" style="margin-top:0">
+      Ranked by <b>what each document does to the claims</b>: what the ledger computes it
+      anticipates first, then whether a USPTO examiner applied it against this family, then whole
+      dependent additions, then evidence on the independent claims, and only then breadth. One
+      document per patent family. <b>Strong</b> counts rows backed by a verbatim passage; the rest
+      are characterisations, which are filed without quotation marks.
+    </p>
+    <table class="tbl">
+      <thead><tr><th></th><th>Reference</th><th>What it does</th><th>Claims</th><th>Rows</th><th>Strong</th></tr></thead>
+      <tbody>
+      {% for c in cands %}
+        <tr>
+          <td><input type="checkbox" name="pubs" value="{{ c.pub }}" {% if loop.index <= 6 %}checked{% endif %}></td>
+          <td>{% if c.kind == 'office_action' %}<b>Office action</b>{% else %}{{ c.pub }}{% endif %}
+            <br><span class="small muted">{{ c.title[:90] }}</span>
+            {% if c.family_siblings %}<br><span class="small muted">also published as {{ c.family_siblings[:3]|join(', ') }}{% if c.family_siblings|length > 3 %} and {{ c.family_siblings|length - 3 }} more{% endif %}. One member is filed; the family is one disclosure</span>{% endif %}</td>
+          <td class="small">
+            {% if c.anticipates %}<b>anticipates {{ c.anticipates|join(', ') }}</b><br>{% endif %}
+            {% if c.office == 'applied' %}<b>applied by the examiner</b><br>
+            {% elif c.office == 'considered' %}considered by the Office<br>{% endif %}
+            {% if c.adds %}discloses what {{ c.adds[:4]|join(', ') }} adds<br>{% endif %}
+            {% if c.strong_indep %}{{ c.strong_indep }} on the independent claims{% endif %}
+          </td>
+          <td class="small">{{ c.claims|join(', ') }}</td>
+          <td>{{ c.n_rows }}</td>
+          <td>{{ c.n_strong }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <button type="submit" style="margin-top:.8em">Build the concise descriptions</button>
+    <span class="small muted">One model call per document to phrase the disclosure column; the
+      citations are attached from the record.</span>
+  </div>
+</form>
+{% elif not error %}
+<p>No reference in this report carries verified per-claim evidence yet.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var box = document.getElementById('cdProg');
+  if (!box) return;
+  var fill = document.getElementById('cdProgFill'),
+      msg  = document.getElementById('cdProgMsg'),
+      cnt  = document.getElementById('cdProgCount'),
+      clk  = document.getElementById('cdProgClock'),
+      ttl  = document.getElementById('cdProgTitle'),
+      form = document.getElementById('cdForm'),
+      url  = {{ url_for('concise_progress', slug=slug)|tojson }},
+      running = {{ (building|default(false))|tojson }},
+      timer = null;
+
+  function show(on) {
+    box.hidden = !on;
+    if (form) form.hidden = on;
+  }
+
+  function paint(d) {
+    //  The server counts real steps, so the bar never runs ahead of the work. It only ever moves
+    //  forward: a poll that races a step must not make it jump backwards.
+    var pct = Math.max(0, Math.min(100, d.pct || 0));
+    var now = parseFloat(fill.style.width) || 0;
+    fill.style.width = Math.max(now, pct).toFixed(1) + '%';
+    msg.textContent = d.msg || 'Working';
+    cnt.textContent = d.total ? ('step ' + d.done + ' of ' + d.total) : '';
+    clk.textContent = d.elapsed ? ('· ' + d.elapsed + 's') : '';
+  }
+
+  function poll() {
+    fetch(url, {credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.state === 'running') { paint(d); return; }
+        if (d.state === 'done') {
+          fill.style.width = '100%';
+          msg.textContent = d.msg || 'Ready';
+          ttl.textContent = 'Done';
+          clearInterval(timer);
+          //  Reload rather than patch the DOM: the finished page also carries the compliance
+          //  findings, the family merges and anything that was refused, and those are decisions
+          //  the practitioner has to see.
+          setTimeout(function () { location.reload(); }, 600);
+          return;
+        }
+        if (d.state === 'failed') {
+          clearInterval(timer);
+          ttl.textContent = 'Build failed';
+          msg.textContent = d.error || 'The error is in the server log.';
+          fill.style.background = 'var(--bad, #b00)';
+          if (form) form.hidden = false;
+          return;
+        }
+        clearInterval(timer);           // idle: nothing to watch
+        show(false);
+      })
+      .catch(function () { /* a dropped poll is not a failed build; the next tick retries */ });
+  }
+
+  if (running) { show(true); poll(); timer = setInterval(poll, 1000); }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,172 @@
+{
+ "A_baseline": {
+  "tally": {
+   "accurate": 28,
+   "overclaims": 7,
+   "hallucinates": 3
+  },
+  "n": 38,
+  "bad": 10,
+  "rate": 0.2632
+ },
+ "B_desync_fixed": {
+  "tally": {
+   "accurate": 35,
+   "overclaims": 3
+  },
+  "n": 38,
+  "bad": 3,
+  "rate": 0.0789
+ },
+ "C_fixed": {
+  "tally": {
+   "accurate": 37,
+   "overclaims": 3
+  },
+  "n": 40,
+  "bad": 3,
+  "rate": 0.075
+ },
+ "why_verifier_states": {
+  "verified": 37,
+  "corrected": 3
+ },
+ "chart": {
+  "per_slug": [
+   {
+    "slug": "grabo_gripper_novelty",
+    "before": {
+     "n": 5,
+     "false_positives": 2,
+     "rate": 0.4
+    },
+    "after_shown_as_coverage": {
+     "n": 3,
+     "false_positives": 0,
+     "rate": 0.0
+    },
+    "verification": {
+     "discloses": 3,
+     "weak": 1,
+     "unrelated": 1,
+     "no-coord": 4,
+     "unchecked": 0,
+     "covered": 9,
+     "checked": 5,
+     "confirmed_rate": 0.6,
+     "truncated": false
+    },
+    "cells": [
+     {
+      "element": "Rigid base element with first and second opposite ",
+      "pub": "US-9266686-B2",
+      "judge": "unrelated",
+      "verify": "unrelated"
+     },
+     {
+      "element": "Loop-shaped vacuum seal element",
+      "pub": "US-11078051-B2",
+      "judge": "related",
+      "verify": "discloses"
+     },
+     {
+      "element": "Seal element with contact surface and encircling s",
+      "pub": "US-2006042892-A1",
+      "judge": "related",
+      "verify": "discloses"
+     },
+     {
+      "element": "Seal element elastically deformable at contact sur",
+      "pub": "EP-0095218-B1",
+      "judge": "related",
+      "verify": "discloses"
+     },
+     {
+      "element": "Air extraction means mounted to first side",
+      "pub": "US-2018244032-A1",
+      "judge": "unrelated",
+      "verify": "weak"
+     }
+    ]
+   },
+   {
+    "slug": "schmalz_vacuum_clamp",
+    "before": {
+     "n": 7,
+     "false_positives": 5,
+     "rate": 0.7143
+    },
+    "after_shown_as_coverage": {
+     "n": 2,
+     "false_positives": 0,
+     "rate": 0.0
+    },
+    "verification": {
+     "discloses": 2,
+     "weak": 2,
+     "unrelated": 3,
+     "no-coord": 2,
+     "unchecked": 0,
+     "covered": 9,
+     "checked": 7,
+     "confirmed_rate": 0.286,
+     "truncated": false
+    },
+    "cells": [
+     {
+      "element": "Driven driver for moving a clamping means",
+      "pub": "US-2002074703-A1",
+      "judge": "related",
+      "verify": "discloses"
+     },
+     {
+      "element": "Driven driver for moving a clamping means",
+      "pub": "US-2001045490-A1",
+      "judge": "unrelated",
+      "verify": "unrelated"
+     },
+     {
+      "element": "Driver arranged on a side wall of the console",
+      "pub": "US-2002074703-A1",
+      "judge": "weak",
+      "verify": "weak"
+     },
+     {
+      "element": "Driver arranged on a side wall of the console",
+      "pub": "US-2005045794-A1",
+      "judge": "unrelated",
+      "verify": "weak"
+     },
+     {
+      "element": "Driver displaceably guided along the console's lon",
+      "pub": "US-2006137504-A1",
+      "judge": "unrelated",
+      "verify": "unrelated"
+     },
+     {
+      "element": "Driver with at least one extendable driver pin",
+      "pub": "US-2009074555-A1",
+      "judge": "unrelated",
+      "verify": "unrelated"
+     },
+     {
+      "element": "Driver pin for mechanical coupling of clamping mea",
+      "pub": "EP-0176125-A1",
+      "judge": "related",
+      "verify": "discloses"
+     }
+    ]
+   }
+  ],
+  "TOTAL_before": {
+   "n": 12,
+   "false_positives": 7,
+   "rate": 0.5833
+  },
+  "TOTAL_after_shown_as_coverage": {
+   "n": 5,
+   "false_positives": 0,
+   "rate": 0.0
+  }
+ }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "pct-a4-2026.1",
+  "jurisdiction": "PCT",
+  "effective_checked": "2026-08-10",
+  "authority": "PCT Rules 11.5, 11.6(c), 11.13",
+  "source_url": "https://www.wipo.int/en/web/pct-system/texts/rules/r11",
+  "sheet_mm": [210, 297],
+  "margins_mm": {"top": 25, "left": 25, "right": 15, "bottom": 10},
+  "usable_mm": [170, 262],
+  "units_per_mm": 10,
+  "minimum_character_height_mm": 3.2,
+  "stroke_mm": 0.35,
+  "thin_stroke_mm": 0.25,
+  "allow_color": false,
+  "allow_frames": false,
+  "sheet_number_format": "{sheet}/{total}"
+}

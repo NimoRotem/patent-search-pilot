@@ -1,0 +1,149 @@
+{
+ "disclosure_list_version": "2026-08-05.1",
+ "subject_id": "b66c_ep2172684a1",
+ "subject_pub": "EP-2172684-A1",
+ "n_claims_source": 13,
+ "claims_source": "family_claims:US-2010086361-A1",
+ "description_chars": 0,
+ "description_source": "none",
+ "summary": {
+  "n": 20,
+  "by_kind": {
+   "independent_limitation": 6,
+   "combination": 4,
+   "dependent_limitation": 10
+  }
+ },
+ "problems": [],
+ "usable": true,
+ "weights_are": "fixed_by_kind",
+ "kind_weights": {
+  "independent_limitation": 1.0,
+  "combination": 0.9,
+  "dependent_limitation": 0.7,
+  "potential_claim": 0.55
+ },
+ "disclosures": [
+  {
+   "text": "Pipe pushing apparatus for connection to an excavator",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a pair of jaws having cooperating pipe-gripping surfaces",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a hydraulic ram coupled to the jaws",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "ram capable of actuating jaws to grip a pipe",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a connection portion to connect to an excavator articulated arm",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "a hydraulic fluid distributor to distribute fluid from excavator auxiliary lines to the ram",
+   "kind": "independent_limitation",
+   "source": "claim 1",
+   "weight": 1.0
+  },
+  {
+   "text": "Pipe pushing apparatus for connection to an excavator, having a pair of jaws with cooperating pipe-gripping surfaces, a hydraulic ram coupled to and actuating the jaws to grip a pipe, a connection portion to connect to an excavator articula",
+   "kind": "combination",
+   "source": "claim 1",
+   "weight": 0.9
+  },
+  {
+   "text": "Excavator including pipe pushing apparatus, an articulated arm rigidly connected to the connection portion, and auxiliary hydraulic supply lines connected to the hydraulic fluid distributor",
+   "kind": "combination",
+   "source": "claim 11",
+   "weight": 0.9
+  },
+  {
+   "text": "Kit of parts including pipe pushing apparatus and a plurality of pairs of removable and replaceable jaw liners, each pair having pipe-gripping surfaces of a different curvature",
+   "kind": "combination",
+   "source": "claim 12",
+   "weight": 0.9
+  },
+  {
+   "text": "Method of pushing pipe using an excavator and apparatus, including connecting the apparatus to the excavator arm and hydraulic lines, distributing fluid to actuate jaws, and manipulating the arm to move the pipe",
+   "kind": "combination",
+   "source": "claim 13",
+   "weight": 0.9
+  },
+  {
+   "text": "jaws pivotable about a pivot between first and second end portions",
+   "kind": "dependent_limitation",
+   "source": "claim 2",
+   "weight": 0.7
+  },
+  {
+   "text": "cooperating pipe-gripping surfaces each have an arcuate cross-section",
+   "kind": "dependent_limitation",
+   "source": "claim 3",
+   "weight": 0.7
+  },
+  {
+   "text": "each jaw includes a removable and replaceable jaw liner",
+   "kind": "dependent_limitation",
+   "source": "claim 4",
+   "weight": 0.7
+  },
+  {
+   "text": "connection portion is rotatable relative to the jaws",
+   "kind": "dependent_limitation",
+   "source": "claim 5",
+   "weight": 0.7
+  },
+  {
+   "text": "connection portion includes a locking mechanism for locking orientation",
+   "kind": "dependent_limitation",
+   "source": "claim 6",
+   "weight": 0.7
+  },
+  {
+   "text": "hydraulic fluid distributor has first and second hoses connectable to auxiliary line couplings",
+   "kind": "dependent_limitation",
+   "source": "claim 7",
+   "weight": 0.7
+  },
+  {
+   "text": "first hose distributes fluid to a first end of the ram",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "second hose distributes fluid to a second end of the ram",
+   "kind": "dependent_limitation",
+   "source": "claim 8",
+   "weight": 0.7
+  },
+  {
+   "text": "including a further pair of jaws with cooperating curved pipe-gripping surfaces",
+   "kind": "dependent_limitation",
+   "source": "claim 9",
+   "weight": 0.7
+  },
+  {
+   "text": "including two removable and replaceable jaw liners, one for each jaw of each pair",
+   "kind": "dependent_limitation",
+   "source": "claim 10",
+   "weight": 0.7
+  }
+ ],
+ "content_hash": "b626793ff15fd625"
+}

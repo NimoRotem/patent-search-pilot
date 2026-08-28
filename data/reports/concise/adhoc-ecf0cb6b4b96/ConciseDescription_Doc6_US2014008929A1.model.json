@@ -1,0 +1,102 @@
+{
+ "n": 6,
+ "pub": "US-2014008929-A1",
+ "family_id": "44366539",
+ "biblio": {
+  "pub": "US-2014008929-A1",
+  "label": "U.S. Patent Application Publication No. US 2014/0008929 A1",
+  "kind": "publication",
+  "title": "Vacuum gripper device",
+  "country": "US",
+  "inventor": "Ho-Young Cho",
+  "assignee": "Korea Pneumatic System Co Ltd",
+  "publication_date": "2014-01-09",
+  "priority_date": "2011-03-31",
+  "filing_date": "2012-02-16",
+  "dates_source": "corpus",
+  "abstract": "The present invention relates to a vacuum gripper device used in a vacuum transfer system. The device of the present invention includes a vacuum pump that is directly embedded in a negative pressure chamber of a gripper main body, wherein the gripper main body is designed with a configuration for supporting and operating the vacuum pump, such as a first hole and a second hole connected to an inlet and an outlet of the vacuum pump. Here, the vacuum pump is preferably supported by a fixing block provided inside the negative pressure chamber. The present invention does not cause any vacuum loss during the operation of the vacuum pump, and forms a desired level of vacuum pressure quickly. In addition, the vacuum gripper device of the present invention can be designed compactly and safely although the device includes the vacuum pump.",
+  "issue_date_pretty": "January 9, 2014",
+  "priority_date_pretty": "March 31, 2011"
+ },
+ "subject": {
+  "app_no": "19/315,746",
+  "pub_no": "US 2026/0109053 A1",
+  "title": "",
+  "inventor": ""
+ },
+ "summary": "This document discloses a vacuum gripper device used in a vacuum transfer system, which includes a vacuum pump directly embedded in a negative pressure chamber of a gripper main body, and is designed to quickly form a desired level of vacuum pressure.",
+ "rows": [
+  {
+   "claim_no": 1,
+   "label": "claim 1[e]",
+   "quote_claim": true,
+   "claim_text": "a sound-damping device is arranged in the grip portion",
+   "claim_paraphrase": "a sound-damping device is arranged in the grip portion",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "reference numeral 29 denotes a typical silencer that is combined with the second hole 12 such that the silencer 29 communicates with the outlet 28 .",
+   "note": "The reference discloses a silencer (sound-damping device) connected to the vacuum pump's outlet",
+   "cites": [
+    "Paragraph [0012]"
+   ],
+   "confidence": 0.7,
+   "_id": 3,
+   "disclosure": "The reference discloses a silencer 29 that is combined with the second hole 12 such that the silencer 29 communicates with the outlet 28."
+  },
+  {
+   "claim_no": 9,
+   "label": "claim 9[a]",
+   "quote_claim": false,
+   "claim_text": "A vacuum handling apparatus comprising",
+   "claim_paraphrase": "A vacuum handling apparatus comprising",
+   "verdict": "disclosed",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The present invention relates to a vacuum gripper device used in a vacuum transfer system.",
+   "note": "The reference discloses a vacuum gripper device used in a vacuum transfer system, which is a type of vacuum handling apparatus.",
+   "cites": [
+    "Abstract",
+    "Paragraph [0013]"
+   ],
+   "confidence": 0.8,
+   "_id": 4,
+   "disclosure": "The reference discloses a vacuum gripper device used in a vacuum transfer system."
+  },
+  {
+   "claim_no": 10,
+   "label": "claim 10[a]",
+   "quote_claim": false,
+   "claim_text": "The vacuum handling apparatus according to claim 9, wherein the grip unit and the suction plate are releasably connected to one another via a coupling device",
+   "claim_paraphrase": "The vacuum handling apparatus according to claim 9, wherein the grip unit and the suction plate are releasably connected to one another via a coupling device",
+   "verdict": "partial",
+   "bar": "discloses",
+   "strong": true,
+   "quote": "The suction plate 30 is mounted to the gripper main body 10 using locking bolts",
+   "note": "The reference discloses the suction plate being mounted to the gripper main body using locking bolts, which implies a releasable connection",
+   "cites": [
+    "Paragraph [0013]"
+   ],
+   "confidence": 0.7,
+   "_id": 5,
+   "disclosure": "The reference discloses that the suction plate 30 is mounted to the gripper main body 10 using locking bolts."
+  }
+ ],
+ "compliance": {
+  "qualify": {
+   "basis": "unknown",
+   "blocked": false,
+   "note": "The target's effective filing date was not supplied, so prior-art status could not be checked. Confirm it before filing."
+  },
+  "quotes": {
+   "checked": 6,
+   "dropped": 3,
+   "note": "3 of 6 quotations could not be found in the stored text of this reference and were removed; the finding and its citation remain."
+  },
+  "rows_dropped": 3,
+  "translation": {
+   "translated": 0
+  },
+  "neutralised": []
+ }
+}
