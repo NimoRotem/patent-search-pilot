@@ -5098,6 +5098,49 @@ def _right_vertex_reclosure_branch_current_safety_flow_specification():
     """
 
 
+def _serial_branch_current_safety_flow_specification():
+    return """
+    A flat process flow diagram in plain black line work on white, with no shading and no text.
+    A diamond shape, the branch current check step 302, is at the top center. A rectangle, the
+    shedding step 304, is located directly below the branch current check step. A diamond shape,
+    the welded contactor check step 306, is located directly below the shedding step. A rectangle,
+    the fault indication step 308, is located directly below the welded contactor check step.
+
+    A line leaves the right vertex of the branch current check step, loops clockwise, and enters
+    the upper-right face of the same diamond. A line leaves the bottom vertex of the branch current
+    check step and enters the top of the shedding step. A line leaves the bottom of the shedding
+    step and enters the top vertex of the welded contactor check step. A line leaves the bottom
+    vertex of the welded contactor check step and enters the top of the fault indication step. A
+    line leaves the left vertex of the welded contactor check step, curves upward, and enters the
+    upper-left face of the branch current check step.
+
+    A large square bracket 300 opens to the right and encloses all other shapes, indicating the
+    branch current safety process.
+    """
+
+
+def _welded_decision_branch_current_safety_flow_specification():
+    return """
+    A flat process flow diagram in plain black line work on white, with no shading and no text.
+    A diamond shape, the branch current check step 302, is at the top center. A rectangle, the
+    shedding step 304, is located directly below the branch current check step. A diamond shape,
+    the welded contactor check step 306, is located to the right of the shedding step. A rectangle,
+    the fault indication step 308, is located directly below the welded contactor check step.
+
+    A line leaves the right vertex of the branch current check step, loops clockwise, and
+    re-enters the branch current check step on its upper-right face. A line leaves the bottom
+    vertex of the branch current check step and enters the top of the shedding step. A line leaves
+    the right side of the shedding step and enters the left vertex of the welded contactor check
+    step. A line leaves the top vertex of the welded contactor check step, curves upward and to the
+    left, and re-enters the branch current check step on its upper-left face. A line leaves the
+    bottom vertex of the welded contactor check step and enters the top of the fault indication
+    step.
+
+    A large square bracket 300 opens to the right and encloses all other shapes, indicating the
+    branch current safety process.
+    """
+
+
 def test_branch_current_safety_flow_template_certifies_every_route_and_anchor():
     specification = _branch_current_safety_flow_specification()
     numerals = [
@@ -5225,6 +5268,104 @@ def test_branch_current_safety_flow_routes_right_vertex_to_reclosure_exactly():
     assert all(
         left < x <= right and top <= y <= bottom
         for x, y in reclosure["line_samples"])
+
+
+def test_serial_branch_current_safety_flow_without_reclosure_is_rendered_exactly():
+    specification = _serial_branch_current_safety_flow_specification()
+    numerals = [
+        "300 branch current safety process: leader points to the large square bracket.",
+        "302 branch current check step", "304 shedding step",
+        "306 welded contactor check step", "308 fault indication step",
+    ]
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": numeral, "x": 500, "y": 500, "visible": True}
+                for numeral in ("300", "302", "304", "306", "308")
+            ],
+        })
+    semantic = draft_figures._apply_pixel_grounding(png, numerals, semantic)
+
+    assert draft_figures._control_diagram_kind(
+        specification) == "branch_current_safety_flow_serial"
+    assert png is not None and certificate["ok"] is True
+    assert certificate["renderer"] == "branch_current_safety_flow_serial"
+    constraints = certificate["certified_constraints"]
+    assert constraints["branch_safety_shape_sequence"]["shape_count"] == 4
+    assert constraints["branch_safety_feedback"]["origin"] == "welded_left_vertex"
+    assert constraints["branch_safety_feedback"]["target_mode"] == "upper_left_face"
+    assert all(item["ok"] is True for item in constraints.values())
+    left, top, right, bottom = constraints[
+        "branch_safety_bracket"]["enclosed_bounds"]
+    for category in (
+            "branch_safety_self_loop", "branch_safety_shedding_path",
+            "branch_safety_shedding_welded_path", "branch_safety_fault_path",
+            "branch_safety_feedback"):
+        assert all(
+            left < x <= right and top <= y <= bottom
+            for x, y in constraints[category]["line_samples"])
+    assert {item["numeral"] for item in semantic["anchors"]} == {
+        "300", "302", "304", "306", "308"
+    }
+    assert len({(item["x"], item["y"]) for item in semantic["anchors"]}) == 5
+    assert semantic["pixel_anchor_audit"]["ok"] is True
+
+
+def test_welded_decision_branch_current_safety_flow_is_rendered_exactly():
+    specification = _welded_decision_branch_current_safety_flow_specification()
+    numerals = [
+        "300 branch current safety process: leader points to the large square bracket.",
+        "302 branch current check step", "304 shedding step",
+        "306 welded contactor check step", "308 fault indication step",
+    ]
+
+    assert draft_figures._control_diagram_kind(
+        specification) == "branch_current_safety_flow_welded_decision"
+    routes = draft_figures._branch_current_safety_flow_routes(specification)
+    assert routes["self_target"] == "upper_right_face"
+    assert routes["feedback_target"] == "upper_left_face"
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": numeral, "x": 500, "y": 500, "visible": True}
+                for numeral in ("300", "302", "304", "306", "308")
+            ],
+        })
+    semantic = draft_figures._apply_pixel_grounding(png, numerals, semantic)
+
+    assert certificate["ok"] is True
+    assert certificate["renderer"] == "branch_current_safety_flow_welded_decision"
+    constraints = certificate["certified_constraints"]
+    assert constraints["branch_safety_shape_sequence"]["shape_count"] == 4
+    assert constraints["branch_safety_feedback"]["origin"] == "welded_top_vertex"
+    assert constraints["branch_safety_feedback"]["target_mode"] == "upper_left_face"
+    assert all(item["ok"] is True for item in constraints.values())
+    left, top, right, bottom = constraints[
+        "branch_safety_bracket"]["enclosed_bounds"]
+    for category in (
+            "branch_safety_self_loop", "branch_safety_shedding_path",
+            "branch_safety_shedding_welded_path", "branch_safety_fault_path",
+            "branch_safety_feedback"):
+        assert all(
+            left < x <= right and top <= y <= bottom
+            for x, y in constraints[category]["line_samples"])
+    assert {item["numeral"] for item in semantic["anchors"]} == {
+        "300", "302", "304", "306", "308"
+    }
+    assert len({(item["x"], item["y"]) for item in semantic["anchors"]}) == 5
+    assert semantic["pixel_anchor_audit"]["ok"] is True
+    assert draft_figures._certified_geometry_dissent_category(
+        "The return line from the welded contactor check misses the upper-left face of the "
+        "branch current check diamond."
+    ) == "branch_safety_feedback"
 
 
 def test_exact_branch_current_flow_resolves_only_certified_route_dissent(monkeypatch):

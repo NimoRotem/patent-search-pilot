@@ -2239,6 +2239,31 @@ def _control_diagram_kind(caption: str) -> str:
             "reclosure check step",
             "large square bracket",
         ),
+        "branch_current_safety_flow_serial": (
+            "flat process flow diagram",
+            "branch current check step",
+            "shedding step",
+            "welded contactor check step",
+            "fault indication step",
+            "directly below the branch current check step",
+            "directly below the shedding step",
+            "directly below the welded contactor check step",
+            "line leaves the bottom of the shedding step",
+            "line leaves the left vertex of the welded contactor check step",
+            "large square bracket",
+        ),
+        "branch_current_safety_flow_welded_decision": (
+            "flat process flow diagram",
+            "branch current check step",
+            "shedding step",
+            "welded contactor check step",
+            "fault indication step",
+            "located to the right of the shedding step",
+            "line leaves the right side of the shedding step",
+            "line leaves the top vertex of the welded contactor check step",
+            "upper-left face",
+            "large square bracket",
+        ),
         "allocation_flow_split_first": (
             "flat process flow diagram",
             "column of five empty shapes",
@@ -2308,7 +2333,9 @@ def _branch_current_safety_flow_routes(caption: str) -> dict:
         r"[^.]{0,180}enters? the top of the reclosure check step", text)
     return {
         "self_target": (
-            "upper_right_face" if re.search(r"enters? the upper[- ]right face\b", text)
+            "upper_right_face" if re.search(
+                r"line leaves? the right vertex of the branch current check step"
+                r"[^.]{0,260}upper[- ]right face\b", text)
             else "top_vertex"
         ),
         "feedback_origin": (
@@ -2317,7 +2344,7 @@ def _branch_current_safety_flow_routes(caption: str) -> dict:
             else "bottom"
         ),
         "feedback_target": (
-            "upper_left_face" if re.search(r"enters? the upper[- ]left face\b", text)
+            "upper_left_face" if "upper-left face" in text or "upper left face" in text
             else "top_vertex"
         ),
         "shedding_to_welded": bool(re.search(
@@ -2502,6 +2529,30 @@ def _deterministic_control_diagram_anchors(
                 900, 550, "well inside the fault-indication rectangle"),
             "reclosure check step": (
                 500, 670, "well inside the lower-left reclosure rectangle"),
+        }
+    if kind == "branch_current_safety_flow_serial":
+        return kind, {
+            "branch current safety process": (
+                120, 450, "on the vertical stroke of the enclosing square bracket"),
+            "branch current check step": (
+                700, 150, "well inside the upper diamond"),
+            "shedding step": (700, 325, "well inside the shedding rectangle"),
+            "welded contactor check step": (
+                700, 490, "well inside the lower diamond"),
+            "fault indication step": (
+                700, 695, "well inside the fault-indication rectangle"),
+        }
+    if kind == "branch_current_safety_flow_welded_decision":
+        return kind, {
+            "branch current safety process": (
+                120, 450, "on the vertical stroke of the enclosing square bracket"),
+            "branch current check step": (
+                500, 160, "well inside the upper diamond"),
+            "shedding step": (500, 350, "well inside the shedding rectangle"),
+            "welded contactor check step": (
+                900, 350, "well inside the right-hand diamond"),
+            "fault indication step": (
+                900, 550, "well inside the fault-indication rectangle"),
         }
     if kind == "charging_control_overview":
         return kind, {
@@ -3295,6 +3346,79 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
         draw.line((1000, 735, 1000, 70), **line)
         draw.line((1000, 70, 870, 70), **line)
         arrow((870, 70), "left")
+    elif kind == "branch_current_safety_flow_serial":
+        routes = _branch_current_safety_flow_routes(caption)
+        check = ((700, 100), (800, 150), (700, 200), (600, 150))
+        welded = ((700, 440), (800, 490), (700, 540), (600, 490))
+        draw.polygon(check, fill="white", outline="black")
+        draw.line(check + (check[0],), fill="black", width=4)
+        box((550, 280, 850, 370))
+        draw.polygon(welded, fill="white", outline="black")
+        draw.line(welded + (welded[0],), fill="black", width=4)
+        box((550, 650, 850, 740))
+
+        self_target_x = 750 if routes["self_target"] == "upper_right_face" else 700
+        self_target_y = 125 if routes["self_target"] == "upper_right_face" else 100
+        draw.line((800, 150, 1000, 150), **line)
+        draw.line((1000, 150, 1000, 60), **line)
+        draw.line((1000, 60, self_target_x, 60), **line)
+        draw.line((self_target_x, 60, self_target_x, self_target_y), **line)
+        arrow((self_target_x, self_target_y), "down")
+
+        for start, stop in ((200, 280), (370, 440), (540, 650)):
+            draw.line((700, start, 700, stop), **line)
+            arrow((700, stop), "down")
+
+        feedback_target_x = 650 if routes["feedback_target"] == "upper_left_face" else 700
+        feedback_target_y = 125 if routes["feedback_target"] == "upper_left_face" else 100
+        feedback_path = [
+            (600, 490), (330, 490), (330, 80),
+            (feedback_target_x, 80), (feedback_target_x, feedback_target_y),
+        ]
+        draw.line(feedback_path, fill="black", width=4, joint="curve")
+        arrow((feedback_target_x, feedback_target_y), "down")
+
+        draw.line((120, 20, 120, 820), **line)
+        draw.line((120, 20, 1180, 20), **line)
+        draw.line((120, 820, 1180, 820), **line)
+    elif kind == "branch_current_safety_flow_welded_decision":
+        routes = _branch_current_safety_flow_routes(caption)
+        check = ((500, 110), (590, 160), (500, 210), (410, 160))
+        welded = ((900, 300), (1000, 350), (900, 400), (800, 350))
+        draw.polygon(check, fill="white", outline="black")
+        draw.line(check + (check[0],), fill="black", width=4)
+        box((370, 300, 630, 400))
+        draw.polygon(welded, fill="white", outline="black")
+        draw.line(welded + (welded[0],), fill="black", width=4)
+        box((770, 500, 1030, 600))
+
+        self_target_x = 545 if routes["self_target"] == "upper_right_face" else 500
+        self_target_y = 135 if routes["self_target"] == "upper_right_face" else 110
+        draw.line((590, 160, 710, 160), **line)
+        draw.line((710, 160, 710, 80), **line)
+        draw.line((710, 80, self_target_x, 80), **line)
+        draw.line((self_target_x, 80, self_target_x, self_target_y), **line)
+        arrow((self_target_x, self_target_y), "down")
+
+        draw.line((500, 210, 500, 300), **line)
+        arrow((500, 300), "down")
+        draw.line((630, 350, 800, 350), **line)
+        arrow((800, 350), "right")
+        draw.line((900, 400, 900, 500), **line)
+        arrow((900, 500), "down")
+
+        feedback_target_x = 455 if routes["feedback_target"] == "upper_left_face" else 500
+        feedback_target_y = 135 if routes["feedback_target"] == "upper_left_face" else 110
+        feedback_path = [
+            (900, 300), (900, 240), (760, 240), (760, 35),
+            (feedback_target_x, 35), (feedback_target_x, feedback_target_y),
+        ]
+        draw.line(feedback_path, fill="black", width=4, joint="curve")
+        arrow((feedback_target_x, feedback_target_y), "down")
+
+        draw.line((120, 20, 120, 820), **line)
+        draw.line((120, 20, 1180, 20), **line)
+        draw.line((120, 820, 1180, 820), **line)
     elif kind == "branch_current_safety_flow":
         routes = _branch_current_safety_flow_routes(caption)
         check = ((500, 110), (590, 160), (500, 210), (410, 160))
@@ -4813,7 +4937,9 @@ def _deterministic_control_diagram_constraint_certificate(
     if kind not in {
             "charging_installation_flat", "edge_controller_flat",
             "allocation_flow_split_first", "allocation_flow_split_second",
-            "allocation_flow_vertical", "branch_current_safety_flow"}:
+            "allocation_flow_vertical", "branch_current_safety_flow",
+            "branch_current_safety_flow_serial",
+            "branch_current_safety_flow_welded_decision"}:
         return {}
     try:
         from PIL import Image, ImageOps
@@ -5058,6 +5184,151 @@ def _deterministic_control_diagram_constraint_certificate(
                 },
             }
 
+        if kind == "branch_current_safety_flow_serial":
+            routes = _branch_current_safety_flow_routes(caption)
+            self_target = (
+                (750, 125) if routes["self_target"] == "upper_right_face" else (700, 100))
+            feedback_target = (
+                (650, 125) if routes["feedback_target"] == "upper_left_face" else (700, 100))
+            shape_outline_samples = [
+                (600, 150), (800, 150), (550, 325),
+                (600, 490), (800, 490), (550, 695),
+            ]
+            shape_interior_samples = [
+                (700, 150), (700, 325), (700, 490), (700, 695),
+            ]
+            self_loop_samples = [
+                (800, 150), (900, 150), (1000, 150), (1000, 60),
+                (900, 60), (self_target[0], 60), self_target,
+            ]
+            shedding_path_samples = [(700, 200), (700, 240), (700, 280)]
+            shedding_welded_samples = [(700, 370), (700, 405), (700, 440)]
+            fault_path_samples = [(700, 540), (700, 595), (700, 650)]
+            feedback_samples = [
+                (600, 490), (500, 490), (330, 490), (330, 300),
+                (330, 80), (500, 80), (feedback_target[0], 80), feedback_target,
+            ]
+            bracket_samples = [
+                (120, 20), (120, 450), (120, 820),
+                (400, 20), (1180, 20), (400, 820), (1180, 820),
+            ]
+            return {
+                "branch_safety_shape_sequence": {
+                    "ok": (all(ink(point) for point in shape_outline_samples) and
+                           all(clear(point, 6) for point in shape_interior_samples)),
+                    "shape_count": 4,
+                    "shape_order": ["diamond", "rectangle", "diamond", "rectangle"],
+                    "outline_samples": [list(point) for point in shape_outline_samples],
+                    "blank_interior_samples": [
+                        list(point) for point in shape_interior_samples],
+                },
+                "branch_safety_self_loop": {
+                    "ok": all(ink(point) for point in self_loop_samples),
+                    "line_samples": [list(point) for point in self_loop_samples],
+                    "target_mode": routes["self_target"],
+                    "target": list(self_target),
+                },
+                "branch_safety_shedding_path": {
+                    "ok": all(ink(point) for point in shedding_path_samples),
+                    "line_samples": [list(point) for point in shedding_path_samples],
+                },
+                "branch_safety_shedding_welded_path": {
+                    "ok": all(ink(point) for point in shedding_welded_samples),
+                    "required": True,
+                    "line_samples": [list(point) for point in shedding_welded_samples],
+                },
+                "branch_safety_fault_path": {
+                    "ok": all(ink(point) for point in fault_path_samples),
+                    "line_samples": [list(point) for point in fault_path_samples],
+                },
+                "branch_safety_feedback": {
+                    "ok": all(ink(point) for point in feedback_samples),
+                    "line_samples": [list(point) for point in feedback_samples],
+                    "origin": "welded_left_vertex",
+                    "target_mode": routes["feedback_target"],
+                    "target": list(feedback_target),
+                },
+                "branch_safety_bracket": {
+                    "ok": all(ink(point) for point in bracket_samples),
+                    "line_samples": [list(point) for point in bracket_samples],
+                    "opening": "right",
+                    "enclosed_bounds": [120, 20, 1180, 820],
+                },
+            }
+
+        if kind == "branch_current_safety_flow_welded_decision":
+            routes = _branch_current_safety_flow_routes(caption)
+            self_target = (
+                (545, 135) if routes["self_target"] == "upper_right_face" else (500, 110))
+            feedback_target = (
+                (455, 135) if routes["feedback_target"] == "upper_left_face" else (500, 110))
+            shape_outline_samples = [
+                (410, 160), (590, 160), (370, 350),
+                (800, 350), (1000, 350), (770, 550),
+            ]
+            shape_interior_samples = [
+                (500, 160), (500, 350), (900, 350), (900, 550),
+            ]
+            self_loop_samples = [
+                (590, 160), (650, 160), (710, 160), (710, 80),
+                (620, 80), (self_target[0], 80), self_target,
+            ]
+            shedding_path_samples = [(500, 210), (500, 250), (500, 300)]
+            shedding_welded_samples = [(630, 350), (700, 350), (760, 350), (800, 350)]
+            fault_path_samples = [(900, 400), (900, 450), (900, 500)]
+            feedback_samples = [
+                (900, 300), (900, 240), (830, 240), (760, 240),
+                (760, 100), (760, 35), (650, 35),
+                (feedback_target[0], 35), feedback_target,
+            ]
+            bracket_samples = [
+                (120, 20), (120, 450), (120, 820),
+                (400, 20), (1180, 20), (400, 820), (1180, 820),
+            ]
+            return {
+                "branch_safety_shape_sequence": {
+                    "ok": (all(ink(point) for point in shape_outline_samples) and
+                           all(clear(point, 6) for point in shape_interior_samples)),
+                    "shape_count": 4,
+                    "shape_order": ["diamond", "rectangle", "diamond", "rectangle"],
+                    "outline_samples": [list(point) for point in shape_outline_samples],
+                    "blank_interior_samples": [
+                        list(point) for point in shape_interior_samples],
+                },
+                "branch_safety_self_loop": {
+                    "ok": all(ink(point) for point in self_loop_samples),
+                    "line_samples": [list(point) for point in self_loop_samples],
+                    "target_mode": routes["self_target"],
+                    "target": list(self_target),
+                },
+                "branch_safety_shedding_path": {
+                    "ok": all(ink(point) for point in shedding_path_samples),
+                    "line_samples": [list(point) for point in shedding_path_samples],
+                },
+                "branch_safety_shedding_welded_path": {
+                    "ok": all(ink(point) for point in shedding_welded_samples),
+                    "required": True,
+                    "line_samples": [list(point) for point in shedding_welded_samples],
+                },
+                "branch_safety_fault_path": {
+                    "ok": all(ink(point) for point in fault_path_samples),
+                    "line_samples": [list(point) for point in fault_path_samples],
+                },
+                "branch_safety_feedback": {
+                    "ok": all(ink(point) for point in feedback_samples),
+                    "line_samples": [list(point) for point in feedback_samples],
+                    "origin": "welded_top_vertex",
+                    "target_mode": routes["feedback_target"],
+                    "target": list(feedback_target),
+                },
+                "branch_safety_bracket": {
+                    "ok": all(ink(point) for point in bracket_samples),
+                    "line_samples": [list(point) for point in bracket_samples],
+                    "opening": "right",
+                    "enclosed_bounds": [120, 20, 1180, 820],
+                },
+            }
+
         if kind == "branch_current_safety_flow":
             routes = _branch_current_safety_flow_routes(caption)
             self_target = (
@@ -5244,6 +5515,26 @@ def _deterministic_control_diagram_constraint_certificate(
                 "controller_network_interface_path": {"ok": False},
                 "controller_service_input_path": {"ok": False},
                 "controller_boundary_ports": {"ok": False},
+            }
+        if kind == "branch_current_safety_flow_serial":
+            return {
+                "branch_safety_shape_sequence": {"ok": False},
+                "branch_safety_self_loop": {"ok": False},
+                "branch_safety_shedding_path": {"ok": False},
+                "branch_safety_shedding_welded_path": {"ok": False},
+                "branch_safety_fault_path": {"ok": False},
+                "branch_safety_feedback": {"ok": False},
+                "branch_safety_bracket": {"ok": False},
+            }
+        if kind == "branch_current_safety_flow_welded_decision":
+            return {
+                "branch_safety_shape_sequence": {"ok": False},
+                "branch_safety_self_loop": {"ok": False},
+                "branch_safety_shedding_path": {"ok": False},
+                "branch_safety_shedding_welded_path": {"ok": False},
+                "branch_safety_fault_path": {"ok": False},
+                "branch_safety_feedback": {"ok": False},
+                "branch_safety_bracket": {"ok": False},
             }
         if kind == "branch_current_safety_flow":
             return {
@@ -6909,6 +7200,9 @@ def _certified_geometry_dissent_category(value: str) -> str:
             ("self-loop" in text or "self loop" in text or
              ("right vertex" in text and "top vertex" in text))):
         return "branch_safety_self_loop"
+    if ("welded contactor" in text and "branch current check" in text and
+            re.search(r"\b(?:feedback|return|re-enter|back|upper-left|top vertex)\w*\b", text)):
+        return "branch_safety_feedback"
     if ("shedding" in text and "branch current check" in text and
             re.search(r"\b(?:feedback|return|back up|top vertex)\b", text)):
         return "branch_safety_feedback"
