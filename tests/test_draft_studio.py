@@ -2493,6 +2493,93 @@ def test_review_reconciles_only_a_hatch_claim_disproved_by_an_exact_render_certi
     assert reconciled == []
 
 
+def test_independent_review_cannot_reintroduce_an_unpromised_flow_arrow(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(draft_agent, "run", lambda **_kwargs: draft_agent.AgentRun(
+        ok=True, model="review-model", result={
+            "summary": "FIG. 5 omits the trigger for a separate safety sequence.",
+            "findings": [{
+                "severity": "major", "category": "internal_logic",
+                "title": "FIG. 5 flowchart omits the trigger for the welded contactor check",
+                "where": "draft/08-detailed-description.md; figures/FIG-5.md",
+                "detail": (
+                    "The drawing shows two separate unconnected process flows even though an "
+                    "open command is a condition for the welded contactor check."
+                ),
+                "evidence": (
+                    "The brief says that the welded contactor check is a separate sequence and "
+                    "that its trigger is described in the specification but not shown with a "
+                    "separate entry arrow."
+                ),
+                "fix": (
+                    "Add a dashed-line arrow from the shedding step 304 to the welded contactor "
+                    "check step 306."
+                ),
+            }],
+        }))
+
+    outcome = draft_qa.review(tmp_path, checks=[])
+
+    assert outcome["ok"] is True
+    assert outcome["findings"] == []
+    assert len(outcome["reconciled_findings"]) == 1
+    assert "must not invent a connection" in (
+        outcome["reconciled_findings"][0]["reconciliation"])
+
+
+def test_independent_review_does_not_label_an_offsheet_connection_as_the_remote_part(
+        tmp_path, monkeypatch):
+    figures_dir = tmp_path / "figures"
+    figures_dir.mkdir()
+    draft_dir = tmp_path / "draft"
+    draft_dir.mkdir()
+    (figures_dir / "FIG-3.md").write_text(
+        "# FIG. 3\n\n"
+        "A short solid line extends upward from the controller. This line is the connection to "
+        "the branch current sensor. A short solid line extends downward from the controller. "
+        "This line is the connection to the isolated local bus.\n\n"
+        "## Numerals shown on this figure\n\n"
+        "- 106 edge controller\n- 110 network interface\n- 112 service input\n",
+        encoding="utf-8",
+    )
+    (draft_dir / "numerals.md").write_text(
+        "# Reference numerals\n\n| Numeral | Part |\n| --- | --- |\n"
+        "| 104 | branch current sensor |\n| 106 | edge controller |\n"
+        "| 108 | isolated local bus |\n| 110 | network interface |\n"
+        "| 112 | service input |\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(draft_agent, "run", lambda **_kwargs: draft_agent.AgentRun(
+        ok=True, model="review-model", result={
+            "summary": "FIG. 3 omits two remote-part numerals.",
+            "findings": [{
+                "severity": "minor", "category": "figures_and_numerals",
+                "title": "FIG. 3 omits labels for two offsheet connections",
+                "where": "figures/FIG-3.md; figures/rendered-FIG-3.png",
+                "detail": (
+                    "The lines extending to the branch current sensor and isolated local bus are "
+                    "not labelled with the numerals of those remote parts."
+                ),
+                "evidence": (
+                    "The brief calls the lines connections to the branch current sensor and the "
+                    "isolated local bus."
+                ),
+                "fix": (
+                    "Add leaders and numerals for the branch current sensor (104) and isolated "
+                    "local bus (108), pointing to the respective connection lines."
+                ),
+            }],
+        }))
+
+    outcome = draft_qa.review(tmp_path, checks=[])
+
+    assert outcome["ok"] is True
+    assert outcome["findings"] == []
+    assert len(outcome["reconciled_findings"]) == 1
+    assert "offsheet connection" in (
+        outcome["reconciled_findings"][0]["reconciliation"])
+
+
 def test_independent_reviewer_requires_a_source_supported_automatic_fix():
     prompt = draft_qa.REVIEW_SYSTEM
 
