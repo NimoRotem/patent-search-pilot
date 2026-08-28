@@ -5163,6 +5163,28 @@ def _separate_sequence_branch_current_safety_flow_specification():
     """
 
 
+def _source_clean_separate_branch_current_safety_flow_specification():
+    return """
+    A flat process flow diagram in plain black line work on white, with no shading and no text.
+    A diamond shape, the branch current check step 302, is at the top center of the drawing area.
+    A rectangle, the shedding step 304, is located directly below the branch current check step
+    302. A diamond shape, the welded contactor check step 306, is located to the right of the
+    shedding step 304. A rectangle, the fault indication step 308, is located directly below the
+    welded contactor check step 306.
+
+    A line leaves the bottom vertex of the branch current check step 302 and enters the top of the
+    shedding step 304. A line leaves the bottom of the shedding step 304, curves upward and to the
+    left, and re-enters the branch current check step 302 at its left vertex. A line leaves the
+    bottom vertex of the welded contactor check step 306 and enters the top of the fault indication
+    step 308.
+
+    A large square bracket 300 has a vertical spine along the left side of the drawing area, a top
+    horizontal arm extending from the spine to a point to the right of all other shapes, and a
+    bottom horizontal arm extending from the spine to a point to the right of all other shapes.
+    The bracket thereby encloses all other shapes on the drawing.
+    """
+
+
 def test_branch_current_safety_flow_template_certifies_every_route_and_anchor():
     specification = _branch_current_safety_flow_specification()
     numerals = [
@@ -5435,6 +5457,35 @@ def test_separate_sequence_branch_current_safety_flow_is_rendered_exactly():
     }
     assert len({(item["x"], item["y"]) for item in semantic["anchors"]}) == 5
     assert semantic["pixel_anchor_audit"]["ok"] is True
+
+
+def test_source_clean_separate_flow_omits_unrequested_self_loop_exactly():
+    specification = _source_clean_separate_branch_current_safety_flow_specification()
+    numerals = [
+        "300 branch current safety process", "302 branch current check step",
+        "304 shedding step", "306 welded contactor check step",
+        "308 fault indication step",
+    ]
+
+    assert draft_figures._control_diagram_kind(
+        specification) == "branch_current_safety_flow_separate"
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    assert certificate["ok"] is True
+    assert certificate["renderer"] == "branch_current_safety_flow_separate"
+    constraints = certificate["certified_constraints"]
+    assert constraints["branch_safety_shape_sequence"]["shape_count"] == 4
+    assert constraints["branch_safety_self_loop"]["ok"] is True
+    assert constraints["branch_safety_self_loop"]["required"] is False
+    assert constraints["branch_safety_self_loop"]["line_samples"] == []
+    assert constraints["branch_safety_self_loop"]["clear_samples"]
+    assert constraints["branch_safety_feedback"]["origin"] == "shedding_bottom"
+    assert constraints["branch_safety_feedback"]["target_mode"] == "left_vertex"
+    assert constraints["branch_safety_feedback"]["target"] == [410, 160]
+    assert constraints["branch_safety_shedding_welded_path"]["required"] is False
+    assert all(item["ok"] is True for item in constraints.values())
 
 
 def test_separate_sequence_flow_resolves_only_certified_bracket_dissent(monkeypatch):
