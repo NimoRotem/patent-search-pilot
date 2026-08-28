@@ -5076,6 +5076,28 @@ def _connected_branch_current_safety_flow_specification():
     """
 
 
+def _right_vertex_reclosure_branch_current_safety_flow_specification():
+    return """
+    A flat process flow diagram in plain black line work on white, with no shading and no text.
+    A diamond shape is the branch current check step 302. A rectangle below it is the shedding
+    step 304. A diamond to the right is the welded contactor check step 306. A rectangle below
+    that diamond is the fault indication step 308. A rectangle in the lower left is the
+    reclosure check step 310.
+
+    A line leaves the bottom vertex of the branch current check step and enters the top of the
+    shedding step. A line leaves the right vertex of the branch current check step, loops
+    clockwise, and enters the upper-right face of that same diamond. A line leaves the left side
+    of the shedding step, travels to its left, and enters the upper-left face of the branch
+    current check diamond. A line leaves the right side of the shedding step and enters the left
+    vertex of the welded contactor check step. A line leaves the bottom vertex of the welded
+    contactor check step and enters the top of the fault indication step. A line leaves the right
+    vertex of the welded contactor check step and enters the top of the reclosure check step.
+
+    A large square bracket 300 opens to the right and encloses all other shapes, indicating the
+    branch current safety process.
+    """
+
+
 def test_branch_current_safety_flow_template_certifies_every_route_and_anchor():
     specification = _branch_current_safety_flow_specification()
     numerals = [
@@ -5151,10 +5173,12 @@ def test_branch_current_safety_flow_follows_connected_caption_routes_exactly():
     constraints = certificate["certified_constraints"]
     assert constraints["branch_safety_self_loop"]["target_mode"] == "upper_right_face"
     assert constraints["branch_safety_feedback"]["target_mode"] == "upper_left_face"
+    assert constraints["branch_safety_feedback"]["origin"] == "bottom"
     assert constraints["branch_safety_shedding_welded_path"]["required"] is True
     assert constraints["branch_safety_shedding_welded_path"]["ok"] is True
     assert constraints["branch_safety_reclosure_path"]["required"] is True
     assert constraints["branch_safety_reclosure_path"]["ok"] is True
+    assert constraints["branch_safety_reclosure_path"]["origin"] == "left_vertex"
     left, top, right, bottom = constraints["branch_safety_bracket"]["enclosed_bounds"]
     for category in (
             "branch_safety_self_loop", "branch_safety_shedding_path",
@@ -5175,6 +5199,32 @@ def test_branch_current_safety_flow_follows_connected_caption_routes_exactly():
         item["numeral"]
         for item in semantic["deterministic_anchor_certificate"]["anchors"]
     } == {"300", "302", "304", "306", "308", "310"}
+
+
+def test_branch_current_safety_flow_routes_right_vertex_to_reclosure_exactly():
+    specification = _right_vertex_reclosure_branch_current_safety_flow_specification()
+
+    routes = draft_figures._branch_current_safety_flow_routes(specification)
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    assert routes["welded_to_reclosure"] is True
+    assert routes["welded_to_reclosure_origin"] == "right_vertex"
+    assert routes["feedback_origin"] == "left_side"
+    assert png is not None and certificate["ok"] is True
+    feedback = certificate["certified_constraints"]["branch_safety_feedback"]
+    assert feedback["origin"] == "left_side"
+    assert feedback["line_samples"][0] == [370, 350]
+    reclosure = certificate["certified_constraints"]["branch_safety_reclosure_path"]
+    assert reclosure["required"] is True
+    assert reclosure["ok"] is True
+    assert reclosure["origin"] == "right_vertex"
+    assert reclosure["line_samples"][0] == [1000, 350]
+    left, top, right, bottom = certificate["certified_constraints"][
+        "branch_safety_bracket"]["enclosed_bounds"]
+    assert all(
+        left < x <= right and top <= y <= bottom
+        for x, y in reclosure["line_samples"])
 
 
 def test_exact_branch_current_flow_resolves_only_certified_route_dissent(monkeypatch):

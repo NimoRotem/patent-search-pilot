@@ -2303,10 +2303,18 @@ def _control_diagram_kind(caption: str) -> str:
 def _branch_current_safety_flow_routes(caption: str) -> dict:
     """Extract the route variants stated by a supported branch-current flow brief."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    welded_reclosure = re.search(
+        r"line leaves? the (left|right) vertex of the welded contactor check step"
+        r"[^.]{0,180}enters? the top of the reclosure check step", text)
     return {
         "self_target": (
             "upper_right_face" if re.search(r"enters? the upper[- ]right face\b", text)
             else "top_vertex"
+        ),
+        "feedback_origin": (
+            "left_side" if re.search(
+                r"line leaves? the left side of the shedding step\b", text)
+            else "bottom"
         ),
         "feedback_target": (
             "upper_left_face" if re.search(r"enters? the upper[- ]left face\b", text)
@@ -2315,9 +2323,10 @@ def _branch_current_safety_flow_routes(caption: str) -> dict:
         "shedding_to_welded": bool(re.search(
             r"line leaves? the right side of the shedding step[^.]{0,180}"
             r"enters? the left vertex of the welded contactor check step", text)),
-        "welded_to_reclosure": bool(re.search(
-            r"line leaves? the left vertex of the welded contactor check step[^.]{0,180}"
-            r"enters? the top of the reclosure check step", text)),
+        "welded_to_reclosure": bool(welded_reclosure),
+        "welded_to_reclosure_origin": (
+            f"{welded_reclosure.group(1)}_vertex" if welded_reclosure else ""
+        ),
     }
 
 
@@ -3308,15 +3317,19 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
 
         draw.line((500, 210, 500, 300), **line)
         arrow((500, 300), "down")
-        draw.line((500, 400, 500, 470), **line)
-        draw.line((500, 470, 300, 470), **line)
         feedback_top = 80 if routes["feedback_target"] == "upper_left_face" else 35
         feedback_target_x = 455 if routes["feedback_target"] == "upper_left_face" else 500
         feedback_target_y = 135 if routes["feedback_target"] == "upper_left_face" else 110
-        draw.line((300, 470, 300, feedback_top), **line)
-        draw.line((300, feedback_top, feedback_target_x, feedback_top), **line)
-        draw.line((feedback_target_x, feedback_top,
-                   feedback_target_x, feedback_target_y), **line)
+        feedback_path = (
+            [(370, 350), (300, 350), (300, feedback_top),
+             (feedback_target_x, feedback_top),
+             (feedback_target_x, feedback_target_y)]
+            if routes["feedback_origin"] == "left_side"
+            else [(500, 400), (500, 470), (300, 470),
+                  (300, feedback_top), (feedback_target_x, feedback_top),
+                  (feedback_target_x, feedback_target_y)]
+        )
+        draw.line(feedback_path, fill="black", width=4, joint="curve")
         arrow((feedback_target_x, feedback_target_y), "down")
 
         if routes["shedding_to_welded"]:
@@ -3327,7 +3340,11 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
         arrow((900, 500), "down")
 
         if routes["welded_to_reclosure"]:
-            reclosure_path = [(800, 350), (700, 490), (500, 490), (500, 620)]
+            reclosure_path = (
+                [(1000, 350), (1100, 350), (1100, 610), (500, 610), (500, 620)]
+                if routes["welded_to_reclosure_origin"] == "right_vertex"
+                else [(800, 350), (700, 490), (500, 490), (500, 620)]
+            )
             draw.line(reclosure_path, fill="black", width=4, joint="curve")
             arrow((500, 620), "down")
 
@@ -5059,22 +5076,26 @@ def _deterministic_control_diagram_constraint_certificate(
                 (620, 80), (self_target[0], 80), self_target,
             ]
             shedding_path_samples = [(500, 210), (500, 250), (500, 300)]
-            feedback_samples = [
-                (500, 400), (500, 450), (500, 470), (300, 470),
-                (300, 300),
-            ]
             feedback_top = 80 if routes["feedback_target"] == "upper_left_face" else 35
-            feedback_samples.extend([
-                (300, feedback_top), (400, feedback_top),
-                (feedback_target[0], feedback_top), feedback_target,
-            ])
+            feedback_samples = (
+                [(370, 350), (335, 350), (300, 350), (300, 250),
+                 (300, feedback_top), (400, feedback_top),
+                 (feedback_target[0], feedback_top), feedback_target]
+                if routes["feedback_origin"] == "left_side"
+                else [(500, 400), (500, 450), (500, 470), (300, 470),
+                      (300, 300), (300, feedback_top), (400, feedback_top),
+                      (feedback_target[0], feedback_top), feedback_target]
+            )
             fault_path_samples = [(900, 400), (900, 450), (900, 500)]
             shedding_welded_samples = [
                 (630, 350), (700, 350), (760, 350), (800, 350)]
-            reclosure_path_samples = [
-                (800, 350), (750, 420), (700, 490),
-                (600, 490), (500, 490), (500, 550), (500, 620),
-            ]
+            reclosure_path_samples = (
+                [(1000, 350), (1050, 350), (1100, 350), (1100, 500),
+                 (1100, 610), (900, 610), (700, 610), (500, 610), (500, 620)]
+                if routes["welded_to_reclosure_origin"] == "right_vertex"
+                else [(800, 350), (750, 420), (700, 490),
+                      (600, 490), (500, 490), (500, 550), (500, 620)]
+            )
             bracket_samples = [
                 (120, 20), (120, 450), (120, 820),
                 (400, 20), (1180, 20), (400, 820), (1180, 820),
@@ -5104,6 +5125,7 @@ def _deterministic_control_diagram_constraint_certificate(
                 "branch_safety_feedback": {
                     "ok": all(ink(point) for point in feedback_samples),
                     "line_samples": [list(point) for point in feedback_samples],
+                    "origin": routes["feedback_origin"],
                     "target_mode": routes["feedback_target"],
                     "target": list(feedback_target),
                 },
@@ -5122,6 +5144,7 @@ def _deterministic_control_diagram_constraint_certificate(
                     "ok": (all(ink(point) for point in reclosure_path_samples)
                            if routes["welded_to_reclosure"] else True),
                     "required": routes["welded_to_reclosure"],
+                    "origin": routes["welded_to_reclosure_origin"],
                     "line_samples": ([list(point) for point in reclosure_path_samples]
                                      if routes["welded_to_reclosure"] else []),
                 },
