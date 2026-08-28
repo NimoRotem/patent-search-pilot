@@ -2333,6 +2333,27 @@ def _control_diagram_kind(caption: str) -> str:
     for kind, required in cases.items():
         if all(value in text for value in required):
             return kind
+    source_clean_separate = bool(
+        all(value in text for value in (
+            "flat process flow diagram", "branch current check step", "shedding step",
+            "welded contactor check step", "fault indication step",
+            "located to the right of the shedding step", "large square bracket",
+        )) and
+        re.search(
+            r"line leaves? the bottom vertex of the branch current check step"
+            r"[^.]{0,180}enters? the top of the shedding step", text) and
+        re.search(
+            r"line leaves? the bottom of the shedding step[^.]{0,220}re-enters? the branch "
+            r"current check step", text) and
+        re.search(
+            r"line leaves? the bottom vertex of the welded contactor check step"
+            r"[^.]{0,180}enters? the top of the fault indication step", text) and
+        not re.search(
+            r"line leaves?[^.]{0,100}shedding step[^.]{0,220}"
+            r"welded contactor check step", text) and
+        "reclosure check step" not in text)
+    if source_clean_separate:
+        return "branch_current_safety_flow_separate"
     return ""
 
 
@@ -2356,8 +2377,15 @@ def _branch_current_safety_flow_routes(caption: str) -> dict:
         ),
         "feedback_target": (
             "upper_left_face" if "upper-left face" in text or "upper left face" in text
+            else "left_vertex" if re.search(
+                r"re-enters? the branch current check step(?:\s+\d+)?[^.]{0,100}"
+                r"\b(?:at|on)\s+(?:its|the)\s+left vertex\b", text)
             else "top_vertex"
         ),
+        "self_loop_required": bool(re.search(
+            r"line leaves? the right vertex of the branch current check step"
+            r"[^.]{0,260}\b(?:loop|loops|curves?)\b[^.]{0,260}"
+            r"(?:re-?enters?|enters?)", text)),
         "shedding_to_welded": bool(re.search(
             r"line leaves? the right side of the shedding step[^.]{0,180}"
             r"enters? the left vertex of the welded contactor check step", text)),
@@ -3453,26 +3481,36 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
         draw.line(welded + (welded[0],), fill="black", width=4)
         box((770, 500, 1030, 600))
 
-        self_target_x = 545 if routes["self_target"] == "upper_right_face" else 500
-        self_target_y = 135 if routes["self_target"] == "upper_right_face" else 110
-        draw.line((590, 160, 710, 160), **line)
-        draw.line((710, 160, 710, 80), **line)
-        draw.line((710, 80, self_target_x, 80), **line)
-        draw.line((self_target_x, 80, self_target_x, self_target_y), **line)
-        arrow((self_target_x, self_target_y), "down")
+        if routes["self_loop_required"]:
+            self_target_x = 545 if routes["self_target"] == "upper_right_face" else 500
+            self_target_y = 135 if routes["self_target"] == "upper_right_face" else 110
+            draw.line((590, 160, 710, 160), **line)
+            draw.line((710, 160, 710, 80), **line)
+            draw.line((710, 80, self_target_x, 80), **line)
+            draw.line((self_target_x, 80, self_target_x, self_target_y), **line)
+            arrow((self_target_x, self_target_y), "down")
 
         draw.line((500, 210, 500, 300), **line)
         arrow((500, 300), "down")
 
-        feedback_target_x = 455 if routes["feedback_target"] == "upper_left_face" else 500
-        feedback_target_y = 135 if routes["feedback_target"] == "upper_left_face" else 110
-        feedback_top = 80 if routes["feedback_target"] == "upper_left_face" else 35
-        feedback_path = [
-            (500, 400), (500, 470), (300, 470), (300, feedback_top),
-            (feedback_target_x, feedback_top), (feedback_target_x, feedback_target_y),
-        ]
+        if routes["feedback_target"] == "left_vertex":
+            feedback_target_x, feedback_target_y = 410, 160
+            feedback_path = [
+                (500, 400), (500, 470), (300, 470), (300, 160),
+                (feedback_target_x, feedback_target_y),
+            ]
+            feedback_arrow = "right"
+        else:
+            feedback_target_x = 455 if routes["feedback_target"] == "upper_left_face" else 500
+            feedback_target_y = 135 if routes["feedback_target"] == "upper_left_face" else 110
+            feedback_top = 80 if routes["feedback_target"] == "upper_left_face" else 35
+            feedback_path = [
+                (500, 400), (500, 470), (300, 470), (300, feedback_top),
+                (feedback_target_x, feedback_top), (feedback_target_x, feedback_target_y),
+            ]
+            feedback_arrow = "down"
         draw.line(feedback_path, fill="black", width=4, joint="curve")
-        arrow((feedback_target_x, feedback_target_y), "down")
+        arrow((feedback_target_x, feedback_target_y), feedback_arrow)
 
         draw.line((900, 400, 900, 500), **line)
         arrow((900, 500), "down")
@@ -5393,11 +5431,25 @@ def _deterministic_control_diagram_constraint_certificate(
 
         if kind == "branch_current_safety_flow_separate":
             routes = _branch_current_safety_flow_routes(caption)
+            self_loop_required = routes["self_loop_required"]
             self_target = (
                 (545, 135) if routes["self_target"] == "upper_right_face" else (500, 110))
-            feedback_target = (
-                (455, 135) if routes["feedback_target"] == "upper_left_face" else (500, 110))
-            feedback_top = 80 if routes["feedback_target"] == "upper_left_face" else 35
+            if routes["feedback_target"] == "left_vertex":
+                feedback_target = (410, 160)
+                feedback_samples = [
+                    (500, 400), (500, 450), (500, 470), (300, 470),
+                    (300, 300), (300, 160), (350, 160), feedback_target,
+                ]
+            else:
+                feedback_target = (
+                    (455, 135) if routes["feedback_target"] == "upper_left_face"
+                    else (500, 110))
+                feedback_top = 80 if routes["feedback_target"] == "upper_left_face" else 35
+                feedback_samples = [
+                    (500, 400), (500, 450), (500, 470), (300, 470),
+                    (300, 300), (300, feedback_top), (400, feedback_top),
+                    (feedback_target[0], feedback_top), feedback_target,
+                ]
             shape_outline_samples = [
                 (410, 160), (590, 160), (370, 350),
                 (800, 350), (1000, 350), (770, 550),
@@ -5405,17 +5457,15 @@ def _deterministic_control_diagram_constraint_certificate(
             shape_interior_samples = [
                 (500, 160), (500, 350), (900, 350), (900, 550),
             ]
-            self_loop_samples = [
+            self_loop_samples = ([
                 (590, 160), (650, 160), (710, 160), (710, 80),
                 (620, 80), (self_target[0], 80), self_target,
-            ]
+            ] if self_loop_required else [])
+            self_loop_clear_samples = (
+                [] if self_loop_required else
+                [(650, 160), (710, 160), (710, 80), (620, 80)])
             shedding_path_samples = [(500, 210), (500, 250), (500, 300)]
             fault_path_samples = [(900, 400), (900, 450), (900, 500)]
-            feedback_samples = [
-                (500, 400), (500, 450), (500, 470), (300, 470),
-                (300, 300), (300, feedback_top), (400, feedback_top),
-                (feedback_target[0], feedback_top), feedback_target,
-            ]
             bracket_samples = [
                 (120, 20), (120, 450), (120, 820),
                 (400, 20), (1180, 20), (400, 820), (1180, 820),
@@ -5431,8 +5481,12 @@ def _deterministic_control_diagram_constraint_certificate(
                         list(point) for point in shape_interior_samples],
                 },
                 "branch_safety_self_loop": {
-                    "ok": all(ink(point) for point in self_loop_samples),
+                    "ok": (all(ink(point) for point in self_loop_samples)
+                           if self_loop_required else
+                           all(clear(point, 6) for point in self_loop_clear_samples)),
+                    "required": self_loop_required,
                     "line_samples": [list(point) for point in self_loop_samples],
+                    "clear_samples": [list(point) for point in self_loop_clear_samples],
                     "target_mode": routes["self_target"],
                     "target": list(self_target),
                 },
