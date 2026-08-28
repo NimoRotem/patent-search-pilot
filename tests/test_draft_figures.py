@@ -4777,6 +4777,119 @@ def test_flat_edge_controller_template_tracks_swapped_independent_port_direction
     assert constraints["controller_boundary_ports"]["ok"] is True
 
 
+def test_flat_edge_controller_template_terminates_ports_on_requested_boundaries():
+    specification = """
+    A flat block diagram of the edge controller. One large rectangle, the edge controller,
+    occupies the left and central portion of the drawing area. Three smaller empty rectangles
+    lie inside it: a network interface in the upper region, a service input in the left region,
+    and a nonvolatile memory in the lower region. A local fault indicator stands outside the
+    large rectangle. A straight vertical line originates on the top side of the network
+    interface rectangle, runs upward, and terminates on the upper boundary of the large edge
+    controller rectangle. A straight horizontal line originates on the left side of the service
+    input rectangle, runs leftward, and terminates on the left boundary of the large edge
+    controller rectangle. Two short solid lines extend downward from the lower side of the large
+    rectangle, spaced well apart.
+    """
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+
+    assert png is not None
+    with Image.open(io.BytesIO(png)).convert("L") as image:
+        assert image.getpixel((660, 120)) < 64
+        assert image.getpixel((660, 90)) > 240
+        assert image.getpixel((250, 410)) < 64
+        assert image.getpixel((210, 410)) > 240
+        assert image.getpixel((520, 250)) > 240
+        assert image.getpixel((420, 330)) > 240
+
+    constraints = draft_figures._deterministic_geometry_certificate(
+        png, specification)["certified_constraints"]
+    assert constraints["controller_network_interface_path"]["ok"] is True
+    assert constraints["controller_service_input_path"]["ok"] is True
+    assert constraints["controller_boundary_ports"]["ok"] is True
+
+
+def _flat_allocation_flow_specification():
+    return """
+    A flat process flow diagram in plain black line work on white. Eight empty shapes with blank
+    interiors stand in one vertical column down the centre of the drawing area, evenly spaced
+    from top to bottom. In order from the top: rectangle, rectangle, rectangle, rectangle,
+    diamond, rectangle, diamond, rectangle. A vertical solid line with an arrowhead at its lower
+    end joins each shape to the one below. A short horizontal line leaves the right vertex of the
+    lower diamond, runs right, and ends in an arrowhead at a small solid square terminator. The
+    left return path leaves the left vertex of the upper diamond, runs left, rises alongside the
+    column, then runs right into the left side of the topmost rectangle. The right return path
+    leaves the right side of the bottom rectangle, runs right, rises clear of the terminator and
+    column, then runs left into the right side of the topmost rectangle.
+    """
+
+
+def test_flat_allocation_flow_template_certifies_shape_order_and_every_route():
+    specification = _flat_allocation_flow_specification()
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    assert png is not None and certificate["ok"] is True
+    constraints = certificate["certified_constraints"]
+    assert constraints["allocation_flow_shape_sequence"]["ok"] is True
+    assert constraints["allocation_flow_vertical_connections"]["ok"] is True
+    assert constraints["allocation_flow_left_return"]["ok"] is True
+    assert constraints["allocation_flow_right_return"]["ok"] is True
+    assert constraints["allocation_flow_weld_branch"]["ok"] is True
+
+
+def test_exact_allocation_flow_resolves_unassignable_blank_step_shapes(monkeypatch):
+    specification = _flat_allocation_flow_specification()
+    numerals = [
+        "202 = available current determination step",
+        "204 = sustaining and deficit assignment step",
+        "206 = pilot command step", "208 = connector verification step",
+        "210 = staged reduction step", "212 = ordered shedding step",
+        "214 = welded-contactor isolation step", "216 = conditional reclosure step",
+    ]
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    spec_hash = draft_figures.specification_hash("FIG. 4", specification, numerals)
+    dissent = accepted_cross_provider_geometry_audit(
+        ok=False, specification_hash=spec_hash,
+        missing=["202", "204", "206", "208", "210", "212", "214", "216"],
+        summary="The blank shapes are visible, but their semantic step identities are unverified.",
+    )
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k: dissent)
+    semantic = {
+        "ok": True, "inspected": True, "errors": [], "missing": [], "unexpected": [],
+        "duplicates": [], "unexpected_text": [],
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "expected": [str(value) for value in range(202, 218, 2)],
+        "visible": [str(value) for value in range(202, 218, 2)],
+        "anchors": [
+            {"numeral": str(value), "x": 500, "y": 500, "visible": True,
+             "evidence": "The requested flow shape is visible in its specified slot."}
+            for value in range(202, 218, 2)
+        ],
+        "specification_hash": spec_hash,
+    }
+
+    audited = draft_figures._apply_cross_provider_geometry_gate(
+        semantic, png, label="FIG. 4", caption=specification, numerals=numerals)
+
+    cross = audited["cross_provider_geometry_audit"]
+    assert audited["ok"] is True and cross["ok"] is True
+    assert cross["missing"] == []
+    assert cross["reviewer_missing"] == dissent["missing"]
+    assert cross["consensus_resolution"]["certified_dissent_categories"] == [
+        "allocation_flow_shape_sequence"]
+    assert draft_figures.current_cross_provider_geometry_audit(
+        cross, specification_hash=spec_hash) is True
+    tampered = json.loads(json.dumps(cross))
+    tampered["reviewer_missing"] = ["999"]
+    assert draft_figures.current_cross_provider_geometry_audit(
+        tampered, specification_hash=spec_hash) is False
+
+
 def test_flat_edge_controller_exact_paths_classify_visual_dissent():
     specification = """
     A flat block diagram of the edge controller. One large rectangle, the edge controller,

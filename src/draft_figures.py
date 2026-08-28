@@ -2247,6 +2247,11 @@ def _edge_controller_flat_port_directions(caption: str) -> tuple[str, str]:
             r"(?:runs?|extends?) upward\b",
             text,
         )
+        or re.search(
+            r"\bnetwork interface(?: rectangle)?\s*,?\s*"
+            r"(?:runs?|extends?) upward\b",
+            text,
+        )
     )
     service_left = bool(
         re.search(
@@ -2259,8 +2264,29 @@ def _edge_controller_flat_port_directions(caption: str) -> tuple[str, str]:
             r"(?:runs?|extends?) left(?:ward)?\b",
             text,
         )
+        or re.search(
+            r"\bservice input(?: rectangle)?\s*,?\s*"
+            r"(?:runs?|extends?) left(?:ward)?\b",
+            text,
+        )
     )
     return ("up" if network_up else "left", "left" if service_left else "up")
+
+
+def _edge_controller_flat_port_terminations(caption: str) -> tuple[bool, bool]:
+    """Return whether each selected inner port must stop at its controller boundary."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    network_direction, service_direction = _edge_controller_flat_port_directions(caption)
+
+    def terminates(direction: str) -> bool:
+        boundary = "(?:upper|top)" if direction == "up" else "left"
+        return bool(re.search(
+            rf"\b(?:terminates?|ends?|stops?)\s+(?:on|at)\s+(?:the\s+)?"
+            rf"{boundary}\s+(?:boundary|side)\b",
+            text,
+        ))
+
+    return terminates(network_direction), terminates(service_direction)
 
 
 def _deterministic_control_diagram_anchors(
@@ -2991,14 +3017,16 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
         box((1150, 250, 1320, 360))
         draw.line((1050, 305, 1150, 305), **line)
         network_direction, service_direction = _edge_controller_flat_port_directions(caption)
+        network_terminates, service_terminates = (
+            _edge_controller_flat_port_terminations(caption))
         if network_direction == "up":
-            draw.line((660, 200, 660, 70), **line)
+            draw.line((660, 200, 660, 120 if network_terminates else 70), **line)
         else:
-            draw.line((560, 250, 190, 250), **line)
+            draw.line((560, 250, 250 if network_terminates else 190, 250), **line)
         if service_direction == "left":
-            draw.line((340, 410, 190, 410), **line)
+            draw.line((340, 410, 250 if service_terminates else 190, 410), **line)
         else:
-            draw.line((420, 360, 420, 70), **line)
+            draw.line((420, 360, 420, 120 if service_terminates else 70), **line)
         draw.line((500, 760, 500, 830), **line)
         draw.line((820, 760, 820, 830), **line)
     elif kind == "allocation_flow_vertical":
@@ -4492,7 +4520,9 @@ def _deterministic_control_diagram_constraint_certificate(
         png: bytes, caption: str) -> dict:
     """Certify exact endpoint and connection pixels in controlled block diagrams."""
     kind = _control_diagram_kind(caption)
-    if kind not in {"charging_installation_flat", "edge_controller_flat"}:
+    if kind not in {
+            "charging_installation_flat", "edge_controller_flat",
+            "allocation_flow_vertical"}:
         return {}
     try:
         from PIL import Image, ImageOps
@@ -4555,35 +4585,107 @@ def _deterministic_control_diagram_constraint_certificate(
                 },
             }
 
+        if kind == "allocation_flow_vertical":
+            shape_outline_samples = [
+                (530, 70), (530, 165), (530, 260), (530, 355),
+                (610, 445), (790, 445), (530, 545),
+                (610, 635), (790, 635), (530, 735),
+            ]
+            shape_interior_samples = [
+                (620, 70), (620, 165), (620, 260), (620, 355),
+                (660, 445), (620, 545), (660, 635), (620, 735),
+            ]
+            vertical_samples = [
+                (700, 115), (700, 210), (700, 305), (700, 397),
+                (700, 495), (700, 590), (700, 685),
+            ]
+            left_return_samples = [
+                (610, 445), (500, 445), (420, 445), (420, 300),
+                (420, 70), (500, 70), (530, 70),
+            ]
+            right_return_samples = [
+                (870, 735), (950, 735), (1000, 735), (1000, 500),
+                (1000, 70), (930, 70), (870, 70),
+            ]
+            weld_branch_samples = [
+                (790, 635), (900, 635), (1100, 635), (1120, 635), (1130, 635),
+            ]
+            return {
+                "allocation_flow_shape_sequence": {
+                    "ok": (all(ink(point) for point in shape_outline_samples) and
+                           all(clear(point, 6) for point in shape_interior_samples)),
+                    "shape_count": 8,
+                    "shape_order": [
+                        "rectangle", "rectangle", "rectangle", "rectangle",
+                        "diamond", "rectangle", "diamond", "rectangle",
+                    ],
+                    "outline_samples": [list(point) for point in shape_outline_samples],
+                    "blank_interior_samples": [
+                        list(point) for point in shape_interior_samples],
+                },
+                "allocation_flow_vertical_connections": {
+                    "ok": all(ink(point) for point in vertical_samples),
+                    "connection_count": 7,
+                    "line_samples": [list(point) for point in vertical_samples],
+                },
+                "allocation_flow_left_return": {
+                    "ok": all(ink(point) for point in left_return_samples),
+                    "line_samples": [list(point) for point in left_return_samples],
+                },
+                "allocation_flow_right_return": {
+                    "ok": all(ink(point) for point in right_return_samples),
+                    "line_samples": [list(point) for point in right_return_samples],
+                },
+                "allocation_flow_weld_branch": {
+                    "ok": all(ink(point) for point in weld_branch_samples),
+                    "line_samples": [list(point) for point in weld_branch_samples],
+                    "terminator_bounds": [1120, 625, 1140, 645],
+                },
+            }
+
         network_direction, service_direction = _edge_controller_flat_port_directions(caption)
-        network_samples = (
-            [(660, 200), (660, 170), (660, 120), (660, 90)]
-            if network_direction == "up" else
-            [(560, 250), (500, 250), (250, 250), (210, 250)]
-        )
-        network_clear = (
-            [(520, 250), (300, 250)]
-            if network_direction == "up" else
-            [(660, 170), (660, 90)]
-        )
-        service_samples = (
-            [(340, 410), (300, 410), (250, 410), (210, 410)]
-            if service_direction == "left" else
-            [(420, 360), (420, 300), (420, 120), (420, 90)]
-        )
-        service_clear = (
-            [(420, 330), (420, 90)]
-            if service_direction == "left" else
-            [(300, 410), (210, 410)]
-        )
+        network_terminates, service_terminates = (
+            _edge_controller_flat_port_terminations(caption))
+        if network_direction == "up":
+            network_samples = [(660, 200), (660, 170), (660, 120)]
+            network_boundary = (660, 120)
+            network_clear = [(520, 250), (300, 250)]
+            if network_terminates:
+                network_clear.extend([(660, 90), (660, 70)])
+            else:
+                network_samples.extend([(660, 90), (660, 70)])
+        else:
+            network_samples = [(560, 250), (500, 250), (250, 250)]
+            network_boundary = (250, 250)
+            network_clear = [(660, 170), (660, 90)]
+            if network_terminates:
+                network_clear.extend([(210, 250), (190, 250)])
+            else:
+                network_samples.extend([(210, 250), (190, 250)])
+        if service_direction == "left":
+            service_samples = [(340, 410), (300, 410), (250, 410)]
+            service_boundary = (250, 410)
+            service_clear = [(420, 330), (420, 90)]
+            if service_terminates:
+                service_clear.extend([(210, 410), (190, 410)])
+            else:
+                service_samples.extend([(210, 410), (190, 410)])
+        else:
+            service_samples = [(420, 360), (420, 300), (420, 120)]
+            service_boundary = (420, 120)
+            service_clear = [(300, 410), (210, 410)]
+            if service_terminates:
+                service_clear.extend([(420, 90), (420, 70)])
+            else:
+                service_samples.extend([(420, 90), (420, 70)])
         boundary_port_samples = [
-            network_samples[-1], service_samples[-1],
+            network_boundary, service_boundary,
             (1050, 305), (1100, 305), (1150, 305),
             (500, 760), (500, 800), (500, 830),
             (820, 760), (820, 800), (820, 830),
         ]
         boundary_clear = list(dict.fromkeys(
-            network_clear[-1:] + service_clear[-1:] + [(660, 800)]))
+            network_clear + service_clear + [(660, 800)]))
         return {
             "controller_network_interface_path": {
                 "ok": all(ink(point) for point in network_samples) and
@@ -4608,6 +4710,14 @@ def _deterministic_control_diagram_constraint_certificate(
             },
         }
     except (OSError, TypeError, ValueError, IndexError):
+        if kind == "allocation_flow_vertical":
+            return {
+                "allocation_flow_shape_sequence": {"ok": False},
+                "allocation_flow_vertical_connections": {"ok": False},
+                "allocation_flow_left_return": {"ok": False},
+                "allocation_flow_right_return": {"ok": False},
+                "allocation_flow_weld_branch": {"ok": False},
+            }
         if kind == "edge_controller_flat":
             return {
                 "controller_network_interface_path": {"ok": False},
@@ -4634,6 +4744,9 @@ def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
         "png_sha256": actual_hash,
         "renderer_png_sha256": expected_hash,
     }
+    control_renderer = _control_diagram_kind(caption)
+    if control_renderer:
+        certificate["renderer"] = control_renderer
     constraints = {}
     if exact_match:
         constraints.update(
@@ -4854,7 +4967,7 @@ def current_cross_provider_geometry_audit(value, *, specification_hash: str = ""
         verified_categories = _certified_geometry_dissent_categories(
             errors=value.get("reviewer_errors") or [],
             missing_geometry=value.get("reviewer_missing_geometry") or [],
-            missing=value.get("missing") or [],
+            missing=value.get("reviewer_missing") or value.get("missing") or [],
             unexpected=value.get("reviewer_unexpected") or [],
             duplicates=value.get("duplicates") or [],
             certificate=resolution if isinstance(resolution, dict) else {},
@@ -4865,6 +4978,8 @@ def current_cross_provider_geometry_audit(value, *, specification_hash: str = ""
             not recorded_categories or certified_dissent_current)
         reviewer_missing_geometry_ok = (
             not value.get("reviewer_missing_geometry") or certified_dissent_current)
+        reviewer_missing_ok = (
+            not value.get("reviewer_missing") or certified_dissent_current)
         resolution_current = bool(
             isinstance(resolution, dict) and
             resolution.get("version") == DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION and
@@ -4875,7 +4990,7 @@ def current_cross_provider_geometry_audit(value, *, specification_hash: str = ""
             resolution.get("semantic_model") == vision_model() and
             resolution.get("specification_hash") == value.get("specification_hash") and
             value.get("reviewer_ok") is False and not value.get("missing") and
-            recorded_categories_ok and reviewer_missing_geometry_ok)
+            recorded_categories_ok and reviewer_missing_geometry_ok and reviewer_missing_ok)
     return bool(value.get("ok") and resolution_current and
                 _current_cross_provider_geometry_result(
                     value, specification_hash=specification_hash))
@@ -6236,6 +6351,22 @@ def _certified_geometry_dissent_category(value: str) -> str:
             re.search(r"\b(?:line|path|port|boundary|side|top|upper|lower|left|right|"
                       r"downward|extend|cross|origin|extra|unexpected)\w*\b", text)):
         return "controller_boundary_ports"
+    if ("left return" in text or
+            ("return path" in text and "left" in text)):
+        return "allocation_flow_left_return"
+    if ("right return" in text or
+            ("return path" in text and "right" in text)):
+        return "allocation_flow_right_return"
+    if (re.search(r"\b(?:welded[- ]contactor|solid square terminator)\b", text) and
+            re.search(r"\b(?:arrow|branch|line|path|terminator)\w*\b", text)):
+        return "allocation_flow_weld_branch"
+    if (re.search(r"\bvertical\b", text) and "arrow" in text and
+            re.search(r"\b(?:connect|join|touch)\w*\b", text)):
+        return "allocation_flow_vertical_connections"
+    if (re.search(r"\b(?:202|204|206|208|210|212|214|216)\b", text) or
+            (re.search(r"\b(?:flow|process)\b", text) and
+             re.search(r"\b(?:component|diamond|rectangle|shape|step)\w*\b", text))):
+        return "allocation_flow_shape_sequence"
     if ("hatch" in text and
             re.search(r"\b(?:angle|direction|lean(?:s|ed|ing)?|parallel|slash|slope|"
                       r"steep|stroke|vertical)\b",
@@ -6281,17 +6412,28 @@ def _certified_geometry_dissent_categories(*, errors, missing_geometry, missing,
                                             unexpected, duplicates,
                                             certificate: dict) -> list[str] | None:
     """Return only dissent categories proven by exact renderer pixels."""
-    if missing or duplicates:
+    if duplicates:
         return None
+    constraints = certificate.get("certified_constraints") or {}
+    categories = []
+    missing_values = {
+        _clean_numeral(item) for item in missing or () if _clean_numeral(item)}
+    if missing_values:
+        expected_values = {
+            _clean_numeral(item) for item in certificate.get("expected_numerals") or ()
+            if _clean_numeral(item)}
+        flow = constraints.get("allocation_flow_shape_sequence") or {}
+        if not (flow.get("ok") is True and expected_values and
+                missing_values.issubset(expected_values)):
+            return None
+        categories.append("allocation_flow_shape_sequence")
     findings = [
         str(item).strip() for item in (
             list(errors or []) + list(missing_geometry or []) + list(unexpected or []))
         if str(item).strip()
     ]
     if not findings:
-        return []
-    constraints = certificate.get("certified_constraints") or {}
-    categories = []
+        return sorted(set(categories))
     for finding in findings:
         category = _certified_geometry_dissent_category(finding)
         constraint = constraints.get(category) or {}
@@ -6317,6 +6459,9 @@ def _resolve_cross_provider_geometry_dissent(semantic: dict, audit: dict, png: b
     certificate = _deterministic_geometry_certificate(png, caption)
     if not certificate.get("ok") or not _complete_semantic_model_audit(semantic):
         return audit
+    if certificate.get("renderer") == "allocation_flow_vertical":
+        certificate["expected_numerals"] = sorted({
+            entry["numeral"] for entry in numeral_entries(numerals)})
 
     semantic_inventory_clean = bool(
         not semantic.get("missing") and not semantic.get("unexpected") and
@@ -6355,9 +6500,11 @@ def _resolve_cross_provider_geometry_dissent(semantic: dict, audit: dict, png: b
         "reviewer_ok": False,
         "reviewer_summary": str(audit.get("summary") or "")[:2000],
         "reviewer_errors": list(audit.get("errors") or []),
+        "reviewer_missing": list(audit.get("missing") or []),
         "reviewer_unexpected": list(audit.get("unexpected") or []),
         "reviewer_missing_geometry": list(audit.get("missing_geometry") or []),
         "errors": [],
+        "missing": [],
         "unexpected": [],
         "missing_geometry": [],
         "consensus_resolution": resolution,
