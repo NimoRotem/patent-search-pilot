@@ -5037,6 +5037,160 @@ def _split_allocation_flow_second_specification():
     """
 
 
+def _branch_current_safety_flow_specification():
+    return """
+    A flat process flow diagram in plain black line work on white, with no shading and no text.
+    The process begins at a diamond shape, the branch current check step 302. A solid line with
+    an arrowhead leaves the right vertex of the diamond and loops back to enter the top vertex of
+    the same diamond. A solid line with an arrowhead leaves the bottom vertex and points to a
+    rectangle below it, the shedding step 304. A solid line with an arrowhead leaves the bottom
+    of the shedding step rectangle and points back up to the top vertex of the branch current
+    check diamond. A diamond shape, the welded contactor check step 306, is to the right of the
+    shedding step. A solid line with an arrowhead leaves its bottom vertex and points to a
+    rectangle below it, the fault indication step 308. A rectangle, the reclosure check step 310,
+    is in the lower left. No process-flow line leaves the reclosure check step. A large square
+    bracket is drawn to the left of all the other shapes, with its opening to the right, to
+    enclose the entire process.
+    """
+
+
+def test_branch_current_safety_flow_template_certifies_every_route_and_anchor():
+    specification = _branch_current_safety_flow_specification()
+    numerals = [
+        "300 = branch current safety process",
+        "302 = branch current check step",
+        "304 = shedding step",
+        "306 = welded contactor check step",
+        "308 = fault indication step",
+        "310 = reclosure check step",
+    ]
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": value.split(" = ", 1)[0], "x": 500, "y": 500,
+                 "visible": True}
+                for value in numerals
+            ],
+        })
+    semantic = draft_figures._apply_pixel_grounding(png, numerals, semantic)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    assert draft_figures._control_diagram_kind(specification) == "branch_current_safety_flow"
+    assert png is not None and certificate["ok"] is True
+    assert certificate["renderer"] == "branch_current_safety_flow"
+    constraints = certificate["certified_constraints"]
+    assert all(item["ok"] is True for item in constraints.values())
+    left, top, right, bottom = constraints["branch_safety_bracket"]["enclosed_bounds"]
+    for category in (
+            "branch_safety_self_loop", "branch_safety_shedding_path",
+            "branch_safety_feedback", "branch_safety_fault_path"):
+        assert all(
+            left < x <= right and top <= y <= bottom
+            for x, y in constraints[category]["line_samples"])
+    assert {item["numeral"] for item in semantic["anchors"]} == {
+        "300", "302", "304", "306", "308", "310"
+    }
+    assert len({(item["x"], item["y"]) for item in semantic["anchors"]}) == 6
+    assert semantic["pixel_anchor_audit"]["ok"] is True
+
+
+def test_exact_branch_current_flow_resolves_only_certified_route_dissent(monkeypatch):
+    specification = _branch_current_safety_flow_specification()
+    numerals = [
+        "300 = branch current safety process",
+        "302 = branch current check step",
+        "304 = shedding step",
+        "306 = welded contactor check step",
+        "308 = fault indication step",
+        "310 = reclosure check step",
+    ]
+    expected = [value.split(" = ", 1)[0] for value in numerals]
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    spec_hash = draft_figures.specification_hash("FIG. 5", specification, numerals)
+    dissent = accepted_cross_provider_geometry_audit(
+        ok=False, specification_hash=spec_hash,
+        missing_geometry=[
+            "The shedding feedback line returns to the left vertex instead of the top vertex "
+            "of the branch current check diamond.",
+            "The right-vertex self-loop connects to the welded contactor check diamond rather "
+            "than returning to the top vertex of the branch current check diamond.",
+            "The large square bracket does not enclose the right-hand welded contactor and "
+            "fault indication shapes.",
+        ],
+        summary="The required shapes are visible, but three exact routes appear wrong.",
+    )
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k: dissent)
+    semantic = {
+        "ok": False, "inspected": True,
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "expected": expected, "visible": expected,
+        "missing": [], "unexpected": [], "duplicates": [], "unexpected_text": [],
+        "errors": ["The same three routes appear incorrect."],
+        "anchors": [
+            {"numeral": numeral, "x": 100 + (index * 100), "y": 500,
+             "visible": True, "evidence": "The named geometry is visible."}
+            for index, numeral in enumerate(expected)
+        ],
+        "specification_hash": spec_hash,
+    }
+
+    audited = draft_figures._resolve_deterministic_semantic_dissent(
+        semantic, png, label="FIG. 5", caption=specification, numerals=numerals)
+
+    assert audited["ok"] is True and audited["errors"] == []
+    cross = audited["cross_provider_geometry_audit"]
+    assert cross["ok"] is True and cross["reviewer_ok"] is False
+    assert set(cross["consensus_resolution"]["certified_dissent_categories"]) == {
+        "branch_safety_bracket", "branch_safety_feedback", "branch_safety_self_loop",
+    }
+    assert draft_figures._current_deterministic_semantic_resolution(audited) is True
+
+
+@pytest.mark.parametrize(("finding", "category"), [
+    (
+        "The branch current safety process draws the branch current check step as a rectangle "
+        "instead of a diamond shape.",
+        "branch_safety_shape_sequence",
+    ),
+    (
+        "The self-loop from the right vertex of the branch current check diamond misses its "
+        "top vertex.",
+        "branch_safety_self_loop",
+    ),
+    (
+        "The line from the bottom vertex of the branch current check step does not point to the "
+        "shedding step.",
+        "branch_safety_shedding_path",
+    ),
+    (
+        "The shedding feedback line returns to the left vertex of the branch current check "
+        "diamond rather than its top vertex.",
+        "branch_safety_feedback",
+    ),
+    (
+        "The line from the bottom vertex of the welded contactor check step misses the fault "
+        "indication step.",
+        "branch_safety_fault_path",
+    ),
+    (
+        "The large square bracket does not enclose the right-hand process shapes.",
+        "branch_safety_bracket",
+    ),
+    (
+        "An extra outgoing line leaves the reclosure check step, which should be terminal.",
+        "branch_safety_reclosure_terminal",
+    ),
+])
+def test_branch_current_flow_dissent_categories_are_constraint_specific(finding, category):
+    assert draft_figures._certified_geometry_dissent_category(finding) == category
+
+
 def test_split_allocation_flow_templates_certify_connector_and_every_route():
     first = draft_figures._deterministic_control_diagram_png(
         _split_allocation_flow_first_specification())
