@@ -1265,6 +1265,104 @@ def test_overcrowded_sheet_is_refused_before_any_image_call():
     assert caught.value.category == "figures_and_numerals"
 
 
+def test_redundant_leaf_labels_are_removed_from_an_overcrowded_overview():
+    numerals = [
+        {"numeral": "10", "part": "rail"},
+        {"numeral": "16", "part": "longitudinal slot"},
+        {"numeral": "18", "part": "distance marks"},
+        {"numeral": "30", "part": "fence"},
+        {"numeral": "50", "part": "first guide carriage"},
+        {"numeral": "54", "part": "drill bushing of the first guide carriage"},
+        {"numeral": "58", "part": "clamp knob of the first guide carriage"},
+        {"numeral": "70", "part": "second guide carriage"},
+        {"numeral": "74", "part": "drill bushing of the second guide carriage"},
+        {"numeral": "78", "part": "clamp knob of the second guide carriage"},
+    ]
+    overview = {
+        "label": "FIG. 2",
+        "caption": (
+            "A top view with a drill bushing 54 and clamp knob 58 on the first guide "
+            "carriage 50, and a drill bushing 74 and clamp knob 78 on the second guide "
+            "carriage 70. A cutting-plane line 5-5 establishes FIG. 5, and line 8-8 "
+            "establishes FIG. 8. The disclosed calibration target contains 54 apertures."
+        ),
+        "numerals": [item["numeral"] for item in numerals],
+    }
+    focused_first = {
+        "label": "FIG. 5", "caption": "A first-carriage sectional view.",
+        "numerals": ["10", "16", "50", "54", "58"],
+    }
+    focused_second = {
+        "label": "FIG. 8", "caption": "A second-carriage sectional view.",
+        "numerals": ["10", "16", "70", "74", "78"],
+    }
+
+    repaired, changes = draft_studio.normalize_overcrowded_figure_plans({
+        "sections": GOOD,
+        "numerals": numerals,
+        "figures": [overview, focused_first, focused_second],
+    })
+
+    repaired_overview = repaired["figures"][0]
+    assert repaired_overview["numerals"] == [
+        "10", "16", "18", "30", "50", "58", "70", "78",
+    ]
+    assert "bushing 54" not in repaired_overview["caption"]
+    assert "bushing 74" not in repaired_overview["caption"]
+    assert "a drill bushing and clamp knob 58" in repaired_overview["caption"]
+    assert "a drill bushing and clamp knob 78" in repaired_overview["caption"]
+    assert "line 5-5 establishes FIG. 5" in repaired_overview["caption"]
+    assert "line 8-8 establishes FIG. 8" in repaired_overview["caption"]
+    assert "contains 54 apertures" in repaired_overview["caption"]
+    assert changes == ["FIG. 2: moved redundant labels 54, 74 to focused sheets"]
+    assert {
+        draft_qa._drawing_numeral(value)
+        for figure in repaired["figures"] for value in figure["numerals"]
+    } == {item["numeral"] for item in numerals}
+
+
+def test_overcrowded_plan_is_left_for_agent_repair_without_a_focused_label_view():
+    numerals = [
+        {"numeral": str(value), "part": f"assembly part {value}"}
+        for value in range(10, 28, 2)
+    ]
+    entries = [item["numeral"] for item in numerals]
+    snapshot = {
+        "sections": GOOD,
+        "numerals": numerals,
+        "figures": [
+            {"label": "FIG. 1", "caption": "A top plan view.", "numerals": entries},
+            {"label": "FIG. 2", "caption": "A side elevation view.", "numerals": entries},
+        ],
+    }
+
+    repaired, changes = draft_studio.normalize_overcrowded_figure_plans(snapshot)
+
+    assert repaired["figures"] == snapshot["figures"]
+    assert changes == []
+
+
+def test_overcrowded_plan_never_drops_one_unpaired_label_by_heuristic():
+    numerals = [
+        {"numeral": str(value), "part": f"assembly part {value}"}
+        for value in range(10, 28, 2)
+    ]
+    entries = [item["numeral"] for item in numerals]
+    snapshot = {
+        "sections": GOOD,
+        "numerals": numerals,
+        "figures": [
+            {"label": "FIG. 1", "caption": "A top plan view.", "numerals": entries},
+            {"label": "FIG. 2", "caption": "A focused detail view.", "numerals": ["10"]},
+        ],
+    }
+
+    repaired, changes = draft_studio.normalize_overcrowded_figure_plans(snapshot)
+
+    assert repaired["figures"] == snapshot["figures"]
+    assert changes == []
+
+
 def test_a_text_numeral_missing_from_every_figure_is_refused_before_any_image_call():
     figures = [dict(FIGURES[0]), {**FIGURES[1], "numerals": ["16", "18"]}]
     snapshot = {"sections": GOOD, "numerals": NUMERALS, "figures": figures}

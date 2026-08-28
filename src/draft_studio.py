@@ -1083,6 +1083,146 @@ def validate_snapshot(snapshot: Mapping[str, Any],
     return {"sections": sections, "numerals": numerals, "figures": figures}
 
 
+_PART_ORDINAL_RE = re.compile(
+    r"\b(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b",
+    re.IGNORECASE)
+_PROTECTED_DRAWING_NUMBER_PREFIX_RE = re.compile(
+    r"\b(?:fig(?:ure)?\.?|sheet|claim|line|section|no\.?)\s*$", re.IGNORECASE)
+_MEASUREMENT_SUFFIX_RE = re.compile(
+    r"^\s*(?:%|percent|mm|cm|m\b|in\.?|inch(?:es)?|ft|kg|g\b|lb|psi|kpa|mpa|bar|"
+    r"deg|degrees?|hz|khz|mhz|v\b|volts?|a\b|amps?|w\b|watts?|sec(?:onds?)?|"
+    r"min(?:utes?)?|hours?|rpm|newtons?)\b", re.IGNORECASE)
+_FOCUSED_FIGURE_RE = re.compile(
+    r"\b(?:cross[ -]section(?:al)?|sectional|fragmentary|detail(?:ed)?|enlarged|exploded|"
+    r"focused)\b", re.IGNORECASE)
+_PART_STOPWORDS = frozenset({"a", "an", "the", "of", "for", "and", "or", "to", "in", "on"})
+
+
+def _part_role(part: Any) -> str:
+    """Group corresponding leaf parts while ignoring first/second view qualifiers."""
+    value = re.sub(r"[^a-z0-9]+", " ", str(part or "").lower())
+    value = _PART_ORDINAL_RE.sub(" ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _strip_reference_numeral_from_brief(caption: Any, numeral: str, part: str) -> str:
+    """Make a retained context part unnumbered without touching view or section numbers."""
+    value = str(caption or "")
+    part_words = set(re.findall(
+        r"[a-z0-9]+", _PART_ORDINAL_RE.sub(" ", str(part or "").lower())))
+    part_words -= _PART_STOPWORDS
+    pattern = re.compile(
+        rf"(?<![A-Za-z0-9-]){re.escape(numeral)}(?![A-Za-z0-9-])",
+        re.IGNORECASE)
+
+    def replace(match: re.Match[str]) -> str:
+        before = value[max(0, match.start() - 32):match.start()]
+        after = value[match.end():match.end() + 20]
+        if _PROTECTED_DRAWING_NUMBER_PREFIX_RE.search(before):
+            return match.group(0)
+        if _MEASUREMENT_SUFFIX_RE.search(after):
+            return match.group(0)
+        preceding_words = re.findall(r"[a-z0-9]+", before.lower())[-4:]
+        if not part_words.intersection(preceding_words):
+            return match.group(0)
+        return ""
+
+    value = pattern.sub(replace, value)
+    value = re.sub(r"[ \t]{2,}", " ", value)
+    value = re.sub(r"[ \t]+([,.;:])", r"\1", value)
+    return value.strip()
+
+
+def normalize_overcrowded_figure_plans(
+        snapshot: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Remove only redundant leaf labels from sheets above the deterministic limit.
+
+    The complete numeral table remains authoritative. A label is eligible only when another
+    sheet retains it, so this normalization cannot erase a disclosed component from the drawing
+    set. Corresponding leaf parts are removed as a group when possible, which keeps paired views
+    symmetric. The component remains in the brief as unnumbered context, while figure numbers,
+    cutting-plane designations, and measurements remain unchanged.
+    """
+    out = human_text({
+        "sections": dict(snapshot.get("sections") or {}),
+        "numerals": [dict(item) for item in (snapshot.get("numerals") or ())
+                      if isinstance(item, Mapping)],
+        "figures": [dict(item) for item in (snapshot.get("figures") or ())
+                    if isinstance(item, Mapping)],
+    })
+    figures = out["figures"]
+    table = {
+        str(item.get("numeral") or "").strip().upper(): str(item.get("part") or "").strip()
+        for item in out["numerals"]
+    }
+    coverage: dict[str, int] = {}
+    focused_coverage: dict[str, int] = {}
+    for figure in figures:
+        seen = {draft_qa._drawing_numeral(item)
+                for item in (figure.get("numerals") or ())}
+        for numeral in seen - {""}:
+            coverage[numeral] = coverage.get(numeral, 0) + 1
+            if _FOCUSED_FIGURE_RE.search(str(figure.get("caption") or "")):
+                focused_coverage[numeral] = focused_coverage.get(numeral, 0) + 1
+
+    changes: list[str] = []
+    for figure in figures:
+        entries = list(figure.get("numerals") or ())
+        ordered = list(dict.fromkeys(
+            draft_qa._drawing_numeral(item) for item in entries))
+        ordered = [item for item in ordered if item]
+        excess = len(ordered) - draft_qa.MAX_NUMERALS_PER_SHEET
+        if excess <= 0:
+            continue
+        current_focused = bool(
+            _FOCUSED_FIGURE_RE.search(str(figure.get("caption") or "")))
+        eligible = [
+            numeral for numeral in ordered
+            if coverage.get(numeral, 0) > 1 and
+            focused_coverage.get(numeral, 0) - int(current_focused) > 0 and
+            re.fullmatch(r"[A-Z]?\d{2,4}[A-Z]?", numeral) and table.get(numeral)
+        ]
+        if len(eligible) < excess:
+            continue
+
+        groups: dict[str, list[str]] = {}
+        for numeral in eligible:
+            groups.setdefault(_part_role(table[numeral]), []).append(numeral)
+        selected: list[str] = []
+        remaining = excess
+        grouped = [values for values in groups.values()
+                   if 1 < len(values) <= remaining]
+        grouped.sort(key=lambda values: (
+            -max(len(table[item].split()) for item in values),
+            -len(values),
+            ordered.index(values[0]),
+        ))
+        for values in grouped:
+            if len(values) > remaining:
+                continue
+            selected.extend(values)
+            remaining -= len(values)
+            if not remaining:
+                break
+        if len(selected) != excess:
+            continue
+
+        removed = set(selected)
+        figure["numerals"] = [
+            item for item in entries
+            if draft_qa._drawing_numeral(item) not in removed
+        ]
+        caption = str(figure.get("caption") or "")
+        for numeral in selected:
+            caption = _strip_reference_numeral_from_brief(
+                caption, numeral, table[numeral])
+        figure["caption"] = caption
+        label = str(figure.get("label") or "Drawing")[:80]
+        changes.append(
+            f"{label}: moved redundant labels {', '.join(selected)} to focused sheets")
+    return out, changes
+
+
 def candidate_snapshot_for_repair(snapshot: Any) -> dict[str, Any] | None:
     """Recover a once-validated candidate after a newer preflight rule blocks publication."""
     if not isinstance(snapshot, Mapping):
@@ -2790,7 +2930,17 @@ class TurnRunner:
                     # section when the lock restores the empty value.
                     repair_snapshot = candidate_snapshot_for_repair(raw_snapshot)
                     if repair_snapshot is not None:
-                        snapshot = repair_snapshot
+                        raw_snapshot, allocation_changes = \
+                            normalize_overcrowded_figure_plans(repair_snapshot)
+                        snapshot = raw_snapshot
+                        if allocation_changes:
+                            draft_workspace.write_figures(
+                                workspace, raw_snapshot["figures"])
+                            changes = list(result.get("changes") or [])
+                            changes.extend(
+                                "Automatically normalized drawing allocation: " + item
+                                for item in allocation_changes)
+                            result["changes"] = changes
                     #  Figure-plan defects are collected, not raised: they are about the sheets,
                     #  and the text publishes on the text's merits.
                     drawing_faults: list[str] = []
