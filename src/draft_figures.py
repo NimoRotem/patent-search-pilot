@@ -75,7 +75,7 @@ MARKED_ANCHOR_PROMPT_VERSION = (
 CROSS_PROVIDER_PROMPT_VERSION = (
     "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage")
 CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION = (
-    "figure-geometry-crosscheck-v5-caption-geometry-authority")
+    "figure-geometry-crosscheck-v6-parts-list-metadata-normalization")
 DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
     "deterministic-geometry-consensus-v2-byte-exact-certified-constraints")
 DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
@@ -1665,6 +1665,25 @@ def semantic_consensus(expected, results) -> dict:
     return consensus
 
 
+def _parts_list_only_geometry_feedback(value) -> bool:
+    """Identify a reviewer complaint about audit metadata, not rendered geometry."""
+    text = re.sub(r"\s+", " ", str(value or "")).strip().lower()
+    if not text or not re.search(r"\b(?:provided |reference[- ]numeral )?parts? list\b", text):
+        return False
+    omission = re.search(
+        r"\b(?:not|is not|are not|was not|were not)\b[^.;]{0,100}"
+        r"\b(?:included|listed|present|provided|assigned|contained)\b",
+        text)
+    if not omission:
+        return False
+    rendered_failure = re.search(
+        r"\b(?:not visible|is not visible|are not visible|absent from (?:the )?"
+        r"(?:image|drawing|sheet)|missing from (?:the )?(?:image|drawing|sheet)|"
+        r"unexpected geometry|incorrect geometry|wrong geometry)\b",
+        text)
+    return not bool(rendered_failure)
+
+
 def cross_provider_geometry_audit(expected, result) -> dict:
     """Normalize an independent provider's exhaustive raw-geometry inventory."""
     result = _human_text(dict(result or {}))
@@ -1732,24 +1751,37 @@ def cross_provider_geometry_audit(expected, result) -> dict:
                 (f": {evidence}" if evidence else ""))
     if expected_set and not elements:
         inventory_errors.append("Independent geometry inventory returned no visible elements.")
-    errors = [str(item)[:500] for item in result.get("errors") or ()
-              if str(item).strip()]
+    raw_errors = [str(item)[:500] for item in result.get("errors") or ()
+                  if str(item).strip()]
+    ignored_parts_list_feedback = [
+        item for item in raw_errors if _parts_list_only_geometry_feedback(item)
+    ]
+    errors = [item for item in raw_errors if item not in ignored_parts_list_feedback]
     errors.extend(item for item in inventory_errors if item not in errors)
     unexpected.extend(
         f"Unexpected reference-numeral requirement {value}." for value in unexpected_numerals)
     unexpected = list(dict.fromkeys(unexpected))
     missing_geometry = list(dict.fromkeys(missing_geometry))
     inspected = bool(result) and isinstance(raw_parts, list) and isinstance(raw_elements, list)
+    summary = str(result.get("summary") or "")[:2000]
+    summary_parts_list_only = _parts_list_only_geometry_feedback(summary)
+    if summary_parts_list_only and summary not in ignored_parts_list_feedback:
+        ignored_parts_list_feedback.append(summary)
+    metadata_only_mismatch = bool(
+        ignored_parts_list_feedback and not missing and not unexpected and
+        not duplicates and not errors and not missing_geometry)
+    geometry_matches = bool(result.get("matches_spec") is True or metadata_only_mismatch)
     ok = bool(
-        inspected and result.get("matches_spec") is True and not missing and
+        inspected and geometry_matches and not missing and
         not unexpected and not duplicates and not errors and not missing_geometry)
     return {
         "ok": ok, "inspected": inspected,
-        "summary": str(result.get("summary") or "")[:2000],
+        "summary": summary,
         "expected": sorted(expected_set, key=_numeral_order),
         "observed": observed, "missing": missing, "unexpected": unexpected,
         "duplicates": duplicates, "missing_geometry": missing_geometry,
         "errors": errors, "parts": parts, "visible_elements": normalized_elements,
+        "ignored_parts_list_feedback": ignored_parts_list_feedback,
     }
 
 
@@ -6430,7 +6462,9 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
         "instance when the caption expressly requires multiple instances of that same named part. "
         "Use the caption's explicit count for those repeated instances, and do not infer the "
         "permitted instance count from the number of numerals. Do not call a caption-required "
-        "unnumbered element or repeated instance unexpected. "
+        "unnumbered element or repeated instance unexpected. Never report an element's absence "
+        "from the reference-numeral parts list as an error. Report only what the pixels omit, add, "
+        "or depict incorrectly relative to the complete caption. "
         "Cutting-plane lines, viewing arrows, and repeated section designations are also "
         "deliberately absent and added later; do not report their absence. "
         "Apply line-drawing conventions before reporting an error. Count continuous black stroke "
