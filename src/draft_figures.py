@@ -4451,6 +4451,77 @@ def _deterministic_segmented_cam_ring_constraint_certificate(
     }
 
 
+def _deterministic_control_diagram_constraint_certificate(
+        png: bytes, caption: str) -> dict:
+    """Certify exact endpoint and connection pixels in controlled block diagrams."""
+    if _control_diagram_kind(caption) != "charging_installation_flat":
+        return {}
+    try:
+        from PIL import Image, ImageOps
+
+        with Image.open(io.BytesIO(png)) as source:
+            grayscale = ImageOps.grayscale(source)
+        width, height = grayscale.size
+
+        def ink(point: tuple[int, int], radius: int = 2) -> bool:
+            center_x, center_y = point
+            return any(
+                grayscale.getpixel((x, y)) < 225
+                for y in range(max(0, center_y - radius),
+                               min(height, center_y + radius + 1))
+                for x in range(max(0, center_x - radius),
+                               min(width, center_x + radius + 1))
+                if (x - center_x) ** 2 + (y - center_y) ** 2 <= radius ** 2
+            )
+
+        def clear(point: tuple[int, int], radius: int = 3) -> bool:
+            return not ink(point, radius)
+
+        branch_samples = [(140, 180), (700, 180), (1290, 180), (1320, 180)]
+        bus_samples = [
+            (300, 750), (300, 780), (500, 780), (695, 780),
+            (695, 600), (935, 600), (935, 780),
+        ]
+        sensor_path_samples = [
+            (305, 240), (305, 270), (350, 270), (390, 270), (390, 500), (390, 580),
+        ]
+        return {
+            "charging_branch_conductor_endpoint": {
+                "ok": all(ink(point) for point in branch_samples) and
+                      clear((110, 180)) and clear((1350, 180)),
+                "line_samples": [list(point) for point in branch_samples],
+                "clear_before_left_endpoint": [110, 180],
+                "clear_beyond_right_boundary": [1350, 180],
+                "right_boundary_endpoint": [1320, 180],
+            },
+            "charging_local_bus_connectivity": {
+                "ok": all(ink(point) for point in bus_samples) and
+                      clear((260, 780)) and clear((975, 780)),
+                "line_samples": [list(point) for point in bus_samples],
+                "left_endpoint": [300, 780],
+                "right_endpoint": [935, 780],
+                "clear_before_left_endpoint": [260, 780],
+                "clear_after_right_endpoint": [975, 780],
+                "vertical_connections_x": [300, 695, 935],
+            },
+            "charging_sensor_controller_path": {
+                "ok": all(ink(point) for point in sensor_path_samples) and
+                      clear((270, 270)) and clear((430, 270)),
+                "path_samples": [list(point) for point in sensor_path_samples],
+                "turns": [[305, 270], [390, 270]],
+                "controller_top_endpoint": [390, 580],
+                "clear_left_of_first_turn": [270, 270],
+                "clear_right_of_second_turn": [430, 270],
+            },
+        }
+    except (OSError, TypeError, ValueError, IndexError):
+        return {
+            "charging_branch_conductor_endpoint": {"ok": False},
+            "charging_local_bus_connectivity": {"ok": False},
+            "charging_sensor_controller_path": {"ok": False},
+        }
+
+
 def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
     """Bind an inspected image to the exact deterministic renderer selected by its brief."""
     expected = _deterministic_geometry_png(caption)
@@ -4466,6 +4537,8 @@ def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
     }
     constraints = {}
     if exact_match:
+        constraints.update(
+            _deterministic_control_diagram_constraint_certificate(png, caption))
         constraints.update(_deterministic_chamber_constraint_certificate(png, caption))
         constraints.update(
             _deterministic_segmented_cam_ring_constraint_certificate(png, caption))
@@ -6006,6 +6079,20 @@ def _certified_geometry_dissent_category(value: str) -> str:
     text = re.sub(r"\s+", " ", str(value or "")).strip().lower()
     if not text:
         return ""
+    if ("branch conductor" in text and
+            re.search(r"\b(?:end|side|boundar|enclos|dash|meet|cross|stop|extend|short)\w*\b",
+                      text)):
+        return "charging_branch_conductor_endpoint"
+    if ("branch current sensor" in text and "edge controller" in text and
+            re.search(r"\b(?:line|path|connect|join|turn|origin|meet|top|left|right|down)\w*\b",
+                      text)):
+        return "charging_sensor_controller_path"
+    if (("isolated local bus" in text and
+         re.search(r"\b(?:line|segment|start|end|span|extend|connect|join|below|vertical|"
+                   r"horizontal|left|right|point)\w*\b", text)) or
+            ("edge controller" in text and "connector channel" in text and
+             re.search(r"\b(?:line|segment|connect|drop|vertical|horizontal)\w*\b", text))):
+        return "charging_local_bus_connectivity"
     if ("hatch" in text and
             re.search(r"\b(?:angle|direction|lean(?:s|ed|ing)?|parallel|slash|slope|"
                       r"steep|stroke|vertical)\b",
