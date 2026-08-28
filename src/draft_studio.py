@@ -2426,6 +2426,8 @@ class TurnRunner:
         def check_cancel() -> bool:
             self.repository.heartbeat(
                 turn_id, lease, stage="drawing and inspecting figures")
+            if self.stop_event is not None and self.stop_event.is_set():
+                return False
             return not deadline or time.time() <= deadline
 
         result = draft_figures.ensure_project_figures(

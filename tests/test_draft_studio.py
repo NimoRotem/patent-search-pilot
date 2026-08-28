@@ -2925,6 +2925,37 @@ def test_worker_shutdown_reaches_the_inflight_agent_cancel_event(tmp_path):
     assert agent.run.call_args.kwargs["cancel"].is_set() is True
 
 
+def test_worker_shutdown_stops_between_drawing_sheets(monkeypatch, tmp_path):
+    stop = threading.Event()
+    stop.set()
+    repository = Mock()
+    runner = draft_studio.TurnRunner(
+        repository, object(), qa=Mock(), stop_event=stop)
+    monkeypatch.setattr(
+        runner, "_review_sources",
+        lambda **_kwargs: {"ok": True, "findings": []})
+    monkeypatch.setattr(draft_studio, "filing_blockers", lambda _report: [])
+    monkeypatch.setattr(draft_figures, "checkpoint_project_figures", Mock())
+    monkeypatch.setattr(draft_figures, "materialize_review_images", Mock(return_value=0))
+    observed = {}
+
+    def ensure_project_figures(*_args, check_cancel, **_kwargs):
+        observed["continue"] = check_cancel()
+        return {"ok": False, "budget_spent": True, "errors": []}
+
+    monkeypatch.setattr(
+        draft_figures, "ensure_project_figures", ensure_project_figures)
+
+    runner._ensure_figures(
+        turn_id=3, lease="lease", project_id=7, user_id=91,
+        sections=GOOD, numerals=NUMERALS, figures=FIGURES,
+        disclosure="inventor source", workspace=tmp_path)
+
+    assert observed["continue"] is False
+    repository.heartbeat.assert_called_once_with(
+        3, "lease", stage="drawing and inspecting figures")
+
+
 def test_transient_drawing_capacity_retries_the_durable_drawing_turn(
         monkeypatch, tmp_path):
     runner = draft_studio.TurnRunner(Mock(), object(), agent=Mock(), workspace=Mock())
