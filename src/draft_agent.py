@@ -898,6 +898,8 @@ def _run_vertex_once(*, workspace: Path, prompt: str, system_prompt: str,
     acquired = False
     tool_calls = 0
     quiet_rounds = 0
+    forcing_result = False
+    forced_result_rounds = 0
     try:
         while not acquired:
             if cancel is not None and cancel.is_set():
@@ -918,6 +920,10 @@ def _run_vertex_once(*, workspace: Path, prompt: str, system_prompt: str,
             if time.monotonic() >= deadline:
                 out.error = "The Vertex drafting fallback reached its time limit."
                 break
+            if forcing_result and forced_result_rounds >= 3:
+                out.error = ("The Vertex drafting fallback finished without returning the "
+                             "required structured answer.")
+                break
             try:
                 response = _vertex_generate(
                     client, model=vertex_model, contents=contents, config=config,
@@ -931,6 +937,8 @@ def _run_vertex_once(*, workspace: Path, prompt: str, system_prompt: str,
                 break
 
             out.num_turns += 1
+            if forcing_result:
+                forced_result_rounds += 1
             usage = getattr(response, "usage_metadata", None)
             prompt_tokens = int(getattr(usage, "prompt_token_count", 0) or 0) if usage else 0
             cached_tokens = int(
@@ -966,10 +974,22 @@ def _run_vertex_once(*, workspace: Path, prompt: str, system_prompt: str,
                     out.ok = True
                     break
                 quiet_rounds += 1
-                if quiet_rounds >= 3:
-                    out.error = ("The Vertex drafting fallback finished without returning the "
-                                 "required structured answer.")
-                    break
+                if quiet_rounds >= 3 and not forcing_result:
+                    forcing_result = True
+                    forced_result_rounds = 0
+                    config = config.model_copy(update={
+                        "tool_config": types.ToolConfig(
+                            function_calling_config=types.FunctionCallingConfig(
+                                mode=types.FunctionCallingConfigMode.ANY,
+                                allowed_function_names=["submit_result"],
+                            )),
+                    })
+                    contents.append(types.Content(
+                        role="user", parts=[types.Part.from_text(text=(
+                            "All permitted workspace work is complete. Do not inspect or edit "
+                            "another file. Your next response must call submit_result with the "
+                            "exact structured answer. Do not answer in prose."))]))
+                    continue
                 contents.append(types.Content(
                     role="user", parts=[types.Part.from_text(text=(
                         "Continue the task. When every required check or edit is complete, call "

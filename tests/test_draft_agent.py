@@ -440,3 +440,42 @@ def test_vertex_agent_does_not_replay_an_invalid_or_empty_model_role(monkeypatch
     assert result.ok is True and result.result == {"action": "ready"}
     assert len(calls) == 2
     assert [item.role for item in calls[1]] == ["user", "user"]
+
+
+def test_vertex_agent_forces_submit_result_after_repeated_prose_only_finishes(
+        monkeypatch, tmp_path):
+    from google.genai import types
+
+    calls = []
+
+    def generate(_client, *, model, contents, config, deadline, cancel):
+        del model, contents, deadline, cancel
+        calls.append(config)
+        if len(calls) <= 3:
+            parts = [types.Part.from_text(text="The requested edits are complete.")]
+        else:
+            function_config = config.tool_config.function_calling_config
+            assert function_config.mode == types.FunctionCallingConfigMode.ANY
+            assert function_config.allowed_function_names == ["submit_result"]
+            parts = [types.Part.from_function_call(
+                name="submit_result", args={"action": "ready"})]
+        return type("Response", (), {
+            "candidates": [type("Candidate", (), {
+                "content": types.Content(role="model", parts=parts),
+            })()],
+            "usage_metadata": None,
+        })()
+
+    monkeypatch.setattr(draft_agent, "_vertex_client", lambda: object())
+    monkeypatch.setattr(draft_agent, "_vertex_generate", generate)
+    result = draft_agent._run_vertex_once(
+        workspace=tmp_path, prompt="finish", system_prompt="system",
+        schema={
+            "type": "object",
+            "properties": {"action": {"type": "string"}},
+            "required": ["action"],
+            "additionalProperties": False,
+        }, timeout=30)
+
+    assert result.ok is True and result.result == {"action": "ready"}
+    assert len(calls) == 4
