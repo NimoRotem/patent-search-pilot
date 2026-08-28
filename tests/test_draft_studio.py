@@ -301,6 +301,42 @@ def test_a_self_contradictory_endpoint_target_is_refused_before_drawing():
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
 
+def test_a_figure_numeral_cannot_target_a_different_grouping_shape():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "A large rectangle, the vacuum lifting tool 10, surrounds the other parts."
+        ),
+        "numerals": [
+            "10 vacuum lifting tool: leader ends on the vertical spine of the large square "
+            "bracket.",
+            "12 body",
+            "14 pump",
+        ],
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "numeral 10" in check["items"][0]
+    assert "rectangle" in check["items"][0]
+    assert "square bracket" in check["items"][0]
+    with pytest.raises(
+            draft_studio.FilingPreflightError,
+            match="Drawing briefs are concise and renderable"):
+        draft_studio.validate_snapshot(
+            {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
+
+    consistent = [{
+        **figures[0],
+        "caption": (
+            "A large square bracket, the vacuum lifting tool 10, groups the other parts."
+        ),
+    }, FIGURES[1]]
+    assert checks_for(figures=consistent)[
+        "Drawing briefs are concise and renderable"]["status"] == "pass"
+
+
 def test_a_drawn_tile_cannot_coexist_with_a_no_other_panel_constraint():
     figures = [{
         **FIGURES[0],
