@@ -5141,6 +5141,28 @@ def _welded_decision_branch_current_safety_flow_specification():
     """
 
 
+def _separate_sequence_branch_current_safety_flow_specification():
+    return """
+    A flat process flow diagram in plain black line work on white, with no shading and no text.
+    A diamond shape, the branch current check step 302, is at the top center. A rectangle, the
+    shedding step 304, is located directly below the branch current check step. A diamond shape,
+    the welded contactor check step 306, is located to the right of the shedding step. A rectangle,
+    the fault indication step 308, is located directly below the welded contactor check step.
+
+    A line leaves the right vertex of the branch current check step, loops clockwise, and
+    re-enters the branch current check step on its upper-right face. A line leaves the bottom
+    vertex of the branch current check step and enters the top of the shedding step. A line leaves
+    the bottom of the shedding step, curves upward and to the left, and re-enters the branch
+    current check step on its upper-left face. A line leaves the bottom vertex of the welded
+    contactor check step and enters the top of the fault indication step.
+
+    The welded contactor check step and fault indication step are shown as a separate sequence.
+    The trigger for this sequence is described in the specification but not shown with a separate
+    entry arrow. A large square bracket 300 opens to the right and encloses all other shapes,
+    indicating the branch current safety process.
+    """
+
+
 def test_branch_current_safety_flow_template_certifies_every_route_and_anchor():
     specification = _branch_current_safety_flow_specification()
     numerals = [
@@ -5366,6 +5388,99 @@ def test_welded_decision_branch_current_safety_flow_is_rendered_exactly():
         "The return line from the welded contactor check misses the upper-left face of the "
         "branch current check diamond."
     ) == "branch_safety_feedback"
+
+
+def test_separate_sequence_branch_current_safety_flow_is_rendered_exactly():
+    specification = _separate_sequence_branch_current_safety_flow_specification()
+    numerals = [
+        "300 branch current safety process: leader ends on the vertical spine of the bracket.",
+        "302 branch current check step", "304 shedding step",
+        "306 welded contactor check step", "308 fault indication step",
+    ]
+
+    assert draft_figures._control_diagram_kind(
+        specification) == "branch_current_safety_flow_separate"
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": numeral, "x": 500, "y": 500, "visible": True}
+                for numeral in ("300", "302", "304", "306", "308")
+            ],
+        })
+    semantic = draft_figures._apply_pixel_grounding(png, numerals, semantic)
+
+    assert certificate["ok"] is True
+    assert certificate["renderer"] == "branch_current_safety_flow_separate"
+    constraints = certificate["certified_constraints"]
+    assert constraints["branch_safety_shape_sequence"]["shape_count"] == 4
+    assert constraints["branch_safety_feedback"]["origin"] == "shedding_bottom"
+    assert constraints["branch_safety_feedback"]["target_mode"] == "upper_left_face"
+    assert constraints["branch_safety_shedding_welded_path"]["required"] is False
+    assert constraints["branch_safety_shedding_welded_path"]["line_samples"] == []
+    assert all(item["ok"] is True for item in constraints.values())
+    left, top, right, bottom = constraints[
+        "branch_safety_bracket"]["enclosed_bounds"]
+    for category in (
+            "branch_safety_self_loop", "branch_safety_shedding_path",
+            "branch_safety_fault_path", "branch_safety_feedback"):
+        assert all(
+            left < x <= right and top <= y <= bottom
+            for x, y in constraints[category]["line_samples"])
+    assert {item["numeral"] for item in semantic["anchors"]} == {
+        "300", "302", "304", "306", "308"
+    }
+    assert len({(item["x"], item["y"]) for item in semantic["anchors"]}) == 5
+    assert semantic["pixel_anchor_audit"]["ok"] is True
+
+
+def test_separate_sequence_flow_resolves_only_certified_bracket_dissent(monkeypatch):
+    specification = _separate_sequence_branch_current_safety_flow_specification()
+    numerals = [
+        "300 = branch current safety process", "302 = branch current check step",
+        "304 = shedding step", "306 = welded contactor check step",
+        "308 = fault indication step",
+    ]
+    expected = [value.split(" = ", 1)[0] for value in numerals]
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    spec_hash = draft_figures.specification_hash("FIG. 5", specification, numerals)
+    dissent = accepted_cross_provider_geometry_audit(
+        ok=False, specification_hash=spec_hash,
+        missing_geometry=[
+            "The large square bracket does not enclose the right-hand process shapes."
+        ],
+        summary="The right-hand sequence appears outside the bracket.",
+    )
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *a, **k: dissent)
+    semantic = {
+        "ok": False, "inspected": True,
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "expected": expected, "visible": expected,
+        "missing": [], "unexpected": [], "duplicates": [], "unexpected_text": [],
+        "errors": [
+            "The large square bracket does not enclose the right-hand process shapes."
+        ],
+        "anchors": [
+            {"numeral": numeral, "x": 100 + (index * 100), "y": 500,
+             "visible": True, "evidence": "The named geometry is visible."}
+            for index, numeral in enumerate(expected)
+        ],
+        "specification_hash": spec_hash,
+    }
+
+    audited = draft_figures._resolve_deterministic_semantic_dissent(
+        semantic, png, label="FIG. 5", caption=specification, numerals=numerals)
+
+    assert audited["ok"] is True and audited["errors"] == []
+    resolution = audited["semantic_consensus_resolution"]
+    assert resolution["renderer"] == "branch_current_safety_flow_separate"
+    assert audited["cross_provider_geometry_audit"]["ok"] is True
 
 
 def test_exact_branch_current_flow_resolves_only_certified_route_dissent(monkeypatch):
