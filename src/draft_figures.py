@@ -2233,6 +2233,36 @@ def _control_diagram_kind(caption: str) -> str:
     return ""
 
 
+def _edge_controller_flat_port_directions(caption: str) -> tuple[str, str]:
+    """Return the two explicitly requested inner-port directions for the flat template."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    network_up = bool(
+        re.search(
+            r"\b(?:runs?|extends?) upward from "
+            r"(?:the )?network interface(?: rectangle)?\b",
+            text,
+        ) or
+        re.search(
+            r"\bfrom (?:the )?network interface(?: rectangle)?\s+"
+            r"(?:runs?|extends?) upward\b",
+            text,
+        )
+    )
+    service_left = bool(
+        re.search(
+            r"\b(?:runs?|extends?) left(?:ward)? from "
+            r"(?:the )?service input(?: rectangle)?\b",
+            text,
+        ) or
+        re.search(
+            r"\bfrom (?:the )?service input(?: rectangle)?\s+"
+            r"(?:runs?|extends?) left(?:ward)?\b",
+            text,
+        )
+    )
+    return ("up" if network_up else "left", "left" if service_left else "up")
+
+
 def _deterministic_control_diagram_anchors(
         caption: str) -> tuple[str, dict[str, tuple[int, int, str]]]:
     """Return exact raw-pixel targets for each supported control-diagram template."""
@@ -2960,8 +2990,15 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
         box((340, 360, 500, 460))
         box((1150, 250, 1320, 360))
         draw.line((1050, 305, 1150, 305), **line)
-        draw.line((560, 250, 190, 250), **line)
-        draw.line((420, 360, 420, 70), **line)
+        network_direction, service_direction = _edge_controller_flat_port_directions(caption)
+        if network_direction == "up":
+            draw.line((660, 200, 660, 70), **line)
+        else:
+            draw.line((560, 250, 190, 250), **line)
+        if service_direction == "left":
+            draw.line((340, 410, 190, 410), **line)
+        else:
+            draw.line((420, 360, 420, 70), **line)
         draw.line((500, 760, 500, 830), **line)
         draw.line((820, 760, 820, 830), **line)
     elif kind == "allocation_flow_vertical":
@@ -4454,7 +4491,8 @@ def _deterministic_segmented_cam_ring_constraint_certificate(
 def _deterministic_control_diagram_constraint_certificate(
         png: bytes, caption: str) -> dict:
     """Certify exact endpoint and connection pixels in controlled block diagrams."""
-    if _control_diagram_kind(caption) != "charging_installation_flat":
+    kind = _control_diagram_kind(caption)
+    if kind not in {"charging_installation_flat", "edge_controller_flat"}:
         return {}
     try:
         from PIL import Image, ImageOps
@@ -4477,44 +4515,105 @@ def _deterministic_control_diagram_constraint_certificate(
         def clear(point: tuple[int, int], radius: int = 3) -> bool:
             return not ink(point, radius)
 
-        branch_samples = [(140, 180), (700, 180), (1290, 180), (1320, 180)]
-        bus_samples = [
-            (300, 750), (300, 780), (500, 780), (695, 780),
-            (695, 600), (935, 600), (935, 780),
+        if kind == "charging_installation_flat":
+            branch_samples = [(140, 180), (700, 180), (1290, 180), (1320, 180)]
+            bus_samples = [
+                (300, 750), (300, 780), (500, 780), (695, 780),
+                (695, 600), (935, 600), (935, 780),
+            ]
+            sensor_path_samples = [
+                (305, 240), (305, 270), (350, 270),
+                (390, 270), (390, 500), (390, 580),
+            ]
+            return {
+                "charging_branch_conductor_endpoint": {
+                    "ok": all(ink(point) for point in branch_samples) and
+                          clear((110, 180)) and clear((1350, 180)),
+                    "line_samples": [list(point) for point in branch_samples],
+                    "clear_before_left_endpoint": [110, 180],
+                    "clear_beyond_right_boundary": [1350, 180],
+                    "right_boundary_endpoint": [1320, 180],
+                },
+                "charging_local_bus_connectivity": {
+                    "ok": all(ink(point) for point in bus_samples) and
+                          clear((260, 780)) and clear((975, 780)),
+                    "line_samples": [list(point) for point in bus_samples],
+                    "left_endpoint": [300, 780],
+                    "right_endpoint": [935, 780],
+                    "clear_before_left_endpoint": [260, 780],
+                    "clear_after_right_endpoint": [975, 780],
+                    "vertical_connections_x": [300, 695, 935],
+                },
+                "charging_sensor_controller_path": {
+                    "ok": all(ink(point) for point in sensor_path_samples) and
+                          clear((270, 270)) and clear((430, 270)),
+                    "path_samples": [list(point) for point in sensor_path_samples],
+                    "turns": [[305, 270], [390, 270]],
+                    "controller_top_endpoint": [390, 580],
+                    "clear_left_of_first_turn": [270, 270],
+                    "clear_right_of_second_turn": [430, 270],
+                },
+            }
+
+        network_direction, service_direction = _edge_controller_flat_port_directions(caption)
+        network_samples = (
+            [(660, 200), (660, 170), (660, 120), (660, 90)]
+            if network_direction == "up" else
+            [(560, 250), (500, 250), (250, 250), (210, 250)]
+        )
+        network_clear = (
+            [(520, 250), (300, 250)]
+            if network_direction == "up" else
+            [(660, 170), (660, 90)]
+        )
+        service_samples = (
+            [(340, 410), (300, 410), (250, 410), (210, 410)]
+            if service_direction == "left" else
+            [(420, 360), (420, 300), (420, 120), (420, 90)]
+        )
+        service_clear = (
+            [(420, 330), (420, 90)]
+            if service_direction == "left" else
+            [(300, 410), (210, 410)]
+        )
+        boundary_port_samples = [
+            network_samples[-1], service_samples[-1],
+            (1050, 305), (1100, 305), (1150, 305),
+            (500, 760), (500, 800), (500, 830),
+            (820, 760), (820, 800), (820, 830),
         ]
-        sensor_path_samples = [
-            (305, 240), (305, 270), (350, 270), (390, 270), (390, 500), (390, 580),
-        ]
+        boundary_clear = list(dict.fromkeys(
+            network_clear[-1:] + service_clear[-1:] + [(660, 800)]))
         return {
-            "charging_branch_conductor_endpoint": {
-                "ok": all(ink(point) for point in branch_samples) and
-                      clear((110, 180)) and clear((1350, 180)),
-                "line_samples": [list(point) for point in branch_samples],
-                "clear_before_left_endpoint": [110, 180],
-                "clear_beyond_right_boundary": [1350, 180],
-                "right_boundary_endpoint": [1320, 180],
+            "controller_network_interface_path": {
+                "ok": all(ink(point) for point in network_samples) and
+                      all(clear(point) for point in network_clear),
+                "direction": network_direction,
+                "path_samples": [list(point) for point in network_samples],
+                "clear_swapped_path_samples": [list(point) for point in network_clear],
             },
-            "charging_local_bus_connectivity": {
-                "ok": all(ink(point) for point in bus_samples) and
-                      clear((260, 780)) and clear((975, 780)),
-                "line_samples": [list(point) for point in bus_samples],
-                "left_endpoint": [300, 780],
-                "right_endpoint": [935, 780],
-                "clear_before_left_endpoint": [260, 780],
-                "clear_after_right_endpoint": [975, 780],
-                "vertical_connections_x": [300, 695, 935],
+            "controller_service_input_path": {
+                "ok": all(ink(point) for point in service_samples) and
+                      all(clear(point) for point in service_clear),
+                "direction": service_direction,
+                "path_samples": [list(point) for point in service_samples],
+                "clear_swapped_path_samples": [list(point) for point in service_clear],
             },
-            "charging_sensor_controller_path": {
-                "ok": all(ink(point) for point in sensor_path_samples) and
-                      clear((270, 270)) and clear((430, 270)),
-                "path_samples": [list(point) for point in sensor_path_samples],
-                "turns": [[305, 270], [390, 270]],
-                "controller_top_endpoint": [390, 580],
-                "clear_left_of_first_turn": [270, 270],
-                "clear_right_of_second_turn": [430, 270],
+            "controller_boundary_ports": {
+                "ok": all(ink(point) for point in boundary_port_samples) and
+                      all(clear(point) for point in boundary_clear),
+                "line_samples": [list(point) for point in boundary_port_samples],
+                "clear_unrequested_port_samples": [list(point) for point in boundary_clear],
+                "downward_port_x": [500, 820],
             },
         }
     except (OSError, TypeError, ValueError, IndexError):
+        if kind == "edge_controller_flat":
+            return {
+                "controller_network_interface_path": {"ok": False},
+                "controller_service_input_path": {"ok": False},
+                "controller_boundary_ports": {"ok": False},
+            }
         return {
             "charging_branch_conductor_endpoint": {"ok": False},
             "charging_local_bus_connectivity": {"ok": False},
@@ -6095,6 +6194,18 @@ def _certified_geometry_dissent_category(value: str) -> str:
             ("first connector channel" in text and "second connector channel" in text and
              re.search(r"\b(?:line|segment|connect|drop|vertical|horizontal)\w*\b", text))):
         return "charging_local_bus_connectivity"
+    if ("network interface" in text and
+            re.search(r"\b(?:line|path|connect|join|junction|cross|boundary|side|top|upper|"
+                      r"left|right|upward|downward|extend|origin)\w*\b", text)):
+        return "controller_network_interface_path"
+    if ("service input" in text and
+            re.search(r"\b(?:line|path|connect|join|junction|cross|boundary|side|top|upper|"
+                      r"left|right|upward|downward|extend|origin)\w*\b", text)):
+        return "controller_service_input_path"
+    if (re.search(r"\bedge[- ]controller\b", text) and
+            re.search(r"\b(?:line|path|port|boundary|side|top|upper|lower|left|right|"
+                      r"downward|extend|cross|origin|extra|unexpected)\w*\b", text)):
+        return "controller_boundary_ports"
     if ("hatch" in text and
             re.search(r"\b(?:angle|direction|lean(?:s|ed|ing)?|parallel|slash|slope|"
                       r"steep|stroke|vertical)\b",

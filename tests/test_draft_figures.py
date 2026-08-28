@@ -4745,6 +4745,70 @@ def test_flat_edge_controller_template_tracks_current_port_directions():
         assert image.getpixel((200, 410)) > 240
 
 
+def test_flat_edge_controller_template_tracks_swapped_independent_port_directions():
+    specification = """
+    A flat block diagram of the edge controller. One large rectangle, the edge controller,
+    occupies the left and central portion of the drawing area. Three smaller empty rectangles
+    lie inside it: a network interface in the upper region, a service input in the left region,
+    and a nonvolatile memory in the lower region. A local fault indicator stands outside the
+    large rectangle. A short solid line runs upward from the network interface rectangle and
+    crosses the upper side of the large rectangle. A short solid line runs leftward from the
+    service input rectangle and crosses the left side of the large rectangle. Two short solid
+    lines extend downward from the lower side of the large rectangle, spaced well apart.
+    """
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+
+    assert png is not None
+    with Image.open(io.BytesIO(png)).convert("L") as image:
+        # Each inner port reaches its requested controller boundary directly.
+        assert image.getpixel((660, 150)) < 64
+        assert image.getpixel((660, 90)) < 64
+        assert image.getpixel((300, 410)) < 64
+        assert image.getpixel((210, 410)) < 64
+        # The old swapped paths and their implied T-junction remain absent.
+        assert image.getpixel((520, 250)) > 240
+        assert image.getpixel((420, 330)) > 240
+
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    constraints = certificate["certified_constraints"]
+    assert constraints["controller_network_interface_path"]["ok"] is True
+    assert constraints["controller_service_input_path"]["ok"] is True
+    assert constraints["controller_boundary_ports"]["ok"] is True
+
+
+def test_flat_edge_controller_exact_paths_classify_visual_dissent():
+    specification = """
+    A flat block diagram of the edge controller. One large rectangle, the edge controller,
+    occupies the left and central portion of the drawing area. Three smaller empty rectangles
+    lie inside it: a network interface in the upper region, a service input in the left region,
+    and a nonvolatile memory in the lower region. A local fault indicator stands outside the
+    large rectangle. A short solid line runs upward from the network interface rectangle and
+    crosses the upper side of the large rectangle. A short solid line runs leftward from the
+    service input rectangle and crosses the left side of the large rectangle. Two short solid
+    lines extend downward from the lower side of the large rectangle, spaced well apart.
+    """
+    png = draft_figures._deterministic_control_diagram_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    categories = draft_figures._certified_geometry_dissent_categories(
+        errors=[
+            "The connection from the network interface runs leftward to a junction instead of "
+            "upward across the controller boundary.",
+            "The service input path runs upward to a T-junction instead of directly leftward.",
+            "An extra line extends downward from the edge-controller boundary.",
+        ],
+        missing_geometry=[], missing=[], unexpected=[], duplicates=[],
+        certificate=certificate,
+    )
+
+    assert categories == [
+        "controller_boundary_ports",
+        "controller_network_interface_path",
+        "controller_service_input_path",
+    ]
+
+
 def test_connector_station_bus_anchor_is_below_and_left_of_enclosure():
     specification = """
     View: enlarged schematic block diagram of the first connector station. The first
