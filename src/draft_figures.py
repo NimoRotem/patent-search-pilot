@@ -75,7 +75,7 @@ MARKED_ANCHOR_PROMPT_VERSION = (
 CROSS_PROVIDER_PROMPT_VERSION = (
     "figure-anchor-crosscheck-v5-evidence-derived-native-pixel-montage")
 CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION = (
-    "figure-geometry-crosscheck-v6-parts-list-metadata-normalization")
+    "figure-geometry-crosscheck-v7-structured-verdict-consistency")
 DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
     "deterministic-geometry-consensus-v2-byte-exact-certified-constraints")
 DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
@@ -1771,6 +1771,10 @@ def cross_provider_geometry_audit(expected, result) -> dict:
         ignored_parts_list_feedback and not missing and not unexpected and
         not duplicates and not errors and not missing_geometry)
     geometry_matches = bool(result.get("matches_spec") is True or metadata_only_mismatch)
+    contract_contradiction = bool(
+        inspected and result.get("matches_spec") is False and not geometry_matches and
+        not missing and not unexpected and not duplicates and not errors and
+        not missing_geometry)
     ok = bool(
         inspected and geometry_matches and not missing and
         not unexpected and not duplicates and not errors and not missing_geometry)
@@ -1782,6 +1786,7 @@ def cross_provider_geometry_audit(expected, result) -> dict:
         "duplicates": duplicates, "missing_geometry": missing_geometry,
         "errors": errors, "parts": parts, "visible_elements": normalized_elements,
         "ignored_parts_list_feedback": ignored_parts_list_feedback,
+        "contract_contradiction": contract_contradiction,
     }
 
 
@@ -6464,7 +6469,8 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
         "permitted instance count from the number of numerals. Do not call a caption-required "
         "unnumbered element or repeated instance unexpected. Never report an element's absence "
         "from the reference-numeral parts list as an error. Report only what the pixels omit, add, "
-        "or depict incorrectly relative to the complete caption. "
+        "or depict incorrectly relative to the complete caption. If matches_spec is false, put at "
+        "least one concrete pixel finding in errors, missing_geometry, or unexpected_geometry. "
         "Cutting-plane lines, viewing arrows, and repeated section designations are also "
         "deliberately absent and added later; do not report their absence. "
         "Apply line-drawing conventions before reporting an error. Count continuous black stroke "
@@ -6564,6 +6570,17 @@ def inspect_cross_provider_geometry(png: bytes, *, label: str, caption: str,
                 failure_logged = True
                 break
             result = cross_provider_geometry_audit(numerals, parsed)
+            if (result.get("contract_contradiction") and
+                    attempt + 1 < len(CROSS_PROVIDER_GEOMETRY_TOKEN_BUDGETS)):
+                _audit_log(
+                    request_id=request_id, provider=route["provider"], model=route["model"],
+                    stage="cross_provider_geometry",
+                    prompt_version=CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION,
+                    latency_ms=int((time.time() - started) * 1000), cache_hit=False,
+                    success=False, input_tokens=input_tokens, output_tokens=output_tokens,
+                    fallback_from=route["fallback_from"],
+                    fallback_reason="structured_verdict_retry")
+                continue
             _audit_log(
                 request_id=request_id, provider=route["provider"], model=route["model"],
                 stage="cross_provider_geometry",

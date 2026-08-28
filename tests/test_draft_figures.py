@@ -1833,6 +1833,61 @@ def test_cross_provider_geometry_retries_an_incomplete_structured_response(
     assert audits[0]["fallback_reason"] == "structured_output_retry"
 
 
+def test_cross_provider_geometry_retries_a_false_verdict_without_findings(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+    monkeypatch.setenv("PATENT_FIGURE_CROSSCHECK_MODEL", "claude-opus-5")
+    monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: None)
+    monkeypatch.setattr(draft_figures, "_analysis_cache_put", lambda *_args, **_kwargs: None)
+    audits = []
+    calls = []
+    monkeypatch.setattr(draft_figures, "_audit_log", lambda **values: audits.append(values))
+    monkeypatch.setattr(draft_figures.llm, "_record_usage", lambda *_args: None)
+
+    clean_inventory = {
+        "errors": [], "missing_geometry": [], "unexpected_geometry": [],
+        "parts": [{
+            "numeral": "10", "visible": True,
+            "evidence": "One rectangular housing is visible.",
+        }],
+        "visible_elements": [{
+            "description": "rectangular housing", "required": True,
+            "matched_requirement": "10 = housing",
+            "evidence": "One closed rectangular body.",
+        }],
+    }
+
+    def anthropic(payload, *, api_key):
+        calls.append((payload, api_key))
+        if len(calls) == 1:
+            answer = {
+                **clean_inventory,
+                "matches_spec": False,
+                "summary": "A required horizontal line is missing from the drawing.",
+            }
+        else:
+            answer = {
+                **clean_inventory,
+                "matches_spec": True,
+                "summary": "The raw geometry matches the specification.",
+            }
+        return {
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 90, "output_tokens": 35},
+            "content": [{"type": "text", "text": json.dumps(answer)}],
+        }
+
+    monkeypatch.setattr(draft_figures, "_anthropic_endpoint_message", anthropic)
+
+    result = draft_figures.inspect_cross_provider_geometry(
+        blank_png(), label="FIG. 1", caption="A housing 10.", numerals=["10 = housing"])
+
+    assert result["ok"] is True
+    assert len(calls) == 2
+    assert calls[1][0]["max_tokens"] > calls[0][0]["max_tokens"]
+    assert audits[0]["fallback_reason"] == "structured_verdict_retry"
+    assert [audit["success"] for audit in audits] == [False, True]
+
+
 def test_cross_provider_geometry_fails_closed_after_two_truncated_json_responses(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
     monkeypatch.setattr(draft_figures, "_analysis_cache_get", lambda *_args: None)
