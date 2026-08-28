@@ -697,7 +697,8 @@ _STOPWORDS = frozenset((
     "draws", "shows", "illustrates", "depicts", "provides", "defines", "receives", "between",
     "wherein", "whereby", "also", "may", "can", "be", "as", "its", "their", "this", "these"))
 
-_FIGURE_ID_RE = re.compile(r"\bFIG(?:URE)?S?\.?\s*([0-9]+[A-Za-z]?)\b", re.IGNORECASE)
+_FIGURE_ID_RE = re.compile(
+    r"\bFIG(?:URE)?S?\.?[\s:._-]*([0-9]+[A-Za-z]?)\b", re.IGNORECASE)
 _SHEET_NUMBER_RE = re.compile(
     r"(?<![A-Za-z0-9])(\d{1,3})\s*/\s*(\d{1,3})(?![A-Za-z0-9])")
 _SECTION_DESIGNATION_RE = re.compile(

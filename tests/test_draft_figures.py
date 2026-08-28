@@ -359,6 +359,12 @@ def test_figure_identity_uses_the_figure_number_not_a_truncated_caption():
     assert draft_figures.canonical_figure_label(long) == "FIG. 2"
 
 
+def test_canonical_figure_label_normalizes_common_heading_separators():
+    assert draft_figures.canonical_figure_label("FIG-1") == "FIG. 1"
+    assert draft_figures.canonical_figure_label("Fig_2") == "FIG. 2"
+    assert draft_figures.canonical_figure_label("FIG:3") == "FIG. 3"
+
+
 def test_cloud_vision_ocr_keeps_duplicates_and_separates_the_figure_label():
     response = {"responses": [{
         "fullTextAnnotation": {
