@@ -5357,6 +5357,7 @@ def _drilling_jig_shoe_state(caption: str) -> str:
 def _drilling_jig_hatch_angles(text: str) -> dict[str, int]:
     """Resolve explicit section angles, otherwise keep all four bodies visually distinct."""
     normalized = re.sub(r"\s+", " ", str(text or "")).strip().lower()
+    bushing_default = 70 if _drilling_jig_shoe_state(normalized) == "contact" else 0
 
     def angle(subject_pattern: str, default: int) -> int:
         for subject in re.finditer(rf"\b(?:{subject_pattern})\b", normalized):
@@ -5380,7 +5381,7 @@ def _drilling_jig_hatch_angles(text: str) -> dict[str, int]:
         "rail": angle(r"rail(?:\s+\d+)?", -30),
         "guide carriage": angle(
             r"(?:(?:first|second)\s+)?guide carriage(?:\s+\d+)?", 35),
-        "drill bushing": angle(r"drill bushing(?:\s+\d+)?", 0),
+        "drill bushing": angle(r"drill bushing(?:\s+\d+)?", bushing_default),
         "clamping shoe": angle(r"clamping shoe(?:\s+\d+)?", 90),
     }
 
@@ -5548,6 +5549,11 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
 
     draw = ImageDraw.Draw(image)
 
+    # The clamped brief requires the bushing bore to connect to an opening through the
+    # carriage. Remove the carriage material on the bore axis before outlining the parts.
+    if clamped_contact:
+        draw.rectangle((885, 386, 935, 434), fill="white")
+
     # One continuous opening contains the shank and integral key. In the clamped brief it also
     # extends beneath the separately positioned bushing so the disclosed drill path stays open.
     slot_right = 1000 if clamped_contact else 760
@@ -5572,7 +5578,11 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
     draw.line((300, 430, 300, 250, 1100, 250, 1100, 430),
               fill="black", width=4, joint="curve")
     draw.line((300, 430, 620, 430), fill="black", width=4)
-    draw.line((700, 430, 1100, 430), fill="black", width=4)
+    if clamped_contact:
+        draw.line((700, 430, 885, 430), fill="black", width=4)
+        draw.line((935, 430, 1100, 430), fill="black", width=4)
+    else:
+        draw.line((700, 430, 1100, 430), fill="black", width=4)
     draw.line((620, 430, 620, 520, 700, 520, 700, 430),
               fill="black", width=4, joint="curve")
 
@@ -5587,8 +5597,11 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
     # Some briefs expressly require an empty, unmarked bore. Otherwise a thin chain centerline
     # makes the two opposed sectional walls read as one cylindrical, coaxial bushing.
     if not empty_unmarked_bore:
-        for start_y in range(242, 421, 28):
-            draw.line((910, start_y, 910, min(start_y + 12, 420)), fill="black", width=2)
+        centerline_bottom = 650 if clamped_contact else 420
+        for start_y in range(242, centerline_bottom + 1, 28):
+            draw.line(
+                (910, start_y, 910, min(start_y + 12, centerline_bottom)),
+                fill="black", width=2)
 
     # The shoe either contacts the lower rail face in the clamped state or remains visibly
     # separated in the expressly loosened state.
@@ -6314,10 +6327,22 @@ def _deterministic_drilling_jig_constraint_certificate(
     shank_continuous = all(ink(point) for point in (
         (455, 210), (505, 330), (455, 550), (505, 650),
         (455, shank_bottom_sample)))
-    rail_passage_samples = [(910, 445), (910, 500), (910, 555), (910, 610)]
+    passage_x = [898, 922]
+    carriage_opening_samples = [
+        (x, y) for y in (395, 410, 425) for x in passage_x]
+    carriage_opening_clear = bool(
+        clamped_contact and all(open_region(point, radius=4)
+                                for point in carriage_opening_samples))
+    rail_passage_samples = [
+        (x, y) for y in (445, 500, 555, 610) for x in passage_x]
     rail_passage_clear = bool(
         clamped_contact and all(open_region(point, radius=4)
                                 for point in rail_passage_samples))
+    passage_centerline_marks = all(ink(point, radius=1) for point in (
+        (910, 442), (910, 498), (910, 554), (910, 610)))
+    continuous_drill_passage = bool(
+        clamped_contact and carriage_opening_clear and rail_passage_clear and
+        bore_open and (passage_centerline_marks if not empty_unmarked_bore else True))
     clearance_open = open_region((350, 655), radius=16)
     separation_boundaries = ink((350, 620)) and ink((350, 690))
     contact_surface = ink((350, 620))
@@ -6346,7 +6371,8 @@ def _deterministic_drilling_jig_constraint_certificate(
             "ok": bool(
                 bushing_boundaries and bore_open and contained_by_carriage and
                 outer_carriage_boundary_continuous and support_material_visible and
-                bore_axis_ok and (rail_passage_clear if clamped_contact else True)),
+                bore_axis_ok and
+                (continuous_drill_passage if clamped_contact else True)),
             "single_hollow_cylindrical_bushing": bool(
                 bushing_boundaries and bore_open and bore_axis_ok),
             "contained_by_carriage": contained_by_carriage,
@@ -6361,8 +6387,15 @@ def _deterministic_drilling_jig_constraint_certificate(
             "bore_center_clear": bore_center_clear,
             "axial_center_marks": axial_center_marks,
             "support_band": list(support_band),
+            "carriage_opening_clear": carriage_opening_clear,
+            "carriage_opening_samples": [
+                list(point) for point in carriage_opening_samples],
             "rail_passage_clear": rail_passage_clear,
             "rail_passage_samples": [list(point) for point in rail_passage_samples],
+            "continuous_drill_passage": continuous_drill_passage,
+            "passage_x": passage_x,
+            "passage_y": [395, 610],
+            "alignment_centerline_visible": passage_centerline_marks,
         },
         "threaded_shank_path": {
             "ok": shank_continuous,
