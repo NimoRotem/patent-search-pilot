@@ -440,10 +440,14 @@ FILES
                           reference ACTUALLY says, or to check a publication before citing it.
 
 HOW TO WORK
-Read before you write: the request, the conversation, the disclosure, the current draft, the
-review. Then edit only what the request and the review require. A request to narrow one claim is
-not licence to reword the background - an unnecessary rewrite destroys the user's own edits and
-makes the change log useless.
+READ WHAT THE REQUEST NEEDS, NOT THE WHOLE WORKSPACE. On a revision or repair pass, begin with
+input/request.md, review/previous-qa.md, and the draft or figure files those instructions name.
+Read disclosure, prior-art, or other files when the requested change or a support check requires
+them. The first drafting pass still follows FIRST_TURN_PROMPT and reads its required sources.
+Read the current request and review before writing. Read the draft files the work affects and the
+disclosure or conversation passages needed to verify support. Then edit only what the request and
+the review require. A request to narrow one claim is not licence to reword the background - an
+unnecessary rewrite destroys the user's own edits and makes the change log useless.
 
 FINISH by returning the structured answer. `reasoning` is read by the user and is the record of
 why this draft is the shape it is: give the actual decisions - which feature you put in claim 1
@@ -479,6 +483,10 @@ Change only what needs changing. If the request is a question rather than a chan
 Return the structured answer."""
 
 FINALIZE_PROMPT = """The current draft did not pass the automatic filing gate.
+
+READ ONLY WHAT YOU NEED. Begin with review/previous-qa.md and the draft or figure files named by
+its findings. Read the inventor sources when a finding concerns source support. Do not reread the
+whole workspace merely because another repair round started.
 
 Read review/previous-qa.md, then fix every listed mechanical check and every independently
 verified finding. Do not argue with a finding in the structured response. If wording triggered a
@@ -2853,11 +2861,9 @@ class TurnRunner:
         prompt = build_prompt(prompt_kind, seeded=context["seeded"])
         transcript = workspace / ".agent" / f"turn-{turn['turn_no']:04d}.jsonl"
 
-        #  Whether to RESUME and which prompt to send are separate decisions, and conflating them
-        #  is an outage: `--session-id` on an id that already exists is an error, so a first turn
-        #  that answered a question without producing a version would make the next turn pass an
-        #  existing id as if it were new. Continue the thread whenever there is one.
-        prior_session = str(project.get("agent_session_id") or "")
+        #  The workspace and previous review are the durable handoff. A project-level model
+        #  transcript mixes prior turns into the next invention request and grows without bound.
+        prior_session = ""
         run = _gate_resume_run(context, turn)
         if run is None:
             try:
@@ -2920,8 +2926,8 @@ class TurnRunner:
                 try:
                     repair = self._run_agent(
                         turn_id=turn_id, lease=lease, workspace=workspace,
-                        prompt=FINALIZE_PROMPT, session_id=runs[-1].session_id,
-                        resume=True, transcript=transcript, stage="repairing the draft",
+                        prompt=FINALIZE_PROMPT, session_id=self.agent.new_session_id(),
+                        resume=False, transcript=transcript, stage="repairing the draft",
                         model=self._model_for(project),
                         house=draft_settings.prompt_additions(
                             self._settings_for(project)))

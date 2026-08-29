@@ -76,6 +76,7 @@ CANONICAL_DRAFT_FILES = frozenset(
 MAX_REFERENCE_CHARS = 24_000
 MAX_TOTAL_REFERENCE_CHARS = 900_000
 MAX_DOCUMENT_CHARS = 120_000
+MAX_CONVERSATION_CHARS = 32_000
 
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 _NUMERAL_CELL_RE = re.compile(r"^\d{1,4}[a-zA-Z]?$", re.IGNORECASE)
@@ -477,12 +478,34 @@ def _disclosure(project: Mapping[str, Any]) -> str:
 def _conversation(messages: Sequence[Mapping[str, Any]]) -> str:
     if not messages:
         return "# Conversation\n\n(this is the first turn)"
-    lines = ["# Conversation so far", ""]
+    blocks = []
     for message in messages:
         role = str(message.get("role") or "user")
         who = {"user": "USER", "agent": "YOU (the drafting agent)",
                "qa": "REVIEWER", "system": "SYSTEM"}.get(role, role.upper())
-        lines += [f"### {who}", "", _clean(message.get("body"), 12_000), ""]
+        blocks.append("\n".join([
+            f"### {who}", "", _clean(message.get("body"), 12_000), "",
+        ]))
+
+    selected = []
+    selected_chars = 0
+    for block in reversed(blocks):
+        additional = len(block) + 1
+        if selected and selected_chars + additional > MAX_CONVERSATION_CHARS:
+            break
+        selected.append(block)
+        selected_chars += additional
+    selected.reverse()
+
+    lines = ["# Conversation so far", ""]
+    omitted = len(blocks) - len(selected)
+    if omitted:
+        lines += [
+            f"{omitted} earlier conversation message(s) are not reproduced here. The current "
+            "draft and review files contain the durable state needed for this turn.",
+            "",
+        ]
+    lines.extend(selected)
     return "\n".join(lines)
 
 
