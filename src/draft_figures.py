@@ -4762,6 +4762,11 @@ def _drilling_jig_slot_shape(caption: str) -> str:
             r"\bfrom (?:the )?upper face(?:\s+\d+)?\b[^.]{0,80}"
             r"\b(?:to|through to) (?:the )?(?:lower face|bottom surface)\b",
             text,
+        ) or
+        re.search(
+            r"\brectangular longitudinal slot(?:\s+\d+)?\b[^.]{0,100}"
+            r"\bpasses vertically through (?:the )?rail(?:\s+\d+)?\b",
+            text,
         )
     )
     stepped_portions = bool(re.search(
@@ -4831,7 +4836,10 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
         re.search(r"\bdrill bushing(?:\s+\d+)?\b[^.]{0,220}\bseated within\b"
                   r"[^.]{0,180}\bbody of\b[^.]{0,100}\bguide carriage\b", text) or
         re.search(r"\bdrill bushing(?:\s+\d+)?\b[^.]{0,240}\bseated within a bore in\b"
-                  r"[^.]{0,100}\bguide carriage(?:\s+\d+)?\b", text)
+                  r"[^.]{0,100}\bguide carriage(?:\s+\d+)?\b", text) or
+        re.search(r"\bdrill bushing(?:\s+\d+)?\b[^.]{0,240}\bseated within\b"
+                  r"[^.]{0,80}\b(?:cylindrical )?bore in (?:the )?"
+                  r"(?:body of (?:the )?)?(?:second )?guide carriage(?:\s+\d+)?\b", text)
     )
     bore_is_not_offset = not re.search(
         r"\bbore\b[^.]{0,100}\b(?:eccentric|offset|off-cent(?:er|re))\b", text)
@@ -4842,6 +4850,8 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
                   r"\bvisible clearance\b[^.]{0,180}\brail\b", text) or
         re.search(r"\bvisible gap\b[^.]{0,100}\btop of the clamping shoe\b"
                   r"[^.]{0,100}\bbottom of the rail\b", text) or
+        re.search(r"\bvisible gap\b[^.]{0,120}\btop surface of the clamping shoe\b"
+                  r"[^.]{0,120}\blower face of the rail\b", text) or
         re.search(r"\bclear and visible gap\b[^.]{0,140}"
                   r"\btop surface of the clamping shoe\b[^.]{0,140}"
                   r"\b(?:lower face|bottom surface) of the rail\b", text) or
@@ -4857,6 +4867,8 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
                    r"\bpassing completely through\b[^.]{0,100}\brail\b", text)) or
         re.search(r"\b(?:rectangular )?longitudinal slot(?:\s+\d+)?\b[^.]{0,100}"
                   r"\bpasses vertically through (?:the )?entire rail(?:\s+\d+)?\b", text) or
+        re.search(r"\brectangular longitudinal slot(?:\s+\d+)?\b[^.]{0,100}"
+                  r"\bpasses vertically through (?:the )?rail(?:\s+\d+)?\b", text) or
         re.search(r"\b(?:rectangular )?longitudinal slot(?:\s+\d+)?\b[^.]{0,100}"
                   r"\bpasses vertically through (?:the )?rail(?:\s+\d+)?\b[^.]{0,100}"
                   r"\bfrom (?:the )?upper face(?:\s+\d+)?\b[^.]{0,80}"
@@ -4910,7 +4922,9 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
                   r"\bcarriage\b", text),
         re.search(r"\bthreaded shank\b", text),
         re.search(r"\b(?:the )?(?:threaded )?shank\b[^.]{0,220}\b(?:passes|passing) through\b"
-                  r"[^.]{0,220}\blongitudinal slot\b", text),
+                  r"[^.]{0,220}\blongitudinal slot\b", text) or
+        re.search(r"\b(?:the )?(?:threaded )?shank\b[^.]{0,120}\bextends downward\b"
+                  r"[^.]{0,220}\bthrough\b[^.]{0,180}\blongitudinal slot\b", text),
         shoe_body,
         shoe_clearance,
     )
