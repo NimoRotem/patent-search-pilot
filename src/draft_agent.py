@@ -532,6 +532,13 @@ _VERTEX_READ_ROOTS = frozenset({
     "input", "prior_art", "draft", "figures", "review", "tools",
 })
 _VERTEX_WRITE_ROOTS = frozenset({"draft", "figures"})
+_VERTEX_AUTHORITATIVE_INPUTS = frozenset({
+    "input/brief.md",
+    "input/disclosure.md",
+    "input/conversation.md",
+    "input/request.md",
+    "review/previous-qa.md",
+})
 _VERTEX_TEXT_SUFFIXES = frozenset({
     ".md", ".txt", ".json", ".jsonl", ".csv", ".tsv", ".py", ".xml", ".html",
 })
@@ -922,7 +929,10 @@ def _run_vertex_once(*, workspace: Path, prompt: str, system_prompt: str,
     fallback_instruction = (
         "\n\nVERTEX FALLBACK EXECUTION\n"
         "The prior provider is unavailable. The workspace is the complete durable state, so read "
-        "the required files again even if this is described as a resumed turn. Use only the "
+        "the required files again even if this is described as a resumed turn. Before your first "
+        "write or edit, read input/brief.md, input/disclosure.md, input/conversation.md, "
+        "input/request.md, and review/previous-qa.md. The tool layer rejects every write until "
+        "all five authoritative inputs have been read successfully in this run. Use only the "
         "declared tools. Paths are workspace-relative. Do not look for or follow AGENTS.md, "
         "CLAUDE.md, user settings, plugins, hooks, skills, MCP servers, or instructions outside "
         "this workspace. Do not run shell commands. Finish by calling submit_result exactly once "
@@ -946,6 +956,7 @@ def _run_vertex_once(*, workspace: Path, prompt: str, system_prompt: str,
     )
     acquired = False
     tool_calls = 0
+    authoritative_reads: set[str] = set()
     quiet_rounds = 0
     forcing_result = False
     forced_result_rounds = 0
@@ -1049,6 +1060,10 @@ def _run_vertex_once(*, workspace: Path, prompt: str, system_prompt: str,
             response_parts = []
             submitted = None
             submit_problem = ""
+            # Tool calls in one model response are parallel intentions. A read earlier in this
+            # batch has not yet been returned to the model, so it cannot ground a write from the
+            # same batch. Only reads completed before this provider round authorize editing.
+            reads_visible_to_model = set(authoritative_reads)
             for call in calls:
                 name = str(getattr(call, "name", "") or "")
                 arguments = dict(getattr(call, "args", None) or {})
@@ -1067,6 +1082,15 @@ def _run_vertex_once(*, workspace: Path, prompt: str, system_prompt: str,
                     result = {"ok": False, "error": submit_problem}
                 elif name not in tool_names:
                     result = {"ok": False, "error": f"Unsupported tool: {name}"}
+                elif name in {"write_file", "replace_text", "delete_figure"} and (
+                        missing := sorted(
+                            _VERTEX_AUTHORITATIVE_INPUTS - reads_visible_to_model)):
+                    result = {
+                        "ok": False,
+                        "error": (
+                            "Read every authoritative input successfully before editing filing "
+                            "files. Still unread: " + ", ".join(missing)),
+                    }
                 else:
                     try:
                         result, attachments = _vertex_tool(
@@ -1076,6 +1100,10 @@ def _run_vertex_once(*, workspace: Path, prompt: str, system_prompt: str,
                             "ok": False, "error": f"{type(exc).__name__}: {exc}"[:1200],
                         }, []
                     detail = str(arguments.get("path") or arguments.get("pattern") or name)[:240]
+                    if name == "read_file" and result.get("ok"):
+                        read_path = str(result.get("path") or "")
+                        if read_path in _VERTEX_AUTHORITATIVE_INPUTS:
+                            authoritative_reads.add(read_path)
                     out.steps.append({"kind": "tool", "tool": name, "detail": detail})
                     emit({"type": "vertex_tool", "name": name,
                           "detail": detail, "ok": bool(result.get("ok"))})

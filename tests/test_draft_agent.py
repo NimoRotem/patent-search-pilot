@@ -528,3 +528,69 @@ def test_vertex_agent_forces_submit_result_after_repeated_prose_only_finishes(
 
     assert result.ok is True and result.result == {"action": "ready"}
     assert len(calls) == 4
+
+
+def test_vertex_agent_reads_every_authoritative_input_before_its_first_write(
+        monkeypatch, tmp_path):
+    """A fallback must not draft an unrelated invention from ungrounded model state."""
+    from google.genai import types
+
+    required = [
+        "input/brief.md",
+        "input/disclosure.md",
+        "input/conversation.md",
+        "input/request.md",
+        "review/previous-qa.md",
+    ]
+    for relative in required:
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"authority from {relative}\n", encoding="utf-8")
+    (tmp_path / "draft").mkdir()
+    calls = []
+
+    def generate(_client, *, model, contents, config, deadline, cancel):
+        del model, config, deadline, cancel
+        calls.append(list(contents))
+        if len(calls) == 1:
+            # Function calls in one model response are concurrent intentions. Reading source and
+            # writing a draft in the same batch is still ungrounded because the model has not yet
+            # received any of the read results.
+            parts = [types.Part.from_function_call(
+                name="read_file", args={"path": relative}) for relative in required]
+            parts.append(types.Part.from_function_call(
+                name="write_file",
+                args={"path": "draft/01-title.md", "content": "UNRELATED FISHING LURE"}))
+        elif len(calls) == 2:
+            responses = [part.function_response.response for part in contents[-1].parts]
+            assert all(response["ok"] for response in responses[:-1])
+            assert responses[-1]["ok"] is False
+            assert "authoritative input" in responses[-1]["error"]
+            parts = [types.Part.from_function_call(
+                name="write_file",
+                args={"path": "draft/01-title.md", "content": "PRESSURE RELIEF CARTRIDGE"})]
+        else:
+            parts = [types.Part.from_function_call(
+                name="submit_result", args={"action": "ready"})]
+        return type("Response", (), {
+            "candidates": [type("Candidate", (), {
+                "content": types.Content(role="model", parts=parts),
+            })()],
+            "usage_metadata": None,
+        })()
+
+    monkeypatch.setattr(draft_agent, "_vertex_client", lambda: object())
+    monkeypatch.setattr(draft_agent, "_vertex_generate", generate)
+    result = draft_agent._run_vertex_once(
+        workspace=tmp_path, prompt="finish", system_prompt="system",
+        schema={
+            "type": "object",
+            "properties": {"action": {"type": "string"}},
+            "required": ["action"],
+            "additionalProperties": False,
+        }, tools="Read,Write", timeout=30)
+
+    assert result.ok is True and result.result == {"action": "ready"}
+    assert (tmp_path / "draft" / "01-title.md").read_text(encoding="utf-8") == \
+        "PRESSURE RELIEF CARTRIDGE"
+    assert len(calls) == 3
