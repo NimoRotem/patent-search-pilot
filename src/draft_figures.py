@@ -79,9 +79,9 @@ CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION = (
 DETERMINISTIC_GEOMETRY_CERTIFICATE_VERSION = (
     "deterministic-geometry-consensus-v2-byte-exact-certified-constraints")
 DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION = (
-    "deterministic-semantic-consensus-v1-byte-exact-two-semantic-one-independent")
+    "deterministic-semantic-consensus-v2-byte-exact-inventory-and-independent")
 DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION = (
-    "deterministic-anchor-v12-byte-exact-certified-interiors-and-linework")
+    "deterministic-anchor-v13-byte-exact-complete-component-inventory")
 DETERMINISTIC_SECTION_HATCH_CERTIFICATE_VERSION = (
     "deterministic-section-hatching-v1-byte-exact-raw-pixel-angles")
 DETERMINISTIC_ENDPOINT_RESOLUTION_VERSION = (
@@ -3220,15 +3220,13 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
         canonical_component_part(key): value
         for key, value in component_centers.items()
     }
+    numeral_parts = numeral_entries(numerals)
     part_by_numeral = {
         item["numeral"]: re.sub(r"\s+", " ", item["part"]).strip().lower()
-        for item in numeral_entries(numerals)
+        for item in numeral_parts
     }
-    repaired = []
-    certificate_anchors = []
-    for value in anchors or ():
-        item = dict(value)
-        numeral = _clean_numeral(item.get("numeral"))
+
+    def mapped_center(numeral: str):
         part = part_by_numeral.get(numeral, "")
         component_part = canonical_component_part(part)
         center = component_centers.get(component_part)
@@ -3236,28 +3234,80 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
             component_part = canonical_component_part(
                 re.split(r"\s*[;:|]\s*", part, maxsplit=1)[0])
             center = component_centers.get(component_part)
+        return component_part, center
+
+    repaired = []
+    certificate_by_numeral = {}
+    provided_numerals = set()
+    for value in anchors or ():
+        item = dict(value)
+        numeral = _clean_numeral(item.get("numeral"))
+        if numeral:
+            provided_numerals.add(numeral)
+        component_part, center = mapped_center(numeral)
         if center:
             raw_x, raw_y, target = center
             item.update({
                 "x": _pixel_to_normalized(raw_x, 1400),
                 "y": _pixel_to_normalized(raw_y, 900),
+                "visible": True,
                 "target_evidence": target,
                 "anchor_source": DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
             })
-            certificate_anchors.append({
+            if not str(item.get("evidence") or "").strip():
+                item["evidence"] = (
+                    "The byte-exact renderer places the mapped component at this target.")
+            certificate_by_numeral[numeral] = {
                 "numeral": numeral, "part": component_part,
                 "raw_x": raw_x, "raw_y": raw_y,
                 "x": item["x"], "y": item["y"],
-            })
+            }
         repaired.append(item)
+
+    for entry in numeral_parts:
+        numeral = entry["numeral"]
+        if numeral in provided_numerals:
+            continue
+        component_part, center = mapped_center(numeral)
+        if center is None:
+            continue
+        raw_x, raw_y, target = center
+        item = {
+            "numeral": numeral,
+            "x": _pixel_to_normalized(raw_x, 1400),
+            "y": _pixel_to_normalized(raw_y, 900),
+            "visible": True,
+            "evidence": (
+                "The byte-exact renderer places the mapped component at this target."),
+            "target_evidence": target,
+            "anchor_source": DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+            "inventory_recovered": True,
+        }
+        repaired.append(item)
+        certificate_by_numeral[numeral] = {
+            "numeral": numeral, "part": component_part,
+            "raw_x": raw_x, "raw_y": raw_y,
+            "x": item["x"], "y": item["y"],
+        }
+
+    expected_numerals = [entry["numeral"] for entry in numeral_parts]
+    certificate_anchors = [
+        certificate_by_numeral[numeral]
+        for numeral in expected_numerals if numeral in certificate_by_numeral
+    ]
     if not certificate_anchors:
         return repaired, None
     return repaired, {
-        "ok": True,
+        "ok": len(certificate_anchors) == len(expected_numerals) and
+              len(set(expected_numerals)) == len(expected_numerals),
         "version": DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
         "exact_renderer_match": True,
         "renderer": renderer_name,
         "png_sha256": hashlib.sha256(png).hexdigest(),
+        "expected_numerals": expected_numerals,
+        "complete_inventory": (
+            len(certificate_anchors) == len(expected_numerals) and
+            len(set(expected_numerals)) == len(expected_numerals)),
         "anchors": certificate_anchors,
     }
 
@@ -3274,6 +3324,62 @@ def _apply_deterministic_anchor_certificate(
     if section_certificate is not None:
         out["deterministic_section_hatch_certificate"] = section_certificate
     return out
+
+
+def _deterministic_semantic_inventory_certificate(
+        png: bytes, caption: str, numerals, semantic: dict) -> tuple[dict, dict, bool]:
+    """Bind every expected component to a known target in an exact renderer."""
+    grounded = _apply_deterministic_anchor_certificate(
+        png, caption, numerals, semantic)
+    certificate = _deterministic_geometry_certificate(png, caption)
+    anchor_certificate = grounded.get("deterministic_anchor_certificate") or {}
+    expected_numerals = [
+        entry["numeral"] for entry in numeral_entries(numerals)]
+    certified_numerals = [
+        _clean_numeral(item.get("numeral"))
+        for item in anchor_certificate.get("anchors") or []
+        if isinstance(item, dict) and _clean_numeral(item.get("numeral"))
+    ]
+    geometry_renderer = str(certificate.get("renderer") or "")
+    anchor_renderer = str(anchor_certificate.get("renderer") or "")
+    complete = bool(
+        certificate.get("ok") and certificate.get("exact_renderer_match") is True and
+        expected_numerals and len(set(expected_numerals)) == len(expected_numerals) and
+        certified_numerals == expected_numerals and
+        anchor_certificate.get("ok") is True and
+        anchor_certificate.get("complete_inventory") is True and
+        anchor_certificate.get("exact_renderer_match") is True and
+        anchor_certificate.get("version") == DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION and
+        anchor_certificate.get("png_sha256") == certificate.get("png_sha256") and
+        anchor_renderer and
+        (not geometry_renderer or anchor_renderer == geometry_renderer))
+    if not complete:
+        return grounded, certificate, False
+
+    certificate = {**certificate, "renderer": anchor_renderer}
+    constraints = dict(certificate.get("certified_constraints") or {})
+    native_inventory = dict(constraints.get("certified_numeral_inventory") or {})
+    if (native_inventory and
+            (native_inventory.get("ok") is not True or
+             {_clean_numeral(value) for value in native_inventory.get("numerals") or []} !=
+             set(expected_numerals))):
+        return grounded, certificate, False
+    constraints["certified_numeral_inventory"] = {
+        **native_inventory,
+        "ok": True,
+        "version": DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION,
+        "exact_renderer_match": True,
+        "renderer": anchor_certificate["renderer"],
+        "png_sha256": anchor_certificate["png_sha256"],
+        "numerals": expected_numerals,
+        "anchors": list(anchor_certificate["anchors"]),
+    }
+    certificate = {
+        **certificate,
+        "expected_numerals": expected_numerals,
+        "certified_constraints": constraints,
+    }
+    return grounded, certificate, True
 
 
 def _apply_pixel_grounding(png: bytes, numerals, semantic: dict) -> dict:
@@ -8259,6 +8365,36 @@ def _current_deterministic_semantic_resolution(value) -> bool:
     png_hash = str(resolution.get("png_sha256") or "")
     expected = {_clean_numeral(item) for item in value.get("expected") or []}
     visible = {_clean_numeral(item) for item in value.get("visible") or []}
+    constraints = resolution.get("certified_constraints") or {}
+    inventory = constraints.get("certified_numeral_inventory") or {}
+    anchor_certificate = value.get("deterministic_anchor_certificate") or {}
+    inventory_numerals = [
+        _clean_numeral(item) for item in inventory.get("numerals") or []
+        if _clean_numeral(item)]
+    inventory_anchors = [
+        _clean_numeral(item.get("numeral"))
+        for item in inventory.get("anchors") or []
+        if isinstance(item, dict) and _clean_numeral(item.get("numeral"))]
+    recorded_categories = sorted(set(
+        str(item) for item in resolution.get("certified_dissent_categories") or []
+        if str(item).strip()))
+    verified_categories = _certified_geometry_dissent_categories(
+        errors=value.get("reviewer_errors") or [], missing_geometry=[],
+        missing=value.get("reviewer_missing") or [],
+        unexpected=value.get("reviewer_unexpected") or [],
+        duplicates=value.get("reviewer_duplicates") or [], certificate=resolution)
+    recorded_inventory_categories = sorted(set(
+        str(item) for item in resolution.get("certified_inventory_categories") or []
+        if str(item).strip()))
+    verified_inventory_categories = _certified_geometry_dissent_categories(
+        errors=[], missing_geometry=[], missing=value.get("reviewer_missing") or [],
+        unexpected=[], duplicates=[], certificate=resolution)
+    reviewer_missing_current = bool(
+        not value.get("reviewer_missing") or
+        (recorded_inventory_categories and
+         recorded_inventory_categories == verified_inventory_categories))
+    recorded_categories_current = bool(
+        not recorded_categories or recorded_categories == verified_categories)
     anchor_numerals = []
     anchors_valid = True
     for item in value.get("anchors") or []:
@@ -8281,6 +8417,20 @@ def _current_deterministic_semantic_resolution(value) -> bool:
         resolution.get("exact_renderer_match") is True and
         re.fullmatch(r"[0-9a-f]{64}", png_hash) and
         png_hash == resolution.get("renderer_png_sha256") and
+        inventory.get("ok") is True and
+        inventory.get("version") == DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION and
+        inventory.get("exact_renderer_match") is True and
+        inventory.get("png_sha256") == png_hash and expected and
+        inventory.get("renderer") == resolution.get("renderer") and
+        len(inventory_numerals) == len(expected) and set(inventory_numerals) == expected and
+        len(inventory_anchors) == len(expected) and set(inventory_anchors) == expected and
+        anchor_certificate.get("ok") is True and
+        anchor_certificate.get("complete_inventory") is True and
+        anchor_certificate.get("version") == DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION and
+        anchor_certificate.get("exact_renderer_match") is True and
+        anchor_certificate.get("renderer") == inventory.get("renderer") and
+        anchor_certificate.get("png_sha256") == png_hash and
+        anchor_certificate.get("anchors") == inventory.get("anchors") and
         review_count == SEMANTIC_REVIEW_COUNT and
         resolution.get("semantic_model") == vision_model() and
         resolution.get("semantic_prompt_version") in SEMANTIC_COMPATIBLE_PROMPT_VERSIONS and
@@ -8295,7 +8445,8 @@ def _current_deterministic_semantic_resolution(value) -> bool:
         CROSS_PROVIDER_GEOMETRY_PROMPT_VERSION and
         cross_review_count == CROSS_PROVIDER_GEOMETRY_REVIEW_COUNT and
         resolution.get("specification_hash") == value.get("specification_hash") and
-        value.get("reviewer_ok") is False and not value.get("missing") and
+        value.get("reviewer_ok") is False and reviewer_missing_current and
+        recorded_categories_current and not value.get("missing") and
         not value.get("unexpected") and not value.get("duplicates") and
         not value.get("unexpected_text") and expected and expected == visible and anchors_valid and
         len(anchor_numerals) == len(expected) and set(anchor_numerals) == expected and
@@ -10038,16 +10189,28 @@ def _certified_geometry_dissent_categories(*, errors, missing_geometry, missing,
         inventory_values = {
             _clean_numeral(item) for item in inventory.get("numerals") or ()
             if _clean_numeral(item)}
+        inventory_anchor_values = [
+            _clean_numeral(item.get("numeral"))
+            for item in inventory.get("anchors") or ()
+            if isinstance(item, dict) and _clean_numeral(item.get("numeral"))]
+        inventory_current = bool(
+            not inventory.get("version") or
+            (inventory.get("version") == DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION and
+             inventory.get("exact_renderer_match") is True and
+             inventory.get("png_sha256") == certificate.get("png_sha256") and
+             inventory.get("renderer") == certificate.get("renderer") and
+             len(inventory_anchor_values) == len(inventory_values) and
+             set(inventory_anchor_values) == inventory_values))
         expected_values = {
             _clean_numeral(item) for item in certificate.get("expected_numerals") or ()
             if _clean_numeral(item)}
         flow = constraints.get("allocation_flow_shape_sequence") or {}
-        if (inventory.get("ok") is True and inventory_values and
-                missing_values.issubset(inventory_values)):
-            categories.append("certified_numeral_inventory")
-        elif (flow.get("ok") is True and expected_values and
+        if (flow.get("ok") is True and expected_values and
               missing_values.issubset(expected_values)):
             categories.append("allocation_flow_shape_sequence")
+        elif (inventory_current and inventory.get("ok") is True and inventory_values and
+              missing_values.issubset(inventory_values)):
+            categories.append("certified_numeral_inventory")
         else:
             return None
     findings = [
@@ -10079,7 +10242,9 @@ def _resolve_cross_provider_geometry_dissent(semantic: dict, audit: dict, png: b
     spec_hash = specification_hash(label, caption, numerals)
     if not _current_cross_provider_geometry_result(audit, specification_hash=spec_hash):
         return audit
-    certificate = _deterministic_geometry_certificate(png, caption)
+    semantic, certificate, _inventory_complete = \
+        _deterministic_semantic_inventory_certificate(
+            png, caption, numerals, semantic)
     if not certificate.get("ok") or not _complete_semantic_model_audit(semantic):
         return audit
     if (str(certificate.get("renderer") or "").startswith("allocation_flow_") or
@@ -10093,11 +10258,18 @@ def _resolve_cross_provider_geometry_dissent(semantic: dict, audit: dict, png: b
         certificate["expected_numerals"] = sorted({
             entry["numeral"] for entry in numeral_entries(numerals)})
 
+    semantic_missing_categories = _certified_geometry_dissent_categories(
+        errors=[], missing_geometry=[], missing=semantic.get("missing") or [],
+        unexpected=[], duplicates=semantic.get("duplicates") or [],
+        certificate=certificate)
+    semantic_missing_certified = bool(
+        not semantic.get("missing") or semantic_missing_categories)
     semantic_inventory_clean = bool(
-        not semantic.get("missing") and not semantic.get("unexpected") and
+        semantic_missing_certified and not semantic.get("unexpected") and
         not semantic.get("duplicates") and not semantic.get("unexpected_text"))
     traditional_resolution = bool(
-        semantic.get("ok") and not semantic.get("errors") and semantic_inventory_clean and
+        semantic.get("ok") and not semantic.get("errors") and
+        not semantic.get("missing") and semantic_inventory_clean and
         not audit.get("missing") and not audit.get("missing_geometry") and
         not audit.get("duplicates"))
     certified_categories = _certified_geometry_dissent_categories(
@@ -10188,9 +10360,13 @@ def _apply_cross_provider_geometry_gate(semantic: dict, png: bytes, *, label: st
 def _resolve_deterministic_semantic_dissent(semantic: dict, png: bytes, *, label: str,
                                             caption: str, numerals) -> dict:
     """Resolve a same-provider visual false negative only with exact and independent proof."""
-    out = dict(semantic or {})
-    expected = {entry["numeral"] for entry in numeral_entries(numerals)}
+    out, certificate, inventory_complete = \
+        _deterministic_semantic_inventory_certificate(
+            png, caption, numerals, dict(semantic or {}))
+    expected_order = [entry["numeral"] for entry in numeral_entries(numerals)]
+    expected = set(expected_order)
     visible = {_clean_numeral(item) for item in out.get("visible") or []}
+    missing = {_clean_numeral(item) for item in out.get("missing") or []}
     anchor_numerals = []
     anchors_complete = True
     for item in out.get("anchors") or []:
@@ -10209,12 +10385,21 @@ def _resolve_deterministic_semantic_dissent(semantic: dict, png: bytes, *, label
             anchors_complete = False
         anchor_numerals.append(numeral)
     spec_hash = specification_hash(label, caption, numerals)
-    certificate = _deterministic_geometry_certificate(png, caption)
+    missing_categories = _certified_geometry_dissent_categories(
+        errors=[], missing_geometry=[], missing=out.get("missing") or [],
+        unexpected=[], duplicates=out.get("duplicates") or [], certificate=certificate)
+    semantic_categories = _certified_geometry_dissent_categories(
+        errors=out.get("errors") or [], missing_geometry=[],
+        missing=out.get("missing") or [], unexpected=out.get("unexpected") or [],
+        duplicates=out.get("duplicates") or [], certificate=certificate)
     eligible = bool(
-        expected and certificate.get("ok") and _complete_semantic_model_audit(out) and
-        out.get("specification_hash") == spec_hash and not out.get("missing") and
+        expected and inventory_complete and certificate.get("ok") and
+        _complete_semantic_model_audit(out) and
+        out.get("specification_hash") == spec_hash and
         not out.get("unexpected") and not out.get("duplicates") and
-        not out.get("unexpected_text") and visible == expected and anchors_complete and
+        not out.get("unexpected_text") and visible.isdisjoint(missing) and
+        visible | missing == expected and
+        (not missing or missing_categories) and anchors_complete and
         len(anchor_numerals) == len(expected) and set(anchor_numerals) == expected)
     if not eligible:
         return out
@@ -10230,6 +10415,8 @@ def _resolve_deterministic_semantic_dissent(semantic: dict, png: bytes, *, label
         return out
 
     reviewer_errors = list(out.get("errors") or [])
+    reviewer_missing = list(out.get("missing") or [])
+    reviewer_visible = list(out.get("visible") or [])
     resolution = dict(certificate)
     resolution.update({
         "version": DETERMINISTIC_SEMANTIC_CERTIFICATE_VERSION,
@@ -10245,12 +10432,20 @@ def _resolve_deterministic_semantic_dissent(semantic: dict, png: bytes, *, label
         "cross_provider_review_count": int(audit.get("review_count") or 0),
         "specification_hash": spec_hash,
     })
+    if missing_categories:
+        resolution["certified_inventory_categories"] = missing_categories
+    if semantic_categories:
+        resolution["certified_dissent_categories"] = semantic_categories
     out.update({
         "ok": True,
         "reviewer_ok": False,
         "reviewer_summary": str(out.get("summary") or "")[:2000],
         "reviewer_errors": reviewer_errors,
+        "reviewer_missing": reviewer_missing,
+        "reviewer_visible": reviewer_visible,
         "errors": [],
+        "missing": [],
+        "visible": expected_order,
         "semantic_consensus_resolution": resolution,
         "summary": (
             "A byte-exact deterministic renderer certificate and an independent provider "

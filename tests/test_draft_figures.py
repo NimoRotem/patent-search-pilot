@@ -2487,7 +2487,7 @@ def test_exact_section_pixels_resolve_false_body_separation_and_loop_dissent(mon
     }
 
 
-def test_deterministic_semantic_dissent_fails_closed_without_complete_anchor_inventory(
+def test_deterministic_semantic_dissent_fails_closed_without_complete_mapped_inventory(
         monkeypatch):
     caption = (
         "The sheet shows four bodies, one broken line, and nothing else: one horizontal "
@@ -2495,7 +2495,7 @@ def test_deterministic_semantic_dissent_fails_closed_without_complete_anchor_inv
         "hatched band across the bottom; and one closed housing. One broken line runs from "
         "inside the housing to the chamber."
     )
-    numerals = ["12 = base", "20 = air-extraction mechanism"]
+    numerals = ["12 = base", "999 = unrepresented component"]
     png = draft_figures._deterministic_geometry_png(caption)
     assert png is not None
     spec_hash = draft_figures.specification_hash("FIG. 2", caption, numerals)
@@ -2507,7 +2507,7 @@ def test_deterministic_semantic_dissent_fails_closed_without_complete_anchor_inv
         "model_name": draft_figures.vision_model(),
         "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
         "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
-        "expected": ["12", "20"], "visible": ["12", "20"],
+        "expected": ["12", "999"], "visible": ["12", "999"],
         "missing": [], "unexpected": [], "duplicates": [], "unexpected_text": [],
         "errors": ["Hatching appears ambiguous."],
         "anchors": [{"numeral": "12", "x": 500, "y": 500, "visible": True,
@@ -10248,6 +10248,143 @@ def test_current_unhatched_clamped_section_accepts_source_faithful_key_wording()
     bore = certificate["certified_constraints"]["carried_bushing_and_coaxial_bore"]
     assert bore["ok"] is True
     assert bore["required_lower_bore_opening"] is True
+
+
+def test_exact_current_carriage_section_resolves_missing_slot_inventory_dissent(
+        monkeypatch):
+    specification = re.sub(
+        r"A key 52, integral with the carriage 50, projects downward into the longitudinal "
+        r"slot 16\.\s+The key 52 has a width that closely fits the slot 16\.",
+        "A key 52 projects downward from the first guide carriage 50 into the longitudinal slot "
+        "16. The key 52 has a width that fits within the slot 16.",
+        _current_unhatched_clamped_first_carriage_section_specification(),
+    )
+    numerals = [
+        "10 = rail", "12 = upper face", "16 = longitudinal slot",
+        "50 = first guide carriage", "52 = key of the first guide carriage",
+        "54 = drill bushing of the first guide carriage",
+        "58 = clamp knob of the first guide carriage",
+        "60 = clamping shoe of the first guide carriage",
+    ]
+    expected = [entry.split(" = ", 1)[0] for entry in numerals]
+    visible = [value for value in expected if value != "16"]
+    png = draft_figures._deterministic_drilling_jig_carriage_section_png(
+        specification)
+    assert png is not None
+    spec_hash = draft_figures.specification_hash(
+        "FIG. 5", specification, numerals)
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *args, **kwargs:
+        accepted_cross_provider_geometry_audit(specification_hash=spec_hash))
+    semantic = {
+        "ok": False, "inspected": True,
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "expected": expected, "visible": visible, "missing": ["16"],
+        "unexpected": [], "duplicates": [], "unexpected_text": [],
+        "errors": [
+            "The rail and drill bushing appear to use the same hatching direction.",
+            "The threaded shank and key pass through separate holes instead of the "
+            "longitudinal slot.",
+            "The drill bushing appears as two separate components instead of one hollow "
+            "cylindrical bushing with a central bore.",
+            "The bore axis of the drill bushing does not align with the longitudinal slot.",
+        ],
+        "anchors": [
+            {"numeral": value, "x": 500, "y": 500, "visible": True,
+             "evidence": "The requested component is visible."}
+            for value in visible
+        ],
+        "specification_hash": spec_hash,
+    }
+
+    audited = draft_figures._resolve_deterministic_semantic_dissent(
+        semantic, png, label="FIG. 5", caption=specification, numerals=numerals)
+
+    assert audited["ok"] is True and audited["errors"] == []
+    assert audited["missing"] == [] and audited["visible"] == expected
+    assert audited["reviewer_missing"] == ["16"]
+    assert audited["reviewer_errors"] == semantic["errors"]
+    assert {item["numeral"] for item in audited["anchors"]} == set(expected)
+    slot_anchor = next(item for item in audited["anchors"]
+                       if item["numeral"] == "16")
+    assert slot_anchor["visible"] is True
+    assert slot_anchor["anchor_source"] == \
+        draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION
+    resolution = audited["semantic_consensus_resolution"]
+    assert set(resolution["certified_dissent_categories"]) == {
+        "carried_bushing_and_coaxial_bore", "certified_numeral_inventory",
+        "section_hatching", "slot_and_key",
+    }
+    inventory = resolution["certified_constraints"]["certified_numeral_inventory"]
+    assert inventory["ok"] is True and inventory["numerals"] == expected
+    assert draft_figures._current_deterministic_semantic_resolution(audited) is True
+    tampered = json.loads(json.dumps(audited))
+    tampered["reviewer_missing"] = ["999"]
+    assert draft_figures._current_deterministic_semantic_resolution(tampered) is False
+
+
+def test_exact_current_carriage_section_resolves_cross_provider_inventory_dissent(
+        monkeypatch):
+    specification = re.sub(
+        r"A key 52, integral with the carriage 50, projects downward into the longitudinal "
+        r"slot 16\.\s+The key 52 has a width that closely fits the slot 16\.",
+        "A key 52 projects downward from the first guide carriage 50 into the longitudinal slot "
+        "16. The key 52 has a width that fits within the slot 16.",
+        _current_unhatched_clamped_first_carriage_section_specification(),
+    )
+    numerals = [
+        "10 = rail", "12 = upper face", "16 = longitudinal slot",
+        "50 = first guide carriage", "52 = key of the first guide carriage",
+        "54 = drill bushing of the first guide carriage",
+        "58 = clamp knob of the first guide carriage",
+        "60 = clamping shoe of the first guide carriage",
+    ]
+    expected = [entry.split(" = ", 1)[0] for entry in numerals]
+    png = draft_figures._deterministic_drilling_jig_carriage_section_png(
+        specification)
+    spec_hash = draft_figures.specification_hash(
+        "FIG. 5", specification, numerals)
+    dissent = accepted_cross_provider_geometry_audit(
+        ok=False, specification_hash=spec_hash, missing=["16"],
+        errors=[
+            "The drill bushing appears as two separate components instead of one hollow "
+            "cylindrical bushing with a central bore.",
+            "The threaded shank and key pass through separate holes instead of the "
+            "longitudinal slot.",
+        ],
+        summary="The slot and coaxial bushing could not be assigned from the raw pixels.",
+    )
+    monkeypatch.setattr(
+        draft_figures, "inspect_cross_provider_geometry", lambda *args, **kwargs: dissent)
+    semantic = {
+        "ok": True, "inspected": True, "errors": [], "missing": [],
+        "unexpected": [], "duplicates": [], "unexpected_text": [],
+        "model_name": draft_figures.vision_model(),
+        "prompt_version": draft_figures.SEMANTIC_PROMPT_VERSION,
+        "review_count": draft_figures.SEMANTIC_REVIEW_COUNT,
+        "expected": expected, "visible": expected,
+        "anchors": [
+            {"numeral": value, "x": 500, "y": 500, "visible": True,
+             "evidence": "The requested component is visible."}
+            for value in expected
+        ],
+        "specification_hash": spec_hash,
+    }
+
+    audited = draft_figures._apply_cross_provider_geometry_gate(
+        semantic, png, label="FIG. 5", caption=specification, numerals=numerals)
+
+    cross = audited["cross_provider_geometry_audit"]
+    assert audited["ok"] is True and cross["ok"] is True
+    assert cross["reviewer_missing"] == ["16"] and cross["missing"] == []
+    assert set(cross["consensus_resolution"]["certified_dissent_categories"]) == {
+        "carried_bushing_and_coaxial_bore", "certified_numeral_inventory",
+        "slot_and_key",
+    }
+    assert draft_figures.current_cross_provider_geometry_audit(
+        cross, specification_hash=spec_hash) is True
 
 
 @pytest.mark.parametrize(("finding", "category"), [
