@@ -706,6 +706,17 @@ def _figure_checks(sections: Mapping[str, str],
             brief_issues.append(
                 f"{label}: contradictory sheet exclusivity requires a drawn tile or floor "
                 "while also saying no other slab, plate, or panel is drawn")
+        if (re.search(r"\bcross-sectional view taken on line\b", caption, re.IGNORECASE) and
+                re.search(r"\bvertical,?\s+cylindrical bore\b[^.]{0,100}"
+                          r"\bpassing completely through\b", caption, re.IGNORECASE) and
+                re.search(r"\bcylindrical\b[^.]{0,100}\bcross-section\b[^.]{0,80}"
+                          r"\bannulus\b", caption, re.IGNORECASE) and
+                re.search(r"\bthreaded shank\b[^.]{0,100}"
+                          r"\b(?:descends|extends downward)\b", caption, re.IGNORECASE)):
+            brief_issues.append(
+                f"{label}: an axial section through a hollow cylindrical part cannot be "
+                "specified as an annulus; show two opposed sectioned walls separated by the "
+                "open through-bore, and reserve an annulus for a transverse section")
         if match := _ARBITRARY_GLOBAL_SHAPE_EXCLUSION_RE.search(caption):
             brief_issues.append(
                 f"{label}: blanket shape exclusion {match.group(0)[:180]!r}; describe only "

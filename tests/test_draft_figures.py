@@ -9245,12 +9245,12 @@ def test_drilling_jig_carriage_section_has_exact_geometry_hatching_and_anchors()
     assert carried_bushing["contained_by_carriage"] is True
     assert carried_bushing["outer_carriage_boundary_continuous"] is True
     assert carried_bushing["carriage_box"] == [300, 250, 1100, 430]
-    assert carried_bushing["bushing_box"] == [840, 270, 980, 390]
-    assert carried_bushing["support_band"] == [840, 390, 980, 430]
+    assert carried_bushing["bushing_box"] == [820, 270, 1000, 390]
+    assert carried_bushing["support_band"] == [820, 390, 1000, 430]
     slot = certificate["certified_constraints"]["slot_and_key"]
     assert slot["shape"] == "straight_rectangular_through"
-    assert slot["top_opening_x"] == [400, 880]
-    assert slot["bottom_opening_x"] == [400, 880]
+    assert slot["top_opening_x"] == [400, 760]
+    assert slot["bottom_opening_x"] == [400, 760]
     assert slot["open_at_upper_face"] is True
     assert slot["open_at_lower_face"] is True
 
@@ -9282,11 +9282,43 @@ def test_drilling_jig_carriage_section_has_exact_geometry_hatching_and_anchors()
     }
     assert set(anchors) == {"10", "12", "16", "70", "72", "74", "78", "80"}
     assert (anchors["72"]["raw_x"], anchors["72"]["raw_y"]) == (660, 475)
-    assert (anchors["16"]["raw_x"], anchors["16"]["raw_y"]) == (790, 555)
+    assert (anchors["16"]["raw_x"], anchors["16"]["raw_y"]) == (730, 555)
     assert all(
         item.get("anchor_source") ==
         draft_figures.DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION
         for item in semantic["anchors"])
+
+
+def test_drilling_jig_carriage_section_makes_one_slot_key_and_bushing_unambiguous():
+    specification = re.sub(
+        r"The surfaces cut by the section plane.*?The cut surface of the clamping shoe 80 "
+        r"is hatched with lines slanting at -45 degrees from\s+the horizontal\.",
+        "The surfaces cut by the section plane are shown with hatching. The rail 10, second "
+        "guide carriage 70, drill bushing 74, and clamping shoe 80 each use a visibly distinct "
+        "section-hatching direction.",
+        _drilling_jig_carriage_section_specification(),
+        flags=re.DOTALL,
+    )
+
+    png = draft_figures._deterministic_drilling_jig_carriage_section_png(specification)
+
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    constraints = certificate["certified_constraints"]
+    slot = constraints["slot_and_key"]
+    assert slot["top_opening_x"] == [400, 760]
+    assert slot["bottom_opening_x"] == [400, 760]
+    assert slot["key_and_shank_share_one_opening"] is True
+    assert slot["integral_key_root_open"] is True
+    assert slot["key_root_seam_pixels"] <= 12
+    bushing = constraints["carried_bushing_and_coaxial_bore"]
+    assert bushing["single_hollow_cylindrical_bushing"] is True
+    assert bushing["bore_width"] >= 50
+    assert bushing["axial_center_marks"] is True
+    section = draft_figures._deterministic_section_hatch_certificate(png, specification)
+    angles = {item["component"]: item["angle_degrees"]
+              for item in section["components"]}
+    assert len(set(angles.values())) == 4
 
 
 def test_drilling_jig_carriage_section_accepts_a_pronoun_split_surface_relationship():
