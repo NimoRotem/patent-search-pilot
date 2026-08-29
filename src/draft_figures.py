@@ -2903,8 +2903,11 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
             "shell side wall": (
                 1130, 500, "well inside the hatching of the upright shell wall"),
             "upper edge of the insulated outer shell": (
-                1160, 270, "on the upper edge line of the shell wall"),
-            "upper edge": (1160, 270, "on the upper edge line of the shell wall"),
+                1045, 270,
+                "on the upper edge line of the shell wall clear of the lid gasket"),
+            "upper edge": (
+                1045, 270,
+                "on the upper edge line of the shell wall clear of the lid gasket"),
             "ledges": (970, 540, "on the ledge top to the right of the resilient foot"),
             "ledge": (970, 540, "on the ledge top to the right of the resilient foot"),
             "rigid spacer frame": (
@@ -2914,9 +2917,9 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
             "peripheral outlet opening": (
                 830, 405, "well inside the blank peripheral outlet opening"),
             "resilient feet": (
-                855, 510, "well inside the hatching of the resilient foot"),
+                845, 510, "well inside the hatching of the resilient foot"),
             "resilient foot": (
-                855, 510, "well inside the hatching of the resilient foot"),
+                845, 510, "well inside the hatching of the resilient foot"),
             "insulated lid": (
                 600, 165, "well inside the hatching of the insulated lid"),
             "compressible lid gasket": (
@@ -4736,6 +4739,34 @@ def _paste_hatched_box(image, box, *, angle: int) -> None:
     image.paste(hatch_layer, (0, 0), mask)
 
 
+def _overlay_hatching_box(image, box, *, angle: int) -> None:
+    """Add a second clipped hatch direction without erasing the first direction."""
+    from math import ceil, cos, hypot, radians, sin
+    from PIL import Image, ImageChops, ImageDraw
+
+    width, height = image.size
+    diagonal = hypot(width, height) * 1.5
+    theta = radians(angle)
+    direction_x, direction_y = cos(theta), sin(theta)
+    normal_x, normal_y = -direction_y, direction_x
+    center_x, center_y = width / 2, height / 2
+    line_mask = Image.new("L", image.size, 0)
+    line_draw = ImageDraw.Draw(line_mask)
+    for offset in range(-ceil(diagonal), ceil(diagonal) + 1, 30):
+        line_center_x = center_x + normal_x * offset
+        line_center_y = center_y + normal_y * offset
+        line_draw.line((
+            round(line_center_x - direction_x * diagonal),
+            round(line_center_y - direction_y * diagonal),
+            round(line_center_x + direction_x * diagonal),
+            round(line_center_y + direction_y * diagonal),
+        ), fill=255, width=2)
+    clip_mask = Image.new("L", image.size, 0)
+    ImageDraw.Draw(clip_mask).rectangle(box, fill=255)
+    mask = ImageChops.multiply(line_mask, clip_mask)
+    image.paste((0, 0, 0), (0, 0, width, height), mask)
+
+
 def _paste_hatched_polygon(image, points, *, angle: int) -> None:
     """Fill one non-rectangular cut body with uniform hatching at an exact angle."""
     from math import ceil, cos, hypot, radians, sin
@@ -4885,7 +4916,10 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
                   r"\b(?:lower face|bottom surface) of the rail\b", text) or
         re.search(r"\bempty space or gap\b[^.]{0,180}\bupper surface of (?:the )?"
                   r"clamping shoe(?:\s+\d+)?\b[^.]{0,180}"
-                  r"\blower face of (?:the )?rail(?:\s+\d+)?\b", text)
+                  r"\blower face of (?:the )?rail(?:\s+\d+)?\b", text) or
+        re.search(r"\bdistinct and visible gap\b[^.]{0,80}\bseparates\b"
+                  r"[^.]{0,120}\bclamping shoe(?:\s+\d+)?\b[^.]{0,120}"
+                  r"\bfrom (?:the )?lower face of (?:the )?rail(?:\s+\d+)?\b", text)
     )
     slot_shape = _drilling_jig_slot_shape(text)
     slot_in_rail = (
@@ -5184,9 +5218,19 @@ def _deterministic_section_hatch_certificate(png: bytes, caption: str) -> dict |
     drilling_jig_carriage = _deterministic_drilling_jig_carriage_section_png(caption)
     if cold_chain_lid is not None and png == cold_chain_lid:
         renderer = "cold_chain_lid_section"
+        gasket = _section_hatch_component("compressible lid gasket", 70)
+        if re.search(r"\bcross-hatch(?:ed|ing)?\b", text):
+            cross = _section_hatch_component("compressible lid gasket", -70)
+            gasket.update({
+                "pattern": "cross_hatch",
+                "cross_angle_degrees": cross["angle_degrees"],
+                "cross_direction": cross["direction"],
+            })
+        else:
+            gasket["pattern"] = "single_hatch"
         components = [
             _section_hatch_component("insulated lid", -45),
-            _section_hatch_component("compressible lid gasket", 70),
+            gasket,
             _section_hatch_component("shell side wall and ledge", 45),
             _section_hatch_component("rigid spacer frame", -30),
             _section_hatch_component("resilient foot", 15),
@@ -5518,15 +5562,18 @@ def _deterministic_cold_chain_lid_section_png(caption: str) -> bytes | None:
 
     image = Image.new("RGB", (1400, 900), "white")
     _paste_hatched_box(image, (180, 100, 1240, 230), angle=-45)
-    _paste_hatched_box(image, (1030, 230, 1220, 270), angle=70)
+    gasket_box = (1060, 230, 1190, 270)
+    _paste_hatched_box(image, gasket_box, angle=70)
+    if re.search(r"\bcross-hatch(?:ed|ing)?\b", text):
+        _overlay_hatching_box(image, gasket_box, angle=-70)
     _paste_hatched_box(image, (1030, 270, 1220, 820), angle=45)
     _paste_hatched_box(image, (820, 540, 1030, 630), angle=45)
     _paste_hatched_box(image, (300, 340, 920, 480), angle=-30)
-    _paste_hatched_box(image, (800, 480, 910, 540), angle=15)
+    _paste_hatched_box(image, (800, 480, 890, 540), angle=15)
 
     draw = ImageDraw.Draw(image)
     draw.rectangle((180, 100, 1240, 230), outline="black", width=4)
-    draw.rectangle((1030, 230, 1220, 270), outline="black", width=4)
+    draw.rectangle(gasket_box, outline="black", width=4)
 
     # The ledge is an integral projection of the shell wall. The wall outline deliberately
     # opens around that projection rather than drawing an artificial seam through it.
@@ -5542,7 +5589,7 @@ def _deterministic_cold_chain_lid_section_png(caption: str) -> bytes | None:
     draw.rectangle((760, 380, 920, 430), fill="white")
     draw.line((300, 340, 920, 340, 920, 380),
               fill="black", width=4, joint="curve")
-    draw.line((920, 430, 920, 480, 910, 480),
+    draw.line((920, 430, 920, 480, 890, 480),
               fill="black", width=4, joint="curve")
     draw.line((800, 480, 300, 480, 300, 340),
               fill="black", width=4, joint="curve")
@@ -5552,7 +5599,7 @@ def _deterministic_cold_chain_lid_section_png(caption: str) -> bytes | None:
 
     # The resilient foot shares its upper boundary with the frame and its lower boundary with
     # the ledge top, showing both attachment and bearing contact without an extra component.
-    draw.rectangle((800, 480, 910, 540), outline="black", width=4)
+    draw.rectangle((800, 480, 890, 540), outline="black", width=4)
 
     out = io.BytesIO()
     image.save(out, format="PNG", compress_level=9)
@@ -5568,6 +5615,7 @@ def _deterministic_cold_chain_lid_constraint_certificate(
     from PIL import Image
 
     image = Image.open(io.BytesIO(png)).convert("L")
+    section = _deterministic_section_hatch_certificate(png, caption) or {}
     outlet_clear = all(
         image.getpixel((x, y)) > 245
         for y in range(395, 416)
@@ -5578,14 +5626,30 @@ def _deterministic_cold_chain_lid_constraint_certificate(
         for y in range(390, 421)
         for x in range(914, 920)
     )
+    upper_edge_clear = all(
+        image.getpixel((x, y)) > 245
+        for y in range(238, 262)
+        for x in range(1036, 1055)
+    )
+    ledge_top_clear = all(
+        image.getpixel((x, y)) > 245
+        for y in range(515, 536)
+        for x in range(905, 1015)
+    )
     return {
+        "section_hatching": {
+            "ok": bool(section.get("ok") and section.get("exact_renderer_match")),
+            "components": list(section.get("components") or []),
+        },
         "lid_gasket_shell_stack": {
-            "ok": True,
+            "ok": upper_edge_clear,
             "lid_box": [180, 100, 1240, 230],
-            "gasket_box": [1030, 230, 1220, 270],
+            "gasket_box": [1060, 230, 1190, 270],
             "shell_box": [1030, 270, 1220, 820],
             "lid_bottom_y": 230,
             "shell_upper_edge_y": 270,
+            "exposed_upper_edge_segments": [[1030, 1060], [1190, 1220]],
+            "clear_left_edge_region": upper_edge_clear,
         },
         "peripheral_outlet_opening": {
             "ok": outlet_clear and outlet_reaches_periphery,
@@ -5594,12 +5658,14 @@ def _deterministic_cold_chain_lid_constraint_certificate(
             "open_at_frame_periphery": outlet_reaches_periphery,
         },
         "frame_foot_ledge_contact": {
-            "ok": True,
+            "ok": ledge_top_clear,
             "frame_bottom_y": 480,
-            "foot_box": [800, 480, 910, 540],
+            "foot_box": [800, 480, 890, 540],
             "ledge_box": [820, 540, 1030, 630],
             "foot_bottom_y": 540,
             "ledge_top_y": 540,
+            "exposed_ledge_top_x": [890, 1030],
+            "clear_ledge_region": ledge_top_clear,
         },
     }
 
