@@ -8586,6 +8586,58 @@ def _certified_geometry_dissent_category(value: str) -> str:
     text = re.sub(r"\s+", " ", str(value or "")).strip().lower()
     if not text:
         return ""
+    mechanical_section_parts = (
+        r"rail|guide carriage|drill bushing|clamping shoe|insulated lid|"
+        r"(?:compressible )?lid gasket|shell side wall|rigid spacer frame|resilient foot"
+    )
+    if (re.search(r"\bhatch(?:ed|ing)?\b", text) and
+            re.search(rf"\b(?:{mechanical_section_parts})\b", text) and
+            re.search(
+                r"\b(?:angle|direction|distinct|different|identical|parallel|same|slope)\w*\b",
+                text,
+            )):
+        return "section_hatching"
+    if ("longitudinal slot" in text and
+            re.search(
+                r"\b(?:blind|continuous|entire|hole|key|opening|pass|separate|shank|"
+                r"single|straight|through)\w*\b",
+                text,
+            )):
+        return "slot_and_key"
+    if ("drill bushing" in text and
+            re.search(
+                r"\b(?:bore|carriage|central|component|cylindrical|hollow|pocket|recess|"
+                r"separate|single|two|wall)\w*\b",
+                text,
+            )):
+        return "carried_bushing_and_coaxial_bore"
+    if ("threaded shank" in text and "clamping shoe" in text and
+            re.search(
+                r"\b(?:before|extend|into|path|pass|reach|stop|terminat)\w*\b",
+                text,
+            )):
+        return "threaded_shank_path"
+    if ("clamping shoe" in text and "rail" in text and
+            re.search(
+                r"\b(?:clearance|contact|gap|separat|touch)\w*\b",
+                text,
+            )):
+        return "shoe_clearance"
+    if (("lid gasket" in text or "compressible gasket" in text) and
+            re.search(r"\b(?:insulated )?lid\b", text) and
+            re.search(r"\b(?:between|compress|frame|shell|upper edge)\w*\b", text)):
+        return "lid_gasket_shell_stack"
+    if (("peripheral outlet" in text or "outlet opening" in text) and
+            re.search(r"\b(?:frame|peripher)\w*\b", text) and
+            re.search(r"\b(?:absent|closed|missing|open|solid)\w*\b", text)):
+        return "peripheral_outlet_opening"
+    if ("resilient foot" in text and
+            re.search(r"\b(?:frame|ledge)\w*\b", text) and
+            re.search(
+                r"\b(?:attach|bear|contact|detach|distinct|integral|rest)\w*\b",
+                text,
+            )):
+        return "frame_foot_ledge_contact"
     if ("branch conductor" in text and
             re.search(r"\b(?:end|side|boundar|enclos|dash|meet|cross|stop|extend|short)\w*\b",
                       text)):
