@@ -4573,18 +4573,37 @@ def _paste_hatched_polygon(image, points, *, angle: int) -> None:
 def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | None:
     """Render the drilling-jig carriage section with certified part separation."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    carriage_on_upper_face = re.search(
+        r"\bguide carriage(?:\s+\d+)?\b.{0,220}"
+        r"\b(?:sits|rests|is seated|seated)\s+on\b[^.]{0,100}\bupper face\b",
+        text,
+    )
+    bushing_carried = (
+        re.search(r"\bdrill bushing(?:\s+\d+)?\b[^.]{0,120}\bcarried by\b"
+                  r"[^.]{0,100}\bguide carriage\b", text) or
+        re.search(r"\bdrill bushing(?:\s+\d+)?\b[^.]{0,140}"
+                  r"\b(?:installed|received|disposed)\s+(?:wholly\s+)?within\b"
+                  r"[^.]{0,100}\bguide carriage\b", text)
+    )
+    bore_is_not_offset = not re.search(
+        r"\bbore\b[^.]{0,100}\b(?:eccentric|offset|off-cent(?:er|re))\b", text)
+    shoe_clearance = (
+        re.search(r"\bvisible clearance\b[^.]{0,180}\bclamping shoe\b"
+                  r"[^.]{0,180}\brail\b", text) or
+        re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,220}"
+                  r"\bvisible clearance\b[^.]{0,180}\brail\b", text)
+    )
     requirements = (
         re.search(r"\bcross-sectional view taken on line\b[^.]{0,80}\bof fig\. 2\b", text),
         re.search(r"\brail(?:\s+\d+)?\b[^.]{0,160}\blongitudinal slot\b", text),
-        re.search(r"\bguide carriage(?:\s+\d+)?\b.{0,220}\bsits on\b[^.]{0,100}"
-                  r"\bupper face\b", text),
+        carriage_on_upper_face,
         re.search(r"\bkey(?:\s+\d+)?\b[^.]{0,120}\bprojects downward\b[^.]{0,120}"
                   r"\blongitudinal slot\b", text),
-        re.search(r"\bdrill bushing(?:\s+\d+)?\b[^.]{0,120}\bcarried by\b[^.]{0,100}"
-                  r"\bguide carriage\b", text),
+        bushing_carried,
         re.search(r"\bvertical,? cylindrical bore\b[^.]{0,100}\bpassing completely through\b",
                   text),
-        re.search(r"\bbore is coaxial with\b[^.]{0,80}\bdrill bushing\b", text),
+        (re.search(r"\bbore is coaxial with\b[^.]{0,80}\bdrill bushing\b", text) or
+         (bushing_carried and bore_is_not_offset)),
         re.search(r"\bclamp knob(?:\s+\d+)?\b[^.]{0,80}\babove\b[^.]{0,80}"
                   r"\bcarriage\b", text),
         re.search(r"\bthreaded shank\b", text),
@@ -4592,8 +4611,7 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
                   r"[^.]{0,220}\blongitudinal slot\b", text),
         re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,120}\bseparate body\b[^.]{0,100}"
                   r"\bbelow\b[^.]{0,80}\brail\b", text),
-        re.search(r"\bvisible clearance\b[^.]{0,180}\bclamping shoe\b[^.]{0,180}"
-                  r"\brail\b", text),
+        shoe_clearance,
     )
     if not all(requirements):
         return None
@@ -4606,7 +4624,7 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
     # the opposite angle, and the bushing repeats the rail angle exactly as the brief requires.
     _paste_hatched_box(image, (164, 434, 1236, 616), angle=-45)
     _paste_hatched_box(image, (304, 254, 1096, 426), angle=45)
-    _paste_hatched_box(image, (844, 254, 976, 426), angle=-45)
+    _paste_hatched_box(image, (844, 274, 976, 386), angle=-45)
     _paste_hatched_box(image, (304, 694, 696, 786), angle=45)
 
     draw = ImageDraw.Draw(image)
@@ -4628,12 +4646,14 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
     draw.rectangle((300, 250, 1100, 430), outline="black", width=4)
     draw.rectangle((620, 426, 700, 520), outline="black", width=4)
 
-    # The bushing is a separately bounded body carried wholly by the carriage. A clear central
-    # bore crosses it from top to bottom and is concentric with its two side walls.
-    draw.rectangle((840, 250, 980, 430), outline="black", width=4)
-    draw.rectangle((895, 246, 925, 434), fill="white")
-    draw.line((895, 250, 895, 430), fill="black", width=4)
-    draw.line((925, 250, 925, 430), fill="black", width=4)
+    # The bushing is inset within the carriage instead of sharing the rail-contacting lower
+    # boundary. The uninterrupted outer carriage outline and the visible carriage band below the
+    # insert make the carried relationship explicit. A clear central bore crosses the bushing
+    # from top to bottom and is concentric with its two side walls.
+    draw.rectangle((840, 270, 980, 390), outline="black", width=4)
+    draw.rectangle((895, 266, 925, 394), fill="white")
+    draw.line((895, 270, 895, 390), fill="black", width=4)
+    draw.line((925, 270, 925, 390), fill="black", width=4)
 
     # The clamping shoe is physically separate from the rail by seventy raw pixels.
     draw.rectangle((300, 690, 700, 790), outline="black", width=4)
@@ -5121,9 +5141,27 @@ def _deterministic_drilling_jig_constraint_certificate(
     slot_open = open_region((790, 555), radius=12)
     key_boundaries = all(ink(point) for point in (
         (620, 475), (700, 475), (660, 430), (660, 520)))
+    carriage_box = (300, 250, 1100, 430)
+    bushing_box = (840, 270, 980, 390)
+    support_band = (840, 390, 980, 430)
     bushing_boundaries = all(ink(point) for point in (
-        (840, 330), (895, 330), (925, 330), (980, 330)))
+        (840, 330), (895, 330), (925, 330), (980, 330),
+        (860, 270), (960, 270), (860, 390), (960, 390)))
     bore_open = open_region((910, 330), radius=8)
+    outer_carriage_boundary_continuous = all(
+        ink((x, y), radius=1)
+        for y in (carriage_box[1], carriage_box[3])
+        for x in range(bushing_box[0] - 10, bushing_box[2] + 11, 10)
+    )
+    contained_by_carriage = bool(
+        carriage_box[0] < bushing_box[0] < bushing_box[2] < carriage_box[2] and
+        carriage_box[1] < bushing_box[1] < bushing_box[3] < carriage_box[3])
+    support_ink = sum(
+        image.getpixel((x, y)) < 245
+        for y in range(support_band[1] + 4, support_band[3] - 4)
+        for x in range(support_band[0] + 4, support_band[2] - 4)
+    )
+    support_material_visible = support_ink >= 100
     shank_continuous = all(ink(point) for point in (
         (455, 210), (505, 330), (455, 550), (505, 650), (455, 735)))
     clearance_open = open_region((600, 655), radius=16)
@@ -5139,9 +5177,16 @@ def _deterministic_drilling_jig_constraint_certificate(
             "key_box": [620, 430, 700, 520],
         },
         "carried_bushing_and_coaxial_bore": {
-            "ok": bool(bushing_boundaries and bore_open),
-            "bushing_box": [840, 250, 980, 430],
-            "bore_box": [895, 250, 925, 430],
+            "ok": bool(
+                bushing_boundaries and bore_open and contained_by_carriage and
+                outer_carriage_boundary_continuous and support_material_visible),
+            "contained_by_carriage": contained_by_carriage,
+            "outer_carriage_boundary_continuous": outer_carriage_boundary_continuous,
+            "support_material_visible": support_material_visible,
+            "carriage_box": list(carriage_box),
+            "bushing_box": list(bushing_box),
+            "bore_box": [895, 270, 925, 390],
+            "support_band": list(support_band),
         },
         "threaded_shank_path": {
             "ok": shank_continuous,
