@@ -211,7 +211,10 @@ def _gate_resume_run(context: Mapping[str, Any], turn: Mapping[str, Any]
             steps=[],
         )
     session_id = str(marker.get("session_id") or "")
-    if not session_id:
+    # A gate continuation may itself have restored a legacy checkpoint without a provider
+    # session. Its complete candidate remains the authority on the next bounded continuation;
+    # sending it through a new drafting run only spends budget and risks unrelated rewrites.
+    if not session_id and str(turn.get("kind") or "") != "gate_resume":
         return None
     steps = [dict(step) for step in (marker.get("steps") or [])
              if isinstance(step, Mapping)]
@@ -287,6 +290,16 @@ candidate is source-faithful, its numeral or figure counts, its labels, or the f
 should pass. A corrective message
 that names a detail only to reject, remove, narrow, question, or audit it is not affirmative source
 support. Require an independent USER passage that affirmatively describes the technical detail.
+
+SOURCE COMPLETENESS IS BIDIRECTIONAL
+Never silently drop affirmative technical matter from the inventor sources. The Detailed
+Description must preserve every disclosed technical structure, relationship, operation,
+safety or recovery behavior, installation or calibration procedure, data-recording behavior,
+and alternative embodiment unless a later affirmative USER passage withdraws or replaces it.
+Use supported dependent claims to cover commercially distinct embodiments and safety or recovery
+modes where claim form can capture them cleanly. Do not force every optional feature into an
+independent claim, and do not copy filing instructions, motivations, rejected details, or redundant
+wording as though they were technical embodiments.
 
 FILING-CLEAN OUTPUT IS ABSOLUTE
 No placeholder, drafting note, TODO, TBD, blank field, instruction to a draftsperson, question to
