@@ -6347,11 +6347,27 @@ def _deterministic_drilling_jig_constraint_certificate(
         (910, 246), (910, 330), (910, 414)))
     bore_center_clear = open_region((910, 330), radius=3)
     bore_axis_ok = bore_center_clear if empty_unmarked_bore else axial_center_marks
-    outer_carriage_boundary_continuous = all(
-        ink((x, y), radius=1)
+    # A through-bore must interrupt the lower carriage outline exactly at its mouth. Certify
+    # continuous carriage material on both sides of that functional opening instead of treating
+    # the required white passage as a broken carriage or as two unrelated bodies.
+    lower_bore_opening = (885, 935) if clamped_contact else None
+    carriage_boundary_samples = [
+        (x, y)
         for y in (carriage_box[1], carriage_box[3])
         for x in range(bushing_box[0] - 10, bushing_box[2] + 11, 10)
-    )
+        if not (
+            lower_bore_opening and y == carriage_box[3] and
+            lower_bore_opening[0] < x < lower_bore_opening[1]
+        )
+    ]
+    outer_carriage_boundary_continuous = all(
+        ink(point, radius=1) for point in carriage_boundary_samples)
+    required_lower_bore_opening = bool(
+        not clamped_contact or (
+            ink((885, carriage_box[3]), radius=1) and
+            open_region((910, carriage_box[3]), radius=4) and
+            ink((935, carriage_box[3]), radius=1)
+        ))
     contained_by_carriage = bool(
         carriage_box[0] < bushing_box[0] < bushing_box[2] < carriage_box[2] and
         carriage_box[1] < bushing_box[1] < bushing_box[3] < carriage_box[3])
@@ -6417,12 +6433,14 @@ def _deterministic_drilling_jig_constraint_certificate(
             "ok": bool(
                 bushing_boundaries and bore_open and contained_by_carriage and
                 outer_carriage_boundary_continuous and support_material_visible and
-                bore_axis_ok and
+                required_lower_bore_opening and bore_axis_ok and
                 (continuous_drill_passage if clamped_contact else True)),
             "single_hollow_cylindrical_bushing": bool(
                 bushing_boundaries and bore_open and bore_axis_ok),
             "contained_by_carriage": contained_by_carriage,
             "outer_carriage_boundary_continuous": outer_carriage_boundary_continuous,
+            "required_lower_bore_opening": required_lower_bore_opening,
+            "lower_bore_opening_x": list(lower_bore_opening or ()),
             "support_material_visible": support_material_visible,
             "carriage_box": list(carriage_box),
             "bushing_box": list(bushing_box),

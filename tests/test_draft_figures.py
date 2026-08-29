@@ -10214,6 +10214,11 @@ def test_current_unhatched_clamped_section_has_one_continuous_drill_passage():
     certificate = draft_figures._deterministic_geometry_certificate(png, specification)
     constraints = certificate["certified_constraints"]
     bore = constraints["carried_bushing_and_coaxial_bore"]
+    assert certificate["ok"] is True
+    assert bore["ok"] is True
+    assert bore["outer_carriage_boundary_continuous"] is True
+    assert bore["required_lower_bore_opening"] is True
+    assert bore["lower_bore_opening_x"] == [885, 935]
     assert bore["continuous_drill_passage"] is True
     assert bore["alignment_centerline_visible"] is True
     assert constraints["shoe_contact"]["ok"] is True
