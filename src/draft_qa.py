@@ -1682,6 +1682,9 @@ WHAT TO CHECK, in this order of importance:
    verify the broken cutting-plane line, one matching section designation at each end, and both
    arrows pointing in the viewing direction stated by the brief. A section designation is not a
    reference numeral and must not have a numeral leader.
+   Never propose an automatic fix that leaves more than eight reference numerals on one drawing
+   sheet. If a missing part must be depicted on a full sheet, require a focused additional view
+   or redistribute labels among focused views and synchronize every drawing description.
 
    A patent drawing need not depict every claim limitation or an implementation detail that the
    inventor did not disclose. Report an omission only when the application says that the figure
@@ -1774,7 +1777,7 @@ context for where to look.
 
 Return your findings in the required structured form."""
 
-SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v17-standard-claim-limits"
+SOURCE_REVIEW_VERSION = "source-fidelity-preflight-v18-drawing-numeral-limit"
 SOURCE_REVIEW_SYSTEM = """You are the pre-render source-fidelity reviewer for a US patent
 application. You are independent of the drafting agent. Review only whether the proposed patent
 text and drawing specifications are supported by the inventor sources and internally consistent.
@@ -1873,6 +1876,10 @@ source-supported structures; every named section line must use the same repeated
 the resulting view, source-view brief, and drawing description; and no drafting note, placeholder,
 open question, instruction,
 unresolved alternative, or internal comment may remain. Report every verified inconsistency.
+
+Never propose an automatic fix that leaves more than eight reference numerals on one drawing
+sheet. If a missing part must be depicted on a full sheet, require a focused additional view or
+redistribute labels among focused views and synchronize every drawing description.
 
 Do not inspect or rely on rendered images in this preflight. A later independent review checks
 the final pixels and citations. Return an empty findings array when, and only when, the full ledger

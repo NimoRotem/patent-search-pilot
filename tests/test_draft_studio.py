@@ -3015,6 +3015,16 @@ def test_drafting_and_review_repairs_respect_standard_claim_count_limits():
     assert instruction in " ".join(draft_qa.REVIEW_SYSTEM.split())
 
 
+def test_review_fixes_respect_the_drawing_sheet_numeral_limit():
+    instruction = (
+        "Never propose an automatic fix that leaves more than eight reference numerals "
+        "on one drawing sheet"
+    )
+
+    assert instruction in " ".join(draft_qa.SOURCE_REVIEW_SYSTEM.split())
+    assert instruction in " ".join(draft_qa.REVIEW_SYSTEM.split())
+
+
 def test_drafting_prompt_removes_superseded_figure_briefs():
     prompt = " ".join(draft_studio.DRAFT_SYSTEM.split())
 
