@@ -10064,6 +10064,95 @@ def test_drilling_jig_carriage_section_accepts_current_autonomous_repair_wording
     assert bore["axial_center_marks"] is False
 
 
+def _current_clamped_first_carriage_section_specification():
+    return """
+    A cross-sectional view taken on line A-A of FIG. 2, showing the first guide carriage 50
+    in a clamped position on the rail 10.
+
+    The whole view lies well inside the drawing area, clear of the borders on every side. The
+    surfaces cut by the section plane are shown with regular, evenly spaced section hatching.
+    To make the parts visually distinct, the rail 10 is hatched with lines angled in a first
+    direction, the first guide carriage 50 is hatched with lines angled in a second, different
+    direction, and the drill bushing 54 is hatched with lines angled in a third direction,
+    different from the first and second directions.
+
+    The view shows the rail 10 in cross-section, with the longitudinal slot 16 passing
+    completely through it. The rail 10 has a flat upper face 12 and an opposite lower face 14.
+
+    The first guide carriage 50 sits on the upper face 12 of the rail 10. A key 52 is integral
+    with or attached to the first guide carriage 50 and projects downward from the carriage 50
+    into the longitudinal slot 16. The key 52 has a width that is closely toleranced to the
+    width of the longitudinal slot 16, so that the key 52 prevents the first guide carriage 50
+    from rotating about an axis perpendicular to the upper face 12.
+
+    The clamp knob 58 is shown above the first guide carriage 50. A threaded shank, which is
+    part of the clamp knob 58, extends downward from the knob, passes through a bore in the
+    first guide carriage 50, and passes through the longitudinal slot 16.
+
+    A separate clamping shoe 60 is located below the rail 10. The threaded shank passes into a
+    threaded hole in the clamping shoe 60. The clamping shoe 60 is shown drawn upward by the
+    clamp knob 58 so that it bears against the lower face 14 of the rail 10, clamping the rail
+    10 between the clamping shoe 60 and the first guide carriage 50. There is no gap between
+    the clamping shoe 60 and the rail 10 in this clamped state.
+
+    A cylindrical drill bushing 54 is seated in a bore within the first guide carriage 50. The
+    drill bushing 54 is a hollow, cylindrical body with a central, vertical bore that passes
+    completely through it. The bore of the drill bushing 54 is coaxial with an opening in the
+    first guide carriage 50 and is aligned with the longitudinal slot 16 of the rail 10, so as
+    to form a continuous and uninterrupted passage for a drill bit to pass through the first
+    guide carriage 50 and the rail 10. The drill bushing 54 is shown hatched.
+    """
+
+
+def test_current_clamped_first_carriage_section_has_contact_and_clear_drill_passage():
+    specification = _current_clamped_first_carriage_section_specification()
+    numerals = [
+        "10 = rail", "12 = upper face", "16 = longitudinal slot",
+        "50 = first guide carriage", "52 = key of the first guide carriage",
+        "54 = drill bushing of the first guide carriage",
+        "58 = clamp knob of the first guide carriage",
+        "60 = clamping shoe of the first guide carriage",
+    ]
+
+    png = draft_figures._deterministic_drilling_jig_carriage_section_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+
+    assert png is not None
+    assert certificate["renderer"] == "drilling_jig_carriage_section"
+    constraints = certificate["certified_constraints"]
+    assert constraints["slot_and_key"]["shape"] == "generic_through_slot_section"
+    assert constraints["slot_and_key"]["bottom_opening_x"] == [400, 1000]
+    assert constraints["carried_bushing_and_coaxial_bore"]["rail_passage_clear"] is True
+    assert constraints["shoe_contact"]["ok"] is True
+    assert constraints["shoe_contact"]["contact_y"] == 620
+    assert constraints["shoe_clearance"]["required"] is False
+    section = draft_figures._deterministic_section_hatch_certificate(png, specification)
+    assert len({item["angle_degrees"] for item in section["components"]}) == 4
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": entry.split(" = ", 1)[0], "x": 500, "y": 500,
+                 "visible": True}
+                for entry in numerals
+            ],
+        })
+    anchors = semantic["deterministic_anchor_certificate"]
+    assert anchors["ok"] is True
+    assert {item["numeral"] for item in anchors["anchors"]} == {
+        "10", "12", "16", "50", "52", "54", "58", "60",
+    }
+
+    finding = (
+        "The clamping shoe is separated from the lower face of the rail rather than bearing "
+        "against it in the clamped state.")
+    assert draft_figures._certified_geometry_dissent_category(finding) == "shoe_contact"
+    assert draft_figures._certified_geometry_dissent_categories(
+        errors=[finding], missing_geometry=[], missing=[], unexpected=[], duplicates=[],
+        certificate=certificate,
+    ) == ["shoe_contact"]
+
+
 @pytest.mark.parametrize(("finding", "category"), [
     (
         "The rail and the second guide carriage are shown with identical hatching "
