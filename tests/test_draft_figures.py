@@ -9590,6 +9590,49 @@ def test_cold_chain_lid_section_has_certified_gasket_opening_and_foot_geometry()
     }
 
 
+def test_cold_chain_lid_section_honors_cross_hatching_and_clear_surface_targets():
+    specification = _cold_chain_lid_section_specification().replace(
+        "hatched distinctly from both slabs",
+        "shown with cross-hatching",
+    )
+    numerals = [
+        "14: shell side walls", "16: upper edge of the insulated outer shell",
+        "18: ledges", "42: rigid spacer frame", "50: peripheral outlet openings",
+        "54: resilient feet", "60: insulated lid", "64: compressible lid gasket",
+    ]
+
+    png = draft_figures._deterministic_cold_chain_lid_section_png(specification)
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    semantic = draft_figures._apply_deterministic_anchor_certificate(
+        png, specification, numerals, {
+            "ok": True,
+            "anchors": [
+                {"numeral": entry.split(":", 1)[0], "x": 500, "y": 500,
+                 "visible": True}
+                for entry in numerals
+            ],
+        })
+
+    assert png is not None
+    hatching = certificate["certified_constraints"]["section_hatching"]
+    gasket = next(
+        item for item in hatching["components"]
+        if item["component"] == "compressible lid gasket")
+    assert gasket["pattern"] == "cross_hatch"
+    assert gasket["cross_angle_degrees"] == -70
+    stack = certificate["certified_constraints"]["lid_gasket_shell_stack"]
+    assert stack["gasket_box"] == [1060, 230, 1190, 270]
+    assert stack["exposed_upper_edge_segments"] == [[1030, 1060], [1190, 1220]]
+    contact = certificate["certified_constraints"]["frame_foot_ledge_contact"]
+    assert contact["exposed_ledge_top_x"] == [890, 1030]
+    anchors = {
+        item["numeral"]: item
+        for item in semantic["deterministic_anchor_certificate"]["anchors"]
+    }
+    assert (anchors["16"]["raw_x"], anchors["16"]["raw_y"]) == (1045, 270)
+    assert (anchors["18"]["raw_x"], anchors["18"]["raw_y"]) == (970, 540)
+
+
 def _drilling_jig_carriage_section_specification():
     return """
     A cross-sectional view taken on line 8-8 of FIG. 2.
@@ -9756,6 +9799,21 @@ def test_drilling_jig_carriage_section_accepts_a_pronoun_split_surface_relations
     )
 
     assert "It sits on the upper face" in specification
+    assert draft_figures._deterministic_drilling_jig_carriage_section_png(
+        specification) is not None
+
+
+def test_drilling_jig_carriage_section_accepts_gap_that_separates_named_surfaces():
+    specification = re.sub(
+        r"The clamping shoe 80 is a separate body below\s+the rail 10, with a visible "
+        r"clearance between the top surface of the clamping shoe 80 and\s+the bottom surface "
+        r"of the rail 10\.",
+        "The clamping shoe 80 is a separate body below the rail 10. A distinct and visible "
+        "gap separates the clamping shoe 80 from the lower face of the rail 10.",
+        _drilling_jig_carriage_section_specification(),
+    )
+
+    assert "distinct and visible gap separates" in specification
     assert draft_figures._deterministic_drilling_jig_carriage_section_png(
         specification) is not None
 
