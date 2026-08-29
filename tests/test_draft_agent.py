@@ -375,6 +375,32 @@ def test_vertex_workspace_tools_are_confined_and_only_edit_filing_files(tmp_path
     assert (tmp_path / "input" / "disclosure.md").read_text(encoding="utf-8") == "authority"
 
 
+def test_vertex_workspace_tool_requires_a_figure_filename_derived_from_its_heading(tmp_path):
+    (tmp_path / "figures").mkdir()
+    content = "# FIG. 1: System Overview\n\nA block diagram.\n"
+
+    with pytest.raises(ValueError, match="canonical figure filename"):
+        draft_agent._vertex_tool(
+            tmp_path, "write_file", {"path": "figures/FIG-1.md", "content": content},
+            writable=True)
+
+    written, _attachments = draft_agent._vertex_tool(
+        tmp_path, "write_file",
+        {"path": "figures/FIG-1-SYSTEM-OVERVIEW.md", "content": content}, writable=True)
+
+    assert written["ok"] is True
+    path = tmp_path / "figures" / "FIG-1-SYSTEM-OVERVIEW.md"
+    assert path.exists()
+    with pytest.raises(ValueError, match="canonical figure filename"):
+        draft_agent._vertex_tool(
+            tmp_path, "replace_text", {
+                "path": "figures/FIG-1-SYSTEM-OVERVIEW.md",
+                "old_text": "# FIG. 1: System Overview",
+                "new_text": "# FIG. 2: System Overview",
+            }, writable=True)
+    assert path.read_text(encoding="utf-8") == content
+
+
 def test_vertex_image_read_attaches_pixels_without_exposing_raw_bytes_in_json(tmp_path):
     (tmp_path / "figures").mkdir()
     image = b"\x89PNG\r\n\x1a\nnot-a-real-image"

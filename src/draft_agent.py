@@ -559,6 +559,10 @@ def _workspace_path(workspace: Path, value: Any, *, write: bool = False) -> Path
             allowed = ", ".join(sorted(draft_workspace.CANONICAL_DRAFT_FILES))
             raise ValueError(
                 "Only canonical application files may be edited under draft/: " + allowed)
+    if write and relative.parts[0] == "figures" and (
+            len(relative.parts) != 2 or relative.suffix.lower() != ".md"):
+        raise ValueError(
+            "Only top-level canonical Markdown figure specifications may be edited.")
     return candidate
 
 
@@ -768,6 +772,15 @@ def _vertex_tool(workspace: Path, name: str, arguments: Mapping[str, Any], *, wr
             content = str(arguments.get("content") or "")
             if len(content) > 400_000:
                 raise ValueError("The file exceeds the workspace file limit.")
+            if path.parent == root / "figures":
+                import draft_workspace
+                expected = draft_workspace.figure_filename(
+                    draft_workspace.figure_heading(content))
+                if not expected or path.name != expected:
+                    required_name = expected or "(missing heading)"
+                    raise ValueError(
+                        "Use the canonical figure filename derived from the file's # FIG. "
+                        f"heading: {required_name}.")
             path.write_text(content, encoding="utf-8")
             return {
                 "ok": True, "path": path.relative_to(root).as_posix(),
@@ -789,6 +802,15 @@ def _vertex_tool(workspace: Path, name: str, arguments: Mapping[str, Any], *, wr
         changed = text.replace(old, new) if replace_all else text.replace(old, new, 1)
         if len(changed) > 400_000:
             raise ValueError("The edited file exceeds the workspace file limit.")
+        if path.parent == root / "figures":
+            import draft_workspace
+            expected = draft_workspace.figure_filename(
+                draft_workspace.figure_heading(changed))
+            if not expected or path.name != expected:
+                required_name = expected or "(missing heading)"
+                raise ValueError(
+                    "The edited # FIG. heading requires canonical figure filename "
+                    f"{required_name}.")
         path.write_text(changed, encoding="utf-8")
         return {
             "ok": True, "path": path.relative_to(root).as_posix(),
