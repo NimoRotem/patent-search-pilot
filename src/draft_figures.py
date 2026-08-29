@@ -93,6 +93,8 @@ PIXEL_ANCHOR_VERSION = "pixel-anchor-v12-brief-target-surface-fidelity"
 MARKED_PROGRESS_VERSION = (
     "marked-progress-v8-anchor-map-bound-" +
     DETERMINISTIC_ANCHOR_CERTIFICATE_VERSION + "-" + PIXEL_ANCHOR_VERSION)
+OCR_PRE_LETTERED_SECTION_PROMPT_VERSION = (
+    "google-vision-document-text-v3-section-designations")
 OCR_PROMPT_VERSION = "google-vision-document-text-v4-lettered-section-designations"
 OCR_GEOMETRY_RESOLUTION_VERSION = (
     "ocr-zero-geometry-resolution-v1-label-probe-two-review-consensus")
@@ -12794,6 +12796,7 @@ def current_ocr_audit(value, *, expected_sheet_number: str = "",
     if requested and not expected:
         return False
     section_designations_match = True
+    section_values = []
     if expected_section_designations is not None:
         section_values = [str(item or "").strip().upper()
                           for item in expected_section_designations or ()]
@@ -12802,8 +12805,15 @@ def current_ocr_audit(value, *, expected_sheet_number: str = "",
         stored_section_values = [str(item or "").strip().upper() for item in
                                  value.get("expected_section_designations") or ()]
         section_designations_match = stored_section_values == expected_section_values
+    prompt_version = value.get("prompt_version")
+    prompt_version_current = prompt_version == OCR_PROMPT_VERSION
+    legacy_prompt_compatible = bool(
+        expected_section_designations is not None and
+        prompt_version == OCR_PRE_LETTERED_SECTION_PROMPT_VERSION and
+        not any(re.fullmatch(r"[A-Z]{1,3}", item) for item in section_values))
     return bool(
-        value.get("inspected") and value.get("prompt_version") == OCR_PROMPT_VERSION and
+        value.get("inspected") and
+        (prompt_version_current or legacy_prompt_compatible) and
         value.get("correct_figure_label") and
         value.get("correct_section_designations") is True and
         section_designations_match and

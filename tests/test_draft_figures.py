@@ -764,6 +764,28 @@ def test_current_ocr_audit_rejects_an_old_gate_or_different_sheet_total():
         current, expected_sheet_number="2/5", expected_section_designations=["3"]) is False
 
 
+def test_current_ocr_audit_keeps_pre_lettered_reviews_for_unaffected_sheets():
+    legacy = accepted_ocr_audit(
+        "2/5", prompt_version="google-vision-document-text-v3-section-designations")
+    legacy_numeric = {
+        **legacy,
+        "expected_section_designations": ["3", "3"],
+        "detected_section_designations": ["3", "3"],
+    }
+
+    assert draft_figures.current_ocr_audit(
+        legacy, expected_sheet_number="2/5",
+        expected_section_designations=[]) is True
+    assert draft_figures.current_ocr_audit(
+        legacy_numeric, expected_sheet_number="2/5",
+        expected_section_designations=["3"]) is True
+    assert draft_figures.current_ocr_audit(
+        legacy, expected_sheet_number="2/5") is False
+    assert draft_figures.current_ocr_audit(
+        legacy, expected_sheet_number="2/5",
+        expected_section_designations=["A"]) is False
+
+
 def test_current_section_mark_audit_rejects_invalid_stored_coordinates():
     current = {
         "ok": True, "inspected": True, "required": True,
