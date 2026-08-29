@@ -9016,11 +9016,19 @@ def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
         r"\b(?:identif(?:ied|ies|ying)|endpoint|leader(?:\s+line)?(?:\s+ends?)?|"
         r"point(?:s|ed|ing)?\s+to)\b",
         re.IGNORECASE)
+    explicit_target_owner = re.compile(
+        r"\b(?:reference\s+)?numeral\s+([A-Za-z]?\d+[A-Za-z]?)\b",
+        re.IGNORECASE)
     all_numerals = [entry["numeral"] for entry in entries]
     parts = []
     for entry in entries:
         numeral = entry["numeral"]
         part = str(entry["part"] or "").strip()
+
+        def target_belongs_to_part(value: str) -> bool:
+            owner = explicit_target_owner.search(value)
+            return not owner or _clean_numeral(owner.group(1)) == numeral
+
         numeral_pattern = re.compile(
             r"(?<![A-Za-z0-9])" + re.escape(numeral) + r"(?![A-Za-z0-9])")
         declaration_pattern = re.compile(
@@ -9053,6 +9061,7 @@ def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
         definition = (local[definition_index] if definition_index is not None else part)[:800]
         explicit_targets = [
             chunk for chunk in local if target_marker.search(chunk) and
+            target_belongs_to_part(chunk) and
             not _ANNOTATION_ONLY.search(chunk) and
             (numeral_pattern.search(chunk) or part.lower() in chunk.lower())]
         target = explicit_targets[0] if explicit_targets else ""
@@ -9062,7 +9071,7 @@ def _marked_endpoint_specification(label: str, caption: str, numerals) -> str:
                     re.search(r"(?<![A-Za-z0-9])" + re.escape(value) +
                               r"(?![A-Za-z0-9])", following)
                     for value in all_numerals if value != numeral)
-                if target_marker.search(following) and (
+                if target_marker.search(following) and target_belongs_to_part(following) and (
                         block_begins_with_declaration or not mentions_other):
                     target = following
                     break

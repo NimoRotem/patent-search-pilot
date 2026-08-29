@@ -8498,6 +8498,37 @@ def test_marked_endpoint_spec_prefers_points_to_target_over_later_cross_referenc
     assert parts["24"]["target"].startswith("The numeral 24 and its leader")
 
 
+def test_marked_endpoint_spec_does_not_borrow_another_numerals_explicit_target():
+    caption = (
+        "A fragmentary top plan view of the second end portion of the rail 10, resting on a "
+        "workpiece 90 and showing the centering features.\n\n"
+        "A fragmentary portion of the rail 10 lies on the workpiece 90. The longitudinal slot "
+        "16 runs lengthwise along the rail 10. A leader for numeral 10 targets the upper face "
+        "of the rail 10. The workpiece 90 is a large rectangular shape shown partially from "
+        "underneath the rail 10. A leader for numeral 90 targets a point on the top surface of "
+        "the workpiece 90 that is spaced away from the rail 10.\n\n"
+        "A transverse center index 24 is a line on the upper face of the rail 10 that runs "
+        "transverse to the length of the rail 10. A sight notch 26 is a shallow V-shaped notch "
+        "in the second end of the rail 10.\n\n"
+        "A workpiece centerline 94 is a visible straight line marked on the workpiece 90. The "
+        "workpiece centerline 94 is visible extending through the longitudinal slot 16. The "
+        "rail 10 is positioned so that the workpiece centerline 94 on the workpiece 90 is "
+        "aligned with the transverse center index 24 and the sight notch 26. A leader for "
+        "numeral 94 targets the portion of the workpiece centerline 94 visible through the "
+        "slot 16.")
+
+    specification = json.loads(draft_figures._marked_endpoint_specification(
+        "FIG. 7", caption,
+        ["10 = rail", "16 = longitudinal slot", "24 = transverse center index",
+         "26 = sight notch", "90 = workpiece", "94 = centerline"]))
+    parts = {item["numeral"]: item for item in specification["parts"]}
+
+    assert parts["16"]["target"] == "On the visible longitudinal slot geometry."
+    assert parts["24"]["target"] == "On the visible transverse center index geometry."
+    assert parts["26"]["target"] == "On the visible sight notch geometry."
+    assert parts["94"]["target"].startswith("A leader for numeral 94 targets")
+
+
 def test_marked_endpoint_spec_keeps_a_following_target_sentence_in_the_same_bullet():
     caption = (
         "- The vibration device 10 is the whole rectangular assembly. "
