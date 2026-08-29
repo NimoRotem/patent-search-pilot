@@ -848,6 +848,16 @@ def test_section_view_requires_the_same_cutting_line_designation_on_its_source_v
     assert passing["status"] == "pass"
     assert broken["status"] == "fail" and "FIG. 1" in " ".join(broken["items"])
 
+    with pytest.raises(
+            draft_studio.FilingPreflightError,
+            match="Section views have matching source-view cutting lines") as caught:
+        draft_studio.validate_snapshot(
+            {"sections": sections, "numerals": NUMERALS, "figures": [
+                {**figures[0], "caption": "Side elevation of the body."}, *figures[1:]
+            ]},
+            ALLOWED)
+    assert caught.value.category == "figures_and_numerals"
+
 
 def test_an_orphaned_drawing_remains_in_bidirectional_qa(monkeypatch):
     import draft_figures
