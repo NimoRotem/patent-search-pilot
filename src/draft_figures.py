@@ -4771,6 +4771,15 @@ def _drilling_jig_slot_shape(caption: str) -> str:
     return ""
 
 
+def _drilling_jig_empty_bore_required(caption: str) -> bool:
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    return bool(re.search(
+        r"\b(?:continuous,\s*)?empty,\s*un-?hatched\s+"
+        r"(?:vertical\s+)?(?:central\s+)?bore\b",
+        text,
+    ))
+
+
 def _drilling_jig_hatch_angles(text: str) -> dict[str, int]:
     """Resolve explicit section angles, otherwise keep all four bodies visually distinct."""
     normalized = re.sub(r"\s+", " ", str(text or "")).strip().lower()
@@ -4804,6 +4813,7 @@ def _drilling_jig_hatch_angles(text: str) -> dict[str, int]:
 def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | None:
     """Render the drilling-jig carriage section with certified part separation."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    empty_unmarked_bore = _drilling_jig_empty_bore_required(text)
     carriage_on_upper_face = re.search(
         r"\bguide carriage(?:\s+\d+)?\b.{0,220}"
         r"\b(?:sits|rests|resting|is seated|seated)\s+on\b[^.]{0,100}\bupper face\b",
@@ -4819,7 +4829,9 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
                   r"[^.]{0,120}\b(?:inside|within) the body of\b[^.]{0,100}"
                   r"\bguide carriage\b", text) or
         re.search(r"\bdrill bushing(?:\s+\d+)?\b[^.]{0,220}\bseated within\b"
-                  r"[^.]{0,180}\bbody of\b[^.]{0,100}\bguide carriage\b", text)
+                  r"[^.]{0,180}\bbody of\b[^.]{0,100}\bguide carriage\b", text) or
+        re.search(r"\bdrill bushing(?:\s+\d+)?\b[^.]{0,240}\bseated within a bore in\b"
+                  r"[^.]{0,100}\bguide carriage(?:\s+\d+)?\b", text)
     )
     bore_is_not_offset = not re.search(
         r"\bbore\b[^.]{0,100}\b(?:eccentric|offset|off-cent(?:er|re))\b", text)
@@ -4832,7 +4844,10 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
                   r"[^.]{0,100}\bbottom of the rail\b", text) or
         re.search(r"\bclear and visible gap\b[^.]{0,140}"
                   r"\btop surface of the clamping shoe\b[^.]{0,140}"
-                  r"\b(?:lower face|bottom surface) of the rail\b", text)
+                  r"\b(?:lower face|bottom surface) of the rail\b", text) or
+        re.search(r"\bempty space or gap\b[^.]{0,180}\bupper surface of (?:the )?"
+                  r"clamping shoe(?:\s+\d+)?\b[^.]{0,180}"
+                  r"\blower face of (?:the )?rail(?:\s+\d+)?\b", text)
     )
     slot_shape = _drilling_jig_slot_shape(text)
     slot_in_rail = (
@@ -4862,7 +4877,9 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
         re.search(r"\bvertical,? cylindrical bore\b[^.]{0,100}"
                   r"\b(?:that )?passes completely through\b", text) or
         re.search(r"\b(?:central,? )?un-hatched vertical(?:,? cylindrical)? bore\b"
-                  r"[^.]{0,120}\b(?:that )?passes completely through\b", text)
+                  r"[^.]{0,120}\b(?:that )?passes completely through\b", text) or
+        re.search(r"\b(?:continuous,?\s*)?empty,?\s*un-?hatched\s+central bore\b"
+                  r"[^.]{0,120}\bpasses vertically through\b", text)
     )
     separate_component_inventory = bool(re.search(
         r"\bfour separate components\b[^.]{0,220}\bclamping shoe(?:\s+\d+)?\b",
@@ -4875,7 +4892,9 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
                   r"\bseparate,? solid body\b[^.]{0,140}\bbelow\b[^.]{0,80}\brail\b", text) or
         (separate_component_inventory and
          re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,120}\bsolid body\b"
-                   r"[^.]{0,160}\b(?:located )?below\b[^.]{0,80}\brail\b", text))
+                   r"[^.]{0,160}\b(?:located )?below\b[^.]{0,80}\brail\b", text)) or
+        re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,160}\bsolid body\b"
+                  r"[^.]{0,160}\blocated underneath\b[^.]{0,80}\brail\b", text)
     )
     requirements = (
         re.search(r"\bcross-sectional view taken on line\b[^.]{0,80}\bof fig\. 2\b", text),
@@ -4949,10 +4968,11 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
     draw.rectangle((885, 266, 935, 394), fill="white")
     draw.line((885, 270, 885, 390), fill="black", width=4)
     draw.line((935, 270, 935, 390), fill="black", width=4)
-    # A thin chain centerline makes the two opposed sectional walls read as one cylindrical,
-    # coaxial bushing around a through-bore. It is construction linework, not bore hatching.
-    for start_y in range(242, 421, 28):
-        draw.line((910, start_y, 910, min(start_y + 12, 420)), fill="black", width=2)
+    # Some briefs expressly require an empty, unmarked bore. Otherwise a thin chain centerline
+    # makes the two opposed sectional walls read as one cylindrical, coaxial bushing.
+    if not empty_unmarked_bore:
+        for start_y in range(242, 421, 28):
+            draw.line((910, start_y, 910, min(start_y + 12, 420)), fill="black", width=2)
 
     # The clamping shoe is physically separate from the rail by seventy raw pixels.
     draw.rectangle((300, 690, 700, 790), outline="black", width=4)
@@ -5419,6 +5439,7 @@ def _deterministic_drilling_jig_constraint_certificate(
     expected = _deterministic_drilling_jig_carriage_section_png(caption)
     if expected is None or png != expected:
         return {}
+    empty_unmarked_bore = _drilling_jig_empty_bore_required(caption)
 
     from PIL import Image
 
@@ -5470,6 +5491,8 @@ def _deterministic_drilling_jig_constraint_certificate(
         open_region((922, 345), radius=5))
     axial_center_marks = all(ink(point, radius=1) for point in (
         (910, 246), (910, 330), (910, 414)))
+    bore_center_clear = open_region((910, 330), radius=3)
+    bore_axis_ok = bore_center_clear if empty_unmarked_bore else axial_center_marks
     outer_carriage_boundary_continuous = all(
         ink((x, y), radius=1)
         for y in (carriage_box[1], carriage_box[3])
@@ -5512,9 +5535,9 @@ def _deterministic_drilling_jig_constraint_certificate(
             "ok": bool(
                 bushing_boundaries and bore_open and contained_by_carriage and
                 outer_carriage_boundary_continuous and support_material_visible and
-                axial_center_marks),
+                bore_axis_ok),
             "single_hollow_cylindrical_bushing": bool(
-                bushing_boundaries and bore_open and axial_center_marks),
+                bushing_boundaries and bore_open and bore_axis_ok),
             "contained_by_carriage": contained_by_carriage,
             "outer_carriage_boundary_continuous": outer_carriage_boundary_continuous,
             "support_material_visible": support_material_visible,
@@ -5522,6 +5545,9 @@ def _deterministic_drilling_jig_constraint_certificate(
             "bushing_box": list(bushing_box),
             "bore_box": list(bore_box),
             "bore_width": bore_box[2] - bore_box[0],
+            "bore_mode": ("empty_unmarked" if empty_unmarked_bore else
+                          "chain_centerline"),
+            "bore_center_clear": bore_center_clear,
             "axial_center_marks": axial_center_marks,
             "support_band": list(support_band),
         },
