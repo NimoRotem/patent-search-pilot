@@ -423,6 +423,18 @@ def test_section_designations_accept_a_comma_between_line_and_repeated_mark():
     assert draft_figures.section_designations(source_view) == ["5", "8"]
 
 
+def test_section_designations_accept_explicit_repeated_marks_without_line_shorthand():
+    source_view = (
+        "A broken cutting-plane line for FIG. 5 passes transversely through the first carriage. "
+        "A repeated designation '5' is at each end of this line. Arrows at each end of the line "
+        "point left to indicate the viewing direction for FIG. 5. A broken cutting-plane line "
+        "for FIG. 8 passes transversely through the second carriage. A repeated designation '8' "
+        "is at each end of this line. Arrows at each end of the line point left to indicate the "
+        "viewing direction for FIG. 8.")
+
+    assert draft_figures.section_designations(source_view) == ["5", "8"]
+
+
 def test_section_mark_consensus_requires_two_complete_coordinate_reviews():
     first = {
         "matches_spec": True, "summary": "line crosses the named carriage", "errors": [],
@@ -5221,6 +5233,29 @@ def _current_live_overcurrent_protection_flow_specification():
     )
 
 
+def _iterative_overcurrent_protection_flow_specification():
+    return """
+    A flat process flow diagram in plain black line work on white, with no shading and no text.
+    A diamond shape, the branch current check step 302, is at the top center. A rectangle, the
+    shedding step 304, is directly below it. A rectangle, the fault indication step 308, is to
+    the right of the shedding step 304.
+
+    An input line enters the top vertex of the branch current check step 302. A line representing
+    an overcurrent condition leaves the bottom vertex of the branch current check step 302 and
+    enters the top of the shedding step 304. A line representing a normal current condition
+    leaves the right vertex of the branch current check step 302 and terminates. The shedding
+    step 304 opens one contactor. A feedback line leaves the bottom of the shedding step 304,
+    travels left and upward, and re-enters the left vertex of the branch current check step 302
+    so branch current is measured again after each opened contactor. The loop repeats one
+    contactor at a time until branch current is below the limit. A line representing a detected
+    welded contactor leaves the right side of the shedding step 304 and enters the left side of
+    the fault indication step 308.
+
+    A single large rectangle, representing the overcurrent protection method 300, encloses all
+    other shapes.
+    """
+
+
 def _split_allocation_flow_first_specification():
     return """
     A flat process flow diagram in plain black line work on white. A column of five empty shapes
@@ -6114,6 +6149,71 @@ def test_live_simple_control_flows_use_exact_text_free_renderers():
             specification)
         assert anchor_renderer == renderer
         assert set(anchors) == expected_parts
+
+
+def test_iterative_overcurrent_flow_certifies_one_at_a_time_recheck_loop():
+    specification = _iterative_overcurrent_protection_flow_specification()
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+
+    assert draft_figures._control_diagram_kind(specification) == \
+        "overcurrent_protection_iterative_flow"
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    assert certificate["ok"] is True
+    assert certificate["renderer"] == "overcurrent_protection_iterative_flow"
+    constraints = certificate["certified_constraints"]
+    assert constraints["branch_safety_shape_sequence"]["ok"] is True
+    assert constraints["branch_safety_shedding_path"]["ok"] is True
+    assert constraints["branch_safety_fault_path"]["ok"] is True
+    assert constraints["branch_safety_feedback"]["ok"] is True
+    assert constraints["branch_safety_feedback"]["required"] is True
+    assert constraints["branch_safety_feedback"]["mode"] == \
+        "one_contactor_then_remeasure"
+    assert constraints["branch_safety_feedback"]["entry_vertex"] == "left"
+    assert constraints["branch_safety_feedback"]["entry_arrow"] == "right"
+    assert constraints["branch_safety_feedback"]["entry_arrow_samples"] == \
+        [[505, 162], [505, 178]]
+    renderer, anchors = draft_figures._deterministic_control_diagram_anchors(specification)
+    assert renderer == "overcurrent_protection_iterative_flow"
+    assert set(anchors) == {
+        "overcurrent protection method", "branch current check step",
+        "shedding step", "fault indication step",
+    }
+
+
+def test_current_live_iterative_overcurrent_wording_uses_exact_renderer():
+    specification = """
+    A process flow diagram in plain black line work on white, with no shading and no text.
+    A diamond shape, the branch current check step 302, is at the top center. A rectangle, the
+    shedding step 304, is directly below the branch current check step. A rectangle, the fault
+    indication step 308, is to the right of the shedding step.
+
+    An input line enters the top vertex of the branch current check step. A line representing an
+    overcurrent condition leaves the bottom vertex of the branch current check step and enters
+    the top of the shedding step. A line leaves the bottom of the shedding step and loops back to
+    enter the top of the branch current check step, representing the iterative nature of the load
+    shedding process. A line representing a normal current condition leaves the right vertex of
+    the branch current check step and terminates. A line representing a detected welded contactor
+    leaves the right side of the shedding step and enters the left side of the fault indication
+    step. A single large rectangle, representing the overcurrent protection method 300, encloses
+    all other shapes.
+    """
+
+    png = draft_figures._deterministic_control_diagram_png(specification)
+
+    assert draft_figures._control_diagram_kind(specification) == \
+        "overcurrent_protection_iterative_flow"
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    assert certificate["ok"] is True
+    feedback = certificate["certified_constraints"]["branch_safety_feedback"]
+    assert feedback["ok"] is True
+    assert feedback["required"] is True
+    assert feedback["mode"] == "one_contactor_then_remeasure"
+    assert feedback["entry_vertex"] == "top"
+    assert feedback["entry_arrow"] == "down_right"
+    assert feedback["entry_arrow_samples"] == [[607, 70], [616, 66]]
 
 
 @pytest.mark.parametrize("specification", [
