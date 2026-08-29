@@ -2263,6 +2263,27 @@ def _control_diagram_kind(caption: str) -> str:
             "local fault indicator",
             "two short solid lines extend downward",
         ),
+        "current_allocation_cycle": (
+            "flat process flow diagram",
+            "column of five empty rectangles",
+            "feedback path leaves",
+            "right side of the fifth rectangle",
+            "re-enters the top of the first rectangle",
+            "current allocation method",
+            "encloses all five",
+        ),
+        "overcurrent_protection_flow": (
+            "flat process flow diagram",
+            "branch current check step",
+            "shedding step",
+            "fault indication step",
+            "input line enters the top vertex",
+            "normal current condition",
+            "implicit exit from the bottom",
+            "no line is drawn there",
+            "overcurrent protection method",
+            "encloses all other shapes",
+        ),
         "branch_current_safety_flow_serial_fault_right": (
             "flat process flow diagram",
             "branch current check step",
@@ -2584,6 +2605,32 @@ def _deterministic_control_diagram_anchors(
             "nonvolatile memory": (660, 580, "well inside the nonvolatile-memory rectangle"),
             "service input": (420, 410, "well inside the service-input rectangle"),
             "local fault indicator": (1235, 305, "well inside the fault-indicator rectangle"),
+        }
+    if kind == "current_allocation_cycle":
+        return kind, {
+            "current allocation method": (
+                120, 420, "on the left outline of the enclosing method rectangle"),
+            "available current determination step": (
+                700, 125, "well inside the first process rectangle"),
+            "sustaining and deficit assignment step": (
+                700, 265, "well inside the second process rectangle"),
+            "pilot command step": (
+                700, 405, "well inside the third process rectangle"),
+            "connector verification step": (
+                700, 545, "well inside the fourth process rectangle"),
+            "branch current measurement step": (
+                700, 685, "well inside the fifth process rectangle"),
+        }
+    if kind == "overcurrent_protection_flow":
+        return kind, {
+            "overcurrent protection method": (
+                120, 420, "on the left outline of the enclosing method rectangle"),
+            "branch current check step": (
+                650, 170, "well inside the upper decision diamond"),
+            "shedding step": (
+                650, 415, "well inside the lower process rectangle"),
+            "fault indication step": (
+                1065, 415, "well inside the right process rectangle"),
         }
     if kind == "allocation_flow_split_first":
         return kind, {
@@ -3442,6 +3489,38 @@ def _deterministic_control_diagram_png(caption: str) -> bytes | None:
             draw.line((420, 360, 420, 120 if service_terminates else 70), **line)
         draw.line((500, 760, 500, 830), **line)
         draw.line((820, 760, 820, 830), **line)
+    elif kind == "current_allocation_cycle":
+        rectangles = (
+            (500, 80, 900, 170), (500, 220, 900, 310),
+            (500, 360, 900, 450), (500, 500, 900, 590),
+            (500, 640, 900, 730),
+        )
+        for bounds in rectangles:
+            box(bounds)
+        for start, stop in ((170, 220), (310, 360), (450, 500), (590, 640)):
+            draw.line((700, start, 700, stop), **line)
+            arrow((700, stop), "down")
+        feedback_path = [
+            (900, 685), (1100, 685), (1100, 50), (700, 50), (700, 80),
+        ]
+        draw.line(feedback_path, fill="black", width=4, joint="curve")
+        arrow((700, 80), "down")
+        draw.rectangle((120, 20, 1280, 820), outline="black", width=4)
+    elif kind == "overcurrent_protection_flow":
+        check = ((650, 90), (780, 170), (650, 250), (520, 170))
+        draw.polygon(check, fill="white", outline="black")
+        draw.line(check + (check[0],), fill="black", width=4)
+        box((500, 360, 800, 470))
+        box((930, 360, 1200, 470))
+        draw.line((650, 50, 650, 90), **line)
+        arrow((650, 90), "down")
+        draw.line((650, 250, 650, 360), **line)
+        arrow((650, 360), "down")
+        draw.line((780, 170, 1050, 170), **line)
+        arrow((1050, 170), "right")
+        draw.line((800, 415, 930, 415), **line)
+        arrow((930, 415), "right")
+        draw.rectangle((120, 20, 1280, 820), outline="black", width=4)
     elif kind == "allocation_flow_split_first":
         rectangles = (
             (530, 80, 870, 140), (530, 190, 870, 250),
@@ -4577,13 +4656,21 @@ def _drilling_jig_slot_shape(caption: str) -> str:
     straight_rectangular = bool(
         re.search(r"\bstraight rectangular (?:longitudinal )?slot\b", text) or
         re.search(r"\blongitudinal slot(?:\s+\d+)?\b[^.]{0,100}"
-                  r"\bis a straight rectangular slot\b", text)
+                  r"\bis a straight rectangular slot\b", text) or
+        re.search(r"\brectangular longitudinal slot(?:\s+\d+)?\b", text)
     )
-    straight_through = bool(re.search(
-        r"\blongitudinal slot(?:\s+\d+)?\b[^.]{0,220}\bpassing completely through\b"
-        r"[^.]{0,180}\bupper face\b[^.]{0,180}\b(?:lower face|bottom surface)\b",
-        text,
-    ))
+    straight_through = bool(
+        re.search(
+            r"\blongitudinal slot(?:\s+\d+)?\b[^.]{0,220}\bpassing completely through\b"
+            r"[^.]{0,180}\bupper face\b[^.]{0,180}\b(?:lower face|bottom surface)\b",
+            text,
+        ) or
+        re.search(
+            r"\b(?:rectangular )?longitudinal slot(?:\s+\d+)?\b[^.]{0,100}"
+            r"\bpasses vertically through (?:the )?entire rail(?:\s+\d+)?\b",
+            text,
+        )
+    )
     stepped_portions = bool(re.search(
         r"\b(?:narrower upper portion|wider lower portion)\b", text))
     if straight_rectangular and straight_through and not t_shaped and not stepped_portions:
@@ -4626,7 +4713,7 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
     carriage_on_upper_face = re.search(
         r"\bguide carriage(?:\s+\d+)?\b.{0,220}"
-        r"\b(?:sits|rests|is seated|seated)\s+on\b[^.]{0,100}\bupper face\b",
+        r"\b(?:sits|rests|resting|is seated|seated)\s+on\b[^.]{0,100}\bupper face\b",
         text,
     )
     bushing_carried = (
@@ -4634,7 +4721,10 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
                   r"[^.]{0,100}\bguide carriage\b", text) or
         re.search(r"\bdrill bushing(?:\s+\d+)?\b[^.]{0,140}"
                   r"\b(?:installed|received|disposed)\s+(?:wholly\s+)?within\b"
-                  r"[^.]{0,100}\bguide carriage\b", text)
+                  r"[^.]{0,100}\bguide carriage\b", text) or
+        re.search(r"\bdrill bushing(?:\s+\d+)?\b[^.]{0,160}\bshown\b"
+                  r"[^.]{0,120}\b(?:inside|within) the body of\b[^.]{0,100}"
+                  r"\bguide carriage\b", text)
     )
     bore_is_not_offset = not re.search(
         r"\bbore\b[^.]{0,100}\b(?:eccentric|offset|off-cent(?:er|re))\b", text)
@@ -4642,26 +4732,48 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
         re.search(r"\bvisible clearance\b[^.]{0,180}\bclamping shoe\b"
                   r"[^.]{0,180}\brail\b", text) or
         re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,220}"
-                  r"\bvisible clearance\b[^.]{0,180}\brail\b", text)
+                  r"\bvisible clearance\b[^.]{0,180}\brail\b", text) or
+        re.search(r"\bvisible gap\b[^.]{0,100}\btop of the clamping shoe\b"
+                  r"[^.]{0,100}\bbottom of the rail\b", text)
     )
     slot_shape = _drilling_jig_slot_shape(text)
     slot_in_rail = (
         re.search(r"\brail(?:\s+\d+)?\b[^.]{0,160}\blongitudinal slot\b", text) or
         (re.search(r"\brail(?:\s+\d+)?\b[^.]{0,100}\bshown in cross-section\b", text) and
          re.search(r"\blongitudinal slot(?:\s+\d+)?\b[^.]{0,180}"
-                   r"\bpassing completely through\b[^.]{0,100}\brail\b", text))
+                   r"\bpassing completely through\b[^.]{0,100}\brail\b", text)) or
+        re.search(r"\b(?:rectangular )?longitudinal slot(?:\s+\d+)?\b[^.]{0,100}"
+                  r"\bpasses vertically through (?:the )?entire rail(?:\s+\d+)?\b", text)
+    )
+    key_in_slot = (
+        re.search(r"\bkey(?:\s+\d+)?\b[^.]{0,140}"
+                  r"\b(?:projects|extends) downward\b[^.]{0,180}"
+                  r"\b(?:into|fits into)\b[^.]{0,100}\blongitudinal slot\b", text) or
+        (re.search(r"\bkey(?:\s+\d+)?\b[^.]{0,100}\bintegral rectangular projection\b"
+                   r"[^.]{0,100}\bextending downward\b[^.]{0,100}\bcarriage\b", text) and
+         re.search(r"\bkey(?:\s+\d+)?\b[^.]{0,80}\bfits inside\b[^.]{0,100}"
+                   r"\blongitudinal slot\b", text))
+    )
+    bore_through = (
+        re.search(r"\bvertical,? cylindrical bore\b[^.]{0,100}"
+                  r"\bpassing completely through\b", text) or
+        re.search(r"\bvertical,? cylindrical bore\b[^.]{0,100}"
+                  r"\b(?:that )?passes completely through\b", text)
+    )
+    shoe_body = (
+        re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,120}\bseparate body\b"
+                  r"[^.]{0,100}\bbelow\b[^.]{0,80}\brail\b", text) or
+        re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,120}"
+                  r"\bseparate,? solid body\b[^.]{0,140}\bbelow\b[^.]{0,80}\brail\b", text)
     )
     requirements = (
         re.search(r"\bcross-sectional view taken on line\b[^.]{0,80}\bof fig\. 2\b", text),
         slot_in_rail,
         slot_shape,
         carriage_on_upper_face,
-        re.search(r"\bkey(?:\s+\d+)?\b[^.]{0,140}"
-                  r"\b(?:projects|extends) downward\b[^.]{0,180}"
-                  r"\b(?:into|fits into)\b[^.]{0,100}\blongitudinal slot\b", text),
+        key_in_slot,
         bushing_carried,
-        re.search(r"\bvertical,? cylindrical bore\b[^.]{0,100}\bpassing completely through\b",
-                  text),
+        bore_through,
         (re.search(r"\bbore is coaxial with\b[^.]{0,80}\bdrill bushing\b", text) or
          (bushing_carried and bore_is_not_offset)),
         re.search(r"\bclamp knob(?:\s+\d+)?\b[^.]{0,80}\babove\b[^.]{0,80}"
@@ -4669,8 +4781,7 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
         re.search(r"\bthreaded shank\b", text),
         re.search(r"\b(?:the )?(?:threaded )?shank\b[^.]{0,220}\bpasses through\b"
                   r"[^.]{0,220}\blongitudinal slot\b", text),
-        re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,120}\bseparate body\b[^.]{0,100}"
-                  r"\bbelow\b[^.]{0,80}\brail\b", text),
+        shoe_body,
         shoe_clearance,
     )
     if not all(requirements):
@@ -5502,6 +5613,7 @@ def _deterministic_control_diagram_constraint_certificate(
             "edge_controller_flat_full_ports",
             "allocation_flow_split_first", "allocation_flow_split_second",
             "allocation_flow_vertical", "branch_current_safety_flow",
+            "current_allocation_cycle", "overcurrent_protection_flow",
             "branch_current_safety_flow_serial_fault_right",
             "branch_current_safety_flow_serial",
             "branch_current_safety_flow_welded_decision",
@@ -5610,6 +5722,100 @@ def _deterministic_control_diagram_constraint_certificate(
                     "ok": all(ink(point) for point in connection_samples),
                     "connection_count": 5,
                     "line_samples": [list(point) for point in connection_samples],
+                },
+            }
+
+        if kind == "current_allocation_cycle":
+            shape_outline_samples = [
+                (500, 125), (500, 265), (500, 405), (500, 545), (500, 685),
+            ]
+            shape_interior_samples = [
+                (700, 125), (700, 265), (700, 405), (700, 545), (700, 685),
+            ]
+            vertical_samples = [
+                (700, 195), (700, 335), (700, 475), (700, 615),
+            ]
+            right_return_samples = [
+                (900, 685), (1000, 685), (1100, 685), (1100, 400),
+                (1100, 50), (900, 50), (700, 50), (700, 80),
+            ]
+            enclosure_samples = [
+                (120, 20), (700, 20), (1280, 20),
+                (120, 420), (1280, 420),
+                (120, 820), (700, 820), (1280, 820),
+            ]
+            return {
+                "allocation_flow_shape_sequence": {
+                    "ok": (all(ink(point) for point in shape_outline_samples) and
+                           all(clear(point, 6) for point in shape_interior_samples) and
+                           all(ink(point) for point in enclosure_samples)),
+                    "shape_count": 5,
+                    "shape_order": ["rectangle"] * 5,
+                    "outline_samples": [list(point) for point in shape_outline_samples],
+                    "blank_interior_samples": [
+                        list(point) for point in shape_interior_samples],
+                    "enclosure_samples": [list(point) for point in enclosure_samples],
+                },
+                "allocation_flow_vertical_connections": {
+                    "ok": all(ink(point) for point in vertical_samples),
+                    "connection_count": 4,
+                    "line_samples": [list(point) for point in vertical_samples],
+                },
+                "allocation_flow_right_return": {
+                    "ok": all(ink(point) for point in right_return_samples),
+                    "line_samples": [list(point) for point in right_return_samples],
+                    "origin": "fifth_rectangle_right_side",
+                    "target": "first_rectangle_top",
+                },
+            }
+
+        if kind == "overcurrent_protection_flow":
+            shape_outline_samples = [
+                (520, 170), (780, 170), (500, 415), (800, 415),
+                (930, 415), (1200, 415),
+            ]
+            shape_interior_samples = [(650, 170), (650, 415), (1065, 415)]
+            enclosure_samples = [
+                (120, 20), (700, 20), (1280, 20),
+                (120, 420), (1280, 420),
+                (120, 820), (700, 820), (1280, 820),
+            ]
+            shedding_path_samples = [(650, 250), (650, 300), (650, 360)]
+            fault_path_samples = [(800, 415), (865, 415), (930, 415)]
+            feedback_clear_samples = [
+                (400, 415), (350, 415), (350, 250), (350, 70), (500, 70),
+            ]
+            implicit_exit_clear_samples = [(650, 500), (650, 540), (650, 580)]
+            return {
+                "branch_safety_shape_sequence": {
+                    "ok": (all(ink(point) for point in shape_outline_samples) and
+                           all(clear(point, 6) for point in shape_interior_samples) and
+                           all(ink(point) for point in enclosure_samples)),
+                    "shape_count": 3,
+                    "shape_order": ["diamond", "rectangle", "rectangle"],
+                    "outline_samples": [list(point) for point in shape_outline_samples],
+                    "blank_interior_samples": [
+                        list(point) for point in shape_interior_samples],
+                    "enclosure_samples": [list(point) for point in enclosure_samples],
+                },
+                "branch_safety_shedding_path": {
+                    "ok": all(ink(point) for point in shedding_path_samples),
+                    "line_samples": [list(point) for point in shedding_path_samples],
+                },
+                "branch_safety_fault_path": {
+                    "ok": all(ink(point) for point in fault_path_samples),
+                    "line_samples": [list(point) for point in fault_path_samples],
+                },
+                "branch_safety_feedback": {
+                    "ok": all(clear(point, 6) for point in feedback_clear_samples),
+                    "required": False,
+                    "clear_samples": [list(point) for point in feedback_clear_samples],
+                },
+                "branch_safety_implicit_exit": {
+                    "ok": all(clear(point, 6) for point in implicit_exit_clear_samples),
+                    "mode": "no_drawn_line",
+                    "clear_samples": [
+                        list(point) for point in implicit_exit_clear_samples],
                 },
             }
 
@@ -6248,6 +6454,20 @@ def _deterministic_control_diagram_constraint_certificate(
             },
         }
     except (OSError, TypeError, ValueError, IndexError):
+        if kind == "current_allocation_cycle":
+            return {
+                "allocation_flow_shape_sequence": {"ok": False},
+                "allocation_flow_vertical_connections": {"ok": False},
+                "allocation_flow_right_return": {"ok": False},
+            }
+        if kind == "overcurrent_protection_flow":
+            return {
+                "branch_safety_shape_sequence": {"ok": False},
+                "branch_safety_shedding_path": {"ok": False},
+                "branch_safety_fault_path": {"ok": False},
+                "branch_safety_feedback": {"ok": False, "required": False},
+                "branch_safety_implicit_exit": {"ok": False},
+            }
         if kind.startswith("allocation_flow_"):
             return {
                 "allocation_flow_shape_sequence": {"ok": False},
@@ -8005,6 +8225,17 @@ def _certified_geometry_dissent_category(value: str) -> str:
     if ("shedding" in text and "branch current check" in text and
             re.search(r"\b(?:feedback|return|back up|top vertex)\b", text)):
         return "branch_safety_feedback"
+    if ("shedding step" in text and
+            (("implicit exit" in text and
+              re.search(r"\b(?:bottom|line|drawn|outgoing|explicit)\b", text)) or
+             ("bottom" in text and
+              re.search(r"\b(?:extra|explicit|outgoing|line|path|arrow)\w*\b", text) and
+              re.search(r"\b(?:implicit|no line|must not|should not|without)\b", text)))):
+        return "branch_safety_implicit_exit"
+    if (("overcurrent protection" in text or "branch current safety" in text) and
+            re.search(r"\b(?:extra|nested|multiple|second|additional)\w*\b", text) and
+            re.search(r"\b(?:enclos|rectangle|box|boundary)\w*\b", text)):
+        return "branch_safety_shape_sequence"
     if ("branch current check" in text and "shedding" in text and
             re.search(r"\b(?:line|path|arrow|point|bottom vertex)\w*\b", text)):
         return "branch_safety_shedding_path"
@@ -8134,7 +8365,9 @@ def _resolve_cross_provider_geometry_dissent(semantic: dict, audit: dict, png: b
     certificate = _deterministic_geometry_certificate(png, caption)
     if not certificate.get("ok") or not _complete_semantic_model_audit(semantic):
         return audit
-    if str(certificate.get("renderer") or "").startswith("allocation_flow_"):
+    if (str(certificate.get("renderer") or "").startswith("allocation_flow_") or
+            certificate.get("renderer") in {
+                "current_allocation_cycle", "overcurrent_protection_flow"}):
         certificate["expected_numerals"] = sorted({
             entry["numeral"] for entry in numeral_entries(numerals)})
 

@@ -5161,6 +5161,44 @@ def _flat_allocation_flow_specification():
     """
 
 
+def _live_current_allocation_cycle_specification():
+    return """
+    A flat process flow diagram in plain black line work on white, with no shading and no text.
+    A column of five empty rectangles with blank interiors is arranged vertically in the center
+    of the drawing area. The shapes are evenly spaced.
+
+    A sequence of vertical solid lines connects the shapes. Each line has an arrowhead at its
+    lower end. The path leaves the lower vertex of each shape and enters the top vertex of the
+    next shape below it. This connects the first rectangle to the second, the second to the
+    third, the third to the fourth, and the fourth rectangle to the fifth. A feedback path leaves
+    the right side of the fifth rectangle, proceeds upward along the right side of the column,
+    and re-enters the top of the first rectangle, indicating that the process is cyclical.
+
+    A single large rectangle, representing the current allocation method 200, encloses all five
+    smaller rectangles.
+    """
+
+
+def _live_overcurrent_protection_flow_specification():
+    return """
+    A flat process flow diagram in plain black line work on white, with no shading and no text.
+    A diamond shape, the branch current check step 302, is at the top center. A rectangle, the
+    shedding step 304, is directly below it. A rectangle, the fault indication step 308, is to
+    the right of the shedding step 304.
+
+    An input line enters the top vertex of the branch current check step 302. A line representing
+    an overcurrent condition leaves the bottom vertex of the branch current check step 302 and
+    enters the top of the shedding step 304. A line representing a normal current condition
+    leaves the right vertex of the branch current check step 302 and terminates. A line
+    representing a detected welded contactor leaves the right side of the shedding step 304 and
+    enters the left side of the fault indication step 308. An implicit exit from the bottom of
+    the shedding step 304 represents successful current reduction, so no line is drawn there.
+
+    A single large rectangle, representing the overcurrent protection method 300, encloses all
+    other shapes.
+    """
+
+
 def _split_allocation_flow_first_specification():
     return """
     A flat process flow diagram in plain black line work on white. A column of five empty shapes
@@ -5912,6 +5950,16 @@ def test_exact_branch_current_flow_resolves_only_certified_route_dissent(monkeyp
         "connected to the top-left diamond.",
         "branch_safety_shape_sequence",
     ),
+    (
+        "An explicit outgoing line is drawn from the bottom of the shedding step even though "
+        "that exit must be implicit.",
+        "branch_safety_implicit_exit",
+    ),
+    (
+        "The overcurrent protection flow contains an extra nested enclosure around the "
+        "shedding step.",
+        "branch_safety_shape_sequence",
+    ),
 ])
 def test_branch_current_flow_dissent_categories_are_constraint_specific(finding, category):
     assert draft_figures._certified_geometry_dissent_category(finding) == category
@@ -5973,6 +6021,61 @@ def test_flat_allocation_flow_template_certifies_shape_order_and_every_route():
     assert constraints["allocation_flow_left_return"]["ok"] is True
     assert constraints["allocation_flow_right_return"]["ok"] is True
     assert constraints["allocation_flow_weld_branch"]["ok"] is True
+
+
+def test_live_simple_control_flows_use_exact_text_free_renderers():
+    cases = (
+        (
+            _live_current_allocation_cycle_specification(),
+            "current_allocation_cycle",
+            {
+                "allocation_flow_shape_sequence",
+                "allocation_flow_vertical_connections",
+                "allocation_flow_right_return",
+            },
+            {
+                "current allocation method",
+                "available current determination step",
+                "sustaining and deficit assignment step",
+                "pilot command step",
+                "connector verification step",
+                "branch current measurement step",
+            },
+        ),
+        (
+            _live_overcurrent_protection_flow_specification(),
+            "overcurrent_protection_flow",
+            {
+                "branch_safety_shape_sequence",
+                "branch_safety_shedding_path",
+                "branch_safety_fault_path",
+                "branch_safety_feedback",
+                "branch_safety_implicit_exit",
+            },
+            {
+                "overcurrent protection method",
+                "branch current check step",
+                "shedding step",
+                "fault indication step",
+            },
+        ),
+    )
+
+    for specification, renderer, required_constraints, expected_parts in cases:
+        png = draft_figures._deterministic_control_diagram_png(specification)
+
+        assert draft_figures._control_diagram_kind(specification) == renderer
+        assert png is not None
+        certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+        assert certificate["ok"] is True
+        assert certificate["renderer"] == renderer
+        constraints = certificate["certified_constraints"]
+        assert required_constraints.issubset(constraints)
+        assert all(constraints[name]["ok"] is True for name in required_constraints)
+        anchor_renderer, anchors = draft_figures._deterministic_control_diagram_anchors(
+            specification)
+        assert anchor_renderer == renderer
+        assert set(anchors) == expected_parts
 
 
 def test_exact_allocation_flow_resolves_unassignable_blank_step_shapes(monkeypatch):
@@ -9424,5 +9527,38 @@ def test_drilling_jig_carriage_section_accepts_embedded_bushing_wording():
     )
 
     assert "installed within the second guide carriage" in specification
+    assert draft_figures._deterministic_drilling_jig_carriage_section_png(
+        specification) is not None
+
+
+def test_drilling_jig_carriage_section_accepts_live_axial_two_wall_brief():
+    specification = """
+    A cross-sectional view taken on line 8-8 of FIG. 2, showing the second guide carriage 70
+    on the rail 10. All sectioned surfaces are hatched.
+
+    The rail 10 is shown as a single, solid body in cross-section. Its cut surface is hatched.
+    The rail 10 has a flat upper face 12. A rectangular longitudinal slot 16 passes vertically
+    through the entire rail 10.
+
+    The second guide carriage 70 is a single, solid body shown in cross-section, resting on the
+    upper face 12 of the rail 10. The cut surface of the carriage 70 is hatched in a different
+    direction from the hatching of the rail 10. A key 72 is an integral rectangular projection
+    extending downward from the carriage 70. The key 72 fits inside the longitudinal slot 16 of
+    the rail 10.
+
+    A single drill bushing 74 is shown in axial cross-section inside the body of the second guide
+    carriage 70. The section shows two opposed, hatched walls of the drill bushing 74, separated
+    by an un-hatched vertical, cylindrical bore that passes completely through it. The hatching
+    of the drill bushing 74 is different from the hatching of the carriage 70.
+
+    The clamp knob 78 is shown in elevation, positioned above the second guide carriage 70. A
+    threaded shank descends from the knob 78, passes through a hole in the carriage 70, through
+    the longitudinal slot 16, and into the clamping shoe 80.
+
+    The clamping shoe 80 is a separate, solid body shown in cross-section below the rail 10. Its
+    cut surface is hatched in a different direction from the hatching of the rail 10. A visible
+    gap separates the top of the clamping shoe 80 from the bottom of the rail 10.
+    """
+
     assert draft_figures._deterministic_drilling_jig_carriage_section_png(
         specification) is not None
