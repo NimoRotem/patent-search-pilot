@@ -4938,13 +4938,13 @@ def test_deterministic_stirring_scene_accepts_current_filing_brief_wording():
     (
         """
         A flat block diagram of the edge controller. One large rectangle, the edge controller 106,
-        occupies the central portion. A smaller rectangle, the nonvolatile memory 218, is inside
-        the edge controller 106. A network interface 110 block and a service input 112 block are
-        to its left. A local fault indicator 116 block is to its right. A rectangular block for
-        the branch current sensor 104 is shown above the edge controller 106 and connected to its
-        top side. A rectangular block for the isolated local bus 108 is shown below the edge
-        controller 106 and connected to its bottom side. Each of the three side blocks is joined
-        to the edge controller by one short solid line. The drawing contains no text.
+        occupies the central portion. A smaller rectangle, the nonvolatile memory 218, is in the
+        upper portion of the edge controller 106. A network interface 110 block and a service input
+        112 block are to its left. A local fault indicator 116 block is in the upper right region.
+        A rectangular block for the branch current sensor 104 is shown above the edge controller
+        106 and connected to its top side. A rectangular block for the isolated local bus 108 is
+        shown below the edge controller 106 and connected to its bottom side. Each of the three side
+        blocks is joined to the edge controller by one short solid line. The drawing contains no text.
         """,
         [
             "104 = branch current sensor", "106 = edge controller",
@@ -4987,6 +4987,13 @@ def test_deterministic_control_diagrams_are_text_free_and_anchor_every_part(
     assert png is not None
     with Image.open(io.BytesIO(png)) as image:
         assert image.size == (1400, 900)
+        if renderer == "edge_controller_flat_full_ports":
+            gray = image.convert("L")
+            assert gray.getpixel((700, 240)) < 64
+            assert gray.getpixel((700, 340)) < 64
+            assert gray.getpixel((1230, 245)) < 64
+            assert gray.getpixel((1230, 355)) < 64
+            assert gray.getpixel((1085, 300)) < 64
     certificate = grounded["deterministic_anchor_certificate"]
     assert certificate["renderer"] == renderer
     assert {item["numeral"] for item in certificate["anchors"]} == {
