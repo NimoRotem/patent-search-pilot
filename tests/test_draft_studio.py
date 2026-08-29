@@ -429,6 +429,22 @@ def test_blanket_shape_background_and_stroke_controls_are_refused_before_drawing
             {"sections": GOOD, "numerals": NUMERALS, "figures": figures}, ALLOWED)
 
 
+def test_an_arbitrary_blank_drawing_area_is_refused_before_drawing():
+    figures = [{
+        **FIGURES[0],
+        "caption": (
+            "A tray side wall stands beside a downward guide duct. The drawing area to the "
+            "left of the tray side wall is blank."
+        ),
+    }, FIGURES[1]]
+
+    check = checks_for(figures=figures)["Drawing briefs are concise and renderable"]
+
+    assert check["status"] == "fail"
+    assert "background exclusion" in check["items"][0]
+    assert "drawing area" in check["items"][0]
+
+
 def test_generic_negative_boundary_controls_are_refused_before_drawing():
     figures = [{
         **FIGURES[0],

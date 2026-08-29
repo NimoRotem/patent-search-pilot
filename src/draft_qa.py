@@ -126,7 +126,10 @@ _ARBITRARY_GLOBAL_SHAPE_EXCLUSION_RE = re.compile(
     re.IGNORECASE)
 _ARBITRARY_BACKGROUND_EXCLUSION_RE = re.compile(
     r"\bno\s+(?:visible\s+)?(?:joint|grid|seam)\s+lines?\b"
-    r"|\bno\s+other\s+(?:tile|floor(?:ing)?|background(?:\s+panel)?)\b",
+    r"|\bno\s+other\s+(?:tile|floor(?:ing)?|background(?:\s+panel)?)\b"
+    r"|\b(?:drawing|sheet|image)\s+area\b[^.\n]{0,140}"
+    r"\b(?:is|remains?|must\s+(?:be|remain)|shall\s+(?:be|remain))\s+"
+    r"(?:entirely\s+)?(?:blank|empty|clear)\b",
     re.IGNORECASE)
 _ARBITRARY_STROKE_COUNT_RE = re.compile(
     r"\b(?:bounded|outlined|drawn|formed|separated)\s+by\s+(?:exactly\s+)?"
