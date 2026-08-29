@@ -2743,6 +2743,8 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
     split_clamp_plan = _deterministic_split_clamp_plan_png(caption)
     split_clamp_carriage_section = (
         _deterministic_split_clamp_carriage_section_png(caption))
+    drilling_jig_carriage_section = (
+        _deterministic_drilling_jig_carriage_section_png(caption))
     segmented_cam_ring_plan = _deterministic_segmented_cam_ring_plan_png(caption)
     nested_plan = _deterministic_nested_plan_png(caption)
     pulling_scene = _deterministic_pulling_scene_png(caption)
@@ -2782,6 +2784,25 @@ def _deterministic_anchor_overrides(png: bytes, caption: str, numerals, anchors
                 900, 475, "on the right wall of the radial-guide channel"),
             "jaw pad": (620, 700, "well inside the left hatching of the concave jaw pad"),
             "carriage return spring": (540, 475, "on the zigzag spring symbol"),
+        }
+    elif (drilling_jig_carriage_section is not None and
+          png == drilling_jig_carriage_section):
+        renderer_name = "drilling_jig_carriage_section"
+        component_centers = {
+            "rail": (250, 540, "well inside the hatched cut surface of the rail"),
+            "upper face": (250, 430, "on the upper face of the rail"),
+            "longitudinal slot": (
+                790, 555, "well inside the open slot and clear of the key"),
+            "second guide carriage": (
+                360, 330, "well inside the hatched guide-carriage body"),
+            "key of the second guide carriage": (
+                660, 475, "well inside the hatched downward-projecting key"),
+            "drill bushing of the second guide carriage": (
+                865, 330, "well inside the left hatched wall of the drill bushing"),
+            "clamp knob of the second guide carriage": (
+                480, 115, "well inside the clamp knob"),
+            "clamping shoe of the second guide carriage": (
+                600, 740, "well inside the hatched clamping shoe"),
         }
     elif segmented_cam_ring_plan is not None and png == segmented_cam_ring_plan:
         renderer_name = "segmented_cam_ring_plan"
@@ -4549,6 +4570,90 @@ def _paste_hatched_polygon(image, points, *, angle: int) -> None:
     image.paste(hatch_layer, (0, 0), mask)
 
 
+def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | None:
+    """Render the drilling-jig carriage section with certified part separation."""
+    text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
+    requirements = (
+        re.search(r"\bcross-sectional view taken on line\b[^.]{0,80}\bof fig\. 2\b", text),
+        re.search(r"\brail(?:\s+\d+)?\b[^.]{0,160}\blongitudinal slot\b", text),
+        re.search(r"\bguide carriage(?:\s+\d+)?\b[^.]{0,100}\bsits on\b[^.]{0,100}"
+                  r"\bupper face\b", text),
+        re.search(r"\bkey(?:\s+\d+)?\b[^.]{0,120}\bprojects downward\b[^.]{0,120}"
+                  r"\blongitudinal slot\b", text),
+        re.search(r"\bdrill bushing(?:\s+\d+)?\b[^.]{0,120}\bcarried by\b[^.]{0,100}"
+                  r"\bguide carriage\b", text),
+        re.search(r"\bvertical,? cylindrical bore\b[^.]{0,100}\bpassing completely through\b",
+                  text),
+        re.search(r"\bbore is coaxial with\b[^.]{0,80}\bdrill bushing\b", text),
+        re.search(r"\bclamp knob(?:\s+\d+)?\b[^.]{0,80}\babove\b[^.]{0,80}"
+                  r"\bcarriage\b", text),
+        re.search(r"\bthreaded shank\b", text),
+        re.search(r"\b(?:the )?(?:threaded )?shank\b[^.]{0,220}\bpasses through\b"
+                  r"[^.]{0,220}\blongitudinal slot\b", text),
+        re.search(r"\bclamping shoe(?:\s+\d+)?\b[^.]{0,120}\bseparate body\b[^.]{0,100}"
+                  r"\bbelow\b[^.]{0,80}\brail\b", text),
+        re.search(r"\bvisible clearance\b[^.]{0,180}\bclamping shoe\b[^.]{0,180}"
+                  r"\brail\b", text),
+    )
+    if not all(requirements):
+        return None
+
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (1400, 900), "white")
+
+    # In raw image coordinates a negative angle rises to the right. Adjacent cut bodies use
+    # the opposite angle, and the bushing repeats the rail angle exactly as the brief requires.
+    _paste_hatched_box(image, (164, 434, 1236, 616), angle=-45)
+    _paste_hatched_box(image, (304, 254, 1096, 426), angle=45)
+    _paste_hatched_box(image, (844, 254, 976, 426), angle=-45)
+    _paste_hatched_box(image, (304, 694, 696, 786), angle=45)
+
+    draw = ImageDraw.Draw(image)
+
+    # The T-shaped slot is open at the upper face. Its wide lower cavity leaves distinct open
+    # regions beside both the threaded shank and the carriage key.
+    slot = [(430, 430), (430, 500), (400, 500), (400, 580),
+            (880, 580), (880, 500), (770, 500), (770, 430)]
+    draw.polygon(slot, fill="white")
+    _paste_hatched_box(image, (624, 430, 696, 516), angle=45)
+    draw = ImageDraw.Draw(image)
+
+    draw.line((160, 430, 430, 430), fill="black", width=4)
+    draw.line((770, 430, 1240, 430), fill="black", width=4)
+    draw.line((160, 430, 160, 620, 1240, 620, 1240, 430),
+              fill="black", width=4, joint="curve")
+    draw.line(slot, fill="black", width=4, joint="curve")
+
+    draw.rectangle((300, 250, 1100, 430), outline="black", width=4)
+    draw.rectangle((620, 426, 700, 520), outline="black", width=4)
+
+    # The bushing is a separately bounded body carried wholly by the carriage. A clear central
+    # bore crosses it from top to bottom and is concentric with its two side walls.
+    draw.rectangle((840, 250, 980, 430), outline="black", width=4)
+    draw.rectangle((895, 246, 925, 434), fill="white")
+    draw.line((895, 250, 895, 430), fill="black", width=4)
+    draw.line((925, 250, 925, 430), fill="black", width=4)
+
+    # The clamping shoe is physically separate from the rail by seventy raw pixels.
+    draw.rectangle((300, 690, 700, 790), outline="black", width=4)
+
+    # The clamp knob and its one continuous shank occupy a different axis from the bushing.
+    knob = [(360, 100), (390, 70), (570, 70), (600, 100),
+            (600, 150), (570, 170), (390, 170), (360, 150)]
+    draw.polygon(knob, fill="white", outline="black")
+    draw.line(knob + [knob[0]], fill="black", width=4, joint="curve")
+    draw.rectangle((455, 170, 505, 750), fill="white")
+    draw.line((455, 170, 455, 750), fill="black", width=4)
+    draw.line((505, 170, 505, 750), fill="black", width=4)
+    for y in range(190, 746, 24):
+        draw.line((459, y, 501, y), fill="black", width=3)
+
+    out = io.BytesIO()
+    image.save(out, format="PNG", compress_level=9)
+    return out.getvalue()
+
+
 def _deterministic_split_clamp_carriage_section_png(caption: str) -> bytes | None:
     """Render the clamp carriage section with certified distinct hatching and pad curvature."""
     text = re.sub(r"\s+", " ", str(caption or "")).strip().lower()
@@ -4691,7 +4796,16 @@ def _deterministic_section_hatch_certificate(png: bytes, caption: str) -> dict |
     chamber = _deterministic_chamber_section_png(caption)
     fragmentary = _deterministic_fragmentary_section_png(caption)
     split_clamp_carriage = _deterministic_split_clamp_carriage_section_png(caption)
-    if split_clamp_carriage is not None and png == split_clamp_carriage:
+    drilling_jig_carriage = _deterministic_drilling_jig_carriage_section_png(caption)
+    if drilling_jig_carriage is not None and png == drilling_jig_carriage:
+        renderer = "drilling_jig_carriage_section"
+        components = [
+            _section_hatch_component("rail", -45),
+            _section_hatch_component("guide carriage", 45),
+            _section_hatch_component("drill bushing", -45),
+            _section_hatch_component("clamping shoe", 45),
+        ]
+    elif split_clamp_carriage is not None and png == split_clamp_carriage:
         renderer = "split_clamp_carriage_section"
         components = [
             _section_hatch_component("frame body", 45),
@@ -4967,12 +5081,80 @@ def _deterministic_geometry_png(caption: str) -> bytes | None:
     return (_deterministic_control_diagram_png(caption) or
             _deterministic_split_clamp_plan_png(caption) or
             _deterministic_split_clamp_carriage_section_png(caption) or
+            _deterministic_drilling_jig_carriage_section_png(caption) or
             _deterministic_segmented_cam_ring_plan_png(caption) or
             _deterministic_nested_plan_png(caption) or
             _deterministic_pulling_scene_png(caption) or
             _deterministic_grip_scene_png(caption) or
             _deterministic_fragmentary_section_png(caption) or
             _deterministic_chamber_section_png(caption))
+
+
+def _deterministic_drilling_jig_constraint_certificate(
+        png: bytes, caption: str) -> dict:
+    """Measure the drilling-jig section relationships that generated images conflated."""
+    expected = _deterministic_drilling_jig_carriage_section_png(caption)
+    if expected is None or png != expected:
+        return {}
+
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(png)).convert("L")
+
+    def ink(point: tuple[int, int], radius: int = 2) -> bool:
+        center_x, center_y = point
+        return any(
+            image.getpixel((x, y)) < 32
+            for y in range(center_y - radius, center_y + radius + 1)
+            for x in range(center_x - radius, center_x + radius + 1)
+        )
+
+    def open_region(point: tuple[int, int], radius: int = 8) -> bool:
+        center_x, center_y = point
+        return all(
+            image.getpixel((x, y)) > 245
+            for y in range(center_y - radius, center_y + radius + 1)
+            for x in range(center_x - radius, center_x + radius + 1)
+        )
+
+    section = _deterministic_section_hatch_certificate(png, caption) or {}
+    slot_open = open_region((790, 555), radius=12)
+    key_boundaries = all(ink(point) for point in (
+        (620, 475), (700, 475), (660, 430), (660, 520)))
+    bushing_boundaries = all(ink(point) for point in (
+        (840, 330), (895, 330), (925, 330), (980, 330)))
+    bore_open = open_region((910, 330), radius=8)
+    shank_continuous = all(ink(point) for point in (
+        (455, 210), (505, 330), (455, 550), (505, 650), (455, 735)))
+    clearance_open = open_region((600, 655), radius=16)
+    separation_boundaries = ink((600, 620)) and ink((600, 690))
+    return {
+        "section_hatching": {
+            "ok": bool(section.get("ok") and section.get("exact_renderer_match")),
+            "components": list(section.get("components") or []),
+        },
+        "slot_and_key": {
+            "ok": bool(slot_open and key_boundaries),
+            "slot_open_sample": [790, 555],
+            "key_box": [620, 430, 700, 520],
+        },
+        "carried_bushing_and_coaxial_bore": {
+            "ok": bool(bushing_boundaries and bore_open),
+            "bushing_box": [840, 250, 980, 430],
+            "bore_box": [895, 250, 925, 430],
+        },
+        "threaded_shank_path": {
+            "ok": shank_continuous,
+            "shank_x": [455, 505],
+            "path_y": [170, 750],
+        },
+        "shoe_clearance": {
+            "ok": bool(clearance_open and separation_boundaries),
+            "rail_bottom_y": 620,
+            "shoe_top_y": 690,
+            "clearance_sample": [600, 655],
+        },
+    }
 
 
 def _deterministic_chamber_constraint_certificate(png: bytes, caption: str) -> dict:
@@ -5989,10 +6171,15 @@ def _deterministic_geometry_certificate(png: bytes, caption: str) -> dict:
     control_renderer = _control_diagram_kind(caption)
     if control_renderer:
         certificate["renderer"] = control_renderer
+    elif (exact_match and
+          _deterministic_drilling_jig_carriage_section_png(caption) == png):
+        certificate["renderer"] = "drilling_jig_carriage_section"
     constraints = {}
     if exact_match:
         constraints.update(
             _deterministic_control_diagram_constraint_certificate(png, caption))
+        constraints.update(
+            _deterministic_drilling_jig_constraint_certificate(png, caption))
         constraints.update(_deterministic_chamber_constraint_certificate(png, caption))
         constraints.update(
             _deterministic_segmented_cam_ring_constraint_certificate(png, caption))
