@@ -10230,6 +10230,26 @@ def test_current_unhatched_clamped_section_has_one_continuous_drill_passage():
     assert len({item["angle_degrees"] for item in section["components"]}) == 3
 
 
+def test_current_unhatched_clamped_section_accepts_source_faithful_key_wording():
+    specification = re.sub(
+        r"A key 52, integral with the carriage 50, projects downward into the longitudinal "
+        r"slot 16\.\s+The key 52 has a width that closely fits the slot 16\.",
+        "A key 52 projects downward from the first guide carriage 50 into the longitudinal slot "
+        "16. The key 52 has a width that fits within the slot 16.",
+        _current_unhatched_clamped_first_carriage_section_specification(),
+    )
+    assert "integral with" not in specification
+    assert "closely fits" not in specification
+
+    png = draft_figures._deterministic_drilling_jig_carriage_section_png(specification)
+
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(png, specification)
+    bore = certificate["certified_constraints"]["carried_bushing_and_coaxial_bore"]
+    assert bore["ok"] is True
+    assert bore["required_lower_bore_opening"] is True
+
+
 @pytest.mark.parametrize(("finding", "category"), [
     (
         "The rail and the second guide carriage are shown with identical hatching "

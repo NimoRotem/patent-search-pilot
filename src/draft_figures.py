@@ -5468,7 +5468,8 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
          (re.search(r"\bvertical longitudinal slot(?:\s+\d+)?\b[^.]{0,120}"
                     r"\bpasses completely through\b[^.]{0,120}\brail\b", text) and
           re.search(r"\bkey(?:\s+\d+)?\b[^.]{0,140}\bwidth\b[^.]{0,100}"
-                    r"\bclosely fits\b[^.]{0,80}\bslot(?:\s+\d+)?\b", text) and
+                    r"\b(?:closely fits|fits within)\b[^.]{0,80}"
+                    r"\bslot(?:\s+\d+)?\b", text) and
           (re.search(r"\bcentral axis of the bore\b[^.]{0,180}"
                      r"\bvertically aligned with\b[^.]{0,180}"
                      r"\blongitudinal slot(?:\s+\d+)?\b", text) or
