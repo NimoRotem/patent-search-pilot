@@ -10297,6 +10297,65 @@ def test_source_reviewed_clamped_section_uses_exact_hatching_and_through_slot():
     assert constraints["section_hatching"]["ok"] is True
 
 
+def test_live_source_reviewed_clamped_section_renders_exact_disclosed_geometry():
+    specification = """
+    A cross-sectional view taken on line A-A of FIG. 2, showing the first guide carriage 50 in a
+    clamped position on the rail 10.
+
+    The surfaces cut by the section plane are the rail 10, the first guide carriage 50 including
+    its key 52, and the drill bushing 54. These parts are shown with regular, evenly spaced section
+    hatching. The clamp knob 58 and clamping shoe 60 are visible in elevation but are not cut by
+    the section plane and are not hatched.
+    - Hatching for the rail 10 is at 45 degrees (lower-left to upper-right).
+    - Hatching for the first guide carriage 50 and its key 52 is at 135 degrees (lower-right to
+      upper-left).
+    - Hatching for the drill bushing 54 is vertical.
+
+    The view shows a cross-section of the rail 10, which appears as two separate hatched regions
+    on either side of a central, un-hatched vertical longitudinal slot 16. The rail 10 has a flat
+    upper face 12 and an opposite lower face.
+
+    The first guide carriage 50 is shown in cross-section, resting on the upper face 12 of the rail
+    10. A key 52, which is an integral part of the first guide carriage 50, projects downward from
+    the body of the carriage into the longitudinal slot 16. The key 52 is shown in cross-section
+    with the same hatching as the carriage 50.
+
+    A single, cylindrical drill bushing 54 is seated in a vertical bore within the first guide
+    carriage 50. In this axial cross-section, the drill bushing 54 appears as two opposed,
+    vertically hatched, rectangular regions, representing the sectioned walls of the bushing,
+    separated by a central, un-hatched vertical bore that passes completely through it. The bore
+    of the drill bushing 54 is aligned with the longitudinal slot 16.
+
+    A clamp knob 58 is shown in elevation above the first guide carriage 50. A threaded shank,
+    which is part of the clamp knob 58, extends vertically downward from the knob. The shank passes
+    through a vertical clearance hole in the body of the first guide carriage 50, said clearance
+    hole being separate from the bore holding the drill bushing 54. The shank then passes through
+    the longitudinal slot 16.
+
+    A separate clamping shoe 60 is located below the rail 10. The clamping shoe 60 is shown in
+    elevation and is not hatched. The threaded shank of the clamp knob 58 passes into and engages a
+    threaded vertical hole in the clamping shoe 60. The shank terminates within the body of the
+    clamping shoe 60. The clamping shoe 60 is drawn upward against the lower face of the rail 10,
+    clamping the rail between the shoe 60 and the first guide carriage 50.
+    """
+
+    assert draft_figures._drilling_jig_hatch_angles(specification) == {
+        "rail": -45, "guide carriage": 45, "drill bushing": 90,
+        "clamping shoe": 90,
+    }
+    png = draft_figures._deterministic_drilling_jig_carriage_section_png(
+        specification)
+
+    assert png is not None
+    certificate = draft_figures._deterministic_geometry_certificate(
+        png, specification)
+    assert certificate["ok"] is True
+    constraints = certificate["certified_constraints"]
+    assert constraints["slot_and_key"]["ok"] is True
+    assert constraints["carried_bushing_and_coaxial_bore"]["ok"] is True
+    assert constraints["section_hatching"]["ok"] is True
+
+
 def test_exact_current_carriage_section_resolves_missing_slot_inventory_dissent(
         monkeypatch):
     specification = re.sub(
