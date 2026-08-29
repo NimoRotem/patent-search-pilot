@@ -341,6 +341,11 @@ def numerals_used(text: str) -> Counter:
         r"(?:\s*(?:(?:-|–|\u2014|to|through|and|or)\s*|"
         r",\s*(?:(?:and|or)\s*)?)[0-9]+[A-Za-z]?)*",
         " ", text or "", flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"\b(?:(?:section|cutting[- ]plane)\s+)?line\s+"
+        r"(?P<section_mark>[0-9]+[A-Za-z]?)\s*[-\u2012-\u2015]\s*"
+        r"(?P=section_mark)\b",
+        " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bclaims?\s+[0-9,\s\-–and or]+", " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\[REF:[^\]]*\]", " ", cleaned)
     #  A publication number written into the prose beside its citation token - "US 9,108,319 B2" -

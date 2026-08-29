@@ -890,6 +890,14 @@ def test_figure_series_are_not_read_as_reference_numerals():
     assert set(draft_qa.numerals_used(text)) == {"12"}
 
 
+def test_alphanumeric_cutting_line_marks_are_not_read_as_reference_numerals():
+    text = (
+        "FIG. 2A is taken on line 2A-2A of FIG. 1 and shows the body 12 in section."
+    )
+
+    assert set(draft_qa.numerals_used(text)) == {"12"}
+
+
 # =============================================================================================
 # Figures
 # =============================================================================================
