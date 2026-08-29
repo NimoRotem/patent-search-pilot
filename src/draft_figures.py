@@ -4576,7 +4576,7 @@ def _deterministic_drilling_jig_carriage_section_png(caption: str) -> bytes | No
     requirements = (
         re.search(r"\bcross-sectional view taken on line\b[^.]{0,80}\bof fig\. 2\b", text),
         re.search(r"\brail(?:\s+\d+)?\b[^.]{0,160}\blongitudinal slot\b", text),
-        re.search(r"\bguide carriage(?:\s+\d+)?\b[^.]{0,100}\bsits on\b[^.]{0,100}"
+        re.search(r"\bguide carriage(?:\s+\d+)?\b.{0,220}\bsits on\b[^.]{0,100}"
                   r"\bupper face\b", text),
         re.search(r"\bkey(?:\s+\d+)?\b[^.]{0,120}\bprojects downward\b[^.]{0,120}"
                   r"\blongitudinal slot\b", text),
